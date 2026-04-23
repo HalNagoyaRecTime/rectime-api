@@ -10,6 +10,7 @@ export function createEntryController(
       const entries = await entryService.getAllEntries({});
       return c.json(entries);
     } catch (error) {
+      console.error(error);
       return c.json({ error: 'Failed to fetch entries' }, 500);
     }
   };
