@@ -1,10 +1,7 @@
 import { D1Database } from '@cloudflare/workers-types';
 import { EventEntity } from '../types/domains/Event';
 
-function buildWhereClause(options: {
-  f_event_code?: string;
-  f_time?: string;
-}) {
+function buildWhereClause(options: { f_event_code?: string; f_time?: string }) {
   const conditions = [];
   const params = [];
 
@@ -19,7 +16,8 @@ function buildWhereClause(options: {
   }
 
   return {
-    whereClause: conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '',
+    whereClause:
+      conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '',
     params,
   };
 }
@@ -67,13 +65,19 @@ export function createEventRepository(db: D1Database) {
       const countQuery = `SELECT COUNT(*) as total FROM t_events ${whereClause}`;
 
       const [events, totalResult] = await Promise.all([
-        db.prepare(query).bind(...params).all(),
-        db.prepare(countQuery).bind(...params).first()
+        db
+          .prepare(query)
+          .bind(...params)
+          .all(),
+        db
+          .prepare(countQuery)
+          .bind(...params)
+          .first(),
       ]);
 
       return {
         events: events.results.map(transformToEventEntity),
-        total: (totalResult as Record<string, unknown>)?.total as number || 0
+        total: ((totalResult as Record<string, unknown>)?.total as number) || 0,
       };
     },
 
@@ -97,7 +101,10 @@ export function createEventRepository(db: D1Database) {
     },
 
     async findById(id: number): Promise<EventEntity | null> {
-      const result = await db.prepare('SELECT * FROM t_events WHERE f_event_id = ?').bind(id).first();
+      const result = await db
+        .prepare('SELECT * FROM t_events WHERE f_event_id = ?')
+        .bind(id)
+        .first();
 
       if (!result) {
         return null;
@@ -107,7 +114,10 @@ export function createEventRepository(db: D1Database) {
     },
 
     async findByEventCode(eventCode: string): Promise<EventEntity | null> {
-      const result = await db.prepare('SELECT * FROM t_events WHERE f_event_code = ?').bind(eventCode).first();
+      const result = await db
+        .prepare('SELECT * FROM t_events WHERE f_event_code = ?')
+        .bind(eventCode)
+        .first();
 
       if (!result) {
         return null;

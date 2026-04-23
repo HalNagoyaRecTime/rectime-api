@@ -4,7 +4,10 @@ import { StudentEntity } from '../types/domains/Student';
 export function createStudentRepository(db: D1Database) {
   return {
     async findById(id: number): Promise<StudentEntity | null> {
-      const result = await db.prepare('SELECT * FROM m_students WHERE f_student_id = ?').bind(id).first();
+      const result = await db
+        .prepare('SELECT * FROM m_students WHERE f_student_id = ?')
+        .bind(id)
+        .first();
 
       if (!result) {
         return null;
@@ -22,7 +25,9 @@ export function createStudentRepository(db: D1Database) {
     },
 
     async findAll(): Promise<StudentEntity[]> {
-      const result = await db.prepare('SELECT * FROM m_students ORDER BY f_student_num').all();
+      const result = await db
+        .prepare('SELECT * FROM m_students ORDER BY f_student_num')
+        .all();
 
       return result.results.map(row => ({
         f_student_id: row.f_student_id as number,
@@ -35,7 +40,10 @@ export function createStudentRepository(db: D1Database) {
     },
 
     async findByStudentNum(studentNum: string): Promise<StudentEntity | null> {
-      const result = await db.prepare('SELECT * FROM m_students WHERE f_student_num = ?').bind(studentNum).first();
+      const result = await db
+        .prepare('SELECT * FROM m_students WHERE f_student_num = ?')
+        .bind(studentNum)
+        .first();
 
       if (!result) {
         return null;
