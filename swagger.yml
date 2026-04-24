@@ -1,0 +1,394 @@
+openapi: 3.0.3
+info:
+  title: Recreation Management API
+  description: 学校のレクリエーション予定管理API
+  version: 1.0.0
+  contact:
+    name: Recreation Management Team
+    email: support@recreation.example.com
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: 開発環境
+  - url: https://recreation-api.example.com/api/v1
+    description: 本番環境
+
+paths:
+  /students/{studentId}:
+    get:
+      tags:
+        - Students
+      summary: 学生情報取得
+      description: 学籍番号を指定して学生情報を取得
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: '2024001'
+          description: 学籍番号
+      responses:
+        '200':
+          description: 学生情報取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Student'
+        '404':
+          description: 学生が見つかりません
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /students/{studentId}/participations:
+    get:
+      tags:
+        - Students
+      summary: 学生の参加予定一覧取得
+      description: 指定した学生の参加予定をタイムライン順で取得
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: '2024001'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [registered, confirmed, cancelled]
+          description: 参加ステータスでフィルタ
+        - name: from_time
+          in: query
+          schema:
+            type: integer
+            example: 1100
+          description: 開始時刻でフィルタ（HHMM形式）
+        - name: to_time
+          in: query
+          schema:
+            type: integer
+            example: 1800
+          description: 終了時刻でフィルタ（HHMM形式）
+      responses:
+        '200':
+          description: 参加予定一覧取得成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ParticipationDetail'
+
+  /recreations:
+    get:
+      tags:
+        - Recreations
+      summary: レクリエーション一覧取得
+      description: レクリエーション一覧をタイムライン順で取得
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [scheduled, ongoing, completed, cancelled]
+          description: ステータスでフィルタ
+        - name: from_time
+          in: query
+          schema:
+            type: integer
+            example: 1100
+          description: 開始時刻でフィルタ（HHMM形式）
+        - name: to_time
+          in: query
+          schema:
+            type: integer
+            example: 1800
+          description: 終了時刻でフィルタ（HHMM形式）
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+          description: 取得件数上限
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: オフセット
+      responses:
+        '200':
+          description: レクリエーション一覧取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recreations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Recreation'
+                  total:
+                    type: integer
+                    description: 総件数
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+
+  /recreations/{recreationId}:
+    get:
+      tags:
+        - Recreations
+      summary: レクリエーション詳細取得
+      parameters:
+        - name: recreationId
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: レクリエーション詳細取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecreationDetail'
+
+  /recreations/{recreationId}/competitions:
+    get:
+      tags:
+        - Recreations
+      summary: レクリエーション参加者一覧取得
+      parameters:
+        - name: recreationId
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: 参加者一覧取得成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ParticipationDetail'
+
+  /participations:
+    post:
+      tags:
+        - Participations
+      summary: 競技参加登録
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParticipationRequest'
+      responses:
+        '201':
+          description: 参加登録成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Participation'
+        '400':
+          description: 不正なリクエスト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: 既に参加登録済み
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /participations/{participationId}:
+    delete:
+      tags:
+        - Participations
+      summary: 参加登録キャンセル
+      parameters:
+        - name: participationId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: キャンセル成功
+        '404':
+          description: 参加登録が見つかりません
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    Student:
+      type: object
+      properties:
+        student_id:
+          type: string
+          example: '2024001'
+          description: '学籍番号'
+        class_code:
+          type: string
+          example: '2A'
+          description: 'クラス記号'
+        attendance_number:
+          type: integer
+          example: 1
+          description: '出席番号'
+        name:
+          type: string
+          example: '田中太郎'
+          description: '学生名'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Recreation:
+      type: object
+      properties:
+        recreation_id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: '春の運動会'
+        description:
+          type: string
+          example: '年に一度の大運動会'
+        location:
+          type: string
+          example: '学校グラウンド'
+        start_time:
+          type: integer
+          example: 1100
+          description: '開始時刻（HHMM形式）'
+        end_time:
+          type: integer
+          example: 1600
+          description: '終了時刻（HHMM形式）'
+        max_participants:
+          type: integer
+          example: 200
+        status:
+          type: string
+          enum: [scheduled, ongoing, completed, cancelled]
+          example: 'scheduled'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RecreationDetail:
+      allOf:
+        - $ref: '#/components/schemas/Recreation'
+        - type: object
+          properties:
+            current_participants:
+              type: integer
+              example: 25
+              description: 現在の参加者数
+
+    Participation:
+      type: object
+      properties:
+        participation_id:
+          type: integer
+          example: 1
+        student_id:
+          type: string
+          example: '2024001'
+        recreation_id:
+          type: integer
+          example: 1
+        status:
+          type: string
+          enum: [registered, confirmed, cancelled]
+          example: 'registered'
+        registered_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ParticipationDetail:
+      allOf:
+        - $ref: '#/components/schemas/Participation'
+        - type: object
+          properties:
+            student:
+              $ref: '#/components/schemas/Student'
+            recreation:
+              $ref: '#/components/schemas/Recreation'
+            is_participating:
+              type: boolean
+              example: true
+              description: 参加予定かどうか（UI表示用）
+
+    ParticipationRequest:
+      type: object
+      required:
+        - student_id
+        - recreation_id
+      properties:
+        student_id:
+          type: string
+          example: '2024001'
+        recreation_id:
+          type: integer
+          example: 1
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: '学生が見つかりません'
+        code:
+          type: string
+          example: 'STUDENT_NOT_FOUND'
+        details:
+          type: object
+          additionalProperties: true
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: Students
+    description: 学生情報関連
+  - name: Recreations
+    description: レクリエーション関連
+  - name: Participations
+    description: 参加登録関連
