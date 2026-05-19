@@ -11,11 +11,24 @@ import { D1Database } from '@cloudflare/workers-types';
 
 type Bindings = {
   DB: D1Database;
+  ALLOWED_ORIGINS: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-app.use('*', cors());
+app.use('*', (c, next) => {
+  const origins = (c.env.ALLOWED_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+  if (origins.length === 0) {
+    console.warn('[CORS] ALLOWED_ORIGINS is not set — all cross-origin requests will be blocked');
+  }
+  return cors({
+    origin: origin => (origins.includes(origin) ? origin : null),
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+    maxAge: 600,
+  })(c, next);
+});
 
 app.get('/', c => {
   return c.json({
