@@ -32,13 +32,8 @@ app.use('*', (c, next) => {
 
 app.get('/', c => {
   return c.json({
-    message: 'Recreation Management API - Three Layer Architecture',
+    message: 'rectime_be',
     version: '1.0.0',
-    endpoints: {
-      students: '/api/v1/students/{studentId}',
-      events: '/api/v1/events',
-    },
-    swagger: '/swagger.yml',
   });
 });
 
