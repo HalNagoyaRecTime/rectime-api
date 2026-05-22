@@ -25,17 +25,8 @@ app.use('*', (c, next) => {
 
 app.get('/', c => {
   return c.json({
-    message: 'Recreation Management API - Four Layer Architecture',
+    message: 'rectime_be',
     version: '1.0.0',
-    endpoints: {
-      students: '/api/v1/students/{studentId}',
-      events: '/api/v1/events',
-      classes: '/api/v1/classes',
-      firebaseTokens: '/api/v1/firebase-tokens',
-      testNotification: '/api/v1/notifications/test',
-      runScheduledNotifications: '/api/v1/notifications/schedule/run',
-    },
-    swagger: '/swagger.yml',
   });
 });
 
