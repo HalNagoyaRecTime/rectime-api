@@ -1,0 +1,12 @@
+{
+  "name": "recreation-management-api",
+  "compatibility_date": "2026-05-25",
+  "main": "src/index.ts",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rec_time_stg",
+      "database_id": "<YOUR_DATABASE_ID>"
+    }
+  ]
+}
