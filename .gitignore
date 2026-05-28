@@ -10,6 +10,9 @@ dist/
 .idea/workspace.xml
 .idea/usage.statistics.xml
 .idea/shelf
+.idea/deployment.xml
+.idea/go.imports.xml
+.idea/inspectionProfiles/
 
 # deps
 node_modules/
