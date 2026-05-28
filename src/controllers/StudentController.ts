@@ -8,6 +8,9 @@ export function createStudentController(
   const getStudentById = async (c: Context) => {
     try {
       const id = c.req.param('studentId') || c.req.param('id');
+      if (!id) {
+        return c.json({ error: 'Student id is required' }, 400);
+      }
       const student = await studentService.getStudentById(parseInt(id));
       return c.json(student);
     } catch (error) {

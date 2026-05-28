@@ -17,7 +17,11 @@ export function createEntryController(
 
   const getEntryById = async (c: Context) => {
     try {
-      const id = parseInt(c.req.param('entryId'));
+      const entryId = c.req.param('entryId');
+      if (!entryId) {
+        return c.json({ error: 'Entry id is required' }, 400);
+      }
+      const id = parseInt(entryId);
       const entry = await entryService.getEntryById(id);
       return c.json(entry);
     } catch (error) {

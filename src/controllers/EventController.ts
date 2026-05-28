@@ -38,7 +38,11 @@ export function createEventController(
 
   const getEventById = async (c: Context) => {
     try {
-      const id = parseInt(c.req.param('eventId'));
+      const eventId = c.req.param('eventId');
+      if (!eventId) {
+        return c.json({ error: 'Event id is required' }, 400);
+      }
+      const id = parseInt(eventId);
       const event = await eventService.getEventById(id);
       return c.json(event);
     } catch (error) {
