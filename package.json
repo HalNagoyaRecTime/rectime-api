@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx --watch src/index.ts",
-    "dev:wrangler": "wrangler dev",
+    "dev:wrangler": "wrangler dev --ip 0.0.0.0",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate --remote": "wrangler d1 migrations apply rec_time_stg --remote",

@@ -7,7 +7,7 @@ import {
   generateCodeChallenge,
 } from './pkce';
 import { verifyIdToken, type IdTokenClaims } from './verifyIdToken';
-import { signMobileJwt, verifyMobileJwt } from './jwt';
+import { signMobileJwt, verifyMobileJwt, type MobileJwtClaims } from './jwt';
 import {
   createSession,
   getSession,
@@ -524,6 +524,11 @@ auth.post('/microsoft/token', async c => {
     } satisfies MobileRefreshEntry),
     { expirationTtl: refreshTtl }
   );
+  await c.env.AUTH_KV.put(
+    `mobile_refresh_by_user:${user.id}`,
+    refreshTokenId,
+    { expirationTtl: refreshTtl }
+  );
   await c.env.AUTH_KV.delete(`pkce:${body.state}`);
 
   const jwtTtl = getNumberEnv(c.env.JWT_EXPIRES_SEC, 3600);
@@ -621,31 +626,79 @@ auth.get('/me', async c => {
 // GET /auth/me/photo
 auth.get('/me/photo', async c => {
   const clientType = getClientType(c);
-  if (clientType !== 'web') {
+  if (clientType !== 'web' && clientType !== 'mobile') {
     return errorResponse(
       c,
       400,
       'INVALID_CLIENT_TYPE',
-      'Web クライアント専用のエンドポイントです。'
+      '不正なクライアント種別です。'
     );
   }
 
-  const sessionId = getSessionIdFromCookie(c.req.header('Cookie') ?? null);
-  if (!sessionId) {
-    return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
+  let msRefreshToken: string | null = null;
+  let sessionId: string | null = null;
+  let refreshTokenId: string | null = null;
+  let sessionOrRefresh: any = null;
+
+  if (clientType === 'web') {
+    sessionId = getSessionIdFromCookie(c.req.header('Cookie') ?? null);
+    if (!sessionId) {
+      return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
+    }
+
+    const session = await getSession(c.env.AUTH_KV, sessionId);
+    if (!session?.ms_refresh_token) {
+      return errorResponse(
+        c,
+        401,
+        'SESSION_EXPIRED',
+        'セッションの有効期限が切れました。'
+      );
+    }
+    msRefreshToken = session.ms_refresh_token;
+    sessionOrRefresh = session;
+  } else {
+    const token = getBearerToken(c);
+    if (!token) {
+      return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
+    }
+
+    let claims: MobileJwtClaims;
+    try {
+      claims = await verifyMobileJwt(token, c.env.JWT_SECRET);
+    } catch {
+      return errorResponse(c, 401, 'UNAUTHORIZED', '認証が不正です。');
+    }
+
+    refreshTokenId = await c.env.AUTH_KV.get(`mobile_refresh_by_user:${claims.sub}`);
+    if (!refreshTokenId) {
+      return errorResponse(
+        c,
+        401,
+        'SESSION_EXPIRED',
+        'セッションが見つかりません。'
+      );
+    }
+
+    const refreshRaw = await c.env.AUTH_KV.get(`mobile_refresh:${refreshTokenId}`);
+    if (!refreshRaw) {
+      return errorResponse(
+        c,
+        401,
+        'SESSION_EXPIRED',
+        'セッションの有効期限が切れました。'
+      );
+    }
+
+    const refresh = JSON.parse(refreshRaw) as MobileRefreshEntry;
+    msRefreshToken = refresh.ms_refresh_token;
+    sessionOrRefresh = refresh;
   }
 
-  const session = await getSession(c.env.AUTH_KV, sessionId);
-  if (!session?.ms_refresh_token) {
-    return errorResponse(
-      c,
-      401,
-      'SESSION_EXPIRED',
-      'セッションの有効期限が切れました。'
-    );
-  }
+  const tokens = await refreshMicrosoftAccessToken(c, msRefreshToken, {
+    includeClientSecret: clientType === 'web',
+  });
 
-  const tokens = await refreshMicrosoftAccessToken(c, session.ms_refresh_token);
   if (!tokens?.access_token) {
     return errorResponse(
       c,
@@ -656,10 +709,22 @@ auth.get('/me/photo', async c => {
   }
 
   if (tokens.refresh_token) {
-    await saveSession(c, sessionId, {
-      ...session,
-      ms_refresh_token: tokens.refresh_token,
-    });
+    if (clientType === 'web') {
+      await saveSession(c, sessionId!, {
+        ...sessionOrRefresh,
+        ms_refresh_token: tokens.refresh_token,
+      });
+    } else {
+      const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
+      await c.env.AUTH_KV.put(
+        `mobile_refresh:${refreshTokenId}`,
+        JSON.stringify({
+          ...sessionOrRefresh,
+          ms_refresh_token: tokens.refresh_token,
+        } satisfies MobileRefreshEntry),
+        { expirationTtl: refreshTtl }
+      );
+    }
   }
 
   const photoRes = await fetch(GRAPH_ME_PHOTO_URL, {
@@ -684,13 +749,27 @@ auth.get('/me/photo', async c => {
     );
   }
 
-  const avatarUpdatedAt = session.avatar_updated_at ?? new Date().toISOString();
-  await saveSession(c, sessionId, {
-    ...session,
-    ms_refresh_token: tokens.refresh_token ?? session.ms_refresh_token,
-    avatar_url: ACCOUNT_PHOTO_PATH,
-    avatar_updated_at: avatarUpdatedAt,
-  });
+  const avatarUpdatedAt = sessionOrRefresh.avatar_updated_at ?? new Date().toISOString();
+  if (clientType === 'web') {
+    await saveSession(c, sessionId!, {
+      ...sessionOrRefresh,
+      ms_refresh_token: tokens.refresh_token ?? sessionOrRefresh.ms_refresh_token,
+      avatar_url: ACCOUNT_PHOTO_PATH,
+      avatar_updated_at: avatarUpdatedAt,
+    });
+  } else {
+    const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
+    await c.env.AUTH_KV.put(
+      `mobile_refresh:${refreshTokenId}`,
+      JSON.stringify({
+        ...sessionOrRefresh,
+        ms_refresh_token: tokens.refresh_token ?? sessionOrRefresh.ms_refresh_token,
+        avatar_url: ACCOUNT_PHOTO_PATH,
+        avatar_updated_at: avatarUpdatedAt,
+      } satisfies MobileRefreshEntry),
+      { expirationTtl: refreshTtl }
+    );
+  }
 
   const contentType = photoRes.headers.get('Content-Type') ?? 'image/jpeg';
   return new Response(photoRes.body, {
@@ -864,6 +943,11 @@ auth.post('/refresh', async c => {
       ms_refresh_token: tokens.refresh_token,
       updated_at: new Date().toISOString(),
     } satisfies MobileRefreshEntry),
+    { expirationTtl: refreshTtl }
+  );
+  await c.env.AUTH_KV.put(
+    `mobile_refresh_by_user:${refresh.user_id}`,
+    body.refresh_token_id,
     { expirationTtl: refreshTtl }
   );
 
