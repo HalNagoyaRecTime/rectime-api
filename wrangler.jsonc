@@ -6,7 +6,7 @@
     {
       "binding": "DB",
       "database_name": "rec_time_stg",
-      "database_id": "<YOUR_DATABASE_ID>",
+      "database_id": "00000000-0000-0000-0000-000000000000",
     },
   ],
 }

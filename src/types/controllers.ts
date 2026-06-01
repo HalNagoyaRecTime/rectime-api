@@ -4,6 +4,7 @@ export type ControllerFunction = (c: Context) => Promise<any>;
 
 export interface StudentControllerFunctions {
   getStudentById: ControllerFunction;
+  getAllStudent: ControllerFunction;
 }
 
 // Event Controller Functions

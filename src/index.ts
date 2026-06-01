@@ -33,6 +33,13 @@ app.get('/', c => {
 const apiV1 = new Hono<{ Bindings: Bindings }>();
 
 // Student routes
+apiV1.get('/students', c => {
+  const db = getDb(c.env);
+  const studentRepository = createStudentRepository(db);
+  const studentService = createStudentService(studentRepository);
+  const studentController = createStudentController(studentService);
+  return studentController.getAllStudent(c);
+});
 apiV1.get('/students/:studentId', c => {
   const db = getDb(c.env);
   const studentRepository = createStudentRepository(db);
