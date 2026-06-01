@@ -3,6 +3,7 @@ import { EventEntity, EntryEntity, StudentEntity } from './domains';
 // Student Service Types
 export interface StudentServiceFunctions {
   getStudentById: (id: number) => Promise<StudentEntity>;
+  getAllStudents: () => Promise<StudentEntity[]>;
 }
 
 export interface EventServiceFunctions {

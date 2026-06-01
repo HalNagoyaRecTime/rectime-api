@@ -15,5 +15,8 @@ export function createStudentService(
       }
       return student;
     },
+    async getAllStudents() {
+      return studentRepository.findAll();
+    },
   };
 }

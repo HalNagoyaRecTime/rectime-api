@@ -1,8 +1,10 @@
 import { D1Database } from '@cloudflare/workers-types';
 import { StudentEntity } from '../types/domains/Student';
-import { StudentRepositoryFunctions } from '../types/repositories'
+import { StudentRepositoryFunctions } from '../types/repositories';
 
-export function createStudentRepository(db: D1Database): StudentRepositoryFunctions {
+export function createStudentRepository(
+  db: D1Database
+): StudentRepositoryFunctions {
   return {
     async findById(id: number): Promise<StudentEntity | null> {
       const result = await db
