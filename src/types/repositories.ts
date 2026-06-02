@@ -3,6 +3,8 @@ import { EventEntity, EntryEntity, StudentEntity } from './domains';
 // Student Repository Types
 export interface StudentRepositoryFunctions {
   findById: (id: number) => Promise<StudentEntity | null>;
+  findAll: () => Promise<StudentEntity[]>;
+  findByStudentNum: (studentNum: string) => Promise<StudentEntity | null>;
 }
 
 // Event Repository Types

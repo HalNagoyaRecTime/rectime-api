@@ -21,7 +21,17 @@ export function createStudentController(
     }
   };
 
+  const getAllStudent = async (c: Context) => {
+    try {
+      const students = await studentService.getAllStudents();
+      return c.json(students);
+    } catch {
+      return c.json({ error: 'Failed to fetch students' }, 500);
+    }
+  };
+
   return {
     getStudentById,
+    getAllStudent,
   };
 }
