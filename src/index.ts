@@ -39,7 +39,7 @@ app.get('/health', c => c.json({ status: 'ok' }));
 
 app.get('/', c => {
   return c.json({
-    message: 'rectime_be',
+    message: 'Rectime API',
     version: '1.0.0',
   });
 });

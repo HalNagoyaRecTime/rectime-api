@@ -1,5 +1,5 @@
 import type { KVNamespace } from '@cloudflare/workers-types';
-import { base64URLtoBytes } from './pkce';
+import { base64URLtoBytes, base64URLtoString } from './base64url';
 
 interface JWK {
   kty: string;
@@ -29,24 +29,36 @@ const JWKS_CACHE_KEY = 'jwks_cache';
 const JWKS_CACHE_TTL = 3600;
 
 async function fetchJWKS(kv: KVNamespace): Promise<JWK[]> {
-  const cached = await kv.get(JWKS_CACHE_KEY, 'json') as { keys: JWK[] } | null;
-  if (cached) return cached.keys;
+  const cached = (await kv.get(JWKS_CACHE_KEY, 'json')) as {
+    keys: JWK[];
+  } | null;
+  if (Array.isArray(cached?.keys)) return cached.keys;
 
   const res = await fetch(JWKS_URI);
-  const data = await res.json() as { keys: JWK[] };
-  await kv.put(JWKS_CACHE_KEY, JSON.stringify(data), { expirationTtl: JWKS_CACHE_TTL });
+  if (!res.ok) {
+    throw new Error('JWKS_FETCH_FAILED');
+  }
+
+  const data = (await res.json()) as { keys: JWK[] };
+  if (!Array.isArray(data.keys)) {
+    throw new Error('JWKS_FETCH_FAILED');
+  }
+
+  await kv.put(JWKS_CACHE_KEY, JSON.stringify(data), {
+    expirationTtl: JWKS_CACHE_TTL,
+  });
   return data.keys;
 }
 
 async function getPublicKey(kv: KVNamespace, kid: string): Promise<CryptoKey> {
   let keys = await fetchJWKS(kv);
-  let jwk = keys.find((k) => k.kid === kid);
+  let jwk = keys.find(k => k.kid === kid);
 
   if (!jwk) {
     // kidが見つからない場合はキャッシュを無効化して再取得
     await kv.delete(JWKS_CACHE_KEY);
     keys = await fetchJWKS(kv);
-    jwk = keys.find((k) => k.kid === kid);
+    jwk = keys.find(k => k.kid === kid);
   }
 
   if (!jwk) throw new Error('INVALID_ID_TOKEN');
@@ -56,45 +68,8 @@ async function getPublicKey(kv: KVNamespace, kid: string): Promise<CryptoKey> {
     jwk,
     { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
     false,
-    ['verify'],
+    ['verify']
   );
-}
-
-function utf8BytesToString(bytes: Uint8Array): string {
-  let result = '';
-  for (let i = 0; i < bytes.length; i++) {
-    const first = bytes[i];
-    let codePoint = first;
-
-    if (first >= 0xf0) {
-      codePoint =
-        ((first & 0x07) << 18) |
-        ((bytes[++i] & 0x3f) << 12) |
-        ((bytes[++i] & 0x3f) << 6) |
-        (bytes[++i] & 0x3f);
-    } else if (first >= 0xe0) {
-      codePoint =
-        ((first & 0x0f) << 12) |
-        ((bytes[++i] & 0x3f) << 6) |
-        (bytes[++i] & 0x3f);
-    } else if (first >= 0xc0) {
-      codePoint = ((first & 0x1f) << 6) | (bytes[++i] & 0x3f);
-    }
-
-    result += String.fromCodePoint(codePoint);
-  }
-  return result;
-}
-
-function base64URLtoString(b64url: string): string {
-  const base64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return utf8BytesToString(bytes);
 }
 
 export async function verifyIdToken(
@@ -102,13 +77,18 @@ export async function verifyIdToken(
   kv: KVNamespace,
   clientId: string,
   nonce: string,
+  microsoftTenant: string,
+  allowedMicrosoftTenants?: string
 ): Promise<IdTokenClaims> {
   const parts = idToken.split('.');
   if (parts.length !== 3) throw new Error('INVALID_ID_TOKEN');
 
   const [headerB64, payloadB64, signatureB64] = parts;
 
-  const header = JSON.parse(base64URLtoString(headerB64)) as { alg: string; kid: string };
+  const header = JSON.parse(base64URLtoString(headerB64)) as {
+    alg: string;
+    kid: string;
+  };
   if (header.alg !== 'RS256') throw new Error('INVALID_ID_TOKEN');
 
   const publicKey = await getPublicKey(kv, header.kid);
@@ -116,7 +96,12 @@ export async function verifyIdToken(
   const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
   const signature = base64URLtoBytes(signatureB64);
 
-  const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', publicKey, signature, data);
+  const valid = await crypto.subtle.verify(
+    'RSASSA-PKCS1-v1_5',
+    publicKey,
+    signature,
+    data
+  );
   if (!valid) throw new Error('INVALID_ID_TOKEN');
 
   const payload = JSON.parse(base64URLtoString(payloadB64)) as IdTokenClaims;
@@ -128,6 +113,24 @@ export async function verifyIdToken(
   if (payload.iat > now + clockSkew) throw new Error('INVALID_ID_TOKEN');
   if (payload.aud !== clientId) throw new Error('INVALID_ID_TOKEN');
   if (payload.iss !== `https://login.microsoftonline.com/${payload.tid}/v2.0`) {
+    throw new Error('INVALID_ID_TOKEN');
+  }
+  const allowedTenants = (allowedMicrosoftTenants ?? '')
+    .split(',')
+    .map(tenant => tenant.trim())
+    .filter(Boolean);
+  const normalizedMicrosoftTenant = (microsoftTenant ?? '').trim();
+  const tenantAllowsAny =
+    normalizedMicrosoftTenant === '' ||
+    normalizedMicrosoftTenant === 'common' ||
+    normalizedMicrosoftTenant === 'organizations';
+  if (allowedTenants.length > 0) {
+    if (!allowedTenants.includes(payload.tid)) {
+      throw new Error('INVALID_ID_TOKEN');
+    }
+  } else if (tenantAllowsAny) {
+    throw new Error('INVALID_ID_TOKEN');
+  } else if (payload.tid !== normalizedMicrosoftTenant) {
     throw new Error('INVALID_ID_TOKEN');
   }
   if (payload.nonce !== nonce) throw new Error('INVALID_ID_TOKEN');

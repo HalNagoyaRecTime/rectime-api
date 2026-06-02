@@ -1,11 +1,8 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env as Bindings } from '../lib/env';
-import {
-  base64URLtoBytes,
-  generateRandom,
-  generateCodeChallenge,
-} from './pkce';
+import { base64URLtoBytes } from './base64url';
+import { generateRandom, generateCodeChallenge } from './pkce';
 import { verifyIdToken, type IdTokenClaims } from './verifyIdToken';
 import { signMobileJwt, verifyMobileJwt, type MobileJwtClaims } from './jwt';
 import {
@@ -160,7 +157,19 @@ async function exchangeMicrosoftToken(
     }
   );
 
-  return tokenRes.json() as Promise<MicrosoftTokenResponse>;
+  const tokenPayload = (await tokenRes
+    .json()
+    .catch(() => null)) as MicrosoftTokenResponse | null;
+  if (!tokenRes.ok) {
+    console.warn('[Auth] Microsoft token exchange failed', {
+      status: tokenRes.status,
+      error: tokenPayload?.error,
+      error_description: tokenPayload?.error_description,
+    });
+    return null;
+  }
+
+  return tokenPayload;
 }
 
 function getSessionTtlSeconds(sessionExpiresAt: string): number {
@@ -184,11 +193,15 @@ async function refreshMicrosoftAccessToken(
   refreshToken: string,
   options?: { includeClientSecret?: boolean }
 ): Promise<MicrosoftTokenResponse | null> {
-  return exchangeMicrosoftToken(c, {
-    grant_type: 'refresh_token',
-    refresh_token: refreshToken,
-    scope: MICROSOFT_SCOPES,
-  }, options);
+  return exchangeMicrosoftToken(
+    c,
+    {
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      scope: MICROSOFT_SCOPES,
+    },
+    options
+  );
 }
 
 async function upsertUser(
@@ -293,8 +306,19 @@ auth.get('/microsoft/login', async c => {
       );
     }
 
+    const pkceKey = `pkce:${state}`;
+    const existingPkce = await c.env.AUTH_KV.get(pkceKey);
+    if (existingPkce) {
+      return errorResponse(
+        c,
+        400,
+        'STATE_ALREADY_EXISTS',
+        '同じ state の認証処理がすでに開始されています。'
+      );
+    }
+
     await c.env.AUTH_KV.put(
-      `pkce:${state}`,
+      pkceKey,
       JSON.stringify({
         nonce,
         client_type: 'mobile',
@@ -354,6 +378,7 @@ auth.get('/microsoft/callback', async c => {
   if (!pkceRaw) {
     return c.redirect(`${frontendUrl}/login?error=auth_failed`, 302);
   }
+  await c.env.AUTH_KV.delete(`pkce:${state}`);
 
   const pkce = JSON.parse(pkceRaw) as PkceEntry;
   if (pkce.client_type !== 'web' || !pkce.code_verifier) {
@@ -376,14 +401,15 @@ auth.get('/microsoft/callback', async c => {
       tokens.id_token,
       c.env.AUTH_KV,
       c.env.MICROSOFT_CLIENT_ID,
-      pkce.nonce
+      pkce.nonce,
+      c.env.MICROSOFT_TENANT,
+      c.env.ALLOWED_MICROSOFT_TENANTS
     );
   } catch {
     return c.redirect(`${frontendUrl}/login?error=auth_failed`, 302);
   }
 
   const user = await upsertUser(c, claims);
-  await c.env.AUTH_KV.delete(`pkce:${state}`);
 
   const ttl = getNumberEnv(c.env.SESSION_EXPIRES_SEC, 86400);
   const sessionId = await createSession(
@@ -461,6 +487,7 @@ auth.post('/microsoft/token', async c => {
       'state が一致しないか期限切れです。'
     );
   }
+  await c.env.AUTH_KV.delete(`pkce:${body.state}`);
 
   const pkce = JSON.parse(pkceRaw) as PkceEntry;
   if (pkce.client_type !== 'mobile') {
@@ -472,12 +499,16 @@ auth.post('/microsoft/token', async c => {
     );
   }
 
-  const tokens = await exchangeMicrosoftToken(c, {
-    grant_type: 'authorization_code',
-    code: body.code,
-    redirect_uri: c.env.MICROSOFT_MOBILE_REDIRECT_URI,
-    code_verifier: body.code_verifier,
-  }, { includeClientSecret: false });
+  const tokens = await exchangeMicrosoftToken(
+    c,
+    {
+      grant_type: 'authorization_code',
+      code: body.code,
+      redirect_uri: c.env.MICROSOFT_MOBILE_REDIRECT_URI,
+      code_verifier: body.code_verifier,
+    },
+    { includeClientSecret: false }
+  );
   if (!tokens?.id_token || !tokens.refresh_token) {
     return errorResponse(
       c,
@@ -493,7 +524,9 @@ auth.post('/microsoft/token', async c => {
       tokens.id_token,
       c.env.AUTH_KV,
       c.env.MICROSOFT_CLIENT_ID,
-      pkce.nonce
+      pkce.nonce,
+      c.env.MICROSOFT_TENANT,
+      c.env.ALLOWED_MICROSOFT_TENANTS
     );
   } catch {
     return errorResponse(
@@ -524,12 +557,9 @@ auth.post('/microsoft/token', async c => {
     } satisfies MobileRefreshEntry),
     { expirationTtl: refreshTtl }
   );
-  await c.env.AUTH_KV.put(
-    `mobile_refresh_by_user:${user.id}`,
-    refreshTokenId,
-    { expirationTtl: refreshTtl }
-  );
-  await c.env.AUTH_KV.delete(`pkce:${body.state}`);
+  await c.env.AUTH_KV.put(`mobile_refresh_by_user:${user.id}`, refreshTokenId, {
+    expirationTtl: refreshTtl,
+  });
 
   const jwtTtl = getNumberEnv(c.env.JWT_EXPIRES_SEC, 3600);
   const accessToken = await signMobileJwt(
@@ -638,7 +668,7 @@ auth.get('/me/photo', async c => {
   let msRefreshToken: string | null = null;
   let sessionId: string | null = null;
   let refreshTokenId: string | null = null;
-  let sessionOrRefresh: any = null;
+  let sessionOrRefresh: Session | MobileRefreshEntry | null = null;
 
   if (clientType === 'web') {
     sessionId = getSessionIdFromCookie(c.req.header('Cookie') ?? null);
@@ -670,7 +700,9 @@ auth.get('/me/photo', async c => {
       return errorResponse(c, 401, 'UNAUTHORIZED', '認証が不正です。');
     }
 
-    refreshTokenId = await c.env.AUTH_KV.get(`mobile_refresh_by_user:${claims.sub}`);
+    refreshTokenId = await c.env.AUTH_KV.get(
+      `mobile_refresh_by_user:${claims.sub}`
+    );
     if (!refreshTokenId) {
       return errorResponse(
         c,
@@ -680,7 +712,9 @@ auth.get('/me/photo', async c => {
       );
     }
 
-    const refreshRaw = await c.env.AUTH_KV.get(`mobile_refresh:${refreshTokenId}`);
+    const refreshRaw = await c.env.AUTH_KV.get(
+      `mobile_refresh:${refreshTokenId}`
+    );
     if (!refreshRaw) {
       return errorResponse(
         c,
@@ -710,16 +744,21 @@ auth.get('/me/photo', async c => {
 
   if (tokens.refresh_token) {
     if (clientType === 'web') {
+      const session = sessionOrRefresh as Session;
       await saveSession(c, sessionId!, {
-        ...sessionOrRefresh,
+        ...session,
         ms_refresh_token: tokens.refresh_token,
       });
     } else {
-      const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
+      const refresh = sessionOrRefresh as MobileRefreshEntry;
+      const refreshTtl = getNumberEnv(
+        c.env.MOBILE_REFRESH_EXPIRES_SEC,
+        7776000
+      );
       await c.env.AUTH_KV.put(
         `mobile_refresh:${refreshTokenId}`,
         JSON.stringify({
-          ...sessionOrRefresh,
+          ...refresh,
           ms_refresh_token: tokens.refresh_token,
         } satisfies MobileRefreshEntry),
         { expirationTtl: refreshTtl }
@@ -749,21 +788,24 @@ auth.get('/me/photo', async c => {
     );
   }
 
-  const avatarUpdatedAt = sessionOrRefresh.avatar_updated_at ?? new Date().toISOString();
+  const avatarUpdatedAt =
+    sessionOrRefresh?.avatar_updated_at ?? new Date().toISOString();
   if (clientType === 'web') {
+    const session = sessionOrRefresh as Session;
     await saveSession(c, sessionId!, {
-      ...sessionOrRefresh,
-      ms_refresh_token: tokens.refresh_token ?? sessionOrRefresh.ms_refresh_token,
+      ...session,
+      ms_refresh_token: tokens.refresh_token ?? session.ms_refresh_token,
       avatar_url: ACCOUNT_PHOTO_PATH,
       avatar_updated_at: avatarUpdatedAt,
     });
   } else {
+    const refresh = sessionOrRefresh as MobileRefreshEntry;
     const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
     await c.env.AUTH_KV.put(
       `mobile_refresh:${refreshTokenId}`,
       JSON.stringify({
-        ...sessionOrRefresh,
-        ms_refresh_token: tokens.refresh_token ?? sessionOrRefresh.ms_refresh_token,
+        ...refresh,
+        ms_refresh_token: tokens.refresh_token ?? refresh.ms_refresh_token,
         avatar_url: ACCOUNT_PHOTO_PATH,
         avatar_updated_at: avatarUpdatedAt,
       } satisfies MobileRefreshEntry),
@@ -799,8 +841,9 @@ auth.post('/logout', async c => {
       return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
     }
 
+    let claims: MobileJwtClaims;
     try {
-      await verifyMobileJwt(token, c.env.JWT_SECRET);
+      claims = await verifyMobileJwt(token, c.env.JWT_SECRET);
     } catch {
       return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
     }
@@ -815,6 +858,7 @@ auth.post('/logout', async c => {
     ) {
       await c.env.AUTH_KV.delete(`mobile_refresh:${body.refresh_token_id}`);
     }
+    await c.env.AUTH_KV.delete(`mobile_refresh_by_user:${claims.sub}`);
 
     return c.json({ message: 'Logged out successfully' });
   }
@@ -861,7 +905,10 @@ auth.post('/refresh', async c => {
       );
     }
 
-    const tokens = await refreshMicrosoftAccessToken(c, session.ms_refresh_token);
+    const tokens = await refreshMicrosoftAccessToken(
+      c,
+      session.ms_refresh_token
+    );
     if (!tokens?.refresh_token) {
       return errorResponse(
         c,
@@ -872,15 +919,11 @@ auth.post('/refresh', async c => {
     }
 
     const ttl = getNumberEnv(c.env.SESSION_EXPIRES_SEC, 86400);
-    await c.env.AUTH_KV.put(
-      `session:${sessionId}`,
-      JSON.stringify({
-        ...session,
-        ms_refresh_token: tokens.refresh_token,
-        expires_at: new Date(Date.now() + ttl * 1000).toISOString(),
-      }),
-      { expirationTtl: ttl }
-    );
+    await saveSession(c, sessionId, {
+      ...session,
+      ms_refresh_token: tokens.refresh_token,
+      expires_at: new Date(Date.now() + ttl * 1000).toISOString(),
+    });
 
     return new Response(JSON.stringify({ message: 'Session refreshed' }), {
       status: 200,
@@ -923,9 +966,13 @@ auth.post('/refresh', async c => {
   }
 
   const refresh = JSON.parse(refreshRaw) as MobileRefreshEntry;
-  const tokens = await refreshMicrosoftAccessToken(c, refresh.ms_refresh_token, {
-    includeClientSecret: false,
-  });
+  const tokens = await refreshMicrosoftAccessToken(
+    c,
+    refresh.ms_refresh_token,
+    {
+      includeClientSecret: false,
+    }
+  );
   if (!tokens?.refresh_token) {
     return errorResponse(
       c,
@@ -936,8 +983,9 @@ auth.post('/refresh', async c => {
   }
 
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
+  const nextRefreshTokenId = crypto.randomUUID();
   await c.env.AUTH_KV.put(
-    refreshKey,
+    `mobile_refresh:${nextRefreshTokenId}`,
     JSON.stringify({
       ...refresh,
       ms_refresh_token: tokens.refresh_token,
@@ -947,9 +995,10 @@ auth.post('/refresh', async c => {
   );
   await c.env.AUTH_KV.put(
     `mobile_refresh_by_user:${refresh.user_id}`,
-    body.refresh_token_id,
+    nextRefreshTokenId,
     { expirationTtl: refreshTtl }
   );
+  await c.env.AUTH_KV.delete(refreshKey);
 
   const jwtTtl = getNumberEnv(c.env.JWT_EXPIRES_SEC, 3600);
   const accessToken = await signMobileJwt(
@@ -968,7 +1017,7 @@ auth.post('/refresh', async c => {
 
   return c.json({
     access_token: accessToken,
-    refresh_token_id: body.refresh_token_id,
+    refresh_token_id: nextRefreshTokenId,
     token_type: 'Bearer',
     expires_in: jwtTtl,
   });
