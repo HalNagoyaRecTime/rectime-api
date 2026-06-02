@@ -1,62 +1,17 @@
-function toBase64URL(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-}
-
-function utf8BytesToString(bytes: Uint8Array): string {
-  let result = '';
-  for (let i = 0; i < bytes.length; i++) {
-    const first = bytes[i];
-    let codePoint = first;
-
-    if (first >= 0xf0) {
-      codePoint =
-        ((first & 0x07) << 18) |
-        ((bytes[++i] & 0x3f) << 12) |
-        ((bytes[++i] & 0x3f) << 6) |
-        (bytes[++i] & 0x3f);
-    } else if (first >= 0xe0) {
-      codePoint =
-        ((first & 0x0f) << 12) |
-        ((bytes[++i] & 0x3f) << 6) |
-        (bytes[++i] & 0x3f);
-    } else if (first >= 0xc0) {
-      codePoint = ((first & 0x1f) << 6) | (bytes[++i] & 0x3f);
-    }
-
-    result += String.fromCodePoint(codePoint);
-  }
-  return result;
-}
-
-function base64URLtoString(value: string): string {
-  return utf8BytesToString(base64URLtoBytes(value));
-}
-
-function base64URLtoBytes(value: string): Uint8Array {
-  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = base64.padEnd(
-    base64.length + ((4 - (base64.length % 4)) % 4),
-    '='
-  );
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
+import { base64URLtoBytes, base64URLtoString, toBase64URL } from './base64url';
 
 async function importHmacKey(
   secret: string,
   usages: ('sign' | 'verify')[]
 ): Promise<CryptoKey> {
+  const secretBytes = new TextEncoder().encode(secret);
+  if (secretBytes.byteLength < 32) {
+    throw new Error('MISCONFIGURED_JWT_SECRET');
+  }
+
   return crypto.subtle.importKey(
     'raw',
-    new TextEncoder().encode(secret),
+    secretBytes,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     usages
