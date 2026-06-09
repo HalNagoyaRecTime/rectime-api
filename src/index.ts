@@ -65,6 +65,12 @@ apiV1.get('/events/:eventId', c => {
   return eventController.getEventById(c);
 });
 
+// Class routes
+apiV1.get('/classes', c => {
+  const db = getDb(c.env);
+
+})
+
 // Mount API v1
 app.route('/api/v1', apiV1);
 
