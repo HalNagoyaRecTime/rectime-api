@@ -18,3 +18,7 @@ export interface EntryControllerFunctions {
   getAllEntries: ControllerFunction;
   getEntryById: ControllerFunction;
 }
+
+export interface ClassControllerFunctions{
+  getAllClasses: ControllerFunction;
+}

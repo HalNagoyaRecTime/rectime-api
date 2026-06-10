@@ -11,6 +11,11 @@ export function createClassRepository(
             const result = await db
             .prepare('SELECT * FROM m_classes ORDER BY f_class_id')
             .all();
+
+        return result.results.map(row => ({
+            // f_class_id: row.f_class_id as string,
+            f_class_name: row.f_class_name as string,
+        }));
         }
     }
 }

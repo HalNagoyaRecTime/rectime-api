@@ -21,3 +21,10 @@ INSERT INTO t_entries (f_student_id, f_event_id) VALUES
   (4, 2),
   (5, 3),
   (1, 3);
+
+-- クラスデータ
+INSERT INTO m_classes (f_class_name) VALUES
+  ('IH12A'),
+  ('IH12B'),
+  ('IH41A'),
+  ('IA12A');

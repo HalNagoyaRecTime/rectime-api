@@ -7,6 +7,9 @@ import { createStudentController } from './controllers/StudentController';
 import { createEventRepository } from './repositories/EventRepository';
 import { createEventService } from './services/EventService';
 import { createEventController } from './controllers/EventController';
+import { createClassRepository } from './repositories/ClassRepository';
+import { createClassService } from './services/ClassService';
+import { createClassController } from './controllers/ClassController';
 import { D1Database } from '@cloudflare/workers-types';
 
 type Bindings = {
@@ -24,6 +27,7 @@ app.get('/', c => {
     endpoints: {
       students: '/api/v1/students/{studentId}',
       events: '/api/v1/events',
+      classes: '/api/v1/classes',
     },
     swagger: '/swagger.yml',
   });
@@ -68,8 +72,11 @@ apiV1.get('/events/:eventId', c => {
 // Class routes
 apiV1.get('/classes', c => {
   const db = getDb(c.env);
-
-})
+  const classRepository = createClassRepository(db);
+  const classService = createClassService(classRepository);
+  const classController = createClassController(classService);
+  return classController.getAllClasses(c);
+});
 
 // Mount API v1
 app.route('/api/v1', apiV1);
