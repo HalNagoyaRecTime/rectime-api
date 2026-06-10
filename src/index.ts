@@ -7,10 +7,16 @@ import { createStudentController } from './controllers/StudentController';
 import { createEventRepository } from './repositories/EventRepository';
 import { createEventService } from './services/EventService';
 import { createEventController } from './controllers/EventController';
+import { createFcmService } from './services/FcmService';
+import { createNotificationController } from './controllers/NotificationController';
 import { D1Database } from '@cloudflare/workers-types';
 
 type Bindings = {
   DB: D1Database;
+  FIREBASE_PROJECT_ID: string;
+  FIREBASE_CLIENT_EMAIL: string;
+  FIREBASE_PRIVATE_KEY: string;
+  TEST_FCM_TOKEN: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -24,6 +30,7 @@ app.get('/', c => {
     endpoints: {
       students: '/api/v1/students/{studentId}',
       events: '/api/v1/events',
+      testNotification: '/api/v1/notifications/test',
     },
     swagger: '/swagger.yml',
   });
@@ -63,6 +70,18 @@ apiV1.get('/events/:eventId', c => {
   const eventService = createEventService(eventRepository);
   const eventController = createEventController(eventService);
   return eventController.getEventById(c);
+});
+
+// Notification routes
+apiV1.post('/notifications/test', c => {
+  const fcmService = createFcmService({
+    projectId: c.env.FIREBASE_PROJECT_ID,
+    clientEmail: c.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: c.env.FIREBASE_PRIVATE_KEY,
+    testFcmToken: c.env.TEST_FCM_TOKEN,
+  });
+  const notificationController = createNotificationController(fcmService);
+  return notificationController.sendTestNotification(c);
 });
 
 // Mount API v1

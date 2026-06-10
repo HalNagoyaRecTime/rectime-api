@@ -25,3 +25,19 @@ export interface EntryServiceFunctions {
   }) => Promise<{ entries: EntryEntity[]; total: number }>;
   getEntryById: (id: number) => Promise<EntryEntity>;
 }
+
+export interface FcmTestNotificationInput {
+  title: string;
+  body: string;
+}
+
+export interface FcmTestNotificationResult {
+  success: true;
+  messageId: string;
+}
+
+export interface FcmServiceFunctions {
+  sendTestNotification: (
+    input: FcmTestNotificationInput
+  ) => Promise<FcmTestNotificationResult>;
+}

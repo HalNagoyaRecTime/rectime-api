@@ -18,3 +18,8 @@ export interface EntryControllerFunctions {
   getAllEntries: ControllerFunction;
   getEntryById: ControllerFunction;
 }
+
+// Notification Controller Functions
+export interface NotificationControllerFunctions {
+  sendTestNotification: ControllerFunction;
+}

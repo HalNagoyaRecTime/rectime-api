@@ -14,8 +14,15 @@ export default [
         sourceType: 'module',
       },
       globals: {
+        atob: 'readonly',
+        btoa: 'readonly',
         console: 'readonly',
+        crypto: 'readonly',
+        CryptoKey: 'readonly',
+        fetch: 'readonly',
         process: 'readonly',
+        TextEncoder: 'readonly',
+        URLSearchParams: 'readonly',
       },
     },
     plugins: {
