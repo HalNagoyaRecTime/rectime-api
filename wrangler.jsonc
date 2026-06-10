@@ -1,0 +1,46 @@
+{
+  "name": "rec-time-be",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/index.ts",
+  "vars": {
+    "NODE_ENV": "production"
+  },
+  "env": {
+    "default": {
+      "vars": {
+        "NODE_ENV": "development",
+        "PORT": "8787",
+        "HOST": "0.0.0.0"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "rec-time-be-dev",
+          "database_id": "0b11b132-3260-4e0b-9d1e-2f09824a8ade"
+        }
+      ]
+    },
+    "development": {
+      "vars": {
+        "NODE_ENV": "development",
+        "PORT": "8787",
+        "HOST": "0.0.0.0"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "rec-time-be-dev",
+          "database_id": "0b11b132-3260-4e0b-9d1e-2f09824a8ade"
+        }
+      ]
+    }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rec-time-be",
+      "database_id": "b93ec427-7cdb-4ad7-8944-ed807ba24b03"
+    }
+  ]
+}
