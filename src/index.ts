@@ -9,6 +9,9 @@ import { createEventService } from './services/EventService';
 import { createEventController } from './controllers/EventController';
 import { createFcmService } from './services/FcmService';
 import { createNotificationController } from './controllers/NotificationController';
+import { createFirebaseTokenRepository } from './repositories/FirebaseTokenRepository';
+import { createFirebaseTokenService } from './services/FirebaseTokenService';
+import { createFirebaseTokenController } from './controllers/FirebaseTokenController';
 import { D1Database } from '@cloudflare/workers-types';
 
 type Bindings = {
@@ -30,6 +33,7 @@ app.get('/', c => {
     endpoints: {
       students: '/api/v1/students/{studentId}',
       events: '/api/v1/events',
+      firebaseTokens: '/api/v1/firebase-tokens',
       testNotification: '/api/v1/notifications/test',
     },
     swagger: '/swagger.yml',
@@ -70,6 +74,18 @@ apiV1.get('/events/:eventId', c => {
   const eventService = createEventService(eventRepository);
   const eventController = createEventController(eventService);
   return eventController.getEventById(c);
+});
+
+// Firebase token routes
+apiV1.post('/firebase-tokens', c => {
+  const db = getDb(c.env);
+  const firebaseTokenRepository = createFirebaseTokenRepository(db);
+  const firebaseTokenService = createFirebaseTokenService(
+    firebaseTokenRepository
+  );
+  const firebaseTokenController =
+    createFirebaseTokenController(firebaseTokenService);
+  return firebaseTokenController.registerFirebaseToken(c);
 });
 
 // Notification routes

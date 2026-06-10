@@ -1,4 +1,10 @@
-import { EventEntity, EntryEntity, StudentEntity } from './domains';
+import {
+  EventEntity,
+  EntryEntity,
+  RegisterFirebaseTokenInput,
+  RegisterFirebaseTokenResult,
+  StudentEntity,
+} from './domains';
 
 // Student Service Types
 export interface StudentServiceFunctions {
@@ -40,4 +46,10 @@ export interface FcmServiceFunctions {
   sendTestNotification: (
     input: FcmTestNotificationInput
   ) => Promise<FcmTestNotificationResult>;
+}
+
+export interface FirebaseTokenServiceFunctions {
+  registerFirebaseToken: (
+    input: RegisterFirebaseTokenInput
+  ) => Promise<RegisterFirebaseTokenResult>;
 }

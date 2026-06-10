@@ -1,4 +1,10 @@
-import { EventEntity, EntryEntity, StudentEntity } from './domains';
+import {
+  EventEntity,
+  EntryEntity,
+  RegisterFirebaseTokenInput,
+  RegisterFirebaseTokenResult,
+  StudentEntity,
+} from './domains';
 
 // Student Repository Types
 export interface StudentRepositoryFunctions {
@@ -29,4 +35,11 @@ export interface EntryRepositoryFunctions {
     offset?: number;
   }) => Promise<{ entries: EntryEntity[]; total: number }>;
   findById: (id: number) => Promise<EntryEntity | null>;
+}
+
+// Firebase Token Repository Types
+export interface FirebaseTokenRepositoryFunctions {
+  register: (
+    input: RegisterFirebaseTokenInput
+  ) => Promise<RegisterFirebaseTokenResult>;
 }
