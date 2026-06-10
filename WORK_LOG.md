@@ -36,28 +36,132 @@
 - Cloudflare Secret 未設定時、`/api/v1/notifications/test` が不足している Secret 一覧を返すことを確認
 - 不正な body `{}` を送信した場合、400 validation エラーが返ることを確認
 
-### まだ必要な作業
+### Cloudflare デプロイ設定の修正
 
-実際に FCM へ送信するには、Cloudflare Secret に次の値を登録する必要がある。
+Cloudflare Workers Builds が古い `wrangler.jsonc` を参照していたため、Worker 名と D1 binding の不一致でデプロイに失敗していた。
+
+確認されたエラー:
+
+- Worker 名: `recreation-management-api` と `rectime-api` の不一致
+- D1 binding: `rec_time_stg` の `database_id` が `00000000-0000-0000-0000-000000000000`
+
+対応内容:
+
+- Worker 名を `rectime-api` に修正
+- Cloudflare `account_id` を設定
+- 既存 D1 database `rec-time-be` を production の `DB` binding として利用
+- local migration は既存 D1 database `rec-time-be-dev` を利用するように修正
+- `npx wrangler deploy` で手動デプロイを実行
+
+デプロイ結果:
+
+- Worker: `rectime-api`
+- URL: `https://rectime-api.ellan122316.workers.dev`
+- D1 binding: `env.DB (rec-time-be)`
+- Version ID: `a3be94b5-671f-48d2-a30f-9bc34f6e62b1`
+
+### FCM Secret 登録と実送信確認
+
+Cloudflare Secret に Firebase / FCM 用の値を登録した。
+
+登録した Secret:
+
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_CLIENT_EMAIL`
+- `FIREBASE_PRIVATE_KEY`
+- `TEST_FCM_TOKEN`
+
+一度 `Google OAuth token request failed: invalid_grant` が発生したが、Firebase Service Account の値を再登録して解消した。
+
+本番 Worker に対して次の API を実行した。
 
 ```bash
-npx wrangler secret put FIREBASE_PROJECT_ID
-npx wrangler secret put FIREBASE_CLIENT_EMAIL
-npx wrangler secret put FIREBASE_PRIVATE_KEY
-npx wrangler secret put TEST_FCM_TOKEN
-```
-
-登録後、次の API を呼び出して Android Emulator で通知受信を確認する。
-
-```bash
-curl -X POST http://localhost:8787/api/v1/notifications/test \
+curl -X POST https://rectime-api.ellan122316.workers.dev/api/v1/notifications/test \
   -H "Content-Type: application/json" \
   -d '{"title":"test通知","body":"君に届け"}'
 ```
 
+成功レスポンス:
+
+```json
+{
+  "success": true,
+  "messageId": "projects/rectime-3c0ba/messages/0:1781098147631193%df262460df262460"
+}
+```
+
+Android Emulator の Logcat でも FCM 受信を確認した。
+
+```text
+D RectimeFCM: FCM message received from: 946149362229
+```
+
+### 完了したこと
+
+- Cloudflare Worker から Firebase OAuth access token を発行できることを確認
+- FCM HTTP v1 API へリクエストできることを確認
+- Android Emulator の FCM Token 宛に通知を送信できることを確認
+- Android アプリ側で FCM メッセージを受信できることを確認
+
+### まだ必要な作業
+
+- Android システム通知一覧で title/body が表示されるか追加確認
+- Secret に利用した Firebase Service Account key は外部に出さない
+- private key が露出した場合は Firebase Console で key を削除して再発行する
+
+### Firebase Token 保存 API の追加
+
+MVP の PDF 資料を確認し、通知用の DB 構成を `device_tokens` ではなく `users` / `firebase_tokens` / `notifications` に合わせた。
+
+追加した migration:
+
+- `migrations/0003_create_notification_mvp_tables.sql`
+
+追加したテーブル:
+
+- `users`
+- `firebase_tokens`
+- `notifications`
+
+追加した API:
+
+```http
+POST /api/v1/firebase-tokens
+```
+
+リクエスト例:
+
+```json
+{
+  "studentNumber": "24A001",
+  "platform": "android",
+  "token": "FCM_TOKEN"
+}
+```
+
+処理内容:
+
+- `studentNumber` をもとに `users` を作成または更新
+- FCM Token を `firebase_tokens` に保存
+- 同じ FCM Token が再登録された場合は新規作成せず、`last_seen_at` と `updated_at` を更新
+- `fcmToken` と `token` のどちらのフィールド名でも受け付ける
+
+ローカル D1 での検証:
+
+- `users` / `firebase_tokens` / `notifications` migration の適用に成功
+- `POST /api/v1/firebase-tokens` でテスト token の保存に成功
+- Android アプリで発行された実際の FCM Token の保存に成功
+- 不正な body `{}` に対して 400 validation エラーが返ることを確認
+
+注意:
+
+- 現時点で保存できているのはローカル D1
+- remote D1 に保存するには、別途 `npm run "db:migrate --remote"` が必要
+- 今の段階では remote migration は必須ではなく、フロントと配布環境で接続検証するタイミングで実行すればよい
+
 ### 次のステップ
 
-- Firebase Service Account の値を Cloudflare Secret に登録
-- Android Emulator の FCM Token を `TEST_FCM_TOKEN` に登録
-- `/api/v1/notifications/test` から実際に通知が届くことを確認
-- 成功後、D1 を使った device token 保存 API の設計へ進む
+- モバイルアプリから `POST /api/v1/firebase-tokens` を呼び出す
+- remote D1 に migration を適用するタイミングを決める
+- 保存済み `firebase_tokens.fcm_token` を使って FCM 送信できるようにする
+- `UNREGISTERED` や invalid token などの失敗応答を処理する
