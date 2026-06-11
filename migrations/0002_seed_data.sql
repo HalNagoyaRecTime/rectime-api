@@ -1,10 +1,16 @@
--- 学生データ
-INSERT INTO m_students (f_student_num, f_class, f_number, f_name, f_note) VALUES
-  ('24A001', '1A', '1', '田中太郎',  NULL),
-  ('24A002', '1A', '2', '佐藤花子',  NULL),
-  ('24B001', '1B', '1', '鈴木一郎',  NULL),
-  ('24B002', '1B', '2', '高橋美咲',  NULL),
-  ('25A001', '2A', '1', '山田健太',  NULL);
+-- クラスルームデータ
+INSERT INTO m_class_rooms (f_class_code, f_name) VALUES
+  ('11A', '1年Aクラス'),
+  ('11B', '1年Bクラス'),
+  ('12A', '2年Aクラス');
+
+-- ユーザーデータ
+INSERT INTO m_users (f_class_room_id, f_display_name, f_uid) VALUES
+  (1, '田中太郎', '0000-0000'),
+  (1, '佐藤花子', '0000-0001'),
+  (2, '鈴木一郎', '0000-0002'),
+  (2, '高橋美咲', '0000-0003'),
+  (3, '山田健太', '0000-0004');
 
 -- イベントデータ
 INSERT INTO t_events (f_event_code, f_event_name, f_time, f_duration, f_place, f_gather_time, f_summary) VALUES
