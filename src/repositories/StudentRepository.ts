@@ -8,7 +8,8 @@ export function createStudentRepository(
   return {
     async findById(id: number): Promise<StudentEntity | null> {
       const result = await db
-        .prepare(`
+        .prepare(
+          `
           SELECT
             m_users.f_users_id,
             m_users.f_class_room_id,
@@ -43,7 +44,8 @@ export function createStudentRepository(
 
     async findAll(): Promise<StudentEntity[]> {
       const result = await db
-        .prepare(`
+        .prepare(
+          `
           SELECT
             m_users.f_users_id,
             m_users.f_class_room_id,
@@ -55,7 +57,8 @@ export function createStudentRepository(
           FROM m_student_description
           INNER JOIN m_users
             ON m_student_description.f_users_id = m_users.f_users_id
-        `)
+        `
+        )
         .all();
 
       return result.results.map(row => ({
@@ -71,7 +74,8 @@ export function createStudentRepository(
 
     async findByStudentNum(studentNum: string): Promise<StudentEntity | null> {
       const result = await db
-        .prepare(`
+        .prepare(
+          `
           SELECT
             m_users.f_users_id,
             m_users.f_class_room_id,
