@@ -19,11 +19,8 @@ INSERT INTO t_events (f_event_code, f_event_name, f_time, f_duration, f_place, f
   ('REC003', '英語スピーチコンテスト', '1630', '90',  '講堂',     '1620', '学年対抗英語プレゼンテーション大会'),
   ('REC004', 'プログラミング勉強会',   '1900', '120', 'PC教室',   '1850', 'React/TypeScript実践セッション');
 
--- エントリーデータ
-INSERT INTO t_entries (f_student_id, f_event_id) VALUES
-  (1, 1),
-  (2, 1),
-  (3, 2),
-  (4, 2),
-  (5, 3),
-  (1, 3);
+INSERT INTO m_student_description (f_users_id, f_attendance_number, f_student_id_number) VALUES
+  (1, 1, '10000'),
+  (2, 2, '10001'),
+  (3, 3, '10002'),
+  (4, 4, '10003');
