@@ -8,12 +8,13 @@ export function createClassRepository(
   return {
     async findAll(): Promise<ClassEntity[]> {
       const result = await db
-        .prepare('SELECT f_class_id, f_class_name FROM m_classes ORDER BY f_class_id')
+        .prepare('SELECT f_class_room_id, f_class_code, f_name FROM m_class_rooms ORDER BY f_class_room_id')
         .all();
 
       return result.results.map(row => ({
-        f_class_id: row.f_class_id as number,
-        f_class_name: row.f_class_name as string,
+        f_class_room_id: row.f_class_room_id as number,
+        f_class_code: row.f_class_code as string,
+        f_name: row.f_name as string,
       }));
     },
   };
