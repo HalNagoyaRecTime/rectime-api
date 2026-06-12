@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS m_users (
-  f_users_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  f_users_id          INTEGER PRIMARY KEY AUTOINCREMENT,
   f_class_room_id     INTEGER,
   f_display_name      TEXT    NOT NULL,
   f_uid               TEXT    NOT NULL,
@@ -15,9 +15,9 @@ CREATE TABLE IF NOT EXISTS m_class_rooms (
 CREATE TABLE IF NOT EXISTS m_student_description (
   f_student_id        INTEGER PRIMARY KEY AUTOINCREMENT,
   f_users_id          INTEGER NOT NULL,
-  f_attendance_number   TEXT NOT NULL,
-  f_student_id_number   TEXT NOT NULL,
-  FOREIGN KEY (f_users_id) REFERENES m_users(f_users_id)
+  f_attendance_number INTEGER NOT NULL,
+  f_student_id_number   TEXT NOT NULL UNIQUE,
+  FOREIGN KEY (f_users_id) REFERENCES m_users(f_users_id)
 );
 
 CREATE TABLE IF NOT EXISTS t_events (
