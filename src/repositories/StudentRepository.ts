@@ -8,7 +8,7 @@ export function createStudentRepository(
   return {
     async findById(id: number): Promise<StudentEntity | null> {
       const result = await db
-        .prepare('SELECT * FROM m_student_description LEFT JOIN m_users ON m_student_description.f_users_id = m_users.f_users_id WHERE m_student_description.f_student_id = ?')
+        .prepare('SELECT * FROM m_student_description INNER JOIN m_users ON m_student_description.f_users_id = m_users.f_users_id WHERE m_student_description.f_student_id = ?')
         .bind(id)
         .first();
 
@@ -30,7 +30,7 @@ export function createStudentRepository(
 
     async findAll(): Promise<StudentEntity[]> {
       const result = await db
-        .prepare('SELECT * FROM m_student_description LEFT JOIN m_users ON m_student_description.f_users_id = m_users.f_users_id ORDER BY m_student_description.f_student_id_number')
+        .prepare('SELECT * FROM m_student_description INNER JOIN m_users ON m_student_description.f_users_id = m_users.f_users_id ORDER BY m_student_description.f_student_id_number')
         .all();
 
       return result.results.map(row => ({
@@ -46,7 +46,7 @@ export function createStudentRepository(
 
     async findByStudentNum(studentNum: string): Promise<StudentEntity | null> {
       const result = await db
-        .prepare('SELECT * FROM m_student_description LEFT JOIN m_users ON m_student_description.f_users_id = m_users.f_users_id WHERE m_student_description.f_student_id_number = ?')
+        .prepare('SELECT * FROM m_student_description INNER JOIN m_users ON m_student_description.f_users_id = m_users.f_users_id WHERE m_student_description.f_student_id_number = ?')
         .bind(studentNum)
         .first();
 
