@@ -8,8 +8,19 @@ export function createStudentRepository(
   return {
     async findById(id: number): Promise<StudentEntity | null> {
       const result = await db
-        .prepare(
-          'SELECT * FROM m_student_description INNER JOIN m_users ON m_student_description.f_users_id = m_users.f_users_id WHERE m_student_description.f_student_id = ?'
+        .prepare(`
+          SELECT
+            m_users.f_users_id,
+            m_users.f_class_room_id,
+            m_users.f_display_name,
+            m_users.f_uid,
+            m_student_description.f_student_id,
+            m_student_description.f_attendance_number,
+            m_student_description.f_student_id_number
+          FROM m_student_description
+          INNER JOIN m_users
+            ON m_student_description.f_users_id = m_users.f_users_id
+          WHERE m_student_description.f_student_id = ?`
         )
         .bind(id)
         .first();
@@ -32,9 +43,19 @@ export function createStudentRepository(
 
     async findAll(): Promise<StudentEntity[]> {
       const result = await db
-        .prepare(
-          'SELECT * FROM m_student_description INNER JOIN m_users ON m_student_description.f_users_id = m_users.f_users_id ORDER BY m_student_description.f_student_id_number'
-        )
+        .prepare(`
+          SELECT
+            m_users.f_users_id,
+            m_users.f_class_room_id,
+            m_users.f_display_name,
+            m_users.f_uid,
+            m_student_description.f_student_id,
+            m_student_description.f_attendance_number,
+            m_student_description.f_student_id_number
+          FROM m_student_description
+          INNER JOIN m_users
+            ON m_student_description.f_users_id = m_users.f_users_id
+        `)
         .all();
 
       return result.results.map(row => ({
@@ -50,8 +71,19 @@ export function createStudentRepository(
 
     async findByStudentNum(studentNum: string): Promise<StudentEntity | null> {
       const result = await db
-        .prepare(
-          'SELECT * FROM m_student_description INNER JOIN m_users ON m_student_description.f_users_id = m_users.f_users_id WHERE m_student_description.f_student_id_number = ?'
+        .prepare(`
+          SELECT
+            m_users.f_users_id,
+            m_users.f_class_room_id,
+            m_users.f_display_name,
+            m_users.f_uid,
+            m_student_description.f_student_id,
+            m_student_description.f_attendance_number,
+            m_student_description.f_student_id_number
+          FROM m_student_description
+          INNER JOIN m_users
+            ON m_student_description.f_users_id = m_users.f_users_id
+          WHERE m_student_description.f_student_id_number = ?`
         )
         .bind(studentNum)
         .first();
