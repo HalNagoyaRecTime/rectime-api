@@ -9,10 +9,10 @@ export interface StudentEntity {
 }
 
 export interface StudentDTO {
-  f_student_id: string;
-  f_student_num: string;
-  f_class: string;
-  f_number: string;
-  f_name: string;
-  f_note?: string;
+  student_id: number;
+  display_name: string;
+  class_room_id: number;
+  uid: string;
+  attendance_number: number;
+  student_id_number: string;
 }
