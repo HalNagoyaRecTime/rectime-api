@@ -1,16 +1,10 @@
--- クラスルームデータ
-INSERT INTO m_class_rooms (f_class_code, f_name) VALUES
-  ('11A', '1年Aクラス'),
-  ('11B', '1年Bクラス'),
-  ('12A', '2年Aクラス');
-
--- ユーザーデータ
-INSERT INTO m_users (f_class_room_id, f_display_name, f_uid) VALUES
-  (1, '田中太郎', '0000-0000'),
-  (1, '佐藤花子', '0000-0001'),
-  (2, '鈴木一郎', '0000-0002'),
-  (2, '高橋美咲', '0000-0003'),
-  (3, '山田健太', '0000-0004');
+-- 学生データ
+INSERT INTO m_students (f_student_num, f_class, f_number, f_name, f_note) VALUES
+  ('24A001', '1A', '1', '田中太郎',  NULL),
+  ('24A002', '1A', '2', '佐藤花子',  NULL),
+  ('24B001', '1B', '1', '鈴木一郎',  NULL),
+  ('24B002', '1B', '2', '高橋美咲',  NULL),
+  ('25A001', '2A', '1', '山田健太',  NULL);
 
 -- イベントデータ
 INSERT INTO t_events (f_event_code, f_event_name, f_time, f_duration, f_place, f_gather_time, f_summary) VALUES
@@ -19,9 +13,11 @@ INSERT INTO t_events (f_event_code, f_event_name, f_time, f_duration, f_place, f
   ('REC003', '英語スピーチコンテスト', '1630', '90',  '講堂',     '1620', '学年対抗英語プレゼンテーション大会'),
   ('REC004', 'プログラミング勉強会',   '1900', '120', 'PC教室',   '1850', 'React/TypeScript実践セッション');
 
--- 学生詳細
-INSERT INTO m_student_description (f_users_id, f_attendance_number, f_student_id_number) VALUES
-  (1, 1, '10000'),
-  (2, 2, '10001'),
-  (3, 3, '10002'),
-  (4, 4, '10003'); -- 5番目の人は先生のつもりです。
+-- エントリーデータ
+INSERT INTO t_entries (f_student_id, f_event_id) VALUES
+  (1, 1),
+  (2, 1),
+  (3, 2),
+  (4, 2),
+  (5, 3),
+  (1, 3);
