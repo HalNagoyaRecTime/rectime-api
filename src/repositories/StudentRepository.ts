@@ -37,7 +37,7 @@ export function createStudentRepository(
         f_display_name: result.f_display_name as string,
         f_uid: result.f_uid as string,
         f_student_id: result.f_student_id as number,
-        f_attendance_number: result.f_attendance_number as string,
+        f_attendance_number: result.f_attendance_number as number,
         f_student_id_number: result.f_student_id_number as string,
       };
     },
@@ -67,7 +67,7 @@ export function createStudentRepository(
         f_display_name: row.f_display_name as string,
         f_uid: row.f_uid as string,
         f_student_id: row.f_student_id as number,
-        f_attendance_number: row.f_attendance_number as string,
+        f_attendance_number: row.f_attendance_number as number,
         f_student_id_number: row.f_student_id_number as string,
       }));
     },
@@ -102,7 +102,7 @@ export function createStudentRepository(
         f_display_name: result.f_display_name as string,
         f_uid: result.f_uid as string,
         f_student_id: result.f_student_id as number,
-        f_attendance_number: result.f_attendance_number as string,
+        f_attendance_number: result.f_attendance_number as number,
         f_student_id_number: result.f_student_id_number as string,
       };
     },
