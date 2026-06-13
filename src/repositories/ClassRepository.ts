@@ -8,7 +8,9 @@ export function createClassRepository(
   return {
     async findAll(): Promise<ClassEntity[]> {
       const result = await db
-        .prepare('SELECT f_class_room_id, f_class_code, f_name FROM m_class_rooms ORDER BY f_class_room_id')
+        .prepare(
+          'SELECT f_class_room_id, f_class_code, f_name FROM m_class_rooms ORDER BY f_class_room_id'
+        )
         .all();
 
       return result.results.map(row => ({

@@ -1,4 +1,9 @@
-import { EventEntity, EntryEntity, StudentEntity, ClassEntity } from './domains';
+import {
+  EventEntity,
+  EntryEntity,
+  StudentEntity,
+  ClassEntity,
+} from './domains';
 
 // Student Repository Types
 export interface StudentRepositoryFunctions {
