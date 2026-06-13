@@ -1,15 +1,15 @@
 import {
-    ClassEntity,
-    ClassRepositoryFunctions,
-    ClassServiceFunctions,
-    } from "../types";
+  ClassEntity,
+  ClassRepositoryFunctions,
+  ClassServiceFunctions,
+} from '../types';
 
 export function createClassService(
-    classRepository: ClassRepositoryFunctions
+  classRepository: ClassRepositoryFunctions
 ): ClassServiceFunctions {
-    return {
-        async getAllClasses(): Promise<ClassEntity[]> {
-            return classRepository.findAll();
-        }
-    }
+  return {
+    async getAllClasses(): Promise<ClassEntity[]> {
+      return classRepository.findAll();
+    },
+  };
 }
