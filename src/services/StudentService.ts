@@ -27,7 +27,7 @@ export function createStudentService(
     },
     async getAllStudents() {
       const students = await studentRepository.findAll();
-      if (!students || students.length == 0) {
+      if (!students) {
         throw new Error('Student not found');
       }
       return students.map(student => ({
