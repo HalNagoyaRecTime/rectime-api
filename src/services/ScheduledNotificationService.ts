@@ -1,0 +1,238 @@
+import { D1Database } from '@cloudflare/workers-types';
+import { createFcmService } from './FcmService';
+
+type ScheduledNotificationEnv = {
+  DB: D1Database;
+  FIREBASE_PROJECT_ID: string;
+  FIREBASE_CLIENT_EMAIL: string;
+  FIREBASE_PRIVATE_KEY: string;
+  TEST_FCM_TOKEN: string;
+};
+
+type ScheduledEventRow = {
+  f_event_id: number;
+  f_event_name: string;
+  f_time: string;
+  f_place: string;
+};
+
+type FirebaseTokenRow = {
+  id: number;
+  fcm_token: string;
+};
+
+export async function sendScheduledEventNotifications(
+  env: ScheduledNotificationEnv,
+  now = new Date()
+): Promise<{ checkedEvents: number; sent: number; failed: number }> {
+  const targetTime = getJstHmm(addMinutes(now, 10));
+  const today = getJstDate(now);
+  const events = await findEventsStartingAt(env.DB, targetTime);
+  const tokens = await findActiveFirebaseTokens(env.DB);
+  const fcmService = createFcmService({
+    projectId: env.FIREBASE_PROJECT_ID,
+    clientEmail: env.FIREBASE_CLIENT_EMAIL,
+    privateKey: env.FIREBASE_PRIVATE_KEY,
+    testFcmToken: env.TEST_FCM_TOKEN,
+  });
+  let sent = 0;
+  let failed = 0;
+
+  for (const event of events) {
+    for (const token of tokens) {
+      const alreadySent = await hasAlreadySent(env.DB, {
+        eventId: event.f_event_id,
+        firebaseTokenId: token.id,
+        scheduledForDate: today,
+      });
+
+      if (alreadySent) {
+        continue;
+      }
+
+      try {
+        const result = await fcmService.sendNotificationToToken({
+          token: token.fcm_token,
+          title: '呼び出し通知',
+          body: `${event.f_event_name}の開始10分前です。${event.f_place}に集合してください。`,
+          data: {
+            type: 'event_reminder',
+            eventId: String(event.f_event_id),
+          },
+        });
+
+        await recordSentNotification(env.DB, {
+          eventId: event.f_event_id,
+          firebaseTokenId: token.id,
+          scheduledForDate: today,
+          messageId: result.messageId,
+        });
+        sent += 1;
+      } catch (error) {
+        failed += 1;
+
+        if (shouldDeactivateToken(error)) {
+          await deactivateFirebaseToken(env.DB, token.id);
+        }
+
+        console.error('Failed to send scheduled notification', error);
+      }
+    }
+  }
+
+  return {
+    checkedEvents: events.length,
+    sent,
+    failed,
+  };
+}
+
+async function findEventsStartingAt(
+  db: D1Database,
+  hmm: string
+): Promise<ScheduledEventRow[]> {
+  const result = await db
+    .prepare(
+      `
+      SELECT f_event_id, f_event_name, f_time, f_place
+      FROM t_events
+      WHERE f_time = ?
+      ORDER BY f_event_id
+      `
+    )
+    .bind(hmm)
+    .all<Record<string, unknown>>();
+
+  return result.results.map(row => ({
+    f_event_id: row.f_event_id as number,
+    f_event_name: row.f_event_name as string,
+    f_time: row.f_time as string,
+    f_place: row.f_place as string,
+  }));
+}
+
+async function findActiveFirebaseTokens(
+  db: D1Database
+): Promise<FirebaseTokenRow[]> {
+  const result = await db
+    .prepare(
+      `
+      SELECT id, fcm_token
+      FROM firebase_tokens
+      WHERE is_active = 1
+      ORDER BY id
+      `
+    )
+    .all<Record<string, unknown>>();
+
+  return result.results.map(row => ({
+    id: row.id as number,
+    fcm_token: row.fcm_token as string,
+  }));
+}
+
+async function hasAlreadySent(
+  db: D1Database,
+  input: {
+    eventId: number;
+    firebaseTokenId: number;
+    scheduledForDate: string;
+  }
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `
+      SELECT id
+      FROM notification_send_logs
+      WHERE event_id = ?
+        AND firebase_token_id = ?
+        AND notification_type = 'event_reminder_10min'
+        AND scheduled_for_date = ?
+      `
+    )
+    .bind(input.eventId, input.firebaseTokenId, input.scheduledForDate)
+    .first();
+
+  return Boolean(result);
+}
+
+async function recordSentNotification(
+  db: D1Database,
+  input: {
+    eventId: number;
+    firebaseTokenId: number;
+    scheduledForDate: string;
+    messageId: string;
+  }
+) {
+  await db
+    .prepare(
+      `
+      INSERT INTO notification_send_logs (
+        event_id,
+        firebase_token_id,
+        notification_type,
+        scheduled_for_date,
+        fcm_message_id
+      )
+      VALUES (?, ?, 'event_reminder_10min', ?, ?)
+      `
+    )
+    .bind(
+      input.eventId,
+      input.firebaseTokenId,
+      input.scheduledForDate,
+      input.messageId
+    )
+    .run();
+}
+
+async function deactivateFirebaseToken(
+  db: D1Database,
+  firebaseTokenId: number
+) {
+  await db
+    .prepare(
+      `
+      UPDATE firebase_tokens
+      SET is_active = 0,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+      `
+    )
+    .bind(firebaseTokenId)
+    .run();
+}
+
+function shouldDeactivateToken(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes('UNREGISTERED') ||
+    message.includes('invalid token') ||
+    message.includes('INVALID_ARGUMENT')
+  );
+}
+
+function addMinutes(date: Date, minutes: number): Date {
+  return new Date(date.getTime() + minutes * 60 * 1000);
+}
+
+function getJstHmm(date: Date): string {
+  const formatter = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  return formatter.format(date).replace(':', '');
+}
+
+function getJstDate(date: Date): string {
+  const formatter = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(date);
+}

@@ -1,4 +1,11 @@
-import { EventEntity, EntryEntity, StudentDTO, ClassDTO } from './domains';
+import {
+  EventEntity,
+  EntryEntity,
+  RegisterFirebaseTokenInput,
+  RegisterFirebaseTokenResult,
+  StudentDTO,
+  ClassDTO,
+} from './domains';
 
 // Student Service Types
 export interface StudentServiceFunctions {
@@ -28,4 +35,36 @@ export interface EntryServiceFunctions {
 
 export interface ClassServiceFunctions {
   getAllClasses: () => Promise<ClassDTO[]>;
+}
+
+export interface FcmTestNotificationInput {
+  title: string;
+  body: string;
+}
+
+export interface FcmNotificationInput {
+  token: string;
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+}
+
+export interface FcmTestNotificationResult {
+  success: true;
+  messageId: string;
+}
+
+export interface FcmServiceFunctions {
+  sendTestNotification: (
+    input: FcmTestNotificationInput
+  ) => Promise<FcmTestNotificationResult>;
+  sendNotificationToToken: (
+    input: FcmNotificationInput
+  ) => Promise<FcmTestNotificationResult>;
+}
+
+export interface FirebaseTokenServiceFunctions {
+  registerFirebaseToken: (
+    input: RegisterFirebaseTokenInput
+  ) => Promise<RegisterFirebaseTokenResult>;
 }

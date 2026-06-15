@@ -1,6 +1,8 @@
 import {
   EventEntity,
   EntryEntity,
+  RegisterFirebaseTokenInput,
+  RegisterFirebaseTokenResult,
   StudentEntity,
   ClassEntity,
 } from './domains';
@@ -39,4 +41,11 @@ export interface EntryRepositoryFunctions {
 // Class Repository Types
 export interface ClassRepositoryFunctions {
   findAll: () => Promise<ClassEntity[]>;
+}
+
+// Firebase Token Repository Types
+export interface FirebaseTokenRepositoryFunctions {
+  register: (
+    input: RegisterFirebaseTokenInput
+  ) => Promise<RegisterFirebaseTokenResult>;
 }

@@ -8,7 +8,13 @@ export function createStudentController(
   const getStudentById = async (c: Context) => {
     try {
       const id = c.req.param('studentId') || c.req.param('id');
-      const student = await studentService.getStudentById(parseInt(id));
+      const studentId = Number(id);
+
+      if (!id || Number.isNaN(studentId)) {
+        return c.json({ error: 'Invalid student ID' }, 400);
+      }
+
+      const student = await studentService.getStudentById(studentId);
       return c.json(student);
     } catch (error) {
       if (error instanceof Error && error.message === 'Student not found') {

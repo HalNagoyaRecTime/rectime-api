@@ -17,7 +17,13 @@ export function createEntryController(
 
   const getEntryById = async (c: Context) => {
     try {
-      const id = parseInt(c.req.param('entryId'));
+      const entryIdParam = c.req.param('entryId');
+      const id = Number(entryIdParam);
+
+      if (!entryIdParam || Number.isNaN(id)) {
+        return c.json({ error: 'Invalid entry ID' }, 400);
+      }
+
       const entry = await entryService.getEntryById(id);
       return c.json(entry);
     } catch (error) {

@@ -10,10 +10,20 @@ import { createEventController } from './controllers/EventController';
 import { createClassRepository } from './repositories/ClassRepository';
 import { createClassService } from './services/ClassService';
 import { createClassController } from './controllers/ClassController';
+import { createFcmService } from './services/FcmService';
+import { createNotificationController } from './controllers/NotificationController';
+import { createFirebaseTokenRepository } from './repositories/FirebaseTokenRepository';
+import { createFirebaseTokenService } from './services/FirebaseTokenService';
+import { createFirebaseTokenController } from './controllers/FirebaseTokenController';
+import { sendScheduledEventNotifications } from './services/ScheduledNotificationService';
 import { D1Database } from '@cloudflare/workers-types';
 
 type Bindings = {
   DB: D1Database;
+  FIREBASE_PROJECT_ID: string;
+  FIREBASE_CLIENT_EMAIL: string;
+  FIREBASE_PRIVATE_KEY: string;
+  TEST_FCM_TOKEN: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -28,6 +38,9 @@ app.get('/', c => {
       students: '/api/v1/students/{studentId}',
       events: '/api/v1/events',
       classes: '/api/v1/classes',
+      firebaseTokens: '/api/v1/firebase-tokens',
+      testNotification: '/api/v1/notifications/test',
+      runScheduledNotifications: '/api/v1/notifications/schedule/run',
     },
     swagger: '/swagger.yml',
   });
@@ -78,7 +91,63 @@ apiV1.get('/classes', c => {
   return classController.getAllClasses(c);
 });
 
+// Firebase token routes
+apiV1.post('/firebase-tokens', c => {
+  const db = getDb(c.env);
+  const firebaseTokenRepository = createFirebaseTokenRepository(db);
+  const firebaseTokenService = createFirebaseTokenService(
+    firebaseTokenRepository
+  );
+  const firebaseTokenController =
+    createFirebaseTokenController(firebaseTokenService);
+  return firebaseTokenController.registerFirebaseToken(c);
+});
+
+// Notification routes
+apiV1.post('/notifications/test', c => {
+  const fcmService = createFcmService({
+    projectId: c.env.FIREBASE_PROJECT_ID,
+    clientEmail: c.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: c.env.FIREBASE_PRIVATE_KEY,
+    testFcmToken: c.env.TEST_FCM_TOKEN,
+  });
+  const notificationController = createNotificationController(fcmService);
+  return notificationController.sendTestNotification(c);
+});
+
+apiV1.post('/notifications/schedule/run', async c => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const now =
+      body && typeof body.now === 'string' ? new Date(body.now) : new Date();
+
+    if (Number.isNaN(now.getTime())) {
+      return c.json({ error: 'Invalid now value' }, 400);
+    }
+
+    const result = await sendScheduledEventNotifications(c.env, now);
+    return c.json(result);
+  } catch (error) {
+    return c.json(
+      {
+        error: 'Failed to run scheduled notifications',
+        details: error instanceof Error ? error.message : String(error),
+      },
+      500
+    );
+  }
+});
+
 // Mount API v1
 app.route('/api/v1', apiV1);
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(
+    _event: ScheduledEvent,
+    env: Bindings,
+    ctx: ExecutionContext
+  ) {
+    ctx.waitUntil(sendScheduledEventNotifications(env));
+  },
+};
