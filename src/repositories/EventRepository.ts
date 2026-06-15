@@ -1,5 +1,5 @@
 import { D1Database } from '@cloudflare/workers-types';
-import { EventEntity } from '../types/domains/Event';
+import { EventEntity } from '../domain/entities/Event';
 
 function buildWhereClause(options: { f_event_code?: string; f_time?: string }) {
   const conditions = [];

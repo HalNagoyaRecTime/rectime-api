@@ -1,11 +1,11 @@
 import { D1Database } from '@cloudflare/workers-types';
 import {
   FirebaseTokenEntity,
-  FirebaseTokenRepositoryFunctions,
   RegisterFirebaseTokenInput,
   RegisterFirebaseTokenResult,
   UserEntity,
-} from '../types';
+} from '../domain/entities/FirebaseToken';
+import { FirebaseTokenRepositoryFunctions } from '../types/repositories';
 
 function toUserEntity(row: Record<string, unknown>): UserEntity {
   return {

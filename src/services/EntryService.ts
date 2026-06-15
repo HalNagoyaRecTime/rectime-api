@@ -1,5 +1,5 @@
+import { EntryEntity } from '../domain/entities/Entry';
 import {
-  EntryEntity,
   EntryRepositoryFunctions,
   EntryServiceFunctions,
 } from '../types';

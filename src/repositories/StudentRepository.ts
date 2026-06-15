@@ -1,5 +1,5 @@
 import { D1Database } from '@cloudflare/workers-types';
-import { StudentEntity } from '../types/domains/Student';
+import { StudentEntity } from '../domain/entities/Student';
 import { StudentRepositoryFunctions } from '../types/repositories';
 
 export function createStudentRepository(

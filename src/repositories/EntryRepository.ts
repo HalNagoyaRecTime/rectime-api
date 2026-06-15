@@ -1,5 +1,5 @@
 import { D1Database } from '@cloudflare/workers-types';
-import { EntryEntity } from '../types/domains/Entry';
+import { EntryEntity } from '../domain/entities/Entry';
 
 function transformToEntryEntity(raw: any): EntryEntity {
   return {

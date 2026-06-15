@@ -1,5 +1,5 @@
+import { EventEntity } from '../domain/entities/Event';
 import {
-  EventEntity,
   EventRepositoryFunctions,
   EventServiceFunctions,
 } from '../types';

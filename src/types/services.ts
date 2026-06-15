@@ -1,10 +1,10 @@
+import { EventEntity } from '../domain/entities/Event';
+import { EntryEntity } from '../domain/entities/Entry';
 import {
-  EventEntity,
-  EntryEntity,
   RegisterFirebaseTokenInput,
   RegisterFirebaseTokenResult,
-  StudentDTO,
-} from './domains';
+} from '../domain/entities/FirebaseToken';
+import { StudentDTO } from './domains';
 
 // Student Service Types
 export interface StudentServiceFunctions {
