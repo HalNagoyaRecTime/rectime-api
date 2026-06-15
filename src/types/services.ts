@@ -1,4 +1,4 @@
-import { EventEntity, EntryEntity, StudentDTO, ClassEntity } from './domains';
+import { EventEntity, EntryEntity, StudentDTO, ClassDTO } from './domains';
 
 // Student Service Types
 export interface StudentServiceFunctions {
@@ -27,5 +27,5 @@ export interface EntryServiceFunctions {
 }
 
 export interface ClassServiceFunctions {
-  getAllClasses: () => Promise<ClassEntity[]>;
+  getAllClasses: () => Promise<ClassDTO[]>;
 }
