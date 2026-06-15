@@ -2,6 +2,145 @@
 
 이 파일은 백엔드 repo에서 진행한 작업을 날짜별로 기록하기 위한 문서입니다.
 
+## 2026-06-12
+
+### 새 Cloudflare 계정으로 이전
+
+Cloudflare 계정을 `rectime.project@gmail.com` 쪽으로 변경했습니다.
+
+진행한 내용:
+
+- Wrangler를 새 Cloudflare 계정으로 다시 로그인
+- `wrangler.jsonc`의 `account_id`를 새 계정으로 변경
+- 새 계정에 D1 database 생성
+  - production: `rectime-api`
+  - development: `rectime-api-dev`
+- `wrangler.jsonc`의 D1 binding을 새 D1으로 변경
+- `package.json`의 migration script를 새 D1 이름으로 변경
+- production D1에 migration 적용
+- 새 Worker에 배포
+
+새 Worker URL:
+
+```text
+https://rectime-api.rectime-project.workers.dev
+```
+
+확인한 내용:
+
+- `/` 정상 응답 확인
+- `/api/v1/students/1`에서 seed data 조회 확인
+- `/api/v1/firebase-tokens`로 production D1에 FCM Token 저장 확인
+- `POST /api/v1/notifications/test`로 FCM 테스트 알림 발송 확인
+
+### 경기 10분 전 자동 알림 MVP 추가
+
+경기 시작 10분 전에 스케줄에 맞춰 자동으로 알림을 보내는 MVP를 추가했습니다.
+
+구현 방향:
+
+- Cloudflare Cron Trigger 사용
+- cron은 매분 실행
+- JST 기준 현재 시각 + 10분과 `t_events.f_time`이 일치하는 이벤트를 찾음
+- 대상 이벤트가 있으면 active 상태의 `firebase_tokens`에 FCM 알림 발송
+- 같은 이벤트와 같은 token에 같은 날짜 알림이 중복 발송되지 않도록 발송 로그로 제어
+
+추가한 migration:
+
+- `migrations/0004_create_notification_send_logs.sql`
+
+추가한 테이블:
+
+- `notification_send_logs`
+
+추가 및 수정한 주요 파일:
+
+- `src/services/ScheduledNotificationService.ts`
+- `src/services/FcmService.ts`
+- `src/index.ts`
+- `src/types/services.ts`
+- `wrangler.jsonc`
+- `eslint.config.js`
+
+추가한 수동 실행 API:
+
+```http
+POST /api/v1/notifications/schedule/run
+```
+
+mock 실행 예시:
+
+```bash
+curl -X POST https://rectime-api.rectime-project.workers.dev/api/v1/notifications/schedule/run \
+  -H "Content-Type: application/json" \
+  -d '{"now":"2026-06-12T01:50:00.000Z"}'
+```
+
+이 `now` 값은 JST 10:50을 의미하며, seed data의 11:00 시작 이벤트를 10분 전 알림 대상으로 검증했습니다.
+
+검증 결과:
+
+```json
+{
+  "checkedEvents": 1,
+  "sent": 1,
+  "failed": 1
+}
+```
+
+결과 의미:
+
+- `checkedEvents: 1`은 10분 뒤 시작하는 이벤트 1건을 찾았다는 뜻
+- `sent: 1`은 실제 FCM Token으로 발송 성공했다는 뜻
+- `failed: 1`은 이전에 등록한 테스트 문자열 token이 실패했다는 뜻
+
+D1 확인 결과:
+
+- 실제 FCM Token은 `is_active = 1`
+- 테스트 문자열 token은 실패 후 `is_active = 0`
+- `notification_send_logs`에 성공 발송 로그 저장
+- FCM message id 저장
+
+### 현재 스펙 메모
+
+현재 자동 알림은 MVP 검증용이라 대상자 필터링이 아직 완전하지 않습니다.
+
+현재:
+
+- 10분 뒤 시작하는 이벤트를 찾음
+- active 상태의 `firebase_tokens` 전체에 알림 발송
+
+다음에 수정해야 할 스펙:
+
+- `t_events.f_event_id`
+- `t_entries.f_event_id`
+- `m_students.f_student_id`
+- `m_students.f_student_num`
+- `users.student_number`
+- `firebase_tokens.user_id`
+
+위 값을 JOIN해서 해당 이벤트에 참가하는 유저의 token에만 알림을 보내야 합니다.
+
+예상 SQL:
+
+```sql
+SELECT ft.id, ft.fcm_token
+FROM firebase_tokens ft
+JOIN users u ON u.id = ft.user_id
+JOIN m_students s ON s.f_student_num = u.student_number
+JOIN t_entries e ON e.f_student_id = s.f_student_id
+WHERE e.f_event_id = ?
+  AND ft.is_active = 1
+  AND u.is_active = 1;
+```
+
+### 다음 단계
+
+- 자동 알림 대상을 “전체 active token”에서 “해당 이벤트 참가자의 token”으로 변경
+- Emulator를 켠 상태에서 cron / mock API의 Logcat 수신 확인
+- `notification_send_logs` 기반 중복 발송 방지 계속 확인
+- 필요하면 `notifications` 테이블에 알림 본문 저장 추가
+
 ## 2026-06-10
 
 ### FCM 테스트 알림 발송 API 추가
@@ -108,6 +247,8 @@ D RectimeFCM: FCM message received from: 946149362229
 - Android 시스템 알림 목록에서 title/body 표시 여부 추가 확인
 - Firebase Service Account key는 Git이나 문서에 올리지 않기
 - private key가 외부에 노출된 경우 Firebase Console에서 해당 key 삭제 후 재발급하기
+
+## 2026-06-12
 
 ### Firebase Token 저장 API 추가
 

@@ -12,6 +12,7 @@ import { createNotificationController } from './controllers/NotificationControll
 import { createFirebaseTokenRepository } from './repositories/FirebaseTokenRepository';
 import { createFirebaseTokenService } from './services/FirebaseTokenService';
 import { createFirebaseTokenController } from './controllers/FirebaseTokenController';
+import { sendScheduledEventNotifications } from './services/ScheduledNotificationService';
 import { D1Database } from '@cloudflare/workers-types';
 
 type Bindings = {
@@ -35,6 +36,7 @@ app.get('/', c => {
       events: '/api/v1/events',
       firebaseTokens: '/api/v1/firebase-tokens',
       testNotification: '/api/v1/notifications/test',
+      runScheduledNotifications: '/api/v1/notifications/schedule/run',
     },
     swagger: '/swagger.yml',
   });
@@ -100,7 +102,39 @@ apiV1.post('/notifications/test', c => {
   return notificationController.sendTestNotification(c);
 });
 
+apiV1.post('/notifications/schedule/run', async c => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const now =
+      body && typeof body.now === 'string' ? new Date(body.now) : new Date();
+
+    if (Number.isNaN(now.getTime())) {
+      return c.json({ error: 'Invalid now value' }, 400);
+    }
+
+    const result = await sendScheduledEventNotifications(c.env, now);
+    return c.json(result);
+  } catch (error) {
+    return c.json(
+      {
+        error: 'Failed to run scheduled notifications',
+        details: error instanceof Error ? error.message : String(error),
+      },
+      500
+    );
+  }
+});
+
 // Mount API v1
 app.route('/api/v1', apiV1);
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(
+    _event: ScheduledEvent,
+    env: Bindings,
+    ctx: ExecutionContext
+  ) {
+    ctx.waitUntil(sendScheduledEventNotifications(env));
+  },
+};

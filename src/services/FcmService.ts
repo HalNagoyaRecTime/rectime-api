@@ -1,5 +1,6 @@
 import {
   FcmServiceFunctions,
+  FcmNotificationInput,
   FcmTestNotificationInput,
   FcmTestNotificationResult,
 } from '../types';
@@ -15,8 +16,8 @@ type FirebaseConfig = {
 };
 
 export function createFcmService(config: FirebaseConfig): FcmServiceFunctions {
-  const sendTestNotification = async (
-    input: FcmTestNotificationInput
+  const sendNotificationToToken = async (
+    input: FcmNotificationInput
   ): Promise<FcmTestNotificationResult> => {
     validateConfig(config);
 
@@ -31,12 +32,12 @@ export function createFcmService(config: FirebaseConfig): FcmServiceFunctions {
         },
         body: JSON.stringify({
           message: {
-            token: config.testFcmToken,
+            token: input.token,
             notification: {
               title: input.title,
               body: input.body,
             },
-            data: {
+            data: input.data ?? {
               type: 'test',
             },
           },
@@ -64,8 +65,22 @@ export function createFcmService(config: FirebaseConfig): FcmServiceFunctions {
     };
   };
 
+  const sendTestNotification = async (
+    input: FcmTestNotificationInput
+  ): Promise<FcmTestNotificationResult> => {
+    return sendNotificationToToken({
+      token: config.testFcmToken,
+      title: input.title,
+      body: input.body,
+      data: {
+        type: 'test',
+      },
+    });
+  };
+
   return {
     sendTestNotification,
+    sendNotificationToToken,
   };
 }
 

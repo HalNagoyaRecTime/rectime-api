@@ -21,6 +21,8 @@ export default [
         CryptoKey: 'readonly',
         fetch: 'readonly',
         process: 'readonly',
+        ExecutionContext: 'readonly',
+        ScheduledEvent: 'readonly',
         TextEncoder: 'readonly',
         URLSearchParams: 'readonly',
       },

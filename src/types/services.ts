@@ -37,6 +37,13 @@ export interface FcmTestNotificationInput {
   body: string;
 }
 
+export interface FcmNotificationInput {
+  token: string;
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+}
+
 export interface FcmTestNotificationResult {
   success: true;
   messageId: string;
@@ -45,6 +52,9 @@ export interface FcmTestNotificationResult {
 export interface FcmServiceFunctions {
   sendTestNotification: (
     input: FcmTestNotificationInput
+  ) => Promise<FcmTestNotificationResult>;
+  sendNotificationToToken: (
+    input: FcmNotificationInput
   ) => Promise<FcmTestNotificationResult>;
 }
 

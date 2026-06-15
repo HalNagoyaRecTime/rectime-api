@@ -2,6 +2,145 @@
 
 このファイルは、バックエンド repo で実施した作業内容を日付ごとに記録するためのメモです。
 
+## 2026-06-12
+
+### 新 Cloudflare アカウントへの移行
+
+Cloudflare アカウントを `rectime.project@gmail.com` 側へ切り替えた。
+
+対応内容:
+
+- Wrangler を新 Cloudflare アカウントで再ログイン
+- `wrangler.jsonc` の `account_id` を新アカウントに変更
+- 新アカウントに D1 database を作成
+  - production: `rectime-api`
+  - development: `rectime-api-dev`
+- `wrangler.jsonc` の D1 binding を新 D1 に変更
+- `package.json` の migration script を新 D1 名に変更
+- production D1 に migration を適用
+- 新 Worker にデプロイ
+
+新 Worker URL:
+
+```text
+https://rectime-api.rectime-project.workers.dev
+```
+
+確認内容:
+
+- `/` が正常に応答することを確認
+- `/api/v1/students/1` で seed data を取得できることを確認
+- `/api/v1/firebase-tokens` で production D1 に FCM Token を保存できることを確認
+- `POST /api/v1/notifications/test` で FCM テスト通知を送信できることを確認
+
+### 10 分前自動通知 MVP の追加
+
+試合開始 10 分前に、スケジュールに合わせて自動で通知を送る MVP を追加した。
+
+実装方針:
+
+- Cloudflare Cron Trigger を利用
+- cron は毎分実行
+- JST の現在時刻 + 10 分と `t_events.f_time` が一致するイベントを対象にする
+- 対象イベントが見つかったら、active な `firebase_tokens` に FCM 通知を送信
+- 同じイベント・同じ token に同じ日の通知を複数回送らないように送信ログで制御
+
+追加した migration:
+
+- `migrations/0004_create_notification_send_logs.sql`
+
+追加したテーブル:
+
+- `notification_send_logs`
+
+追加・変更した主なファイル:
+
+- `src/services/ScheduledNotificationService.ts`
+- `src/services/FcmService.ts`
+- `src/index.ts`
+- `src/types/services.ts`
+- `wrangler.jsonc`
+- `eslint.config.js`
+
+追加した手動実行 API:
+
+```http
+POST /api/v1/notifications/schedule/run
+```
+
+mock 実行例:
+
+```bash
+curl -X POST https://rectime-api.rectime-project.workers.dev/api/v1/notifications/schedule/run \
+  -H "Content-Type: application/json" \
+  -d '{"now":"2026-06-12T01:50:00.000Z"}'
+```
+
+この `now` は JST 10:50 を表し、seed data の 11:00 開始イベントの 10 分前として検証した。
+
+検証結果:
+
+```json
+{
+  "checkedEvents": 1,
+  "sent": 1,
+  "failed": 1
+}
+```
+
+結果の意味:
+
+- `checkedEvents: 1` は 10 分後に開始するイベントを 1 件検出したこと
+- `sent: 1` は実際の FCM Token への送信に成功したこと
+- `failed: 1` は以前登録したテスト文字列 token が失敗したこと
+
+D1 確認結果:
+
+- 実際の FCM Token は `is_active = 1`
+- テスト文字列 token は失敗後 `is_active = 0`
+- `notification_send_logs` に成功送信ログが保存された
+- FCM message id が保存された
+
+### 現在の仕様メモ
+
+今の自動通知は MVP 検証用で、対象者の絞り込みはまだ完全ではない。
+
+現在:
+
+- 10 分後に開始するイベントを探す
+- active な `firebase_tokens` 全体へ通知を送る
+
+次に修正するべき仕様:
+
+- `t_events.f_event_id`
+- `t_entries.f_event_id`
+- `m_students.f_student_id`
+- `m_students.f_student_num`
+- `users.student_number`
+- `firebase_tokens.user_id`
+
+上記を JOIN して、該当イベントに参加するユーザーの token にだけ通知を送る。
+
+想定 SQL:
+
+```sql
+SELECT ft.id, ft.fcm_token
+FROM firebase_tokens ft
+JOIN users u ON u.id = ft.user_id
+JOIN m_students s ON s.f_student_num = u.student_number
+JOIN t_entries e ON e.f_student_id = s.f_student_id
+WHERE e.f_event_id = ?
+  AND ft.is_active = 1
+  AND u.is_active = 1;
+```
+
+### 次のステップ
+
+- 自動通知の対象を「全 active token」から「該当イベント参加者の token」に変更
+- Emulator を起動した状態で cron / mock API の Logcat 受信確認を行う
+- `notification_send_logs` を使った重複送信防止を継続確認
+- 必要であれば `notifications` テーブルへの通知本文保存も追加する
+
 ## 2026-06-10
 
 ### FCM テスト通知送信 API の追加
