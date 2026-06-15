@@ -130,11 +130,19 @@ app.route('/api/v1', apiV1);
 
 export default {
   fetch: app.fetch,
-  async scheduled(
-    _event: ScheduledEvent,
-    env: Bindings,
-    ctx: ExecutionContext
-  ) {
-    ctx.waitUntil(sendScheduledEventNotifications(env));
+  async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
+    ctx.waitUntil(
+      (async () => {
+        const result = await sendScheduledEventNotifications(
+          env,
+          new Date(event.scheduledTime)
+        );
+        console.log('Scheduled notifications completed', {
+          cron: event.cron,
+          scheduledTime: new Date(event.scheduledTime).toISOString(),
+          ...result,
+        });
+      })()
+    );
   },
 };

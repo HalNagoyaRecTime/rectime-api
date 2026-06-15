@@ -28,7 +28,6 @@ export async function sendScheduledEventNotifications(
   const targetTime = getJstHmm(addMinutes(now, 10));
   const today = getJstDate(now);
   const events = await findEventsStartingAt(env.DB, targetTime);
-  const tokens = await findActiveFirebaseTokens(env.DB);
   const fcmService = createFcmService({
     projectId: env.FIREBASE_PROJECT_ID,
     clientEmail: env.FIREBASE_CLIENT_EMAIL,
@@ -39,6 +38,11 @@ export async function sendScheduledEventNotifications(
   let failed = 0;
 
   for (const event of events) {
+    const tokens = await findActiveFirebaseTokensForEvent(
+      env.DB,
+      event.f_event_id
+    );
+
     for (const token of tokens) {
       const alreadySent = await hasAlreadySent(env.DB, {
         eventId: event.f_event_id,
@@ -111,18 +115,28 @@ async function findEventsStartingAt(
   }));
 }
 
-async function findActiveFirebaseTokens(
-  db: D1Database
+async function findActiveFirebaseTokensForEvent(
+  db: D1Database,
+  eventId: number
 ): Promise<FirebaseTokenRow[]> {
   const result = await db
     .prepare(
       `
-      SELECT id, fcm_token
-      FROM firebase_tokens
-      WHERE is_active = 1
-      ORDER BY id
+      SELECT ft.id, ft.fcm_token
+      FROM firebase_tokens ft
+      INNER JOIN users u
+        ON u.id = ft.user_id
+      INNER JOIN m_students s
+        ON s.f_student_num = u.student_number
+      INNER JOIN t_entries e
+        ON e.f_student_id = s.f_student_id
+      WHERE e.f_event_id = ?
+        AND ft.is_active = 1
+        AND u.is_active = 1
+      ORDER BY ft.id
       `
     )
+    .bind(eventId)
     .all<Record<string, unknown>>();
 
   return result.results.map(row => ({
