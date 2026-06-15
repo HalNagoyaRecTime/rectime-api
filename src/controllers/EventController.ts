@@ -38,7 +38,16 @@ export function createEventController(
 
   const getEventById = async (c: Context) => {
     try {
-      const id = parseInt(c.req.param('eventId'));
+      const eventIdParam = c.req.param('eventId');
+      const id = Number(eventIdParam);
+
+      if (!eventIdParam || Number.isNaN(id)) {
+        return c.json(
+          { error: 'Invalid event ID', code: 'INVALID_EVENT_ID' },
+          400
+        );
+      }
+
       const event = await eventService.getEventById(id);
       return c.json(event);
     } catch (error) {

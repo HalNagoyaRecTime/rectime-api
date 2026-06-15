@@ -18,3 +18,13 @@ export interface EntryControllerFunctions {
   getAllEntries: ControllerFunction;
   getEntryById: ControllerFunction;
 }
+
+// Notification Controller Functions
+export interface NotificationControllerFunctions {
+  sendTestNotification: ControllerFunction;
+}
+
+// Firebase Token Controller Functions
+export interface FirebaseTokenControllerFunctions {
+  registerFirebaseToken: ControllerFunction;
+}

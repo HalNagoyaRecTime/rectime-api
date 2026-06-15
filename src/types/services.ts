@@ -1,4 +1,10 @@
-import { EventEntity, EntryEntity, StudentEntity } from './domains';
+import {
+  EventEntity,
+  EntryEntity,
+  RegisterFirebaseTokenInput,
+  RegisterFirebaseTokenResult,
+  StudentEntity,
+} from './domains';
 
 // Student Service Types
 export interface StudentServiceFunctions {
@@ -24,4 +30,36 @@ export interface EntryServiceFunctions {
     offset?: number;
   }) => Promise<{ entries: EntryEntity[]; total: number }>;
   getEntryById: (id: number) => Promise<EntryEntity>;
+}
+
+export interface FcmTestNotificationInput {
+  title: string;
+  body: string;
+}
+
+export interface FcmNotificationInput {
+  token: string;
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+}
+
+export interface FcmTestNotificationResult {
+  success: true;
+  messageId: string;
+}
+
+export interface FcmServiceFunctions {
+  sendTestNotification: (
+    input: FcmTestNotificationInput
+  ) => Promise<FcmTestNotificationResult>;
+  sendNotificationToToken: (
+    input: FcmNotificationInput
+  ) => Promise<FcmTestNotificationResult>;
+}
+
+export interface FirebaseTokenServiceFunctions {
+  registerFirebaseToken: (
+    input: RegisterFirebaseTokenInput
+  ) => Promise<RegisterFirebaseTokenResult>;
 }
