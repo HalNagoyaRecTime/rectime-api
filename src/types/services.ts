@@ -1,14 +1,9 @@
-import {
-  EventEntity,
-  EntryEntity,
-  StudentEntity,
-  ClassEntity,
-} from './domains';
+import { EventEntity, EntryEntity, StudentDTO, ClassEntity } from './domains';
 
 // Student Service Types
 export interface StudentServiceFunctions {
-  getStudentById: (id: number) => Promise<StudentEntity>;
-  getAllStudents: () => Promise<StudentEntity[]>;
+  getStudentById: (id: number) => Promise<StudentDTO>;
+  getAllStudents: () => Promise<StudentDTO[]>;
 }
 
 export interface EventServiceFunctions {
