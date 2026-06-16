@@ -4,8 +4,8 @@ import {
   RegisterFirebaseTokenInput,
   RegisterFirebaseTokenResult,
   UserEntity,
-} from '../domain/entities/FirebaseToken';
-import { FirebaseTokenRepositoryFunctions } from '../types/repositories';
+} from '../../domain/entities/FirebaseToken';
+import { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 
 function toUserEntity(row: Record<string, unknown>): UserEntity {
   return {
@@ -37,7 +37,7 @@ function toFirebaseTokenEntity(
 
 export function createFirebaseTokenRepository(
   db: D1Database
-): FirebaseTokenRepositoryFunctions {
+): IFirebaseTokenRepository {
   const upsertUser = async (
     input: RegisterFirebaseTokenInput
   ): Promise<UserEntity> => {
@@ -118,11 +118,31 @@ export function createFirebaseTokenRepository(
     ): Promise<RegisterFirebaseTokenResult> {
       const user = await upsertUser(input);
       const firebaseToken = await upsertFirebaseToken(user.id, input);
+      return { user, firebaseToken };
+    },
 
-      return {
-        user,
-        firebaseToken,
-      };
+    async findActiveTokens(): Promise<FirebaseTokenEntity[]> {
+      const result = await db
+        .prepare(
+          'SELECT * FROM firebase_tokens WHERE is_active = 1 ORDER BY id'
+        )
+        .all<Record<string, unknown>>();
+
+      return result.results.map(toFirebaseTokenEntity);
+    },
+
+    async deactivate(id: number): Promise<void> {
+      await db
+        .prepare(
+          `
+          UPDATE firebase_tokens
+          SET is_active = 0,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+          `
+        )
+        .bind(id)
+        .run();
     },
   };
 }

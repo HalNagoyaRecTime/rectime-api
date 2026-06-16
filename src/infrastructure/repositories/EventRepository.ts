@@ -1,18 +1,19 @@
 import { D1Database } from '@cloudflare/workers-types';
-import { EventEntity } from '../domain/entities/Event';
+import { EventEntity } from '../../domain/entities/Event';
+import { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 
-function buildWhereClause(options: { f_event_code?: string; f_time?: string }) {
-  const conditions = [];
-  const params = [];
+function buildWhereClause(options: { eventCode?: string; time?: string }) {
+  const conditions: string[] = [];
+  const params: string[] = [];
 
-  if (options.f_event_code) {
+  if (options.eventCode) {
     conditions.push('f_event_code = ?');
-    params.push(options.f_event_code);
+    params.push(options.eventCode);
   }
 
-  if (options.f_time) {
+  if (options.time) {
     conditions.push('f_time = ?');
-    params.push(options.f_time);
+    params.push(options.time);
   }
 
   return {
@@ -35,11 +36,11 @@ function transformToEventEntity(raw: Record<string, unknown>): EventEntity {
   };
 }
 
-export function createEventRepository(db: D1Database) {
+export function createEventRepository(db: D1Database): IEventRepository {
   return {
     async findAll(options: {
-      f_event_code?: string;
-      f_time?: string;
+      eventCode?: string;
+      time?: string;
       limit?: number;
       offset?: number;
     }): Promise<{ events: EventEntity[]; total: number }> {
@@ -65,19 +66,14 @@ export function createEventRepository(db: D1Database) {
       const countQuery = `SELECT COUNT(*) as total FROM t_events ${whereClause}`;
 
       const [events, totalResult] = await Promise.all([
-        db
-          .prepare(query)
-          .bind(...params)
-          .all(),
-        db
-          .prepare(countQuery)
-          .bind(...params)
-          .first(),
+        db.prepare(query).bind(...params).all(),
+        db.prepare(countQuery).bind(...params).first(),
       ]);
 
       return {
         events: events.results.map(transformToEventEntity),
-        total: ((totalResult as Record<string, unknown>)?.total as number) || 0,
+        total:
+          ((totalResult as Record<string, unknown>)?.total as number) || 0,
       };
     },
 

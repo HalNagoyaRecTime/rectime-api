@@ -1,10 +1,8 @@
 import { D1Database } from '@cloudflare/workers-types';
-import { StudentEntity } from '../domain/entities/Student';
-import { StudentRepositoryFunctions } from '../types/repositories';
+import { StudentEntity } from '../../domain/entities/Student';
+import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 
-export function createStudentRepository(
-  db: D1Database
-): StudentRepositoryFunctions {
+export function createStudentRepository(db: D1Database): IStudentRepository {
   return {
     async findById(id: number): Promise<StudentEntity | null> {
       const result = await db
@@ -30,7 +28,6 @@ export function createStudentRepository(
         return null;
       }
 
-      // Transform raw database result to typed entity
       return {
         f_users_id: result.f_users_id as number,
         f_class_room_id: result.f_class_room_id as number,
