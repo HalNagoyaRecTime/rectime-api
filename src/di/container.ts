@@ -1,12 +1,12 @@
 import { getDb } from '../lib/db';
 import { createStudentRepository } from '../infrastructure/repositories/StudentRepository';
-import { createStudentService } from '../services/StudentService';
+import { createStudentService } from '../infrastructure/services/StudentService';
 import { createStudentController } from '../controllers/StudentController';
 import { createEventRepository } from '../infrastructure/repositories/EventRepository';
-import { createEventService } from '../services/EventService';
+import { createEventService } from '../infrastructure/services/EventService';
 import { createEventController } from '../controllers/EventController';
 import { createEntryRepository } from '../infrastructure/repositories/EntryRepository';
-import { createEntryService } from '../services/EntryService';
+import { createEntryService } from '../infrastructure/services/EntryService';
 import { createEntryController } from '../controllers/EntryController';
 import { D1Database } from '@cloudflare/workers-types';
 

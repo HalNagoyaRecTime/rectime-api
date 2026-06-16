@@ -1,8 +1,8 @@
-import { StudentDTO } from '../application/dto/StudentDTO';
+import { StudentDTO } from '../../application/dto/StudentDTO';
 import {
   StudentRepositoryFunctions,
   StudentServiceFunctions,
-} from '../types';
+} from '../../types';
 
 export function createStudentService(
   studentRepository: StudentRepositoryFunctions

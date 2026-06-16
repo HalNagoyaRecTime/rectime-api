@@ -1,8 +1,8 @@
-import { EntryEntity } from '../domain/entities/Entry';
+import { EntryEntity } from '../../domain/entities/Entry';
 import {
   EntryRepositoryFunctions,
   EntryServiceFunctions,
-} from '../types';
+} from '../../types';
 
 export function createEntryService(
   entryRepository: EntryRepositoryFunctions

@@ -1,8 +1,8 @@
-import { EventEntity } from '../domain/entities/Event';
+import { EventEntity } from '../../domain/entities/Event';
 import {
   EventRepositoryFunctions,
   EventServiceFunctions,
-} from '../types';
+} from '../../types';
 
 export function createEventService(
   eventRepository: EventRepositoryFunctions

@@ -3,7 +3,7 @@ import {
   FcmNotificationInput,
   FcmTestNotificationInput,
   FcmTestNotificationResult,
-} from '../types';
+} from '../../types';
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';

@@ -1,11 +1,11 @@
 import {
   RegisterFirebaseTokenInput,
   RegisterFirebaseTokenResult,
-} from '../domain/entities/FirebaseToken';
+} from '../../domain/entities/FirebaseToken';
 import {
   FirebaseTokenRepositoryFunctions,
   FirebaseTokenServiceFunctions,
-} from '../types';
+} from '../../types';
 
 export function createFirebaseTokenService(
   firebaseTokenRepository: FirebaseTokenRepositoryFunctions

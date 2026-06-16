@@ -2,17 +2,17 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getDb } from './lib/db';
 import { createStudentRepository } from './infrastructure/repositories/StudentRepository';
-import { createStudentService } from './services/StudentService';
+import { createStudentService } from './infrastructure/services/StudentService';
 import { createStudentController } from './controllers/StudentController';
 import { createEventRepository } from './infrastructure/repositories/EventRepository';
-import { createEventService } from './services/EventService';
+import { createEventService } from './infrastructure/services/EventService';
 import { createEventController } from './controllers/EventController';
-import { createFcmService } from './services/FcmService';
+import { createFcmService } from './infrastructure/services/FcmService';
 import { createNotificationController } from './controllers/NotificationController';
 import { createFirebaseTokenRepository } from './infrastructure/repositories/FirebaseTokenRepository';
-import { createFirebaseTokenService } from './services/FirebaseTokenService';
+import { createFirebaseTokenService } from './infrastructure/services/FirebaseTokenService';
 import { createFirebaseTokenController } from './controllers/FirebaseTokenController';
-import { sendScheduledEventNotifications } from './services/ScheduledNotificationService';
+import { sendScheduledEventNotifications } from './infrastructure/services/ScheduledNotificationService';
 import { D1Database } from '@cloudflare/workers-types';
 
 type Bindings = {
