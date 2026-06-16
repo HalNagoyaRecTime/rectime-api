@@ -4,7 +4,7 @@ import {
   RegisterFirebaseTokenInput,
   RegisterFirebaseTokenResult,
 } from '../domain/entities/FirebaseToken';
-import { StudentDTO } from './domains';
+import { StudentDTO } from '../application/dto/StudentDTO';
 
 // Student Service Types
 export interface StudentServiceFunctions {

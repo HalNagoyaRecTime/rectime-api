@@ -1,5 +1,5 @@
+import { StudentDTO } from '../application/dto/StudentDTO';
 import {
-  StudentDTO,
   StudentRepositoryFunctions,
   StudentServiceFunctions,
 } from '../types';
