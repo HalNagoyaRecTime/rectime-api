@@ -1,9 +1,9 @@
 import {
-  FcmServiceFunctions,
+  IFcmService,
   FcmNotificationInput,
   FcmTestNotificationInput,
   FcmTestNotificationResult,
-} from '../../types';
+} from '../../application/services/IFcmService';
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
@@ -15,7 +15,7 @@ type FirebaseConfig = {
   testFcmToken: string;
 };
 
-export function createFcmService(config: FirebaseConfig): FcmServiceFunctions {
+export function createFcmService(config: FirebaseConfig): IFcmService {
   const sendNotificationToToken = async (
     input: FcmNotificationInput
   ): Promise<FcmTestNotificationResult> => {

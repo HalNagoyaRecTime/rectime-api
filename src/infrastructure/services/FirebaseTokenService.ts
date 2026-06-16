@@ -2,14 +2,12 @@ import {
   RegisterFirebaseTokenInput,
   RegisterFirebaseTokenResult,
 } from '../../domain/entities/FirebaseToken';
-import {
-  FirebaseTokenRepositoryFunctions,
-  FirebaseTokenServiceFunctions,
-} from '../../types';
+import { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
+import { IFirebaseTokenService } from '../../application/services/IFirebaseTokenService';
 
 export function createFirebaseTokenService(
-  firebaseTokenRepository: FirebaseTokenRepositoryFunctions
-): FirebaseTokenServiceFunctions {
+  firebaseTokenRepository: IFirebaseTokenRepository
+): IFirebaseTokenService {
   return {
     async registerFirebaseToken(
       input: RegisterFirebaseTokenInput

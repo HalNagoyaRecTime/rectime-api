@@ -1,12 +1,10 @@
 import { StudentDTO } from '../../application/dto/StudentDTO';
-import {
-  StudentRepositoryFunctions,
-  StudentServiceFunctions,
-} from '../../types';
+import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
+import { IStudentService } from '../../application/services/IStudentService';
 
 export function createStudentService(
-  studentRepository: StudentRepositoryFunctions
-): StudentServiceFunctions {
+  studentRepository: IStudentRepository
+): IStudentService {
   return {
     async getStudentById(id: number): Promise<StudentDTO> {
       const student = await studentRepository.findById(id);
