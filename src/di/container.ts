@@ -4,12 +4,12 @@ import { createEventRepository } from '../infrastructure/repositories/EventRepos
 import { createEntryRepository } from '../infrastructure/repositories/EntryRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationSendLogRepository } from '../infrastructure/repositories/NotificationSendLogRepository';
-import { createStudentService } from '../infrastructure/services/StudentService';
-import { createEventService } from '../infrastructure/services/EventService';
-import { createEntryService } from '../infrastructure/services/EntryService';
-import { createFirebaseTokenService } from '../infrastructure/services/FirebaseTokenService';
+import { createStudentService } from '../application/services/StudentService';
+import { createEventService } from '../application/services/EventService';
+import { createEntryService } from '../application/services/EntryService';
+import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
-import { createScheduledNotificationService } from '../infrastructure/services/ScheduledNotificationService';
+import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createEventController } from '../presentation/controllers/EventController';
 import { createEntryController } from '../presentation/controllers/EntryController';

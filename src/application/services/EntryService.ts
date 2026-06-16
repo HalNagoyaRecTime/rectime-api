@@ -1,5 +1,5 @@
 import { EntryEntity } from '../../domain/entities/Entry';
-import { IEntryService } from '../../application/services/IEntryService';
+import { IEntryService } from './IEntryService';
 import { IEntryRepository } from '../../domain/interfaces/repositories/IEntryRepository';
 
 export function createEntryService(

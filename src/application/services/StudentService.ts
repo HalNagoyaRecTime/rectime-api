@@ -1,6 +1,6 @@
-import { StudentDTO } from '../../application/dto/StudentDTO';
+import { StudentDTO } from '../dto/StudentDTO';
 import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
-import { IStudentService } from '../../application/services/IStudentService';
+import { IStudentService } from './IStudentService';
 
 export function createStudentService(
   studentRepository: IStudentRepository

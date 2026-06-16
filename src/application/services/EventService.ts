@@ -1,5 +1,5 @@
 import { EventEntity } from '../../domain/entities/Event';
-import { IEventService } from '../../application/services/IEventService';
+import { IEventService } from './IEventService';
 import { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 
 export function createEventService(

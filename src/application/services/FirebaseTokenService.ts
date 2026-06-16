@@ -3,7 +3,7 @@ import {
   RegisterFirebaseTokenResult,
 } from '../../domain/entities/FirebaseToken';
 import { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
-import { IFirebaseTokenService } from '../../application/services/IFirebaseTokenService';
+import { IFirebaseTokenService } from './IFirebaseTokenService';
 
 export function createFirebaseTokenService(
   firebaseTokenRepository: IFirebaseTokenRepository

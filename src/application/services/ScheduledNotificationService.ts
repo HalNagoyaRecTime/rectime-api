@@ -1,8 +1,8 @@
 import { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 import { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 import { INotificationSendLogRepository } from '../../domain/interfaces/repositories/INotificationSendLogRepository';
-import { IFcmService } from '../../application/services/IFcmService';
-import { IScheduledNotificationService } from '../../application/services/IScheduledNotificationService';
+import { IFcmService } from './IFcmService';
+import { IScheduledNotificationService } from './IScheduledNotificationService';
 
 export function createScheduledNotificationService(deps: {
   eventRepository: IEventRepository;
