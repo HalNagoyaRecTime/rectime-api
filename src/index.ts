@@ -1,18 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { getDb } from './lib/db';
-import { createStudentRepository } from './infrastructure/repositories/StudentRepository';
-import { createStudentService } from './infrastructure/services/StudentService';
-import { createStudentController } from './presentation/controllers/StudentController';
-import { createEventRepository } from './infrastructure/repositories/EventRepository';
-import { createEventService } from './infrastructure/services/EventService';
-import { createEventController } from './presentation/controllers/EventController';
-import { createFcmService } from './infrastructure/services/FcmService';
-import { createNotificationController } from './presentation/controllers/NotificationController';
-import { createFirebaseTokenRepository } from './infrastructure/repositories/FirebaseTokenRepository';
-import { createFirebaseTokenService } from './infrastructure/services/FirebaseTokenService';
-import { createFirebaseTokenController } from './presentation/controllers/FirebaseTokenController';
-import { sendScheduledEventNotifications } from './infrastructure/services/ScheduledNotificationService';
+import { createDIContainer } from './di/container';
 import { D1Database } from '@cloudflare/workers-types';
 
 type Bindings = {
@@ -47,59 +35,35 @@ const apiV1 = new Hono<{ Bindings: Bindings }>();
 
 // Student routes
 apiV1.get('/students', c => {
-  const db = getDb(c.env);
-  const studentRepository = createStudentRepository(db);
-  const studentService = createStudentService(studentRepository);
-  const studentController = createStudentController(studentService);
-  return studentController.getAllStudent(c);
+  const container = createDIContainer(c.env);
+  return container.studentController.getAllStudent(c);
 });
 apiV1.get('/students/:studentId', c => {
-  const db = getDb(c.env);
-  const studentRepository = createStudentRepository(db);
-  const studentService = createStudentService(studentRepository);
-  const studentController = createStudentController(studentService);
-  return studentController.getStudentById(c);
+  const container = createDIContainer(c.env);
+  return container.studentController.getStudentById(c);
 });
 
 // Event routes
 apiV1.get('/events', c => {
-  const db = getDb(c.env);
-  const eventRepository = createEventRepository(db);
-  const eventService = createEventService(eventRepository);
-  const eventController = createEventController(eventService);
-  return eventController.getAllEvents(c);
+  const container = createDIContainer(c.env);
+  return container.eventController.getAllEvents(c);
 });
 
 apiV1.get('/events/:eventId', c => {
-  const db = getDb(c.env);
-  const eventRepository = createEventRepository(db);
-  const eventService = createEventService(eventRepository);
-  const eventController = createEventController(eventService);
-  return eventController.getEventById(c);
+  const container = createDIContainer(c.env);
+  return container.eventController.getEventById(c);
 });
 
 // Firebase token routes
 apiV1.post('/firebase-tokens', c => {
-  const db = getDb(c.env);
-  const firebaseTokenRepository = createFirebaseTokenRepository(db);
-  const firebaseTokenService = createFirebaseTokenService(
-    firebaseTokenRepository
-  );
-  const firebaseTokenController =
-    createFirebaseTokenController(firebaseTokenService);
-  return firebaseTokenController.registerFirebaseToken(c);
+  const container = createDIContainer(c.env);
+  return container.firebaseTokenController.registerFirebaseToken(c);
 });
 
 // Notification routes
 apiV1.post('/notifications/test', c => {
-  const fcmService = createFcmService({
-    projectId: c.env.FIREBASE_PROJECT_ID,
-    clientEmail: c.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: c.env.FIREBASE_PRIVATE_KEY,
-    testFcmToken: c.env.TEST_FCM_TOKEN,
-  });
-  const notificationController = createNotificationController(fcmService);
-  return notificationController.sendTestNotification(c);
+  const container = createDIContainer(c.env);
+  return container.notificationController.sendTestNotification(c);
 });
 
 apiV1.post('/notifications/schedule/run', async c => {
@@ -112,7 +76,11 @@ apiV1.post('/notifications/schedule/run', async c => {
       return c.json({ error: 'Invalid now value' }, 400);
     }
 
-    const result = await sendScheduledEventNotifications(c.env, now);
+    const container = createDIContainer(c.env);
+    const result =
+      await container.scheduledNotificationService.sendScheduledEventNotifications(
+        now
+      );
     return c.json(result);
   } catch (error) {
     return c.json(
@@ -135,6 +103,9 @@ export default {
     env: Bindings,
     ctx: ExecutionContext
   ) {
-    ctx.waitUntil(sendScheduledEventNotifications(env));
+    const container = createDIContainer(env);
+    ctx.waitUntil(
+      container.scheduledNotificationService.sendScheduledEventNotifications()
+    );
   },
 };
