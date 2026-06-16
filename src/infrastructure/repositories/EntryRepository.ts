@@ -58,8 +58,7 @@ export function createEntryRepository(db: D1Database): IEntryRepository {
 
       return {
         entries: entries.results.map(transformToEntryEntity),
-        total:
-          ((totalResult as Record<string, unknown>)?.total as number) || 0,
+        total: ((totalResult as Record<string, unknown>)?.total as number) || 0,
       };
     },
 

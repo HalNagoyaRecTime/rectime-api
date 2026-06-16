@@ -78,8 +78,7 @@ export function createEventRepository(db: D1Database): IEventRepository {
 
       return {
         events: events.results.map(transformToEventEntity),
-        total:
-          ((totalResult as Record<string, unknown>)?.total as number) || 0,
+        total: ((totalResult as Record<string, unknown>)?.total as number) || 0,
       };
     },
 
