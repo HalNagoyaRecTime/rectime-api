@@ -17,7 +17,7 @@ app.use('*', cors());
 
 app.get('/', c => {
   return c.json({
-    message: 'Recreation Management API - Three Layer Architecture',
+    message: 'Recreation Management API - Four Layer Architecture',
     version: '1.0.0',
     endpoints: {
       students: '/api/v1/students/{studentId}',
