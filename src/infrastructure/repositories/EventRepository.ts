@@ -66,8 +66,14 @@ export function createEventRepository(db: D1Database): IEventRepository {
       const countQuery = `SELECT COUNT(*) as total FROM t_events ${whereClause}`;
 
       const [events, totalResult] = await Promise.all([
-        db.prepare(query).bind(...params).all(),
-        db.prepare(countQuery).bind(...params).first(),
+        db
+          .prepare(query)
+          .bind(...params)
+          .all(),
+        db
+          .prepare(countQuery)
+          .bind(...params)
+          .first(),
       ]);
 
       return {

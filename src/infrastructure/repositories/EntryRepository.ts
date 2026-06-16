@@ -46,8 +46,14 @@ export function createEntryRepository(db: D1Database): IEntryRepository {
       const countQuery = `SELECT COUNT(*) as total FROM t_entries ${whereClause}`;
 
       const [entries, totalResult] = await Promise.all([
-        db.prepare(query).bind(...params).all(),
-        db.prepare(countQuery).bind(...params).first(),
+        db
+          .prepare(query)
+          .bind(...params)
+          .all(),
+        db
+          .prepare(countQuery)
+          .bind(...params)
+          .first(),
       ]);
 
       return {
