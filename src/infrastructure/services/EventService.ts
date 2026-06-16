@@ -1,16 +1,14 @@
 import { EventEntity } from '../../domain/entities/Event';
-import {
-  EventRepositoryFunctions,
-  EventServiceFunctions,
-} from '../../types';
+import { IEventService } from '../../application/services/IEventService';
+import { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 
 export function createEventService(
-  eventRepository: EventRepositoryFunctions
-): EventServiceFunctions {
+  eventRepository: IEventRepository
+): IEventService {
   return {
     async getAllEvents(options: {
-      f_event_code?: string;
-      f_time?: string;
+      eventCode?: string;
+      time?: string;
       limit?: number;
       offset?: number;
     }): Promise<{ events: EventEntity[]; total: number }> {

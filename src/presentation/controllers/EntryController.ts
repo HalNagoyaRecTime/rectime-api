@@ -1,10 +1,7 @@
 import { Context } from 'hono';
-import { EntryControllerFunctions } from '../types/controllers';
-import { EntryServiceFunctions } from '../types/services';
+import { IEntryService } from '../../application/services/IEntryService';
 
-export function createEntryController(
-  entryService: EntryServiceFunctions
-): EntryControllerFunctions {
+export function createEntryController(entryService: IEntryService) {
   const getAllEntries = async (c: Context) => {
     try {
       const entries = await entryService.getAllEntries({});

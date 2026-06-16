@@ -1,20 +1,17 @@
 import { Context } from 'hono';
-import { EventControllerFunctions } from '../types/controllers';
-import { EventServiceFunctions } from '../types/services';
+import { IEventService } from '../../application/services/IEventService';
 
-export function createEventController(
-  eventService: EventServiceFunctions
-): EventControllerFunctions {
+export function createEventController(eventService: IEventService) {
   const getAllEvents = async (c: Context) => {
     try {
-      const f_event_code = c.req.query('f_event_code');
-      const f_time = c.req.query('f_time');
+      const eventCode = c.req.query('f_event_code');
+      const time = c.req.query('f_time');
       const limit = c.req.query('limit');
       const offset = c.req.query('offset');
 
       const result = await eventService.getAllEvents({
-        f_event_code,
-        f_time,
+        eventCode,
+        time,
         limit: limit ? parseInt(limit) : undefined,
         offset: offset ? parseInt(offset) : undefined,
       });

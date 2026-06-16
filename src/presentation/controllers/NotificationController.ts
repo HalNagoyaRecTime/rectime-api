@@ -1,16 +1,13 @@
 import { Context } from 'hono';
 import { z } from 'zod';
-import { NotificationControllerFunctions } from '../types/controllers';
-import { FcmServiceFunctions } from '../types/services';
+import { IFcmService } from '../../application/services/IFcmService';
 
 const testNotificationSchema = z.object({
   title: z.string().min(1),
   body: z.string().min(1),
 });
 
-export function createNotificationController(
-  fcmService: FcmServiceFunctions
-): NotificationControllerFunctions {
+export function createNotificationController(fcmService: IFcmService) {
   const sendTestNotification = async (c: Context) => {
     try {
       const body = await c.req.json();

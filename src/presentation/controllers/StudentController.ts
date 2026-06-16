@@ -1,10 +1,7 @@
 import { Context } from 'hono';
-import { StudentControllerFunctions } from '../types/controllers';
-import { StudentServiceFunctions } from '../types/services';
+import { IStudentService } from '../../application/services/IStudentService';
 
-export function createStudentController(
-  studentService: StudentServiceFunctions
-): StudentControllerFunctions {
+export function createStudentController(studentService: IStudentService) {
   const getStudentById = async (c: Context) => {
     try {
       const id = c.req.param('studentId') || c.req.param('id');

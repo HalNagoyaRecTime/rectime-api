@@ -1,7 +1,6 @@
 import { Context } from 'hono';
 import { z } from 'zod';
-import { FirebaseTokenControllerFunctions } from '../types/controllers';
-import { FirebaseTokenServiceFunctions } from '../types/services';
+import { IFirebaseTokenService } from '../../application/services/IFirebaseTokenService';
 
 const registerFirebaseTokenSchema = z
   .object({
@@ -19,8 +18,8 @@ const registerFirebaseTokenSchema = z
   });
 
 export function createFirebaseTokenController(
-  firebaseTokenService: FirebaseTokenServiceFunctions
-): FirebaseTokenControllerFunctions {
+  firebaseTokenService: IFirebaseTokenService
+) {
   const registerFirebaseToken = async (c: Context) => {
     try {
       const body = await c.req.json();

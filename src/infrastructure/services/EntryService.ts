@@ -1,16 +1,14 @@
 import { EntryEntity } from '../../domain/entities/Entry';
-import {
-  EntryRepositoryFunctions,
-  EntryServiceFunctions,
-} from '../../types';
+import { IEntryService } from '../../application/services/IEntryService';
+import { IEntryRepository } from '../../domain/interfaces/repositories/IEntryRepository';
 
 export function createEntryService(
-  entryRepository: EntryRepositoryFunctions
-): EntryServiceFunctions {
+  entryRepository: IEntryRepository
+): IEntryService {
   return {
     async getAllEntries(options: {
-      f_student_id?: number;
-      f_event_id?: number;
+      studentId?: number;
+      eventId?: number;
       limit?: number;
       offset?: number;
     }): Promise<{ entries: EntryEntity[]; total: number }> {
