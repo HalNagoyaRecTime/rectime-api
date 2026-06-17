@@ -24,8 +24,3 @@ CREATE TABLE IF NOT EXISTS t_entries (
   f_event_id   INTEGER NOT NULL REFERENCES t_events(f_event_id),
   UNIQUE (f_student_id, f_event_id)
 );
-
-CREATE TABLE IF NOT EXISTS m_classes (
-  f_class_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-  f_class_name TEXT    NOT NULL UNIQUE
-);
