@@ -5,7 +5,7 @@ export interface ClassEntity {
 }
 
 export interface ClassDTO {
-  ClassRoomId: number;
-  ClassCode: string;
-  Name: string;
+  class_room_id: number;
+  class_code: string;
+  name: string;
 }
