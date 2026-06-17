@@ -9,6 +9,8 @@ import { createEventService } from './services/EventService';
 import { createEventController } from './controllers/EventController';
 import { createFcmService } from './services/FcmService';
 import { createNotificationController } from './controllers/NotificationController';
+import { createNotificationRepository } from './repositories/NotificationRepository';
+import { createNotificationService } from './services/NotificationService';
 import { createFirebaseTokenRepository } from './repositories/FirebaseTokenRepository';
 import { createFirebaseTokenService } from './services/FirebaseTokenService';
 import { createFirebaseTokenController } from './controllers/FirebaseTokenController';
@@ -35,6 +37,8 @@ app.get('/', c => {
       students: '/api/v1/students/{studentId}',
       events: '/api/v1/events',
       firebaseTokens: '/api/v1/firebase-tokens',
+      notifications: '/api/v1/notifications',
+      unreadNotificationCount: '/api/v1/notifications/unread-count',
       testNotification: '/api/v1/notifications/test',
       runScheduledNotifications: '/api/v1/notifications/schedule/run',
     },
@@ -91,14 +95,88 @@ apiV1.post('/firebase-tokens', c => {
 });
 
 // Notification routes
-apiV1.post('/notifications/test', c => {
+apiV1.get('/notifications', c => {
+  const db = getDb(c.env);
+  const notificationRepository = createNotificationRepository(db);
+  const notificationService = createNotificationService(notificationRepository);
   const fcmService = createFcmService({
     projectId: c.env.FIREBASE_PROJECT_ID,
     clientEmail: c.env.FIREBASE_CLIENT_EMAIL,
     privateKey: c.env.FIREBASE_PRIVATE_KEY,
     testFcmToken: c.env.TEST_FCM_TOKEN,
   });
-  const notificationController = createNotificationController(fcmService);
+  const notificationController = createNotificationController(
+    fcmService,
+    notificationService
+  );
+  return notificationController.getNotifications(c);
+});
+
+apiV1.get('/notifications/unread-count', c => {
+  const db = getDb(c.env);
+  const notificationRepository = createNotificationRepository(db);
+  const notificationService = createNotificationService(notificationRepository);
+  const fcmService = createFcmService({
+    projectId: c.env.FIREBASE_PROJECT_ID,
+    clientEmail: c.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: c.env.FIREBASE_PRIVATE_KEY,
+    testFcmToken: c.env.TEST_FCM_TOKEN,
+  });
+  const notificationController = createNotificationController(
+    fcmService,
+    notificationService
+  );
+  return notificationController.getUnreadCount(c);
+});
+
+apiV1.patch('/notifications/read-all', c => {
+  const db = getDb(c.env);
+  const notificationRepository = createNotificationRepository(db);
+  const notificationService = createNotificationService(notificationRepository);
+  const fcmService = createFcmService({
+    projectId: c.env.FIREBASE_PROJECT_ID,
+    clientEmail: c.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: c.env.FIREBASE_PRIVATE_KEY,
+    testFcmToken: c.env.TEST_FCM_TOKEN,
+  });
+  const notificationController = createNotificationController(
+    fcmService,
+    notificationService
+  );
+  return notificationController.markAllNotificationsAsRead(c);
+});
+
+apiV1.patch('/notifications/:id/read', c => {
+  const db = getDb(c.env);
+  const notificationRepository = createNotificationRepository(db);
+  const notificationService = createNotificationService(notificationRepository);
+  const fcmService = createFcmService({
+    projectId: c.env.FIREBASE_PROJECT_ID,
+    clientEmail: c.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: c.env.FIREBASE_PRIVATE_KEY,
+    testFcmToken: c.env.TEST_FCM_TOKEN,
+  });
+  const notificationController = createNotificationController(
+    fcmService,
+    notificationService
+  );
+  return notificationController.markNotificationAsRead(c);
+});
+
+apiV1.post('/notifications/test', c => {
+  const db = getDb(c.env);
+  const notificationRepository = createNotificationRepository(db);
+  const notificationService = createNotificationService(notificationRepository);
+  const fcmService = createFcmService({
+    projectId: c.env.FIREBASE_PROJECT_ID,
+    clientEmail: c.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: c.env.FIREBASE_PRIVATE_KEY,
+    testFcmToken: c.env.TEST_FCM_TOKEN,
+  });
+  const notificationController = createNotificationController(
+    fcmService,
+    notificationService
+  );
   return notificationController.sendTestNotification(c);
 });
 

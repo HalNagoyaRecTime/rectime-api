@@ -18,6 +18,7 @@ type ScheduledEventRow = {
 
 type FirebaseTokenRow = {
   id: number;
+  user_id: number;
   fcm_token: string;
 };
 
@@ -54,6 +55,15 @@ export async function sendScheduledEventNotifications(
         continue;
       }
 
+      const notificationId = await createScheduledNotificationIfMissing(
+        env.DB,
+        {
+          userId: token.user_id,
+          event,
+          scheduledForDate: today,
+        }
+      );
+
       try {
         const result = await fcmService.sendNotificationToToken({
           token: token.fcm_token,
@@ -71,9 +81,11 @@ export async function sendScheduledEventNotifications(
           scheduledForDate: today,
           messageId: result.messageId,
         });
+        await updateNotificationSendStatus(env.DB, notificationId, 'sent');
         sent += 1;
       } catch (error) {
         failed += 1;
+        await updateNotificationSendStatus(env.DB, notificationId, 'failed');
 
         if (shouldDeactivateToken(error)) {
           await deactivateFirebaseToken(env.DB, token.id);
@@ -122,7 +134,7 @@ async function findActiveFirebaseTokensForEvent(
   const result = await db
     .prepare(
       `
-      SELECT ft.id, ft.fcm_token
+      SELECT ft.id, ft.user_id, ft.fcm_token
       FROM firebase_tokens ft
       INNER JOIN users u
         ON u.id = ft.user_id
@@ -141,8 +153,94 @@ async function findActiveFirebaseTokensForEvent(
 
   return result.results.map(row => ({
     id: row.id as number,
+    user_id: row.user_id as number,
     fcm_token: row.fcm_token as string,
   }));
+}
+
+async function createScheduledNotificationIfMissing(
+  db: D1Database,
+  input: {
+    userId: number;
+    event: ScheduledEventRow;
+    scheduledForDate: string;
+  }
+): Promise<number> {
+  const existing = await db
+    .prepare(
+      `
+      SELECT id
+      FROM notifications
+      WHERE user_id = ?
+        AND type = 'event_reminder_10min'
+        AND resource_type = 'event'
+        AND resource_id = ?
+        AND substr(sent_at, 1, 10) = ?
+      `
+    )
+    .bind(input.userId, String(input.event.f_event_id), input.scheduledForDate)
+    .first();
+
+  if (existing && 'id' in existing && typeof existing.id === 'number') {
+    return existing.id;
+  }
+
+  const inserted = await db
+    .prepare(
+      `
+      INSERT INTO notifications (
+        user_id,
+        type,
+        title,
+        body,
+        link_url,
+        resource_type,
+        resource_id,
+        severity,
+        send_status,
+        sent_at,
+        updated_at
+      )
+      VALUES (?, 'event_reminder_10min', ?, ?, ?, 'event', ?, 'info', 'pending', ?, CURRENT_TIMESTAMP)
+      RETURNING id
+      `
+    )
+    .bind(
+      input.userId,
+      '呼び出し通知',
+      `${input.event.f_event_name}の開始10分前です。${input.event.f_place}に集合してください。`,
+      `/events/${input.event.f_event_id}`,
+      String(input.event.f_event_id),
+      new Date().toISOString()
+    )
+    .first<Record<string, unknown>>();
+
+  if (!inserted || typeof inserted.id !== 'number') {
+    throw new Error('Failed to create scheduled notification');
+  }
+
+  return inserted.id;
+}
+
+async function updateNotificationSendStatus(
+  db: D1Database,
+  notificationId: number,
+  sendStatus: 'sent' | 'failed'
+) {
+  await db
+    .prepare(
+      `
+      UPDATE notifications
+      SET send_status = CASE
+            WHEN send_status = 'sent' THEN send_status
+            ELSE ?
+          END,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+      `
+    )
+    .bind(sendStatus, notificationId)
+    .run();
 }
 
 async function hasAlreadySent(

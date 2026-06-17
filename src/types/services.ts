@@ -1,6 +1,10 @@
 import {
   EventEntity,
   EntryEntity,
+  NotificationListOptions,
+  NotificationListResult,
+  NotificationReadAllResult,
+  NotificationReadResult,
   RegisterFirebaseTokenInput,
   RegisterFirebaseTokenResult,
   StudentEntity,
@@ -62,4 +66,16 @@ export interface FirebaseTokenServiceFunctions {
   registerFirebaseToken: (
     input: RegisterFirebaseTokenInput
   ) => Promise<RegisterFirebaseTokenResult>;
+}
+
+export interface NotificationServiceFunctions {
+  getNotifications: (
+    options: NotificationListOptions
+  ) => Promise<NotificationListResult>;
+  getUnreadCount: (studentNumber: string) => Promise<{ unread_count: number }>;
+  markAsRead: (
+    studentNumber: string,
+    notificationId: number
+  ) => Promise<NotificationReadResult>;
+  markAllAsRead: (studentNumber: string) => Promise<NotificationReadAllResult>;
 }

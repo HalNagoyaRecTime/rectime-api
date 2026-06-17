@@ -3,6 +3,11 @@ import {
   EntryEntity,
   RegisterFirebaseTokenInput,
   RegisterFirebaseTokenResult,
+  NotificationEntity,
+  NotificationListOptions,
+  NotificationListResult,
+  NotificationReadAllResult,
+  NotificationReadResult,
   StudentEntity,
 } from './domains';
 
@@ -42,4 +47,31 @@ export interface FirebaseTokenRepositoryFunctions {
   register: (
     input: RegisterFirebaseTokenInput
   ) => Promise<RegisterFirebaseTokenResult>;
+}
+
+export interface CreateNotificationInput {
+  userId: number;
+  type: string;
+  title: string;
+  body: string;
+  linkUrl?: string;
+  resourceType?: string;
+  resourceId?: string;
+  severity?: string;
+  sendStatus?: string;
+  sentAt?: string;
+}
+
+// Notification Repository Types
+export interface NotificationRepositoryFunctions {
+  create: (input: CreateNotificationInput) => Promise<NotificationEntity>;
+  findAllByStudentNumber: (
+    options: NotificationListOptions
+  ) => Promise<NotificationListResult>;
+  countUnreadByStudentNumber: (studentNumber: string) => Promise<number>;
+  markAsRead: (
+    studentNumber: string,
+    notificationId: number
+  ) => Promise<NotificationReadResult | null>;
+  markAllAsRead: (studentNumber: string) => Promise<NotificationReadAllResult>;
 }

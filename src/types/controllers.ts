@@ -21,6 +21,10 @@ export interface EntryControllerFunctions {
 
 // Notification Controller Functions
 export interface NotificationControllerFunctions {
+  getNotifications: ControllerFunction;
+  getUnreadCount: ControllerFunction;
+  markNotificationAsRead: ControllerFunction;
+  markAllNotificationsAsRead: ControllerFunction;
   sendTestNotification: ControllerFunction;
 }
 
