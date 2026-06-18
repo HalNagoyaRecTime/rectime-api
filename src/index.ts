@@ -68,10 +68,9 @@ apiV1.post('/notifications/schedule/run', async c => {
       return c.json({ error: 'Invalid now value' }, 400);
     }
 
-    const result =
-      await c
-        .get('container')
-        .scheduledNotificationService.sendScheduledEventNotifications(now);
+    const result = await c
+      .get('container')
+      .scheduledNotificationService.sendScheduledEventNotifications(now);
     return c.json(result);
   } catch (error) {
     return c.json(
@@ -89,11 +88,7 @@ app.route('/api/v1', apiV1);
 
 export default {
   fetch: app.fetch,
-  async scheduled(
-    _event: ScheduledEvent,
-    env: Env,
-    ctx: ExecutionContext
-  ) {
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     const container = createDIContainer(env);
     ctx.waitUntil(
       container.scheduledNotificationService.sendScheduledEventNotifications()
