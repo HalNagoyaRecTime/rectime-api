@@ -15,15 +15,7 @@ import { createEventController } from '../presentation/controllers/EventControll
 import { createEntryController } from '../presentation/controllers/EntryController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
-import { D1Database } from '@cloudflare/workers-types';
-
-type Env = {
-  DB: D1Database;
-  FIREBASE_PROJECT_ID: string;
-  FIREBASE_CLIENT_EMAIL: string;
-  FIREBASE_PRIVATE_KEY: string;
-  TEST_FCM_TOKEN: string;
-};
+import type { Env } from '../lib/env';
 
 export function createDIContainer(env: Env) {
   const db = getDb(env);

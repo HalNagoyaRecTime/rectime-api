@@ -1,17 +1,13 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { createDIContainer } from './di/container';
-import { D1Database } from '@cloudflare/workers-types';
+import type { Env } from './lib/env';
+import {
+  diContainerMiddleware,
+  type ContainerVariables,
+} from './presentation/middleware/diContainer';
 
-type Bindings = {
-  DB: D1Database;
-  FIREBASE_PROJECT_ID: string;
-  FIREBASE_CLIENT_EMAIL: string;
-  FIREBASE_PRIVATE_KEY: string;
-  TEST_FCM_TOKEN: string;
-};
-
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Env }>();
 
 app.use('*', cors());
 
@@ -31,39 +27,35 @@ app.get('/', c => {
 });
 
 // API v1 routes
-const apiV1 = new Hono<{ Bindings: Bindings }>();
+const apiV1 = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
+
+apiV1.use('*', diContainerMiddleware);
 
 // Student routes
 apiV1.get('/students', c => {
-  const container = createDIContainer(c.env);
-  return container.studentController.getAllStudent(c);
+  return c.get('container').studentController.getAllStudent(c);
 });
 apiV1.get('/students/:studentId', c => {
-  const container = createDIContainer(c.env);
-  return container.studentController.getStudentById(c);
+  return c.get('container').studentController.getStudentById(c);
 });
 
 // Event routes
 apiV1.get('/events', c => {
-  const container = createDIContainer(c.env);
-  return container.eventController.getAllEvents(c);
+  return c.get('container').eventController.getAllEvents(c);
 });
 
 apiV1.get('/events/:eventId', c => {
-  const container = createDIContainer(c.env);
-  return container.eventController.getEventById(c);
+  return c.get('container').eventController.getEventById(c);
 });
 
 // Firebase token routes
 apiV1.post('/firebase-tokens', c => {
-  const container = createDIContainer(c.env);
-  return container.firebaseTokenController.registerFirebaseToken(c);
+  return c.get('container').firebaseTokenController.registerFirebaseToken(c);
 });
 
 // Notification routes
 apiV1.post('/notifications/test', c => {
-  const container = createDIContainer(c.env);
-  return container.notificationController.sendTestNotification(c);
+  return c.get('container').notificationController.sendTestNotification(c);
 });
 
 apiV1.post('/notifications/schedule/run', async c => {
@@ -76,11 +68,10 @@ apiV1.post('/notifications/schedule/run', async c => {
       return c.json({ error: 'Invalid now value' }, 400);
     }
 
-    const container = createDIContainer(c.env);
     const result =
-      await container.scheduledNotificationService.sendScheduledEventNotifications(
-        now
-      );
+      await c
+        .get('container')
+        .scheduledNotificationService.sendScheduledEventNotifications(now);
     return c.json(result);
   } catch (error) {
     return c.json(
@@ -100,7 +91,7 @@ export default {
   fetch: app.fetch,
   async scheduled(
     _event: ScheduledEvent,
-    env: Bindings,
+    env: Env,
     ctx: ExecutionContext
   ) {
     const container = createDIContainer(env);
