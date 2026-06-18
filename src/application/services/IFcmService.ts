@@ -10,7 +10,7 @@ export interface FcmNotificationInput {
   data?: Record<string, string>;
 }
 
-export interface FcmTestNotificationResult {
+export interface FcmNotificationResult {
   success: true;
   messageId: string;
 }
@@ -18,8 +18,8 @@ export interface FcmTestNotificationResult {
 export interface IFcmService {
   sendTestNotification: (
     input: FcmTestNotificationInput
-  ) => Promise<FcmTestNotificationResult>;
+  ) => Promise<FcmNotificationResult>;
   sendNotificationToToken: (
     input: FcmNotificationInput
-  ) => Promise<FcmTestNotificationResult>;
+  ) => Promise<FcmNotificationResult>;
 }

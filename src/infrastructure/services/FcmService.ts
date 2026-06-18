@@ -2,7 +2,7 @@ import {
   IFcmService,
   FcmNotificationInput,
   FcmTestNotificationInput,
-  FcmTestNotificationResult,
+  FcmNotificationResult,
 } from '../../application/services/IFcmService';
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -18,7 +18,7 @@ type FirebaseConfig = {
 export function createFcmService(config: FirebaseConfig): IFcmService {
   const sendNotificationToToken = async (
     input: FcmNotificationInput
-  ): Promise<FcmTestNotificationResult> => {
+  ): Promise<FcmNotificationResult> => {
     validateConfig(config);
 
     const accessToken = await createAccessToken(config);
@@ -67,7 +67,7 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
 
   const sendTestNotification = async (
     input: FcmTestNotificationInput
-  ): Promise<FcmTestNotificationResult> => {
+  ): Promise<FcmNotificationResult> => {
     return sendNotificationToToken({
       token: config.testFcmToken,
       title: input.title,
