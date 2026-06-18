@@ -64,7 +64,10 @@ export function createScheduledNotificationService(deps: {
               await firebaseTokenRepository.deactivate(token.id);
             }
 
-            console.error('Failed to send scheduled notification', error);
+            console.error(
+              `Failed to send scheduled notification. eventId: ${event.f_event_id}, tokenId: ${token.id}`,
+              error
+            );
           }
         }
       }
