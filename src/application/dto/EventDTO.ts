@@ -1,10 +1,10 @@
 export interface EventDTO {
-  f_event_id: string;
-  f_event_code: string;
-  f_event_name: string;
-  f_time: string;
-  f_duration: string;
-  f_place: string;
-  f_gather_time: string;
-  f_summary?: string;
+  event_id: string;
+  event_code: string;
+  event_name: string;
+  time: string;
+  duration: string;
+  place: string;
+  gather_time: string;
+  summary?: string;
 }
