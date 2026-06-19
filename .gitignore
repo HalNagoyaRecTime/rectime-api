@@ -27,9 +27,7 @@ lerna-debug.log*
 
 # misc
 .DS_Store
-WORK_LOG.md
-WORK_LOG_KO.md
 
-#docs
+# docs
 WORK_LOG.md
 WORK_LOG_KO.md
