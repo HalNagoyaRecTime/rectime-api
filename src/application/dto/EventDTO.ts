@@ -6,5 +6,5 @@ export interface EventDTO {
   duration: string;
   place: string;
   gather_time: string;
-  summary?: string;
+  summary: string | null;
 }
