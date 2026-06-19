@@ -1,8 +1,5 @@
 import { D1Database } from '@cloudflare/workers-types';
-
-type Env = {
-  DB: D1Database;
-};
+import type { Env } from './env';
 
 export function getDb(env?: Env): D1Database {
   if (!env?.DB) {
