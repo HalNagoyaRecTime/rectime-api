@@ -1,6 +1,6 @@
 import { D1Database } from '@cloudflare/workers-types';
-import { ClassEntity } from '../types';
-import { ClassRepositoryFunctions } from '../types';
+import { ClassEntity } from '../types/domains/Class';
+import { ClassRepositoryFunctions } from '../types/repositories';
 
 export function createClassRepository(
   db: D1Database
