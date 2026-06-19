@@ -1,5 +1,5 @@
 export interface EventDTO {
-  event_id: string;
+  event_id: number;
   event_code: string;
   event_name: string;
   time: string;

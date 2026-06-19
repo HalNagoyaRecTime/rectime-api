@@ -1,5 +1,5 @@
 export interface EntryDTO {
-  entry_id: string;
-  student_id: string;
-  event_id: string;
+  entry_id: number;
+  student_id: number;
+  event_id: number;
 }
