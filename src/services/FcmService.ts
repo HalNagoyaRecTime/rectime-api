@@ -7,6 +7,7 @@ import {
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
+const ANDROID_NOTIFICATION_CHANNEL_ID = 'event_reminder_high';
 
 type FirebaseConfig = {
   projectId: string;
@@ -36,6 +37,12 @@ export function createFcmService(config: FirebaseConfig): FcmServiceFunctions {
             notification: {
               title: input.title,
               body: input.body,
+            },
+            android: {
+              priority: 'HIGH',
+              notification: {
+                channel_id: ANDROID_NOTIFICATION_CHANNEL_ID,
+              },
             },
             data: input.data ?? {
               type: 'test',
