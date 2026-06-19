@@ -41,7 +41,7 @@ INSERT INTO m_users (f_class_room_id, f_display_name, f_uid) VALUES
   (3, '山田健太', '0000-0004');
 
 INSERT INTO m_student_description (f_users_id, f_attendance_number, f_student_id_number) VALUES
-  (1, 1, '10000'),
-  (2, 2, '10001'),
-  (3, 3, '10002'),
-  (4, 4, '10003'); -- 5番目は先生のため m_student_description には含めない
+  (1, 1, '24A001'),
+  (2, 2, '24A002'),
+  (3, 3, '24B001'),
+  (4, 4, '24B002'); -- 5番目は先生のため m_student_description には含めない
