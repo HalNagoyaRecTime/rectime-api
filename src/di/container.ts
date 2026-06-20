@@ -15,6 +15,9 @@ import { createEventController } from '../presentation/controllers/EventControll
 import { createEntryController } from '../presentation/controllers/EntryController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
+import { createScheduleRepository } from '../infrastructure/repositories/ScheduleRepository';
+import { createScheduleService } from '../application/services/ScheduleService';
+import { createScheduleController } from '../presentation/controllers/ScheduleController';
 import type { Env } from '../lib/env';
 
 export function createDIContainer(env: Env) {
@@ -47,6 +50,10 @@ export function createDIContainer(env: Env) {
     fcmService,
   });
 
+  // Schedule (dummy data - no DB dependency)
+  const scheduleRepository = createScheduleRepository();
+  const scheduleService = createScheduleService(scheduleRepository);
+
   // Controllers
   const studentController = createStudentController(studentService);
   const eventController = createEventController(eventService);
@@ -54,6 +61,7 @@ export function createDIContainer(env: Env) {
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
   const notificationController = createNotificationController(fcmService);
+  const scheduleController = createScheduleController(scheduleService);
 
   return {
     studentController,
@@ -62,6 +70,7 @@ export function createDIContainer(env: Env) {
     firebaseTokenController,
     notificationController,
     scheduledNotificationService,
+    scheduleController,
   };
 }
 
