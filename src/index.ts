@@ -16,6 +16,8 @@ app.get('/', c => {
     message: 'Recreation Management API - Four Layer Architecture',
     version: '1.0.0',
     endpoints: {
+      schedules: '/api/v1/schedules',
+      scheduleDetail: '/api/v1/schedules/{scheduleId}',
       students: '/api/v1/students/{studentId}',
       events: '/api/v1/events',
       firebaseTokens: '/api/v1/firebase-tokens',
@@ -30,6 +32,14 @@ app.get('/', c => {
 const apiV1 = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
 
 apiV1.use('*', diContainerMiddleware);
+
+// Schedule routes
+apiV1.get('/schedules', c => {
+  return c.get('container').scheduleController.getAllSchedules(c);
+});
+apiV1.get('/schedules/:scheduleId', c => {
+  return c.get('container').scheduleController.getScheduleById(c);
+});
 
 // Student routes
 apiV1.get('/students', c => {
