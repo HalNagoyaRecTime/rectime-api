@@ -1,4 +1,9 @@
-export type ScheduleType = 'competition' | 'ceremony' | 'break' | 'other';
+export type ScheduleType =
+  | 'competition'
+  | 'ceremony'
+  | 'break'
+  | 'performance'
+  | 'other';
 
 export interface ScheduleEntity {
   schedule_id: number;

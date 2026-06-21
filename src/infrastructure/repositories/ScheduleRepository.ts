@@ -34,12 +34,12 @@ const DUMMY_SCHEDULES: ScheduleEntity[] = [
   },
   {
     schedule_id: 4,
-    schedule_type: 'break',
-    name: '昼休憩',
-    description: 'お弁当・自由時間',
+    schedule_type: 'performance',
+    name: 'パフォーマンス',
+    description: 'パフォーマンスを行います。',
     start_time: '11:15',
     end_time: '12:15',
-    location: null,
+    location: 'メインアリーナ',
     order: 4,
   },
   {
@@ -106,7 +106,7 @@ const DUMMY_SCHEDULES: ScheduleEntity[] = [
 
 export function createScheduleRepository(): IScheduleRepository {
   const findAll = async (): Promise<ScheduleEntity[]> => {
-    return DUMMY_SCHEDULES.slice().sort((a, b) => a.order - b.order);
+    return [...DUMMY_SCHEDULES];
   };
 
   const findById = async (id: number): Promise<ScheduleEntity | null> => {
