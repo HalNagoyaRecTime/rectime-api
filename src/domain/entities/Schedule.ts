@@ -4,7 +4,7 @@ export type ScheduleType =
   | 'break'
   | 'performance'
   | 'other';
-  
+
 export interface ScheduleEntity {
   schedule_id: number;
   schedule_type: ScheduleType;
