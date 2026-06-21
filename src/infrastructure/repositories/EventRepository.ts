@@ -1,42 +1,28 @@
+import { drizzle } from 'drizzle-orm/d1';
+import { and, asc, count, eq, SQL } from 'drizzle-orm';
+import * as schema from '../database/schema';
+import { events } from '../database/schema';
+
 import { D1Database } from '@cloudflare/workers-types';
 import { EventEntity } from '../../domain/entities/Event';
 import { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 
-function buildWhereClause(options: { eventCode?: string; time?: string }) {
-  const conditions: string[] = [];
-  const params: string[] = [];
-
-  if (options.eventCode) {
-    conditions.push('f_event_code = ?');
-    params.push(options.eventCode);
-  }
-
-  if (options.time) {
-    conditions.push('f_time = ?');
-    params.push(options.time);
-  }
-
+function toEntity(row: typeof events.$inferSelect): EventEntity {
   return {
-    whereClause:
-      conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '',
-    params,
-  };
-}
-
-function transformToEventEntity(raw: Record<string, unknown>): EventEntity {
-  return {
-    f_event_id: raw.f_event_id as number,
-    f_event_code: raw.f_event_code as string,
-    f_event_name: raw.f_event_name as string,
-    f_time: raw.f_time as string,
-    f_duration: raw.f_duration as string,
-    f_place: raw.f_place as string,
-    f_gather_time: raw.f_gather_time as string,
-    f_summary: raw.f_summary as string | null,
+    f_event_id: row.id,
+    f_event_code: row.eventCode,
+    f_event_name: row.name,
+    f_time: row.time,
+    f_duration: row.duration,
+    f_place: row.place,
+    f_gather_time: row.gatherTime,
+    f_summary: row.summary,
   };
 }
 
 export function createEventRepository(db: D1Database): IEventRepository {
+  const orm = drizzle(db, { schema });
+
   return {
     async findAll(options: {
       eventCode?: string;
@@ -44,87 +30,69 @@ export function createEventRepository(db: D1Database): IEventRepository {
       limit?: number;
       offset?: number;
     }): Promise<{ events: EventEntity[]; total: number }> {
-      const { whereClause, params } = buildWhereClause(options);
+      const conditions: SQL[] = [];
+      if (options.eventCode) {
+        conditions.push(eq(events.eventCode, options.eventCode));
+      }
+      if (options.time) {
+        conditions.push(eq(events.time, options.time));
+      }
+      const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-      let query = `
-        SELECT e.*,
-               COUNT(en.f_entry_id) as entry_count
-        FROM t_events e
-        LEFT JOIN t_entries en ON e.f_event_id = en.f_event_id
-        ${whereClause}
-        GROUP BY e.f_event_id
-        ORDER BY e.f_time ASC
-      `;
+      let query = orm
+        .select()
+        .from(events)
+        .where(where)
+        .orderBy(asc(events.time))
+        .$dynamic();
 
       if (options.limit) {
-        query += ` LIMIT ${options.limit}`;
+        query = query.limit(options.limit);
       }
       if (options.offset) {
-        query += ` OFFSET ${options.offset}`;
+        query = query.offset(options.offset);
       }
 
-      const countQuery = `SELECT COUNT(*) as total FROM t_events ${whereClause}`;
-
-      const [events, totalResult] = await Promise.all([
-        db
-          .prepare(query)
-          .bind(...params)
-          .all(),
-        db
-          .prepare(countQuery)
-          .bind(...params)
-          .first(),
+      const [rows, totalResult] = await Promise.all([
+        query.all(),
+        orm.select({ total: count() }).from(events).where(where).get(),
       ]);
 
       return {
-        events: events.results.map(transformToEventEntity),
-        total: ((totalResult as Record<string, unknown>)?.total as number) || 0,
+        events: rows.map(toEntity),
+        total: totalResult?.total ?? 0,
       };
     },
 
     async findByIdWithEntryCount(id: number): Promise<EventEntity | null> {
-      const query = `
-        SELECT e.*,
-               COUNT(en.f_entry_id) as entry_count
-        FROM t_events e
-        LEFT JOIN t_entries en ON e.f_event_id = en.f_event_id
-        WHERE e.f_event_id = ?
-        GROUP BY e.f_event_id
-      `;
+      // entriesが存在しないため、entryCountは使わないようにしました。
+      const result = await orm
+        .select()
+        .from(events)
+        .where(eq(events.id, id))
+        .get();
 
-      const result = await db.prepare(query).bind(id).first();
-
-      if (!result) {
-        return null;
-      }
-
-      return transformToEventEntity(result);
+      return result ? toEntity(result) : null;
     },
 
     async findById(id: number): Promise<EventEntity | null> {
-      const result = await db
-        .prepare('SELECT * FROM t_events WHERE f_event_id = ?')
-        .bind(id)
-        .first();
+      const result = await orm
+        .select()
+        .from(events)
+        .where(eq(events.id, id))
+        .get();
 
-      if (!result) {
-        return null;
-      }
-
-      return transformToEventEntity(result);
+      return result ? toEntity(result) : null;
     },
 
     async findByEventCode(eventCode: string): Promise<EventEntity | null> {
-      const result = await db
-        .prepare('SELECT * FROM t_events WHERE f_event_code = ?')
-        .bind(eventCode)
-        .first();
+      const result = await orm
+        .select()
+        .from(events)
+        .where(eq(events.eventCode, eventCode))
+        .get();
 
-      if (!result) {
-        return null;
-      }
-
-      return transformToEventEntity(result);
+      return result ? toEntity(result) : null;
     },
   };
 }
