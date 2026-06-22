@@ -1,12 +1,10 @@
-import {
-  ClassDTO,
-  ClassRepositoryFunctions,
-  ClassServiceFunctions,
-} from '../types';
+import { ClassDTO } from '../dto/ClassDTO';
+import { IClassRepository } from '../../domain/interfaces/repositories/IClassRepository';
+import { IClassService } from './IClassService';
 
 export function createClassService(
-  classRepository: ClassRepositoryFunctions
-): ClassServiceFunctions {
+  classRepository: IClassRepository
+): IClassService {
   return {
     async getAllClasses(): Promise<ClassDTO[]> {
       const classes = await classRepository.findAll();
