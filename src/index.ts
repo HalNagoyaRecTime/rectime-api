@@ -1,38 +1,19 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { getDb } from './lib/db';
-import { createStudentRepository } from './repositories/StudentRepository';
-import { createStudentService } from './services/StudentService';
-import { createStudentController } from './controllers/StudentController';
-import { createEventRepository } from './repositories/EventRepository';
-import { createEventService } from './services/EventService';
-import { createEventController } from './controllers/EventController';
-import { createClassRepository } from './repositories/ClassRepository';
-import { createClassService } from './services/ClassService';
-import { createClassController } from './controllers/ClassController';
-import { createFcmService } from './services/FcmService';
-import { createNotificationController } from './controllers/NotificationController';
-import { createFirebaseTokenRepository } from './repositories/FirebaseTokenRepository';
-import { createFirebaseTokenService } from './services/FirebaseTokenService';
-import { createFirebaseTokenController } from './controllers/FirebaseTokenController';
-import { sendScheduledEventNotifications } from './services/ScheduledNotificationService';
-import { D1Database } from '@cloudflare/workers-types';
+import { createDIContainer } from './di/container';
+import type { Env } from './lib/env';
+import {
+  diContainerMiddleware,
+  type ContainerVariables,
+} from './presentation/middleware/diContainer';
 
-type Bindings = {
-  DB: D1Database;
-  FIREBASE_PROJECT_ID: string;
-  FIREBASE_CLIENT_EMAIL: string;
-  FIREBASE_PRIVATE_KEY: string;
-  TEST_FCM_TOKEN: string;
-};
-
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Env }>();
 
 app.use('*', cors());
 
 app.get('/', c => {
   return c.json({
-    message: 'Recreation Management API - Three Layer Architecture',
+    message: 'Recreation Management API - Four Layer Architecture',
     version: '1.0.0',
     endpoints: {
       students: '/api/v1/students/{studentId}',
@@ -47,39 +28,25 @@ app.get('/', c => {
 });
 
 // API v1 routes
-const apiV1 = new Hono<{ Bindings: Bindings }>();
+const apiV1 = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
+
+apiV1.use('*', diContainerMiddleware);
 
 // Student routes
 apiV1.get('/students', c => {
-  const db = getDb(c.env);
-  const studentRepository = createStudentRepository(db);
-  const studentService = createStudentService(studentRepository);
-  const studentController = createStudentController(studentService);
-  return studentController.getAllStudent(c);
+  return c.get('container').studentController.getAllStudent(c);
 });
 apiV1.get('/students/:studentId', c => {
-  const db = getDb(c.env);
-  const studentRepository = createStudentRepository(db);
-  const studentService = createStudentService(studentRepository);
-  const studentController = createStudentController(studentService);
-  return studentController.getStudentById(c);
+  return c.get('container').studentController.getStudentById(c);
 });
 
 // Event routes
 apiV1.get('/events', c => {
-  const db = getDb(c.env);
-  const eventRepository = createEventRepository(db);
-  const eventService = createEventService(eventRepository);
-  const eventController = createEventController(eventService);
-  return eventController.getAllEvents(c);
+  return c.get('container').eventController.getAllEvents(c);
 });
 
 apiV1.get('/events/:eventId', c => {
-  const db = getDb(c.env);
-  const eventRepository = createEventRepository(db);
-  const eventService = createEventService(eventRepository);
-  const eventController = createEventController(eventService);
-  return eventController.getEventById(c);
+  return c.get('container').eventController.getEventById(c);
 });
 
 // Class routes
@@ -93,26 +60,12 @@ apiV1.get('/classes', c => {
 
 // Firebase token routes
 apiV1.post('/firebase-tokens', c => {
-  const db = getDb(c.env);
-  const firebaseTokenRepository = createFirebaseTokenRepository(db);
-  const firebaseTokenService = createFirebaseTokenService(
-    firebaseTokenRepository
-  );
-  const firebaseTokenController =
-    createFirebaseTokenController(firebaseTokenService);
-  return firebaseTokenController.registerFirebaseToken(c);
+  return c.get('container').firebaseTokenController.registerFirebaseToken(c);
 });
 
 // Notification routes
 apiV1.post('/notifications/test', c => {
-  const fcmService = createFcmService({
-    projectId: c.env.FIREBASE_PROJECT_ID,
-    clientEmail: c.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: c.env.FIREBASE_PRIVATE_KEY,
-    testFcmToken: c.env.TEST_FCM_TOKEN,
-  });
-  const notificationController = createNotificationController(fcmService);
-  return notificationController.sendTestNotification(c);
+  return c.get('container').notificationController.sendTestNotification(c);
 });
 
 apiV1.post('/notifications/schedule/run', async c => {
@@ -125,7 +78,9 @@ apiV1.post('/notifications/schedule/run', async c => {
       return c.json({ error: 'Invalid now value' }, 400);
     }
 
-    const result = await sendScheduledEventNotifications(c.env, now);
+    const result = await c
+      .get('container')
+      .scheduledNotificationService.sendScheduledEventNotifications(now);
     return c.json(result);
   } catch (error) {
     return c.json(
@@ -143,11 +98,10 @@ app.route('/api/v1', apiV1);
 
 export default {
   fetch: app.fetch,
-  async scheduled(
-    _event: ScheduledEvent,
-    env: Bindings,
-    ctx: ExecutionContext
-  ) {
-    ctx.waitUntil(sendScheduledEventNotifications(env));
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    const container = createDIContainer(env);
+    ctx.waitUntil(
+      container.scheduledNotificationService.sendScheduledEventNotifications()
+    );
   },
 };
