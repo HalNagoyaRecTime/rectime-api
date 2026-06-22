@@ -31,3 +31,4 @@ lerna-debug.log*
 # docs
 WORK_LOG.md
 WORK_LOG_KO.md
+.github/pull_request_template.md
