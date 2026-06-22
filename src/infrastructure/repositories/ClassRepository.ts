@@ -1,10 +1,8 @@
 import { D1Database } from '@cloudflare/workers-types';
-import { ClassEntity } from '../types/domains/Class';
-import { ClassRepositoryFunctions } from '../types/repositories';
+import { ClassEntity } from '../../domain/entities/Class';
+import { IClassRepository } from '../../domain/interfaces/repositories/IClassRepository';
 
-export function createClassRepository(
-  db: D1Database
-): ClassRepositoryFunctions {
+export function createClassRepository(db: D1Database): IClassRepository {
   return {
     async findAll(): Promise<ClassEntity[]> {
       const result = await db
