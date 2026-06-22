@@ -1,10 +1,7 @@
 import { Context } from 'hono';
-import { ClassControllerFunctions } from '../types/controllers';
-import { ClassServiceFunctions } from '../types/services';
+import { IClassService } from '../../application/services/IClassService';
 
-export function createClassController(
-  classService: ClassServiceFunctions
-): ClassControllerFunctions {
+export function createClassController(classService: IClassService) {
   const getAllClasses = async (c: Context) => {
     try {
       const classes = await classService.getAllClasses();
