@@ -51,11 +51,7 @@ apiV1.get('/events/:eventId', c => {
 
 // Class routes
 apiV1.get('/classes', c => {
-  const db = getDb(c.env);
-  const classRepository = createClassRepository(db);
-  const classService = createClassService(classRepository);
-  const classController = createClassController(classService);
-  return classController.getAllClasses(c);
+  return c.get('container').classController.getAllClasses(c);
 });
 
 // Firebase token routes
