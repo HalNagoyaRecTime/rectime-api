@@ -6,7 +6,8 @@ export function createClassController(classService: IClassService) {
     try {
       const classes = await classService.getAllClasses();
       return c.json(classes);
-    } catch {
+    } catch (error) {
+      console.error(error);
       return c.json({ error: 'Failed to fetch classes' }, 500);
     }
   };
