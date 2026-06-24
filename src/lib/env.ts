@@ -6,4 +6,6 @@ export type Env = {
   FIREBASE_CLIENT_EMAIL: string;
   FIREBASE_PRIVATE_KEY: string;
   TEST_FCM_TOKEN: string;
+  NOTIFICATION_ADMIN_KEY?: string;
+  CORS_ALLOWED_ORIGINS?: string;
 };

@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
+import { adminAuthMiddleware } from './presentation/middleware/adminAuth';
+import { resolveCorsOrigin } from './presentation/middleware/cors';
 import {
   diContainerMiddleware,
   type ContainerVariables,
@@ -9,7 +11,14 @@ import {
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.use('*', cors());
+app.use(
+  '*',
+  cors({
+    origin: resolveCorsOrigin,
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Admin-Key'],
+  })
+);
 
 app.get('/', c => {
   return c.json({
@@ -54,10 +63,12 @@ apiV1.post('/firebase-tokens', c => {
 });
 
 // Notification routes
+apiV1.use('/notifications/test', adminAuthMiddleware);
 apiV1.post('/notifications/test', c => {
   return c.get('container').notificationController.sendTestNotification(c);
 });
 
+apiV1.use('/notifications/schedule/run', adminAuthMiddleware);
 apiV1.post('/notifications/schedule/run', async c => {
   try {
     const body = await c.req.json().catch(() => ({}));
