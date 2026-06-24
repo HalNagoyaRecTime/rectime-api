@@ -75,20 +75,6 @@ describe('EventRepository', () => {
     });
   });
 
-  describe('findByIdWithEntryCount', () => {
-    it('id でイベントを取得できる', async () => {
-      const target = seeded.events[1];
-      const event = await repo.findByIdWithEntryCount(target.eventId);
-
-      expect(event?.f_event_id).toBe(target.eventId);
-      expect(event?.f_event_code).toBe(target.eventCode);
-    });
-
-    it('存在しない id の場合は null を返す', async () => {
-      expect(await repo.findByIdWithEntryCount(999999)).toBeNull();
-    });
-  });
-
   describe('findByEventCode', () => {
     it('eventCode でイベントを取得できる', async () => {
       const target = seeded.events[2];

@@ -64,17 +64,6 @@ export function createEventRepository(db: D1Database): IEventRepository {
       };
     },
 
-    async findByIdWithEntryCount(id: number): Promise<EventEntity | null> {
-      // entriesが存在しないため、entryCountは使わないようにしました。
-      const result = await orm
-        .select()
-        .from(events)
-        .where(eq(events.id, id))
-        .get();
-
-      return result ? toEntity(result) : null;
-    },
-
     async findById(id: number): Promise<EventEntity | null> {
       const result = await orm
         .select()

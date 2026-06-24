@@ -7,7 +7,6 @@ export interface IEventRepository {
     limit?: number;
     offset?: number;
   }) => Promise<{ events: EventEntity[]; total: number }>;
-  findByIdWithEntryCount: (id: number) => Promise<EventEntity | null>;
   findById: (id: number) => Promise<EventEntity | null>;
   findByEventCode: (eventCode: string) => Promise<EventEntity | null>;
 }
