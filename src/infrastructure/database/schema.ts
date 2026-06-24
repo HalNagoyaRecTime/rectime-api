@@ -8,7 +8,7 @@ export const class_rooms = sqliteTable('m_class_rooms', {
 
 export const users = sqliteTable('m_users', {
   id: integer('f_users_id').primaryKey({ autoIncrement: true }),
-  classRoomId: integer('f_class_room_id').references(() => class_rooms.id),
+  classRoomId: integer('f_class_room_id').notNull().references(() => class_rooms.id),
   displayName: text('f_display_name').notNull(),
   uid: text('f_uid').notNull(),
 });
