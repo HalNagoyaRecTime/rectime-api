@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const class_rooms = sqliteTable('m_class_rooms', {
   id: integer('f_class_room_id').primaryKey({ autoIncrement: true }),
@@ -7,7 +7,7 @@ export const class_rooms = sqliteTable('m_class_rooms', {
 });
 
 export const users = sqliteTable('m_users', {
-	id: integer('f_users_id').primaryKey({ autoIncrement: true }),
+  id: integer('f_users_id').primaryKey({ autoIncrement: true }),
   classRoomId: integer('f_class_room_id').references(() => class_rooms.id),
   displayName: text('f_display_name').notNull(),
   uid: text('f_uid').notNull(),
@@ -15,7 +15,9 @@ export const users = sqliteTable('m_users', {
 
 export const student_description = sqliteTable('m_student_description', {
   id: integer('f_student_id').primaryKey({ autoIncrement: true }),
-  usersId: integer('f_users_id').notNull().references(() => users.id),
+  usersId: integer('f_users_id')
+    .notNull()
+    .references(() => users.id),
   attendanceNumber: integer('f_attendance_number').notNull(),
   studentIdNumber: text('f_student_id_number').notNull().unique(),
 });
@@ -30,4 +32,3 @@ export const events = sqliteTable('t_events', {
   gatherTime: text('f_gather_time').notNull(),
   summary: text('f_summary'),
 });
-

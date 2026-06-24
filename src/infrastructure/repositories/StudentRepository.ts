@@ -25,7 +25,7 @@ function toEntity(row: StudentJoinRow): StudentEntity {
 }
 
 export function createStudentRepository(db: D1Database): IStudentRepository {
-  const orm = drizzle(db, {schema});
+  const orm = drizzle(db, { schema });
   return {
     async findById(id: number): Promise<StudentEntity | null> {
       const result = await orm

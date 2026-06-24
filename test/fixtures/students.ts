@@ -9,10 +9,30 @@ import {
 
 // テスト専用の学生データ。マイグレーションのシードには依存しない。
 const STUDENTS = [
-  { displayName: '田中太郎', uid: '0000-0000', attendanceNumber: 1, studentIdNumber: '10000' },
-  { displayName: '佐藤花子', uid: '0000-0001', attendanceNumber: 2, studentIdNumber: '10001' },
-  { displayName: '鈴木一郎', uid: '0000-0002', attendanceNumber: 3, studentIdNumber: '10002' },
-  { displayName: '高橋次郎', uid: '0000-0003', attendanceNumber: 4, studentIdNumber: '10003' },
+  {
+    displayName: '田中太郎',
+    uid: '0000-0000',
+    attendanceNumber: 1,
+    studentIdNumber: '10000',
+  },
+  {
+    displayName: '佐藤花子',
+    uid: '0000-0001',
+    attendanceNumber: 2,
+    studentIdNumber: '10001',
+  },
+  {
+    displayName: '鈴木一郎',
+    uid: '0000-0002',
+    attendanceNumber: 3,
+    studentIdNumber: '10002',
+  },
+  {
+    displayName: '高橋次郎',
+    uid: '0000-0003',
+    attendanceNumber: 4,
+    studentIdNumber: '10003',
+  },
 ] as const;
 
 export type SeededStudent = {
@@ -50,7 +70,11 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
   for (const s of STUDENTS) {
     const [user] = await orm
       .insert(users)
-      .values({ classRoomId: classRoom.id, displayName: s.displayName, uid: s.uid })
+      .values({
+        classRoomId: classRoom.id,
+        displayName: s.displayName,
+        uid: s.uid,
+      })
       .returning();
 
     const [desc] = await orm
@@ -76,7 +100,11 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
   // description を持たない先生を1名追加（findAll の inner join で除外される）
   const [teacher] = await orm
     .insert(users)
-    .values({ classRoomId: classRoom.id, displayName: '山田先生', uid: '0000-0004' })
+    .values({
+      classRoomId: classRoom.id,
+      displayName: '山田先生',
+      uid: '0000-0004',
+    })
     .returning();
 
   return {
