@@ -2,17 +2,26 @@ import { D1Database } from '@cloudflare/workers-types';
 import { EventEntity } from '../../domain/entities/Event';
 import { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 
-function buildWhereClause(options: { eventCode?: string; time?: string }) {
+function buildWhereClause(options: {
+  eventCode?: string;
+  eventDate?: string;
+  time?: string;
+}) {
   const conditions: string[] = [];
   const params: string[] = [];
 
   if (options.eventCode) {
-    conditions.push('f_event_code = ?');
+    conditions.push('e.f_event_code = ?');
     params.push(options.eventCode);
   }
 
+  if (options.eventDate) {
+    conditions.push('e.f_event_date = ?');
+    params.push(options.eventDate);
+  }
+
   if (options.time) {
-    conditions.push('f_time = ?');
+    conditions.push('e.f_time = ?');
     params.push(options.time);
   }
 
@@ -28,6 +37,7 @@ function transformToEventEntity(raw: Record<string, unknown>): EventEntity {
     f_event_id: raw.f_event_id as number,
     f_event_code: raw.f_event_code as string,
     f_event_name: raw.f_event_name as string,
+    f_event_date: raw.f_event_date as string | null,
     f_time: raw.f_time as string,
     f_duration: raw.f_duration as string,
     f_place: raw.f_place as string,
@@ -40,6 +50,7 @@ export function createEventRepository(db: D1Database): IEventRepository {
   return {
     async findAll(options: {
       eventCode?: string;
+      eventDate?: string;
       time?: string;
       limit?: number;
       offset?: number;
@@ -63,7 +74,7 @@ export function createEventRepository(db: D1Database): IEventRepository {
         query += ` OFFSET ${options.offset}`;
       }
 
-      const countQuery = `SELECT COUNT(*) as total FROM t_events ${whereClause}`;
+      const countQuery = `SELECT COUNT(*) as total FROM t_events e ${whereClause}`;
 
       const [events, totalResult] = await Promise.all([
         db

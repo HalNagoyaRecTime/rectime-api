@@ -8,6 +8,7 @@ export function createEventService(
   return {
     async getAllEvents(options: {
       eventCode?: string;
+      eventDate?: string;
       time?: string;
       limit?: number;
       offset?: number;

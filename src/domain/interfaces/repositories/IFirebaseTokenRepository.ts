@@ -9,5 +9,8 @@ export interface IFirebaseTokenRepository {
     input: RegisterFirebaseTokenInput
   ) => Promise<RegisterFirebaseTokenResult>;
   findActiveTokensForEvent: (eventId: number) => Promise<FirebaseTokenEntity[]>;
+  findActiveTokensForEvents: (
+    eventIds: number[]
+  ) => Promise<Map<number, FirebaseTokenEntity[]>>;
   deactivate: (id: number) => Promise<void>;
 }

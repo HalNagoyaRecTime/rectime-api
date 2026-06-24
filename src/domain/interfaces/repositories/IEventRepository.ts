@@ -3,6 +3,7 @@ import { EventEntity } from '../../entities/Event';
 export interface IEventRepository {
   findAll: (options: {
     eventCode?: string;
+    eventDate?: string;
     time?: string;
     limit?: number;
     offset?: number;

@@ -147,6 +147,45 @@ export function createFirebaseTokenRepository(
       return result.results.map(toFirebaseTokenEntity);
     },
 
+    async findActiveTokensForEvents(
+      eventIds: number[]
+    ): Promise<Map<number, FirebaseTokenEntity[]>> {
+      if (eventIds.length === 0) {
+        return new Map();
+      }
+
+      const placeholders = eventIds.map(() => '?').join(', ');
+      const result = await db
+        .prepare(
+          `
+          SELECT e.f_event_id, ft.*
+          FROM t_entries e
+          INNER JOIN m_student_description sd
+            ON sd.f_student_id = e.f_student_id
+          INNER JOIN users u
+            ON u.student_number = sd.f_student_id_number
+          INNER JOIN firebase_tokens ft
+            ON ft.user_id = u.id
+          WHERE e.f_event_id IN (${placeholders})
+            AND ft.is_active = 1
+            AND u.is_active = 1
+          ORDER BY e.f_event_id, ft.id
+          `
+        )
+        .bind(...eventIds)
+        .all<Record<string, unknown>>();
+
+      const tokensByEventId = new Map<number, FirebaseTokenEntity[]>();
+      for (const row of result.results) {
+        const eventId = row.f_event_id as number;
+        const tokens = tokensByEventId.get(eventId) ?? [];
+        tokens.push(toFirebaseTokenEntity(row));
+        tokensByEventId.set(eventId, tokens);
+      }
+
+      return tokensByEventId;
+    },
+
     async deactivate(id: number): Promise<void> {
       await db
         .prepare(

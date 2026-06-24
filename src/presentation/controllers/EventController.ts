@@ -5,12 +5,14 @@ export function createEventController(eventService: IEventService) {
   const getAllEvents = async (c: Context) => {
     try {
       const eventCode = c.req.query('f_event_code');
+      const eventDate = c.req.query('f_event_date');
       const time = c.req.query('f_time');
       const limit = c.req.query('limit');
       const offset = c.req.query('offset');
 
       const result = await eventService.getAllEvents({
         eventCode,
+        eventDate,
         time,
         limit: limit ? parseInt(limit) : undefined,
         offset: offset ? parseInt(offset) : undefined,

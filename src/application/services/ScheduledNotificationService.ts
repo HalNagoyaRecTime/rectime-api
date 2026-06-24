@@ -19,23 +19,29 @@ export function createScheduledNotificationService(deps: {
 
   return {
     async sendScheduledEventNotifications(now = new Date()) {
-      const targetTime = getJstHmm(addMinutes(now, 10));
-      const today = getJstDate(now);
-      const { events } = await eventRepository.findAll({ time: targetTime });
+      const targetAt = addMinutes(now, 10);
+      const targetTime = getJstHmm(targetAt);
+      const targetDate = getJstDate(targetAt);
+      const { events } = await eventRepository.findAll({
+        eventDate: targetDate,
+        time: targetTime,
+      });
+      const tokensByEventId =
+        await firebaseTokenRepository.findActiveTokensForEvents(
+          events.map(event => event.f_event_id)
+        );
       let sent = 0;
       let failed = 0;
 
       for (const event of events) {
-        const tokens = await firebaseTokenRepository.findActiveTokensForEvent(
-          event.f_event_id
-        );
+        const tokens = tokensByEventId.get(event.f_event_id) ?? [];
 
         for (const token of tokens) {
           const alreadySent =
             await notificationSendLogRepository.hasAlreadySent({
               eventId: event.f_event_id,
               firebaseTokenId: token.id,
-              scheduledForDate: today,
+              scheduledForDate: targetDate,
             });
 
           if (alreadySent) {
@@ -56,7 +62,7 @@ export function createScheduledNotificationService(deps: {
             await notificationSendLogRepository.record({
               eventId: event.f_event_id,
               firebaseTokenId: token.id,
-              scheduledForDate: today,
+              scheduledForDate: targetDate,
               messageId: result.messageId,
             });
             sent += 1;
