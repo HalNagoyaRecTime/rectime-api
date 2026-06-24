@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { createStudentRepository } from './StudentRepository';
 import type { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 
-// NOTE: テストは migrations/0003_update_student_schema.sql のシードデータに依存する。
+// NOTE: テストは migrations/0004_update_student_schema.sql のシードデータに依存する。
 //   m_users / m_student_description に学生4件（先生1名は description 無しで除外）。
 describe('StudentRepository', () => {
   let repo: IStudentRepository;
