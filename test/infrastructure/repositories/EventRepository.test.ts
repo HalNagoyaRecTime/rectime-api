@@ -1,11 +1,8 @@
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createEventRepository } from './EventRepository';
-import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
-import {
-  seedEvents,
-  type SeededEventData,
-} from '../../../test/fixtures/events';
+import { createEventRepository } from '../../../src/infrastructure/repositories/EventRepository';
+import type { IEventRepository } from '../../../src/domain/interfaces/repositories/IEventRepository';
+import { seedEvents, type SeededEventData } from '../../fixtures/events';
 
 describe('EventRepository', () => {
   let repo: IEventRepository;

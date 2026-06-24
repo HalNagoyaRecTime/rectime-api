@@ -1,8 +1,8 @@
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createStudentRepository } from './StudentRepository';
-import type { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
-import { seedStudents, type SeededData } from '../../../test/fixtures/students';
+import { createStudentRepository } from '../../../src/infrastructure/repositories/StudentRepository';
+import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
+import { seedStudents, type SeededData } from '../../fixtures/students';
 
 describe('StudentRepository', () => {
   let repo: IStudentRepository;
