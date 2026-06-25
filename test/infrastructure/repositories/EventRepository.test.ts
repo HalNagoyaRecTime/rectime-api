@@ -48,6 +48,15 @@ describe('EventRepository', () => {
       expect(result.total).toBe(seeded.events.length);
       expect(result.events).toHaveLength(2);
     });
+
+    it('limit: 0 のときは 0 件返す（total は全件数のまま）', async () => {
+      const result = await repo.findAll({ limit: 0 });
+
+      // SQL の LIMIT 0 は「0 件返す」が正しい挙動。
+      // `if (options.limit)` だと 0 が falsy 扱いされ、LIMIT が付かず全件返ってしまう。
+      expect(result.events).toHaveLength(0);
+      expect(result.total).toBe(seeded.events.length);
+    });
   });
 
   describe('findById', () => {
