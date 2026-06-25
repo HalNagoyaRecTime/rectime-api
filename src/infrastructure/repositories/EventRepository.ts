@@ -46,7 +46,7 @@ export function createEventRepository(db: D1Database): IEventRepository {
         .orderBy(asc(events.time))
         .$dynamic();
 
-      if (options.limit) {
+      if (options.limit !== undefined) {
         query = query.limit(options.limit);
       }
       if (options.offset) {
