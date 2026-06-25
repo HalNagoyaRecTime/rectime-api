@@ -13,7 +13,7 @@ export default [
         ecmaVersion: 2022,
         sourceType: 'module',
         projectService: {
-          allowDefaultProject: ['*.config.ts'], 
+          allowDefaultProject: ['*.config.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },
