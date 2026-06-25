@@ -10,9 +10,14 @@ import {
 const app = new Hono<{ Bindings: Env }>();
 
 app.use('*', (c, next) => {
-  const origins = (c.env.ALLOWED_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+  const origins = (c.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
   if (origins.length === 0) {
-    console.warn('[CORS] ALLOWED_ORIGINS is not set — all cross-origin requests will be blocked');
+    console.warn(
+      '[CORS] ALLOWED_ORIGINS is not set — all cross-origin requests will be blocked'
+    );
   }
   return cors({
     origin: origin => (origins.includes(origin) ? origin : null),
