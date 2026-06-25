@@ -12,6 +12,10 @@ export default [
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: 'module',
+        projectService: {
+          allowDefaultProject: ['*.config.ts'],
+        },
+        tsconfigRootDir: import.meta.dirname,
       },
       globals: {
         atob: 'readonly',
@@ -32,6 +36,7 @@ export default [
     },
     rules: {
       ...tseslint.configs.recommended.rules,
+      '@typescript-eslint/no-deprecated': 'error', // no-deprecatedを有効に
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_' },
