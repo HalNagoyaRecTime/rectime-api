@@ -23,6 +23,8 @@ app.use('*', (c, next) => {
   })(c, next);
 });
 
+app.get('/health', c => c.json({ status: 'ok' }));
+
 app.get('/', c => {
   return c.json({
     message: 'rectime_be',
