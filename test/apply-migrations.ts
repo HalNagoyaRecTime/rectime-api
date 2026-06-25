@@ -1,4 +1,5 @@
-import { applyD1Migrations, env } from 'cloudflare:test';
+import { applyD1Migrations } from 'cloudflare:test';
+import { env } from 'cloudflare:workers';
 import { beforeAll } from 'vitest';
 
 // 各テストファイルの実行前に、テスト用 D1 へ migrations/ を適用する
