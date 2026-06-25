@@ -1,5 +1,6 @@
 import { Context } from 'hono';
 import { IScheduleService } from '../../application/services/IScheduleService';
+import { ScheduleNotFoundError } from '../../domain/errors/ScheduleNotFoundError';
 
 export function createScheduleController(scheduleService: IScheduleService) {
   const getAllSchedules = async (c: Context) => {
@@ -32,7 +33,7 @@ export function createScheduleController(scheduleService: IScheduleService) {
       const schedule = await scheduleService.getScheduleById(id);
       return c.json(schedule);
     } catch (error) {
-      if (error instanceof Error && error.message === 'Schedule not found') {
+      if (error instanceof ScheduleNotFoundError) {
         return c.json(
           { error: 'Schedule not found', code: 'SCHEDULE_NOT_FOUND' },
           404

@@ -50,7 +50,7 @@ export function createDIContainer(env: Env) {
     fcmService,
   });
 
-  // Schedule (dummy data - no DB dependency)
+  // TODO: replace with DB-backed implementation
   const scheduleRepository = createScheduleRepository();
   const scheduleService = createScheduleService(scheduleRepository);
 
