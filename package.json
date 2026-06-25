@@ -5,11 +5,11 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --env development",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
-    "db:migrate --remote": "wrangler d1 migrations apply rec_time_stg --remote",
-    "db:migrate --local": "wrangler d1 migrations apply rec_time_stg --local",
+    "db:migrate --remote": "wrangler d1 migrations apply rectime-api --remote",
+    "db:migrate --local": "wrangler d1 migrations apply rectime-api-dev --local --env development",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "format:fix": "prettier --write .",

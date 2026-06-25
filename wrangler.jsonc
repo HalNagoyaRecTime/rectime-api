@@ -1,12 +1,50 @@
 {
-  "name": "recreation-management-api",
-  "compatibility_date": "2026-05-25",
+  "name": "rectime-api",
+  "account_id": "539494518db0c8b96ec2f6fdd30fb990",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
   "main": "src/index.ts",
+  "vars": {
+    "NODE_ENV": "production",
+  },
+  "triggers": {
+    "crons": ["* * * * *"],
+  },
+  "env": {
+    "default": {
+      "vars": {
+        "NODE_ENV": "development",
+        "PORT": "8787",
+        "HOST": "0.0.0.0",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "rectime-api-dev",
+          "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
+        },
+      ],
+    },
+    "development": {
+      "vars": {
+        "NODE_ENV": "development",
+        "PORT": "8787",
+        "HOST": "0.0.0.0",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "rectime-api-dev",
+          "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
+        },
+      ],
+    },
+  },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "rec_time_stg",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_name": "rectime-api",
+      "database_id": "f031b887-a3a2-41f1-8c54-5ccdd323fcbb",
     },
   ],
 }
