@@ -49,7 +49,7 @@ export function createEventRepository(db: D1Database): IEventRepository {
       if (options.limit !== undefined) {
         query = query.limit(options.limit);
       }
-      if (options.offset) {
+      if (options.offset !== undefined) {
         query = query.offset(options.offset);
       }
 

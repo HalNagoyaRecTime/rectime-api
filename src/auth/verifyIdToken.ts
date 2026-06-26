@@ -112,9 +112,6 @@ export async function verifyIdToken(
   if (payload.exp < now - clockSkew) throw new Error('INVALID_ID_TOKEN');
   if (payload.iat > now + clockSkew) throw new Error('INVALID_ID_TOKEN');
   if (payload.aud !== clientId) throw new Error('INVALID_ID_TOKEN');
-  if (payload.iss !== `https://login.microsoftonline.com/${payload.tid}/v2.0`) {
-    throw new Error('INVALID_ID_TOKEN');
-  }
   const allowedTenants = (allowedMicrosoftTenants ?? '')
     .split(',')
     .map(tenant => tenant.trim())
@@ -124,14 +121,30 @@ export async function verifyIdToken(
     normalizedMicrosoftTenant === '' ||
     normalizedMicrosoftTenant === 'common' ||
     normalizedMicrosoftTenant === 'organizations';
+  // テナントをコンフィグ値で先に検証し、そのテナントに対して発行者URLを照合する
+  // payload.tid を先に使うと発行者チェックが循環してしまうため順序を入れ替えた
   if (allowedTenants.length > 0) {
     if (!allowedTenants.includes(payload.tid)) {
       throw new Error('INVALID_ID_TOKEN');
     }
+    if (
+      payload.iss !==
+      `https://login.microsoftonline.com/${payload.tid}/v2.0`
+    ) {
+      throw new Error('INVALID_ID_TOKEN');
+    }
   } else if (tenantAllowsAny) {
     throw new Error('INVALID_ID_TOKEN');
-  } else if (payload.tid !== normalizedMicrosoftTenant) {
-    throw new Error('INVALID_ID_TOKEN');
+  } else {
+    if (payload.tid !== normalizedMicrosoftTenant) {
+      throw new Error('INVALID_ID_TOKEN');
+    }
+    if (
+      payload.iss !==
+      `https://login.microsoftonline.com/${normalizedMicrosoftTenant}/v2.0`
+    ) {
+      throw new Error('INVALID_ID_TOKEN');
+    }
   }
   if (payload.nonce !== nonce) throw new Error('INVALID_ID_TOKEN');
 
