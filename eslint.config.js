@@ -28,6 +28,7 @@ export default [
         ExecutionContext: 'readonly',
         Response: 'readonly',
         ScheduledEvent: 'readonly',
+        TextDecoder: 'readonly',
         TextEncoder: 'readonly',
         URL: 'readonly',
         URLSearchParams: 'readonly',
