@@ -5,7 +5,8 @@ export type Bindings = {
   AUTH_KV: KVNamespace;
   ALLOWED_ORIGINS: string;
   MICROSOFT_CLIENT_ID: string;
-  MICROSOFT_CLIENT_SECRET: string;
+  MICROSOFT_CLIENT_PRIVATE_KEY: string;
+  MICROSOFT_CERT_THUMBPRINT: string;
   MICROSOFT_TENANT: string;
   ALLOWED_MICROSOFT_TENANTS?: string;
   MICROSOFT_REDIRECT_URI: string;

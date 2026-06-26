@@ -4,7 +4,12 @@ import type { Env as Bindings } from '../lib/env';
 import { base64URLtoBytes } from './base64url';
 import { generateRandom, generateCodeChallenge } from './pkce';
 import { verifyIdToken, type IdTokenClaims } from './verifyIdToken';
-import { signMobileJwt, verifyMobileJwt, type MobileJwtClaims } from './jwt';
+import {
+  createClientAssertion,
+  signMobileJwt,
+  verifyMobileJwt,
+  type MobileJwtClaims,
+} from './jwt';
 import {
   createSession,
   getSession,
@@ -138,14 +143,24 @@ function buildMicrosoftAuthorizeUrl(
 async function exchangeMicrosoftToken(
   c: AppContext,
   params: Record<string, string>,
-  options?: { includeClientSecret?: boolean }
+  options?: { includeClientAssertion?: boolean }
 ): Promise<MicrosoftTokenResponse | null> {
   const body = new URLSearchParams({
     client_id: c.env.MICROSOFT_CLIENT_ID,
     ...params,
   });
-  if (options?.includeClientSecret !== false) {
-    body.set('client_secret', c.env.MICROSOFT_CLIENT_SECRET);
+  if (options?.includeClientAssertion !== false) {
+    const assertion = await createClientAssertion(
+      c.env.MICROSOFT_CLIENT_ID,
+      c.env.MICROSOFT_TENANT,
+      c.env.MICROSOFT_CLIENT_PRIVATE_KEY,
+      c.env.MICROSOFT_CERT_THUMBPRINT
+    );
+    body.set('client_assertion', assertion);
+    body.set(
+      'client_assertion_type',
+      'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+    );
   }
 
   const tokenRes = await fetch(
@@ -191,7 +206,7 @@ async function saveSession(
 async function refreshMicrosoftAccessToken(
   c: AppContext,
   refreshToken: string,
-  options?: { includeClientSecret?: boolean }
+  options?: { includeClientAssertion?: boolean }
 ): Promise<MicrosoftTokenResponse | null> {
   return exchangeMicrosoftToken(
     c,
@@ -507,7 +522,7 @@ auth.post('/microsoft/token', async c => {
       redirect_uri: c.env.MICROSOFT_MOBILE_REDIRECT_URI,
       code_verifier: body.code_verifier,
     },
-    { includeClientSecret: false }
+    { includeClientAssertion: false }
   );
   if (!tokens?.id_token || !tokens.refresh_token) {
     return errorResponse(
@@ -730,7 +745,7 @@ auth.get('/me/photo', async c => {
   }
 
   const tokens = await refreshMicrosoftAccessToken(c, msRefreshToken, {
-    includeClientSecret: clientType === 'web',
+    includeClientAssertion: clientType === 'web',
   });
 
   if (!tokens?.access_token) {
@@ -970,7 +985,7 @@ auth.post('/refresh', async c => {
     c,
     refresh.ms_refresh_token,
     {
-      includeClientSecret: false,
+      includeClientAssertion: false,
     }
   );
   if (!tokens?.refresh_token) {

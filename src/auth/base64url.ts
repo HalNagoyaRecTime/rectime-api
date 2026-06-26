@@ -49,3 +49,13 @@ export function utf8BytesToString(bytes: Uint8Array): string {
 export function base64URLtoString(value: string): string {
   return utf8BytesToString(base64URLtoBytes(value));
 }
+
+export function pemToBytes(pem: string): Uint8Array {
+  const base64 = pem.replace(/-----[^-]+-----/g, '').replace(/\s/g, '');
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}

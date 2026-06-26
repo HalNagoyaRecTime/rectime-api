@@ -1,4 +1,9 @@
-import { base64URLtoBytes, base64URLtoString, toBase64URL } from './base64url';
+import {
+  base64URLtoBytes,
+  base64URLtoString,
+  pemToBytes,
+  toBase64URL,
+} from './base64url';
 
 async function importHmacKey(
   secret: string,
@@ -53,6 +58,48 @@ export async function signMobileJwt(
   const key = await importHmacKey(secret, ['sign']);
   const signature = await crypto.subtle.sign(
     'HMAC',
+    key,
+    new TextEncoder().encode(data)
+  );
+
+  return `${data}.${toBase64URL(new Uint8Array(signature))}`;
+}
+
+export async function createClientAssertion(
+  clientId: string,
+  tenant: string,
+  privateKeyPem: string,
+  thumbprint: string
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToBytes(privateKeyPem),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'RS256', typ: 'JWT', x5t: thumbprint };
+  const payload = {
+    iss: clientId,
+    sub: clientId,
+    aud: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,
+    jti: crypto.randomUUID(),
+    nbf: now,
+    exp: now + 60,
+  };
+
+  const headerB64 = toBase64URL(
+    new TextEncoder().encode(JSON.stringify(header))
+  );
+  const payloadB64 = toBase64URL(
+    new TextEncoder().encode(JSON.stringify(payload))
+  );
+  const data = `${headerB64}.${payloadB64}`;
+
+  const signature = await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5',
     key,
     new TextEncoder().encode(data)
   );
