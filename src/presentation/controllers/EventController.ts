@@ -45,7 +45,6 @@ export function createEventController(eventService: IEventService) {
         );
       }
 
-
       const event = await eventService.getEventById(id);
       return c.json(event);
     } catch (error) {

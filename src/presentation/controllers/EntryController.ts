@@ -21,7 +21,6 @@ export function createEntryController(entryService: IEntryService) {
         return c.json({ error: 'Invalid entry ID' }, 400);
       }
 
-
       const entry = await entryService.getEntryById(id);
       return c.json(entry);
     } catch (error) {
