@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { authRouter } from './auth/router';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
 import {
@@ -22,7 +23,13 @@ app.use('*', (c, next) => {
   return cors({
     origin: origin => (origins.includes(origin) ? origin : null),
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Client-Type',
+      'X-PKCE-Code-Challenge',
+      'X-State',
+    ],
     credentials: true,
     maxAge: 600,
   })(c, next);
@@ -32,7 +39,7 @@ app.get('/health', c => c.json({ status: 'ok' }));
 
 app.get('/', c => {
   return c.json({
-    message: 'rectime_be',
+    message: 'Rectime API',
     version: '1.0.0',
   });
 });
@@ -98,6 +105,9 @@ apiV1.post('/notifications/schedule/run', async c => {
     );
   }
 });
+
+// Auth routes
+apiV1.route('/auth', authRouter);
 
 // Mount API v1
 app.route('/api/v1', apiV1);
