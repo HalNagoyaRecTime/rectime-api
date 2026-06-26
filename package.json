@@ -6,7 +6,6 @@
   },
   "scripts": {
     "dev": "wrangler dev --env development",
-    "dev:wrangler": "wrangler dev --ip 0.0.0.0",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate --remote": "wrangler d1 migrations apply rectime-api --remote",
@@ -14,9 +13,6 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "format:fix": "prettier --write .",
-    "check": "npm run format:check && npm run lint && npm run type-check",
-    "hooks:install": "git config core.hooksPath .githooks",
-    "prepare": "npm run hooks:install",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
