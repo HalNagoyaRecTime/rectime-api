@@ -26,5 +26,8 @@ lerna-debug.log*
 
 # misc
 .DS_Store
+
+# certificates
+*.pem
 WORK_LOG.md
 WORK_LOG_KO.md
