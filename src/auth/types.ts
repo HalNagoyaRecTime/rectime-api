@@ -43,8 +43,7 @@ export interface MobileRefreshEntry {
 }
 
 export const BASE64_URL_PATTERN = /^[A-Za-z0-9_-]+$/;
-export const MICROSOFT_SCOPES =
-  'openid profile email offline_access User.Read';
+export const MICROSOFT_SCOPES = 'openid profile email offline_access User.Read';
 export const ACCOUNT_PHOTO_PATH = '/api/v1/auth/me/photo';
 export const GRAPH_ME_PHOTO_URL =
   'https://graph.microsoft.com/v1.0/me/photo/$value';

@@ -1,10 +1,6 @@
 import { Hono } from 'hono';
 import type { Env as Bindings } from '../../lib/env';
-import {
-  verifyMobileJwt,
-  signMobileJwt,
-  type MobileJwtClaims,
-} from '../jwt';
+import { verifyMobileJwt, signMobileJwt, type MobileJwtClaims } from '../jwt';
 import {
   getSession,
   deleteSession,

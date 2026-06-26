@@ -16,7 +16,11 @@ import {
   upsertUser,
   userResponse,
 } from '../helpers';
-import { type PkceEntry, type MobileRefreshEntry, ACCOUNT_PHOTO_PATH } from '../types';
+import {
+  type PkceEntry,
+  type MobileRefreshEntry,
+  ACCOUNT_PHOTO_PATH,
+} from '../types';
 
 const microsoftRouter = new Hono<{ Bindings: Bindings }>();
 
@@ -301,11 +305,9 @@ microsoftRouter.post('/token', async c => {
     } satisfies MobileRefreshEntry),
     { expirationTtl: refreshTtl }
   );
-  await c.env.AUTH_KV.put(
-    `mobile_refresh_by_user:${user.id}`,
-    refreshTokenId,
-    { expirationTtl: refreshTtl }
-  );
+  await c.env.AUTH_KV.put(`mobile_refresh_by_user:${user.id}`, refreshTokenId, {
+    expirationTtl: refreshTtl,
+  });
 
   const jwtTtl = getNumberEnv(c.env.JWT_EXPIRES_SEC, 3600);
   const accessToken = await signMobileJwt(
