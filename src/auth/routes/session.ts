@@ -65,13 +65,19 @@ sessionRouter.post('/logout', async c => {
     await deleteSession(c.env.AUTH_KV, sessionId);
   }
 
-  return new Response(JSON.stringify({ message: 'Logged out successfully' }), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      'Set-Cookie': clearSessionCookie(shouldUseSecureCookie(c)),
-    },
-  });
+  const postLogoutRedirectUri = `${c.env.FRONTEND_URL}/login`;
+  const msLogoutUrl = `https://login.microsoftonline.com/${c.env.MICROSOFT_TENANT}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
+
+  return new Response(
+    JSON.stringify({ message: 'Logged out successfully', ms_logout_url: msLogoutUrl }),
+    {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Set-Cookie': clearSessionCookie(shouldUseSecureCookie(c)),
+      },
+    }
+  );
 });
 
 sessionRouter.post('/refresh', async c => {
