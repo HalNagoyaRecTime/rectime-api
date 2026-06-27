@@ -19,6 +19,8 @@ app.get('/', c => {
       students: '/api/v1/students/{studentId}',
       events: '/api/v1/events',
       classes: '/api/v1/classes',
+      schedules: '/api/v1/schedules',
+      scheduleDetail: '/api/v1/schedules/{scheduleId}',
       firebaseTokens: '/api/v1/firebase-tokens',
       testNotification: '/api/v1/notifications/test',
       runScheduledNotifications: '/api/v1/notifications/schedule/run',
@@ -52,6 +54,15 @@ apiV1.get('/events/:eventId', c => {
 // Class routes
 apiV1.get('/classes', c => {
   return c.get('container').classController.getAllClasses(c);
+});
+
+// Schedule routes
+apiV1.get('/schedules', c => {
+  return c.get('container').scheduleController.getAllSchedules(c);
+});
+
+apiV1.get('/schedules/:scheduleId', c => {
+  return c.get('container').scheduleController.getScheduleById(c);
 });
 
 // Firebase token routes
