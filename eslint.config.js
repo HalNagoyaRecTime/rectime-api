@@ -27,7 +27,11 @@ export default [
         process: 'readonly',
         ExecutionContext: 'readonly',
         ScheduledEvent: 'readonly',
+        TextDecoder: 'readonly',
         TextEncoder: 'readonly',
+        Request: 'readonly',
+        Response: 'readonly',
+        URL: 'readonly',
         URLSearchParams: 'readonly',
       },
     },
@@ -36,7 +40,8 @@ export default [
     },
     rules: {
       ...tseslint.configs.recommended.rules,
-      '@typescript-eslint/no-deprecated': 'error', // no-deprecatedを有効に
+      'no-undef': 'off',
+      '@typescript-eslint/no-deprecated': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_' },
@@ -50,12 +55,6 @@ export default [
     },
   },
   prettier,
-  {
-    files: ['test/**/*.ts'],
-    rules: {
-      '@typescript-eslint/no-deprecated': 'off',
-    },
-  },
   {
     ignores: ['node_modules/', 'dist/', '.wrangler/', 'migrations/'],
   },
