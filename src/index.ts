@@ -102,6 +102,8 @@ apiV1.post('/notifications/schedule/run', async c => {
 // Mount API v1
 app.route('/api/v1', apiV1);
 
+export { app };
+
 export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
