@@ -51,6 +51,12 @@ export default [
   },
   prettier,
   {
+    files: ['test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-deprecated': 'off',
+    },
+  },
+  {
     ignores: ['node_modules/', 'dist/', '.wrangler/', 'migrations/'],
   },
 ];
