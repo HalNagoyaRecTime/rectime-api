@@ -2,7 +2,7 @@ import { IScheduleRepository } from '../../domain/interfaces/repositories/ISched
 import { ScheduleEntity } from '../../domain/entities/Schedule';
 
 // 手順1用のダミーデータ。手順4で D1 から取得する実装に差し替える。
-// migrations/0008_create_and_seed_schedules.sql の seed と内容を一致させること。
+// 0009のマイグレーションで作成したダミーデータと内容を一致済
 const DUMMY_SCHEDULES: ScheduleEntity[] = [
   {
     f_schedule_id: 1,

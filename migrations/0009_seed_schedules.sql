@@ -1,4 +1,4 @@
--- 予定データ（seed）。ScheduleRepository.ts のダミーデータと内容を一致させること。
+-- 予定データ（seed）。ScheduleRepository.ts のダミーデータと内容を一致済
 INSERT INTO m_schedules (f_schedule_type, f_name, f_description, f_start_time, f_end_time, f_location, f_order) VALUES
   ('ceremony',    '開会式',         'レク大会の開会を宣言するセレモニーです。',                   '09:00', '09:30', 'メインアリーナ', 1),
   ('competition', '綱引き',         'チーム対抗の綱引き競技です。各チームから10名が参加します。', '09:45', '10:30', 'グラウンド A',   2),
