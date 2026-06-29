@@ -1,17 +1,7 @@
 import type { KVNamespace } from '@cloudflare/workers-types';
+import type { Session } from '../../domain/auth/types';
 
-export interface Session {
-  user_id: string;
-  oid: string;
-  tid: string;
-  sub: string;
-  email: string;
-  display_name: string;
-  avatar_url?: string | null;
-  avatar_updated_at?: string | null;
-  ms_refresh_token?: string;
-  expires_at: string;
-}
+export type { Session };
 
 export async function createSession(
   kv: KVNamespace,

@@ -55,7 +55,6 @@ async function getPublicKey(kv: KVNamespace, kid: string): Promise<CryptoKey> {
   let jwk = keys.find(k => k.kid === kid);
 
   if (!jwk) {
-    // kidが見つからない場合はキャッシュを無効化して再取得
     await kv.delete(JWKS_CACHE_KEY);
     keys = await fetchJWKS(kv);
     jwk = keys.find(k => k.kid === kid);

@@ -1,15 +1,4 @@
-import type { Context } from 'hono';
-import type { Env as Bindings } from '../lib/env';
-
-export type AppContext = Context<{ Bindings: Bindings }>;
 export type ClientType = 'web' | 'mobile';
-
-export interface PkceEntry {
-  code_verifier?: string;
-  nonce: string;
-  client_type: ClientType;
-  created_at: string;
-}
 
 export interface AppUser {
   id: string;
@@ -20,12 +9,32 @@ export interface AppUser {
   display_name: string;
 }
 
+export interface PkceEntry {
+  code_verifier?: string;
+  nonce: string;
+  client_type: ClientType;
+  created_at: string;
+}
+
 export interface MicrosoftTokenResponse {
   access_token?: string;
   id_token?: string;
   refresh_token?: string;
   error?: string;
   error_description?: string;
+}
+
+export interface Session {
+  user_id: string;
+  oid: string;
+  tid: string;
+  sub: string;
+  email: string;
+  display_name: string;
+  avatar_url?: string | null;
+  avatar_updated_at?: string | null;
+  ms_refresh_token?: string;
+  expires_at: string;
 }
 
 export interface MobileRefreshEntry {
