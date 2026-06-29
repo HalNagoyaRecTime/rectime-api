@@ -32,6 +32,13 @@ export function createScheduleController(scheduleService: IScheduleService) {
 
       const id = Number(scheduleIdParam);
 
+      if (Number.isSafeInteger(id) === false) {
+        return c.json(
+          { error: 'Invalid schedule ID', code: 'INVALID_SCHEDULE_ID' },
+          400
+        );
+      }
+
       const schedule = await scheduleService.getScheduleById(id);
       return c.json(schedule);
     } catch (error) {
