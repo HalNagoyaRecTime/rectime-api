@@ -36,7 +36,7 @@ const DUMMY_SCHEDULES: ScheduleEntity[] = [
   },
   {
     f_schedule_id: 4,
-    f_schedule_type: 'performance',
+    f_schedule_type: 'other',
     f_name: 'パフォーマンス',
     f_description: 'パフォーマンスを行います。',
     f_start_time: '11:15',
