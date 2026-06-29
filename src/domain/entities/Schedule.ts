@@ -1,7 +1,6 @@
 export type ScheduleType =
   | 'ceremony'
   | 'competition'
-  | 'performance'
   | 'break'
   | 'other';
 
