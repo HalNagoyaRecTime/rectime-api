@@ -9,21 +9,34 @@ import {
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.use('*', cors());
+let corsWarnLogged = false;
+
+app.use('*', (c, next) => {
+  const origins = (c.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (origins.length === 0 && !corsWarnLogged) {
+    console.warn(
+      '[CORS] ALLOWED_ORIGINS is not set — all cross-origin requests will be blocked'
+    );
+    corsWarnLogged = true;
+  }
+  return cors({
+    origin: origin => (origins.includes(origin) ? origin : null),
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+    maxAge: 600,
+  })(c, next);
+});
+
+app.get('/health', c => c.json({ status: 'ok' }));
 
 app.get('/', c => {
   return c.json({
-    message: 'Recreation Management API - Four Layer Architecture',
+    message: 'rectime_be',
     version: '1.0.0',
-    endpoints: {
-      students: '/api/v1/students/{studentId}',
-      events: '/api/v1/events',
-      classes: '/api/v1/classes',
-      firebaseTokens: '/api/v1/firebase-tokens',
-      testNotification: '/api/v1/notifications/test',
-      runScheduledNotifications: '/api/v1/notifications/schedule/run',
-    },
-    swagger: '/swagger.yml',
   });
 });
 
@@ -91,6 +104,8 @@ apiV1.post('/notifications/schedule/run', async c => {
 
 // Mount API v1
 app.route('/api/v1', apiV1);
+
+export { app };
 
 export default {
   fetch: app.fetch,
