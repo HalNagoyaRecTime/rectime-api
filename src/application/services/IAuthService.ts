@@ -1,4 +1,8 @@
-import type { AppUser, Session, MicrosoftClaims } from '../../domain/auth/types';
+import type {
+  AppUser,
+  Session,
+  MicrosoftClaims,
+} from '../../domain/auth/types';
 
 export type { MicrosoftClaims };
 
