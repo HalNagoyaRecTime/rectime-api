@@ -2,6 +2,9 @@ import { createClientAssertion } from './jwt';
 import type { MicrosoftTokenResponse } from '../../domain/auth/types';
 import { MICROSOFT_SCOPES } from '../../domain/auth/types';
 
+export const GRAPH_ME_PHOTO_URL =
+  'https://graph.microsoft.com/v1.0/me/photo/$value';
+
 export function buildMicrosoftAuthorizeUrl(
   clientId: string,
   tenant: string,

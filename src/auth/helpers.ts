@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import type { Env as Bindings } from '../lib/env';
 import { base64URLtoBytes } from '../infrastructure/auth/base64url';
-import { BASE64_URL_PATTERN } from '../domain/auth/types';
+import { BASE64_URL_PATTERN, ACCOUNT_PHOTO_PATH } from '../domain/auth/types';
 
 export type AppContext = Context<{ Bindings: Bindings }>;
 
@@ -55,4 +55,20 @@ export function hasMinimumDecodedBytes(
   } catch {
     return false;
   }
+}
+
+export function userResponse(user: {
+  id: string;
+  email: string;
+  display_name: string;
+  avatar_url?: string | null;
+  avatar_updated_at?: string | null;
+}) {
+  return {
+    id: user.id,
+    email: user.email,
+    display_name: user.display_name,
+    avatar_url: user.avatar_url ?? ACCOUNT_PHOTO_PATH,
+    avatar_updated_at: user.avatar_updated_at ?? null,
+  };
 }
