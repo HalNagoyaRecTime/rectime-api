@@ -51,6 +51,15 @@ export interface MobileRefreshEntry {
   updated_at?: string;
 }
 
+export interface MicrosoftClaims {
+  oid: string;
+  tid: string;
+  sub: string;
+  name?: string;
+  preferred_username?: string;
+  email?: string;
+}
+
 export const BASE64_URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 export const MICROSOFT_SCOPES = 'openid profile email offline_access User.Read';
 export const ACCOUNT_PHOTO_PATH = '/api/v1/auth/me/photo';

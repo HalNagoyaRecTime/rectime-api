@@ -48,18 +48,12 @@ export function createUserRepository(db: D1Database): IUserRepository {
     async updateUser({ userId, oid, tid, sub, email, displayName, uid }) {
       const now = new Date().toISOString();
 
-      await db.batch([
-        db
-          .prepare(
-            'UPDATE users SET display_name = ?, uid = ?, updated_at = ? WHERE user_id = ?'
-          )
-          .bind(displayName, uid, now, userId),
-        db
-          .prepare(
-            'UPDATE microsoft_account_links SET oid = ?, tid = ? WHERE user_id = ?'
-          )
-          .bind(oid, tid, userId),
-      ]);
+      await db
+        .prepare(
+          'UPDATE users SET display_name = ?, uid = ?, updated_at = ? WHERE user_id = ?'
+        )
+        .bind(displayName, uid, now, userId)
+        .run();
 
       return { id: userId, oid, tid, sub, email, display_name: displayName };
     },

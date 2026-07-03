@@ -58,8 +58,9 @@ export function createAuthService(
     },
 
     async saveSession(sessionId: string, session: Session) {
+      const ttl = getSessionTtlSeconds(session.expires_at);
       await kv.put(`session:${sessionId}`, JSON.stringify(session), {
-        expirationTtl: getSessionTtlSeconds(session.expires_at),
+        expirationTtl: ttl,
       });
     },
   };

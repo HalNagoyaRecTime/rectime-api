@@ -1,13 +1,6 @@
-import type { AppUser, Session } from '../../domain/auth/types';
+import type { AppUser, Session, MicrosoftClaims } from '../../domain/auth/types';
 
-export interface MicrosoftClaims {
-  oid: string;
-  tid: string;
-  sub: string;
-  name?: string;
-  preferred_username?: string;
-  email?: string;
-}
+export type { MicrosoftClaims };
 
 export interface IAuthService {
   upsertUser(claims: MicrosoftClaims): Promise<AppUser>;
