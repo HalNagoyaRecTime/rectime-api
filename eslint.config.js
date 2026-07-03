@@ -26,8 +26,12 @@ export default [
         fetch: 'readonly',
         process: 'readonly',
         ExecutionContext: 'readonly',
+        Response: 'readonly',
         ScheduledEvent: 'readonly',
+        TextDecoder: 'readonly',
         TextEncoder: 'readonly',
+        Request: 'readonly',
+        URL: 'readonly',
         URLSearchParams: 'readonly',
       },
     },
@@ -36,7 +40,8 @@ export default [
     },
     rules: {
       ...tseslint.configs.recommended.rules,
-      '@typescript-eslint/no-deprecated': 'error', // no-deprecatedを有効に
+      'no-undef': 'off',
+      '@typescript-eslint/no-deprecated': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_' },
