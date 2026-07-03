@@ -10,8 +10,6 @@ CREATE TABLE IF NOT EXISTS microsoft_account_links (
   user_id                   TEXT NOT NULL UNIQUE,
   oid                       TEXT NOT NULL,
   tid                       TEXT NOT NULL,
-  created_at                TEXT NOT NULL,
-  updated_at                TEXT NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(users_id)
 );
 
