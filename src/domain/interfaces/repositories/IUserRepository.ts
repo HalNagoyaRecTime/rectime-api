@@ -1,7 +1,10 @@
 import type { AppUser } from '../../auth/types';
 
 export interface IUserRepository {
-  findUserIdByMicrosoftAccount(oid: string, tid: string): Promise<string | null>;
+  findUserIdByMicrosoftAccount(
+    oid: string,
+    tid: string
+  ): Promise<string | null>;
   createUserWithMicrosoftLink(params: {
     oid: string;
     tid: string;
