@@ -1,7 +1,15 @@
 import type { AppUser, Session } from '../../domain/auth/types';
-import type { IdTokenClaims } from '../../infrastructure/auth/verifyIdToken';
+
+export interface MicrosoftClaims {
+  oid: string;
+  tid: string;
+  sub: string;
+  name?: string;
+  preferred_username?: string;
+  email?: string;
+}
 
 export interface IAuthService {
-  upsertUser(claims: IdTokenClaims): Promise<AppUser>;
+  upsertUser(claims: MicrosoftClaims): Promise<AppUser>;
   saveSession(sessionId: string, session: Session): Promise<void>;
 }

@@ -1,19 +1,19 @@
 import type { KVNamespace } from '@cloudflare/workers-types';
 import type { Session } from '../../domain/auth/types';
-import type { IdTokenClaims } from '../../infrastructure/auth/verifyIdToken';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
-import type { IAuthService } from './IAuthService';
+import type { IAuthService, MicrosoftClaims } from './IAuthService';
 
-export function buildMicrosoftUid(
-  claims: Pick<IdTokenClaims, 'tid' | 'oid'>
-): string {
+export function buildMicrosoftUid(claims: { tid: string; oid: string }): string {
   return `${claims.tid}:${claims.oid}`;
 }
 
 export function getSessionTtlSeconds(sessionExpiresAt: string): number {
   const expiresAt = new Date(sessionExpiresAt).getTime();
   const ttl = Math.floor((expiresAt - Date.now()) / 1000);
-  return Number.isFinite(ttl) && ttl > 0 ? ttl : 60;
+  if (!Number.isFinite(ttl) || ttl <= 0) {
+    throw new Error('SESSION_ALREADY_EXPIRED');
+  }
+  return ttl;
 }
 
 export function createAuthService(
@@ -21,7 +21,7 @@ export function createAuthService(
   kv: KVNamespace
 ): IAuthService {
   return {
-    async upsertUser(claims: IdTokenClaims) {
+    async upsertUser(claims: MicrosoftClaims) {
       const email = claims.preferred_username ?? claims.email ?? '';
       const displayName = claims.name ?? email;
       const uid = buildMicrosoftUid(claims);
