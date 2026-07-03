@@ -3,7 +3,10 @@ import type { Session } from '../../domain/auth/types';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAuthService, MicrosoftClaims } from './IAuthService';
 
-export function buildMicrosoftUid(claims: { tid: string; oid: string }): string {
+export function buildMicrosoftUid(claims: {
+  tid: string;
+  oid: string;
+}): string {
   return `${claims.tid}:${claims.oid}`;
 }
 
