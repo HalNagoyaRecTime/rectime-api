@@ -8,10 +8,6 @@ dist/
 .idea/workspace.xml
 .idea/usage.statistics.xml
 .idea/shelf
-.idea/deployment.xml
-.idea/go.imports.xml
-.idea/inspectionProfiles/
-
 # deps
 node_modules/
 .wrangler
@@ -30,5 +26,8 @@ lerna-debug.log*
 
 # misc
 .DS_Store
+
+# certificates
+*.pem
 WORK_LOG.md
 WORK_LOG_KO.md
