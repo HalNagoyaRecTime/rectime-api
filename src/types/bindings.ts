@@ -1,6 +1,6 @@
 import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
 
-export type Env = {
+export type Bindings = {
   DB: D1Database;
   AUTH_KV: KVNamespace;
   ALLOWED_ORIGINS?: string;

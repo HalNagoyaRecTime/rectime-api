@@ -10,6 +10,6 @@
     "jsxImportSource": "hono/jsx",
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "test/**/*"],
   "exclude": ["node_modules"]
 }

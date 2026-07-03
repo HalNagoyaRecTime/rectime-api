@@ -8,7 +8,6 @@ dist/
 .idea/workspace.xml
 .idea/usage.statistics.xml
 .idea/shelf
-
 # deps
 node_modules/
 .wrangler
@@ -31,3 +30,6 @@ lerna-debug.log*
 # docs
 WORK_LOG.md
 WORK_LOG_KO.md
+
+# certificates
+*.pem
