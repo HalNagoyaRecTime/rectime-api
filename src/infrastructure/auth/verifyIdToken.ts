@@ -108,10 +108,13 @@ export async function verifyIdToken(
   const now = Math.floor(Date.now() / 1000);
   const clockSkew = 300;
 
-  if (typeof payload.exp !== 'number' || payload.exp < now - clockSkew) throw new Error('INVALID_ID_TOKEN');
-  if (typeof payload.iat !== 'number' || payload.iat > now + clockSkew) throw new Error('INVALID_ID_TOKEN');
+  if (typeof payload.exp !== 'number' || payload.exp < now - clockSkew)
+    throw new Error('INVALID_ID_TOKEN');
+  if (typeof payload.iat !== 'number' || payload.iat > now + clockSkew)
+    throw new Error('INVALID_ID_TOKEN');
   if (payload.aud !== clientId) throw new Error('INVALID_ID_TOKEN');
-  if (typeof payload.tid !== 'string' || !payload.tid) throw new Error('INVALID_ID_TOKEN');
+  if (typeof payload.tid !== 'string' || !payload.tid)
+    throw new Error('INVALID_ID_TOKEN');
   const allowedTenants = (allowedMicrosoftTenants ?? '')
     .split(',')
     .map(tenant => tenant.trim())

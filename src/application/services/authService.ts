@@ -63,7 +63,14 @@ export function createAuthService(
           studentNumber: `ms:${uid}`,
         });
       } catch (err) {
-        if (!(err instanceof Error && err.message.includes('UNIQUE constraint failed') && err.message.includes('microsoft_account_links'))) throw err;
+        if (
+          !(
+            err instanceof Error &&
+            err.message.includes('UNIQUE constraint failed') &&
+            err.message.includes('microsoft_account_links')
+          )
+        )
+          throw err;
         // 同時初回ログインによる UNIQUE 制約違反: 先勝ちしたレコードで update に切り替える
         const racedUserId = await userRepository.findUserIdByMicrosoftAccount(
           claims.oid,
