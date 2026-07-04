@@ -58,6 +58,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
 
   // すでに存在するレコードを全て削除する。
   await orm.delete(student_description);
+  await orm.delete(old_users);
   await orm.delete(users);
   await orm.delete(class_rooms);
 
