@@ -1,7 +1,10 @@
 import type { Context } from 'hono';
 import type { Env as Bindings } from '../../lib/env';
 import { base64URLtoBytes } from '../../infrastructure/auth/base64url';
-import { BASE64_URL_PATTERN, ACCOUNT_PHOTO_PATH } from '../../domain/auth/types';
+import {
+  BASE64_URL_PATTERN,
+  ACCOUNT_PHOTO_PATH,
+} from '../../domain/auth/types';
 
 export type AppContext = Context<{ Bindings: Bindings }>;
 
