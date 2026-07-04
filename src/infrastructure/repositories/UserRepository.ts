@@ -55,7 +55,7 @@ export function createUserRepository(db: D1Database): IUserRepository {
         .bind(displayName, uid, now, userId)
         .run();
 
-      if (result.meta.changes === 0) throw new Error('USER_NOT_FOUND');
+      if (result.meta.changes === 0) return null;
       return { id: userId, oid, tid, sub, email, display_name: displayName };
     },
   };

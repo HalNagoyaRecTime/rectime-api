@@ -111,6 +111,7 @@ export async function verifyIdToken(
   if (typeof payload.exp !== 'number' || payload.exp < now - clockSkew) throw new Error('INVALID_ID_TOKEN');
   if (typeof payload.iat !== 'number' || payload.iat > now + clockSkew) throw new Error('INVALID_ID_TOKEN');
   if (payload.aud !== clientId) throw new Error('INVALID_ID_TOKEN');
+  if (typeof payload.tid !== 'string' || !payload.tid) throw new Error('INVALID_ID_TOKEN');
   const allowedTenants = (allowedMicrosoftTenants ?? '')
     .split(',')
     .map(tenant => tenant.trim())
@@ -132,12 +133,9 @@ export async function verifyIdToken(
       throw new Error('INVALID_ID_TOKEN');
     }
   } else if (tenantAllowsAny) {
-    // common/organizations エンドポイント: payload.tid が実際のテナントID
-    if (
-      payload.iss !== `https://login.microsoftonline.com/${payload.tid}/v2.0`
-    ) {
-      throw new Error('INVALID_ID_TOKEN');
-    }
+    // common/organizations エンドポイント使用時は ALLOWED_MICROSOFT_TENANTS の設定が必須。
+    // iss/tid はトークン内で常に自己整合するため issuer のみの検証ではテナント制限にならない。
+    throw new Error('INVALID_ID_TOKEN');
   } else {
     if (payload.tid !== normalizedMicrosoftTenant) {
       throw new Error('INVALID_ID_TOKEN');

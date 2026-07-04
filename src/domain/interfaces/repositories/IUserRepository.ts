@@ -22,5 +22,5 @@ export interface IUserRepository {
     email: string;
     displayName: string;
     uid: string;
-  }): Promise<AppUser>;
+  }): Promise<AppUser | null>;
 }

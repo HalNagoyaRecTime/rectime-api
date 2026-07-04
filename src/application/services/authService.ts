@@ -35,7 +35,7 @@ export function createAuthService(
       );
 
       if (existingUserId) {
-        return userRepository.updateUser({
+        const updated = await userRepository.updateUser({
           userId: existingUserId,
           oid: claims.oid,
           tid: claims.tid,
@@ -44,6 +44,8 @@ export function createAuthService(
           displayName,
           uid,
         });
+        if (!updated) throw new Error('USER_NOT_FOUND');
+        return updated;
       }
 
       try {
@@ -56,14 +58,15 @@ export function createAuthService(
           uid,
           studentNumber: `ms:${uid}`,
         });
-      } catch {
+      } catch (err) {
+        if (!(err instanceof Error && err.message.includes('UNIQUE constraint failed'))) throw err;
         // 同時初回ログインによる UNIQUE 制約違反: 先勝ちしたレコードで update に切り替える
         const racedUserId = await userRepository.findUserIdByMicrosoftAccount(
           claims.oid,
           claims.tid
         );
         if (!racedUserId) throw new Error('CREATE_USER_FAILED');
-        return userRepository.updateUser({
+        const raced = await userRepository.updateUser({
           userId: racedUserId,
           oid: claims.oid,
           tid: claims.tid,
@@ -72,6 +75,8 @@ export function createAuthService(
           displayName,
           uid,
         });
+        if (!raced) throw new Error('CREATE_USER_FAILED');
+        return raced;
       }
     },
 
