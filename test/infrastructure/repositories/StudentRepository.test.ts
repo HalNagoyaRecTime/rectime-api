@@ -32,8 +32,8 @@ describe('StudentRepository', () => {
 
       expect(student).toMatchObject({
         f_student_id: target.studentId,
-        f_users_id: target.usersId,
-        f_display_name: target.displayName,
+        user_id: target.usersId,
+        user_name: target.displayName,
         f_uid: target.uid,
         f_attendance_number: target.attendanceNumber,
         f_student_id_number: target.studentIdNumber,
@@ -51,8 +51,8 @@ describe('StudentRepository', () => {
       const target = seeded.students[2];
       const student = await repo.findByStudentNum(target.studentIdNumber);
 
-      expect(student?.f_display_name).toBe(target.displayName);
-      expect(student?.f_users_id).toBe(target.usersId);
+      expect(student?.user_name).toBe(target.displayName);
+      expect(student?.user_id).toBe(target.usersId);
       expect(student?.f_student_id_number).toBe(target.studentIdNumber);
     });
 

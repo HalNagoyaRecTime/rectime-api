@@ -7,17 +7,17 @@ export const class_rooms = sqliteTable('m_class_rooms', {
 });
 
 export const users = sqliteTable('m_users', {
-  id: integer('f_users_id').primaryKey({ autoIncrement: true }),
+  id: integer('user_id').primaryKey({ autoIncrement: true }),
   classRoomId: integer('f_class_room_id')
     .notNull()
     .references(() => class_rooms.id),
-  displayName: text('f_display_name').notNull(),
+  displayName: text('user_name').notNull(),
   uid: text('f_uid').notNull(),
 });
 
 export const student_description = sqliteTable('m_student_description', {
   id: integer('f_student_id').primaryKey({ autoIncrement: true }),
-  usersId: integer('f_users_id')
+  usersId: integer('user_id')
     .notNull()
     .references(() => users.id),
   attendanceNumber: integer('f_attendance_number').notNull(),

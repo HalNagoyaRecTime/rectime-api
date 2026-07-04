@@ -4,7 +4,7 @@ export interface UserEntity {
   provider_user_id: string | null;
   email: string | null;
   student_number: string;
-  is_active: number;
+  is_live_active: number;
   created_at: string;
   updated_at: string;
 }
