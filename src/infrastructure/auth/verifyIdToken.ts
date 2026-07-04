@@ -108,8 +108,8 @@ export async function verifyIdToken(
   const now = Math.floor(Date.now() / 1000);
   const clockSkew = 300;
 
-  if (payload.exp < now - clockSkew) throw new Error('INVALID_ID_TOKEN');
-  if (payload.iat > now + clockSkew) throw new Error('INVALID_ID_TOKEN');
+  if (typeof payload.exp !== 'number' || payload.exp < now - clockSkew) throw new Error('INVALID_ID_TOKEN');
+  if (typeof payload.iat !== 'number' || payload.iat > now + clockSkew) throw new Error('INVALID_ID_TOKEN');
   if (payload.aud !== clientId) throw new Error('INVALID_ID_TOKEN');
   const allowedTenants = (allowedMicrosoftTenants ?? '')
     .split(',')
@@ -132,7 +132,12 @@ export async function verifyIdToken(
       throw new Error('INVALID_ID_TOKEN');
     }
   } else if (tenantAllowsAny) {
-    throw new Error('INVALID_ID_TOKEN');
+    // common/organizations エンドポイント: payload.tid が実際のテナントID
+    if (
+      payload.iss !== `https://login.microsoftonline.com/${payload.tid}/v2.0`
+    ) {
+      throw new Error('INVALID_ID_TOKEN');
+    }
   } else {
     if (payload.tid !== normalizedMicrosoftTenant) {
       throw new Error('INVALID_ID_TOKEN');

@@ -13,7 +13,7 @@ export function buildMicrosoftUid(claims: {
 export function getSessionTtlSeconds(sessionExpiresAt: string): number {
   const expiresAt = new Date(sessionExpiresAt).getTime();
   const ttl = Math.floor((expiresAt - Date.now()) / 1000);
-  if (!Number.isFinite(ttl) || ttl <= 0) {
+  if (!Number.isFinite(ttl) || ttl < 60) {
     throw new Error('SESSION_ALREADY_EXPIRED');
   }
   return ttl;
@@ -46,15 +46,33 @@ export function createAuthService(
         });
       }
 
-      return userRepository.createUserWithMicrosoftLink({
-        oid: claims.oid,
-        tid: claims.tid,
-        sub: claims.sub,
-        email,
-        displayName,
-        uid,
-        studentNumber: `ms:${uid}`,
-      });
+      try {
+        return await userRepository.createUserWithMicrosoftLink({
+          oid: claims.oid,
+          tid: claims.tid,
+          sub: claims.sub,
+          email,
+          displayName,
+          uid,
+          studentNumber: `ms:${uid}`,
+        });
+      } catch {
+        // 同時初回ログインによる UNIQUE 制約違反: 先勝ちしたレコードで update に切り替える
+        const racedUserId = await userRepository.findUserIdByMicrosoftAccount(
+          claims.oid,
+          claims.tid
+        );
+        if (!racedUserId) throw new Error('CREATE_USER_FAILED');
+        return userRepository.updateUser({
+          userId: racedUserId,
+          oid: claims.oid,
+          tid: claims.tid,
+          sub: claims.sub,
+          email,
+          displayName,
+          uid,
+        });
+      }
     },
 
     async saveSession(sessionId: string, session: Session) {
