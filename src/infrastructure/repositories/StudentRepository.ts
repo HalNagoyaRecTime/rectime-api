@@ -8,16 +8,16 @@ import { StudentEntity } from '../../domain/entities/Student';
 import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 
 type StudentJoinRow = {
-  m_users: typeof users.$inferSelect;
+  users: typeof users.$inferSelect;
   m_student_description: typeof student_description.$inferSelect;
 };
 
 function toEntity(row: StudentJoinRow): StudentEntity {
   return {
-    f_users_id: row.m_users.id,
-    f_class_room_id: row.m_users.classRoomId as number, // TODO: m_usersからclass_room_idをm_student_description移動させる
-    f_display_name: row.m_users.displayName,
-    f_uid: row.m_users.uid,
+    f_users_id: row.users.id,
+    f_class_room_id: row.users.classRoomId as number, // TODO: m_usersからclass_room_idをm_student_description移動させる
+    f_display_name: row.users.displayName,
+    f_uid: row.users.uid,
     f_student_id: row.m_student_description.id,
     f_attendance_number: row.m_student_description.attendanceNumber,
     f_student_id_number: row.m_student_description.studentIdNumber,

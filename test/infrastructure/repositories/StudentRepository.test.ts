@@ -51,8 +51,8 @@ describe('StudentRepository', () => {
       const target = seeded.students[2];
       const student = await repo.findByStudentNum(target.studentIdNumber);
 
-      expect(student?.user_name).toBe(target.displayName);
-      expect(student?.user_id).toBe(target.usersId);
+      expect(student?.f_display_name).toBe(target.displayName);
+      expect(student?.f_users_id).toBe(target.usersId);
       expect(student?.f_student_id_number).toBe(target.studentIdNumber);
     });
 
