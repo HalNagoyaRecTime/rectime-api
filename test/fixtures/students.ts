@@ -56,11 +56,13 @@ export type SeededData = {
 export async function seedStudents(db: D1Database): Promise<SeededData> {
   const orm = drizzle(db, { schema });
 
-  await db.prepare("PRAGMA foreign_keys = OFF").run();
+  await db.prepare('PRAGMA foreign_keys = OFF').run();
 
   // 古い/既存テーブルの削除（存在する場合）
   const hasStudentDesc = await db
-    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='m_student_description'")
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='m_student_description'"
+    )
     .first();
   if (hasStudentDesc) {
     await db.prepare('DROP TABLE IF EXISTS m_student_description').run();
@@ -72,20 +74,26 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
 
   // 新スキーマ側の users テーブルを確認して削除
   const hasUsers = await db
-    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
+    )
     .first();
   if (hasUsers) {
     await db.prepare('DROP TABLE IF EXISTS users').run();
   }
 
   // class_rooms テーブルが存在することを確認（外部キーの問題を避けたいから削除しないで）。
-  await db.prepare(`CREATE TABLE IF NOT EXISTS m_class_rooms (
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS m_class_rooms (
     f_class_room_id INTEGER PRIMARY KEY AUTOINCREMENT,
     f_class_code TEXT NOT NULL,
     f_name TEXT NOT NULL
-  )`).run();
+  )`
+    )
+    .run();
 
-  await db.prepare("PRAGMA foreign_keys = ON").run();
+  await db.prepare('PRAGMA foreign_keys = ON').run();
 
   const [classRoom] = await orm
     .insert(class_rooms)
@@ -93,19 +101,27 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
     .returning();
 
   // テスト実行環境で新しい `users` / `m_student_description` が存在しない場合は簡易的に作成しておく
-  await db.prepare(`CREATE TABLE IF NOT EXISTS users_old (
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS users_old (
     f_users_id INTEGER PRIMARY KEY AUTOINCREMENT,
     f_class_room_id INTEGER,
     f_display_name TEXT NOT NULL,
     f_uid TEXT NOT NULL
-  )`).run();
+  )`
+    )
+    .run();
 
-  await db.prepare(`CREATE TABLE IF NOT EXISTS m_student_description (
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS m_student_description (
     f_student_id INTEGER PRIMARY KEY AUTOINCREMENT,
     f_users_id INTEGER NOT NULL,
     f_attendance_number INTEGER NOT NULL,
     f_student_id_number TEXT NOT NULL UNIQUE
-  )`).run();
+  )`
+    )
+    .run();
 
   const students: SeededStudent[] = [];
   for (const s of STUDENTS) {
