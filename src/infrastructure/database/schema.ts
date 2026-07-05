@@ -6,26 +6,30 @@ export const class_rooms = sqliteTable('m_class_rooms', {
   name: text('f_name').notNull(),
 });
 
+// 旧テーブル（既存互換）
+export const users_old = sqliteTable('m_users', {
+  id: integer('f_users_id').primaryKey({ autoIncrement: true }),
+  classRoomId: integer('f_class_room_id')
+    .notNull()
+    .references(() => class_rooms.id),
+  displayName: text('f_display_name').notNull(),
+  uid: text('f_uid').notNull(),
+});
+
+// 新スキーマ（アプリケーション標準）
 export const users = sqliteTable('users', {
-  id: integer('users_id').primaryKey({ autoIncrement: true }),
-  userName: text('user_name')
-    .notNull(),
-  isLiveActive: integer('is_live_active')
-    .notNull()
-    .default(1),
-  createdAt: text('created_at')
-    .notNull()
-    .default('CURRENT_TIMESTAMP'),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default('CURRENT_TIMESTAMP'),
+  id: integer('user_id').primaryKey({ autoIncrement: true }),
+  userName: text('user_name').notNull(),
+  isLiveActive: integer('is_live_active').notNull().default(1),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
 });
 
 export const student_description = sqliteTable('m_student_description', {
   id: integer('f_student_id').primaryKey({ autoIncrement: true }),
   usersId: integer('f_users_id')
     .notNull()
-    .references(() => users.id),
+    .references(() => users_old.id),
   attendanceNumber: integer('f_attendance_number').notNull(),
   studentIdNumber: text('f_student_id_number').notNull().unique(),
 });

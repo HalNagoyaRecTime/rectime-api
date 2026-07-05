@@ -6,4 +6,6 @@ export interface StudentEntity {
   f_student_id: number;
   f_attendance_number: number;
   f_student_id_number: string;
+  user_id?: number;
+  user_name?: string;
 }
