@@ -125,7 +125,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
 
   const students: SeededStudent[] = [];
   for (const s of STUDENTS) {
-    const [user] = await orm
+    const userResult = await orm
       .insert(users as any)
       .values({
         classRoomId: classRoom.id,
@@ -133,8 +133,9 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
         uid: s.uid,
       })
       .returning();
+    const user = (userResult as any[])[0];
 
-    const [desc] = await orm
+    const descResult = await orm
       .insert(student_description)
       .values({
         usersId: user.id,
@@ -142,6 +143,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
         studentIdNumber: s.studentIdNumber,
       })
       .returning();
+    const desc = (descResult as any[])[0];
 
     students.push({
       studentId: desc.id,
@@ -155,7 +157,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
   }
 
   // description を持たない先生を1名追加（findAll の inner join で除外される）
-  const [teacher] = await orm
+  const teacherResult = await orm
     .insert(users as any)
     .values({
       classRoomId: classRoom.id,
@@ -163,6 +165,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
       uid: '0000-0004',
     })
     .returning();
+  const teacher = (teacherResult as any[])[0];
 
   return {
     classRoomId: classRoom.id,
