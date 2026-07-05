@@ -4,8 +4,9 @@ import * as schema from '../database/schema';
 import { events } from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
-import { EventEntity } from '../../domain/entities/Event';
+import { EventEntity, EventInformationEntity } from '../../domain/entities/Event';
 import { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
+
 
 function toEntity(row: typeof events.$inferSelect): EventEntity {
   return {
@@ -83,5 +84,19 @@ export function createEventRepository(db: D1Database): IEventRepository {
 
       return result ? toEntity(result) : null;
     },
+    async getEventInformation(): Promise<EventInformationEntity[]> {
+      //ここにダミーデータを書く
+      return [
+        {
+          f_event_id: 1,
+          f_event_name: '走れ○人○脚',
+          f_gather_time: '8:45',
+          f_place: '集合場所A',
+          f_time: '9:00',
+          f_duration: '20',
+          f_summary: 'イベント1の概要',
+        }
+      ];
+    }
   };
 }
