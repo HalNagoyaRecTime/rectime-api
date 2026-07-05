@@ -6,13 +6,19 @@ export const class_rooms = sqliteTable('m_class_rooms', {
   name: text('f_name').notNull(),
 });
 
-export const users = sqliteTable('m_users', {
-  id: integer('f_users_id').primaryKey({ autoIncrement: true }),
-  classRoomId: integer('f_class_room_id')
+export const users = sqliteTable('users', {
+  id: integer('users_id').primaryKey({ autoIncrement: true }),
+  userName: text('user_name')
+    .notNull(),
+  isLiveActive: integer('is_live_active')
     .notNull()
-    .references(() => class_rooms.id),
-  displayName: text('f_display_name').notNull(),
-  uid: text('f_uid').notNull(),
+    .default(1),
+  createdAt: text('created_at')
+    .notNull()
+    .default('CURRENT_TIMESTAMP'),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default('CURRENT_TIMESTAMP'),
 });
 
 export const student_description = sqliteTable('m_student_description', {
