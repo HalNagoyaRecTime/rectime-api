@@ -29,7 +29,7 @@ export function createDIContainer(env: Env) {
   const db = getDb(env);
 
   // Repositories
-  const userRepository = createUserRepository(env.DB);
+  const userRepository = createUserRepository(db);
   const studentRepository = createStudentRepository(db);
   const eventRepository = createEventRepository(db);
   const entryRepository = createEntryRepository(db);
