@@ -1,14 +1,14 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
 import { eq } from 'drizzle-orm';
-import { users_old, student_description } from '../database/schema';
+import { m_users, student_description } from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
 import { StudentEntity } from '../../domain/entities/Student';
 import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 
 type StudentJoinRow = {
-  m_users: typeof users_old.$inferSelect;
+  m_users: typeof m_users.$inferSelect;
   m_student_description: typeof student_description.$inferSelect;
 };
 
@@ -33,7 +33,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       const result = await orm
         .select()
         .from(student_description)
-        .innerJoin(users_old, eq(student_description.usersId, users_old.id))
+        .innerJoin(m_users, eq(student_description.usersId, m_users.id))
         .where(eq(student_description.id, id))
         .get();
 
@@ -44,7 +44,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       const results = await orm
         .select()
         .from(student_description)
-        .innerJoin(users_old, eq(student_description.usersId, users_old.id))
+        .innerJoin(m_users, eq(student_description.usersId, m_users.id))
         .all();
 
       return results.map(toEntity);
@@ -54,7 +54,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       const result = await orm
         .select()
         .from(student_description)
-        .innerJoin(users_old, eq(student_description.usersId, users_old.id))
+        .innerJoin(m_users, eq(student_description.usersId, m_users.id))
         .where(eq(student_description.studentIdNumber, studentNum))
         .get();
 

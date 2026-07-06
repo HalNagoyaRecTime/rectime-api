@@ -3,7 +3,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import * as schema from '../../src/infrastructure/database/schema';
 import {
   class_rooms,
-  users_old as users,
+  m_users as users,
   student_description,
 } from '../../src/infrastructure/database/schema';
 // PRAGMA を直接実行するため D1 の prepare を使う
@@ -100,10 +100,10 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
     .values({ classCode: 'TEST-1', name: 'テスト教室' })
     .returning();
 
-  // テスト実行環境で新しい `users` / `m_student_description` が存在しない場合は簡易的に作成しておく
+  // テスト実行環境で旧レガシーテーブル `m_users` / `m_student_description` が存在しない場合は簡易的に作成しておく
   await db
     .prepare(
-      `CREATE TABLE IF NOT EXISTS users_old (
+      `CREATE TABLE IF NOT EXISTS m_users (
     f_users_id INTEGER PRIMARY KEY AUTOINCREMENT,
     f_class_room_id INTEGER,
     f_display_name TEXT NOT NULL,

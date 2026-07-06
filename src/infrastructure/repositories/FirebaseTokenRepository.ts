@@ -44,7 +44,7 @@ export function createFirebaseTokenRepository(
     const user = await db
       .prepare(
         `
-        INSERT INTO users (
+        INSERT INTO auth_users (
           auth_provider,
           provider_user_id,
           email,
@@ -54,9 +54,9 @@ export function createFirebaseTokenRepository(
         )
         VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
         ON CONFLICT(student_number) DO UPDATE SET
-          auth_provider = COALESCE(excluded.auth_provider, users.auth_provider),
-          provider_user_id = COALESCE(excluded.provider_user_id, users.provider_user_id),
-          email = COALESCE(excluded.email, users.email),
+          auth_provider = COALESCE(excluded.auth_provider, auth_users.auth_provider),
+          provider_user_id = COALESCE(excluded.provider_user_id, auth_users.provider_user_id),
+          email = COALESCE(excluded.email, auth_users.email),
           is_live_active = 1,
           updated_at = CURRENT_TIMESTAMP
         RETURNING *

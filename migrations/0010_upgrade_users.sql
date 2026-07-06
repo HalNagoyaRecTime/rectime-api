@@ -1,8 +1,8 @@
 PRAGMA foreign_keys = OFF;
 BEGIN TRANSACTION;
 
-DROP TABLE IF EXISTS users_old;
-ALTER TABLE users RENAME TO users_old;
+DROP TABLE IF EXISTS auth_users;
+ALTER TABLE users RENAME TO auth_users;
 
 CREATE TABLE users (
     user_id INTEGER PRIMARY KEY AUTOINCREMENT,
