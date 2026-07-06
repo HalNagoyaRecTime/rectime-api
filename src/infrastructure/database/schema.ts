@@ -1,9 +1,11 @@
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
-export const class_rooms = sqliteTable('m_class_rooms', {
-  id: integer('f_class_room_id').primaryKey({ autoIncrement: true }),
-  classCode: text('f_class_code').notNull(),
-  name: text('f_name').notNull(),
+export const class_rooms = sqliteTable('class_rooms', {
+  id: integer('class_room_id').primaryKey({ autoIncrement: true }),
+  classCode: text('class_code').notNull(),
+  name: text('class_name').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
 });
 
 export const auth_users = sqliteTable('auth_users', {
@@ -12,7 +14,7 @@ export const auth_users = sqliteTable('auth_users', {
   providerUserId: text('provider_user_id'),
   email: text('email'),
   studentNumber: text('student_number').notNull().unique(),
-  isLiveActive: integer('is_live_active').notNull().default(1),
+  isActive: integer('is_active').notNull().default(1),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
@@ -25,22 +27,18 @@ export const users = sqliteTable('users', {
   updatedAt: text('updated_at').notNull(),
 });
 
-export const m_users = sqliteTable('m_users', {
-  id: integer('f_users_id').primaryKey({ autoIncrement: true }),
-  classRoomId: integer('f_class_room_id')
+export const students = sqliteTable('students', {
+  id: integer('student_id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id),
+  classRoomId: integer('class_room_id')
     .notNull()
     .references(() => class_rooms.id),
-  displayName: text('f_display_name').notNull(),
-  uid: text('f_uid').notNull(),
-});
-
-export const student_description = sqliteTable('m_student_description', {
-  id: integer('f_student_id').primaryKey({ autoIncrement: true }),
-  usersId: integer('f_users_id')
-    .notNull()
-    .references(() => m_users.id),
-  attendanceNumber: integer('f_attendance_number').notNull(),
-  studentIdNumber: text('f_student_id_number').notNull().unique(),
+  attendanceNumber: integer('attendance_number').notNull(),
+  studentIdNumber: text('student_id_number').notNull().unique(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
 });
 
 export const events = sqliteTable('t_events', {

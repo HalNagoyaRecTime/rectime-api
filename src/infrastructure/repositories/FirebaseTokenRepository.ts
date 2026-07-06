@@ -14,7 +14,7 @@ function toUserEntity(row: Record<string, unknown>): UserEntity {
     provider_user_id: row.provider_user_id as string | null,
     email: row.email as string | null,
     student_number: row.student_number as string,
-    is_live_active: row.is_live_active as number,
+    is_active: row.is_active as number,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
@@ -49,7 +49,7 @@ export function createFirebaseTokenRepository(
           provider_user_id,
           email,
           student_number,
-          is_live_active,
+          is_active,
           updated_at
         )
         VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
@@ -57,7 +57,7 @@ export function createFirebaseTokenRepository(
           auth_provider = COALESCE(excluded.auth_provider, auth_users.auth_provider),
           provider_user_id = COALESCE(excluded.provider_user_id, auth_users.provider_user_id),
           email = COALESCE(excluded.email, auth_users.email),
-          is_live_active = 1,
+          is_active = 1,
           updated_at = CURRENT_TIMESTAMP
         RETURNING *
         `
