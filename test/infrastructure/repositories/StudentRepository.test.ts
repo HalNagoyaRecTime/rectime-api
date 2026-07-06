@@ -15,7 +15,7 @@ describe('StudentRepository', () => {
   });
 
   describe('findAll', () => {
-    it('description を持つ学生を全件返す（先生は除外される）', async () => {
+    it('students に登録されている学生を全件返す', async () => {
       const students = await repo.findAll();
 
       expect(students).toHaveLength(seeded.students.length);
@@ -26,15 +26,15 @@ describe('StudentRepository', () => {
   });
 
   describe('findById', () => {
-    it('student_description の id で学生を取得し、users を join して返す', async () => {
+    it('students の id で学生を取得し、users を join して返す', async () => {
       const target = seeded.students[0];
       const student = await repo.findById(target.studentId);
 
       expect(student).toMatchObject({
         f_student_id: target.studentId,
-        user_id: target.usersId,
+        user_id: target.userId,
         user_name: target.displayName,
-        f_uid: target.uid,
+        f_uid: '',
         f_attendance_number: target.attendanceNumber,
         f_student_id_number: target.studentIdNumber,
         f_class_room_id: target.classRoomId,
@@ -52,7 +52,7 @@ describe('StudentRepository', () => {
       const student = await repo.findByStudentNum(target.studentIdNumber);
 
       expect(student?.f_display_name).toBe(target.displayName);
-      expect(student?.f_users_id).toBe(target.usersId);
+      expect(student?.f_users_id).toBe(target.userId);
       expect(student?.f_student_id_number).toBe(target.studentIdNumber);
     });
 
