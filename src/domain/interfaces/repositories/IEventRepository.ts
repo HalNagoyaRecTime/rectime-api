@@ -1,4 +1,4 @@
-import { EventEntity,EventInformationEntity } from '../../entities/Event';
+import { EventEntity, EventInformationEntity } from '../../entities/Event';
 
 export interface IEventRepository {
   findAll: (options: {

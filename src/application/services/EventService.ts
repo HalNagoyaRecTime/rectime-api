@@ -1,4 +1,7 @@
-import { EventEntity,EventInformationEntity } from '../../domain/entities/Event';
+import {
+  EventEntity,
+  EventInformationEntity,
+} from '../../domain/entities/Event';
 import { IEventService } from './IEventService';
 import { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 
@@ -24,6 +27,6 @@ export function createEventService(
     },
     async getEventInformation(): Promise<EventInformationEntity[]> {
       return await eventRepository.getEventInformation();
-    }
+    },
   };
 }

@@ -1,4 +1,7 @@
-import { EventEntity,EventInformationEntity } from '../../domain/entities/Event';
+import {
+  EventEntity,
+  EventInformationEntity,
+} from '../../domain/entities/Event';
 
 export interface IEventService {
   getAllEvents: (options: {
@@ -10,4 +13,3 @@ export interface IEventService {
   getEventById: (id: number) => Promise<EventEntity>;
   getEventInformation: () => Promise<EventInformationEntity[]>;
 }
-  

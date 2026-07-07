@@ -62,8 +62,8 @@ export function createEventController(eventService: IEventService) {
         500
       );
     }
-   };
-   const getEventInformation = async (c: Context) => {
+  };
+  const getEventInformation = async (c: Context) => {
     try {
       const eventInfo = await eventService.getEventInformation();
       return c.json(eventInfo);
