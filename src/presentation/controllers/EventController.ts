@@ -62,10 +62,25 @@ export function createEventController(eventService: IEventService) {
         500
       );
     }
+   };
+   const getEventInformation = async (c: Context) => {
+    try {
+      const eventInfo = await eventService.getEventInformation();
+      return c.json(eventInfo);
+    } catch (error) {
+      return c.json(
+        {
+          error: 'Failed to fetch event information',
+          details: error instanceof Error ? error.message : String(error),
+        },
+        500
+      );
+    }
   };
 
   return {
     getAllEvents,
     getEventById,
+    getEventInformation,
   };
 }

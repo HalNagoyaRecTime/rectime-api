@@ -45,6 +45,10 @@ apiV1.get('/events', c => {
   return c.get('container').eventController.getAllEvents(c);
 });
 
+apiV1.get('/events/info', c => {
+  return c.get('container').eventController.getEventInformation(c);
+});
+
 apiV1.get('/events/:eventId', c => {
   return c.get('container').eventController.getEventById(c);
 });

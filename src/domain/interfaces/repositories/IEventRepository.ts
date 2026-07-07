@@ -1,4 +1,4 @@
-import { EventEntity } from '../../entities/Event';
+import { EventEntity,EventInformationEntity } from '../../entities/Event';
 
 export interface IEventRepository {
   findAll: (options: {
@@ -9,4 +9,5 @@ export interface IEventRepository {
   }) => Promise<{ events: EventEntity[]; total: number }>;
   findById: (id: number) => Promise<EventEntity | null>;
   findByEventCode: (eventCode: string) => Promise<EventEntity | null>;
+  getEventInformation(): Promise<EventInformationEntity[]>;
 }
