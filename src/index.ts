@@ -117,11 +117,13 @@ export default {
           await container.scheduledNotificationService.sendScheduledEventNotifications(
             new Date(event.scheduledTime)
           );
-        console.log('Scheduled notifications completed', {
-          cron: event.cron,
-          scheduledTime: new Date(event.scheduledTime).toISOString(),
-          ...result,
-        });
+        if (env.NODE_ENV === 'development') {
+          console.info('Scheduled notifications completed', {
+            cron: event.cron,
+            scheduledTime: new Date(event.scheduledTime).toISOString(),
+            ...result,
+          });
+        }
       })()
     );
   },

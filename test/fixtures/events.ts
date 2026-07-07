@@ -1,7 +1,11 @@
 import { drizzle } from 'drizzle-orm/d1';
 import type { D1Database } from '@cloudflare/workers-types';
 import * as schema from '../../src/infrastructure/database/schema';
-import { events } from '../../src/infrastructure/database/schema';
+import {
+  entries,
+  events,
+  notification_send_logs,
+} from '../../src/infrastructure/database/schema';
 
 const EVENTS = [
   {
@@ -60,7 +64,9 @@ export type SeededEventData = {
 export async function seedEvents(db: D1Database): Promise<SeededEventData> {
   const orm = drizzle(db, { schema });
 
-  // 全てのイベントテーブルにあるレコードを削除する。
+  // 外部キーの参照元から削除する。
+  await orm.delete(notification_send_logs);
+  await orm.delete(entries);
   await orm.delete(events);
 
   const seeded: SeededEvent[] = [];

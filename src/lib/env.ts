@@ -3,6 +3,7 @@ import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
 export type Env = {
   DB: D1Database;
   AUTH_KV: KVNamespace;
+  NODE_ENV?: 'development' | 'test' | 'production';
   ALLOWED_ORIGINS?: string;
   FIREBASE_PROJECT_ID: string;
   FIREBASE_CLIENT_EMAIL: string;

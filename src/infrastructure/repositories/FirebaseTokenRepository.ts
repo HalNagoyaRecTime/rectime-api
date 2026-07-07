@@ -1,4 +1,6 @@
-import { D1Database } from '@cloudflare/workers-types';
+import { and, eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/d1';
+import type { D1Database } from '@cloudflare/workers-types';
 import {
   FirebaseTokenEntity,
   RegisterFirebaseTokenInput,
@@ -6,6 +8,13 @@ import {
   UserEntity,
 } from '../../domain/entities/FirebaseToken';
 import { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
+import * as schema from '../database/schema';
+import {
+  entries,
+  firebase_tokens,
+  notification_users,
+  student_description,
+} from '../database/schema';
 
 function toUserEntity(row: Record<string, unknown>): UserEntity {
   return {
@@ -35,9 +44,28 @@ function toFirebaseTokenEntity(
   };
 }
 
+type FirebaseTokenRow = typeof firebase_tokens.$inferSelect;
+
+function toFirebaseTokenEntityFromDrizzle(
+  row: FirebaseTokenRow
+): FirebaseTokenEntity {
+  return {
+    id: row.id,
+    user_id: row.userId,
+    platform: row.platform,
+    fcm_token: row.fcmToken,
+    is_active: row.isActive,
+    last_seen_at: row.lastSeenAt,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
+  };
+}
+
 export function createFirebaseTokenRepository(
   db: D1Database
 ): IFirebaseTokenRepository {
+  const orm = drizzle(db, { schema });
+
   const upsertUser = async (
     input: RegisterFirebaseTokenInput
   ): Promise<UserEntity> => {
@@ -124,27 +152,33 @@ export function createFirebaseTokenRepository(
     async findActiveTokensForEvent(
       eventId: number
     ): Promise<FirebaseTokenEntity[]> {
-      const result = await db
-        .prepare(
-          `
-          SELECT ft.*
-          FROM firebase_tokens ft
-          INNER JOIN users u
-            ON u.id = ft.user_id
-          INNER JOIN m_student_description sd
-            ON sd.f_student_id_number = u.student_number
-          INNER JOIN t_entries e
-            ON e.f_student_id = sd.f_student_id
-          WHERE e.f_event_id = ?
-            AND ft.is_active = 1
-            AND u.is_active = 1
-          ORDER BY ft.id
-          `
+      const rows = await orm
+        .select({ firebaseToken: firebase_tokens })
+        .from(firebase_tokens)
+        .innerJoin(
+          notification_users,
+          eq(notification_users.id, firebase_tokens.userId)
         )
-        .bind(eventId)
-        .all<Record<string, unknown>>();
+        .innerJoin(
+          student_description,
+          eq(
+            student_description.studentIdNumber,
+            notification_users.studentNumber
+          )
+        )
+        .innerJoin(entries, eq(entries.studentId, student_description.id))
+        .where(
+          and(
+            eq(entries.eventId, eventId),
+            eq(firebase_tokens.isActive, 1),
+            eq(notification_users.isActive, 1)
+          )
+        )
+        .orderBy(firebase_tokens.id);
 
-      return result.results.map(toFirebaseTokenEntity);
+      return rows.map(row =>
+        toFirebaseTokenEntityFromDrizzle(row.firebaseToken)
+      );
     },
 
     async deactivate(id: number): Promise<void> {

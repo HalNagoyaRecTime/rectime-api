@@ -3,6 +3,10 @@ import type { D1Database } from '@cloudflare/workers-types';
 import * as schema from '../../src/infrastructure/database/schema';
 import {
   class_rooms,
+  entries,
+  firebase_tokens,
+  notification_send_logs,
+  notification_users,
   users,
   student_description,
 } from '../../src/infrastructure/database/schema';
@@ -56,7 +60,11 @@ export type SeededData = {
 export async function seedStudents(db: D1Database): Promise<SeededData> {
   const orm = drizzle(db, { schema });
 
-  // すでに存在するレコードを全て削除する。
+  // 外部キーの参照元から削除する。
+  await orm.delete(notification_send_logs);
+  await orm.delete(entries);
+  await orm.delete(firebase_tokens);
+  await orm.delete(notification_users);
   await orm.delete(student_description);
   await orm.delete(users);
   await orm.delete(class_rooms);

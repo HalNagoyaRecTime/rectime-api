@@ -4,10 +4,11 @@ import {
   FcmTestNotificationInput,
   FcmNotificationResult,
 } from '../../application/services/IFcmService';
-
-const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
-const ANDROID_NOTIFICATION_CHANNEL_ID = 'event_reminder_high';
+import {
+  ANDROID_NOTIFICATION_CHANNEL_ID,
+  FCM_SCOPE,
+  GOOGLE_OAUTH_TOKEN_URL,
+} from '../../config/firebase';
 
 type FirebaseConfig = {
   projectId: string;
@@ -115,7 +116,7 @@ async function createAccessToken(config: FirebaseConfig): Promise<string> {
     expiresAt: now + 3600,
   });
 
-  const response = await fetch(GOOGLE_TOKEN_URL, {
+  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -159,7 +160,7 @@ async function createSignedJwt(options: {
   const payload = {
     iss: options.clientEmail,
     scope: FCM_SCOPE,
-    aud: GOOGLE_TOKEN_URL,
+    aud: GOOGLE_OAUTH_TOKEN_URL,
     iat: options.issuedAt,
     exp: options.expiresAt,
   };
