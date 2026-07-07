@@ -23,7 +23,7 @@ app.use('*', (c, next) => {
     corsWarnLogged = true;
   }
   return cors({
-    origin: origin => (origins.includes(origin) ? origin : null),
+    origin: origin => (isAllowedOrigin(origin, origins) ? origin : null),
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
@@ -136,3 +136,25 @@ export default {
     );
   },
 };
+
+function isAllowedOrigin(origin: string, allowedOrigins: string[]): boolean {
+  return allowedOrigins.some(allowedOrigin =>
+    matchesAllowedOrigin(origin, allowedOrigin)
+  );
+}
+
+function matchesAllowedOrigin(origin: string, allowedOrigin: string): boolean {
+  if (!allowedOrigin.includes('*')) {
+    return origin === allowedOrigin;
+  }
+
+  const allowedOriginPattern = escapeRegExp(allowedOrigin).replace(
+    /\\\*/g,
+    '[^.]+'
+  );
+  return new RegExp(`^${allowedOriginPattern}$`).test(origin);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
