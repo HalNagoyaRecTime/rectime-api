@@ -14,15 +14,12 @@ type StudentJoinRow = {
 
 function toEntity(row: StudentJoinRow): StudentEntity {
   return {
-    f_users_id: row.users.id,
-    f_class_room_id: row.students.classRoomId,
-    f_display_name: row.users.userName,
-    f_uid: '',
-    f_student_id: row.students.id,
-    f_attendance_number: row.students.attendanceNumber,
-    f_student_id_number: row.students.studentIdNumber,
+    student_id: row.students.id,
     user_id: row.users.id,
     user_name: row.users.userName,
+    class_room_id: row.students.classRoomId,
+    attendance_number: row.students.attendanceNumber,
+    student_id_number: row.students.studentIdNumber,
   };
 }
 

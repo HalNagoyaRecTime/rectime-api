@@ -31,7 +31,8 @@ export const students = sqliteTable('students', {
   id: integer('student_id').primaryKey({ autoIncrement: true }),
   userId: integer('user_id')
     .notNull()
-    .references(() => users.id),
+    .references(() => users.id)
+    .unique(),
   classRoomId: integer('class_room_id')
     .notNull()
     .references(() => class_rooms.id),
