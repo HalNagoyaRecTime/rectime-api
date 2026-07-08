@@ -1,7 +1,7 @@
 PRAGMA foreign_keys = OFF;
 BEGIN TRANSACTION;
 
-DROP TABLE IF EXISTS auth_users;
+
 ALTER TABLE users RENAME TO auth_users;
 
 CREATE TABLE users (
@@ -75,9 +75,10 @@ SELECT
 FROM m_student_description sd
 INNER JOIN m_users m ON sd.f_users_id = m.f_users_id;
 
-DROP TABLE m_student_description;
-DROP TABLE m_users;
-DROP TABLE m_class_rooms;
+
+DROP TABLE IF EXISTS m_student_description;
+DROP TABLE IF EXISTS m_users;
+DROP TABLE IF EXISTS m_class_rooms;
 
 COMMIT;
 PRAGMA foreign_keys = ON;
