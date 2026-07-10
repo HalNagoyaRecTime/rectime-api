@@ -33,7 +33,7 @@ describe('StudentRepository', () => {
       expect(student).toMatchObject({
         f_student_id: target.studentId,
         f_users_id: target.usersId,
-        f_display_name: target.displayName,
+        f_user_name: target.userName,
         f_uid: target.uid,
         f_attendance_number: target.attendanceNumber,
         f_student_id_number: target.studentIdNumber,
@@ -51,7 +51,7 @@ describe('StudentRepository', () => {
       const target = seeded.students[2];
       const student = await repo.findByStudentNum(target.studentIdNumber);
 
-      expect(student?.f_display_name).toBe(target.displayName);
+      expect(student?.f_user_name).toBe(target.userName);
       expect(student?.f_users_id).toBe(target.usersId);
       expect(student?.f_student_id_number).toBe(target.studentIdNumber);
     });
@@ -65,7 +65,7 @@ describe('StudentRepository', () => {
     it('users と student_description を作成し、結合したエンティティを返す', async () => {
       const created = await repo.create({
         classRoomId: seeded.classRoomId,
-        displayName: '伊藤三郎',
+        userName: '伊藤三郎',
         uid: '0000-0099',
         attendanceNumber: 99,
         studentIdNumber: '19999',
@@ -73,7 +73,7 @@ describe('StudentRepository', () => {
 
       expect(created).toMatchObject({
         f_class_room_id: seeded.classRoomId,
-        f_display_name: '伊藤三郎',
+        f_user_name: '伊藤三郎',
         f_uid: '0000-0099',
         f_attendance_number: 99,
         f_student_id_number: '19999',
@@ -87,7 +87,7 @@ describe('StudentRepository', () => {
       await expect(
         repo.create({
           classRoomId: 999999,
-          displayName: '存在しないクラス',
+          userName: '存在しないクラス',
           uid: '0000-0098',
           attendanceNumber: 98,
           studentIdNumber: '19998',
@@ -100,7 +100,7 @@ describe('StudentRepository', () => {
       await expect(
         repo.create({
           classRoomId: seeded.classRoomId,
-          displayName: '重複太郎',
+          userName: '重複太郎',
           uid: '0000-0097',
           attendanceNumber: 97,
           studentIdNumber: target.studentIdNumber,

@@ -1,6 +1,6 @@
 export interface StudentDTO {
   student_id: number;
-  display_name: string;
+  user_name: string;
   class_room_id: number;
   uid: string;
   attendance_number: number;

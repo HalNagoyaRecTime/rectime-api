@@ -11,7 +11,7 @@ export const users = sqliteTable('m_users', {
   classRoomId: integer('f_class_room_id')
     .notNull()
     .references(() => class_rooms.id),
-  displayName: text('f_display_name').notNull(),
+  userName: text('f_display_name').notNull(),
   uid: text('f_uid').notNull(),
 });
 

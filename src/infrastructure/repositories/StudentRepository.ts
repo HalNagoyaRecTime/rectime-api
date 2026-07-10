@@ -16,7 +16,7 @@ function toEntity(row: StudentJoinRow): StudentEntity {
   return {
     f_users_id: row.m_users.id,
     f_class_room_id: row.m_users.classRoomId as number, // TODO: m_usersからclass_room_idをm_student_description移動させる
-    f_display_name: row.m_users.displayName,
+    f_user_name: row.m_users.userName,
     f_uid: row.m_users.uid,
     f_student_id: row.m_student_description.id,
     f_attendance_number: row.m_student_description.attendanceNumber,
@@ -65,7 +65,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
           .insert(users)
           .values({
             classRoomId: input.classRoomId,
-            displayName: input.displayName,
+            userName: input.userName,
             uid: input.uid,
           })
           .returning(),

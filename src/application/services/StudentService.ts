@@ -7,7 +7,7 @@ import { IStudentService } from './IStudentService';
 function toStudentDTO(student: StudentEntity): StudentDTO {
   return {
     student_id: student.f_student_id,
-    display_name: student.f_display_name,
+    user_name: student.f_user_name,
     class_room_id: student.f_class_room_id,
     uid: student.f_uid,
     attendance_number: student.f_attendance_number,
@@ -43,7 +43,7 @@ export function createStudentService(
 
       const student = await studentRepository.create({
         classRoomId: classRoom.f_class_room_id,
-        displayName: input.user_name,
+        userName: input.user_name,
         uid: input.uid,
         attendanceNumber: input.attendance_number,
         studentIdNumber: input.student_id_number,

@@ -10,25 +10,25 @@ import {
 // テスト専用の学生データ。マイグレーションのシードには依存しない。
 const STUDENTS = [
   {
-    displayName: '田中太郎',
+    userName: '田中太郎',
     uid: '0000-0000',
     attendanceNumber: 1,
     studentIdNumber: '10000',
   },
   {
-    displayName: '佐藤花子',
+    userName: '佐藤花子',
     uid: '0000-0001',
     attendanceNumber: 2,
     studentIdNumber: '10001',
   },
   {
-    displayName: '鈴木一郎',
+    userName: '鈴木一郎',
     uid: '0000-0002',
     attendanceNumber: 3,
     studentIdNumber: '10002',
   },
   {
-    displayName: '高橋次郎',
+    userName: '高橋次郎',
     uid: '0000-0003',
     attendanceNumber: 4,
     studentIdNumber: '10003',
@@ -39,7 +39,7 @@ export type SeededStudent = {
   studentId: number;
   usersId: number;
   classRoomId: number;
-  displayName: string;
+  userName: string;
   uid: string;
   attendanceNumber: number;
   studentIdNumber: string;
@@ -50,7 +50,7 @@ export type SeededData = {
   classCode: string;
   students: SeededStudent[];
   // m_studet_description を持たない先生（findAll で除外されることの検証用）
-  teacher: { usersId: number; displayName: string };
+  teacher: { usersId: number; userName: string };
 };
 
 // テスト用の学生データを返す関数。
@@ -73,7 +73,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
       .insert(users)
       .values({
         classRoomId: classRoom.id,
-        displayName: s.displayName,
+        userName: s.userName,
         uid: s.uid,
       })
       .returning();
@@ -91,7 +91,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
       studentId: desc.id,
       usersId: user.id,
       classRoomId: classRoom.id,
-      displayName: s.displayName,
+      userName: s.userName,
       uid: s.uid,
       attendanceNumber: s.attendanceNumber,
       studentIdNumber: s.studentIdNumber,
@@ -103,7 +103,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
     .insert(users)
     .values({
       classRoomId: classRoom.id,
-      displayName: '山田先生',
+      userName: '山田先生',
       uid: '0000-0004',
     })
     .returning();
@@ -112,6 +112,6 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
     classRoomId: classRoom.id,
     classCode: classRoom.classCode,
     students,
-    teacher: { usersId: teacher.id, displayName: teacher.displayName },
+    teacher: { usersId: teacher.id, userName: teacher.userName },
   };
 }
