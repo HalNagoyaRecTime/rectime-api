@@ -10,20 +10,20 @@ import {
 const app = new Hono<{ Bindings: Env }>();
 
 let corsWarnLogged = false;
+const allowedOriginRulesCache = new Map<string, AllowedOriginRule[]>();
 
 app.use('*', (c, next) => {
-  const origins = (c.env.ALLOWED_ORIGINS ?? '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-  if (origins.length === 0 && !corsWarnLogged) {
+  const allowedOrigins = c.env.ALLOWED_ORIGINS ?? '';
+  const allowedOriginRules = getAllowedOriginRules(allowedOrigins);
+  if (allowedOriginRules.length === 0 && !corsWarnLogged) {
     console.warn(
       '[CORS] ALLOWED_ORIGINS is not set — all cross-origin requests will be blocked'
     );
     corsWarnLogged = true;
   }
   return cors({
-    origin: origin => (isAllowedOrigin(origin, origins) ? origin : null),
+    origin: origin =>
+      isAllowedOrigin(origin, allowedOriginRules) ? origin : null,
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
@@ -137,22 +137,60 @@ export default {
   },
 };
 
-function isAllowedOrigin(origin: string, allowedOrigins: string[]): boolean {
-  return allowedOrigins.some(allowedOrigin =>
-    matchesAllowedOrigin(origin, allowedOrigin)
-  );
+type AllowedOriginRule =
+  | {
+      type: 'exact';
+      origin: string;
+    }
+  | {
+      type: 'pattern';
+      pattern: RegExp;
+    };
+
+function getAllowedOriginRules(allowedOrigins: string): AllowedOriginRule[] {
+  const cachedRules = allowedOriginRulesCache.get(allowedOrigins);
+  if (cachedRules) {
+    return cachedRules;
+  }
+
+  const rules = allowedOrigins
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(createAllowedOriginRule);
+
+  allowedOriginRulesCache.set(allowedOrigins, rules);
+  return rules;
 }
 
-function matchesAllowedOrigin(origin: string, allowedOrigin: string): boolean {
+function createAllowedOriginRule(allowedOrigin: string): AllowedOriginRule {
   if (!allowedOrigin.includes('*')) {
-    return origin === allowedOrigin;
+    return {
+      type: 'exact',
+      origin: allowedOrigin,
+    };
   }
 
   const allowedOriginPattern = escapeRegExp(allowedOrigin).replace(
     /\\\*/g,
     '[^.]+'
   );
-  return new RegExp(`^${allowedOriginPattern}$`).test(origin);
+  return {
+    type: 'pattern',
+    pattern: new RegExp(`^${allowedOriginPattern}$`),
+  };
+}
+
+function isAllowedOrigin(
+  origin: string,
+  allowedOriginRules: AllowedOriginRule[]
+): boolean {
+  return allowedOriginRules.some(rule => {
+    if (rule.type === 'exact') {
+      return origin === rule.origin;
+    }
+    return rule.pattern.test(origin);
+  });
 }
 
 function escapeRegExp(value: string): string {
