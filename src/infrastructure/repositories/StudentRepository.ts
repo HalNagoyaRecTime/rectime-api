@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { users, student_description } from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
@@ -60,23 +60,24 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
     },
 
     async create(input: NewStudentInput): Promise<StudentEntity> {
-      const [user] = await orm
-        .insert(users)
-        .values({
-          classRoomId: input.classRoomId,
-          displayName: input.displayName,
-          uid: input.uid,
-        })
-        .returning();
-
-      const [description] = await orm
-        .insert(student_description)
-        .values({
-          usersId: user.id,
-          attendanceNumber: input.attendanceNumber,
-          studentIdNumber: input.studentIdNumber,
-        })
-        .returning();
+      const [[user], [description]] = await orm.batch([
+        orm
+          .insert(users)
+          .values({
+            classRoomId: input.classRoomId,
+            displayName: input.displayName,
+            uid: input.uid,
+          })
+          .returning(),
+        orm
+          .insert(student_description)
+          .values({
+            usersId: sql`(SELECT last_insert_rowid())`,
+            attendanceNumber: input.attendanceNumber,
+            studentIdNumber: input.studentIdNumber,
+          })
+          .returning(),
+      ]);
 
       return toEntity({ m_users: user, m_student_description: description });
     },
