@@ -11,6 +11,7 @@ const app = new Hono<{ Bindings: Env }>();
 
 let corsWarnLogged = false;
 const allowedOriginRulesCache = new Map<string, AllowedOriginRule[]>();
+let tenantWarnLogged = false;
 
 app.use('*', (c, next) => {
   const allowedOrigins = c.env.ALLOWED_ORIGINS ?? '';
@@ -29,6 +30,25 @@ app.use('*', (c, next) => {
     credentials: true,
     maxAge: 600,
   })(c, next);
+});
+
+app.use('*', (c, next) => {
+  const tenant = (c.env.MICROSOFT_TENANT ?? '').trim();
+  const tenantAllowsAny =
+    tenant === '' || tenant === 'common' || tenant === 'organizations';
+  const allowedTenants = (c.env.ALLOWED_MICROSOFT_TENANTS ?? '')
+    .split(',')
+    .map(t => t.trim())
+    .filter(Boolean);
+  if (tenantAllowsAny && allowedTenants.length === 0 && !tenantWarnLogged) {
+    console.warn(
+      '[AUTH] MICROSOFT_TENANT is "' +
+        tenant +
+        '" but ALLOWED_MICROSOFT_TENANTS is not set — all auth requests will be rejected with INVALID_ID_TOKEN'
+    );
+    tenantWarnLogged = true;
+  }
+  return next();
 });
 
 app.get('/health', c => c.json({ status: 'ok' }));

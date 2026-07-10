@@ -21,12 +21,15 @@ import { createClassController } from '../presentation/controllers/ClassControll
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
 import { createScheduleController } from '../presentation/controllers/ScheduleController';
+import { createUserRepository } from '../infrastructure/repositories/UserRepository';
+import { createAuthService } from '../application/services/authService';
 import type { Env } from '../lib/env';
 
 export function createDIContainer(env: Env) {
   const db = getDb(env);
 
   // Repositories
+  const userRepository = createUserRepository(db);
   const studentRepository = createStudentRepository(db);
   const eventRepository = createEventRepository(db);
   const entryRepository = createEntryRepository(db);
@@ -37,6 +40,7 @@ export function createDIContainer(env: Env) {
   const scheduleRepository = createScheduleRepository();
 
   // Services
+  const authService = createAuthService(userRepository, env.AUTH_KV);
   const studentService = createStudentService(studentRepository);
   const eventService = createEventService(eventRepository);
   const entryService = createEntryService(entryRepository);
@@ -69,6 +73,7 @@ export function createDIContainer(env: Env) {
   const notificationController = createNotificationController(fcmService);
 
   return {
+    authService,
     studentController,
     eventController,
     entryController,
