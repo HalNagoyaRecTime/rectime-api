@@ -60,4 +60,52 @@ describe('StudentRepository', () => {
       expect(await repo.findByStudentNum('00000')).toBeNull();
     });
   });
+
+  describe('create', () => {
+    it('users と student_description を作成し、結合したエンティティを返す', async () => {
+      const created = await repo.create({
+        classRoomId: seeded.classRoomId,
+        displayName: '伊藤三郎',
+        uid: '0000-0099',
+        attendanceNumber: 99,
+        studentIdNumber: '19999',
+      });
+
+      expect(created).toMatchObject({
+        f_class_room_id: seeded.classRoomId,
+        f_display_name: '伊藤三郎',
+        f_uid: '0000-0099',
+        f_attendance_number: 99,
+        f_student_id_number: '19999',
+      });
+
+      const found = await repo.findById(created.f_student_id);
+      expect(found).toMatchObject(created);
+    });
+
+    it('存在しない class_room_id の場合はエラーを投げる', async () => {
+      await expect(
+        repo.create({
+          classRoomId: 999999,
+          displayName: '存在しないクラス',
+          uid: '0000-0098',
+          attendanceNumber: 98,
+          studentIdNumber: '19998',
+        })
+      ).rejects.toThrow();
+    });
+
+    it('重複する student_id_number の場合はエラーを投げる', async () => {
+      const target = seeded.students[0];
+      await expect(
+        repo.create({
+          classRoomId: seeded.classRoomId,
+          displayName: '重複太郎',
+          uid: '0000-0097',
+          attendanceNumber: 97,
+          studentIdNumber: target.studentIdNumber,
+        })
+      ).rejects.toThrow();
+    });
+  });
 });

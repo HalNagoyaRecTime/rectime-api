@@ -47,6 +47,7 @@ export type SeededStudent = {
 
 export type SeededData = {
   classRoomId: number;
+  classCode: string;
   students: SeededStudent[];
   // m_studet_description を持たない先生（findAll で除外されることの検証用）
   teacher: { usersId: number; displayName: string };
@@ -109,6 +110,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
 
   return {
     classRoomId: classRoom.id,
+    classCode: classRoom.classCode,
     students,
     teacher: { usersId: teacher.id, displayName: teacher.displayName },
   };

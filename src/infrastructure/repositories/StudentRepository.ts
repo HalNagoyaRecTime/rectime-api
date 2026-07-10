@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { users, student_description } from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
-import { StudentEntity } from '../../domain/entities/Student';
+import { NewStudentInput, StudentEntity } from '../../domain/entities/Student';
 import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 
 type StudentJoinRow = {
@@ -57,6 +57,28 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .get();
 
       return result ? toEntity(result) : null;
+    },
+
+    async create(input: NewStudentInput): Promise<StudentEntity> {
+      const [user] = await orm
+        .insert(users)
+        .values({
+          classRoomId: input.classRoomId,
+          displayName: input.displayName,
+          uid: input.uid,
+        })
+        .returning();
+
+      const [description] = await orm
+        .insert(student_description)
+        .values({
+          usersId: user.id,
+          attendanceNumber: input.attendanceNumber,
+          studentIdNumber: input.studentIdNumber,
+        })
+        .returning();
+
+      return toEntity({ m_users: user, m_student_description: description });
     },
   };
 }

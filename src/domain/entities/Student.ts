@@ -7,3 +7,11 @@ export interface StudentEntity {
   f_attendance_number: number;
   f_student_id_number: string;
 }
+
+export interface NewStudentInput {
+  classRoomId: number;
+  displayName: string;
+  uid: string;
+  attendanceNumber: number;
+  studentIdNumber: string;
+}

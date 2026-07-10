@@ -32,7 +32,10 @@ export function createDIContainer(env: Env) {
   const notificationSendLogRepository = createNotificationSendLogRepository(db);
 
   // Services
-  const studentService = createStudentService(studentRepository);
+  const studentService = createStudentService(
+    studentRepository,
+    classRepository
+  );
   const eventService = createEventService(eventRepository);
   const entryService = createEntryService(entryRepository);
   const classService = createClassService(classRepository);
