@@ -68,7 +68,9 @@ describe('StudentController.createStudent', () => {
   });
 
   it('クラスが見つからない場合は400を返す', async () => {
-    const createStudent = vi.fn().mockRejectedValue(new Error('Class not found'));
+    const createStudent = vi
+      .fn()
+      .mockRejectedValue(new Error('Class not found'));
     const { app } = buildApp(createStudent);
 
     const res = await postStudents(app, validBody);
@@ -83,9 +85,12 @@ describe('StudentController.createStudent', () => {
     const sqliteError = new Error(
       'D1_ERROR: UNIQUE constraint failed: m_student_description.f_student_id_number: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)'
     );
-    const queryError = new Error('Failed query: insert into m_student_description ...', {
-      cause: sqliteError,
-    });
+    const queryError = new Error(
+      'Failed query: insert into m_student_description ...',
+      {
+        cause: sqliteError,
+      }
+    );
     const createStudent = vi.fn().mockRejectedValue(queryError);
     const { app } = buildApp(createStudent);
 
