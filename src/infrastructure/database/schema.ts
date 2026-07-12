@@ -1,11 +1,16 @@
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
 export const class_rooms = sqliteTable('class_rooms', {
   id: integer('class_room_id').primaryKey({ autoIncrement: true }),
   classCode: text('class_code').notNull(),
   name: text('class_name').notNull(),
-  createdAt: text('created_at').notNull(),
-  updatedAt: text('updated_at').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const auth_users = sqliteTable('auth_users', {
@@ -15,16 +20,24 @@ export const auth_users = sqliteTable('auth_users', {
   email: text('email'),
   studentNumber: text('student_number').notNull().unique(),
   isActive: integer('is_active').notNull().default(1),
-  createdAt: text('created_at').notNull(),
-  updatedAt: text('updated_at').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const users = sqliteTable('users', {
   id: integer('user_id').primaryKey({ autoIncrement: true }),
   userName: text('user_name').notNull(),
   isLiveActive: integer('is_live_active').notNull().default(1),
-  createdAt: text('created_at').notNull(),
-  updatedAt: text('updated_at').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const students = sqliteTable('students', {
@@ -38,8 +51,12 @@ export const students = sqliteTable('students', {
     .references(() => class_rooms.id),
   attendanceNumber: integer('attendance_number').notNull(),
   studentIdNumber: text('student_id_number').notNull().unique(),
-  createdAt: text('created_at').notNull(),
-  updatedAt: text('updated_at').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const events = sqliteTable('t_events', {

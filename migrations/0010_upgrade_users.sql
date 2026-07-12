@@ -1,7 +1,3 @@
-PRAGMA foreign_keys = OFF;
-BEGIN TRANSACTION;
-
-
 ALTER TABLE users RENAME TO auth_users;
 
 CREATE TABLE users (
@@ -42,6 +38,17 @@ SELECT
     CURRENT_TIMESTAMP
 FROM m_class_rooms;
 
+-- 移行元データで学級未割当(f_class_room_id が NULL)の生徒がいても
+-- students.class_room_id の NOT NULL 制約に違反しないよう、受け皿の教室を用意する
+INSERT INTO class_rooms (class_code, class_name)
+SELECT '__UNASSIGNED__', '未割当'
+WHERE EXISTS (
+    SELECT 1
+    FROM m_student_description sd
+    INNER JOIN m_users m ON sd.f_users_id = m.f_users_id
+    WHERE m.f_class_room_id IS NULL
+);
+
 CREATE TABLE students (
     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -55,6 +62,16 @@ CREATE TABLE students (
     UNIQUE (user_id)
 );
 
+-- INNER JOIN は m_users に対応レコードがない m_student_description を
+-- 移行対象から静かに除外してしまうため、孤立レコードがあれば移行を中断する
+CREATE TABLE __migration_guard (orphan_count INTEGER CHECK (orphan_count = 0));
+INSERT INTO __migration_guard (orphan_count)
+SELECT COUNT(*)
+FROM m_student_description sd
+LEFT JOIN m_users m ON sd.f_users_id = m.f_users_id
+WHERE m.f_users_id IS NULL;
+DROP TABLE __migration_guard;
+
 INSERT INTO students (
     student_id,
     user_id,
@@ -67,7 +84,10 @@ INSERT INTO students (
 SELECT
     sd.f_student_id,
     m.f_users_id,
-    m.f_class_room_id,
+    COALESCE(
+        m.f_class_room_id,
+        (SELECT class_room_id FROM class_rooms WHERE class_code = '__UNASSIGNED__')
+    ),
     sd.f_attendance_number,
     sd.f_student_id_number,
     CURRENT_TIMESTAMP,
@@ -79,6 +99,3 @@ INNER JOIN m_users m ON sd.f_users_id = m.f_users_id;
 DROP TABLE IF EXISTS m_student_description;
 DROP TABLE IF EXISTS m_users;
 DROP TABLE IF EXISTS m_class_rooms;
-
-COMMIT;
-PRAGMA foreign_keys = ON;
