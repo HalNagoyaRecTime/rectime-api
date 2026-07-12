@@ -4,58 +4,70 @@ import type { IUserRepository } from '../../domain/interfaces/repositories/IUser
 export function createUserRepository(db: D1Database): IUserRepository {
   return {
     async findUserIdByMicrosoftAccount(oid, tid) {
-      // microsoft_account_links.user_id は auth_users(users_id) を参照する
-      // （migrations/0010 で旧 users テーブルが auth_users にリネームされた際、
-      // 既存の FOREIGN KEY 定義もこの参照先に自動的に書き換えられている）
       const row = await db
         .prepare(
-          `SELECT a.users_id
+          `SELECT u.user_id
              FROM microsoft_account_links m
-             INNER JOIN auth_users a ON a.users_id = m.user_id
+             INNER JOIN users u ON u.user_id = m.user_id
             WHERE m.oid = ? AND m.tid = ?`
         )
         .bind(oid, tid)
-        .first<{ users_id: string }>();
-      return row?.users_id ?? null;
+        .first<{ user_id: number }>();
+      return row ? String(row.user_id) : null;
     },
 
-    async createUserWithMicrosoftLink({
-      oid,
-      tid,
-      sub,
-      email,
-      displayName,
-      uid,
-      studentNumber,
-    }) {
-      const userId = crypto.randomUUID();
-      const linkId = crypto.randomUUID();
+    async createUserWithMicrosoftLink({ oid, tid, sub, email, displayName }) {
       const now = new Date().toISOString();
 
-      await db.batch([
-        db
-          .prepare(
-            'INSERT INTO auth_users (users_id, display_name, uid, student_number, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-          )
-          .bind(userId, displayName, uid, studentNumber, now, now),
-        db
-          .prepare(
-            'INSERT INTO microsoft_account_links (microsoft_account_link_id, user_id, oid, tid) VALUES (?, ?, ?, ?)'
-          )
-          .bind(linkId, userId, oid, tid),
-      ]);
+      // users.user_id は自動採番のため、microsoft_account_links の挿入に必要な
+      // IDは users への挿入が完了するまで分からない。db.batch() では後続の文が
+      // 先行する文の結果を参照できないため、ここでは2段階の挿入にし、
+      // 2段目が失敗した場合（oid/tid の同時初回ログインによる競合など）は
+      // 直前に作った users 行を手動で取り消して孤立させない。
+      const user = await db
+        .prepare(
+          'INSERT INTO users (user_name, is_live_active, created_at, updated_at) VALUES (?, 1, ?, ?) RETURNING user_id'
+        )
+        .bind(displayName, now, now)
+        .first<{ user_id: number }>();
 
-      return { id: userId, oid, tid, sub, email, display_name: displayName };
+      if (!user) {
+        throw new Error('Failed to create user');
+      }
+
+      try {
+        await db
+          .prepare(
+            'INSERT INTO microsoft_account_links (user_id, oid, tid, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+          )
+          .bind(user.user_id, oid, tid, now, now)
+          .run();
+      } catch (err) {
+        await db
+          .prepare('DELETE FROM users WHERE user_id = ?')
+          .bind(user.user_id)
+          .run();
+        throw err;
+      }
+
+      return {
+        id: String(user.user_id),
+        oid,
+        tid,
+        sub,
+        email,
+        display_name: displayName,
+      };
     },
 
-    async updateUser({ userId, oid, tid, sub, email, displayName, uid }) {
+    async updateUser({ userId, oid, tid, sub, email, displayName }) {
       const now = new Date().toISOString();
 
       const result = await db
         .prepare(
-          'UPDATE auth_users SET display_name = ?, uid = ?, updated_at = ? WHERE users_id = ?'
+          'UPDATE users SET user_name = ?, updated_at = ? WHERE user_id = ?'
         )
-        .bind(displayName, uid, now, userId)
+        .bind(displayName, now, userId)
         .run();
 
       if (result.meta.changes === 0) return null;

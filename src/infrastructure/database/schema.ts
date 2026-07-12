@@ -59,6 +59,34 @@ export const students = sqliteTable('students', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const staffs = sqliteTable('staffs', {
+  id: integer('staff_id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id)
+    .unique(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const teachers = sqliteTable('teachers', {
+  id: integer('teacher_id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id)
+    .unique(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const events = sqliteTable('t_events', {
   id: integer('f_event_id').primaryKey({ autoIncrement: true }),
   eventCode: text('f_event_code').notNull().unique(),

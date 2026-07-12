@@ -11,8 +11,6 @@ export interface IUserRepository {
     sub: string;
     email: string;
     displayName: string;
-    uid: string;
-    studentNumber: string;
   }): Promise<AppUser>;
   updateUser(params: {
     userId: string;
@@ -21,6 +19,5 @@ export interface IUserRepository {
     sub: string;
     email: string;
     displayName: string;
-    uid: string;
   }): Promise<AppUser | null>;
 }
