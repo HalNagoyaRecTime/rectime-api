@@ -2,6 +2,12 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { app } from '../src/index';
 
+const corsTestEnv = {
+  ...env,
+  ALLOWED_ORIGINS:
+    'http://localhost:5173,https://recwatch.pages.dev,https://*.recwatch.pages.dev',
+};
+
 describe('GET /health', () => {
   it('200 と { status: "ok" } を返す', async () => {
     const res = await app.fetch(new Request('http://example.com/health'), env);
@@ -16,10 +22,34 @@ describe('CORS middleware', () => {
       new Request('http://example.com/health', {
         headers: { Origin: 'http://localhost:5173' },
       }),
-      env
+      corsTestEnv
     );
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(
       'http://localhost:5173'
+    );
+  });
+
+  it('Cloudflare Pages の本番オリジンを許可する', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/health', {
+        headers: { Origin: 'https://recwatch.pages.dev' },
+      }),
+      corsTestEnv
+    );
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(
+      'https://recwatch.pages.dev'
+    );
+  });
+
+  it('Cloudflare Pages の preview オリジンを許可する', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/health', {
+        headers: { Origin: 'https://feature-branch.recwatch.pages.dev' },
+      }),
+      corsTestEnv
+    );
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(
+      'https://feature-branch.recwatch.pages.dev'
     );
   });
 
@@ -28,7 +58,17 @@ describe('CORS middleware', () => {
       new Request('http://example.com/health', {
         headers: { Origin: 'https://evil.example.com' },
       }),
-      env
+      corsTestEnv
+    );
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
+  });
+
+  it('Cloudflare Pages に似た不正なオリジンは許可しない', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/health', {
+        headers: { Origin: 'https://recwatch.pages.dev.evil.example.com' },
+      }),
+      corsTestEnv
     );
     expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
   });
@@ -43,7 +83,7 @@ describe('CORS middleware', () => {
           'Access-Control-Request-Headers': 'Content-Type',
         },
       }),
-      env
+      corsTestEnv
     );
     expect(res.status).toBe(204);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(
@@ -57,7 +97,7 @@ describe('CORS middleware', () => {
       new Request('http://example.com/health', {
         headers: { Origin: 'http://localhost:5173' },
       }),
-      env
+      corsTestEnv
     );
     expect(res.headers.get('Access-Control-Allow-Credentials')).toBe('true');
   });
