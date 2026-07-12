@@ -13,7 +13,7 @@ describe('NotificationSendLogRepository', () => {
   beforeEach(async () => {
     await env.DB.prepare('DELETE FROM notification_send_logs').run();
     await env.DB.prepare('DELETE FROM firebase_tokens').run();
-    await env.DB.prepare('DELETE FROM users').run();
+    await env.DB.prepare('DELETE FROM auth_users').run();
     seeded = await seedEvents(env.DB);
 
     const firebaseTokenRepository = createFirebaseTokenRepository(env.DB);

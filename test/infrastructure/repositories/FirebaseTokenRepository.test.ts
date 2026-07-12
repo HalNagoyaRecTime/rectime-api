@@ -8,7 +8,7 @@ describe('FirebaseTokenRepository', () => {
 
   beforeEach(async () => {
     await env.DB.prepare('DELETE FROM firebase_tokens').run();
-    await env.DB.prepare('DELETE FROM users').run();
+    await env.DB.prepare('DELETE FROM auth_users').run();
     repo = createFirebaseTokenRepository(env.DB);
   });
 
@@ -90,11 +90,11 @@ describe('FirebaseTokenRepository', () => {
         platform: 'android',
         fcmToken: 'token-a',
       });
-      // users.uid は NOT NULL DEFAULT '' + UNIQUE 制約があり、
+      // auth_users.uid は NOT NULL DEFAULT '' + UNIQUE 制約があり、
       // 2人目を register() 経由の素の INSERT に任せると uid='' 同士が衝突するため、
       // 事前に別 uid を持つ行を用意して ON CONFLICT(student_number) の UPDATE 経路に乗せる
       await env.DB.prepare(
-        'INSERT INTO users (student_number, uid) VALUES (?, ?)'
+        'INSERT INTO auth_users (student_number, uid) VALUES (?, ?)'
       )
         .bind('10001', 'placeholder-uid-10001')
         .run();
