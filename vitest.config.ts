@@ -26,6 +26,19 @@ export default defineConfig(async () => {
     ],
     test: {
       setupFiles: ['./test/apply-migrations.ts'],
+      coverage: {
+        // workerd ランタイムでは V8 のカバレッジ計測APIが使えないため istanbul を使用する
+        provider: 'istanbul',
+        reporter: ['text', 'html'],
+        include: ['src/**/*.ts'],
+        exclude: [
+          'src/index.ts',
+          'src/vitest-env.d.ts',
+          'src/types/**',
+          'src/di/**',
+          'src/infrastructure/database/schema.ts',
+        ],
+      },
     },
   };
 });

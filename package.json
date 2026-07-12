@@ -17,6 +17,7 @@
     "type-check": "tsc --noEmit",
     "check": "npm run format:check && npm run lint && npm run type-check",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:ui": "vitest --ui"
   },
@@ -32,6 +33,7 @@
     "@cloudflare/workers-types": "^4.20250909.0",
     "@typescript-eslint/eslint-plugin": "^8.43.0",
     "@typescript-eslint/parser": "^8.43.0",
+    "@vitest/coverage-istanbul": "^4.1.9",
     "@vitest/ui": "^4.1.9",
     "eslint": "^9.35.0",
     "eslint-config-prettier": "^10.1.8",

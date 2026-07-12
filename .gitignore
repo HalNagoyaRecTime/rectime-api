@@ -26,6 +26,7 @@ lerna-debug.log*
 
 # misc
 .DS_Store
+coverage/
 
 # certificates
 *.pem
