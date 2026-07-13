@@ -1,6 +1,8 @@
 import { Context } from 'hono';
 import { z } from 'zod';
 import { IStudentService } from '../../application/services/IStudentService';
+import { ClassNotFoundError } from '../../domain/errors/ClassNotFoundError';
+import { DuplicateStudentIdNumberError } from '../../domain/errors/DuplicateStudentIdNumberError';
 
 // D1のエラーは DrizzleQueryError でラップされ、SQLite本来のメッセージは
 // error.cause (さらにその cause) に入っているため、chainを辿って結合する。
@@ -69,8 +71,11 @@ export function createStudentController(studentService: IStudentService) {
       const student = await studentService.createStudent(parsedBody.data);
       return c.json(student, 201);
     } catch (error) {
-      if (error instanceof Error && error.message === 'Class not found') {
+      if (error instanceof ClassNotFoundError) {
         return c.json({ error: 'Class not found' }, 400);
+      }
+      if (error instanceof DuplicateStudentIdNumberError) {
+        return c.json({ error: 'student_id_number already exists' }, 409);
       }
 
       const message = getErrorChainMessage(error);

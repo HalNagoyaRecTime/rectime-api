@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { createStudentController } from '../../../src/presentation/controllers/StudentController';
 import type { IStudentService } from '../../../src/application/services/IStudentService';
 import type { StudentDTO } from '../../../src/application/dto/StudentDTO';
+import { ClassNotFoundError } from '../../../src/domain/errors/ClassNotFoundError';
+import { DuplicateStudentIdNumberError } from '../../../src/domain/errors/DuplicateStudentIdNumberError';
 
 const validBody = {
   class_room_id: 1,
@@ -70,7 +72,7 @@ describe('StudentController.createStudent', () => {
   it('クラスが見つからない場合は400を返す', async () => {
     const createStudent = vi
       .fn()
-      .mockRejectedValue(new Error('Class not found'));
+      .mockRejectedValue(new ClassNotFoundError(1));
     const { app } = buildApp(createStudent);
 
     const res = await postStudents(app, validBody);
@@ -79,7 +81,21 @@ describe('StudentController.createStudent', () => {
     expect(await res.json()).toEqual({ error: 'Class not found' });
   });
 
-  it('学籍番号が重複している場合(UNIQUE制約違反)は409を返す', async () => {
+  it('学籍番号が重複している場合は409を返す', async () => {
+    const createStudent = vi
+      .fn()
+      .mockRejectedValue(new DuplicateStudentIdNumberError('10000'));
+    const { app } = buildApp(createStudent);
+
+    const res = await postStudents(app, validBody);
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: 'student_id_number already exists',
+    });
+  });
+
+  it('事前チェックをすり抜けたUNIQUE制約違反(競合状態)でも409を返す', async () => {
     // D1/drizzleが投げる DrizzleQueryError の cause チェーンを模したエラー形状。
     // StudentController.getErrorChainMessage はこの cause を辿ってメッセージを判定する。
     const sqliteError = new Error(

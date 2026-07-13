@@ -3,6 +3,8 @@ import { StudentEntity } from '../../domain/entities/Student';
 import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 import { IClassRepository } from '../../domain/interfaces/repositories/IClassRepository';
 import { IStudentService } from './IStudentService';
+import { ClassNotFoundError } from '../../domain/errors/ClassNotFoundError';
+import { DuplicateStudentIdNumberError } from '../../domain/errors/DuplicateStudentIdNumberError';
 
 function toStudentDTO(student: StudentEntity): StudentDTO {
   return {
@@ -38,7 +40,14 @@ export function createStudentService(
     async createStudent(input: CreateStudentInput): Promise<StudentDTO> {
       const classRoom = await classRepository.findById(input.class_room_id);
       if (!classRoom) {
-        throw new Error('Class not found');
+        throw new ClassNotFoundError(input.class_room_id);
+      }
+
+      const existing = await studentRepository.findByStudentNum(
+        input.student_id_number
+      );
+      if (existing) {
+        throw new DuplicateStudentIdNumberError(input.student_id_number);
       }
 
       const student = await studentRepository.create({
