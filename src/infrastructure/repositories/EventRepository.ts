@@ -86,7 +86,7 @@ export function createEventRepository(db: D1Database): IEventRepository {
 
       return result ? toEntity(result) : null;
     },
-    async getEventInformation(): Promise<EventInformationEntity[]> {
+    async findEventInformation(): Promise<EventInformationEntity[]> {
 
       return [
         {
@@ -98,6 +98,15 @@ export function createEventRepository(db: D1Database): IEventRepository {
           f_duration: '20',
           f_summary: 'イベント1の概要',
         },
+        {
+          f_event_id: 2,
+          f_event_name: 'ガチンコ綱引き',
+          f_gather_time: '9:30',
+          f_place: '集合場所B',
+          f_time: '1030',
+          f_duration: '30',
+          f_summary: 'イベント2の概要',
+        }
       ];
     },
   };

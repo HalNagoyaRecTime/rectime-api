@@ -9,5 +9,5 @@ export interface IEventRepository {
   }) => Promise<{ events: EventEntity[]; total: number }>;
   findById: (id: number) => Promise<EventEntity | null>;
   findByEventCode: (eventCode: string) => Promise<EventEntity | null>;
-  getEventInformation(): Promise<EventInformationEntity[]>;
+  findEventInformation(): Promise<EventInformationEntity[]>;
 }

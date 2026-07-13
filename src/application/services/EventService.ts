@@ -26,7 +26,7 @@ export function createEventService(
       return event;
     },
     async getEventInformation(): Promise<EventInformationEntity[]> {
-      return await eventRepository.getEventInformation();
+      return await eventRepository.findEventInformation();
     },
   };
 }
