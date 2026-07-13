@@ -87,7 +87,6 @@ export function createEventRepository(db: D1Database): IEventRepository {
       return result ? toEntity(result) : null;
     },
     async findEventInformation(): Promise<EventInformationEntity[]> {
-
       return [
         {
           f_event_id: 1,
@@ -106,7 +105,7 @@ export function createEventRepository(db: D1Database): IEventRepository {
           f_time: '1030',
           f_duration: '30',
           f_summary: 'イベント2の概要',
-        }
+        },
       ];
     },
   };
