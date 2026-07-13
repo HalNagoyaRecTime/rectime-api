@@ -70,9 +70,7 @@ describe('StudentController.createStudent', () => {
   });
 
   it('クラスが見つからない場合は400を返す', async () => {
-    const createStudent = vi
-      .fn()
-      .mockRejectedValue(new ClassNotFoundError(1));
+    const createStudent = vi.fn().mockRejectedValue(new ClassNotFoundError(1));
     const { app } = buildApp(createStudent);
 
     const res = await postStudents(app, validBody);
