@@ -7,14 +7,14 @@ export function createClassRepository(db: D1Database): IClassRepository {
     async findAll(): Promise<ClassEntity[]> {
       const result = await db
         .prepare(
-          'SELECT f_class_room_id, f_class_code, f_name FROM m_class_rooms ORDER BY f_class_room_id'
+          'SELECT class_room_id, class_code, class_name FROM class_rooms ORDER BY class_room_id'
         )
         .all();
 
       return result.results.map(row => ({
-        f_class_room_id: row.f_class_room_id as number,
-        f_class_code: row.f_class_code as string,
-        f_name: row.f_name as string,
+        f_class_room_id: row.class_room_id as number,
+        f_class_code: row.class_code as string,
+        f_name: row.class_name as string,
       }));
     },
   };

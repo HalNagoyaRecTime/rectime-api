@@ -4,16 +4,19 @@ import type { IUserRepository } from '../../domain/interfaces/repositories/IUser
 export function createUserRepository(db: D1Database): IUserRepository {
   return {
     async findUserIdByMicrosoftAccount(oid, tid) {
+      // microsoft_account_links.user_id は auth_users(users_id) を参照する
+      // （migrations/0010 で旧 users テーブルが auth_users にリネームされた際、
+      // 既存の FOREIGN KEY 定義もこの参照先に自動的に書き換えられている）
       const row = await db
         .prepare(
-          `SELECT u.user_id
+          `SELECT a.users_id
              FROM microsoft_account_links m
-             INNER JOIN users u ON u.user_id = m.user_id
+             INNER JOIN auth_users a ON a.users_id = m.user_id
             WHERE m.oid = ? AND m.tid = ?`
         )
         .bind(oid, tid)
-        .first<{ user_id: string }>();
-      return row?.user_id ?? null;
+        .first<{ users_id: string }>();
+      return row?.users_id ?? null;
     },
 
     async createUserWithMicrosoftLink({
@@ -32,7 +35,7 @@ export function createUserRepository(db: D1Database): IUserRepository {
       await db.batch([
         db
           .prepare(
-            'INSERT INTO users (user_id, display_name, uid, student_number, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+            'INSERT INTO auth_users (users_id, display_name, uid, student_number, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
           )
           .bind(userId, displayName, uid, studentNumber, now, now),
         db
@@ -50,7 +53,7 @@ export function createUserRepository(db: D1Database): IUserRepository {
 
       const result = await db
         .prepare(
-          'UPDATE users SET display_name = ?, uid = ?, updated_at = ? WHERE user_id = ?'
+          'UPDATE auth_users SET display_name = ?, uid = ?, updated_at = ? WHERE users_id = ?'
         )
         .bind(displayName, uid, now, userId)
         .run();
