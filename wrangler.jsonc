@@ -6,7 +6,7 @@
   "main": "src/index.ts",
   "vars": {
     "NODE_ENV": "production",
-    "ALLOWED_ORIGINS": "",
+    "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
   },
   "triggers": {
     "crons": ["* * * * *"],

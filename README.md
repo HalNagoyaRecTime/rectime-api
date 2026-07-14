@@ -96,6 +96,7 @@ cp .dev.vars.example .dev.vars
 | `MICROSOFT_REDIRECT_URI` | `http://localhost:8787/api/v1/auth/microsoft/callback` |
 | `MICROSOFT_MOBILE_REDIRECT_URI` | `com.rectime.mobile://auth/callback` |
 | `FRONTEND_URL` | `http://localhost:5173` |
+| `ALLOWED_ORIGINS` | CORS で許可するフロントエンドの origin（カンマ区切り複数可） |
 | `JWT_SECRET` | 32 文字以上のランダム文字列 |
 
 `MICROSOFT_CLIENT_PRIVATE_KEY` の設定例:
@@ -133,6 +134,26 @@ npm run deploy
 ```
 
 本番環境のシークレットは Cloudflare ダッシュボード または `wrangler secret put <KEY>` で設定する。
+
+### CORS 設定
+
+`ALLOWED_ORIGINS` には API の URL ではなく、API を呼び出すフロントエンドの origin を設定する。
+
+例:
+
+```text
+ALLOWED_ORIGINS=https://recwatch.pages.dev,https://*.recwatch.pages.dev
+```
+
+`https://recwatch.pages.dev` は Cloudflare Pages の本番 URL 用、`https://*.recwatch.pages.dev` は branch/preview URL 用の設定。
+
+フロントエンド側の `VITE_BACKEND_BASE_URL` には、バックエンド API の URL を設定する。
+
+例:
+
+```text
+VITE_BACKEND_BASE_URL=https://rectime-api.rectime-project.workers.dev
+```
 
 ---
 
