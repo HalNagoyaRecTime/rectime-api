@@ -8,6 +8,7 @@ dist/
 .idea/workspace.xml
 .idea/usage.statistics.xml
 .idea/shelf
+.idea/copilot.data.migration.*.xml
 # deps
 node_modules/
 .wrangler
