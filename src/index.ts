@@ -73,33 +73,16 @@ apiV1.post('/firebase-tokens', c => {
 });
 
 // Notification routes
+apiV1.post('/admin/notifications', c => {
+  return c.get('container').notificationController.sendManualNotification(c);
+});
+
 apiV1.post('/notifications/test', c => {
   return c.get('container').notificationController.sendTestNotification(c);
 });
 
-apiV1.post('/notifications/schedule/run', async c => {
-  try {
-    const body = await c.req.json().catch(() => ({}));
-    const now =
-      body && typeof body.now === 'string' ? new Date(body.now) : new Date();
-
-    if (Number.isNaN(now.getTime())) {
-      return c.json({ error: 'Invalid now value' }, 400);
-    }
-
-    const result = await c
-      .get('container')
-      .scheduledNotificationService.sendScheduledEventNotifications(now);
-    return c.json(result);
-  } catch (error) {
-    return c.json(
-      {
-        error: 'Failed to run scheduled notifications',
-        details: error instanceof Error ? error.message : String(error),
-      },
-      500
-    );
-  }
+apiV1.post('/notifications/schedule/run', c => {
+  return c.get('container').notificationController.runScheduledNotifications(c);
 });
 
 // Mount API v1

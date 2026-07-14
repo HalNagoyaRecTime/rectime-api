@@ -4,12 +4,15 @@ import { createEventRepository } from '../infrastructure/repositories/EventRepos
 import { createEntryRepository } from '../infrastructure/repositories/EntryRepository';
 import { createClassRepository } from '../infrastructure/repositories/ClassRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
+import { createManualNotificationRepository } from '../infrastructure/repositories/ManualNotificationRepository';
 import { createNotificationSendLogRepository } from '../infrastructure/repositories/NotificationSendLogRepository';
 import { createStudentService } from '../application/services/StudentService';
 import { createEventService } from '../application/services/EventService';
 import { createEntryService } from '../application/services/EntryService';
 import { createClassService } from '../application/services/ClassService';
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
+import { createManualNotificationService } from '../application/services/ManualNotificationService';
+import { createNotificationService } from '../application/services/NotificationService';
 import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
 import { createStudentController } from '../presentation/controllers/StudentController';
@@ -29,6 +32,7 @@ export function createDIContainer(env: Env) {
   const entryRepository = createEntryRepository(db);
   const classRepository = createClassRepository(db);
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
+  const manualNotificationRepository = createManualNotificationRepository(db);
   const notificationSendLogRepository = createNotificationSendLogRepository(db);
 
   // Services
@@ -51,6 +55,12 @@ export function createDIContainer(env: Env) {
     notificationSendLogRepository,
     fcmService,
   });
+  const notificationService = createNotificationService(fcmService);
+  const manualNotificationService = createManualNotificationService({
+    manualNotificationRepository,
+    firebaseTokenRepository,
+    fcmService,
+  });
 
   // Controllers
   const studentController = createStudentController(studentService);
@@ -59,7 +69,11 @@ export function createDIContainer(env: Env) {
   const classController = createClassController(classService);
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
-  const notificationController = createNotificationController(fcmService);
+  const notificationController = createNotificationController(
+    notificationService,
+    manualNotificationService,
+    scheduledNotificationService
+  );
 
   return {
     studentController,

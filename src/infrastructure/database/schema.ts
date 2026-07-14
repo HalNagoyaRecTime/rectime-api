@@ -80,6 +80,16 @@ export const firebase_tokens = sqliteTable('firebase_tokens', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const notifications = sqliteTable('notifications', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  type: text('type').notNull(),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const notification_send_logs = sqliteTable('notification_send_logs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   eventId: integer('event_id')

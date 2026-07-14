@@ -181,6 +181,58 @@ export function createFirebaseTokenRepository(
       );
     },
 
+    async findActiveTokensForAllUsers(): Promise<FirebaseTokenEntity[]> {
+      const rows = await orm
+        .select({ firebaseToken: firebase_tokens })
+        .from(firebase_tokens)
+        .innerJoin(
+          notification_users,
+          eq(notification_users.id, firebase_tokens.userId)
+        )
+        .where(
+          and(
+            eq(firebase_tokens.isActive, 1),
+            eq(notification_users.isActive, 1)
+          )
+        )
+        .orderBy(firebase_tokens.id);
+
+      return rows.map(row =>
+        toFirebaseTokenEntityFromDrizzle(row.firebaseToken)
+      );
+    },
+
+    async findActiveTokensForGroups(
+      targetIds: string[]
+    ): Promise<FirebaseTokenEntity[]> {
+      if (targetIds.length === 0) {
+        return [];
+      }
+
+      const placeholders = targetIds.map(() => '?').join(', ');
+      const rows = await db
+        .prepare(
+          `
+          SELECT firebase_tokens.*
+          FROM firebase_tokens
+          INNER JOIN users notification_users
+            ON notification_users.id = firebase_tokens.user_id
+          INNER JOIN m_student_description
+            ON m_student_description.f_student_id_number = notification_users.student_number
+          INNER JOIN m_users
+            ON m_users.f_users_id = m_student_description.f_users_id
+          WHERE firebase_tokens.is_active = 1
+            AND notification_users.is_active = 1
+            AND CAST(m_users.f_class_room_id AS TEXT) IN (${placeholders})
+          ORDER BY firebase_tokens.id
+          `
+        )
+        .bind(...targetIds)
+        .all<Record<string, unknown>>();
+
+      return rows.results.map(toFirebaseTokenEntity);
+    },
+
     async deactivate(id: number): Promise<void> {
       await db
         .prepare(

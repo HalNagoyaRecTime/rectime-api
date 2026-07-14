@@ -30,6 +30,15 @@ lerna-debug.log*
 # docs
 WORK_LOG.md
 WORK_LOG_KO.md
+NOTES.md
+MEMO.md
+TODO.local.md
+*.local.md
+*.memo.md
+*.notes.md
+personal/
+notes/
+memos/
 
 # certificates
 *.pem

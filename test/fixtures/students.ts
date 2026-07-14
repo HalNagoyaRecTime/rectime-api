@@ -5,6 +5,7 @@ import {
   class_rooms,
   entries,
   firebase_tokens,
+  notifications,
   notification_send_logs,
   notification_users,
   users,
@@ -62,6 +63,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
 
   // 外部キーの参照元から削除する。
   await orm.delete(notification_send_logs);
+  await orm.delete(notifications);
   await orm.delete(entries);
   await orm.delete(firebase_tokens);
   await orm.delete(notification_users);
