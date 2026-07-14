@@ -8,6 +8,8 @@ dist/
 .idea/workspace.xml
 .idea/usage.statistics.xml
 .idea/shelf
+.idea/db-forest-config.xml
+.github/pull_request_template.md
 # deps
 node_modules/
 .wrangler
