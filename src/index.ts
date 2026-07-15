@@ -63,6 +63,7 @@ app.get('/', c => {
       classes: '/api/v1/classes',
       gatheringSpots: '/api/v1/gathering-spots',
       gatheringGroups: '/api/v1/gathering-groups',
+      gatherings: '/api/v1/gatherings',
       firebaseTokens: '/api/v1/firebase-tokens',
       testNotification: '/api/v1/notifications/test',
       runScheduledNotifications: '/api/v1/notifications/schedule/run',
@@ -127,6 +128,14 @@ apiV1.delete('/gathering-groups/:gatheringGroupId/members/:userId', c => {
   return c
     .get('container')
     .gatheringGroupMemberController.removeGatheringGroupMember(c);
+});
+
+// Gathering routes
+apiV1.get('/gatherings', c => {
+  return c.get('container').gatheringController.getAllGatherings(c);
+});
+apiV1.post('/gatherings', c => {
+  return c.get('container').gatheringController.createGathering(c);
 });
 
 // Firebase token routes

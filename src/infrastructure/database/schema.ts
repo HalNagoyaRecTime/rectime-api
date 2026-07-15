@@ -115,6 +115,35 @@ export const events = sqliteTable('events', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const gatherings = sqliteTable(
+  'gatherings',
+  {
+    id: integer('gathering_id').primaryKey({ autoIncrement: true }),
+    gatheringGroupId: integer('gathering_group_id')
+      .notNull()
+      .unique()
+      .references(() => gathering_groups.id),
+    eventId: integer('event_id')
+      .notNull()
+      .references(() => events.id),
+    gatheringSpotId: integer('gathering_spot_id')
+      .notNull()
+      .references(() => gathering_spots.id),
+    gatheringTime: text('gathering_time').notNull().default('99:59'),
+    round: integer('round').notNull().default(99),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    index('idx_gatherings_event_id').on(table.eventId),
+    index('idx_gatherings_spot_id').on(table.gatheringSpotId),
+  ]
+);
+
 export const gathering_spots = sqliteTable('gathering_spots', {
   id: integer('gathering_spot_id').primaryKey({ autoIncrement: true }),
   name: text('gathering_spot_name').notNull(),
@@ -173,8 +202,35 @@ export const gatheringGroupsRelations = relations(
   gathering_groups,
   ({ many }) => ({
     members: many(gathering_group_members),
+    gatherings: many(gatherings),
   })
 );
+
+export const gatheringSpotsRelations = relations(
+  gathering_spots,
+  ({ many }) => ({
+    gatherings: many(gatherings),
+  })
+);
+
+export const eventsRelations = relations(events, ({ many }) => ({
+  gatherings: many(gatherings),
+}));
+
+export const gatheringsRelations = relations(gatherings, ({ one }) => ({
+  gatheringGroup: one(gathering_groups, {
+    fields: [gatherings.gatheringGroupId],
+    references: [gathering_groups.id],
+  }),
+  event: one(events, {
+    fields: [gatherings.eventId],
+    references: [events.id],
+  }),
+  gatheringSpot: one(gathering_spots, {
+    fields: [gatherings.gatheringSpotId],
+    references: [gathering_spots.id],
+  }),
+}));
 
 export const gatheringGroupMembersRelations = relations(
   gathering_group_members,
