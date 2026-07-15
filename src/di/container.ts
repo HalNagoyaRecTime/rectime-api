@@ -4,17 +4,26 @@ import { createEventRepository } from '../infrastructure/repositories/EventRepos
 import { createClassRepository } from '../infrastructure/repositories/ClassRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationSendLogRepository } from '../infrastructure/repositories/NotificationSendLogRepository';
+import { createGatheringSpotRepository } from '../infrastructure/repositories/GatheringSpotRepository';
+import { createGatheringGroupRepository } from '../infrastructure/repositories/GatheringGroupRepository';
+import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createStudentService } from '../application/services/StudentService';
 import { createEventService } from '../application/services/EventService';
 import { createClassService } from '../application/services/ClassService';
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
+import { createGatheringSpotService } from '../application/services/GatheringSpotService';
+import { createGatheringGroupService } from '../application/services/GatheringGroupService';
+import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createEventController } from '../presentation/controllers/EventController';
 import { createClassController } from '../presentation/controllers/ClassController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
+import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
+import { createGatheringGroupController } from '../presentation/controllers/GatheringGroupController';
+import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createAuthService } from '../application/services/authService';
 import type { Env } from '../lib/env';
@@ -29,6 +38,10 @@ export function createDIContainer(env: Env) {
   const classRepository = createClassRepository(db);
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
   const notificationSendLogRepository = createNotificationSendLogRepository(db);
+  const gatheringSpotRepository = createGatheringSpotRepository(db);
+  const gatheringGroupRepository = createGatheringGroupRepository(db);
+  const gatheringGroupMemberRepository =
+    createGatheringGroupMemberRepository(db);
 
   // Services
   const authService = createAuthService(userRepository, env.AUTH_KV);
@@ -50,6 +63,15 @@ export function createDIContainer(env: Env) {
     notificationSendLogRepository,
     fcmService,
   });
+  const gatheringSpotService = createGatheringSpotService(
+    gatheringSpotRepository
+  );
+  const gatheringGroupService = createGatheringGroupService(
+    gatheringGroupRepository
+  );
+  const gatheringGroupMemberService = createGatheringGroupMemberService(
+    gatheringGroupMemberRepository
+  );
 
   // Controllers
   const studentController = createStudentController(studentService);
@@ -58,6 +80,14 @@ export function createDIContainer(env: Env) {
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
   const notificationController = createNotificationController(fcmService);
+  const gatheringSpotController =
+    createGatheringSpotController(gatheringSpotService);
+  const gatheringGroupController = createGatheringGroupController(
+    gatheringGroupService
+  );
+  const gatheringGroupMemberController = createGatheringGroupMemberController(
+    gatheringGroupMemberService
+  );
 
   return {
     authService,
@@ -67,6 +97,9 @@ export function createDIContainer(env: Env) {
     firebaseTokenController,
     notificationController,
     scheduledNotificationService,
+    gatheringSpotController,
+    gatheringGroupController,
+    gatheringGroupMemberController,
   };
 }
 
