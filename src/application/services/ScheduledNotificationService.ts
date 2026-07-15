@@ -1,81 +1,81 @@
-import { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 import { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
-import { INotificationSendLogRepository } from '../../domain/interfaces/repositories/INotificationSendLogRepository';
+import { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
 import { IFcmService } from './IFcmService';
 import { IScheduledNotificationService } from './IScheduledNotificationService';
 
 export function createScheduledNotificationService(deps: {
-  eventRepository: IEventRepository;
   firebaseTokenRepository: IFirebaseTokenRepository;
-  notificationSendLogRepository: INotificationSendLogRepository;
+  notificationScheduleRepository: INotificationScheduleRepository;
   fcmService: IFcmService;
 }): IScheduledNotificationService {
   const {
-    eventRepository,
     firebaseTokenRepository,
-    notificationSendLogRepository,
+    notificationScheduleRepository,
     fcmService,
   } = deps;
 
   return {
     async sendScheduledEventNotifications(now = new Date()) {
-      const targetTime = getJstHmm(addMinutes(now, 10));
-      const today = getJstDate(now);
-      const { events } = await eventRepository.findAll({
-        startTime: targetTime,
-      });
-      const tokens = await firebaseTokenRepository.findActiveTokens();
+      const schedules = await notificationScheduleRepository.claimDue(
+        now.toISOString()
+      );
       let sent = 0;
       let failed = 0;
 
-      for (const event of events) {
+      for (const schedule of schedules) {
+        const tokens = await notificationScheduleRepository.findTargetTokens(
+          schedule.gathering_group_id
+        );
+        if (tokens.length === 0) {
+          await notificationScheduleRepository.markFailed(
+            schedule.notification_send_schedule_id,
+            'No active Firebase tokens for gathering group'
+          );
+          failed += 1;
+          continue;
+        }
+        let messageId = '';
+        let sentForSchedule = 0;
+        let failure: unknown;
         for (const token of tokens) {
-          const alreadySent =
-            await notificationSendLogRepository.hasAlreadySent({
-              eventId: event.event_id,
-              firebaseTokenId: token.firebase_token_id,
-              scheduledForDate: today,
-            });
-
-          if (alreadySent) {
-            continue;
-          }
-
           try {
             const result = await fcmService.sendNotificationToToken({
               token: token.fcm_token,
-              title: '呼び出し通知',
-              body: `${event.event_name}の開始10分前です。${event.venue}に集合してください。`,
+              title: schedule.title,
+              body: schedule.body,
               data: {
-                type: 'event_reminder',
-                eventId: String(event.event_id),
+                type: schedule.notification_type,
+                eventId: String(schedule.event_id),
               },
             });
-
-            await notificationSendLogRepository.record({
-              eventId: event.event_id,
-              firebaseTokenId: token.firebase_token_id,
-              scheduledForDate: today,
-              messageId: result.messageId,
-            });
+            messageId = result.messageId;
             sent += 1;
+            sentForSchedule += 1;
           } catch (error) {
-            failed += 1;
+            failure = error;
 
             if (shouldDeactivateToken(error)) {
               await firebaseTokenRepository.deactivate(token.firebase_token_id);
             }
-
-            console.error(
-              `Failed to send scheduled notification. eventId: ${event.event_id}, tokenId: ${token.firebase_token_id}`,
-              error
-            );
+            break;
           }
         }
+        if (failure) {
+          failed += 1;
+          await notificationScheduleRepository.markFailed(
+            schedule.notification_send_schedule_id,
+            `${failure instanceof Error ? failure.message : String(failure)} (sent ${sentForSchedule}/${tokens.length} tokens)`
+          );
+          continue;
+        }
+        await notificationScheduleRepository.markSent(
+          schedule.notification_send_schedule_id,
+          messageId
+        );
       }
 
       return {
-        checkedEvents: events.length,
+        checkedEvents: schedules.length,
         sent,
         failed,
       };
@@ -90,28 +90,4 @@ function shouldDeactivateToken(error: unknown): boolean {
     message.includes('invalid token') ||
     message.includes('INVALID_ARGUMENT')
   );
-}
-
-function addMinutes(date: Date, minutes: number): Date {
-  return new Date(date.getTime() + minutes * 60 * 1000);
-}
-
-function getJstHmm(date: Date): string {
-  const formatter = new Intl.DateTimeFormat('ja-JP', {
-    timeZone: 'Asia/Tokyo',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  return formatter.format(date).replace(':', '');
-}
-
-function getJstDate(date: Date): string {
-  const formatter = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  return formatter.format(date);
 }
