@@ -21,7 +21,9 @@ export function createScheduledNotificationService(deps: {
     async sendScheduledEventNotifications(now = new Date()) {
       const targetTime = getJstHmm(addMinutes(now, 10));
       const today = getJstDate(now);
-      const { events } = await eventRepository.findAll({ time: targetTime });
+      const { events } = await eventRepository.findAll({
+        startTime: targetTime,
+      });
       const tokens = await firebaseTokenRepository.findActiveTokens();
       let sent = 0;
       let failed = 0;
@@ -30,7 +32,7 @@ export function createScheduledNotificationService(deps: {
         for (const token of tokens) {
           const alreadySent =
             await notificationSendLogRepository.hasAlreadySent({
-              eventId: event.f_event_id,
+              eventId: event.event_id,
               firebaseTokenId: token.id,
               scheduledForDate: today,
             });
@@ -43,15 +45,15 @@ export function createScheduledNotificationService(deps: {
             const result = await fcmService.sendNotificationToToken({
               token: token.fcm_token,
               title: '呼び出し通知',
-              body: `${event.f_event_name}の開始10分前です。${event.f_place}に集合してください。`,
+              body: `${event.event_name}の開始10分前です。${event.venue}に集合してください。`,
               data: {
                 type: 'event_reminder',
-                eventId: String(event.f_event_id),
+                eventId: String(event.event_id),
               },
             });
 
             await notificationSendLogRepository.record({
-              eventId: event.f_event_id,
+              eventId: event.event_id,
               firebaseTokenId: token.id,
               scheduledForDate: today,
               messageId: result.messageId,
@@ -65,7 +67,7 @@ export function createScheduledNotificationService(deps: {
             }
 
             console.error(
-              `Failed to send scheduled notification. eventId: ${event.f_event_id}, tokenId: ${token.id}`,
+              `Failed to send scheduled notification. eventId: ${event.event_id}, tokenId: ${token.id}`,
               error
             );
           }

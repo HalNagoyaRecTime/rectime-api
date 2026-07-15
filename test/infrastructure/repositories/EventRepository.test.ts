@@ -1,98 +1,71 @@
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createEventRepository } from '../../../src/infrastructure/repositories/EventRepository';
-import type { IEventRepository } from '../../../src/domain/interfaces/repositories/IEventRepository';
 import { seedEvents, type SeededEventData } from '../../fixtures/events';
 
 describe('EventRepository', () => {
-  let repo: IEventRepository;
+  const repo = createEventRepository(env.DB);
   let seeded: SeededEventData;
 
   beforeAll(async () => {
     seeded = await seedEvents(env.DB);
-    repo = createEventRepository(env.DB);
   });
 
   describe('findAll', () => {
-    it('全件を time 昇順で返し、total も返す', async () => {
+    it('全件をstart_time昇順で返し、totalも返す', async () => {
       const result = await repo.findAll({});
 
       expect(result.total).toBe(seeded.events.length);
       expect(result.events).toHaveLength(seeded.events.length);
-      const times = result.events.map(e => e.f_time);
+      const times = result.events.map(event => event.start_time);
       expect(times).toEqual([...times].sort());
     });
 
-    it('eventCode で絞り込める', async () => {
+    it('start_timeで絞り込める', async () => {
       const target = seeded.events[0];
-      const result = await repo.findAll({ eventCode: target.eventCode });
-
-      expect(result.total).toBe(1);
-      expect(result.events).toHaveLength(1);
-      expect(result.events[0].f_event_code).toBe(target.eventCode);
-    });
-
-    it('time で絞り込める', async () => {
-      const target = seeded.events[0];
-      const expected = seeded.events.filter(e => e.time === target.time);
-      const result = await repo.findAll({ time: target.time });
+      const expected = seeded.events.filter(
+        event => event.startTime === target.startTime
+      );
+      const result = await repo.findAll({ startTime: target.startTime });
 
       expect(result.total).toBe(expected.length);
       expect(result.events).toHaveLength(expected.length);
-      expect(result.events.every(e => e.f_time === target.time)).toBe(true);
+      expect(
+        result.events.every(event => event.start_time === target.startTime)
+      ).toBe(true);
     });
 
-    it('limit と offset でページネーションできる', async () => {
+    it('limitとoffsetでページネーションできる', async () => {
       const result = await repo.findAll({ limit: 2, offset: 1 });
 
       expect(result.total).toBe(seeded.events.length);
       expect(result.events).toHaveLength(2);
     });
 
-    it('limit: 0 のときは 0 件返す（total は全件数のまま）', async () => {
+    it('limit: 0のときは0件返す（totalは全件数のまま）', async () => {
       const result = await repo.findAll({ limit: 0 });
 
-      // SQL の LIMIT 0 は「0 件返す」が正しい挙動。
-      // `if (options.limit)` だと 0 が falsy 扱いされ、LIMIT が付かず全件返ってしまう。
       expect(result.events).toHaveLength(0);
       expect(result.total).toBe(seeded.events.length);
     });
   });
 
   describe('findById', () => {
-    it('id でイベントを取得できる', async () => {
+    it('idでイベントを取得できる', async () => {
       const target = seeded.events[0];
       const event = await repo.findById(target.eventId);
 
       expect(event).toMatchObject({
-        f_event_id: target.eventId,
-        f_event_code: target.eventCode,
-        f_event_name: target.name,
-        f_time: target.time,
-        f_duration: target.duration,
-        f_place: target.place,
-        f_gather_time: target.gatherTime,
-        f_summary: target.summary,
+        event_id: target.eventId,
+        event_name: target.name,
+        start_time: target.startTime,
+        end_time: target.endTime,
+        venue: target.venue,
       });
     });
 
-    it('存在しない id の場合は null を返す', async () => {
-      expect(await repo.findById(999999)).toBeNull();
-    });
-  });
-
-  describe('findByEventCode', () => {
-    it('eventCode でイベントを取得できる', async () => {
-      const target = seeded.events[2];
-      const event = await repo.findByEventCode(target.eventCode);
-
-      expect(event?.f_event_id).toBe(target.eventId);
-      expect(event?.f_event_name).toBe(target.name);
-      expect(event?.f_event_code).toBe(target.eventCode);
-    });
-
-    it('存在しない eventCode の場合は null を返す', async () => {
-      expect(await repo.findByEventCode('EV-9999')).toBeNull();
+    it('存在しないidの場合はnullを返す', async () => {
+      await expect(repo.findById(999999)).resolves.toBeNull();
     });
   });
 });

@@ -15,6 +15,8 @@ describe('UserRepository', () => {
 
   beforeEach(async () => {
     // students/staffs/teachers が users を参照するため、子から順に削除する
+    await env.DB.prepare('DELETE FROM notification_send_logs').run();
+    await env.DB.prepare('DELETE FROM events').run();
     await env.DB.prepare('DELETE FROM microsoft_account_links').run();
     await env.DB.prepare('DELETE FROM staffs').run();
     await env.DB.prepare('DELETE FROM teachers').run();
