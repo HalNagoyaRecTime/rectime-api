@@ -3,6 +3,7 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import {
   FirebaseTokenEntity,
+  FirebasePlatform,
   RegisterFirebaseTokenInput,
   RegisterFirebaseTokenResult,
   UserEntity,
@@ -27,12 +28,16 @@ function toUserEntity(row: typeof auth_users.$inferSelect): UserEntity {
 function toFirebaseTokenEntity(
   row: typeof firebase_tokens.$inferSelect
 ): FirebaseTokenEntity {
+  if (row.platform !== 1 && row.platform !== 2) {
+    throw new Error(`Unexpected Firebase platform: ${row.platform}`);
+  }
+
   return {
-    id: row.id,
+    firebase_token_id: row.firebaseTokenId,
     user_id: row.userId,
-    platform: row.platform,
+    platform: row.platform as FirebasePlatform,
     fcm_token: row.fcmToken,
-    is_active: row.isActive,
+    is_firebase_active: row.isFirebaseActive,
     last_seen_at: row.lastSeenAt,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
@@ -87,7 +92,7 @@ export function createFirebaseTokenRepository(
         userId,
         platform: input.platform,
         fcmToken: input.fcmToken,
-        isActive: 1,
+        isFirebaseActive: 1,
         lastSeenAt: sql`CURRENT_TIMESTAMP`,
         updatedAt: sql`CURRENT_TIMESTAMP`,
       })
@@ -96,7 +101,7 @@ export function createFirebaseTokenRepository(
         set: {
           userId: sql`excluded.user_id`,
           platform: sql`excluded.platform`,
-          isActive: 1,
+          isFirebaseActive: 1,
           lastSeenAt: sql`CURRENT_TIMESTAMP`,
           updatedAt: sql`CURRENT_TIMESTAMP`,
         },
@@ -124,18 +129,18 @@ export function createFirebaseTokenRepository(
       const tokens = await orm
         .select()
         .from(firebase_tokens)
-        .where(eq(firebase_tokens.isActive, 1))
-        .orderBy(asc(firebase_tokens.id))
+        .where(eq(firebase_tokens.isFirebaseActive, 1))
+        .orderBy(asc(firebase_tokens.firebaseTokenId))
         .all();
 
       return tokens.map(toFirebaseTokenEntity);
     },
 
-    async deactivate(id: number): Promise<void> {
+    async deactivate(firebaseTokenId: number): Promise<void> {
       await orm
         .update(firebase_tokens)
-        .set({ isActive: 0, updatedAt: sql`CURRENT_TIMESTAMP` })
-        .where(eq(firebase_tokens.id, id))
+        .set({ isFirebaseActive: 0, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .where(eq(firebase_tokens.firebaseTokenId, firebaseTokenId))
         .run();
     },
   };

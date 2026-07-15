@@ -26,11 +26,11 @@ function buildToken(
   overrides: Partial<FirebaseTokenEntity> = {}
 ): FirebaseTokenEntity {
   return {
-    id: 1,
+    firebase_token_id: 1,
     user_id: 1,
-    platform: 'android',
+    platform: 2,
     fcm_token: 'token-a',
-    is_active: 1,
+    is_firebase_active: 1,
     last_seen_at: '2026-01-01',
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
@@ -149,7 +149,7 @@ describe('ScheduledNotificationService', () => {
     });
     (
       firebaseTokenRepository.findActiveTokens as ReturnType<typeof vi.fn>
-    ).mockResolvedValue([buildToken({ id: 42 })]);
+    ).mockResolvedValue([buildToken({ firebase_token_id: 42 })]);
     (
       fcmService.sendNotificationToToken as ReturnType<typeof vi.fn>
     ).mockRejectedValue(new Error('UNREGISTERED'));
@@ -173,7 +173,7 @@ describe('ScheduledNotificationService', () => {
     });
     (
       firebaseTokenRepository.findActiveTokens as ReturnType<typeof vi.fn>
-    ).mockResolvedValue([buildToken({ id: 42 })]);
+    ).mockResolvedValue([buildToken({ firebase_token_id: 42 })]);
     (
       fcmService.sendNotificationToToken as ReturnType<typeof vi.fn>
     ).mockRejectedValue(new Error('network error'));

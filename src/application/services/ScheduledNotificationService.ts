@@ -33,7 +33,7 @@ export function createScheduledNotificationService(deps: {
           const alreadySent =
             await notificationSendLogRepository.hasAlreadySent({
               eventId: event.event_id,
-              firebaseTokenId: token.id,
+              firebaseTokenId: token.firebase_token_id,
               scheduledForDate: today,
             });
 
@@ -54,7 +54,7 @@ export function createScheduledNotificationService(deps: {
 
             await notificationSendLogRepository.record({
               eventId: event.event_id,
-              firebaseTokenId: token.id,
+              firebaseTokenId: token.firebase_token_id,
               scheduledForDate: today,
               messageId: result.messageId,
             });
@@ -63,11 +63,11 @@ export function createScheduledNotificationService(deps: {
             failed += 1;
 
             if (shouldDeactivateToken(error)) {
-              await firebaseTokenRepository.deactivate(token.id);
+              await firebaseTokenRepository.deactivate(token.firebase_token_id);
             }
 
             console.error(
-              `Failed to send scheduled notification. eventId: ${event.event_id}, tokenId: ${token.id}`,
+              `Failed to send scheduled notification. eventId: ${event.event_id}, tokenId: ${token.firebase_token_id}`,
               error
             );
           }

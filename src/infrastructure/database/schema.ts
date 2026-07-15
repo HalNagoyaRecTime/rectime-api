@@ -247,13 +247,15 @@ export const gatheringGroupMembersRelations = relations(
 );
 
 export const firebase_tokens = sqliteTable('firebase_tokens', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+  firebaseTokenId: integer('firebase_token_id').primaryKey({
+    autoIncrement: true,
+  }),
   userId: integer('user_id')
     .notNull()
     .references(() => auth_users.id),
-  platform: text('platform').notNull(),
+  platform: integer('platform').notNull(),
   fcmToken: text('fcm_token').notNull().unique(),
-  isActive: integer('is_active').notNull().default(1),
+  isFirebaseActive: integer('is_firebase_active').notNull().default(1),
   lastSeenAt: text('last_seen_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
@@ -266,11 +268,16 @@ export const firebase_tokens = sqliteTable('firebase_tokens', {
 });
 
 export const notifications = sqliteTable('notifications', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  type: text('type').notNull(),
+  notificationId: integer('notification_id').primaryKey({
+    autoIncrement: true,
+  }),
+  notificationType: text('notification_type').notNull(),
   title: text('title').notNull(),
   body: text('body').notNull(),
   createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
 });
