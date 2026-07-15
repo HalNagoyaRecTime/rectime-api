@@ -1,10 +1,7 @@
 export interface UserEntity {
-  id: number;
-  auth_provider: string | null;
-  provider_user_id: string | null;
-  email: string | null;
-  student_number: string;
-  is_active: number;
+  user_id: number;
+  user_name: string;
+  is_live_active: number;
   created_at: string;
   updated_at: string;
 }
@@ -27,9 +24,6 @@ export interface RegisterFirebaseTokenInput {
   studentNumber: string;
   platform: FirebasePlatform;
   fcmToken: string;
-  authProvider?: string;
-  providerUserId?: string;
-  email?: string;
 }
 
 export interface RegisterFirebaseTokenResult {

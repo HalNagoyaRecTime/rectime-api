@@ -10,12 +10,9 @@ import type {
 
 function buildUser(overrides: Partial<UserEntity> = {}): UserEntity {
   return {
-    id: 1,
-    auth_provider: null,
-    provider_user_id: null,
-    email: null,
-    student_number: 'S001',
-    is_active: 1,
+    user_id: 1,
+    user_name: 'テスト生徒',
+    is_live_active: 1,
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
     ...overrides,
@@ -81,15 +78,12 @@ describe('FirebaseTokenController', () => {
         studentNumber: 'S001',
         platform: 2,
         fcmToken: 'fcm-abc',
-        authProvider: undefined,
-        providerUserId: undefined,
-        email: undefined,
       });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual(result);
     });
 
-    it('legacy token フィールドを使った有効なボディでも fcmToken として渡す', async () => {
+    it('token フィールドを使った有効なボディでも fcmToken として渡す', async () => {
       const { app, firebaseTokenService } = setup();
       const result = buildResult();
       (
@@ -103,9 +97,6 @@ describe('FirebaseTokenController', () => {
           studentNumber: 'S001',
           platform: 1,
           token: 'legacy-token',
-          authProvider: 'microsoft',
-          providerUserId: 'provider-1',
-          email: 'a@example.com',
         }),
       });
 
@@ -113,9 +104,6 @@ describe('FirebaseTokenController', () => {
         studentNumber: 'S001',
         platform: 1,
         fcmToken: 'legacy-token',
-        authProvider: 'microsoft',
-        providerUserId: 'provider-1',
-        email: 'a@example.com',
       });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual(result);
@@ -156,8 +144,11 @@ describe('FirebaseTokenController', () => {
       expect(res.status).toBe(400);
     });
 
-    it('email の形式が不正な場合は 400 を返す', async () => {
-      const { app } = setup();
+    it('サービスが Student not found を投げた場合は 404 を返す', async () => {
+      const { app, firebaseTokenService } = setup();
+      (
+        firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Student not found'));
 
       const res = await app.request('/firebase-tokens', {
         method: 'POST',
@@ -166,11 +157,11 @@ describe('FirebaseTokenController', () => {
           studentNumber: 'S001',
           platform: 2,
           fcmToken: 'fcm-abc',
-          email: 'not-an-email',
         }),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: 'Student not found' });
     });
 
     it('サービスが例外を投げた場合は 500 と details を返す', async () => {

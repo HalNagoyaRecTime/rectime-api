@@ -28,6 +28,17 @@ async function runTransform() {
   await env.DB.batch(TRANSFORM_STATEMENTS.map(sql => env.DB.prepare(sql)));
 }
 
+async function createLegacyAuthUsers() {
+  await env.DB.prepare(
+    `CREATE TABLE auth_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_number TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`
+  ).run();
+}
+
 async function restoreLegacyAuthUsersColumns() {
   await env.DB.prepare('ALTER TABLE auth_users ADD COLUMN users_id TEXT').run();
   await env.DB.prepare(
@@ -93,12 +104,11 @@ describe('0011: microsoft_account_links を auth_users から users へ付け替
     await env.DB.prepare(
       "DELETE FROM users WHERE user_name LIKE '移行テスト%'"
     ).run();
-    await env.DB.prepare(
-      "DELETE FROM auth_users WHERE student_number LIKE 'MIG011-%'"
-    ).run();
+    await env.DB.prepare('DROP TABLE IF EXISTS auth_users').run();
   });
 
   it('auth_users(旧形状)のMicrosoft連携ユーザーを users + 新形状の microsoft_account_links に正しく移行する', async () => {
+    await createLegacyAuthUsers();
     await restoreLegacyAuthUsersColumns();
     await replaceMicrosoftAccountLinksWithLegacyShape();
 
