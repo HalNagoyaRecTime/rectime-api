@@ -9,7 +9,6 @@ function buildStudent(overrides: Partial<StudentDTO> = {}): StudentDTO {
     student_id: 1,
     display_name: '山田太郎',
     class_room_id: 1,
-    uid: 'uid-1',
     attendance_number: 1,
     student_id_number: 'S001',
     ...overrides,

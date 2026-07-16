@@ -6,7 +6,7 @@ import type { IClassRepository } from '../../../src/domain/interfaces/repositori
 import * as schema from '../../../src/infrastructure/database/schema';
 import {
   class_rooms,
-  student_description,
+  students,
   users,
 } from '../../../src/infrastructure/database/schema';
 
@@ -15,10 +15,10 @@ describe('ClassRepository', () => {
 
   beforeAll(async () => {
     const orm = drizzle(env.DB, { schema });
-    // class_rooms は users から、users は student_description から参照されるため、
+    // class_rooms は students から、students は users から参照されるため、
     // 参照される側を残したまま削除するとFK制約に違反する。子テーブルから順に削除する
     // （テストはストレージを他ファイルと共有するため、他ファイルが投入した行が残っている場合がある）
-    await orm.delete(student_description);
+    await orm.delete(students);
     await orm.delete(users);
     await orm.delete(class_rooms);
     await orm
