@@ -11,7 +11,7 @@ export function createClassService(
       return classes.map(classroom => ({
         class_room_id: classroom.f_class_room_id,
         class_code: classroom.f_class_code,
-        name: classroom.f_name,
+        class_name: classroom.f_class_name,
       }));
     },
   };
