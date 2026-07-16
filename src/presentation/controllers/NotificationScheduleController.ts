@@ -1,16 +1,6 @@
 import type { Context } from 'hono';
-import { z } from 'zod';
 import type { INotificationScheduleService } from '../../application/services/INotificationScheduleService';
-
-const createNotificationScheduleSchema = z.object({
-  userId: z.number().int().positive(),
-  eventId: z.number().int().positive(),
-  gatheringGroupId: z.number().int().positive(),
-  notificationId: z.number().int().positive(),
-  importance: z.number().int().min(1).max(4).optional(),
-  // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00.000Z
-  sendAt: z.string().datetime({ offset: true }),
-});
+import { createNotificationScheduleSchema } from '../openapi';
 
 export function createNotificationScheduleController(
   notificationScheduleService: INotificationScheduleService
@@ -18,7 +8,8 @@ export function createNotificationScheduleController(
   const getAllNotificationSchedules = async (c: Context) => {
     try {
       return c.json(
-        await notificationScheduleService.getAllNotificationSchedules()
+        await notificationScheduleService.getAllNotificationSchedules(),
+        200
       );
     } catch (error) {
       return c.json(

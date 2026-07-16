@@ -1,17 +1,13 @@
 import { Context } from 'hono';
-import { z } from 'zod';
 import { IGatheringGroupService } from '../../application/services/IGatheringGroupService';
-
-const createGatheringGroupSchema = z.object({
-  gatheringGroupName: z.string().trim().min(1),
-});
+import { createGatheringGroupSchema } from '../openapi';
 
 export function createGatheringGroupController(
   gatheringGroupService: IGatheringGroupService
 ) {
   const getAllGatheringGroups = async (c: Context) => {
     try {
-      return c.json(await gatheringGroupService.getAllGatheringGroups());
+      return c.json(await gatheringGroupService.getAllGatheringGroups(), 200);
     } catch (error) {
       return c.json(
         {

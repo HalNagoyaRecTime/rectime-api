@@ -1,17 +1,13 @@
 import { Context } from 'hono';
-import { z } from 'zod';
 import { IGatheringSpotService } from '../../application/services/IGatheringSpotService';
-
-const createGatheringSpotSchema = z.object({
-  gatheringSpotName: z.string().trim().min(1),
-});
+import { createGatheringSpotSchema } from '../openapi';
 
 export function createGatheringSpotController(
   gatheringSpotService: IGatheringSpotService
 ) {
   const getAllGatheringSpots = async (c: Context) => {
     try {
-      return c.json(await gatheringSpotService.getAllGatheringSpots());
+      return c.json(await gatheringSpotService.getAllGatheringSpots(), 200);
     } catch (error) {
       return c.json(
         {

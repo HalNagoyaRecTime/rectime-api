@@ -5,7 +5,7 @@ export function createClassController(classService: IClassService) {
   const getAllClasses = async (c: Context) => {
     try {
       const classes = await classService.getAllClasses();
-      return c.json(classes);
+      return c.json(classes, 200);
     } catch (error) {
       console.error('Error fetching classes:', error);
       return c.json({ error: 'Failed to fetch classes' }, 500);

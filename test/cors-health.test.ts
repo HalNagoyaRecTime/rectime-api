@@ -10,6 +10,27 @@ describe('GET /health', () => {
   });
 });
 
+describe('OpenAPI documentation', () => {
+  it('/openapi.json に実装済みのAPI仕様を返す', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/openapi.json'),
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const document = (await res.json()) as { paths: Record<string, unknown> };
+    expect(document.paths).toHaveProperty('/api/v1/students');
+    expect(document.paths).toHaveProperty('/api/v1/notification-schedules');
+  });
+
+  it('/docs が /openapi.json を読むSwagger UIを返す', async () => {
+    const res = await app.fetch(new Request('http://example.com/docs'), env);
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("url: '/openapi.json'");
+  });
+});
+
 describe('CORS middleware', () => {
   it('ALLOWED_ORIGINS に含まれるオリジンには Access-Control-Allow-Origin を付与する', async () => {
     const res = await app.fetch(

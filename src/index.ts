@@ -1,13 +1,38 @@
-import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { swaggerUI } from '@hono/swagger-ui';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
+import {
+  classListRoute,
+  eventDetailRoute,
+  eventListRoute,
+  firebaseTokenCreateRoute,
+  gatheringCreateRoute,
+  gatheringGroupCreateRoute,
+  gatheringGroupListRoute,
+  gatheringGroupMemberCreateRoute,
+  gatheringGroupMemberDeleteRoute,
+  gatheringGroupMemberListRoute,
+  gatheringListRoute,
+  gatheringSpotCreateRoute,
+  gatheringSpotListRoute,
+  healthRoute,
+  notificationScheduleCreateRoute,
+  notificationScheduleListRoute,
+  rootRoute,
+  runScheduledNotificationsSchema,
+  runScheduledNotificationsRoute,
+  studentDetailRoute,
+  studentListRoute,
+  testNotificationRoute,
+} from './presentation/openapi';
 import {
   diContainerMiddleware,
   type ContainerVariables,
 } from './presentation/middleware/diContainer';
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new OpenAPIHono<{ Bindings: Env }>();
 
 let corsWarnLogged = false;
 let tenantWarnLogged = false;
@@ -51,129 +76,132 @@ app.use('*', (c, next) => {
   return next();
 });
 
-app.get('/health', c => c.json({ status: 'ok' }));
+app.openapi(healthRoute, c => c.json({ status: 'ok' }, 200));
 
-app.get('/', c => {
-  return c.json({
-    message: 'rectime_be',
-    version: '1.0.0',
-    endpoints: {
-      students: '/api/v1/students/{studentId}',
-      events: '/api/v1/events',
-      classes: '/api/v1/classes',
-      gatheringSpots: '/api/v1/gathering-spots',
-      gatheringGroups: '/api/v1/gathering-groups',
-      gatherings: '/api/v1/gatherings',
-      firebaseTokens: '/api/v1/firebase-tokens',
-      testNotification: '/api/v1/notifications/test',
-      notificationSchedules: '/api/v1/notification-schedules',
-      runScheduledNotifications: '/api/v1/notifications/schedule/run',
+app.openapi(rootRoute, c => {
+  return c.json(
+    {
+      message: 'rectime_be',
+      version: '1.0.0',
+      endpoints: {
+        students: '/api/v1/students/{studentId}',
+        events: '/api/v1/events',
+        classes: '/api/v1/classes',
+        gatheringSpots: '/api/v1/gathering-spots',
+        gatheringGroups: '/api/v1/gathering-groups',
+        gatherings: '/api/v1/gatherings',
+        firebaseTokens: '/api/v1/firebase-tokens',
+        testNotification: '/api/v1/notifications/test',
+        notificationSchedules: '/api/v1/notification-schedules',
+        runScheduledNotifications: '/api/v1/notifications/schedule/run',
+      },
+      openapi: '/openapi.json',
+      docs: '/docs',
     },
-    swagger: '/swagger.yml',
-  });
+    200
+  );
 });
 
 // API v1 routes
-const apiV1 = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
+const apiV1 = new OpenAPIHono<{
+  Bindings: Env;
+  Variables: ContainerVariables;
+}>();
 
 apiV1.use('*', diContainerMiddleware);
 
 // Student routes
-apiV1.get('/students', c => {
-  return c.get('container').studentController.getAllStudent(c);
-});
-apiV1.get('/students/:studentId', c => {
-  return c.get('container').studentController.getStudentById(c);
-});
+apiV1.openapi(studentListRoute, c =>
+  c.get('container').studentController.getAllStudent(c)
+);
+apiV1.openapi(studentDetailRoute, c =>
+  c.get('container').studentController.getStudentById(c)
+);
 
 // Event routes
-apiV1.get('/events', c => {
-  return c.get('container').eventController.getAllEvents(c);
-});
-
-apiV1.get('/events/:eventId', c => {
-  return c.get('container').eventController.getEventById(c);
-});
+apiV1.openapi(eventListRoute, c =>
+  c.get('container').eventController.getAllEvents(c)
+);
+apiV1.openapi(eventDetailRoute, c =>
+  c.get('container').eventController.getEventById(c)
+);
 
 // Class routes
-apiV1.get('/classes', c => {
-  return c.get('container').classController.getAllClasses(c);
-});
+apiV1.openapi(classListRoute, c =>
+  c.get('container').classController.getAllClasses(c)
+);
 
 // Gathering spot routes
-apiV1.get('/gathering-spots', c => {
-  return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
-});
-apiV1.post('/gathering-spots', c => {
-  return c.get('container').gatheringSpotController.createGatheringSpot(c);
-});
+apiV1.openapi(gatheringSpotListRoute, c =>
+  c.get('container').gatheringSpotController.getAllGatheringSpots(c)
+);
+apiV1.openapi(gatheringSpotCreateRoute, c =>
+  c.get('container').gatheringSpotController.createGatheringSpot(c)
+);
 
 // Gathering group routes
-apiV1.get('/gathering-groups', c => {
-  return c.get('container').gatheringGroupController.getAllGatheringGroups(c);
-});
-apiV1.post('/gathering-groups', c => {
-  return c.get('container').gatheringGroupController.createGatheringGroup(c);
-});
-apiV1.get('/gathering-groups/:gatheringGroupId/members', c => {
-  return c
+apiV1.openapi(gatheringGroupListRoute, c =>
+  c.get('container').gatheringGroupController.getAllGatheringGroups(c)
+);
+apiV1.openapi(gatheringGroupCreateRoute, c =>
+  c.get('container').gatheringGroupController.createGatheringGroup(c)
+);
+apiV1.openapi(gatheringGroupMemberListRoute, c =>
+  c.get('container').gatheringGroupMemberController.getGatheringGroupMembers(c)
+);
+apiV1.openapi(gatheringGroupMemberCreateRoute, c =>
+  c.get('container').gatheringGroupMemberController.addGatheringGroupMember(c)
+);
+apiV1.openapi(gatheringGroupMemberDeleteRoute, c =>
+  c
     .get('container')
-    .gatheringGroupMemberController.getGatheringGroupMembers(c);
-});
-apiV1.post('/gathering-groups/:gatheringGroupId/members', c => {
-  return c
-    .get('container')
-    .gatheringGroupMemberController.addGatheringGroupMember(c);
-});
-apiV1.delete('/gathering-groups/:gatheringGroupId/members/:userId', c => {
-  return c
-    .get('container')
-    .gatheringGroupMemberController.removeGatheringGroupMember(c);
-});
+    .gatheringGroupMemberController.removeGatheringGroupMember(c)
+);
 
 // Gathering routes
-apiV1.get('/gatherings', c => {
-  return c.get('container').gatheringController.getAllGatherings(c);
-});
-apiV1.post('/gatherings', c => {
-  return c.get('container').gatheringController.createGathering(c);
-});
+apiV1.openapi(gatheringListRoute, c =>
+  c.get('container').gatheringController.getAllGatherings(c)
+);
+apiV1.openapi(gatheringCreateRoute, c =>
+  c.get('container').gatheringController.createGathering(c)
+);
 
 // Firebase token routes
-apiV1.post('/firebase-tokens', c => {
-  return c.get('container').firebaseTokenController.registerFirebaseToken(c);
-});
+apiV1.openapi(firebaseTokenCreateRoute, c =>
+  c.get('container').firebaseTokenController.registerFirebaseToken(c)
+);
 
 // Notification routes
-apiV1.get('/notification-schedules', c => {
-  return c
+apiV1.openapi(notificationScheduleListRoute, c =>
+  c
     .get('container')
-    .notificationScheduleController.getAllNotificationSchedules(c);
-});
-apiV1.post('/notification-schedules', c => {
-  return c
+    .notificationScheduleController.getAllNotificationSchedules(c)
+);
+apiV1.openapi(notificationScheduleCreateRoute, c =>
+  c
     .get('container')
-    .notificationScheduleController.createNotificationSchedule(c);
-});
+    .notificationScheduleController.createNotificationSchedule(c)
+);
 
-apiV1.post('/notifications/test', c => {
-  return c.get('container').notificationController.sendTestNotification(c);
-});
+apiV1.openapi(testNotificationRoute, c =>
+  c.get('container').notificationController.sendTestNotification(c)
+);
 
-apiV1.post('/notifications/schedule/run', async c => {
+apiV1.openapi(runScheduledNotificationsRoute, async c => {
   try {
     const body = await c.req.json().catch(() => ({}));
-    const now =
-      body && typeof body.now === 'string' ? new Date(body.now) : new Date();
-
-    if (Number.isNaN(now.getTime())) {
+    const parsedBody = runScheduledNotificationsSchema.safeParse(body);
+    if (!parsedBody.success) {
       return c.json({ error: 'Invalid now value' }, 400);
     }
+    const now = parsedBody.data.now
+      ? new Date(parsedBody.data.now)
+      : new Date();
 
     const result = await c
       .get('container')
       .scheduledNotificationService.sendScheduledEventNotifications(now);
-    return c.json(result);
+    return c.json(result, 200);
   } catch (error) {
     return c.json(
       {
@@ -187,6 +215,15 @@ apiV1.post('/notifications/schedule/run', async c => {
 
 // Mount API v1
 app.route('/api/v1', apiV1);
+
+app.doc('/openapi.json', {
+  openapi: '3.0.3',
+  info: { title: 'RecTime API', version: '1.0.0' },
+});
+app.get(
+  '/docs',
+  swaggerUI({ url: '/openapi.json', title: 'RecTime API Docs' })
+);
 
 export { app };
 

@@ -1,23 +1,11 @@
 import { Context } from 'hono';
-import { z } from 'zod';
 import { IGatheringService } from '../../application/services/IGatheringService';
-
-const createGatheringSchema = z.object({
-  gatheringGroupId: z.number().int().positive(),
-  eventId: z.number().int().positive(),
-  gatheringSpotId: z.number().int().positive(),
-  // HH:MM形式。99:59は集合時刻が未設定であることを表す。
-  gatheringTime: z
-    .string()
-    .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$|^99:59$/)
-    .optional(),
-  round: z.number().int().min(1).max(99).optional(),
-});
+import { createGatheringSchema } from '../openapi';
 
 export function createGatheringController(gatheringService: IGatheringService) {
   const getAllGatherings = async (c: Context) => {
     try {
-      return c.json(await gatheringService.getAllGatherings());
+      return c.json(await gatheringService.getAllGatherings(), 200);
     } catch (error) {
       return c.json(
         {

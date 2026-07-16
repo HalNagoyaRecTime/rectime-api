@@ -1,14 +1,18 @@
 import { Context } from 'hono';
-import { z } from 'zod';
 import { IGatheringGroupMemberService } from '../../application/services/IGatheringGroupMemberService';
-
-const addGatheringGroupMemberSchema = z.object({
-  userId: z.number().int().positive(),
-});
+import {
+  addGatheringGroupMemberSchema,
+  gatheringGroupIdParams,
+  gatheringGroupMemberParams,
+} from '../openapi';
 
 function getGatheringGroupId(c: Context): number | null {
-  const id = Number(c.req.param('gatheringGroupId'));
-  return Number.isInteger(id) && id > 0 ? id : null;
+  const parsedParams = gatheringGroupIdParams.safeParse({
+    gatheringGroupId: c.req.param('gatheringGroupId'),
+  });
+  return parsedParams.success
+    ? Number(parsedParams.data.gatheringGroupId)
+    : null;
 }
 
 export function createGatheringGroupMemberController(
@@ -24,7 +28,8 @@ export function createGatheringGroupMemberController(
       return c.json(
         await gatheringGroupMemberService.getGatheringGroupMembers(
           gatheringGroupId
-        )
+        ),
+        200
       );
     } catch (error) {
       if (
@@ -91,11 +96,15 @@ export function createGatheringGroupMemberController(
   };
 
   const removeGatheringGroupMember = async (c: Context) => {
-    const gatheringGroupId = getGatheringGroupId(c);
-    const userId = Number(c.req.param('userId'));
-    if (gatheringGroupId === null || !Number.isInteger(userId) || userId <= 0) {
+    const parsedParams = gatheringGroupMemberParams.safeParse({
+      gatheringGroupId: c.req.param('gatheringGroupId'),
+      userId: c.req.param('userId'),
+    });
+    if (!parsedParams.success) {
       return c.json({ error: 'Invalid gathering group member ID' }, 400);
     }
+    const gatheringGroupId = Number(parsedParams.data.gatheringGroupId);
+    const userId = Number(parsedParams.data.userId);
 
     try {
       await gatheringGroupMemberService.removeGatheringGroupMember(

@@ -1,11 +1,6 @@
 import { Context } from 'hono';
-import { z } from 'zod';
 import { IFcmService } from '../../application/services/IFcmService';
-
-const testNotificationSchema = z.object({
-  title: z.string().min(1),
-  body: z.string().min(1),
-});
+import { testNotificationSchema } from '../openapi';
 
 export function createNotificationController(fcmService: IFcmService) {
   const sendTestNotification = async (c: Context) => {
@@ -24,7 +19,7 @@ export function createNotificationController(fcmService: IFcmService) {
       }
 
       const result = await fcmService.sendTestNotification(parsedBody.data);
-      return c.json(result);
+      return c.json(result, 200);
     } catch (error) {
       return c.json(
         {

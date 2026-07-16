@@ -1,18 +1,6 @@
 import { Context } from 'hono';
-import { z } from 'zod';
 import { IFirebaseTokenService } from '../../application/services/IFirebaseTokenService';
-
-const registerFirebaseTokenSchema = z
-  .object({
-    studentNumber: z.string().min(1),
-    platform: z.union([z.literal(1), z.literal(2)]),
-    fcmToken: z.string().min(1).optional(),
-    token: z.string().min(1).optional(),
-  })
-  .refine(value => value.fcmToken || value.token, {
-    message: 'fcmToken or token is required',
-    path: ['fcmToken'],
-  });
+import { registerFirebaseTokenSchema } from '../openapi';
 
 export function createFirebaseTokenController(
   firebaseTokenService: IFirebaseTokenService
@@ -38,7 +26,7 @@ export function createFirebaseTokenController(
         fcmToken: parsedBody.data.fcmToken ?? parsedBody.data.token ?? '',
       });
 
-      return c.json(result);
+      return c.json(result, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Student not found') {
         return c.json({ error: error.message }, 404);

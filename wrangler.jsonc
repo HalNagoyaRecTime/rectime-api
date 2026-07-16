@@ -4,9 +4,6 @@
   "compatibility_date": "2024-09-23",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/index.ts",
-  "assets": {
-    "directory": "./public",
-  },
   "vars": {
     "NODE_ENV": "production",
     "ALLOWED_ORIGINS": "",
