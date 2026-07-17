@@ -14,7 +14,7 @@ export function createClassRepository(db: D1Database): IClassRepository {
       return result.results.map(row => ({
         f_class_room_id: row.class_room_id as number,
         f_class_code: row.class_code as string,
-        f_class_name: row.class_name as string,
+        f_name: row.class_name as string,
       }));
     },
   };
