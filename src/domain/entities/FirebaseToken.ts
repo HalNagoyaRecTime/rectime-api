@@ -10,19 +10,22 @@ export interface UserEntity {
 }
 
 export interface FirebaseTokenEntity {
-  id: number;
+  firebase_token_id: number;
   user_id: number;
-  platform: string;
+  platform: FirebasePlatform;
   fcm_token: string;
-  is_active: number;
+  is_firebase_active: number;
   last_seen_at: string;
   created_at: string;
   updated_at: string;
 }
 
+/** 1: iOS、2: Android */
+export type FirebasePlatform = 1 | 2;
+
 export interface RegisterFirebaseTokenInput {
   studentNumber: string;
-  platform: 'android' | 'ios';
+  platform: FirebasePlatform;
   fcmToken: string;
   authProvider?: string;
   providerUserId?: string;

@@ -26,11 +26,11 @@ function buildFirebaseToken(
   overrides: Partial<FirebaseTokenEntity> = {}
 ): FirebaseTokenEntity {
   return {
-    id: 1,
+    firebase_token_id: 1,
     user_id: 1,
-    platform: 'android',
+    platform: 2,
     fcm_token: 'token-a',
-    is_active: 1,
+    is_firebase_active: 1,
     last_seen_at: '2026-01-01',
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
@@ -72,14 +72,14 @@ describe('FirebaseTokenController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentNumber: 'S001',
-          platform: 'android',
+          platform: 2,
           fcmToken: 'fcm-abc',
         }),
       });
 
       expect(firebaseTokenService.registerFirebaseToken).toHaveBeenCalledWith({
         studentNumber: 'S001',
-        platform: 'android',
+        platform: 2,
         fcmToken: 'fcm-abc',
         authProvider: undefined,
         providerUserId: undefined,
@@ -101,7 +101,7 @@ describe('FirebaseTokenController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentNumber: 'S001',
-          platform: 'ios',
+          platform: 1,
           token: 'legacy-token',
           authProvider: 'microsoft',
           providerUserId: 'provider-1',
@@ -111,7 +111,7 @@ describe('FirebaseTokenController', () => {
 
       expect(firebaseTokenService.registerFirebaseToken).toHaveBeenCalledWith({
         studentNumber: 'S001',
-        platform: 'ios',
+        platform: 1,
         fcmToken: 'legacy-token',
         authProvider: 'microsoft',
         providerUserId: 'provider-1',
@@ -129,7 +129,7 @@ describe('FirebaseTokenController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentNumber: 'S001',
-          platform: 'android',
+          platform: 2,
         }),
       });
 
@@ -148,7 +148,7 @@ describe('FirebaseTokenController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentNumber: 'S001',
-          platform: 'windows',
+          platform: 3,
           fcmToken: 'fcm-abc',
         }),
       });
@@ -164,7 +164,7 @@ describe('FirebaseTokenController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentNumber: 'S001',
-          platform: 'android',
+          platform: 2,
           fcmToken: 'fcm-abc',
           email: 'not-an-email',
         }),
@@ -184,7 +184,7 @@ describe('FirebaseTokenController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentNumber: 'S001',
-          platform: 'android',
+          platform: 2,
           fcmToken: 'fcm-abc',
         }),
       });

@@ -5,7 +5,7 @@ import { IFirebaseTokenService } from '../../application/services/IFirebaseToken
 const registerFirebaseTokenSchema = z
   .object({
     studentNumber: z.string().min(1),
-    platform: z.enum(['android', 'ios']),
+    platform: z.union([z.literal(1), z.literal(2)]),
     fcmToken: z.string().min(1).optional(),
     token: z.string().min(1).optional(),
     authProvider: z.string().min(1).optional(),

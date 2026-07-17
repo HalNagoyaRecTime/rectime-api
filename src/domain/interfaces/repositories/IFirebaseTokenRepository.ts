@@ -9,5 +9,5 @@ export interface IFirebaseTokenRepository {
     input: RegisterFirebaseTokenInput
   ) => Promise<RegisterFirebaseTokenResult>;
   findActiveTokens: () => Promise<FirebaseTokenEntity[]>;
-  deactivate: (id: number) => Promise<void>;
+  deactivate: (firebaseTokenId: number) => Promise<void>;
 }

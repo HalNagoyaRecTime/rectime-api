@@ -19,10 +19,10 @@ describe('NotificationSendLogRepository', () => {
     const firebaseTokenRepository = createFirebaseTokenRepository(env.DB);
     const { firebaseToken } = await firebaseTokenRepository.register({
       studentNumber: '10000',
-      platform: 'android',
+      platform: 2,
       fcmToken: 'token-a',
     });
-    firebaseTokenId = firebaseToken.id;
+    firebaseTokenId = firebaseToken.firebase_token_id;
 
     repo = createNotificationSendLogRepository(env.DB);
   });

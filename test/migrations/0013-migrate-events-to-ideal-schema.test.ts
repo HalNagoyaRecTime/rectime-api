@@ -28,10 +28,16 @@ async function prepareLegacySchema() {
     env.DB.prepare(
       'DROP INDEX IF EXISTS idx_notification_send_logs_scheduled_for_date'
     ),
+    env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_user_id'),
+    env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_active'),
     env.DB.prepare(
       'ALTER TABLE notification_send_logs RENAME TO notification_send_logs_backup'
     ),
     env.DB.prepare('ALTER TABLE events RENAME TO events_backup'),
+    env.DB.prepare('ALTER TABLE firebase_tokens RENAME TO firebase_tokens_backup'),
+    env.DB.prepare(
+      'CREATE TABLE firebase_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES auth_users(id), platform TEXT NOT NULL, fcm_token TEXT NOT NULL UNIQUE, is_active INTEGER NOT NULL DEFAULT 1, last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+    ),
     env.DB.prepare(
       'CREATE TABLE t_events (f_event_id INTEGER PRIMARY KEY AUTOINCREMENT, f_event_code TEXT NOT NULL UNIQUE, f_event_name TEXT NOT NULL, f_time TEXT NOT NULL, f_duration TEXT NOT NULL, f_place TEXT NOT NULL, f_gather_time TEXT NOT NULL, f_summary TEXT)'
     ),
@@ -47,7 +53,9 @@ async function restoreCurrentSchema() {
     env.DB.prepare('DROP TABLE IF EXISTS events'),
     env.DB.prepare('DROP TABLE IF EXISTS t_events'),
     env.DB.prepare('DROP TABLE IF EXISTS t_events_legacy'),
+    env.DB.prepare('DROP TABLE IF EXISTS firebase_tokens'),
     env.DB.prepare('ALTER TABLE events_backup RENAME TO events'),
+    env.DB.prepare('ALTER TABLE firebase_tokens_backup RENAME TO firebase_tokens'),
     env.DB.prepare(
       'ALTER TABLE notification_send_logs_backup RENAME TO notification_send_logs'
     ),
@@ -56,6 +64,10 @@ async function restoreCurrentSchema() {
     ),
     env.DB.prepare(
       'CREATE INDEX idx_notification_send_logs_scheduled_for_date ON notification_send_logs(scheduled_for_date)'
+    ),
+    env.DB.prepare('CREATE INDEX idx_firebase_tokens_user_id ON firebase_tokens(user_id)'),
+    env.DB.prepare(
+      'CREATE INDEX idx_firebase_tokens_active ON firebase_tokens(is_firebase_active)'
     ),
   ]);
 }
@@ -103,7 +115,13 @@ describe('0013_migrate_events_to_ideal_schema.sql のデータ変換', () => {
       ),
       env.DB.prepare(
         'INSERT INTO notification_send_logs (event_id, firebase_token_id, notification_type, scheduled_for_date, fcm_message_id) VALUES (?, ?, ?, ?, ?)'
-      ).bind(930001, firebaseToken!.id, 'start', '2026-07-15', 'fcm-0013'),
+      ).bind(
+        930001,
+        firebaseToken!.id,
+        'start',
+        '2026-07-15',
+        'fcm-0013'
+      ),
     ]);
 
     await runTransform();
