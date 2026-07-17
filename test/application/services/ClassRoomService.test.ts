@@ -6,12 +6,12 @@ import type { ClassRoomEntity } from '../../../src/domain/entities/ClassRoom';
 describe('ClassRoomService', () => {
   describe('getAllClassRooms', () => {
     it('ClassRoomEntity の配列を ClassRoomDTO の配列にマッピングして返す', async () => {
-      const classes: ClassRoomEntity[] = [
+      const classRooms: ClassRoomEntity[] = [
         { f_class_room_id: 1, f_class_code: '11A', f_class_name: '1年Aクラス' },
         { f_class_room_id: 2, f_class_code: '12B', f_class_name: '2年Bクラス' },
       ];
       const repository: IClassRoomRepository = {
-        findAll: vi.fn().mockResolvedValue(classes),
+        findAll: vi.fn().mockResolvedValue(classRooms),
       };
       const service = createClassRoomService(repository);
 

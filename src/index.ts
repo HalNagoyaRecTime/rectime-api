@@ -60,7 +60,7 @@ app.get('/', c => {
     endpoints: {
       students: '/api/v1/students/{studentId}',
       events: '/api/v1/events',
-      classes: '/api/v1/classes',
+      classRooms: '/api/v1/classrooms',
       gatheringSpots: '/api/v1/gathering-spots',
       gatheringGroups: '/api/v1/gathering-groups',
       gatherings: '/api/v1/gatherings',
@@ -96,8 +96,8 @@ apiV1.get('/events/:eventId', c => {
 });
 
 // Class routes
-apiV1.get('/classes', c => {
-  return c.get('container').classController.getAllClasses(c);
+apiV1.get('/classrooms', c => {
+  return c.get('container').classRoomController.getAllClassRooms(c);
 });
 
 // Gathering spot routes
