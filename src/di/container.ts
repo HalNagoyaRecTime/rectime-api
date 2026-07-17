@@ -1,14 +1,12 @@
 import { getDb } from '../lib/db';
 import { createStudentRepository } from '../infrastructure/repositories/StudentRepository';
 import { createEventRepository } from '../infrastructure/repositories/EventRepository';
-import { createEntryRepository } from '../infrastructure/repositories/EntryRepository';
 import { createClassRepository } from '../infrastructure/repositories/ClassRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationSendLogRepository } from '../infrastructure/repositories/NotificationSendLogRepository';
 import { createScheduleRepository } from '../infrastructure/repositories/ScheduleRepository';
 import { createStudentService } from '../application/services/StudentService';
 import { createEventService } from '../application/services/EventService';
-import { createEntryService } from '../application/services/EntryService';
 import { createClassService } from '../application/services/ClassService';
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
@@ -16,7 +14,6 @@ import { createScheduledNotificationService } from '../application/services/Sche
 import { createScheduleService } from '../application/services/ScheduleService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createEventController } from '../presentation/controllers/EventController';
-import { createEntryController } from '../presentation/controllers/EntryController';
 import { createClassController } from '../presentation/controllers/ClassController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
@@ -32,7 +29,6 @@ export function createDIContainer(env: Env) {
   const userRepository = createUserRepository(db);
   const studentRepository = createStudentRepository(db);
   const eventRepository = createEventRepository(db);
-  const entryRepository = createEntryRepository(db);
   const classRepository = createClassRepository(db);
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
   const notificationSendLogRepository = createNotificationSendLogRepository(db);
@@ -43,7 +39,6 @@ export function createDIContainer(env: Env) {
   const authService = createAuthService(userRepository, env.AUTH_KV);
   const studentService = createStudentService(studentRepository);
   const eventService = createEventService(eventRepository);
-  const entryService = createEntryService(entryRepository);
   const classService = createClassService(classRepository);
   const scheduleService = createScheduleService(scheduleRepository);
   const firebaseTokenService = createFirebaseTokenService(
@@ -65,7 +60,6 @@ export function createDIContainer(env: Env) {
   // Controllers
   const studentController = createStudentController(studentService);
   const eventController = createEventController(eventService);
-  const entryController = createEntryController(entryService);
   const classController = createClassController(classService);
   const scheduleController = createScheduleController(scheduleService);
   const firebaseTokenController =
@@ -76,7 +70,6 @@ export function createDIContainer(env: Env) {
     authService,
     studentController,
     eventController,
-    entryController,
     classController,
     scheduleController,
     firebaseTokenController,
