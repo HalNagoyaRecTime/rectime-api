@@ -69,7 +69,32 @@ const TRANSFORM_STATEMENTS = [
   'CREATE INDEX idx_notification_send_logs_scheduled_for_date ON notification_send_logs(scheduled_for_date)',
 ];
 
+// #0018 適用後は旧送信ログが無いため、#0017 の単体変換を検証する間だけ再現する。
+async function createTemporaryNotificationSendLogs() {
+  await env.DB.prepare(
+    `CREATE TABLE notification_send_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER NOT NULL REFERENCES events(event_id),
+      firebase_token_id INTEGER NOT NULL REFERENCES firebase_tokens(firebase_token_id),
+      notification_type TEXT NOT NULL,
+      scheduled_for_date TEXT NOT NULL,
+      fcm_message_id TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (event_id, firebase_token_id, notification_type, scheduled_for_date)
+    )`
+  ).run();
+  await env.DB.batch([
+    env.DB.prepare(
+      'CREATE INDEX idx_notification_send_logs_event_id ON notification_send_logs(event_id)'
+    ),
+    env.DB.prepare(
+      'CREATE INDEX idx_notification_send_logs_scheduled_for_date ON notification_send_logs(scheduled_for_date)'
+    ),
+  ]);
+}
+
 async function preparePre0017Schema() {
+  await createTemporaryNotificationSendLogs();
   await env.DB.batch([
     env.DB.prepare('DROP INDEX IF EXISTS idx_notification_send_logs_event_id'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_notification_send_logs_scheduled_for_date'),
@@ -142,6 +167,7 @@ describe('0017_unify_auth_users_with_users.sql のデータ変換', () => {
 
   afterEach(async () => {
     await restoreCurrentSchema();
+    await env.DB.prepare('DROP TABLE IF EXISTS notification_send_logs').run();
     await env.DB.prepare('DELETE FROM events WHERE event_name = ?').bind(eventName).run();
     await env.DB.prepare('DELETE FROM students WHERE student_id_number IN (?, ?)')
       .bind(studentNumber, unmatchedStudentNumber)

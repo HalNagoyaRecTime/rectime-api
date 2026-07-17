@@ -66,6 +66,7 @@ app.get('/', c => {
       gatherings: '/api/v1/gatherings',
       firebaseTokens: '/api/v1/firebase-tokens',
       testNotification: '/api/v1/notifications/test',
+      notificationSchedules: '/api/v1/notification-schedules',
       runScheduledNotifications: '/api/v1/notifications/schedule/run',
     },
     swagger: '/swagger.yml',
@@ -144,6 +145,17 @@ apiV1.post('/firebase-tokens', c => {
 });
 
 // Notification routes
+apiV1.get('/notification-schedules', c => {
+  return c
+    .get('container')
+    .notificationScheduleController.getAllNotificationSchedules(c);
+});
+apiV1.post('/notification-schedules', c => {
+  return c
+    .get('container')
+    .notificationScheduleController.createNotificationSchedule(c);
+});
+
 apiV1.post('/notifications/test', c => {
   return c.get('container').notificationController.sendTestNotification(c);
 });

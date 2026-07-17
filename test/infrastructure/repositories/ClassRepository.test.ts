@@ -19,7 +19,7 @@ describe('ClassRepository', () => {
     // 参照される側を残したまま削除するとFK制約に違反する。子テーブルから順に削除する
     // （テストはストレージを他ファイルと共有するため、他ファイルが投入した行が残っている場合がある）
     await env.DB.prepare('DELETE FROM gathering_group_members').run();
-    await env.DB.prepare('DELETE FROM notification_send_logs').run();
+    await env.DB.prepare('DELETE FROM notification_schedules').run();
     await env.DB.prepare('DELETE FROM gatherings').run();
     await env.DB.prepare('DELETE FROM events').run();
     await orm.delete(students);

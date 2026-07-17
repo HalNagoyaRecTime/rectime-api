@@ -252,6 +252,45 @@ export const firebase_tokens = sqliteTable('firebase_tokens', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const notification_schedules = sqliteTable(
+  'notification_schedules',
+  {
+    id: integer('notification_send_schedule_id').primaryKey({
+      autoIncrement: true,
+    }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    eventId: integer('event_id')
+      .notNull()
+      .references(() => events.id),
+    gatheringGroupId: integer('gathering_group_id')
+      .notNull()
+      .references(() => gathering_groups.id),
+    notificationId: integer('notification_id')
+      .notNull()
+      .references(() => notifications.notificationId),
+    importance: integer('importance').notNull().default(2),
+    sendStatus: text('send_status').notNull().default('draft'),
+    fcmMessageId: text('fcm_message_id').unique(),
+    failedReason: text('failed_reason'),
+    sendAt: text('send_at').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    index('idx_notification_schedules_due').on(table.sendStatus, table.sendAt),
+    index('idx_notification_schedules_event_id').on(table.eventId),
+    index('idx_notification_schedules_gathering_group_id').on(
+      table.gatheringGroupId
+    ),
+  ]
+);
+
 export const notifications = sqliteTable('notifications', {
   notificationId: integer('notification_id').primaryKey({
     autoIncrement: true,
