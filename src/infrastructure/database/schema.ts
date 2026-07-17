@@ -101,3 +101,50 @@ export const events = sqliteTable('t_events', {
   gatherTime: text('f_gather_time').notNull(),
   summary: text('f_summary'),
 });
+
+export const firebase_tokens = sqliteTable('firebase_tokens', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => auth_users.id),
+  platform: text('platform').notNull(),
+  fcmToken: text('fcm_token').notNull().unique(),
+  isActive: integer('is_active').notNull().default(1),
+  lastSeenAt: text('last_seen_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const notifications = sqliteTable('notifications', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  type: text('type').notNull(),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const microsoft_account_links = sqliteTable('microsoft_account_links', {
+  id: integer('microsoft_account_link_id').primaryKey({
+    autoIncrement: true,
+  }),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id)
+    .unique(),
+  oid: text('oid').notNull(),
+  tid: text('tid').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});

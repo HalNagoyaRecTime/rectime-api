@@ -1,19 +1,27 @@
 import type { D1Database } from '@cloudflare/workers-types';
+import { and, eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/d1';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
+import * as schema from '../database/schema';
+import { microsoft_account_links, users } from '../database/schema';
 
 export function createUserRepository(db: D1Database): IUserRepository {
+  const orm = drizzle(db, { schema });
+
   return {
     async findUserIdByMicrosoftAccount(oid, tid) {
-      const row = await db
-        .prepare(
-          `SELECT u.user_id
-             FROM microsoft_account_links m
-             INNER JOIN users u ON u.user_id = m.user_id
-            WHERE m.oid = ? AND m.tid = ?`
+      const row = await orm
+        .select({ userId: users.id })
+        .from(microsoft_account_links)
+        .innerJoin(users, eq(users.id, microsoft_account_links.userId))
+        .where(
+          and(
+            eq(microsoft_account_links.oid, oid),
+            eq(microsoft_account_links.tid, tid)
+          )
         )
-        .bind(oid, tid)
-        .first<{ user_id: number }>();
-      return row ? String(row.user_id) : null;
+        .get();
+      return row ? String(row.userId) : null;
     },
 
     async createUserWithMicrosoftLink({ oid, tid, sub, email, displayName }) {
@@ -32,34 +40,44 @@ export function createUserRepository(db: D1Database): IUserRepository {
       // - 2つのINSERTの間、当該ユーザーは一瞬「microsoft_account_linksと
       //   紐付いていないusers行」として存在する。将来 users を直接一覧・参照する
       //   機能（管理画面等）を作る際は、この一瞬の不整合ウィンドウに留意すること
-      const user = await db
-        .prepare(
-          'INSERT INTO users (user_name, is_live_active, created_at, updated_at) VALUES (?, 1, ?, ?) RETURNING user_id'
-        )
-        .bind(displayName, now, now)
-        .first<{ user_id: number }>();
+      const user = await orm
+        .insert(users)
+        .values({
+          userName: displayName,
+          isLiveActive: 1,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning({ id: users.id })
+        .get();
 
       if (!user) {
         throw new Error('Failed to create user');
       }
 
       try {
-        await db
-          .prepare(
-            'INSERT INTO microsoft_account_links (user_id, oid, tid, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
-          )
-          .bind(user.user_id, oid, tid, now, now)
+        await orm
+          .insert(microsoft_account_links)
+          .values({
+            userId: user.id,
+            oid,
+            tid,
+            createdAt: now,
+            updatedAt: now,
+          })
           .run();
       } catch (err) {
-        await db
-          .prepare('DELETE FROM users WHERE user_id = ?')
-          .bind(user.user_id)
-          .run();
+        await orm.delete(users).where(eq(users.id, user.id)).run();
+        // DrizzleはD1の制約違反を「Failed query」エラーでラップする。
+        // 既存の生SQL実装と同じエラーを呼び出し元へ返せるよう、原因を再送出する。
+        if (err instanceof Error && err.cause instanceof Error) {
+          throw err.cause;
+        }
         throw err;
       }
 
       return {
-        id: String(user.user_id),
+        id: String(user.id),
         oid,
         tid,
         sub,
@@ -71,14 +89,14 @@ export function createUserRepository(db: D1Database): IUserRepository {
     async updateUser({ userId, oid, tid, sub, email, displayName }) {
       const now = new Date().toISOString();
 
-      const result = await db
-        .prepare(
-          'UPDATE users SET user_name = ?, updated_at = ? WHERE user_id = ?'
-        )
-        .bind(displayName, now, userId)
-        .run();
+      const user = await orm
+        .update(users)
+        .set({ userName: displayName, updatedAt: now })
+        .where(eq(users.id, Number(userId)))
+        .returning({ id: users.id })
+        .get();
 
-      if (result.meta.changes === 0) return null;
+      if (!user) return null;
       return { id: userId, oid, tid, sub, email, display_name: displayName };
     },
   };
