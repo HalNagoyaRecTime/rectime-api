@@ -10,16 +10,13 @@ import {
 } from '../../domain/entities/FirebaseToken';
 import { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 import * as schema from '../database/schema';
-import { auth_users, firebase_tokens } from '../database/schema';
+import { firebase_tokens, students, users } from '../database/schema';
 
-function toUserEntity(row: typeof auth_users.$inferSelect): UserEntity {
+function toUserEntity(row: typeof users.$inferSelect): UserEntity {
   return {
-    id: row.id,
-    auth_provider: row.authProvider,
-    provider_user_id: row.providerUserId,
-    email: row.email,
-    student_number: row.studentNumber,
-    is_active: row.isActive,
+    user_id: row.id,
+    user_name: row.userName,
+    is_live_active: row.isLiveActive,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
@@ -49,37 +46,21 @@ export function createFirebaseTokenRepository(
 ): IFirebaseTokenRepository {
   const orm = drizzle(db, { schema });
 
-  const upsertUser = async (
-    input: RegisterFirebaseTokenInput
+  const findStudentUser = async (
+    studentNumber: string
   ): Promise<UserEntity> => {
-    const user = await orm
-      .insert(auth_users)
-      .values({
-        authProvider: input.authProvider ?? null,
-        providerUserId: input.providerUserId ?? null,
-        email: input.email ?? null,
-        studentNumber: input.studentNumber,
-        isActive: 1,
-        updatedAt: sql`CURRENT_TIMESTAMP`,
-      })
-      .onConflictDoUpdate({
-        target: auth_users.studentNumber,
-        set: {
-          authProvider: sql`COALESCE(excluded.auth_provider, ${auth_users.authProvider})`,
-          providerUserId: sql`COALESCE(excluded.provider_user_id, ${auth_users.providerUserId})`,
-          email: sql`COALESCE(excluded.email, ${auth_users.email})`,
-          isActive: 1,
-          updatedAt: sql`CURRENT_TIMESTAMP`,
-        },
-      })
-      .returning()
+    const row = await orm
+      .select({ user: users })
+      .from(students)
+      .innerJoin(users, eq(students.userId, users.id))
+      .where(eq(students.studentIdNumber, studentNumber))
       .get();
 
-    if (!user) {
-      throw new Error('Failed to register user');
+    if (!row) {
+      throw new Error('Student not found');
     }
 
-    return toUserEntity(user);
+    return toUserEntity(row.user);
   };
 
   const upsertFirebaseToken = async (
@@ -120,8 +101,8 @@ export function createFirebaseTokenRepository(
     async register(
       input: RegisterFirebaseTokenInput
     ): Promise<RegisterFirebaseTokenResult> {
-      const user = await upsertUser(input);
-      const firebaseToken = await upsertFirebaseToken(user.id, input);
+      const user = await findStudentUser(input.studentNumber);
+      const firebaseToken = await upsertFirebaseToken(user.user_id, input);
       return { user, firebaseToken };
     },
 

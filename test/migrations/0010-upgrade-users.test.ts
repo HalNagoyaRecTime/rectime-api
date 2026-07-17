@@ -270,19 +270,23 @@ describe('0010_upgrade_users.sql のデータ変換ロジック', () => {
   });
 
   it('auth_users が既に存在する場合、冒頭の冪等性ガードでCHECK制約違反となり中断する', async () => {
-    // このテスト環境では 0010 が既に適用済みで auth_users が存在するため、
-    // 0010 冒頭のガード(migrations/0010_upgrade_users.sql の ALTER TABLE ...
-    // RENAME TO auth_users より前)と同一のチェックを再現し、再実行が
-    // 静かに失敗せず即座に検知されることを検証する。
-    await expect(
-      env.DB.batch([
-        env.DB.prepare(
-          'CREATE TABLE __migration_0010_guard (already_applied INTEGER CHECK (already_applied = 0))'
-        ),
-        env.DB.prepare(
-          "INSERT INTO __migration_0010_guard (already_applied) SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'auth_users'"
-        ),
-      ])
-    ).rejects.toThrow('CHECK constraint failed');
+    // #78 で auth_users は廃止されるため、旧テーブルをテスト内だけ復元して
+    // 0010 冒頭の冪等性ガードを検証する。
+    await env.DB.prepare('CREATE TABLE auth_users (id INTEGER PRIMARY KEY)').run();
+    try {
+      await expect(
+        env.DB.batch([
+          env.DB.prepare(
+            'CREATE TABLE __migration_0010_guard (already_applied INTEGER CHECK (already_applied = 0))'
+          ),
+          env.DB.prepare(
+            "INSERT INTO __migration_0010_guard (already_applied) SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'auth_users'"
+          ),
+        ])
+      ).rejects.toThrow('CHECK constraint failed');
+    } finally {
+      await env.DB.prepare('DROP TABLE IF EXISTS __migration_0010_guard').run();
+      await env.DB.prepare('DROP TABLE auth_users').run();
+    }
   });
 });

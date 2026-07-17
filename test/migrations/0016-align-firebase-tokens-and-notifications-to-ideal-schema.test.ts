@@ -76,6 +76,17 @@ const TRANSFORM_STATEMENTS = [
   'ALTER TABLE notifications_new RENAME TO notifications',
 ];
 
+async function createLegacyAuthUsers() {
+  await env.DB.prepare(
+    `CREATE TABLE auth_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_number TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`
+  ).run();
+}
+
 async function prepareLegacySchema() {
   await env.DB.batch([
     env.DB.prepare('DROP INDEX IF EXISTS idx_notification_send_logs_event_id'),
@@ -175,12 +186,11 @@ describe('0016_align_firebase_tokens_and_notifications_to_ideal_schema.sql の�
     await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
       .bind(eventId)
       .run();
-    await env.DB.prepare('DELETE FROM auth_users WHERE student_number = ?')
-      .bind(studentNumber)
-      .run();
+    await env.DB.prepare('DROP TABLE IF EXISTS auth_users').run();
   });
 
   it('Firebaseトークン・通知・通知送信ログをER図のカラム名と型へ変換して参照を維持する', async () => {
+    await createLegacyAuthUsers();
     await prepareLegacySchema();
 
     const authUser = await env.DB.prepare(

@@ -8,12 +8,9 @@ describe('FirebaseTokenService', () => {
     it('リポジトリの register をそのまま呼び出し、結果を返す', async () => {
       const result: RegisterFirebaseTokenResult = {
         user: {
-          id: 1,
-          auth_provider: null,
-          provider_user_id: null,
-          email: null,
-          student_number: '10000',
-          is_active: 1,
+          user_id: 1,
+          user_name: 'テスト生徒',
+          is_live_active: 1,
           created_at: '2026-01-01',
           updated_at: '2026-01-01',
         },

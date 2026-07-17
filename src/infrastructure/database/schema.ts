@@ -19,21 +19,6 @@ export const class_rooms = sqliteTable('class_rooms', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const auth_users = sqliteTable('auth_users', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  authProvider: text('auth_provider'),
-  providerUserId: text('provider_user_id'),
-  email: text('email'),
-  studentNumber: text('student_number').notNull().unique(),
-  isActive: integer('is_active').notNull().default(1),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
-
 export const users = sqliteTable('users', {
   id: integer('user_id').primaryKey({ autoIncrement: true }),
   userName: text('user_name').notNull(),
@@ -252,7 +237,7 @@ export const firebase_tokens = sqliteTable('firebase_tokens', {
   }),
   userId: integer('user_id')
     .notNull()
-    .references(() => auth_users.id),
+    .references(() => users.id),
   platform: integer('platform').notNull(),
   fcmToken: text('fcm_token').notNull().unique(),
   isFirebaseActive: integer('is_firebase_active').notNull().default(1),
