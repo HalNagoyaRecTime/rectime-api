@@ -10,12 +10,9 @@ import type {
 
 function buildUser(overrides: Partial<UserEntity> = {}): UserEntity {
   return {
-    id: 1,
-    auth_provider: null,
-    provider_user_id: null,
-    email: null,
-    student_number: 'S001',
-    is_active: 1,
+    user_id: 1,
+    user_name: 'テスト生徒',
+    is_live_active: 1,
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
     ...overrides,
@@ -26,11 +23,11 @@ function buildFirebaseToken(
   overrides: Partial<FirebaseTokenEntity> = {}
 ): FirebaseTokenEntity {
   return {
-    id: 1,
+    firebase_token_id: 1,
     user_id: 1,
-    platform: 'android',
+    platform: 2,
     fcm_token: 'token-a',
-    is_active: 1,
+    is_firebase_active: 1,
     last_seen_at: '2026-01-01',
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
@@ -72,24 +69,21 @@ describe('FirebaseTokenController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentNumber: 'S001',
-          platform: 'android',
+          platform: 2,
           fcmToken: 'fcm-abc',
         }),
       });
 
       expect(firebaseTokenService.registerFirebaseToken).toHaveBeenCalledWith({
         studentNumber: 'S001',
-        platform: 'android',
+        platform: 2,
         fcmToken: 'fcm-abc',
-        authProvider: undefined,
-        providerUserId: undefined,
-        email: undefined,
       });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual(result);
     });
 
-    it('legacy token フィールドを使った有効なボディでも fcmToken として渡す', async () => {
+    it('token フィールドを使った有効なボディでも fcmToken として渡す', async () => {
       const { app, firebaseTokenService } = setup();
       const result = buildResult();
       (
@@ -101,21 +95,15 @@ describe('FirebaseTokenController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentNumber: 'S001',
-          platform: 'ios',
+          platform: 1,
           token: 'legacy-token',
-          authProvider: 'microsoft',
-          providerUserId: 'provider-1',
-          email: 'a@example.com',
         }),
       });
 
       expect(firebaseTokenService.registerFirebaseToken).toHaveBeenCalledWith({
         studentNumber: 'S001',
-        platform: 'ios',
+        platform: 1,
         fcmToken: 'legacy-token',
-        authProvider: 'microsoft',
-        providerUserId: 'provider-1',
-        email: 'a@example.com',
       });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual(result);
@@ -129,7 +117,7 @@ describe('FirebaseTokenController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentNumber: 'S001',
-          platform: 'android',
+          platform: 2,
         }),
       });
 
@@ -148,7 +136,7 @@ describe('FirebaseTokenController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentNumber: 'S001',
-          platform: 'windows',
+          platform: 3,
           fcmToken: 'fcm-abc',
         }),
       });
@@ -156,21 +144,24 @@ describe('FirebaseTokenController', () => {
       expect(res.status).toBe(400);
     });
 
-    it('email の形式が不正な場合は 400 を返す', async () => {
-      const { app } = setup();
+    it('サービスが Student not found を投げた場合は 404 を返す', async () => {
+      const { app, firebaseTokenService } = setup();
+      (
+        firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Student not found'));
 
       const res = await app.request('/firebase-tokens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentNumber: 'S001',
-          platform: 'android',
+          platform: 2,
           fcmToken: 'fcm-abc',
-          email: 'not-an-email',
         }),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: 'Student not found' });
     });
 
     it('サービスが例外を投げた場合は 500 と details を返す', async () => {
@@ -184,7 +175,7 @@ describe('FirebaseTokenController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentNumber: 'S001',
-          platform: 'android',
+          platform: 2,
           fcmToken: 'fcm-abc',
         }),
       });

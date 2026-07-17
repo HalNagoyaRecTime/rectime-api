@@ -9,14 +9,15 @@ import { IEventRepository } from '../../domain/interfaces/repositories/IEventRep
 
 function toEntity(row: typeof events.$inferSelect): EventEntity {
   return {
-    f_event_id: row.id,
-    f_event_code: row.eventCode,
-    f_event_name: row.name,
-    f_time: row.time,
-    f_duration: row.duration,
-    f_place: row.place,
-    f_gather_time: row.gatherTime,
-    f_summary: row.summary,
+    event_id: row.id,
+    user_id: row.userId,
+    event_name: row.name,
+    rule_text: row.ruleText,
+    venue: row.venue,
+    start_time: row.startTime,
+    end_time: row.endTime,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
   };
 }
 
@@ -25,17 +26,13 @@ export function createEventRepository(db: D1Database): IEventRepository {
 
   return {
     async findAll(options: {
-      eventCode?: string;
-      time?: string;
+      startTime?: string;
       limit?: number;
       offset?: number;
     }): Promise<{ events: EventEntity[]; total: number }> {
       const conditions: SQL[] = [];
-      if (options.eventCode) {
-        conditions.push(eq(events.eventCode, options.eventCode));
-      }
-      if (options.time) {
-        conditions.push(eq(events.time, options.time));
+      if (options.startTime) {
+        conditions.push(eq(events.startTime, options.startTime));
       }
       const where = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -43,7 +40,7 @@ export function createEventRepository(db: D1Database): IEventRepository {
         .select()
         .from(events)
         .where(where)
-        .orderBy(asc(events.time))
+        .orderBy(asc(events.startTime))
         .$dynamic();
 
       if (options.limit !== undefined) {
@@ -69,16 +66,6 @@ export function createEventRepository(db: D1Database): IEventRepository {
         .select()
         .from(events)
         .where(eq(events.id, id))
-        .get();
-
-      return result ? toEntity(result) : null;
-    },
-
-    async findByEventCode(eventCode: string): Promise<EventEntity | null> {
-      const result = await orm
-        .select()
-        .from(events)
-        .where(eq(events.eventCode, eventCode))
         .get();
 
       return result ? toEntity(result) : null;

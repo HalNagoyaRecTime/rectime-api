@@ -5,12 +5,9 @@ import { IFirebaseTokenService } from '../../application/services/IFirebaseToken
 const registerFirebaseTokenSchema = z
   .object({
     studentNumber: z.string().min(1),
-    platform: z.enum(['android', 'ios']),
+    platform: z.union([z.literal(1), z.literal(2)]),
     fcmToken: z.string().min(1).optional(),
     token: z.string().min(1).optional(),
-    authProvider: z.string().min(1).optional(),
-    providerUserId: z.string().min(1).optional(),
-    email: z.string().email().optional(),
   })
   .refine(value => value.fcmToken || value.token, {
     message: 'fcmToken or token is required',
@@ -39,13 +36,13 @@ export function createFirebaseTokenController(
         studentNumber: parsedBody.data.studentNumber,
         platform: parsedBody.data.platform,
         fcmToken: parsedBody.data.fcmToken ?? parsedBody.data.token ?? '',
-        authProvider: parsedBody.data.authProvider,
-        providerUserId: parsedBody.data.providerUserId,
-        email: parsedBody.data.email,
       });
 
       return c.json(result);
     } catch (error) {
+      if (error instanceof Error && error.message === 'Student not found') {
+        return c.json({ error: error.message }, 404);
+      }
       return c.json(
         {
           error: 'Failed to register Firebase token',

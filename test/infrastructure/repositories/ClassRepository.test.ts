@@ -18,6 +18,10 @@ describe('ClassRepository', () => {
     // class_rooms は students から、students は users から参照されるため、
     // 参照される側を残したまま削除するとFK制約に違反する。子テーブルから順に削除する
     // （テストはストレージを他ファイルと共有するため、他ファイルが投入した行が残っている場合がある）
+    await env.DB.prepare('DELETE FROM gathering_group_members').run();
+    await env.DB.prepare('DELETE FROM notification_schedules').run();
+    await env.DB.prepare('DELETE FROM gatherings').run();
+    await env.DB.prepare('DELETE FROM events').run();
     await orm.delete(students);
     await orm.delete(users);
     await orm.delete(class_rooms);

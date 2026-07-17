@@ -8,21 +8,18 @@ describe('FirebaseTokenService', () => {
     it('リポジトリの register をそのまま呼び出し、結果を返す', async () => {
       const result: RegisterFirebaseTokenResult = {
         user: {
-          id: 1,
-          auth_provider: null,
-          provider_user_id: null,
-          email: null,
-          student_number: '10000',
-          is_active: 1,
+          user_id: 1,
+          user_name: 'テスト生徒',
+          is_live_active: 1,
           created_at: '2026-01-01',
           updated_at: '2026-01-01',
         },
         firebaseToken: {
-          id: 1,
+          firebase_token_id: 1,
           user_id: 1,
-          platform: 'android',
+          platform: 2,
           fcm_token: 'token-a',
-          is_active: 1,
+          is_firebase_active: 1,
           last_seen_at: '2026-01-01',
           created_at: '2026-01-01',
           updated_at: '2026-01-01',
@@ -37,7 +34,7 @@ describe('FirebaseTokenService', () => {
 
       const input = {
         studentNumber: '10000',
-        platform: 'android' as const,
+        platform: 2 as const,
         fcmToken: 'token-a',
       };
       await expect(service.registerFirebaseToken(input)).resolves.toEqual(
