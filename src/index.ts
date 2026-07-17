@@ -63,6 +63,7 @@ app.get('/', c => {
       classes: '/api/v1/classes',
       schedules: '/api/v1/schedules',
       scheduleDetail: '/api/v1/schedules/{scheduleId}',
+      daySchedules: '/api/v1/day-schedules',
       firebaseTokens: '/api/v1/firebase-tokens',
       testNotification: '/api/v1/notifications/test',
       runScheduledNotifications: '/api/v1/notifications/schedule/run',
@@ -105,6 +106,11 @@ apiV1.get('/schedules', c => {
 
 apiV1.get('/schedules/:scheduleId', c => {
   return c.get('container').scheduleController.getScheduleById(c);
+});
+
+// Day schedule routes (管理画面表示用・読み取り専用)
+apiV1.get('/day-schedules', c => {
+  return c.get('container').dayScheduleController.getAllItems(c);
 });
 
 // Firebase token routes
