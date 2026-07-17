@@ -1,5 +1,11 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import { sql } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
+import {
+  integer,
+  index,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 export const class_rooms = sqliteTable('class_rooms', {
   id: integer('class_room_id').primaryKey({ autoIncrement: true }),
@@ -108,6 +114,81 @@ export const events = sqliteTable('events', {
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const gathering_spots = sqliteTable('gathering_spots', {
+  id: integer('gathering_spot_id').primaryKey({ autoIncrement: true }),
+  name: text('gathering_spot_name').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const gathering_groups = sqliteTable('gathering_groups', {
+  id: integer('gathering_group_id').primaryKey({ autoIncrement: true }),
+  name: text('gathering_group_name').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const gathering_group_members = sqliteTable(
+  'gathering_group_members',
+  {
+    id: integer('gathering_group_member_id').primaryKey({
+      autoIncrement: true,
+    }),
+    gatheringGroupId: integer('gathering_group_id')
+      .notNull()
+      .references(() => gathering_groups.id),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    uniqueIndex('uq_gathering_group_members_group_user').on(
+      table.gatheringGroupId,
+      table.userId
+    ),
+    index('idx_gathering_group_members_user_id').on(table.userId),
+  ]
+);
+
+export const usersRelations = relations(users, ({ many }) => ({
+  gatheringGroupMembers: many(gathering_group_members),
+}));
+
+export const gatheringGroupsRelations = relations(
+  gathering_groups,
+  ({ many }) => ({
+    members: many(gathering_group_members),
+  })
+);
+
+export const gatheringGroupMembersRelations = relations(
+  gathering_group_members,
+  ({ one }) => ({
+    gatheringGroup: one(gathering_groups, {
+      fields: [gathering_group_members.gatheringGroupId],
+      references: [gathering_groups.id],
+    }),
+    user: one(users, {
+      fields: [gathering_group_members.userId],
+      references: [users.id],
+    }),
+  })
+);
 
 export const firebase_tokens = sqliteTable('firebase_tokens', {
   id: integer('id').primaryKey({ autoIncrement: true }),

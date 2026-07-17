@@ -1,0 +1,45 @@
+import type { D1Database } from '@cloudflare/workers-types';
+import { asc } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/d1';
+import { GatheringSpotEntity } from '../../domain/entities/GatheringSpot';
+import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
+import * as schema from '../database/schema';
+import { gathering_spots } from '../database/schema';
+
+function toEntity(
+  row: typeof gathering_spots.$inferSelect
+): GatheringSpotEntity {
+  return {
+    gathering_spot_id: row.id,
+    gathering_spot_name: row.name,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
+  };
+}
+
+export function createGatheringSpotRepository(
+  db: D1Database
+): IGatheringSpotRepository {
+  const orm = drizzle(db, { schema });
+
+  return {
+    async findAll(): Promise<GatheringSpotEntity[]> {
+      const rows = await orm
+        .select()
+        .from(gathering_spots)
+        .orderBy(asc(gathering_spots.id))
+        .all();
+      return rows.map(toEntity);
+    },
+
+    async create(gatheringSpotName: string): Promise<GatheringSpotEntity> {
+      const row = await orm
+        .insert(gathering_spots)
+        .values({ name: gatheringSpotName })
+        .returning()
+        .get();
+      if (!row) throw new Error('Failed to create gathering spot');
+      return toEntity(row);
+    },
+  };
+}
