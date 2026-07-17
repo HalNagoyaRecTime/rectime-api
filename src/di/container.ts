@@ -21,6 +21,9 @@ import { createClassController } from '../presentation/controllers/ClassControll
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
 import { createScheduleController } from '../presentation/controllers/ScheduleController';
+import { createDayScheduleRepository } from '../infrastructure/repositories/DayScheduleRepository';
+import { createDayScheduleService } from '../application/services/DayScheduleService';
+import { createDayScheduleController } from '../presentation/controllers/DayScheduleController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createAuthService } from '../application/services/authService';
 import type { Env } from '../lib/env';
@@ -38,6 +41,7 @@ export function createDIContainer(env: Env) {
   const notificationSendLogRepository = createNotificationSendLogRepository(db);
   // TODO: replace with DB-backed implementation（手順4で D1 から取得する実装に差し替える）
   const scheduleRepository = createScheduleRepository();
+  const dayScheduleRepository = createDayScheduleRepository();
 
   // Services
   const authService = createAuthService(userRepository, env.AUTH_KV);
@@ -46,6 +50,7 @@ export function createDIContainer(env: Env) {
   const entryService = createEntryService(entryRepository);
   const classService = createClassService(classRepository);
   const scheduleService = createScheduleService(scheduleRepository);
+  const dayScheduleService = createDayScheduleService(dayScheduleRepository);
   const firebaseTokenService = createFirebaseTokenService(
     firebaseTokenRepository
   );
@@ -71,6 +76,7 @@ export function createDIContainer(env: Env) {
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
   const notificationController = createNotificationController(fcmService);
+  const dayScheduleController = createDayScheduleController(dayScheduleService);
 
   return {
     authService,
@@ -81,6 +87,7 @@ export function createDIContainer(env: Env) {
     scheduleController,
     firebaseTokenController,
     notificationController,
+    dayScheduleController,
     scheduledNotificationService,
   };
 }
