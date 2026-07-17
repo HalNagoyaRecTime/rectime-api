@@ -91,7 +91,7 @@ export function createEventRepository(db: D1Database): IEventRepository {
         {
           f_event_id: 1,
           f_event_name: '走れ○人○脚',
-          f_gather_time: '8:45',
+          f_gather_time: '0845',
           f_place: '集合場所A',
           f_time: '0900',
           f_duration: '20',
@@ -100,7 +100,7 @@ export function createEventRepository(db: D1Database): IEventRepository {
         {
           f_event_id: 2,
           f_event_name: 'ガチンコ綱引き',
-          f_gather_time: '9:30',
+          f_gather_time: '0930',
           f_place: '集合場所B',
           f_time: '1030',
           f_duration: '30',
