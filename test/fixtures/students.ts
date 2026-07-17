@@ -51,6 +51,8 @@ export type SeededData = {
 export async function seedStudents(db: D1Database): Promise<SeededData> {
   const orm = drizzle(db, { schema });
 
+  await db.prepare('DELETE FROM notification_send_logs').run();
+  await db.prepare('DELETE FROM events').run();
   await orm.delete(studentsTable);
   await orm.delete(users);
   await orm.delete(class_rooms);

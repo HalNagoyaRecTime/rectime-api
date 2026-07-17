@@ -91,15 +91,22 @@ export const teachers = sqliteTable('teachers', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const events = sqliteTable('t_events', {
-  id: integer('f_event_id').primaryKey({ autoIncrement: true }),
-  eventCode: text('f_event_code').notNull().unique(),
-  name: text('f_event_name').notNull(),
-  time: text('f_time').notNull(),
-  duration: text('f_duration').notNull(),
-  place: text('f_place').notNull(),
-  gatherTime: text('f_gather_time').notNull(),
-  summary: text('f_summary'),
+export const events = sqliteTable('events', {
+  id: integer('event_id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id),
+  name: text('event_name').notNull(),
+  ruleText: text('rule_text'),
+  venue: text('venue').notNull(),
+  startTime: text('start_time').notNull(),
+  endTime: text('end_time').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const firebase_tokens = sqliteTable('firebase_tokens', {

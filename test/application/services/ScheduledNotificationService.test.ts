@@ -9,14 +9,15 @@ import type { FirebaseTokenEntity } from '../../../src/domain/entities/FirebaseT
 
 function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
   return {
-    f_event_id: 1,
-    f_event_code: 'E001',
-    f_event_name: '徒競走',
-    f_time: '1010',
-    f_duration: '20',
-    f_place: 'トラック',
-    f_gather_time: '1000',
-    f_summary: null,
+    event_id: 1,
+    user_id: -1,
+    event_name: '徒競走',
+    rule_text: null,
+    venue: 'トラック',
+    start_time: '1010',
+    end_time: '1030',
+    created_at: '2026-01-01',
+    updated_at: '2026-01-01',
     ...overrides,
   };
 }
@@ -46,7 +47,6 @@ describe('ScheduledNotificationService', () => {
     const eventRepository: IEventRepository = {
       findAll: vi.fn().mockResolvedValue({ events: [], total: 0 }),
       findById: vi.fn(),
-      findByEventCode: vi.fn(),
     };
     const firebaseTokenRepository: IFirebaseTokenRepository = {
       register: vi.fn(),
@@ -98,7 +98,7 @@ describe('ScheduledNotificationService', () => {
 
     const result = await service.sendScheduledEventNotifications(NOW);
 
-    expect(eventRepository.findAll).toHaveBeenCalledWith({ time: '1900' });
+    expect(eventRepository.findAll).toHaveBeenCalledWith({ startTime: '1900' });
     expect(fcmService.sendNotificationToToken).toHaveBeenCalledWith({
       token: 'token-a',
       title: '呼び出し通知',
