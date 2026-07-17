@@ -47,6 +47,78 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /staffs:
+    get:
+      tags: [Staffs]
+      summary: スタッフ一覧を取得する
+      responses:
+        '200':
+          description: スタッフ一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Staff'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /staffs/{staffId}:
+    get:
+      tags: [Staffs]
+      summary: スタッフを取得する
+      parameters:
+        - $ref: '#/components/parameters/StaffId'
+      responses:
+        '200':
+          description: スタッフ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Staff'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /teachers:
+    get:
+      tags: [Teachers]
+      summary: 教員一覧を取得する
+      responses:
+        '200':
+          description: 教員一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Teacher'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /teachers/{teacherId}:
+    get:
+      tags: [Teachers]
+      summary: 教員を取得する
+      parameters:
+        - $ref: '#/components/parameters/TeacherId'
+      responses:
+        '200':
+          description: 教員
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Teacher'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /events:
     get:
       tags: [Events]
@@ -437,6 +509,20 @@ components:
       schema:
         type: integer
         minimum: 1
+    StaffId:
+      name: staffId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    TeacherId:
+      name: teacherId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
     EventId:
       name: eventId
       in: path
@@ -496,6 +582,28 @@ components:
         attendance_number:
           type: integer
         student_id_number:
+          type: string
+
+    Staff:
+      type: object
+      required: [staff_id, user_id, display_name]
+      properties:
+        staff_id:
+          type: integer
+        user_id:
+          type: integer
+        display_name:
+          type: string
+
+    Teacher:
+      type: object
+      required: [teacher_id, user_id, display_name]
+      properties:
+        teacher_id:
+          type: integer
+        user_id:
+          type: integer
+        display_name:
           type: string
 
     Event:
@@ -866,6 +974,10 @@ components:
 tags:
   - name: Students
     description: 学生情報
+  - name: Staffs
+    description: スタッフ情報
+  - name: Teachers
+    description: 教員情報
   - name: Events
     description: イベント
   - name: Classes
