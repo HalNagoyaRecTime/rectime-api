@@ -59,6 +59,38 @@ export const students = sqliteTable('students', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
+// staffs/teachers はまだ専用のリポジトリ層を持たない。1ユーザーにつき
+// 最大1行（user_id にUNIQUE）だが、staffs と teachers は相互排他ではなく、
+// 同一ユーザーが両方の行を持つことを許容する設計（ER図に相互排他を示す
+// 制約は無かったため）。将来リポジトリを実装する際はこの制約を前提にすること。
+export const staffs = sqliteTable('staffs', {
+  id: integer('staff_id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id)
+    .unique(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const teachers = sqliteTable('teachers', {
+  id: integer('teacher_id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id)
+    .unique(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const events = sqliteTable('t_events', {
   id: integer('f_event_id').primaryKey({ autoIncrement: true }),
   eventCode: text('f_event_code').notNull().unique(),

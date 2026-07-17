@@ -90,14 +90,6 @@ describe('FirebaseTokenRepository', () => {
         platform: 'android',
         fcmToken: 'token-a',
       });
-      // auth_users.uid は NOT NULL DEFAULT '' + UNIQUE 制約があり、
-      // 2人目を register() 経由の素の INSERT に任せると uid='' 同士が衝突するため、
-      // 事前に別 uid を持つ行を用意して ON CONFLICT(student_number) の UPDATE 経路に乗せる
-      await env.DB.prepare(
-        'INSERT INTO auth_users (student_number, uid) VALUES (?, ?)'
-      )
-        .bind('10001', 'placeholder-uid-10001')
-        .run();
       const second = await repo.register({
         studentNumber: '10001',
         platform: 'ios',
