@@ -1,13 +1,18 @@
 import { cors } from 'hono/cors';
 import { swaggerUI } from '@hono/swagger-ui';
-import { OpenAPIHono } from '@hono/zod-openapi';
+import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
 import {
   classListRoute,
+  studentDetailRoute,
+  studentListRoute,
+} from './presentation/openapi/students';
+import {
   eventDetailRoute,
   eventListRoute,
-  firebaseTokenCreateRoute,
+} from './presentation/openapi/events';
+import {
   gatheringCreateRoute,
   gatheringGroupCreateRoute,
   gatheringGroupListRoute,
@@ -17,22 +22,51 @@ import {
   gatheringListRoute,
   gatheringSpotCreateRoute,
   gatheringSpotListRoute,
-  healthRoute,
+} from './presentation/openapi/gatherings';
+import {
+  firebaseTokenCreateRoute,
   notificationScheduleCreateRoute,
   notificationScheduleListRoute,
-  rootRoute,
-  runScheduledNotificationsSchema,
   runScheduledNotificationsRoute,
-  studentDetailRoute,
-  studentListRoute,
+  runScheduledNotificationsSchema,
   testNotificationRoute,
-} from './presentation/openapi';
+} from './presentation/openapi/notifications';
+import { jsonResponse, z } from './presentation/openapi/schemas';
 import {
   diContainerMiddleware,
   type ContainerVariables,
 } from './presentation/middleware/diContainer';
 
 const app = new OpenAPIHono<{ Bindings: Env }>();
+
+const healthRoute = createRoute({
+  method: 'get',
+  path: '/health',
+  tags: ['System'],
+  summary: 'ヘルスチェック',
+  responses: {
+    200: jsonResponse(z.object({ status: z.literal('ok') }), '正常'),
+  },
+});
+
+const rootRoute = createRoute({
+  method: 'get',
+  path: '/',
+  tags: ['System'],
+  summary: 'APIの概要を取得する',
+  responses: {
+    200: jsonResponse(
+      z.object({
+        message: z.string(),
+        version: z.string(),
+        endpoints: z.record(z.string()),
+        openapi: z.string(),
+        docs: z.string(),
+      }),
+      'APIの概要'
+    ),
+  },
+});
 
 let corsWarnLogged = false;
 let tenantWarnLogged = false;

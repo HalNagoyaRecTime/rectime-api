@@ -1,6 +1,9 @@
 import { Context } from 'hono';
 import { IFirebaseTokenService } from '../../application/services/IFirebaseTokenService';
-import { registerFirebaseTokenSchema } from '../openapi';
+import {
+  registerFirebaseTokenSchema,
+  type FirebaseTokenRegistrationResponseDTO,
+} from '../openapi/notifications';
 
 export function createFirebaseTokenController(
   firebaseTokenService: IFirebaseTokenService
@@ -20,11 +23,12 @@ export function createFirebaseTokenController(
         );
       }
 
-      const result = await firebaseTokenService.registerFirebaseToken({
-        studentNumber: parsedBody.data.studentNumber,
-        platform: parsedBody.data.platform,
-        fcmToken: parsedBody.data.fcmToken ?? parsedBody.data.token ?? '',
-      });
+      const result: FirebaseTokenRegistrationResponseDTO =
+        await firebaseTokenService.registerFirebaseToken({
+          studentNumber: parsedBody.data.studentNumber,
+          platform: parsedBody.data.platform,
+          fcmToken: parsedBody.data.fcmToken ?? parsedBody.data.token ?? '',
+        });
 
       return c.json(result, 200);
     } catch (error) {

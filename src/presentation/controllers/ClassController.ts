@@ -1,10 +1,12 @@
 import { Context } from 'hono';
 import { IClassService } from '../../application/services/IClassService';
+import type { ClassRoomListResponseDTO } from '../openapi/students';
 
 export function createClassController(classService: IClassService) {
   const getAllClasses = async (c: Context) => {
     try {
-      const classes = await classService.getAllClasses();
+      const classes: ClassRoomListResponseDTO =
+        await classService.getAllClasses();
       return c.json(classes, 200);
     } catch (error) {
       console.error('Error fetching classes:', error);

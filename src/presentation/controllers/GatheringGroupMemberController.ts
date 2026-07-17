@@ -4,7 +4,9 @@ import {
   addGatheringGroupMemberSchema,
   gatheringGroupIdParams,
   gatheringGroupMemberParams,
-} from '../openapi';
+  type GatheringGroupMemberListResponseDTO,
+  type GatheringGroupMemberResponseDTO,
+} from '../openapi/gatherings';
 
 function getGatheringGroupId(c: Context): number | null {
   const parsedParams = gatheringGroupIdParams.safeParse({
@@ -25,12 +27,11 @@ export function createGatheringGroupMemberController(
     }
 
     try {
-      return c.json(
+      const members: GatheringGroupMemberListResponseDTO =
         await gatheringGroupMemberService.getGatheringGroupMembers(
           gatheringGroupId
-        ),
-        200
-      );
+        );
+      return c.json(members, 200);
     } catch (error) {
       if (
         error instanceof Error &&
@@ -66,10 +67,11 @@ export function createGatheringGroupMemberController(
     }
 
     try {
-      const member = await gatheringGroupMemberService.addGatheringGroupMember(
-        gatheringGroupId,
-        parsedBody.data.userId
-      );
+      const member: GatheringGroupMemberResponseDTO =
+        await gatheringGroupMemberService.addGatheringGroupMember(
+          gatheringGroupId,
+          parsedBody.data.userId
+        );
       return c.json(member, 201);
     } catch (error) {
       if (

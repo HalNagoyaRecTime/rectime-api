@@ -1,6 +1,11 @@
 import { Context } from 'hono';
 import { IEventService } from '../../application/services/IEventService';
-import { eventIdParams, eventListQuery } from '../openapi';
+import {
+  eventIdParams,
+  eventListQuery,
+  type EventListResponseDTO,
+  type EventResponseDTO,
+} from '../openapi/events';
 
 export function createEventController(eventService: IEventService) {
   const getAllEvents = async (c: Context) => {
@@ -17,15 +22,14 @@ export function createEventController(eventService: IEventService) {
         offset,
       });
 
-      return c.json(
-        {
-          events: result.events,
-          total: result.total,
-          limit: limit ?? 50,
-          offset: offset ?? 0,
-        },
-        200
-      );
+      const response: EventListResponseDTO = {
+        events: result.events,
+        total: result.total,
+        limit: limit ?? 50,
+        offset: offset ?? 0,
+      };
+
+      return c.json(response, 200);
     } catch (error) {
       return c.json(
         {
@@ -50,7 +54,7 @@ export function createEventController(eventService: IEventService) {
       }
       const id = Number(parsedParams.data.eventId);
 
-      const event = await eventService.getEventById(id);
+      const event: EventResponseDTO = await eventService.getEventById(id);
       return c.json(event, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {

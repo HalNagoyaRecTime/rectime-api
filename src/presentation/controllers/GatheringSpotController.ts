@@ -1,13 +1,19 @@
 import { Context } from 'hono';
 import { IGatheringSpotService } from '../../application/services/IGatheringSpotService';
-import { createGatheringSpotSchema } from '../openapi';
+import {
+  createGatheringSpotSchema,
+  type GatheringSpotListResponseDTO,
+  type GatheringSpotResponseDTO,
+} from '../openapi/gatherings';
 
 export function createGatheringSpotController(
   gatheringSpotService: IGatheringSpotService
 ) {
   const getAllGatheringSpots = async (c: Context) => {
     try {
-      return c.json(await gatheringSpotService.getAllGatheringSpots(), 200);
+      const gatheringSpots: GatheringSpotListResponseDTO =
+        await gatheringSpotService.getAllGatheringSpots();
+      return c.json(gatheringSpots, 200);
     } catch (error) {
       return c.json(
         {
@@ -33,9 +39,10 @@ export function createGatheringSpotController(
     }
 
     try {
-      const gatheringSpot = await gatheringSpotService.createGatheringSpot(
-        parsedBody.data.gatheringSpotName
-      );
+      const gatheringSpot: GatheringSpotResponseDTO =
+        await gatheringSpotService.createGatheringSpot(
+          parsedBody.data.gatheringSpotName
+        );
       return c.json(gatheringSpot, 201);
     } catch (error) {
       return c.json(

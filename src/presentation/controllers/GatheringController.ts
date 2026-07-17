@@ -1,11 +1,17 @@
 import { Context } from 'hono';
 import { IGatheringService } from '../../application/services/IGatheringService';
-import { createGatheringSchema } from '../openapi';
+import {
+  createGatheringSchema,
+  type GatheringListResponseDTO,
+  type GatheringResponseDTO,
+} from '../openapi/gatherings';
 
 export function createGatheringController(gatheringService: IGatheringService) {
   const getAllGatherings = async (c: Context) => {
     try {
-      return c.json(await gatheringService.getAllGatherings(), 200);
+      const gatherings: GatheringListResponseDTO =
+        await gatheringService.getAllGatherings();
+      return c.json(gatherings, 200);
     } catch (error) {
       return c.json(
         {
@@ -31,13 +37,14 @@ export function createGatheringController(gatheringService: IGatheringService) {
     }
 
     try {
-      const gathering = await gatheringService.createGathering({
-        gathering_group_id: parsedBody.data.gatheringGroupId,
-        event_id: parsedBody.data.eventId,
-        gathering_spot_id: parsedBody.data.gatheringSpotId,
-        gathering_time: parsedBody.data.gatheringTime,
-        round: parsedBody.data.round,
-      });
+      const gathering: GatheringResponseDTO =
+        await gatheringService.createGathering({
+          gathering_group_id: parsedBody.data.gatheringGroupId,
+          event_id: parsedBody.data.eventId,
+          gathering_spot_id: parsedBody.data.gatheringSpotId,
+          gathering_time: parsedBody.data.gatheringTime,
+          round: parsedBody.data.round,
+        });
       return c.json(gathering, 201);
     } catch (error) {
       if (

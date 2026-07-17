@@ -1,16 +1,19 @@
 import type { Context } from 'hono';
 import type { INotificationScheduleService } from '../../application/services/INotificationScheduleService';
-import { createNotificationScheduleSchema } from '../openapi';
+import {
+  createNotificationScheduleSchema,
+  type NotificationScheduleListResponseDTO,
+  type NotificationScheduleResponseDTO,
+} from '../openapi/notifications';
 
 export function createNotificationScheduleController(
   notificationScheduleService: INotificationScheduleService
 ) {
   const getAllNotificationSchedules = async (c: Context) => {
     try {
-      return c.json(
-        await notificationScheduleService.getAllNotificationSchedules(),
-        200
-      );
+      const schedules: NotificationScheduleListResponseDTO =
+        await notificationScheduleService.getAllNotificationSchedules();
+      return c.json(schedules, 200);
     } catch (error) {
       return c.json(
         {
@@ -36,7 +39,7 @@ export function createNotificationScheduleController(
     }
 
     try {
-      const schedule =
+      const schedule: NotificationScheduleResponseDTO =
         await notificationScheduleService.createNotificationSchedule({
           user_id: parsedBody.data.userId,
           event_id: parsedBody.data.eventId,

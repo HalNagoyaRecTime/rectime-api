@@ -1,6 +1,10 @@
 import { Context } from 'hono';
 import { IStudentService } from '../../application/services/IStudentService';
-import { studentIdParams } from '../openapi';
+import {
+  studentIdParams,
+  type StudentListResponseDTO,
+  type StudentResponseDTO,
+} from '../openapi/students';
 
 export function createStudentController(studentService: IStudentService) {
   const getStudentById = async (c: Context) => {
@@ -13,7 +17,8 @@ export function createStudentController(studentService: IStudentService) {
       }
       const studentId = Number(parsedParams.data.studentId);
 
-      const student = await studentService.getStudentById(studentId);
+      const student: StudentResponseDTO =
+        await studentService.getStudentById(studentId);
       return c.json(student, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Student not found') {
@@ -25,7 +30,8 @@ export function createStudentController(studentService: IStudentService) {
 
   const getAllStudent = async (c: Context) => {
     try {
-      const students = await studentService.getAllStudents();
+      const students: StudentListResponseDTO =
+        await studentService.getAllStudents();
       return c.json(students, 200);
     } catch {
       return c.json({ error: 'Failed to fetch students' }, 500);

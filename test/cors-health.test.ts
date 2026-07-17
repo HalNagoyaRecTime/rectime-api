@@ -18,9 +18,42 @@ describe('OpenAPI documentation', () => {
     );
 
     expect(res.status).toBe(200);
-    const document = (await res.json()) as { paths: Record<string, unknown> };
-    expect(document.paths).toHaveProperty('/api/v1/students');
-    expect(document.paths).toHaveProperty('/api/v1/notification-schedules');
+    const document = (await res.json()) as {
+      components: {
+        schemas: Record<string, { properties?: Record<string, unknown> }>;
+      };
+      paths: Record<string, Record<string, unknown>>;
+    };
+
+    expect(Object.keys(document.paths).sort()).toEqual([
+      '/',
+      '/api/v1/classes',
+      '/api/v1/events',
+      '/api/v1/events/{eventId}',
+      '/api/v1/firebase-tokens',
+      '/api/v1/gathering-groups',
+      '/api/v1/gathering-groups/{gatheringGroupId}/members',
+      '/api/v1/gathering-groups/{gatheringGroupId}/members/{userId}',
+      '/api/v1/gathering-spots',
+      '/api/v1/gatherings',
+      '/api/v1/notification-schedules',
+      '/api/v1/notifications/schedule/run',
+      '/api/v1/notifications/test',
+      '/api/v1/students',
+      '/api/v1/students/{studentId}',
+      '/health',
+    ]);
+    expect(document.components.schemas.Event.properties?.rule_text).toEqual({
+      type: 'string',
+      nullable: true,
+    });
+
+    const documentedOperations = Object.values(document.paths).flatMap(path =>
+      Object.keys(path).filter(method =>
+        ['get', 'post', 'put', 'patch', 'delete'].includes(method)
+      )
+    );
+    expect(documentedOperations).toHaveLength(21);
   });
 
   it('/docs が /openapi.json を読むSwagger UIを返す', async () => {

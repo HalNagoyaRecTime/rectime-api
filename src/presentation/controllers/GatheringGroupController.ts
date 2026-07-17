@@ -1,13 +1,19 @@
 import { Context } from 'hono';
 import { IGatheringGroupService } from '../../application/services/IGatheringGroupService';
-import { createGatheringGroupSchema } from '../openapi';
+import {
+  createGatheringGroupSchema,
+  type GatheringGroupListResponseDTO,
+  type GatheringGroupResponseDTO,
+} from '../openapi/gatherings';
 
 export function createGatheringGroupController(
   gatheringGroupService: IGatheringGroupService
 ) {
   const getAllGatheringGroups = async (c: Context) => {
     try {
-      return c.json(await gatheringGroupService.getAllGatheringGroups(), 200);
+      const gatheringGroups: GatheringGroupListResponseDTO =
+        await gatheringGroupService.getAllGatheringGroups();
+      return c.json(gatheringGroups, 200);
     } catch (error) {
       return c.json(
         {
@@ -33,9 +39,10 @@ export function createGatheringGroupController(
     }
 
     try {
-      const gatheringGroup = await gatheringGroupService.createGatheringGroup(
-        parsedBody.data.gatheringGroupName
-      );
+      const gatheringGroup: GatheringGroupResponseDTO =
+        await gatheringGroupService.createGatheringGroup(
+          parsedBody.data.gatheringGroupName
+        );
       return c.json(gatheringGroup, 201);
     } catch (error) {
       return c.json(
