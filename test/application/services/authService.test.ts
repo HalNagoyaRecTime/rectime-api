@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { KVNamespace } from '@cloudflare/workers-types';
 import {
-  buildMicrosoftUid,
   getSessionTtlSeconds,
   createAuthService,
 } from '../../../src/application/services/authService';
@@ -33,14 +32,6 @@ function buildAppUser(overrides: Partial<AppUser> = {}): AppUser {
     ...overrides,
   };
 }
-
-describe('buildMicrosoftUid', () => {
-  it('tid:oid の形式で結合する', () => {
-    expect(buildMicrosoftUid({ tid: 'tid-1', oid: 'oid-1' })).toBe(
-      'tid-1:oid-1'
-    );
-  });
-});
 
 describe('getSessionTtlSeconds', () => {
   it('未来の日時であれば正の秒数を返す', () => {
@@ -94,7 +85,6 @@ describe('createAuthService', () => {
         sub: 'sub-1',
         email: 'tanaka@example.com',
         displayName: '田中太郎',
-        uid: 'tid-1:oid-1',
       });
       expect(result).toEqual(updated);
     });
@@ -131,8 +121,6 @@ describe('createAuthService', () => {
         sub: 'sub-1',
         email: 'tanaka@example.com',
         displayName: '田中太郎',
-        uid: 'tid-1:oid-1',
-        studentNumber: 'ms:tid-1:oid-1',
       });
       expect(result).toEqual(created);
     });

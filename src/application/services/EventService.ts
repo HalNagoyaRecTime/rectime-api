@@ -7,8 +7,7 @@ export function createEventService(
 ): IEventService {
   return {
     async getAllEvents(options: {
-      eventCode?: string;
-      time?: string;
+      startTime?: string;
       limit?: number;
       offset?: number;
     }): Promise<{ events: EventEntity[]; total: number }> {

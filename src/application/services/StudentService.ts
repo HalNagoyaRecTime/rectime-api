@@ -8,12 +8,11 @@ import { DuplicateStudentIdNumberError } from '../../domain/errors/DuplicateStud
 
 function toStudentDTO(student: StudentEntity): StudentDTO {
   return {
-    student_id: student.f_student_id,
-    user_name: student.f_user_name,
-    class_room_id: student.f_class_room_id,
-    uid: student.f_uid,
-    attendance_number: student.f_attendance_number,
-    student_id_number: student.f_student_id_number,
+    student_id: student.student_id,
+    user_name: student.user_name,
+    class_room_id: student.class_room_id,
+    attendance_number: student.attendance_number,
+    student_id_number: student.student_id_number,
   };
 }
 
@@ -53,7 +52,6 @@ export function createStudentService(
       const student = await studentRepository.create({
         classRoomId: classRoom.f_class_room_id,
         userName: input.user_name,
-        uid: input.uid,
         attendanceNumber: input.attendance_number,
         studentIdNumber: input.student_id_number,
       });

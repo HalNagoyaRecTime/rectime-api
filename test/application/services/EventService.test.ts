@@ -5,14 +5,15 @@ import type { EventEntity } from '../../../src/domain/entities/Event';
 
 function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
   return {
-    f_event_id: 1,
-    f_event_code: 'E001',
-    f_event_name: '開会式',
-    f_time: '0900',
-    f_duration: '20',
-    f_place: '体育館',
-    f_gather_time: '0850',
-    f_summary: null,
+    event_id: 1,
+    user_id: -1,
+    event_name: '開会式',
+    rule_text: null,
+    venue: '体育館',
+    start_time: '0900',
+    end_time: '0930',
+    created_at: '2026-01-01',
+    updated_at: '2026-01-01',
     ...overrides,
   };
 }
@@ -24,19 +25,18 @@ describe('EventService', () => {
       const repository: IEventRepository = {
         findAll: vi.fn().mockResolvedValue({ events, total: 1 }),
         findById: vi.fn(),
-        findByEventCode: vi.fn(),
       };
       const service = createEventService(repository);
 
       const result = await service.getAllEvents({
-        eventCode: 'E001',
+        startTime: '0900',
         limit: 10,
         offset: 0,
       });
 
       expect(result).toEqual({ events, total: 1 });
       expect(repository.findAll).toHaveBeenCalledWith({
-        eventCode: 'E001',
+        startTime: '0900',
         limit: 10,
         offset: 0,
       });
@@ -44,12 +44,11 @@ describe('EventService', () => {
   });
 
   describe('getEventById', () => {
-    it('存在する場合は EventEntity を返す', async () => {
+    it('存在する場合はEventEntityを返す', async () => {
       const event = buildEvent();
       const repository: IEventRepository = {
         findAll: vi.fn(),
         findById: vi.fn().mockResolvedValue(event),
-        findByEventCode: vi.fn(),
       };
       const service = createEventService(repository);
 
@@ -61,13 +60,11 @@ describe('EventService', () => {
       const repository: IEventRepository = {
         findAll: vi.fn(),
         findById: vi.fn().mockResolvedValue(null),
-        findByEventCode: vi.fn(),
       };
-      const service = createEventService(repository);
 
-      await expect(service.getEventById(999)).rejects.toThrow(
-        'Event not found'
-      );
+      await expect(
+        createEventService(repository).getEventById(999)
+      ).rejects.toThrow('Event not found');
     });
   });
 });

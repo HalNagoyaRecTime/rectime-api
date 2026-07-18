@@ -11,7 +11,6 @@ function buildStudent(overrides: Partial<StudentDTO> = {}): StudentDTO {
     student_id: 1,
     user_name: '山田太郎',
     class_room_id: 1,
-    uid: 'uid-1',
     attendance_number: 1,
     student_id_number: 'S001',
     ...overrides,
@@ -38,7 +37,6 @@ function setup() {
 const validCreateBody = {
   class_room_id: 1,
   user_name: 'テスト太郎',
-  uid: 'uid-1',
   attendance_number: 1,
   student_id_number: '10000',
 };

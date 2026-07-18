@@ -19,7 +19,6 @@ function getErrorChainMessage(error: unknown): string {
 const createStudentSchema = z.object({
   class_room_id: z.number().int().positive(),
   user_name: z.string().min(1),
-  uid: z.string().min(1),
   attendance_number: z.number().int().positive(),
   student_id_number: z.coerce.string().min(1),
 });

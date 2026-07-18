@@ -6,13 +6,12 @@ import type { StudentEntity } from '../../../src/domain/entities/Student';
 
 function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
   return {
-    f_student_id: 1,
-    f_users_id: 10,
-    f_user_name: '田中太郎',
-    f_class_room_id: 100,
-    f_uid: '0000-0000',
-    f_attendance_number: 5,
-    f_student_id_number: '10000',
+    student_id: 1,
+    user_id: 10,
+    user_name: '田中太郎',
+    class_room_id: 100,
+    attendance_number: 5,
+    student_id_number: '10000',
     ...overrides,
   };
 }
@@ -42,12 +41,11 @@ describe('StudentService', () => {
       const dto = await service.getStudentById(1);
 
       expect(dto).toEqual({
-        student_id: student.f_student_id,
-        user_name: student.f_user_name,
-        class_room_id: student.f_class_room_id,
-        uid: student.f_uid,
-        attendance_number: student.f_attendance_number,
-        student_id_number: student.f_student_id_number,
+        student_id: student.student_id,
+        user_name: student.user_name,
+        class_room_id: student.class_room_id,
+        attendance_number: student.attendance_number,
+        student_id_number: student.student_id_number,
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
     });
@@ -70,8 +68,8 @@ describe('StudentService', () => {
   describe('getAllStudents', () => {
     it('全件を StudentDTO の配列にマッピングして返す', async () => {
       const students = [
-        buildStudent({ f_student_id: 1, f_student_id_number: '10000' }),
-        buildStudent({ f_student_id: 2, f_student_id_number: '10001' }),
+        buildStudent({ student_id: 1, student_id_number: '10000' }),
+        buildStudent({ student_id: 2, student_id_number: '10001' }),
       ];
       const repository: IStudentRepository = {
         findById: vi.fn(),

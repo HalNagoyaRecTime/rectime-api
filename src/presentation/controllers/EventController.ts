@@ -4,14 +4,12 @@ import { IEventService } from '../../application/services/IEventService';
 export function createEventController(eventService: IEventService) {
   const getAllEvents = async (c: Context) => {
     try {
-      const eventCode = c.req.query('f_event_code');
-      const time = c.req.query('f_time');
+      const startTime = c.req.query('start_time');
       const limit = c.req.query('limit');
       const offset = c.req.query('offset');
 
       const result = await eventService.getAllEvents({
-        eventCode,
-        time,
+        startTime,
         limit: limit ? parseInt(limit) : undefined,
         offset: offset ? parseInt(offset) : undefined,
       });

@@ -15,29 +15,28 @@ describe('StudentRepository', () => {
   });
 
   describe('findAll', () => {
-    it('description を持つ学生を全件返す（先生は除外される）', async () => {
+    it('students に登録されている学生を全件返す', async () => {
       const students = await repo.findAll();
 
       expect(students).toHaveLength(seeded.students.length);
-      const numbers = students.map(s => s.f_student_id_number).sort();
+      const numbers = students.map(s => s.student_id_number).sort();
       const expected = seeded.students.map(s => s.studentIdNumber).sort();
       expect(numbers).toEqual(expected);
     });
   });
 
   describe('findById', () => {
-    it('student_description の id で学生を取得し、users を join して返す', async () => {
+    it('students の id で学生を取得し、users を join して返す', async () => {
       const target = seeded.students[0];
       const student = await repo.findById(target.studentId);
 
       expect(student).toMatchObject({
-        f_student_id: target.studentId,
-        f_users_id: target.usersId,
-        f_user_name: target.userName,
-        f_uid: target.uid,
-        f_attendance_number: target.attendanceNumber,
-        f_student_id_number: target.studentIdNumber,
-        f_class_room_id: target.classRoomId,
+        student_id: target.studentId,
+        user_id: target.userId,
+        user_name: target.userName,
+        attendance_number: target.attendanceNumber,
+        student_id_number: target.studentIdNumber,
+        class_room_id: target.classRoomId,
       });
     });
 
@@ -51,9 +50,9 @@ describe('StudentRepository', () => {
       const target = seeded.students[2];
       const student = await repo.findByStudentNum(target.studentIdNumber);
 
-      expect(student?.f_user_name).toBe(target.userName);
-      expect(student?.f_users_id).toBe(target.usersId);
-      expect(student?.f_student_id_number).toBe(target.studentIdNumber);
+      expect(student?.user_name).toBe(target.userName);
+      expect(student?.user_id).toBe(target.userId);
+      expect(student?.student_id_number).toBe(target.studentIdNumber);
     });
 
     it('存在しない学籍番号の場合は null を返す', async () => {
@@ -62,24 +61,22 @@ describe('StudentRepository', () => {
   });
 
   describe('create', () => {
-    it('users と student_description を作成し、結合したエンティティを返す', async () => {
+    it('users と students を作成し、結合したエンティティを返す', async () => {
       const created = await repo.create({
         classRoomId: seeded.classRoomId,
         userName: '伊藤三郎',
-        uid: '0000-0099',
         attendanceNumber: 99,
         studentIdNumber: '19999',
       });
 
       expect(created).toMatchObject({
-        f_class_room_id: seeded.classRoomId,
-        f_user_name: '伊藤三郎',
-        f_uid: '0000-0099',
-        f_attendance_number: 99,
-        f_student_id_number: '19999',
+        class_room_id: seeded.classRoomId,
+        user_name: '伊藤三郎',
+        attendance_number: 99,
+        student_id_number: '19999',
       });
 
-      const found = await repo.findById(created.f_student_id);
+      const found = await repo.findById(created.student_id);
       expect(found).toMatchObject(created);
     });
 
@@ -88,7 +85,6 @@ describe('StudentRepository', () => {
         repo.create({
           classRoomId: 999999,
           userName: '存在しないクラス',
-          uid: '0000-0098',
           attendanceNumber: 98,
           studentIdNumber: '19998',
         })
@@ -101,7 +97,6 @@ describe('StudentRepository', () => {
         repo.create({
           classRoomId: seeded.classRoomId,
           userName: '重複太郎',
-          uid: '0000-0097',
           attendanceNumber: 97,
           studentIdNumber: target.studentIdNumber,
         })
