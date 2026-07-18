@@ -26,7 +26,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 // に保つこと。0010 の該当箇所を変更した場合はこちらも合わせて更新する。
 const TRANSFORM_STATEMENTS = [
   `INSERT INTO users (user_id, user_name, is_live_active) SELECT f_users_id, f_display_name, 1 FROM m_users`,
-  `INSERT INTO class_rooms (class_room_id, class_code, class_name, created_at, updated_at) SELECT f_class_room_id, f_class_code, f_class_name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM m_class_rooms`,
+  `INSERT INTO class_rooms (class_room_id, class_code, class_name, created_at, updated_at) SELECT f_class_room_id, f_class_code, f_name, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM m_class_rooms`,
   `INSERT INTO class_rooms (class_code, class_name) SELECT '__UNASSIGNED__', '未割当' WHERE EXISTS (SELECT 1 FROM m_student_description sd INNER JOIN m_users m ON sd.f_users_id = m.f_users_id WHERE m.f_class_room_id IS NULL)`,
   `CREATE TABLE __migration_guard (orphan_count INTEGER CHECK (orphan_count = 0))`,
   `INSERT INTO __migration_guard (orphan_count) SELECT COUNT(*) FROM m_student_description sd LEFT JOIN m_users m ON sd.f_users_id = m.f_users_id WHERE m.f_users_id IS NULL`,
@@ -43,7 +43,7 @@ async function runTransform() {
 async function createLegacySchema() {
   await env.DB.batch([
     env.DB.prepare(
-      'CREATE TABLE m_class_rooms (f_class_room_id INTEGER PRIMARY KEY, f_class_code TEXT NOT NULL, f_class_name TEXT NOT NULL)'
+      'CREATE TABLE m_class_rooms (f_class_room_id INTEGER PRIMARY KEY, f_class_code TEXT NOT NULL, f_name TEXT NOT NULL)'
     ),
     env.DB.prepare(
       'CREATE TABLE m_users (f_users_id INTEGER PRIMARY KEY, f_class_room_id INTEGER, f_display_name TEXT NOT NULL, f_uid TEXT NOT NULL, FOREIGN KEY (f_class_room_id) REFERENCES m_class_rooms(f_class_room_id))'
@@ -64,7 +64,7 @@ async function createLegacySchema() {
 async function createLegacySchemaWithoutForeignKey() {
   await env.DB.batch([
     env.DB.prepare(
-      'CREATE TABLE m_class_rooms (f_class_room_id INTEGER PRIMARY KEY, f_class_code TEXT NOT NULL, f_class_name TEXT NOT NULL)'
+      'CREATE TABLE m_class_rooms (f_class_room_id INTEGER PRIMARY KEY, f_class_code TEXT NOT NULL, f_name TEXT NOT NULL)'
     ),
     env.DB.prepare(
       'CREATE TABLE m_users (f_users_id INTEGER PRIMARY KEY, f_class_room_id INTEGER, f_display_name TEXT NOT NULL, f_uid TEXT NOT NULL)'
@@ -121,7 +121,7 @@ describe('0010_upgrade_users.sql のデータ変換ロジック', () => {
 
     await env.DB.batch([
       env.DB.prepare(
-        'INSERT INTO m_class_rooms (f_class_room_id, f_class_code, f_class_name) VALUES (?, ?, ?), (?, ?, ?)'
+        'INSERT INTO m_class_rooms (f_class_room_id, f_class_code, f_name) VALUES (?, ?, ?), (?, ?, ?)'
       ).bind(ROOM_A, '90A', 'テスト90A組', ROOM_B, '90B', 'テスト90B組'),
       env.DB.prepare(
         'INSERT INTO m_users (f_users_id, f_class_room_id, f_display_name, f_uid) VALUES (?, ?, ?, ?), (?, ?, ?, ?), (?, NULL, ?, ?)'
