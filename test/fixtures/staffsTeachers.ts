@@ -19,7 +19,11 @@ const TEACHERS = [
   { displayName: '中村先生' },
 ] as const;
 
-export type SeededStaff = { staffId: number; userId: number; displayName: string };
+export type SeededStaff = {
+  staffId: number;
+  userId: number;
+  displayName: string;
+};
 export type SeededTeacher = {
   teacherId: number;
   userId: number;

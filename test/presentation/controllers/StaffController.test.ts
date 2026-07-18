@@ -30,9 +30,9 @@ describe('StaffController', () => {
     it('存在する職員を 200 で返す', async () => {
       const { app, staffService } = setup();
       const staff = buildStaff();
-      (
-        staffService.getStaffById as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(staff);
+      (staffService.getStaffById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        staff
+      );
 
       const res = await app.request('/staffs/1');
 
@@ -52,9 +52,9 @@ describe('StaffController', () => {
 
     it('サービスが Staff not found を投げた場合は 404 を返す', async () => {
       const { app, staffService } = setup();
-      (
-        staffService.getStaffById as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('Staff not found'));
+      (staffService.getStaffById as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Staff not found')
+      );
 
       const res = await app.request('/staffs/999');
 
@@ -64,9 +64,9 @@ describe('StaffController', () => {
 
     it('その他の例外の場合は 500 を返す', async () => {
       const { app, staffService } = setup();
-      (
-        staffService.getStaffById as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('db error'));
+      (staffService.getStaffById as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('db error')
+      );
 
       const res = await app.request('/staffs/1');
 
@@ -79,9 +79,9 @@ describe('StaffController', () => {
     it('サービスが返した職員一覧を 200 で返す', async () => {
       const { app, staffService } = setup();
       const staffs = [buildStaff()];
-      (
-        staffService.getAllStaffs as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(staffs);
+      (staffService.getAllStaffs as ReturnType<typeof vi.fn>).mockResolvedValue(
+        staffs
+      );
 
       const res = await app.request('/staffs');
 
@@ -91,9 +91,9 @@ describe('StaffController', () => {
 
     it('サービスが例外を投げた場合は 500 を返す', async () => {
       const { app, staffService } = setup();
-      (
-        staffService.getAllStaffs as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('boom'));
+      (staffService.getAllStaffs as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('boom')
+      );
 
       const res = await app.request('/staffs');
 

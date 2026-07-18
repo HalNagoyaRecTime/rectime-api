@@ -2,7 +2,10 @@ import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createTeacherRepository } from '../../../src/infrastructure/repositories/TeacherRepository';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
-import { seedStaffsTeachers, type SeededData } from '../../fixtures/staffsTeachers';
+import {
+  seedStaffsTeachers,
+  type SeededData,
+} from '../../fixtures/staffsTeachers';
 
 describe('TeacherRepository', () => {
   let repo: ITeacherRepository;
