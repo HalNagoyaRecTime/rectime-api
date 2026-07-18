@@ -1,5 +1,7 @@
 import { getDb } from '../lib/db';
 import { createStudentRepository } from '../infrastructure/repositories/StudentRepository';
+import { createStaffRepository } from '../infrastructure/repositories/StaffRepository';
+import { createTeacherRepository } from '../infrastructure/repositories/TeacherRepository';
 import { createEventRepository } from '../infrastructure/repositories/EventRepository';
 import { createClassRepository } from '../infrastructure/repositories/ClassRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
@@ -9,6 +11,8 @@ import { createGatheringGroupRepository } from '../infrastructure/repositories/G
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
 import { createStudentService } from '../application/services/StudentService';
+import { createStaffService } from '../application/services/StaffService';
+import { createTeacherService } from '../application/services/TeacherService';
 import { createEventService } from '../application/services/EventService';
 import { createClassService } from '../application/services/ClassService';
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
@@ -20,6 +24,8 @@ import { createGatheringGroupService } from '../application/services/GatheringGr
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createGatheringService } from '../application/services/GatheringService';
 import { createStudentController } from '../presentation/controllers/StudentController';
+import { createStaffController } from '../presentation/controllers/StaffController';
+import { createTeacherController } from '../presentation/controllers/TeacherController';
 import { createEventController } from '../presentation/controllers/EventController';
 import { createClassController } from '../presentation/controllers/ClassController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
@@ -39,6 +45,8 @@ export function createDIContainer(env: Env) {
   // Repositories
   const userRepository = createUserRepository(db);
   const studentRepository = createStudentRepository(db);
+  const staffRepository = createStaffRepository(db);
+  const teacherRepository = createTeacherRepository(db);
   const eventRepository = createEventRepository(db);
   const classRepository = createClassRepository(db);
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
@@ -53,6 +61,8 @@ export function createDIContainer(env: Env) {
   // Services
   const authService = createAuthService(userRepository, env.AUTH_KV);
   const studentService = createStudentService(studentRepository);
+  const staffService = createStaffService(staffRepository);
+  const teacherService = createTeacherService(teacherRepository);
   const eventService = createEventService(eventRepository);
   const classService = createClassService(classRepository);
   const firebaseTokenService = createFirebaseTokenService(
@@ -85,6 +95,8 @@ export function createDIContainer(env: Env) {
 
   // Controllers
   const studentController = createStudentController(studentService);
+  const staffController = createStaffController(staffService);
+  const teacherController = createTeacherController(teacherService);
   const eventController = createEventController(eventService);
   const classController = createClassController(classService);
   const firebaseTokenController =
@@ -106,6 +118,8 @@ export function createDIContainer(env: Env) {
   return {
     authService,
     studentController,
+    staffController,
+    teacherController,
     eventController,
     classController,
     firebaseTokenController,
