@@ -530,13 +530,13 @@ components:
 
     ClassRoom:
       type: object
-      required: [f_class_room_id, f_class_code, f_name]
+      required: [f_class_room_id, f_class_code, f_class_name]
       properties:
         f_class_room_id:
           type: integer
         f_class_code:
           type: string
-        f_name:
+        f_class_name:
           type: string
 
     GatheringSpot:
