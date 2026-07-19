@@ -966,22 +966,18 @@ components:
 
     NotificationListResponse:
       type: object
-      required: [items, pagination]
+      required: [notifications, total, limit, offset]
       properties:
-        items:
+        notifications:
           type: array
           items:
             $ref: '#/components/schemas/Notification'
-        pagination:
-          type: object
-          required: [limit, offset, total]
-          properties:
-            limit:
-              type: integer
-            offset:
-              type: integer
-            total:
-              type: integer
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
 
     TestNotificationRequest:
       type: object

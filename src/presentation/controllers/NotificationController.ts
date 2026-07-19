@@ -89,12 +89,10 @@ export function createNotificationController(
         offset: parsedQuery.data.offset,
       });
       return c.json({
-        items: result.items,
-        pagination: {
-          limit: parsedQuery.data.limit,
-          offset: parsedQuery.data.offset,
-          total: result.total,
-        },
+        notifications: result.notifications,
+        total: result.total,
+        limit: parsedQuery.data.limit,
+        offset: parsedQuery.data.offset,
       });
     } catch (error) {
       return c.json(

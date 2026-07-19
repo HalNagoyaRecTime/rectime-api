@@ -79,11 +79,11 @@ describe('NotificationController', () => {
     expect(notificationService.createNotification).not.toHaveBeenCalled();
   });
 
-  it('通知一覧とpaginationを返す', async () => {
+  it('通知一覧とtotal・limit・offsetを返す', async () => {
     const { app, notificationService } = setup();
     (
       notificationService.getNotifications as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ items: [notification], total: 1 });
+    ).mockResolvedValue({ notifications: [notification], total: 1 });
 
     const response = await app.request(
       '/notifications?notificationType=manual&limit=20&offset=10'
@@ -91,8 +91,10 @@ describe('NotificationController', () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
-      items: [notification],
-      pagination: { limit: 20, offset: 10, total: 1 },
+      notifications: [notification],
+      total: 1,
+      limit: 20,
+      offset: 10,
     });
     expect(notificationService.getNotifications).toHaveBeenCalledWith({
       notification_type: 'manual',
@@ -105,7 +107,7 @@ describe('NotificationController', () => {
     const { app, notificationService } = setup();
     (
       notificationService.getNotifications as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ items: [], total: 0 });
+    ).mockResolvedValue({ notifications: [], total: 0 });
 
     const response = await app.request('/notifications');
 

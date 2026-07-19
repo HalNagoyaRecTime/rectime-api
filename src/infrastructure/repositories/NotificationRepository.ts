@@ -59,7 +59,7 @@ export function createNotificationRepository(
       ]);
 
       return {
-        items: rows.map(toEntity),
+        notifications: rows.map(toEntity),
         total: totalResult?.total ?? 0,
       };
     },

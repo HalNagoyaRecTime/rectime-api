@@ -49,10 +49,12 @@ describe('NotificationRepository', () => {
     });
 
     expect(result.total).toBe(2);
-    expect(result.items.map(item => item.notification_id)).toEqual([
-      second.notification_id,
-    ]);
-    expect(result.items[0].notification_id).not.toBe(first.notification_id);
+    expect(
+      result.notifications.map(notification => notification.notification_id)
+    ).toEqual([second.notification_id]);
+    expect(result.notifications[0].notification_id).not.toBe(
+      first.notification_id
+    );
   });
 
   it('通知内容を部分更新できる', async () => {

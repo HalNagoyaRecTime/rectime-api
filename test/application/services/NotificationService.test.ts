@@ -34,7 +34,7 @@ describe('NotificationService', () => {
     const { repository, service } = setup();
     const options = { notification_type: 'manual', limit: 20, offset: 10 };
     (repository.findAll as ReturnType<typeof vi.fn>).mockResolvedValue({
-      items: [],
+      notifications: [],
       total: 0,
     });
 

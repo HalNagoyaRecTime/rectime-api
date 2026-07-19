@@ -25,6 +25,6 @@ export interface NotificationListOptions {
 }
 
 export interface NotificationListResult {
-  items: NotificationEntity[];
+  notifications: NotificationEntity[];
   total: number;
 }
