@@ -82,6 +82,34 @@ export const teachers = sqliteTable('teachers', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const teacher_class_assignments = sqliteTable(
+  'teacher_class_assignments',
+  {
+    id: integer('teacher_class_assignment_id').primaryKey({
+      autoIncrement: true,
+    }),
+    teacherId: integer('teacher_id')
+      .notNull()
+      .references(() => teachers.id),
+    classRoomId: integer('class_room_id')
+      .notNull()
+      .references(() => class_rooms.id),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    uniqueIndex('uq_teacher_class_assignments_teacher_class').on(
+      table.teacherId,
+      table.classRoomId
+    ),
+    index('idx_teacher_class_assignments_class_room_id').on(table.classRoomId),
+  ]
+);
+
 export const events = sqliteTable('events', {
   id: integer('event_id').primaryKey({ autoIncrement: true }),
   userId: integer('user_id')

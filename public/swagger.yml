@@ -86,16 +86,49 @@ paths:
   /teachers:
     get:
       tags: [Teachers]
-      summary: 教員一覧を取得する
+      summary: 教員一覧を検索する
+      parameters:
+        - name: teacherId
+          in: query
+          description: 教員IDで絞り込む
+          schema:
+            type: integer
+            minimum: 1
+        - name: userName
+          in: query
+          description: 氏名の部分一致で絞り込む
+          schema:
+            type: string
+        - name: classRoomId
+          in: query
+          description: 担当クラスのIDで絞り込む
+          schema:
+            type: integer
+            minimum: 1
+        - name: isLiveActive
+          in: query
+          description: 有効状態で絞り込む
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          description: ページ番号（1始まり、デフォルト1）
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          description: 1ページあたりの件数（デフォルト20）
+          schema:
+            type: integer
+            minimum: 1
       responses:
         '200':
-          description: 教員一覧
+          description: 教員一覧（ページ分け済み）
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Teacher'
+                $ref: '#/components/schemas/TeacherPage'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -116,6 +149,46 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [Teachers]
+      summary: 教員情報と担当クラスを更新する
+      parameters:
+        - $ref: '#/components/parameters/TeacherId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeacherUpdateRequest'
+      responses:
+        '200':
+          description: 更新後の教員
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Teacher'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Teachers]
+      summary: 教員を削除する（担当クラスに割り当てられている場合は削除できない）
+      parameters:
+        - $ref: '#/components/parameters/TeacherId'
+      responses:
+        '204':
+          description: 削除成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -558,6 +631,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    Conflict:
+      description: 他のデータから参照されているなど、競合が発生している
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     InternalServerError:
       description: サーバーエラー
       content:
@@ -595,9 +674,20 @@ components:
         display_name:
           type: string
 
+    TeacherClassRoom:
+      type: object
+      required: [class_room_id, class_code, class_name]
+      properties:
+        class_room_id:
+          type: integer
+        class_code:
+          type: string
+        class_name:
+          type: string
+
     Teacher:
       type: object
-      required: [teacher_id, user_id, display_name]
+      required: [teacher_id, user_id, display_name, is_live_active, class_rooms]
       properties:
         teacher_id:
           type: integer
@@ -605,6 +695,44 @@ components:
           type: integer
         display_name:
           type: string
+        is_live_active:
+          type: boolean
+        class_rooms:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeacherClassRoom'
+
+    TeacherUpdateRequest:
+      type: object
+      required: [userName, isLiveActive, classRoomIds]
+      properties:
+        userName:
+          type: string
+          minLength: 1
+        isLiveActive:
+          type: boolean
+        classRoomIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+
+    TeacherPage:
+      type: object
+      required: [items, total, page, limit, total_pages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Teacher'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        total_pages:
+          type: integer
 
     Event:
       type: object

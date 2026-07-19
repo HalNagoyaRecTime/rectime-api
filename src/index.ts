@@ -103,6 +103,12 @@ apiV1.get('/teachers', c => {
 apiV1.get('/teachers/:teacherId', c => {
   return c.get('container').teacherController.getTeacherById(c);
 });
+apiV1.put('/teachers/:teacherId', c => {
+  return c.get('container').teacherController.updateTeacher(c);
+});
+apiV1.delete('/teachers/:teacherId', c => {
+  return c.get('container').teacherController.deleteTeacher(c);
+});
 
 // Event routes
 apiV1.get('/events', c => {

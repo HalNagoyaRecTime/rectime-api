@@ -1,22 +1,79 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
-import { eq } from 'drizzle-orm';
-import { teachers, users } from '../database/schema';
+import { and, asc, eq, inArray, like, sql } from 'drizzle-orm';
+import {
+  class_rooms,
+  teacher_class_assignments,
+  teachers,
+  users,
+} from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
-import { TeacherEntity } from '../../domain/entities/Teacher';
+import {
+  TeacherEntity,
+  TeacherPage,
+  TeacherSearchFilter,
+  TeacherUpdateInput,
+} from '../../domain/entities/Teacher';
 import { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
+
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 20;
 
 type TeacherJoinRow = {
   teachers: typeof teachers.$inferSelect;
   users: typeof users.$inferSelect;
 };
 
-function toEntity(row: TeacherJoinRow): TeacherEntity {
+type ClassRoomAssignmentRow = {
+  teacher_class_assignments: typeof teacher_class_assignments.$inferSelect;
+  class_rooms: typeof class_rooms.$inferSelect;
+};
+
+function toClassRoom(row: typeof class_rooms.$inferSelect) {
+  return {
+    class_room_id: row.id,
+    class_code: row.classCode,
+    class_name: row.name,
+  };
+}
+
+async function loadClassRoomsByTeacherIds(
+  orm: ReturnType<typeof drizzle>,
+  teacherIds: number[]
+): Promise<Map<number, ReturnType<typeof toClassRoom>[]>> {
+  const map = new Map<number, ReturnType<typeof toClassRoom>[]>();
+  if (teacherIds.length === 0) return map;
+
+  const rows = (await orm
+    .select()
+    .from(teacher_class_assignments)
+    .innerJoin(
+      class_rooms,
+      eq(teacher_class_assignments.classRoomId, class_rooms.id)
+    )
+    .where(inArray(teacher_class_assignments.teacherId, teacherIds))
+    .all()) as ClassRoomAssignmentRow[];
+
+  for (const row of rows) {
+    const teacherId = row.teacher_class_assignments.teacherId;
+    const list = map.get(teacherId) ?? [];
+    list.push(toClassRoom(row.class_rooms));
+    map.set(teacherId, list);
+  }
+  return map;
+}
+
+function toEntity(
+  row: TeacherJoinRow,
+  classRooms: ReturnType<typeof toClassRoom>[]
+): TeacherEntity {
   return {
     teacher_id: row.teachers.id,
     user_id: row.users.id,
     user_name: row.users.userName,
+    is_live_active: Boolean(row.users.isLiveActive),
+    class_rooms: classRooms,
   };
 }
 
@@ -31,17 +88,165 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .where(eq(teachers.id, id))
         .get();
 
-      return result ? toEntity(result) : null;
+      if (!result) return null;
+
+      const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [id]);
+      return toEntity(result, classRoomsByTeacher.get(id) ?? []);
     },
 
-    async findAll(): Promise<TeacherEntity[]> {
-      const results = await orm
+    async findAll(filter: TeacherSearchFilter = {}): Promise<TeacherPage> {
+      const page =
+        filter.page !== undefined && filter.page > 0
+          ? filter.page
+          : DEFAULT_PAGE;
+      const limit =
+        filter.limit !== undefined && filter.limit > 0
+          ? filter.limit
+          : DEFAULT_LIMIT;
+
+      const conditions = [];
+      if (filter.teacherId !== undefined) {
+        conditions.push(eq(teachers.id, filter.teacherId));
+      }
+      if (filter.userName) {
+        conditions.push(like(users.userName, `%${filter.userName}%`));
+      }
+      if (filter.isLiveActive !== undefined) {
+        conditions.push(eq(users.isLiveActive, filter.isLiveActive ? 1 : 0));
+      }
+
+      if (filter.classRoomId !== undefined) {
+        const assignmentRows = await orm
+          .select({ teacherId: teacher_class_assignments.teacherId })
+          .from(teacher_class_assignments)
+          .where(eq(teacher_class_assignments.classRoomId, filter.classRoomId))
+          .all();
+        const teacherIdsForClassFilter = assignmentRows.map(r => r.teacherId);
+        if (teacherIdsForClassFilter.length === 0) {
+          return { items: [], total: 0, page, limit };
+        }
+        conditions.push(inArray(teachers.id, teacherIdsForClassFilter));
+      }
+
+      const whereClause =
+        conditions.length > 0 ? and(...conditions) : undefined;
+
+      const countBaseQuery = orm
+        .select({ count: sql<number>`count(*)` })
+        .from(teachers)
+        .innerJoin(users, eq(teachers.userId, users.id));
+      const countResult = await (
+        whereClause ? countBaseQuery.where(whereClause) : countBaseQuery
+      ).get();
+      const total = countResult?.count ?? 0;
+
+      const rowsBaseQuery = orm
+        .select()
+        .from(teachers)
+        .innerJoin(users, eq(teachers.userId, users.id));
+      const results = await (
+        whereClause ? rowsBaseQuery.where(whereClause) : rowsBaseQuery
+      )
+        .orderBy(asc(teachers.id))
+        .limit(limit)
+        .offset((page - 1) * limit)
+        .all();
+
+      const teacherIds = results.map(r => r.teachers.id);
+      const classRoomsByTeacher = await loadClassRoomsByTeacherIds(
+        orm,
+        teacherIds
+      );
+      const items = results.map(row =>
+        toEntity(row, classRoomsByTeacher.get(row.teachers.id) ?? [])
+      );
+
+      return { items, total, page, limit };
+    },
+
+    async existsClassRooms(classRoomIds: number[]): Promise<boolean> {
+      if (classRoomIds.length === 0) return true;
+      const rows = await orm
+        .select({ id: class_rooms.id })
+        .from(class_rooms)
+        .where(inArray(class_rooms.id, classRoomIds))
+        .all();
+      return rows.length === classRoomIds.length;
+    },
+
+    async update(
+      id: number,
+      input: TeacherUpdateInput
+    ): Promise<TeacherEntity | null> {
+      const existing = await orm
         .select()
         .from(teachers)
         .innerJoin(users, eq(teachers.userId, users.id))
-        .all();
+        .where(eq(teachers.id, id))
+        .get();
+      if (!existing) return null;
 
-      return results.map(toEntity);
+      const now = new Date().toISOString();
+      await orm
+        .update(users)
+        .set({
+          userName: input.userName,
+          isLiveActive: input.isLiveActive ? 1 : 0,
+          updatedAt: now,
+        })
+        .where(eq(users.id, existing.users.id))
+        .run();
+
+      await orm
+        .delete(teacher_class_assignments)
+        .where(eq(teacher_class_assignments.teacherId, id))
+        .run();
+
+      if (input.classRoomIds.length > 0) {
+        await orm
+          .insert(teacher_class_assignments)
+          .values(
+            input.classRoomIds.map(classRoomId => ({
+              teacherId: id,
+              classRoomId,
+              createdAt: now,
+              updatedAt: now,
+            }))
+          )
+          .run();
+      }
+
+      const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [id]);
+      return toEntity(
+        {
+          teachers: existing.teachers,
+          users: {
+            ...existing.users,
+            userName: input.userName,
+            isLiveActive: input.isLiveActive ? 1 : 0,
+            updatedAt: now,
+          },
+        },
+        classRoomsByTeacher.get(id) ?? []
+      );
+    },
+
+    async hasClassAssignments(id: number): Promise<boolean> {
+      const row = await orm
+        .select({ id: teacher_class_assignments.id })
+        .from(teacher_class_assignments)
+        .where(eq(teacher_class_assignments.teacherId, id))
+        .get();
+      return Boolean(row);
+    },
+
+    async delete(id: number): Promise<boolean> {
+      const row = await orm
+        .delete(teachers)
+        .where(eq(teachers.id, id))
+        .returning()
+        .get();
+      return Boolean(row);
     },
   };
 }
