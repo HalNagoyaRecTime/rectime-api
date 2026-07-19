@@ -919,21 +919,21 @@ components:
 
     Notification:
       type: object
-      required: [notificationId, notificationType, title, body, createdAt, updatedAt]
+      required: [notification_id, notification_type, title, body, created_at, updated_at]
       properties:
-        notificationId:
+        notification_id:
           type: integer
-        notificationType:
+        notification_type:
           type: string
           example: manual
         title:
           type: string
         body:
           type: string
-        createdAt:
+        created_at:
           type: string
           format: date-time
-        updatedAt:
+        updated_at:
           type: string
           format: date-time
 

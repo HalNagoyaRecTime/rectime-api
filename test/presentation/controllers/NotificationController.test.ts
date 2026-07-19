@@ -37,15 +37,6 @@ const notification = {
   updated_at: '2026-07-18T10:00:00+09:00',
 };
 
-const notificationResponse = {
-  notificationId: 1,
-  notificationType: 'manual',
-  title: '集合場所のお知らせ',
-  body: '第1体育館へ集合してください。',
-  createdAt: '2026-07-18T10:00:00+09:00',
-  updatedAt: '2026-07-18T10:00:00+09:00',
-};
-
 describe('NotificationController', () => {
   it('通知内容を作成して201を返す', async () => {
     const { app, notificationService } = setup();
@@ -64,7 +55,7 @@ describe('NotificationController', () => {
     });
 
     expect(response.status).toBe(201);
-    expect(await response.json()).toEqual(notificationResponse);
+    expect(await response.json()).toEqual(notification);
     expect(notificationService.createNotification).toHaveBeenCalledWith({
       notification_type: 'manual',
       title: '集合場所のお知らせ',
@@ -100,7 +91,7 @@ describe('NotificationController', () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
-      items: [notificationResponse],
+      items: [notification],
       pagination: { limit: 20, offset: 10, total: 1 },
     });
     expect(notificationService.getNotifications).toHaveBeenCalledWith({
@@ -143,7 +134,7 @@ describe('NotificationController', () => {
     const response = await app.request('/notifications/1');
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(notificationResponse);
+    expect(await response.json()).toEqual(notification);
   });
 
   it('存在しない通知詳細は404を返す', async () => {
@@ -176,7 +167,7 @@ describe('NotificationController', () => {
       title: '集合場所変更のお知らせ',
     });
     expect(await response.json()).toEqual({
-      ...notificationResponse,
+      ...notification,
       title: '集合場所変更のお知らせ',
     });
   });

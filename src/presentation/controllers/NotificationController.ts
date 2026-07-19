@@ -2,7 +2,6 @@ import { Context } from 'hono';
 import { z } from 'zod';
 import { IFcmService } from '../../application/services/IFcmService';
 import type { INotificationService } from '../../application/services/INotificationService';
-import type { NotificationEntity } from '../../domain/entities/Notification';
 
 const testNotificationSchema = z.object({
   title: z.string().min(1),
@@ -32,17 +31,6 @@ const notificationListQuerySchema = z.object({
 
 const notificationIdSchema = z.coerce.number().int().positive();
 
-function toResponse(notification: NotificationEntity) {
-  return {
-    notificationId: notification.notification_id,
-    notificationType: notification.notification_type,
-    title: notification.title,
-    body: notification.body,
-    createdAt: notification.created_at,
-    updatedAt: notification.updated_at,
-  };
-}
-
 export function createNotificationController(
   fcmService: IFcmService,
   notificationService: INotificationService
@@ -66,7 +54,7 @@ export function createNotificationController(
         title: parsedBody.data.title,
         body: parsedBody.data.body,
       });
-      return c.json(toResponse(notification), 201);
+      return c.json(notification, 201);
     } catch (error) {
       return c.json(
         {
@@ -101,7 +89,7 @@ export function createNotificationController(
         offset: parsedQuery.data.offset,
       });
       return c.json({
-        items: result.items.map(toResponse),
+        items: result.items,
         pagination: {
           limit: parsedQuery.data.limit,
           offset: parsedQuery.data.offset,
@@ -127,7 +115,7 @@ export function createNotificationController(
 
     try {
       return c.json(
-        toResponse(await notificationService.getNotificationById(parsedId.data))
+        await notificationService.getNotificationById(parsedId.data)
       );
     } catch (error) {
       if (
@@ -168,7 +156,7 @@ export function createNotificationController(
         parsedId.data,
         parsedBody.data
       );
-      return c.json(toResponse(notification));
+      return c.json(notification);
     } catch (error) {
       if (
         error instanceof Error &&
