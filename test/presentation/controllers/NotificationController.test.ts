@@ -23,7 +23,7 @@ function setup() {
   app.post('/notifications', c => controller.createNotification(c));
   app.get('/notifications', c => controller.getNotifications(c));
   app.get('/notifications/:id', c => controller.getNotificationById(c));
-  app.patch('/notifications/:id', c => controller.updateNotification(c));
+  app.put('/notifications/:id', c => controller.updateNotification(c));
   app.post('/notifications/test', c => controller.sendTestNotification(c));
   return { app, fcmService, notificationService };
 }
@@ -159,7 +159,7 @@ describe('NotificationController', () => {
     ).mockResolvedValue(updated);
 
     const response = await app.request('/notifications/1', {
-      method: 'PATCH',
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: '集合場所変更のお知らせ' }),
     });
@@ -177,7 +177,7 @@ describe('NotificationController', () => {
   it('空の更新内容と不正なIDは400を返す', async () => {
     const { app, notificationService } = setup();
     const empty = await app.request('/notifications/1', {
-      method: 'PATCH',
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });

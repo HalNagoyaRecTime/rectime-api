@@ -155,7 +155,7 @@ apiV1.get('/notifications', c => {
 apiV1.get('/notifications/:id', c => {
   return c.get('container').notificationController.getNotificationById(c);
 });
-apiV1.patch('/notifications/:id', c => {
+apiV1.put('/notifications/:id', c => {
   return c.get('container').notificationController.updateNotification(c);
 });
 
