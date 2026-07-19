@@ -377,6 +377,107 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: 通知内容一覧を取得する
+      parameters:
+        - name: notificationType
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: 通知内容一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Notifications]
+      summary: 通知内容を作成する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNotificationRequest'
+      responses:
+        '201':
+          description: 作成した通知内容
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /notifications/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [Notifications]
+      summary: 通知内容詳細を取得する
+      responses:
+        '200':
+          description: 通知内容詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [Notifications]
+      summary: 通知内容を更新する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNotificationRequest'
+      responses:
+        '200':
+          description: 更新した通知内容
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /notifications/test:
     post:
       tags: [Notifications]
@@ -815,6 +916,68 @@ components:
           format: date-time
           description: UTCオフセットを含むISO 8601形式
           example: '2026-07-16T09:00:00.000Z'
+
+    Notification:
+      type: object
+      required: [notification_id, notification_type, title, body, created_at, updated_at]
+      properties:
+        notification_id:
+          type: integer
+        notification_type:
+          type: string
+          example: manual
+        title:
+          type: string
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateNotificationRequest:
+      type: object
+      required: [notificationType, title, body]
+      properties:
+        notificationType:
+          type: string
+          minLength: 1
+          example: manual
+        title:
+          type: string
+          minLength: 1
+        body:
+          type: string
+          minLength: 1
+
+    UpdateNotificationRequest:
+      type: object
+      description: title または body のうち、少なくとも1項目を指定する
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+        body:
+          type: string
+          minLength: 1
+
+    NotificationListResponse:
+      type: object
+      required: [notifications, total, limit, offset]
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
 
     TestNotificationRequest:
       type: object
