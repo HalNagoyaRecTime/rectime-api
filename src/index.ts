@@ -65,6 +65,7 @@ app.get('/', c => {
       gatheringGroups: '/api/v1/gathering-groups',
       gatherings: '/api/v1/gatherings',
       firebaseTokens: '/api/v1/firebase-tokens',
+      notifications: '/api/v1/notifications',
       testNotification: '/api/v1/notifications/test',
       notificationSchedules: '/api/v1/notification-schedules',
       runScheduledNotifications: '/api/v1/notifications/schedule/run',
@@ -145,6 +146,19 @@ apiV1.post('/firebase-tokens', c => {
 });
 
 // Notification routes
+apiV1.post('/notifications', c => {
+  return c.get('container').notificationController.createNotification(c);
+});
+apiV1.get('/notifications', c => {
+  return c.get('container').notificationController.getNotifications(c);
+});
+apiV1.get('/notifications/:id', c => {
+  return c.get('container').notificationController.getNotificationById(c);
+});
+apiV1.patch('/notifications/:id', c => {
+  return c.get('container').notificationController.updateNotification(c);
+});
+
 apiV1.get('/notification-schedules', c => {
   return c
     .get('container')
