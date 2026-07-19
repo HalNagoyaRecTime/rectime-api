@@ -6,8 +6,10 @@
   },
   "scripts": {
     "dev": "wrangler dev --env development",
+    "dev:remote-db": "wrangler dev --env remote-development",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "db:migrate:dev": "wrangler d1 migrations apply rectime-api-dev --remote --env development",
     "db:migrate:remote": "wrangler d1 migrations apply rectime-api --remote",
     "db:migrate:local": "wrangler d1 migrations apply rectime-api-dev --local --env development",
     "format": "prettier --write .",

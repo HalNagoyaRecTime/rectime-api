@@ -110,7 +110,7 @@ MIIEvQIBADA...（秘密鍵の内容）
 ### 6. ローカル D1 データベースのマイグレーション
 
 ```bash
-npm run "db:migrate --local"
+npm run db:migrate:local
 ```
 
 ### 7. 起動
@@ -127,10 +127,28 @@ npm run dev
 
 ```bash
 # D1 マイグレーション（本番）
-npm run "db:migrate --remote"
+npm run db:migrate:remote
 
 # デプロイ
 npm run deploy
+```
+
+## 開発用リモート D1 での動作確認
+
+開発用 D1 `rectime-api-dev` に未適用のマイグレーションを適用します。
+このコマンドは本番用 D1 `rectime-api` には接続しません。
+
+```bash
+npm run db:migrate:dev
+```
+
+開発用 D1 に接続した状態で Worker をローカル起動し、API の動作を確認します。
+`remote-development` 環境の D1 バインディングだけがリモート接続され、Worker のコードはローカルで実行されます。
+通常の `npm run dev` と `npm test` は引き続きローカル D1 を使用します。
+共有の開発 DB を更新するため、書き込み API の実行時は注意してください。
+
+```bash
+npm run dev:remote-db
 ```
 
 本番環境のシークレットは Cloudflare ダッシュボード または `wrangler secret put <KEY>` で設定する。
