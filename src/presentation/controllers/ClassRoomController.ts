@@ -2,9 +2,9 @@ import { Context } from 'hono';
 import { IClassRoomService } from '../../application/services/IClassRoomService';
 
 export function createClassRoomController(classService: IClassRoomService) {
-  const getAllClassRooms = async (c: Context) => {
+  const putAllClassRooms = async (c: Context) => {
     try {
-      const classRooms = await classService.getAllClassRooms();
+      const classRooms = await classService.putAllClassRooms();
       return c.json(classRooms);
     } catch (error) {
       console.error('Error fetching class rooms:', error);
@@ -13,6 +13,6 @@ export function createClassRoomController(classService: IClassRoomService) {
   };
 
   return {
-    getAllClassRooms,
+    putAllClassRooms,
   };
 }

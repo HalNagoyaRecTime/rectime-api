@@ -6,7 +6,7 @@ export function createClassRoomService(
   classRepository: IClassRoomRepository
 ): IClassRoomService {
   return {
-    async getAllClassRooms(): Promise<ClassRoomDTO[]> {
+    async putAllClassRooms(): Promise<ClassRoomDTO[]> {
       const classRooms = await classRepository.findAll();
       return classRooms.map(classroom => ({
         class_room_id: classroom.f_class_room_id,
