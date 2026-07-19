@@ -50,10 +50,6 @@ export const students = sqliteTable('students', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
-// staffs/teachers はまだ専用のリポジトリ層を持たない。1ユーザーにつき
-// 最大1行（user_id にUNIQUE）だが、staffs と teachers は相互排他ではなく、
-// 同一ユーザーが両方の行を持つことを許容する設計（ER図に相互排他を示す
-// 制約は無かったため）。将来リポジトリを実装する際はこの制約を前提にすること。
 export const staffs = sqliteTable('staffs', {
   id: integer('staff_id').primaryKey({ autoIncrement: true }),
   userId: integer('user_id')
@@ -81,6 +77,35 @@ export const teachers = sqliteTable('teachers', {
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const teacher_class_rooms = sqliteTable(
+  'teacher_class_rooms',
+  {
+    id: integer('teacher_class_room_id').primaryKey({
+      autoIncrement: true,
+    }),
+    teacherId: integer('teacher_id')
+      .notNull()
+      .references(() => teachers.id),
+    classRoomId: integer('class_room_id')
+      .notNull()
+      .references(() => class_rooms.id),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    uniqueIndex('uq_teacher_class_rooms_teacher_class').on(
+      table.teacherId,
+      table.classRoomId
+    ),
+    index('idx_teacher_class_rooms_teacher_id').on(table.teacherId),
+    index('idx_teacher_class_rooms_class_room_id').on(table.classRoomId),
+  ]
+);
 
 export const events = sqliteTable('events', {
   id: integer('event_id').primaryKey({ autoIncrement: true }),
