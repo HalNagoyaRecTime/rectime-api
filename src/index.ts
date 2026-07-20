@@ -7,6 +7,10 @@ import {
   diContainerMiddleware,
   type ContainerVariables,
 } from './presentation/middleware/diContainer';
+import {
+  requireAuth,
+  type AuthVariables,
+} from './presentation/middleware/requireAuth';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -81,15 +85,18 @@ app.get('/', c => {
 });
 
 // API v1 routes
-const apiV1 = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
+const apiV1 = new Hono<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthVariables;
+}>();
 
 apiV1.use('*', diContainerMiddleware);
 
 // Student routes
-apiV1.get('/students', c => {
+apiV1.get('/students', requireAuth, c => {
   return c.get('container').studentController.getAllStudent(c);
 });
-apiV1.get('/students/:studentId', c => {
+apiV1.get('/students/:studentId', requireAuth, c => {
   return c.get('container').studentController.getStudentById(c);
 });
 apiV1.post('/students', c => {
@@ -100,99 +107,103 @@ apiV1.put('/students/:studentId', c => {
 });
 
 // Event routes
-apiV1.get('/events', c => {
+apiV1.get('/events', requireAuth, c => {
   return c.get('container').eventController.getAllEvents(c);
 });
 
-apiV1.get('/events/:eventId', c => {
+apiV1.get('/events/:eventId', requireAuth, c => {
   return c.get('container').eventController.getEventById(c);
 });
 
 // Class routes
-apiV1.get('/classrooms', c => {
+apiV1.get('/classrooms', requireAuth, c => {
   return c.get('container').classRoomController.getAllClassRooms(c);
 });
 
 // Gathering spot routes
-apiV1.get('/gathering-spots', c => {
+apiV1.get('/gathering-spots', requireAuth, c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
 });
-apiV1.post('/gathering-spots', c => {
+apiV1.post('/gathering-spots', requireAuth, c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
 
 // Gathering group routes
-apiV1.get('/gathering-groups', c => {
+apiV1.get('/gathering-groups', requireAuth, c => {
   return c.get('container').gatheringGroupController.getAllGatheringGroups(c);
 });
-apiV1.post('/gathering-groups', c => {
+apiV1.post('/gathering-groups', requireAuth, c => {
   return c.get('container').gatheringGroupController.createGatheringGroup(c);
 });
-apiV1.get('/gathering-groups/:gatheringGroupId/members', c => {
+apiV1.get('/gathering-groups/:gatheringGroupId/members', requireAuth, c => {
   return c
     .get('container')
     .gatheringGroupMemberController.getGatheringGroupMembers(c);
 });
-apiV1.post('/gathering-groups/:gatheringGroupId/members', c => {
+apiV1.post('/gathering-groups/:gatheringGroupId/members', requireAuth, c => {
   return c
     .get('container')
     .gatheringGroupMemberController.addGatheringGroupMember(c);
 });
-apiV1.delete('/gathering-groups/:gatheringGroupId/members/:userId', c => {
-  return c
-    .get('container')
-    .gatheringGroupMemberController.removeGatheringGroupMember(c);
-});
+apiV1.delete(
+  '/gathering-groups/:gatheringGroupId/members/:userId',
+  requireAuth,
+  c => {
+    return c
+      .get('container')
+      .gatheringGroupMemberController.removeGatheringGroupMember(c);
+  }
+);
 
 // Gathering routes
-apiV1.get('/gatherings', c => {
+apiV1.get('/gatherings', requireAuth, c => {
   return c.get('container').gatheringController.getAllGatherings(c);
 });
-apiV1.post('/gatherings', c => {
+apiV1.post('/gatherings', requireAuth, c => {
   return c.get('container').gatheringController.createGathering(c);
 });
 
 // Firebase token routes
-apiV1.post('/firebase-tokens', c => {
+apiV1.post('/firebase-tokens', requireAuth, c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
 });
 
 // Notification routes
-apiV1.post('/notifications', c => {
+apiV1.post('/notifications', requireAuth, c => {
   return c.get('container').notificationController.createNotification(c);
 });
-apiV1.get('/notifications', c => {
+apiV1.get('/notifications', requireAuth, c => {
   return c.get('container').notificationController.getNotifications(c);
 });
-apiV1.get('/notifications/:id', c => {
+apiV1.get('/notifications/:id', requireAuth, c => {
   return c.get('container').notificationController.getNotificationById(c);
 });
-apiV1.put('/notifications/:id', c => {
+apiV1.put('/notifications/:id', requireAuth, c => {
   return c.get('container').notificationController.updateNotification(c);
 });
 
-apiV1.get('/notification-schedules', c => {
+apiV1.get('/notification-schedules', requireAuth, c => {
   return c
     .get('container')
     .notificationScheduleController.getAllNotificationSchedules(c);
 });
-apiV1.post('/notification-schedules', c => {
+apiV1.post('/notification-schedules', requireAuth, c => {
   return c
     .get('container')
     .notificationScheduleController.createNotificationSchedule(c);
 });
-apiV1.get('/notification-schedules/:id', c => {
+apiV1.get('/notification-schedules/:id', requireAuth, c => {
   return c
     .get('container')
     .notificationScheduleController.getNotificationScheduleById(c);
 });
-apiV1.delete('/notification-schedules/:id', c => {
+apiV1.delete('/notification-schedules/:id', requireAuth, c => {
   return c
     .get('container')
     .notificationScheduleController.deleteNotificationSchedule(c);
 });
 
-apiV1.post('/notifications/test', c => {
+apiV1.post('/notifications/test', requireAuth, c => {
   return c.get('container').notificationController.sendTestNotification(c);
 });
 
