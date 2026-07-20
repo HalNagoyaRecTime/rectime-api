@@ -38,8 +38,14 @@ function findDuplicates(
     rowIndexesByClassAttendance.set(key, classAttendanceIndexes);
   });
 
-  const reasonsByRowIndex = new Map<number, Set<StudentMasterDuplicateReason>>();
-  const addReason = (rowIndex: number, reason: StudentMasterDuplicateReason) => {
+  const reasonsByRowIndex = new Map<
+    number,
+    Set<StudentMasterDuplicateReason>
+  >();
+  const addReason = (
+    rowIndex: number,
+    reason: StudentMasterDuplicateReason
+  ) => {
     const reasons = reasonsByRowIndex.get(rowIndex) ?? new Set();
     reasons.add(reason);
     reasonsByRowIndex.set(rowIndex, reasons);

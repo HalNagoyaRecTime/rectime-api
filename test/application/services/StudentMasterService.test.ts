@@ -46,8 +46,14 @@ describe('StudentMasterService', () => {
         },
       ];
       const bulkCreate = vi.fn().mockResolvedValue([
-        buildExisting({ student_master: 1, ...rowToEntityOverrides(rows[0]) }),
-        buildExisting({ student_master: 2, ...rowToEntityOverrides(rows[1]) }),
+        buildExisting({
+          student_master: 1,
+          ...rowToEntityOverrides(rows[0]),
+        }),
+        buildExisting({
+          student_master: 2,
+          ...rowToEntityOverrides(rows[1]),
+        }),
       ]);
       const repository = buildRepository({ bulkCreate });
       const service = createStudentMasterService(repository);
@@ -91,9 +97,7 @@ describe('StudentMasterService', () => {
         },
       ];
 
-      const error = await service
-        .importStudentMaster({ rows })
-        .catch(e => e);
+      const error = await service.importStudentMaster({ rows }).catch(e => e);
 
       expect(error).toBeInstanceOf(StudentMasterDuplicateError);
       expect((error as StudentMasterDuplicateError).duplicates).toEqual([
@@ -128,9 +132,7 @@ describe('StudentMasterService', () => {
         },
       ];
 
-      const error = await service
-        .importStudentMaster({ rows })
-        .catch(e => e);
+      const error = await service.importStudentMaster({ rows }).catch(e => e);
 
       expect(error).toBeInstanceOf(StudentMasterDuplicateError);
       expect((error as StudentMasterDuplicateError).duplicates).toEqual([
@@ -174,9 +176,7 @@ describe('StudentMasterService', () => {
         },
       ];
 
-      const error = await service
-        .importStudentMaster({ rows })
-        .catch(e => e);
+      const error = await service.importStudentMaster({ rows }).catch(e => e);
 
       expect(error).toBeInstanceOf(StudentMasterDuplicateError);
       expect((error as StudentMasterDuplicateError).duplicates).toEqual([

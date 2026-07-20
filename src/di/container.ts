@@ -95,9 +95,8 @@ export function createDIContainer(env: Env) {
 
   // Controllers
   const studentController = createStudentController(studentService);
-  const studentMasterController = createStudentMasterController(
-    studentMasterService
-  );
+  const studentMasterController =
+    createStudentMasterController(studentMasterService);
   const eventController = createEventController(eventService);
   const classController = createClassController(classService);
   const firebaseTokenController =
