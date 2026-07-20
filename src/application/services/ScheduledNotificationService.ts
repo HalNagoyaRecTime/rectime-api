@@ -19,13 +19,21 @@ export function createScheduledNotificationService(deps: {
       const schedules = await notificationScheduleRepository.claimDue(
         now.toISOString()
       );
+      const targetTokens =
+        await notificationScheduleRepository.findTargetTokensByGatheringGroupIds(
+          [...new Set(schedules.map(schedule => schedule.gathering_group_id))]
+        );
+      const tokensByGroup = new Map<number, typeof targetTokens>();
+      for (const token of targetTokens) {
+        const groupTokens = tokensByGroup.get(token.gathering_group_id) ?? [];
+        groupTokens.push(token);
+        tokensByGroup.set(token.gathering_group_id, groupTokens);
+      }
       let sent = 0;
       let failed = 0;
 
       for (const schedule of schedules) {
-        const tokens = await notificationScheduleRepository.findTargetTokens(
-          schedule.gathering_group_id
-        );
+        const tokens = tokensByGroup.get(schedule.gathering_group_id) ?? [];
         if (tokens.length === 0) {
           await notificationScheduleRepository.markFailed(
             schedule.notification_send_schedule_id,

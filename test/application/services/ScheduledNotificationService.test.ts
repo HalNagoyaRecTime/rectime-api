@@ -33,11 +33,13 @@ describe('ScheduledNotificationService', () => {
     const notificationScheduleRepository: INotificationScheduleRepository = {
       create: vi.fn(),
       findAll: vi.fn(),
+      findById: vi.fn(),
+      deleteDraft: vi.fn(),
       existsUser: vi.fn(),
       existsNotification: vi.fn(),
       existsEventGatheringGroup: vi.fn(),
       claimDue: vi.fn().mockResolvedValue(schedules),
-      findTargetTokens: vi.fn().mockResolvedValue([]),
+      findTargetTokensByGatheringGroupIds: vi.fn().mockResolvedValue([]),
       markSent: vi.fn(),
       markFailed: vi.fn(),
     };
@@ -70,10 +72,16 @@ describe('ScheduledNotificationService', () => {
       schedule,
     ]);
     (
-      notificationScheduleRepository.findTargetTokens as ReturnType<
+      notificationScheduleRepository.findTargetTokensByGatheringGroupIds as ReturnType<
         typeof vi.fn
       >
-    ).mockResolvedValue([{ firebase_token_id: 9, fcm_token: 'token-a' }]);
+    ).mockResolvedValue([
+      {
+        gathering_group_id: 3,
+        firebase_token_id: 9,
+        fcm_token: 'token-a',
+      },
+    ]);
 
     const result = await service.sendScheduledEventNotifications(
       new Date('2026-01-01T09:00:00.000Z')
@@ -82,6 +90,9 @@ describe('ScheduledNotificationService', () => {
     expect(notificationScheduleRepository.claimDue).toHaveBeenCalledWith(
       '2026-01-01T09:00:00.000Z'
     );
+    expect(
+      notificationScheduleRepository.findTargetTokensByGatheringGroupIds
+    ).toHaveBeenCalledWith([3]);
     expect(fcmService.sendNotificationToToken).toHaveBeenCalledWith({
       token: 'token-a',
       title: '集合のお知らせ',
@@ -104,12 +115,20 @@ describe('ScheduledNotificationService', () => {
       fcmService,
     } = setup([schedule]);
     (
-      notificationScheduleRepository.findTargetTokens as ReturnType<
+      notificationScheduleRepository.findTargetTokensByGatheringGroupIds as ReturnType<
         typeof vi.fn
       >
     ).mockResolvedValue([
-      { firebase_token_id: 9, fcm_token: 'token-a' },
-      { firebase_token_id: 10, fcm_token: 'token-b' },
+      {
+        gathering_group_id: 3,
+        firebase_token_id: 9,
+        fcm_token: 'token-a',
+      },
+      {
+        gathering_group_id: 3,
+        firebase_token_id: 10,
+        fcm_token: 'token-b',
+      },
     ]);
     (fcmService.sendNotificationToToken as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({ success: true, messageId: 'message-1' })
