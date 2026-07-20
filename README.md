@@ -110,7 +110,7 @@ MIIEvQIBADA...（秘密鍵の内容）
 ### 6. ローカル D1 データベースのマイグレーション
 
 ```bash
-npm run db:migrate:local
+npm run db:migrate:dev:local
 ```
 
 ### 7. 起動
@@ -127,7 +127,7 @@ npm run dev
 
 ```bash
 # D1 マイグレーション（本番）
-npm run db:migrate:remote
+npm run db:migrate:prod:remote
 
 # デプロイ
 npm run deploy
@@ -139,7 +139,7 @@ npm run deploy
 このコマンドは本番用 D1 `rectime-api` には接続しません。
 
 ```bash
-npm run db:migrate:dev
+npm run db:migrate:dev:remote
 ```
 
 開発用 D1 に接続した状態で Worker をローカル起動し、API の動作を確認します。
