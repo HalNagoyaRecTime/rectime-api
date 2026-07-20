@@ -157,6 +157,38 @@ describe('requireAuth', () => {
       });
     });
 
+    it('認証成功後にハンドラが例外を投げても401にはならない', async () => {
+      const env = buildEnv();
+      const token = await signMobileJwt(
+        {
+          sub: 'user-1',
+          oid: 'oid-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+          client_type: 'mobile',
+        },
+        JWT_SECRET,
+        3600
+      );
+      const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
+      app.get('/protected', requireAuth, () => {
+        throw new Error('downstream failure');
+      });
+
+      const res = await app.request(
+        '/protected',
+        {
+          headers: {
+            'X-Client-Type': 'mobile',
+            Authorization: `Bearer ${token}`,
+          },
+        },
+        env
+      );
+
+      expect(res.status).not.toBe(401);
+    });
+
     it('Authorizationヘッダーが無い場合は401を返す', async () => {
       const app = buildApp();
 

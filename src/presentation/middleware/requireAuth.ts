@@ -1,7 +1,7 @@
-import type { Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import type { Env } from '../../lib/env';
 import {
+  errorResponse,
   getBearerToken,
   getClientType,
   type AppContext,
@@ -22,14 +22,9 @@ export type AuthVariables = {
   authUser: AuthUser;
 };
 
-function unauthorized(c: Context): Response {
-  return c.json(
-    { error: { code: 'UNAUTHORIZED', message: '認証が必要です' } },
-    401
-  );
-}
-
-// Web はセッションCookie、Mobile は Authorization: Bearer <JWT> で認証する
+// apiV1.use('*', ...) にはしていない: 将来 /auth ルート（ログイン自体）が
+// このHonoインスタンスにマウントされた際、ログイン前のリクエストまで
+// ブロックしてしまわないよう、認証が必要なルートにのみ個別に付与する。
 export const requireAuth = createMiddleware<{
   Bindings: Env;
   Variables: AuthVariables;
@@ -40,35 +35,37 @@ export const requireAuth = createMiddleware<{
   if (clientType === 'mobile') {
     const token = getBearerToken(appContext);
     if (!token) {
-      return unauthorized(c);
+      return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
     }
 
+    let claims;
     try {
-      const claims = await verifyMobileJwt(token, c.env.JWT_SECRET);
-      c.set('authUser', {
-        id: claims.sub,
-        email: claims.email,
-        display_name: claims.display_name,
-      });
-      await next();
-      return;
+      claims = await verifyMobileJwt(token, c.env.JWT_SECRET);
     } catch {
-      return unauthorized(c);
+      return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
     }
+
+    c.set('authUser', {
+      id: claims.sub,
+      email: claims.email,
+      display_name: claims.display_name,
+    });
+    await next();
+    return;
   }
 
   if (clientType !== 'web') {
-    return unauthorized(c);
+    return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
   }
 
   const sessionId = getSessionIdFromCookie(c.req.header('Cookie') ?? null);
   if (!sessionId) {
-    return unauthorized(c);
+    return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
   }
 
   const session = await getSession(c.env.AUTH_KV, sessionId);
   if (!session) {
-    return unauthorized(c);
+    return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
   }
 
   c.set('authUser', {
