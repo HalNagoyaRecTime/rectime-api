@@ -23,6 +23,7 @@ function setup() {
     existsEvent: vi.fn().mockResolvedValue(true),
     existsGatheringSpot: vi.fn().mockResolvedValue(true),
     create: vi.fn(),
+    findByEventAndGroup: vi.fn(),
   };
   return { repository, service: createGatheringService(repository) };
 }

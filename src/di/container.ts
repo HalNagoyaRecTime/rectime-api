@@ -11,6 +11,7 @@ import { createGatheringGroupMemberRepository } from '../infrastructure/reposito
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
 import { createStudentService } from '../application/services/StudentService';
 import { createEventService } from '../application/services/EventService';
+import { createEventScheduleService } from '../application/services/EventScheduleService';
 import { createClassService } from '../application/services/ClassService';
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
@@ -23,6 +24,7 @@ import { createGatheringGroupMemberService } from '../application/services/Gathe
 import { createGatheringService } from '../application/services/GatheringService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createEventController } from '../presentation/controllers/EventController';
+import { createEventScheduleController } from '../presentation/controllers/EventScheduleController';
 import { createClassController } from '../presentation/controllers/ClassController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
@@ -57,6 +59,12 @@ export function createDIContainer(env: Env) {
   const authService = createAuthService(userRepository, env.AUTH_KV);
   const studentService = createStudentService(studentRepository);
   const eventService = createEventService(eventRepository);
+  const eventScheduleService = createEventScheduleService({
+    eventRepository,
+    gatheringRepository,
+    notificationRepository,
+    notificationScheduleRepository,
+  });
   const classService = createClassService(classRepository);
   const firebaseTokenService = createFirebaseTokenService(
     firebaseTokenRepository
@@ -90,6 +98,8 @@ export function createDIContainer(env: Env) {
   // Controllers
   const studentController = createStudentController(studentService);
   const eventController = createEventController(eventService);
+  const eventScheduleController =
+    createEventScheduleController(eventScheduleService);
   const classController = createClassController(classService);
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
@@ -114,6 +124,7 @@ export function createDIContainer(env: Env) {
     authService,
     studentController,
     eventController,
+    eventScheduleController,
     classController,
     firebaseTokenController,
     notificationController,

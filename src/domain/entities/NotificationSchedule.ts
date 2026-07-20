@@ -29,6 +29,11 @@ export interface CreateNotificationScheduleInput {
   send_at: string;
 }
 
+export interface UpdateDraftNotificationScheduleInput {
+  notification_id: number;
+  send_at: string;
+}
+
 export interface NotificationScheduleListOptions {
   send_status?: NotificationSendStatus;
   event_id?: number;

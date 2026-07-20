@@ -5,6 +5,7 @@ import type {
   NotificationScheduleListOptions,
   NotificationScheduleListResult,
   NotificationTargetTokenByGroup,
+  UpdateDraftNotificationScheduleInput,
 } from '../../entities/NotificationSchedule';
 
 export interface INotificationScheduleRepository {
@@ -20,6 +21,19 @@ export interface INotificationScheduleRepository {
   deleteDraft: (
     notificationScheduleId: number
   ) => Promise<DeleteDraftNotificationScheduleResult>;
+  findDraftsByEventAndGroup: (
+    eventId: number,
+    gatheringGroupId: number
+  ) => Promise<NotificationScheduleEntity[]>;
+  updateDraft: (
+    notificationScheduleId: number,
+    input: UpdateDraftNotificationScheduleInput
+  ) => Promise<NotificationScheduleEntity | null>;
+  deleteDraftsByEventAndGroup: (
+    eventId: number,
+    gatheringGroupId: number,
+    exceptId?: number
+  ) => Promise<number>;
   existsUser: (userId: number) => Promise<boolean>;
   existsNotification: (notificationId: number) => Promise<boolean>;
   existsEventGatheringGroup: (

@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import {
   CreateGatheringInput,
@@ -119,6 +119,29 @@ export function createGatheringRepository(
       const gathering = await findById(row.id);
       if (!gathering) throw new Error('Failed to create gathering');
       return gathering;
+    },
+
+    async findByEventAndGroup(eventId, gatheringGroupId) {
+      const row = await orm
+        .select(detailSelection)
+        .from(gatherings)
+        .innerJoin(
+          gathering_groups,
+          eq(gatherings.gatheringGroupId, gathering_groups.id)
+        )
+        .innerJoin(events, eq(gatherings.eventId, events.id))
+        .innerJoin(
+          gathering_spots,
+          eq(gatherings.gatheringSpotId, gathering_spots.id)
+        )
+        .where(
+          and(
+            eq(gatherings.eventId, eventId),
+            eq(gatherings.gatheringGroupId, gatheringGroupId)
+          )
+        )
+        .get();
+      return row ?? null;
     },
   };
 }

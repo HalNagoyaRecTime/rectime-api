@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, asc, count, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type {
   NotificationScheduleEntity,
@@ -157,6 +157,63 @@ export function createNotificationScheduleRepository(
         .where(eq(notification_schedules.id, notificationScheduleId))
         .get();
       return existing ? 'not_draft' : 'not_found';
+    },
+
+    async findDraftsByEventAndGroup(eventId, gatheringGroupId) {
+      return orm
+        .select(selection)
+        .from(notification_schedules)
+        .innerJoin(
+          notifications,
+          eq(
+            notification_schedules.notificationId,
+            notifications.notificationId
+          )
+        )
+        .where(
+          and(
+            eq(notification_schedules.eventId, eventId),
+            eq(notification_schedules.gatheringGroupId, gatheringGroupId),
+            eq(notification_schedules.sendStatus, 'draft')
+          )
+        )
+        .orderBy(asc(notification_schedules.id))
+        .all() as Promise<NotificationScheduleEntity[]>;
+    },
+
+    async updateDraft(notificationScheduleId, input) {
+      const updated = await orm
+        .update(notification_schedules)
+        .set({
+          notificationId: input.notification_id,
+          sendAt: input.send_at,
+          updatedAt: sql`CURRENT_TIMESTAMP`,
+        })
+        .where(
+          and(
+            eq(notification_schedules.id, notificationScheduleId),
+            eq(notification_schedules.sendStatus, 'draft')
+          )
+        )
+        .returning({ id: notification_schedules.id })
+        .get();
+      return updated ? findById(updated.id) : null;
+    },
+
+    async deleteDraftsByEventAndGroup(eventId, gatheringGroupId, exceptId) {
+      const conditions = [
+        eq(notification_schedules.eventId, eventId),
+        eq(notification_schedules.gatheringGroupId, gatheringGroupId),
+        eq(notification_schedules.sendStatus, 'draft'),
+      ];
+      if (exceptId !== undefined) {
+        conditions.push(ne(notification_schedules.id, exceptId));
+      }
+      const result = await orm
+        .delete(notification_schedules)
+        .where(and(...conditions))
+        .run();
+      return result.meta.changes;
     },
 
     async existsUser(userId) {

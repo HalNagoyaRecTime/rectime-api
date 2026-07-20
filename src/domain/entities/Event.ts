@@ -8,3 +8,8 @@ export interface EventEntity {
   created_at: string;
   updated_at: string;
 }
+
+export interface UpdateEventTimesInput {
+  start_time: string;
+  end_time: string;
+}
