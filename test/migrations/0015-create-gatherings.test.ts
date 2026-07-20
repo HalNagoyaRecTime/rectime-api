@@ -96,9 +96,9 @@ describe('0015_create_gatherings.sql', () => {
         .first<{ gathering_group_id: number }>();
       groupId = group!.gathering_group_id;
       const event = await env.DB.prepare(
-        'INSERT INTO events (user_id, event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?, ?) RETURNING event_id'
+        'INSERT INTO events (event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?) RETURNING event_id'
       )
-        .bind(-1, 'migration集会イベント', '体育館', '0900', '1000')
+        .bind('migration集会イベント', '体育館', '0900', '1000')
         .first<{ event_id: number }>();
       eventId = event!.event_id;
       const spot = await env.DB.prepare(
