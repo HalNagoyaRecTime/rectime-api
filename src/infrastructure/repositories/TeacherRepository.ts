@@ -187,23 +187,25 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       if (!existing) return null;
 
       const now = new Date().toISOString();
-      await orm
+
+      const updateUserStatement = orm
         .update(users)
         .set({
           userName: input.userName,
           isLiveActive: input.isLiveActive ? 1 : 0,
           updatedAt: now,
         })
-        .where(eq(users.id, existing.users.id))
-        .run();
+        .where(eq(users.id, existing.users.id));
 
-      await orm
+      const deleteAssignmentsStatement = orm
         .delete(teacher_class_assignments)
-        .where(eq(teacher_class_assignments.teacherId, id))
-        .run();
+        .where(eq(teacher_class_assignments.teacherId, id));
 
+      // D1のbatch()は複数文を1つのトランザクションとして原子的に実行するため、
+      // 途中の文が失敗しても users の更新や既存の担当クラス削除が
+      // 反映されたまま残ることはない。
       if (input.classRoomIds.length > 0) {
-        await orm
+        const insertAssignmentsStatement = orm
           .insert(teacher_class_assignments)
           .values(
             input.classRoomIds.map(classRoomId => ({
@@ -212,8 +214,14 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
               createdAt: now,
               updatedAt: now,
             }))
-          )
-          .run();
+          );
+        await orm.batch([
+          updateUserStatement,
+          deleteAssignmentsStatement,
+          insertAssignmentsStatement,
+        ]);
+      } else {
+        await orm.batch([updateUserStatement, deleteAssignmentsStatement]);
       }
 
       const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [id]);

@@ -189,6 +189,31 @@ describe('TeacherRepository', () => {
       });
       expect(updated).toBeNull();
     });
+
+    it('存在しないクラスIDを含む場合は失敗し、氏名・有効状態・既存の担当クラスが変更前のまま残る（アトミック性）', async () => {
+      const target = seeded.teachers[0];
+      const beforeUserName = target.displayName;
+      const beforeClassRooms = [
+        {
+          class_room_id: seeded.classRooms[0].classRoomId,
+          class_code: seeded.classRooms[0].classCode,
+          class_name: seeded.classRooms[0].className,
+        },
+      ];
+
+      await expect(
+        repo.update(target.teacherId, {
+          userName: '更新失敗するはずの先生',
+          isLiveActive: false,
+          classRoomIds: [999999],
+        })
+      ).rejects.toThrow();
+
+      const refetched = await repo.findById(target.teacherId);
+      expect(refetched?.user_name).toBe(beforeUserName);
+      expect(refetched?.is_live_active).toBe(true);
+      expect(refetched?.class_rooms).toEqual(beforeClassRooms);
+    });
   });
 
   describe('hasClassAssignments', () => {

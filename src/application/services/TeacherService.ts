@@ -45,6 +45,11 @@ export function createTeacherService(
       id: number,
       input: TeacherUpdateRequest
     ): Promise<TeacherDTO> {
+      // ここでの存在チェックは早期に分かりやすい400を返すためのもの。
+      // チェック後にクラスが削除される競合が起きても、update() 側が
+      // 担当クラスの削除・追加とusers更新をアトミックに実行するため、
+      // 教員情報や既存の担当クラスが中途半端な状態で残ることはない
+      // （外部キー制約違反でinsertが失敗すればbatch全体がロールバックされる）。
       if (input.classRoomIds.length > 0) {
         const classRoomsExist = await teacherRepository.existsClassRooms(
           input.classRoomIds
