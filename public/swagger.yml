@@ -343,15 +343,54 @@ paths:
     get:
       tags: [Notification schedules]
       summary: 通知予定一覧を取得する
+      parameters:
+        - name: sendStatus
+          in: query
+          schema:
+            type: string
+            enum: [draft, sending, sent, failed]
+        - name: eventId
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: gatheringGroupId
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: 通知予定一覧
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/NotificationSchedule'
+                $ref: '#/components/schemas/NotificationScheduleListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalServerError'
     post:
@@ -374,6 +413,45 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /notification-schedules/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [Notification schedules]
+      summary: 通知予定詳細を取得する
+      responses:
+        '200':
+          description: 通知予定詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSchedule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Notification schedules]
+      summary: draftの通知予定を削除する
+      responses:
+        '204':
+          description: 削除成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -501,34 +579,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /notifications/schedule/run:
-    post:
-      tags: [Notifications]
-      summary: 期限を過ぎた通知予定を送信する
-      description: 通常はcronで毎分実行されます。`now` はテスト・手動実行時のみ指定します。
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                now:
-                  type: string
-                  format: date-time
-                  example: '2026-07-16T09:00:00.000Z'
-      responses:
-        '200':
-          description: 送信処理結果
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ScheduledNotificationResult'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
 components:
   parameters:
     StudentId:
@@ -569,6 +619,12 @@ components:
             $ref: '#/components/schemas/Error'
     NotFound:
       description: 対象リソースが存在しない
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: リソースの現在状態では操作できない
       content:
         application/json:
           schema:
@@ -859,10 +915,9 @@ components:
           type: integer
         importance:
           type: integer
-          minimum: 1
-          maximum: 4
+          enum: [2]
           default: 2
-          description: '`1` が最も高く、`4` が最も低い重要度'
+          description: MVPでは`2`固定
         notification_type:
           type: string
         title:
@@ -906,14 +961,28 @@ components:
           minimum: 1
         importance:
           type: integer
-          minimum: 1
-          maximum: 4
+          enum: [2]
           default: 2
         sendAt:
           type: string
           format: date-time
           description: UTCオフセットを含むISO 8601形式
           example: '2026-07-16T09:00:00.000Z'
+
+    NotificationScheduleListResponse:
+      type: object
+      required: [notification_schedules, total, limit, offset]
+      properties:
+        notification_schedules:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationSchedule'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
 
     Notification:
       type: object
