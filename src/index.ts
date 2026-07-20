@@ -59,6 +59,7 @@ app.get('/', c => {
     version: '1.0.0',
     endpoints: {
       students: '/api/v1/students/{studentId}',
+      studentMasterImport: '/api/v1/student-master/import',
       events: '/api/v1/events',
       classes: '/api/v1/classes',
       gatheringSpots: '/api/v1/gathering-spots',
@@ -87,6 +88,11 @@ apiV1.get('/students/:studentId', c => {
 });
 apiV1.post('/students', c => {
   return c.get('container').studentController.createStudent(c);
+});
+
+// Student master routes
+apiV1.post('/student-master/import', c => {
+  return c.get('container').studentMasterController.importStudentMaster(c);
 });
 
 // Event routes
