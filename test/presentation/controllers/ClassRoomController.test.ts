@@ -15,21 +15,21 @@ function buildClass(overrides: Partial<ClassRoomDTO> = {}): ClassRoomDTO {
 
 function setup() {
   const classService: IClassRoomService = {
-    putAllClassRooms: vi.fn(),
+    getAllClassRooms: vi.fn(),
   };
   const controller = createClassRoomController(classService);
   const app = new Hono();
-  app.get('/classrooms', c => controller.putAllClassRooms(c));
+  app.get('/classrooms', c => controller.getAllClassRooms(c));
   return { app, classService };
 }
 
 describe('ClassRoomController', () => {
-  describe('putAllClassRooms', () => {
+  describe('getAllClassRooms', () => {
     it('サービスが返したクラス一覧を 200 で返す', async () => {
       const { app, classService } = setup();
       const classRooms = [buildClass()];
       (
-        classService.putAllClassRooms as ReturnType<typeof vi.fn>
+        classService.getAllClassRooms as ReturnType<typeof vi.fn>
       ).mockResolvedValue(classRooms);
 
       const res = await app.request('/classrooms');
@@ -41,7 +41,7 @@ describe('ClassRoomController', () => {
     it('サービスが例外を投げた場合は 500 を返す', async () => {
       const { app, classService } = setup();
       (
-        classService.putAllClassRooms as ReturnType<typeof vi.fn>
+        classService.getAllClassRooms as ReturnType<typeof vi.fn>
       ).mockRejectedValue(new Error('boom'));
       const consoleErrorSpy = vi
         .spyOn(console, 'error')

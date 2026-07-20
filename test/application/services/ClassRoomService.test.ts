@@ -4,7 +4,7 @@ import type { IClassRoomRepository } from '../../../src/domain/interfaces/reposi
 import type { ClassRoomEntity } from '../../../src/domain/entities/ClassRoom';
 
 describe('ClassRoomService', () => {
-  describe('putAllClassRooms', () => {
+  describe('getAllClassRooms', () => {
     it('ClassRoomEntity の配列を ClassRoomDTO の配列にマッピングして返す', async () => {
       const classRooms: ClassRoomEntity[] = [
         { f_class_room_id: 1, f_class_code: '11A', f_class_name: '1年Aクラス' },
@@ -15,7 +15,7 @@ describe('ClassRoomService', () => {
       };
       const service = createClassRoomService(repository);
 
-      const dtos = await service.putAllClassRooms();
+      const dtos = await service.getAllClassRooms();
 
       expect(dtos).toEqual([
         { class_room_id: 1, class_code: '11A', class_name: '1年Aクラス' },
@@ -30,7 +30,7 @@ describe('ClassRoomService', () => {
       };
       const service = createClassRoomService(repository);
 
-      await expect(service.putAllClassRooms()).resolves.toEqual([]);
+      await expect(service.getAllClassRooms()).resolves.toEqual([]);
     });
   });
 });

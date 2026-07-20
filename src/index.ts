@@ -96,8 +96,8 @@ apiV1.get('/events/:eventId', c => {
 });
 
 // Class routes
-apiV1.put('/classrooms', c => {
-  return c.get('container').classRoomController.putAllClassRooms(c);
+apiV1.get('/classrooms', c => {
+  return c.get('container').classRoomController.getAllClassRooms(c);
 });
 
 // Gathering spot routes
