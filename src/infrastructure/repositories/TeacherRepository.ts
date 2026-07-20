@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
-import { and, asc, eq, inArray, like, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import {
   class_rooms,
   teacher_class_assignments,
@@ -19,6 +19,12 @@ import { ITeacherRepository } from '../../domain/interfaces/repositories/ITeache
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
+
+// LIKE検索の対象文字列に % や _ そのものが含まれていても、ワイルドカードとして
+// 展開されず文字通りに一致するよう、SQLiteの ESCAPE 句と組み合わせて使う。
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, char => `\\${char}`);
+}
 
 type TeacherJoinRow = {
   teachers: typeof teachers.$inferSelect;
@@ -109,7 +115,10 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         conditions.push(eq(teachers.id, filter.teacherId));
       }
       if (filter.userName) {
-        conditions.push(like(users.userName, `%${filter.userName}%`));
+        const escapedPattern = `%${escapeLikePattern(filter.userName)}%`;
+        conditions.push(
+          sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`
+        );
       }
       if (filter.isLiveActive !== undefined) {
         conditions.push(eq(users.isLiveActive, filter.isLiveActive ? 1 : 0));
@@ -249,12 +258,29 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
     },
 
     async delete(id: number): Promise<boolean> {
-      const row = await orm
-        .delete(teachers)
-        .where(eq(teachers.id, id))
-        .returning()
-        .get();
-      return Boolean(row);
+      try {
+        const row = await orm
+          .delete(teachers)
+          .where(eq(teachers.id, id))
+          .returning()
+          .get();
+        return Boolean(row);
+      } catch (err) {
+        // hasClassAssignments によるチェックと実際の delete の間に、別リクエストが
+        // 担当クラスを新規に割り当てる競合が起きると、teacher_class_assignments
+        // 側のFK制約違反でここに到達し得る。SQLiteのエラーメッセージで判別し、
+        // 呼び出し元（Service層）が既存の参照エラーと同じ扱いをできるようにする。
+        const message =
+          err instanceof Error && err.cause instanceof Error
+            ? err.cause.message
+            : err instanceof Error
+              ? err.message
+              : String(err);
+        if (message.includes('FOREIGN KEY constraint failed')) {
+          throw new Error('Teacher is referenced by other data');
+        }
+        throw err;
+      }
     },
   };
 }

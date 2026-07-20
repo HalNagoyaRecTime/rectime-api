@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 
-describe('0020_create_teacher_class_assignments.sql', () => {
+describe('0023_create_teacher_class_assignments.sql', () => {
   it('教員と担当クラスの中間テーブルのカラム、外部キー、indexを作成する', async () => {
     const columns = await env.DB.prepare(
       'PRAGMA table_info(teacher_class_assignments)'

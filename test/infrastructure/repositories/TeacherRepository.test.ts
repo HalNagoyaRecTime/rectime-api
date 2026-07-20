@@ -64,6 +64,28 @@ describe('TeacherRepository', () => {
       expect(result.items.map(t => t.teacher_id)).toContain(target.teacherId);
     });
 
+    it('userName に % や _ が含まれる場合、ワイルドカードとしてではなく文字通り一致で絞り込む', async () => {
+      const now = new Date().toISOString();
+      const wildcardUser = await env.DB.prepare(
+        'INSERT INTO users (user_name, is_live_active, created_at, updated_at) VALUES (?, 1, ?, ?) RETURNING user_id'
+      )
+        .bind('50%_offプランナー', now, now)
+        .first<{ user_id: number }>();
+      const wildcardTeacher = await env.DB.prepare(
+        'INSERT INTO teachers (user_id, created_at, updated_at) VALUES (?, ?, ?) RETURNING teacher_id'
+      )
+        .bind(wildcardUser!.user_id, now, now)
+        .first<{ teacher_id: number }>();
+
+      // "%_" はエスケープされなければ「任意の1文字+任意0文字以上」にマッチしてしまい、
+      // 無関係な既存の教員名（例: 山田先生の"田先"部分）まで拾ってしまう
+      const result = await repo.findAll({ userName: '%_off' });
+
+      expect(result.items.map(t => t.teacher_id)).toEqual([
+        wildcardTeacher!.teacher_id,
+      ]);
+    });
+
     it('classRoomId で絞り込める', async () => {
       const result = await repo.findAll({
         classRoomId: seeded.classRooms[0].classRoomId,
@@ -239,6 +261,16 @@ describe('TeacherRepository', () => {
 
     it('存在しない教員IDの場合は false を返す', async () => {
       expect(await repo.delete(999999)).toBe(false);
+    });
+
+    it('担当クラスが割り当てられている教員を削除しようとするとFK制約違反を検知してエラーを投げる（hasClassAssignmentsチェック後の競合を想定）', async () => {
+      const target = seeded.teachers[0];
+      // hasClassAssignments が false を返した後に、別リクエストがクラスを
+      // 割り当てた状況を想定する。すでに割り当て済みのteachers[0]をそのまま使う。
+      await expect(repo.delete(target.teacherId)).rejects.toThrow(
+        'Teacher is referenced by other data'
+      );
+      expect(await repo.findById(target.teacherId)).not.toBeNull();
     });
   });
 });

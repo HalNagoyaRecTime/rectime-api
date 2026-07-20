@@ -72,6 +72,11 @@ export function createTeacherService(
         throw new Error('Teacher not found');
       }
 
+      // ここでの参照チェックは早期に分かりやすいエラーを返すためのもの。
+      // このチェックと下の delete() の間に別リクエストが担当クラスを
+      // 新規に割り当てる競合が起きても、delete() 側がFK制約違反を検知して
+      // 同じ 'Teacher is referenced by other data' を投げるため、
+      // 想定外の500にはならずControllerの409マッピングに乗る。
       const isReferenced = await teacherRepository.hasClassAssignments(id);
       if (isReferenced) {
         throw new Error('Teacher is referenced by other data');
