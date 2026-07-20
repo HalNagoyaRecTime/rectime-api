@@ -179,6 +179,75 @@ describe('StudentController', () => {
       expect(studentService.createStudent).not.toHaveBeenCalled();
     });
 
+    it('body が空の場合は500ではなく400を返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students', { method: 'POST' });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe('Invalid student request body');
+      expect(studentService.createStudent).not.toHaveBeenCalled();
+    });
+
+    it('body が壊れた JSON の場合は500ではなく400を返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{invalid-json',
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe('Invalid student request body');
+      expect(studentService.createStudent).not.toHaveBeenCalled();
+    });
+
+    it('student_id_number が null の場合は400を返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await postStudents(app, {
+        ...validCreateBody,
+        student_id_number: null,
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.createStudent).not.toHaveBeenCalled();
+    });
+
+    it('student_id_number が boolean の場合は400を返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await postStudents(app, {
+        ...validCreateBody,
+        student_id_number: true,
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.createStudent).not.toHaveBeenCalled();
+    });
+
+    it('student_id_number が数値の場合は文字列に変換してサービスへ渡す', async () => {
+      const { app, studentService } = setup();
+      const createdStudent = buildStudent({ student_id_number: '12345' });
+      (
+        studentService.createStudent as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(createdStudent);
+
+      const res = await postStudents(app, {
+        ...validCreateBody,
+        student_id_number: 12345,
+      });
+
+      expect(res.status).toBe(201);
+      expect(studentService.createStudent).toHaveBeenCalledWith({
+        ...validCreateBody,
+        student_id_number: '12345',
+      });
+    });
+
     it('クラスが見つからない場合は400を返す', async () => {
       const { app, studentService } = setup();
       (

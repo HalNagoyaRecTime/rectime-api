@@ -20,7 +20,10 @@ const createStudentSchema = z.object({
   class_room_id: z.number().int().positive(),
   user_name: z.string().min(1),
   attendance_number: z.number().int().positive(),
-  student_id_number: z.coerce.string().min(1),
+  student_id_number: z
+    .union([z.string(), z.number()])
+    .transform(value => String(value))
+    .pipe(z.string().min(1)),
 });
 
 export function createStudentController(studentService: IStudentService) {
@@ -54,7 +57,7 @@ export function createStudentController(studentService: IStudentService) {
 
   const createStudent = async (c: Context) => {
     try {
-      const body = await c.req.json();
+      const body = await c.req.json().catch(() => undefined);
       const parsedBody = createStudentSchema.safeParse(body);
 
       if (!parsedBody.success) {
