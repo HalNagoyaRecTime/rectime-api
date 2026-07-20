@@ -84,9 +84,6 @@ export const teachers = sqliteTable('teachers', {
 
 export const events = sqliteTable('events', {
   id: integer('event_id').primaryKey({ autoIncrement: true }),
-  userId: integer('user_id')
-    .notNull()
-    .references(() => users.id),
   name: text('event_name').notNull(),
   ruleText: text('rule_text'),
   venue: text('venue').notNull(),
