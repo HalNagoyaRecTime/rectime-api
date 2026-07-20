@@ -106,7 +106,7 @@ describe('ScheduledNotificationService', () => {
     expect(result).toEqual({ checkedEvents: 1, sent: 1, failed: 0 });
   });
 
-  it('一部のトークン送信に失敗した予定をfailedにし、自動再送しない', async () => {
+  it('一部のトークン送信に失敗しても残りへ送信を続け、予定をfailedにする', async () => {
     const schedule = buildSchedule();
     const {
       service,
@@ -129,20 +129,33 @@ describe('ScheduledNotificationService', () => {
         firebase_token_id: 10,
         fcm_token: 'token-b',
       },
+      {
+        gathering_group_id: 3,
+        firebase_token_id: 11,
+        fcm_token: 'token-c',
+      },
     ]);
     (fcmService.sendNotificationToToken as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({ success: true, messageId: 'message-1' })
-      .mockRejectedValueOnce(new Error('UNREGISTERED'));
+      .mockRejectedValueOnce(new Error('UNREGISTERED'))
+      .mockResolvedValueOnce({ success: true, messageId: 'message-3' });
 
     const result = await service.sendScheduledEventNotifications();
 
     expect(firebaseTokenRepository.deactivate).toHaveBeenCalledWith(10);
+    expect(fcmService.sendNotificationToToken).toHaveBeenCalledTimes(3);
+    expect(fcmService.sendNotificationToToken).toHaveBeenLastCalledWith({
+      token: 'token-c',
+      title: '集合のお知らせ',
+      body: '集合時刻です。',
+      data: { type: 'event_reminder', eventId: '2' },
+    });
     expect(notificationScheduleRepository.markFailed).toHaveBeenCalledWith(
       1,
-      'UNREGISTERED (sent 1/2 tokens)'
+      'UNREGISTERED (sent 2/3 tokens)'
     );
     expect(notificationScheduleRepository.markSent).not.toHaveBeenCalled();
-    expect(result).toEqual({ checkedEvents: 1, sent: 1, failed: 1 });
+    expect(result).toEqual({ checkedEvents: 1, sent: 2, failed: 1 });
   });
 
   it('有効なトークンがない予定をfailedにする', async () => {

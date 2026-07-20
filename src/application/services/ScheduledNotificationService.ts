@@ -60,12 +60,11 @@ export function createScheduledNotificationService(deps: {
             sent += 1;
             sentForSchedule += 1;
           } catch (error) {
-            failure = error;
+            failure ??= error;
 
             if (shouldDeactivateToken(error)) {
               await firebaseTokenRepository.deactivate(token.firebase_token_id);
             }
-            break;
           }
         }
         if (failure) {
