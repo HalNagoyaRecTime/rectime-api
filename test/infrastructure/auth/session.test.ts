@@ -104,15 +104,15 @@ describe('session', () => {
   });
 
   describe('buildSessionCookie / clearSessionCookie', () => {
-    it('secure=true の場合は Secure 属性を含む Cookie 文字列を生成する', () => {
+    it('secure=true の場合は Secure 属性と SameSite=None を含む Cookie 文字列を生成する', () => {
       const cookie = buildSessionCookie('session-id-1', 3600, true);
 
       expect(cookie).toBe(
-        'session=session-id-1; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=3600'
+        'session=session-id-1; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=3600'
       );
     });
 
-    it('secure=false の場合は Secure 属性を含まない', () => {
+    it('secure=false の場合は Secure 属性を含まず SameSite=Lax にフォールバックする', () => {
       const cookie = buildSessionCookie('session-id-1', 3600, false);
 
       expect(cookie).toBe(
@@ -122,7 +122,7 @@ describe('session', () => {
 
     it('clearSessionCookie は Max-Age=0 の Cookie を生成する', () => {
       expect(clearSessionCookie(true)).toBe(
-        'session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0'
+        'session=; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=0'
       );
       expect(clearSessionCookie(false)).toBe(
         'session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'
