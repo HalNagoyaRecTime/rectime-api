@@ -1,6 +1,7 @@
 import { getDb } from '../lib/db';
 import { createStudentRepository } from '../infrastructure/repositories/StudentRepository';
 import { createEventRepository } from '../infrastructure/repositories/EventRepository';
+import { createEventScheduleRepository } from '../infrastructure/repositories/EventScheduleRepository';
 import { createClassRepository } from '../infrastructure/repositories/ClassRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
@@ -44,6 +45,7 @@ export function createDIContainer(env: Env) {
   const userRepository = createUserRepository(db);
   const studentRepository = createStudentRepository(db);
   const eventRepository = createEventRepository(db);
+  const eventScheduleRepository = createEventScheduleRepository(db);
   const classRepository = createClassRepository(db);
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
   const notificationScheduleRepository =
@@ -61,9 +63,10 @@ export function createDIContainer(env: Env) {
   const eventService = createEventService(eventRepository);
   const eventScheduleService = createEventScheduleService({
     eventRepository,
+    eventScheduleRepository,
     gatheringRepository,
-    notificationRepository,
     notificationScheduleRepository,
+    userRepository,
   });
   const classService = createClassService(classRepository);
   const firebaseTokenService = createFirebaseTokenService(

@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createEventScheduleService } from '../../../src/application/services/EventScheduleService';
 import type { IEventRepository } from '../../../src/domain/interfaces/repositories/IEventRepository';
+import type { IEventScheduleRepository } from '../../../src/domain/interfaces/repositories/IEventScheduleRepository';
 import type { IGatheringRepository } from '../../../src/domain/interfaces/repositories/IGatheringRepository';
-import type { INotificationRepository } from '../../../src/domain/interfaces/repositories/INotificationRepository';
 import type { INotificationScheduleRepository } from '../../../src/domain/interfaces/repositories/INotificationScheduleRepository';
+import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 
 const event = {
   event_id: 1,
@@ -68,18 +69,15 @@ function setup() {
     create: vi.fn(),
     findByEventAndGroup: vi.fn().mockResolvedValue(gathering),
   };
-  const notificationRepository: INotificationRepository = {
-    create: vi.fn().mockResolvedValue(notification),
-    findAll: vi.fn(),
-    findById: vi.fn(),
-    update: vi.fn().mockResolvedValue(notification),
+  const eventScheduleRepository: IEventScheduleRepository = {
+    apply: vi.fn(),
   };
   const notificationScheduleRepository: INotificationScheduleRepository = {
     create: vi.fn().mockResolvedValue(schedule),
     findAll: vi.fn(),
     findById: vi.fn(),
     deleteDraft: vi.fn(),
-    findDraftsByEventAndGroup: vi.fn().mockResolvedValue([]),
+    findDraftsByEventAndGroup: vi.fn().mockResolvedValue([schedule]),
     updateDraft: vi.fn().mockResolvedValue(schedule),
     deleteDraftsByEventAndGroup: vi.fn().mockResolvedValue(0),
     existsUser: vi.fn(),
@@ -90,16 +88,24 @@ function setup() {
     markSent: vi.fn(),
     markFailed: vi.fn(),
   };
+  const userRepository: IUserRepository = {
+    isStaffOrTeacher: vi.fn().mockResolvedValue(true),
+    findUserIdByMicrosoftAccount: vi.fn(),
+    createUserWithMicrosoftLink: vi.fn(),
+    updateUser: vi.fn(),
+  };
   return {
     eventRepository,
+    eventScheduleRepository,
     gatheringRepository,
-    notificationRepository,
     notificationScheduleRepository,
+    userRepository,
     service: createEventScheduleService({
       eventRepository,
+      eventScheduleRepository,
       gatheringRepository,
-      notificationRepository,
       notificationScheduleRepository,
+      userRepository,
     }),
   };
 }
@@ -116,67 +122,33 @@ const input = {
 
 describe('EventScheduleService', () => {
   it('通知ありの初回設定で通知内容と開始15分前のdraftを作成する', async () => {
-    const {
-      service,
-      eventRepository,
-      notificationRepository,
-      notificationScheduleRepository,
-    } = setup();
+    const { service, eventScheduleRepository, notificationScheduleRepository } =
+      setup();
 
     await expect(service.updateEventSchedule(input)).resolves.toEqual({
       event,
       notification_enabled: true,
       notification_schedule: schedule,
     });
-    expect(eventRepository.updateTimes).toHaveBeenCalledWith(1, {
+    expect(eventScheduleRepository.apply).toHaveBeenCalledWith({
+      event_id: 1,
+      user_id: 7,
+      gathering_group_id: 3,
       start_time: '1030',
       end_time: '1100',
-    });
-    expect(notificationRepository.create).toHaveBeenCalledWith({
-      notification_type: 'event_reminder',
-      title: '大縄跳び開始のお知らせ',
-      body: '大縄跳びの開始時間が近づいています。該当チームは体育館前へ集合してください。',
-    });
-    expect(notificationScheduleRepository.create).toHaveBeenCalledWith({
-      user_id: 7,
-      event_id: 1,
-      gathering_group_id: 3,
-      notification_id: 5,
-      importance: 2,
+      notification_enabled: true,
+      notification_title: '大縄跳び開始のお知らせ',
+      notification_body:
+        '大縄跳びの開始時間が近づいています。該当チームは体育館前へ集合してください。',
       send_at: '2026-11-07T01:15:00.000Z',
     });
-  });
-
-  it('既存draftの本文と時刻を更新し、重複draftを一括削除する', async () => {
-    const { service, notificationRepository, notificationScheduleRepository } =
-      setup();
-    (
-      notificationScheduleRepository.findDraftsByEventAndGroup as ReturnType<
-        typeof vi.fn
-      >
-    ).mockResolvedValue([
-      schedule,
-      { ...schedule, notification_send_schedule_id: 8 },
-    ]);
-
-    await service.updateEventSchedule({ ...input, start_time: '1040' });
-
-    expect(notificationRepository.create).not.toHaveBeenCalled();
-    expect(notificationRepository.update).toHaveBeenCalledWith(5, {
-      title: '大縄跳び開始のお知らせ',
-      body: '大縄跳びの開始時間が近づいています。該当チームは体育館前へ集合してください。',
-    });
-    expect(notificationScheduleRepository.updateDraft).toHaveBeenCalledWith(6, {
-      notification_id: 5,
-      send_at: '2026-11-07T01:25:00.000Z',
-    });
     expect(
-      notificationScheduleRepository.deleteDraftsByEventAndGroup
-    ).toHaveBeenCalledWith(1, 3, 6);
+      notificationScheduleRepository.findDraftsByEventAndGroup
+    ).toHaveBeenCalledWith(1, 3);
   });
 
   it('通知なしでは関連draftだけを削除する', async () => {
-    const { service, notificationRepository, notificationScheduleRepository } =
+    const { service, eventScheduleRepository, notificationScheduleRepository } =
       setup();
 
     await expect(
@@ -186,15 +158,16 @@ describe('EventScheduleService', () => {
       notification_enabled: false,
       notification_schedule: null,
     });
+    expect(eventScheduleRepository.apply).toHaveBeenCalledWith(
+      expect.objectContaining({ notification_enabled: false })
+    );
     expect(
-      notificationScheduleRepository.deleteDraftsByEventAndGroup
-    ).toHaveBeenCalledWith(1, 3);
-    expect(notificationRepository.create).not.toHaveBeenCalled();
-    expect(notificationScheduleRepository.create).not.toHaveBeenCalled();
+      notificationScheduleRepository.findDraftsByEventAndGroup
+    ).not.toHaveBeenCalled();
   });
 
   it('競技に属さないグループでは時刻も通知も変更しない', async () => {
-    const { service, gatheringRepository, eventRepository } = setup();
+    const { service, gatheringRepository, eventScheduleRepository } = setup();
     (
       gatheringRepository.findByEventAndGroup as ReturnType<typeof vi.fn>
     ).mockResolvedValue(null);
@@ -202,6 +175,18 @@ describe('EventScheduleService', () => {
     await expect(service.updateEventSchedule(input)).rejects.toThrow(
       'Gathering group is not assigned to event'
     );
-    expect(eventRepository.updateTimes).not.toHaveBeenCalled();
+    expect(eventScheduleRepository.apply).not.toHaveBeenCalled();
+  });
+
+  it('staffsまたはteachersではないユーザーの更新を拒否する', async () => {
+    const { service, userRepository, eventScheduleRepository } = setup();
+    (
+      userRepository.isStaffOrTeacher as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(false);
+
+    await expect(service.updateEventSchedule(input)).rejects.toThrow(
+      'Schedule update forbidden'
+    );
+    expect(eventScheduleRepository.apply).not.toHaveBeenCalled();
   });
 });

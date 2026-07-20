@@ -1,112 +1,77 @@
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
+import type { IEventScheduleRepository } from '../../domain/interfaces/repositories/IEventScheduleRepository';
 import type { IGatheringRepository } from '../../domain/interfaces/repositories/IGatheringRepository';
-import type { INotificationRepository } from '../../domain/interfaces/repositories/INotificationRepository';
 import type { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
+import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import { buildEventNotificationSendAt } from '../../lib/eventDate';
 import type { IEventScheduleService } from './IEventScheduleService';
 
 export function createEventScheduleService(deps: {
   eventRepository: IEventRepository;
+  eventScheduleRepository: IEventScheduleRepository;
   gatheringRepository: IGatheringRepository;
-  notificationRepository: INotificationRepository;
   notificationScheduleRepository: INotificationScheduleRepository;
+  userRepository: IUserRepository;
 }): IEventScheduleService {
   const {
     eventRepository,
+    eventScheduleRepository,
     gatheringRepository,
-    notificationRepository,
     notificationScheduleRepository,
+    userRepository,
   } = deps;
 
   return {
     async updateEventSchedule(input) {
-      const [event, gathering] = await Promise.all([
+      const [authorized, event, gathering] = await Promise.all([
+        userRepository.isStaffOrTeacher(input.user_id),
         eventRepository.findById(input.event_id),
         gatheringRepository.findByEventAndGroup(
           input.event_id,
           input.gathering_group_id
         ),
       ]);
+      if (!authorized) throw new Error('Schedule update forbidden');
       if (!event) throw new Error('Event not found');
       if (!gathering) {
         throw new Error('Gathering group is not assigned to event');
-      }
-
-      const updatedEvent = await eventRepository.updateTimes(input.event_id, {
-        start_time: input.start_time,
-        end_time: input.end_time,
-      });
-      if (!updatedEvent) throw new Error('Event not found');
-
-      if (!input.notification_enabled) {
-        await notificationScheduleRepository.deleteDraftsByEventAndGroup(
-          input.event_id,
-          input.gathering_group_id
-        );
-        return {
-          event: updatedEvent,
-          notification_enabled: false,
-          notification_schedule: null,
-        };
       }
 
       const sendAt = buildEventNotificationSendAt(
         input.event_date,
         input.start_time
       );
-      const title = `${updatedEvent.event_name}開始のお知らせ`;
-      const body = `${updatedEvent.event_name}の開始時間が近づいています。該当チームは${gathering.gathering_spot_name}へ集合してください。`;
-      const drafts =
-        await notificationScheduleRepository.findDraftsByEventAndGroup(
-          input.event_id,
-          input.gathering_group_id
-        );
-      const existing = drafts[0];
+      const title = `${event.event_name}開始のお知らせ`;
+      const body = `${event.event_name}の開始時間が近づいています。該当チームは${gathering.gathering_spot_name}へ集合してください。`;
 
-      if (existing) {
-        await notificationRepository.update(existing.notification_id, {
-          title,
-          body,
-        });
-        const updatedSchedule =
-          await notificationScheduleRepository.updateDraft(
-            existing.notification_send_schedule_id,
-            {
-              notification_id: existing.notification_id,
-              send_at: sendAt,
-            }
-          );
-        if (!updatedSchedule) {
-          throw new Error('Draft notification schedule was changed');
-        }
-        await notificationScheduleRepository.deleteDraftsByEventAndGroup(
-          input.event_id,
-          input.gathering_group_id,
-          updatedSchedule.notification_send_schedule_id
-        );
-        return {
-          event: updatedEvent,
-          notification_enabled: true,
-          notification_schedule: updatedSchedule,
-        };
-      }
-
-      const notification = await notificationRepository.create({
-        notification_type: 'event_reminder',
-        title,
-        body,
-      });
-      const notificationSchedule = await notificationScheduleRepository.create({
-        user_id: input.user_id,
+      await eventScheduleRepository.apply({
         event_id: input.event_id,
+        user_id: input.user_id,
         gathering_group_id: input.gathering_group_id,
-        notification_id: notification.notification_id,
-        importance: 2,
+        start_time: input.start_time,
+        end_time: input.end_time,
+        notification_enabled: input.notification_enabled,
+        notification_title: title,
+        notification_body: body,
         send_at: sendAt,
       });
+
+      const updatedEvent = await eventRepository.findById(input.event_id);
+      if (!updatedEvent) throw new Error('Event not found');
+      const drafts = input.notification_enabled
+        ? await notificationScheduleRepository.findDraftsByEventAndGroup(
+            input.event_id,
+            input.gathering_group_id
+          )
+        : [];
+      const notificationSchedule = drafts[0] ?? null;
+      if (input.notification_enabled && !notificationSchedule) {
+        throw new Error('Failed to persist draft notification schedule');
+      }
+
       return {
         event: updatedEvent,
-        notification_enabled: true,
+        notification_enabled: input.notification_enabled,
         notification_schedule: notificationSchedule,
       };
     },

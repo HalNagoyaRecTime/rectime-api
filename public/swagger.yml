@@ -112,6 +112,39 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [Events]
+      summary: イベント時刻と通知予定を更新する
+      description: |
+        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        通知ありの場合は、開催日の競技開始15分前に送信するdraft通知予定を作成または更新します。
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEventScheduleRequest'
+      responses:
+        '200':
+          description: 更新したイベントと通知予定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventScheduleResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /classes:
     get:
@@ -617,6 +650,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: 認証が必要
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: 操作権限がない
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     NotFound:
       description: 対象リソースが存在しない
       content:
@@ -682,6 +727,39 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    UpdateEventScheduleRequest:
+      type: object
+      required: [startTime, endTime, gatheringGroupId, notificationEnabled]
+      properties:
+        startTime:
+          type: string
+          description: JSTの開始時刻（HHMM形式）
+          pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
+          example: '1030'
+        endTime:
+          type: string
+          description: JSTの終了時刻（HHMM形式）。開始時刻より後を指定します。
+          pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
+          example: '1100'
+        gatheringGroupId:
+          type: integer
+          minimum: 1
+        notificationEnabled:
+          type: boolean
+
+    EventScheduleResult:
+      type: object
+      required: [event, notification_enabled, notification_schedule]
+      properties:
+        event:
+          $ref: '#/components/schemas/Event'
+        notification_enabled:
+          type: boolean
+        notification_schedule:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/NotificationSchedule'
 
     ClassRoom:
       type: object

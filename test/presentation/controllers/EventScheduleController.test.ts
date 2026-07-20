@@ -124,4 +124,26 @@ describe('EventScheduleController', () => {
     expect(response.status).toBe(500);
     expect(service.updateEventSchedule).not.toHaveBeenCalled();
   });
+
+  it('更新権限がないユーザーには403を返す', async () => {
+    const { app, service, bindings } = setup();
+    (service.updateEventSchedule as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Schedule update forbidden')
+    );
+
+    const response = await app.request(
+      '/events/1',
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'session=session-id',
+        },
+        body: JSON.stringify(validBody),
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(403);
+  });
 });

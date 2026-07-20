@@ -76,13 +76,20 @@ export function createEventScheduleController(
       }
       if (
         error instanceof Error &&
+        error.message === 'Schedule update forbidden'
+      ) {
+        return c.json({ error: error.message }, 403);
+      }
+      if (
+        error instanceof Error &&
         error.message === 'Gathering group is not assigned to event'
       ) {
         return c.json({ error: error.message }, 400);
       }
       if (
         error instanceof Error &&
-        error.message === 'Draft notification schedule was changed'
+        (error.message === 'Draft notification schedule was changed' ||
+          error.message === 'Failed to persist draft notification schedule')
       ) {
         return c.json({ error: error.message }, 409);
       }
