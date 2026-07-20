@@ -30,15 +30,9 @@ describe('NotificationScheduleRepository', () => {
     userIds.push(user!.user_id);
 
     const event = await env.DB.prepare(
-      'INSERT INTO events (user_id, event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?, ?) RETURNING event_id'
+      'INSERT INTO events (event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?) RETURNING event_id'
     )
-      .bind(
-        user!.user_id,
-        `通知予定テスト競技-${suffix}`,
-        '体育館',
-        '0900',
-        '1000'
-      )
+      .bind(`通知予定テスト競技-${suffix}`, '体育館', '0900', '1000')
       .first<{ event_id: number }>();
     eventIds.push(event!.event_id);
 
