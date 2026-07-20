@@ -657,11 +657,9 @@ components:
 
     Event:
       type: object
-      required: [event_id, user_id, event_name, venue, start_time, end_time, created_at, updated_at]
+      required: [event_id, event_name, venue, start_time, end_time, created_at, updated_at]
       properties:
         event_id:
-          type: integer
-        user_id:
           type: integer
         event_name:
           type: string

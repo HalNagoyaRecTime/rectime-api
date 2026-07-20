@@ -225,9 +225,9 @@ describe('0016_align_firebase_tokens_and_notifications_to_ideal_schema.sql の�
       .bind(studentNumber)
       .first<{ id: number }>();
     const event = await env.DB.prepare(
-      'INSERT INTO events (event_id, user_id, event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?)' 
+      'INSERT INTO events (event_id, event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?, ?)'
     )
-      .bind(eventId, -1, '移行テストイベント', 'テスト会場', '0900', '1000')
+      .bind(eventId, '移行テストイベント', 'テスト会場', '0900', '1000')
       .run();
     expect(event.success).toBe(true);
     const iosToken = await env.DB.prepare(

@@ -10,7 +10,6 @@ import { IEventRepository } from '../../domain/interfaces/repositories/IEventRep
 function toEntity(row: typeof events.$inferSelect): EventEntity {
   return {
     event_id: row.id,
-    user_id: row.userId,
     event_name: row.name,
     rule_text: row.ruleText,
     venue: row.venue,

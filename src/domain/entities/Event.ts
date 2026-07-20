@@ -1,6 +1,5 @@
 export interface EventEntity {
   event_id: number;
-  user_id: number;
   event_name: string;
   rule_text: string | null;
   venue: string;
