@@ -122,7 +122,7 @@ describe('EventScheduleRepository', () => {
     ]);
   });
 
-  it('通知なしへの変更ではdraftだけを削除する', async () => {
+  it('通知なしへの変更ではdraftと参照されなくなった自動通知内容を削除する', async () => {
     const fixture = await createFixture();
     await repository.apply(buildInput(fixture));
     await repository.apply({
@@ -136,6 +136,38 @@ describe('EventScheduleRepository', () => {
       .bind(fixture.eventId)
       .first<{ count: number }>();
     expect(count?.count).toBe(0);
+    const notificationCount = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM notifications WHERE notification_type = 'event_reminder'"
+    ).first<{ count: number }>();
+    expect(notificationCount?.count).toBe(0);
+  });
+
+  it('他のscheduleが参照する通知内容と送信履歴は削除しない', async () => {
+    const fixture = await createFixture();
+    await repository.apply(buildInput(fixture));
+    await env.DB.prepare(
+      "UPDATE notification_schedules SET send_status = 'sent' WHERE event_id = ?"
+    )
+      .bind(fixture.eventId)
+      .run();
+
+    await repository.apply({
+      ...buildInput(fixture),
+      notification_enabled: false,
+    });
+
+    const history = await env.DB.prepare(
+      `SELECT ns.send_status, n.notification_type
+       FROM notification_schedules ns
+       INNER JOIN notifications n ON n.notification_id = ns.notification_id
+       WHERE ns.event_id = ?`
+    )
+      .bind(fixture.eventId)
+      .first();
+    expect(history).toMatchObject({
+      send_status: 'sent',
+      notification_type: 'event_reminder',
+    });
   });
 
   it('通知予定作成に失敗した場合はイベント時刻と通知内容もロールバックする', async () => {

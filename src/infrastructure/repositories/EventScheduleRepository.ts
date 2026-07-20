@@ -1,4 +1,7 @@
-import type { D1Database } from '@cloudflare/workers-types';
+import type {
+  D1Database,
+  D1PreparedStatement,
+} from '@cloudflare/workers-types';
 import type { IEventScheduleRepository } from '../../domain/interfaces/repositories/IEventScheduleRepository';
 
 export function createEventScheduleRepository(
@@ -6,6 +9,19 @@ export function createEventScheduleRepository(
 ): IEventScheduleRepository {
   return {
     async apply(input) {
+      const draftNotifications = await db
+        .prepare(
+          `SELECT notification_id
+           FROM notification_schedules
+           WHERE event_id = ?
+             AND gathering_group_id = ?
+             AND send_status = 'draft'`
+        )
+        .bind(input.event_id, input.gathering_group_id)
+        .all<{ notification_id: number }>();
+      const draftNotificationIds = draftNotifications.results.map(
+        row => row.notification_id
+      );
       const statements = [
         db
           .prepare(
@@ -27,6 +43,7 @@ export function createEventScheduleRepository(
             )
             .bind(input.event_id, input.gathering_group_id)
         );
+        appendOrphanNotificationCleanup(db, statements, draftNotificationIds);
         await db.batch(statements);
         return;
       }
@@ -118,8 +135,32 @@ export function createEventScheduleRepository(
             input.gathering_group_id
           )
       );
+      appendOrphanNotificationCleanup(db, statements, draftNotificationIds);
 
       await db.batch(statements);
     },
   };
+}
+
+function appendOrphanNotificationCleanup(
+  db: D1Database,
+  statements: D1PreparedStatement[],
+  notificationIds: number[]
+): void {
+  if (notificationIds.length === 0) return;
+  const placeholders = notificationIds.map(() => '?').join(', ');
+  statements.push(
+    db
+      .prepare(
+        `DELETE FROM notifications
+         WHERE notification_id IN (${placeholders})
+           AND notification_type = 'event_reminder'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM notification_schedules
+             WHERE notification_schedules.notification_id = notifications.notification_id
+           )`
+      )
+      .bind(...notificationIds)
+  );
 }
