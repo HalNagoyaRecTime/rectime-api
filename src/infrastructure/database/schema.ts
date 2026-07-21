@@ -7,26 +7,6 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 
-export const student_master = sqliteTable(
-  'student_master',
-  {
-    id: integer('student_master').primaryKey({ autoIncrement: true }),
-    classCode: integer('class_code').notNull(),
-    attendanceNumber: integer('attendance_number').notNull(),
-    studentIdNumber: integer('student_id_number').notNull().unique(),
-    userName: text('user_name').notNull(),
-    createdAt: text('created_at')
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
-  },
-  table => [
-    uniqueIndex('uq_student_master_class_attendance').on(
-      table.classCode,
-      table.attendanceNumber
-    ),
-  ]
-);
-
 export const class_rooms = sqliteTable('class_rooms', {
   id: integer('class_room_id').primaryKey({ autoIncrement: true }),
   classCode: text('class_code').notNull(),

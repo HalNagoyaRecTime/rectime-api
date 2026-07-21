@@ -1,6 +1,5 @@
 import { getDb } from '../lib/db';
 import { createStudentRepository } from '../infrastructure/repositories/StudentRepository';
-import { createStudentMasterRepository } from '../infrastructure/repositories/StudentMasterRepository';
 import { createEventRepository } from '../infrastructure/repositories/EventRepository';
 import { createClassRepository } from '../infrastructure/repositories/ClassRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
@@ -10,7 +9,6 @@ import { createGatheringGroupRepository } from '../infrastructure/repositories/G
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
 import { createStudentService } from '../application/services/StudentService';
-import { createStudentMasterService } from '../application/services/StudentMasterService';
 import { createEventService } from '../application/services/EventService';
 import { createClassService } from '../application/services/ClassService';
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
@@ -22,7 +20,6 @@ import { createGatheringGroupService } from '../application/services/GatheringGr
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createGatheringService } from '../application/services/GatheringService';
 import { createStudentController } from '../presentation/controllers/StudentController';
-import { createStudentMasterController } from '../presentation/controllers/StudentMasterController';
 import { createEventController } from '../presentation/controllers/EventController';
 import { createClassController } from '../presentation/controllers/ClassController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
@@ -42,7 +39,6 @@ export function createDIContainer(env: Env) {
   // Repositories
   const userRepository = createUserRepository(db);
   const studentRepository = createStudentRepository(db);
-  const studentMasterRepository = createStudentMasterRepository(db);
   const eventRepository = createEventRepository(db);
   const classRepository = createClassRepository(db);
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
@@ -59,9 +55,6 @@ export function createDIContainer(env: Env) {
   const studentService = createStudentService(
     studentRepository,
     classRepository
-  );
-  const studentMasterService = createStudentMasterService(
-    studentMasterRepository
   );
   const eventService = createEventService(eventRepository);
   const classService = createClassService(classRepository);
@@ -95,8 +88,6 @@ export function createDIContainer(env: Env) {
 
   // Controllers
   const studentController = createStudentController(studentService);
-  const studentMasterController =
-    createStudentMasterController(studentMasterService);
   const eventController = createEventController(eventService);
   const classController = createClassController(classService);
   const firebaseTokenController =
@@ -118,7 +109,6 @@ export function createDIContainer(env: Env) {
   return {
     authService,
     studentController,
-    studentMasterController,
     eventController,
     classController,
     firebaseTokenController,
