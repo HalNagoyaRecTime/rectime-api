@@ -3,11 +3,11 @@ import { IClassRoomRepository } from '../../domain/interfaces/repositories/IClas
 import { IClassRoomService } from './IClassRoomService';
 
 export function createClassRoomService(
-  classRepository: IClassRoomRepository
+  classRoomRepository: IClassRoomRepository
 ): IClassRoomService {
   return {
     async getAllClassRooms(): Promise<ClassRoomDTO[]> {
-      const classRooms = await classRepository.findAll();
+      const classRooms = await classRoomRepository.findAll();
       return classRooms.map(classroom => ({
         class_room_id: classroom.class_room_id,
         class_code: classroom.class_code,

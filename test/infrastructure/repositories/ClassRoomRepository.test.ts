@@ -45,7 +45,7 @@ describe('ClassRoomRepository', () => {
       expect(ids).toEqual([...ids].sort((a, b) => a - b));
     });
 
-    it('各カラムを ClassEntity のフィールドにマッピングする', async () => {
+    it('各カラムを ClassRoomEntity のフィールドにマッピングする', async () => {
       const result = await repo.findAll();
 
       expect(result[0]).toMatchObject({
