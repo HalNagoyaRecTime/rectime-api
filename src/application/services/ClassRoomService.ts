@@ -9,9 +9,9 @@ export function createClassRoomService(
     async getAllClassRooms(): Promise<ClassRoomDTO[]> {
       const classRooms = await classRepository.findAll();
       return classRooms.map(classroom => ({
-        class_room_id: classroom.f_class_room_id,
-        class_code: classroom.f_class_code,
-        class_name: classroom.f_class_name,
+        class_room_id: classroom.class_room_id,
+        class_code: classroom.class_code,
+        class_name: classroom.class_name,
       }));
     },
   };

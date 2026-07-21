@@ -41,7 +41,7 @@ describe('ClassRoomRepository', () => {
       const result = await repo.findAll();
 
       expect(result).toHaveLength(2);
-      const ids = result.map(c => c.f_class_room_id);
+      const ids = result.map(c => c.class_room_id);
       expect(ids).toEqual([...ids].sort((a, b) => a - b));
     });
 
@@ -49,12 +49,12 @@ describe('ClassRoomRepository', () => {
       const result = await repo.findAll();
 
       expect(result[0]).toMatchObject({
-        f_class_code: '12B',
-        f_class_name: '2年Bクラス',
+        class_code: '12B',
+        class_name: '2年Bクラス',
       });
       expect(result[1]).toMatchObject({
-        f_class_code: '11A',
-        f_class_name: '1年Aクラス',
+        class_code: '11A',
+        class_name: '1年Aクラス',
       });
     });
   });
