@@ -17,23 +17,36 @@ function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
   };
 }
 
+function createRepository(
+  overrides: Partial<IEventRepository> = {}
+): IEventRepository {
+  return {
+    findAll: vi.fn(),
+    findById: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    hasReferences: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe('EventService', () => {
   describe('getAllEvents', () => {
-    it('リポジトリの結果をそのまま返す', async () => {
+    it('EntityをレスポンスDTOへ変換し、既定のページング値を返す', async () => {
       const events = [buildEvent()];
-      const repository: IEventRepository = {
+      const repository = createRepository({
         findAll: vi.fn().mockResolvedValue({ events, total: 1 }),
-        findById: vi.fn(),
-      };
+      });
       const service = createEventService(repository);
 
       const result = await service.getAllEvents({
-        startTime: '0900',
+        start_time: '0900',
         limit: 10,
         offset: 0,
       });
 
-      expect(result).toEqual({ events, total: 1 });
+      expect(result).toEqual({ events, total: 1, limit: 10, offset: 0 });
       expect(repository.findAll).toHaveBeenCalledWith({
         startTime: '0900',
         limit: 10,
@@ -43,12 +56,12 @@ describe('EventService', () => {
   });
 
   describe('getEventById', () => {
-    it('存在する場合はEventEntityを返す', async () => {
+    it('存在する場合はEventDTOを返す', async () => {
       const event = buildEvent();
-      const repository: IEventRepository = {
+      const repository = createRepository({
         findAll: vi.fn(),
         findById: vi.fn().mockResolvedValue(event),
-      };
+      });
       const service = createEventService(repository);
 
       await expect(service.getEventById(1)).resolves.toEqual(event);
@@ -56,14 +69,81 @@ describe('EventService', () => {
     });
 
     it('存在しない場合はエラーを投げる', async () => {
-      const repository: IEventRepository = {
+      const repository = createRepository({
         findAll: vi.fn(),
         findById: vi.fn().mockResolvedValue(null),
-      };
+      });
 
       await expect(
         createEventService(repository).getEventById(999)
       ).rejects.toThrow('Event not found');
+    });
+  });
+
+  describe('createEvent', () => {
+    it('リクエストDTOをDomain入力型へ変換して作成する', async () => {
+      const event = buildEvent();
+      const repository = createRepository({
+        create: vi.fn().mockResolvedValue(event),
+      });
+
+      await expect(
+        createEventService(repository).createEvent({
+          event_name: '開会式',
+          rule_text: null,
+          venue: '体育館',
+          start_time: '0900',
+          end_time: '0930',
+        })
+      ).resolves.toEqual(event);
+
+      expect(repository.create).toHaveBeenCalledWith({
+        name: '開会式',
+        ruleText: null,
+        venue: '体育館',
+        startTime: '0900',
+        endTime: '0930',
+      });
+    });
+  });
+
+  describe('updateEvent', () => {
+    it('リクエストDTOをDomain入力型へ変換して更新する', async () => {
+      const event = buildEvent({ event_name: '更新後の開会式' });
+      const repository = createRepository({
+        update: vi.fn().mockResolvedValue(event),
+      });
+
+      await expect(
+        createEventService(repository).updateEvent(1, {
+          event_name: '更新後の開会式',
+          rule_text: '更新規則',
+          venue: '体育館',
+          start_time: '1000',
+          end_time: '1030',
+        })
+      ).resolves.toEqual(event);
+
+      expect(repository.update).toHaveBeenCalledWith(1, {
+        name: '更新後の開会式',
+        ruleText: '更新規則',
+        venue: '体育館',
+        startTime: '1000',
+        endTime: '1030',
+      });
+    });
+  });
+
+  describe('deleteEvent', () => {
+    it('参照中のイベントは削除せず409用のエラーを投げる', async () => {
+      const repository = createRepository({
+        hasReferences: vi.fn().mockResolvedValue(true),
+      });
+
+      await expect(
+        createEventService(repository).deleteEvent(1)
+      ).rejects.toThrow('Event is in use');
+      expect(repository.delete).not.toHaveBeenCalled();
     });
   });
 });

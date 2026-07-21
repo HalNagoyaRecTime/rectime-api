@@ -94,6 +94,15 @@ apiV1.get('/events', c => {
 apiV1.get('/events/:eventId', c => {
   return c.get('container').eventController.getEventById(c);
 });
+apiV1.post('/events', c => {
+  return c.get('container').eventController.createEvent(c);
+});
+apiV1.put('/events/:eventId', c => {
+  return c.get('container').eventController.updateEvent(c);
+});
+apiV1.delete('/events/:eventId', c => {
+  return c.get('container').eventController.deleteEvent(c);
+});
 
 // Class routes
 apiV1.get('/classes', c => {

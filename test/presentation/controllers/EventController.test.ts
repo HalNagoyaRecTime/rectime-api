@@ -22,11 +22,17 @@ function setup() {
   const eventService: IEventService = {
     getAllEvents: vi.fn(),
     getEventById: vi.fn(),
+    createEvent: vi.fn(),
+    updateEvent: vi.fn(),
+    deleteEvent: vi.fn(),
   };
   const controller = createEventController(eventService);
   const app = new Hono();
   app.get('/events', c => controller.getAllEvents(c));
   app.get('/events/:eventId', c => controller.getEventById(c));
+  app.post('/events', c => controller.createEvent(c));
+  app.put('/events/:eventId', c => controller.updateEvent(c));
+  app.delete('/events/:eventId', c => controller.deleteEvent(c));
   return { app, eventService };
 }
 
@@ -36,13 +42,13 @@ describe('EventController', () => {
       const { app, eventService } = setup();
       const events = [buildEvent()];
       (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
-        { events, total: 1 }
+        { events, total: 1, limit: 50, offset: 0 }
       );
 
       const response = await app.request('/events');
 
       expect(eventService.getAllEvents).toHaveBeenCalledWith({
-        startTime: undefined,
+        start_time: undefined,
         limit: undefined,
         offset: undefined,
       });
@@ -59,7 +65,7 @@ describe('EventController', () => {
       const { app, eventService } = setup();
       const events = [buildEvent()];
       (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
-        { events, total: 1 }
+        { events, total: 1, limit: 10, offset: 5 }
       );
 
       const response = await app.request(
@@ -67,7 +73,7 @@ describe('EventController', () => {
       );
 
       expect(eventService.getAllEvents).toHaveBeenCalledWith({
-        startTime: '0930',
+        start_time: '0930',
         limit: 10,
         offset: 5,
       });
@@ -151,6 +157,84 @@ describe('EventController', () => {
         error: 'Failed to fetch event',
         details: 'db error',
       });
+    });
+  });
+
+  describe('createEvent', () => {
+    it('有効な本文をServiceへ渡し、作成結果を201で返す', async () => {
+      const { app, eventService } = setup();
+      const event = buildEvent();
+      (eventService.createEvent as ReturnType<typeof vi.fn>).mockResolvedValue(
+        event
+      );
+
+      const response = await app.request('/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue: 'トラック',
+          start_time: '0930',
+          end_time: '0950',
+        }),
+      });
+
+      expect(eventService.createEvent).toHaveBeenCalledWith({
+        event_name: '徒競走',
+        rule_text: null,
+        venue: 'トラック',
+        start_time: '0930',
+        end_time: '0950',
+      });
+      expect(response.status).toBe(201);
+      expect(await response.json()).toEqual(event);
+    });
+  });
+
+  describe('updateEvent', () => {
+    it('IDと有効な本文をServiceへ渡して更新する', async () => {
+      const { app, eventService } = setup();
+      const event = buildEvent({ event_name: '更新後の徒競走' });
+      (eventService.updateEvent as ReturnType<typeof vi.fn>).mockResolvedValue(
+        event
+      );
+
+      const response = await app.request('/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '更新後の徒競走',
+          rule_text: '規則',
+          venue: 'トラック',
+          start_time: '1000',
+          end_time: '1030',
+        }),
+      });
+
+      expect(eventService.updateEvent).toHaveBeenCalledWith(1, {
+        event_name: '更新後の徒競走',
+        rule_text: '規則',
+        venue: 'トラック',
+        start_time: '1000',
+        end_time: '1030',
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(event);
+    });
+  });
+
+  describe('deleteEvent', () => {
+    it('参照中のイベントは409を返す', async () => {
+      const { app, eventService } = setup();
+      (eventService.deleteEvent as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Event is in use')
+      );
+
+      const response = await app.request('/events/1', { method: 'DELETE' });
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: 'Event is in use' });
     });
   });
 });
