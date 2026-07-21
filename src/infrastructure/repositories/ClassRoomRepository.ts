@@ -1,23 +1,29 @@
+import { drizzle } from 'drizzle-orm/d1';
+import * as schema from '../database/schema';
+import { class_rooms } from '../database/schema';
+
 import { D1Database } from '@cloudflare/workers-types';
 import { ClassRoomEntity } from '../../domain/entities/ClassRoom';
 import { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 
+function toEntity(row: typeof class_rooms.$inferSelect): ClassRoomEntity {
+  return {
+    class_room_id: row.id,
+    class_code: row.classCode,
+    class_name: row.name,
+  };
+}
+
 export function createClassRoomRepository(
   db: D1Database
 ): IClassRoomRepository {
+  const orm = drizzle(db, { schema });
+
   return {
     async findAll(): Promise<ClassRoomEntity[]> {
-      const result = await db
-        .prepare(
-          'SELECT class_room_id, class_code, class_name FROM class_rooms ORDER BY class_room_id'
-        )
-        .all();
+      const result = await orm.select().from(class_rooms).all();
 
-      return result.results.map(row => ({
-        f_class_room_id: row.class_room_id as number,
-        f_class_code: row.class_code as string,
-        f_class_name: row.class_name as string,
-      }));
+      return result ? result.map(toEntity) : [];
     },
   };
 }
