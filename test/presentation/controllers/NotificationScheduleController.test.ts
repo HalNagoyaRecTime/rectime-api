@@ -5,9 +5,10 @@ import { createNotificationScheduleController } from '../../../src/presentation/
 
 const schedule = {
   notification_send_schedule_id: 1,
-  user_id: 1,
+  created_user_id: 1,
   event_id: 2,
-  gathering_group_id: 3,
+  firebase_token_id: 3,
+  fcm_token: 'token-3',
   notification_id: 4,
   importance: 2,
   notification_type: 'manual',
@@ -53,7 +54,7 @@ describe('NotificationScheduleController', () => {
     ).mockResolvedValue({ notification_schedules: [schedule], total: 1 });
 
     const response = await app.request(
-      '/notification-schedules?sendStatus=draft&eventId=2&gatheringGroupId=3&from=2026-07-23T08%3A00%3A00.000Z&to=2026-07-23T10%3A00%3A00.000Z&limit=20&offset=10'
+      '/notification-schedules?sendStatus=draft&eventId=2&firebaseTokenId=3&from=2026-07-23T08%3A00%3A00.000Z&to=2026-07-23T10%3A00%3A00.000Z&limit=20&offset=10'
     );
 
     expect(response.status).toBe(200);
@@ -66,7 +67,7 @@ describe('NotificationScheduleController', () => {
     expect(service.getAllNotificationSchedules).toHaveBeenCalledWith({
       send_status: 'draft',
       event_id: 2,
-      gathering_group_id: 3,
+      firebase_token_id: 3,
       from: '2026-07-23T08:00:00.000Z',
       to: '2026-07-23T10:00:00.000Z',
       limit: 20,
@@ -86,7 +87,7 @@ describe('NotificationScheduleController', () => {
     expect(service.getAllNotificationSchedules).toHaveBeenCalledWith({
       send_status: undefined,
       event_id: undefined,
-      gathering_group_id: undefined,
+      firebase_token_id: undefined,
       from: undefined,
       to: undefined,
       limit: 50,
@@ -118,9 +119,9 @@ describe('NotificationScheduleController', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userId: 1,
+        createdUserId: 1,
         eventId: 2,
-        gatheringGroupId: 3,
+        firebaseTokenId: 3,
         notificationId: 4,
         importance: 2,
         sendAt: '2026-07-23T09:00:00.000Z',
@@ -138,9 +139,9 @@ describe('NotificationScheduleController', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userId: 1,
+        createdUserId: 1,
         eventId: 2,
-        gatheringGroupId: 3,
+        firebaseTokenId: 3,
         notificationId: 4,
         importance: 1,
         sendAt: '2026-07-23T09:00:00.000Z',

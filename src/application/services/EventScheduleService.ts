@@ -58,21 +58,30 @@ export function createEventScheduleService(deps: {
 
       const updatedEvent = await eventRepository.findById(input.event_id);
       if (!updatedEvent) throw new Error('Event not found');
-      const drafts = input.notification_enabled
-        ? await notificationScheduleRepository.findDraftsByEventAndGroup(
-            input.event_id,
+      let drafts: Awaited<
+        ReturnType<
+          typeof notificationScheduleRepository.findDraftsByEventAndTokens
+        >
+      > = [];
+      if (input.notification_enabled) {
+        const tokenIds =
+          await notificationScheduleRepository.findActiveFirebaseTokenIdsByGatheringGroup(
             input.gathering_group_id
-          )
-        : [];
-      const notificationSchedule = drafts[0] ?? null;
-      if (input.notification_enabled && !notificationSchedule) {
-        throw new Error('Failed to persist draft notification schedule');
+          );
+        drafts =
+          await notificationScheduleRepository.findDraftsByEventAndTokens(
+            input.event_id,
+            tokenIds
+          );
+        if (tokenIds.length > 0 && drafts.length === 0) {
+          throw new Error('Failed to persist draft notification schedule');
+        }
       }
 
       return {
         event: updatedEvent,
         notification_enabled: input.notification_enabled,
-        notification_schedule: notificationSchedule,
+        notification_schedules: drafts,
       };
     },
   };

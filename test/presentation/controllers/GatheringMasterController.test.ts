@@ -77,7 +77,7 @@ describe('Gathering master controllers', () => {
     const groupResponse = await app.request('/gathering-groups', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gatheringGroupName: '赤組' }),
+      body: JSON.stringify({ userId: 5 }),
     });
 
     expect(spotResponse.status).toBe(201);
@@ -85,9 +85,7 @@ describe('Gathering master controllers', () => {
     expect(gatheringSpotService.createGatheringSpot).toHaveBeenCalledWith(
       '体育館前'
     );
-    expect(gatheringGroupService.createGatheringGroup).toHaveBeenCalledWith(
-      '赤組'
-    );
+    expect(gatheringGroupService.createGatheringGroup).toHaveBeenCalledWith(5);
   });
 
   it('空の名称は400で拒否する', async () => {
@@ -112,9 +110,7 @@ describe('Gathering master controllers', () => {
     ]);
     (
       gatheringGroupService.getAllGatheringGroups as ReturnType<typeof vi.fn>
-    ).mockResolvedValue([
-      { gathering_group_id: 2, gathering_group_name: '赤組' },
-    ]);
+    ).mockResolvedValue([{ gathering_group_id: 2, user_id: 5 }]);
 
     const spotResponse = await app.request('/gathering-spots');
     const groupResponse = await app.request('/gathering-groups');
@@ -123,7 +119,7 @@ describe('Gathering master controllers', () => {
       { gathering_spot_id: 1, gathering_spot_name: '体育館前' },
     ]);
     expect(await groupResponse.json()).toEqual([
-      { gathering_group_id: 2, gathering_group_name: '赤組' },
+      { gathering_group_id: 2, user_id: 5 },
     ]);
   });
 
@@ -253,7 +249,7 @@ describe('Gathering master controllers', () => {
     const groupResponse = await app.request('/gathering-groups', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gatheringGroupName: '赤組' }),
+      body: JSON.stringify({ userId: 5 }),
     });
     const memberResponse = await app.request('/gathering-groups/1/members', {
       method: 'POST',

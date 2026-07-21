@@ -87,12 +87,17 @@ describe('0015_create_gatherings.sql', () => {
     let groupId: number | undefined;
     let eventId: number | undefined;
     let spotId: number | undefined;
+    let userId: number | undefined;
 
     try {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('migrationグループオーナー') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      userId = user!.user_id;
       const group = await env.DB.prepare(
-        'INSERT INTO gathering_groups (gathering_group_name) VALUES (?) RETURNING gathering_group_id'
+        'INSERT INTO gathering_groups (user_id) VALUES (?) RETURNING gathering_group_id'
       )
-        .bind('migration集会グループ')
+        .bind(userId)
         .first<{ gathering_group_id: number }>();
       groupId = group!.gathering_group_id;
       const event = await env.DB.prepare(
@@ -165,6 +170,11 @@ describe('0015_create_gatherings.sql', () => {
           'DELETE FROM gathering_spots WHERE gathering_spot_id = ?'
         )
           .bind(spotId)
+          .run();
+      }
+      if (userId) {
+        await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+          .bind(userId)
           .run();
       }
     }

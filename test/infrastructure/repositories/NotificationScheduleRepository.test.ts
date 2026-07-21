@@ -9,10 +9,8 @@ describe('NotificationScheduleRepository', () => {
   const scheduleIds: number[] = [];
   const firebaseTokenIds: number[] = [];
   const gatheringGroupMemberIds: number[] = [];
-  const gatheringIds: number[] = [];
   const notificationIds: number[] = [];
   const groupIds: number[] = [];
-  const spotIds: number[] = [];
   const eventIds: number[] = [];
   const userIds: number[] = [];
 
@@ -36,26 +34,12 @@ describe('NotificationScheduleRepository', () => {
       .first<{ event_id: number }>();
     eventIds.push(event!.event_id);
 
-    const group = await env.DB.prepare(
-      'INSERT INTO gathering_groups (gathering_group_name) VALUES (?) RETURNING gathering_group_id'
+    const token = await env.DB.prepare(
+      'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 1, ?) RETURNING firebase_token_id'
     )
-      .bind(`通知予定テストグループ-${suffix}`)
-      .first<{ gathering_group_id: number }>();
-    groupIds.push(group!.gathering_group_id);
-
-    const spot = await env.DB.prepare(
-      'INSERT INTO gathering_spots (gathering_spot_name) VALUES (?) RETURNING gathering_spot_id'
-    )
-      .bind(`通知予定テスト場所-${suffix}`)
-      .first<{ gathering_spot_id: number }>();
-    spotIds.push(spot!.gathering_spot_id);
-
-    const gathering = await env.DB.prepare(
-      'INSERT INTO gatherings (gathering_group_id, event_id, gathering_spot_id) VALUES (?, ?, ?) RETURNING gathering_id'
-    )
-      .bind(group!.gathering_group_id, event!.event_id, spot!.gathering_spot_id)
-      .first<{ gathering_id: number }>();
-    gatheringIds.push(gathering!.gathering_id);
+      .bind(user!.user_id, `通知予定テストトークン-${suffix}`)
+      .first<{ firebase_token_id: number }>();
+    firebaseTokenIds.push(token!.firebase_token_id);
 
     const notification = await env.DB.prepare(
       'INSERT INTO notifications (notification_type, title, body) VALUES (?, ?, ?) RETURNING notification_id'
@@ -69,9 +53,9 @@ describe('NotificationScheduleRepository', () => {
     notificationIds.push(notification!.notification_id);
 
     const schedule = await repository.create({
-      user_id: user!.user_id,
+      created_user_id: user!.user_id,
       event_id: event!.event_id,
-      gathering_group_id: group!.gathering_group_id,
+      firebase_token_id: token!.firebase_token_id,
       notification_id: notification!.notification_id,
       importance: 2,
       send_at: options.sendAt,
@@ -90,7 +74,7 @@ describe('NotificationScheduleRepository', () => {
       schedule,
       userId: user!.user_id,
       eventId: event!.event_id,
-      groupId: group!.gathering_group_id,
+      firebaseTokenId: token!.firebase_token_id,
     };
   }
 
@@ -102,28 +86,9 @@ describe('NotificationScheduleRepository', () => {
         .bind(id)
         .run();
     }
-    for (const id of firebaseTokenIds) {
-      await env.DB.prepare(
-        'DELETE FROM firebase_tokens WHERE firebase_token_id = ?'
-      )
-        .bind(id)
-        .run();
-    }
     for (const id of gatheringGroupMemberIds) {
       await env.DB.prepare(
         'DELETE FROM gathering_group_members WHERE gathering_group_member_id = ?'
-      )
-        .bind(id)
-        .run();
-    }
-    for (const id of gatheringIds) {
-      await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
-        .bind(id)
-        .run();
-    }
-    for (const id of notificationIds) {
-      await env.DB.prepare(
-        'DELETE FROM notifications WHERE notification_id = ?'
       )
         .bind(id)
         .run();
@@ -135,9 +100,16 @@ describe('NotificationScheduleRepository', () => {
         .bind(id)
         .run();
     }
-    for (const id of spotIds) {
+    for (const id of firebaseTokenIds) {
       await env.DB.prepare(
-        'DELETE FROM gathering_spots WHERE gathering_spot_id = ?'
+        'DELETE FROM firebase_tokens WHERE firebase_token_id = ?'
+      )
+        .bind(id)
+        .run();
+    }
+    for (const id of notificationIds) {
+      await env.DB.prepare(
+        'DELETE FROM notifications WHERE notification_id = ?'
       )
         .bind(id)
         .run();
@@ -155,16 +127,14 @@ describe('NotificationScheduleRepository', () => {
     scheduleIds.length = 0;
     firebaseTokenIds.length = 0;
     gatheringGroupMemberIds.length = 0;
-    gatheringIds.length = 0;
     notificationIds.length = 0;
     groupIds.length = 0;
-    spotIds.length = 0;
     eventIds.length = 0;
     userIds.length = 0;
   });
 
-  it('通知内容を結合した通知予定を作成・詳細取得できる', async () => {
-    const { schedule } = await createFixture({
+  it('通知内容とFirebaseトークンを結合した通知予定を作成・詳細取得できる', async () => {
+    const { schedule, firebaseTokenId } = await createFixture({
       sendAt: '2026-07-23T09:00:00.000Z',
     });
 
@@ -177,10 +147,11 @@ describe('NotificationScheduleRepository', () => {
       importance: 2,
       notification_type: 'manual',
       send_status: 'draft',
+      firebase_token_id: firebaseTokenId,
     });
   });
 
-  it('状態・競技・グループ・期間で絞り込み、totalとページを返す', async () => {
+  it('状態・競技・Firebaseトークン・期間で絞り込み、totalとページを返す', async () => {
     const target = await createFixture({
       sendAt: '2026-07-23T18:00:00+09:00',
     });
@@ -192,7 +163,7 @@ describe('NotificationScheduleRepository', () => {
     const result = await repository.findAll({
       send_status: 'draft',
       event_id: target.eventId,
-      gathering_group_id: target.groupId,
+      firebase_token_id: target.firebaseTokenId,
       from: '2026-07-23T08:30:00.000Z',
       to: '2026-07-23T09:30:00.000Z',
       limit: 1,
@@ -262,47 +233,45 @@ describe('NotificationScheduleRepository', () => {
     expect(firstClaim[0]).toMatchObject({
       notification_send_schedule_id: due.schedule.notification_send_schedule_id,
       send_status: 'sending',
+      fcm_token: due.schedule.fcm_token,
     });
     expect(secondClaim).toEqual([]);
   });
 
-  it('複数グループの有効なFirebaseトークンを一括取得する', async () => {
-    const first = await createFixture({
+  it('グループに所属する有効なFirebaseトークンのみ取得する', async () => {
+    const activeUser = await createFixture({
       sendAt: '2026-07-23T09:00:00.000Z',
     });
-    const second = await createFixture({
+    const inactiveUser = await createFixture({
       sendAt: '2026-07-23T09:05:00.000Z',
     });
 
-    for (const [fixture, token, active] of [
-      [first, 'active-token-1', 1],
-      [second, 'inactive-token-2', 0],
-    ] as const) {
+    const group = await env.DB.prepare(
+      'INSERT INTO gathering_groups (user_id) VALUES (?) RETURNING gathering_group_id'
+    )
+      .bind(activeUser.userId)
+      .first<{ gathering_group_id: number }>();
+    groupIds.push(group!.gathering_group_id);
+
+    for (const fixture of [activeUser, inactiveUser]) {
       const member = await env.DB.prepare(
         'INSERT INTO gathering_group_members (gathering_group_id, user_id) VALUES (?, ?) RETURNING gathering_group_member_id'
       )
-        .bind(fixture.groupId, fixture.userId)
+        .bind(group!.gathering_group_id, fixture.userId)
         .first<{ gathering_group_member_id: number }>();
       gatheringGroupMemberIds.push(member!.gathering_group_member_id);
-      const firebaseToken = await env.DB.prepare(
-        'INSERT INTO firebase_tokens (user_id, platform, fcm_token, is_firebase_active) VALUES (?, ?, ?, ?) RETURNING firebase_token_id'
-      )
-        .bind(fixture.userId, 2, token, active)
-        .first<{ firebase_token_id: number }>();
-      firebaseTokenIds.push(firebaseToken!.firebase_token_id);
     }
+    await env.DB.prepare(
+      'UPDATE firebase_tokens SET is_firebase_active = 0 WHERE firebase_token_id = ?'
+    )
+      .bind(inactiveUser.firebaseTokenId)
+      .run();
 
-    const tokens = await repository.findTargetTokensByGatheringGroupIds([
-      first.groupId,
-      second.groupId,
-    ]);
+    const tokenIds =
+      await repository.findActiveFirebaseTokenIdsByGatheringGroup(
+        group!.gathering_group_id
+      );
 
-    expect(tokens).toEqual([
-      {
-        gathering_group_id: first.groupId,
-        firebase_token_id: firebaseTokenIds[0],
-        fcm_token: 'active-token-1',
-      },
-    ]);
+    expect(tokenIds).toEqual([activeUser.firebaseTokenId]);
   });
 });

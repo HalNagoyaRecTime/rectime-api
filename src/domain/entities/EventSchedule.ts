@@ -14,5 +14,5 @@ export interface UpdateEventScheduleInput {
 export interface EventScheduleResult {
   event: EventEntity;
   notification_enabled: boolean;
-  notification_schedule: NotificationScheduleEntity | null;
+  notification_schedules: NotificationScheduleEntity[];
 }

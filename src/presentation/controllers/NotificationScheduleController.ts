@@ -3,9 +3,9 @@ import { z } from 'zod';
 import type { INotificationScheduleService } from '../../application/services/INotificationScheduleService';
 
 const createNotificationScheduleSchema = z.object({
-  userId: z.number().int().positive(),
+  createdUserId: z.number().int().positive(),
   eventId: z.number().int().positive(),
-  gatheringGroupId: z.number().int().positive(),
+  firebaseTokenId: z.number().int().positive(),
   notificationId: z.number().int().positive(),
   importance: z.literal(2).optional(),
   // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00.000Z
@@ -18,7 +18,7 @@ const notificationScheduleListQuerySchema = z
   .object({
     sendStatus: z.enum(['draft', 'sending', 'sent', 'failed']).optional(),
     eventId: z.coerce.number().int().positive().optional(),
-    gatheringGroupId: z.coerce.number().int().positive().optional(),
+    firebaseTokenId: z.coerce.number().int().positive().optional(),
     from: z.string().datetime({ offset: true }).optional(),
     to: z.string().datetime({ offset: true }).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -37,7 +37,7 @@ export function createNotificationScheduleController(
     const parsedQuery = notificationScheduleListQuerySchema.safeParse({
       sendStatus: c.req.query('sendStatus'),
       eventId: c.req.query('eventId'),
-      gatheringGroupId: c.req.query('gatheringGroupId'),
+      firebaseTokenId: c.req.query('firebaseTokenId'),
       from: c.req.query('from'),
       to: c.req.query('to'),
       limit: c.req.query('limit'),
@@ -58,7 +58,7 @@ export function createNotificationScheduleController(
         await notificationScheduleService.getAllNotificationSchedules({
           send_status: parsedQuery.data.sendStatus,
           event_id: parsedQuery.data.eventId,
-          gathering_group_id: parsedQuery.data.gatheringGroupId,
+          firebase_token_id: parsedQuery.data.firebaseTokenId,
           from: parsedQuery.data.from,
           to: parsedQuery.data.to,
           limit: parsedQuery.data.limit,
@@ -160,9 +160,9 @@ export function createNotificationScheduleController(
     try {
       const schedule =
         await notificationScheduleService.createNotificationSchedule({
-          user_id: parsedBody.data.userId,
+          created_user_id: parsedBody.data.createdUserId,
           event_id: parsedBody.data.eventId,
-          gathering_group_id: parsedBody.data.gatheringGroupId,
+          firebase_token_id: parsedBody.data.firebaseTokenId,
           notification_id: parsedBody.data.notificationId,
           importance: parsedBody.data.importance,
           send_at: parsedBody.data.sendAt,
@@ -173,7 +173,8 @@ export function createNotificationScheduleController(
         error instanceof Error &&
         [
           'User not found',
-          'Gathering group is not assigned to event',
+          'Event not found',
+          'Firebase token not found',
           'Notification not found',
         ].includes(error.message)
       ) {

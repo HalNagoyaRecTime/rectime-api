@@ -10,10 +10,8 @@ export function createGatheringGroupService(
       return gatheringGroupRepository.findAll();
     },
 
-    createGatheringGroup(
-      gatheringGroupName: string
-    ): Promise<GatheringGroupEntity> {
-      return gatheringGroupRepository.create(gatheringGroupName);
+    createGatheringGroup(userId: number): Promise<GatheringGroupEntity> {
+      return gatheringGroupRepository.create(userId);
     },
   };
 }

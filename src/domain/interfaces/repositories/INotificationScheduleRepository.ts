@@ -4,7 +4,6 @@ import type {
   NotificationScheduleEntity,
   NotificationScheduleListOptions,
   NotificationScheduleListResult,
-  NotificationTargetTokenByGroup,
   UpdateDraftNotificationScheduleInput,
 } from '../../entities/NotificationSchedule';
 
@@ -21,29 +20,22 @@ export interface INotificationScheduleRepository {
   deleteDraft: (
     notificationScheduleId: number
   ) => Promise<DeleteDraftNotificationScheduleResult>;
-  findDraftsByEventAndGroup: (
+  findDraftsByEventAndTokens: (
     eventId: number,
-    gatheringGroupId: number
+    firebaseTokenIds: number[]
   ) => Promise<NotificationScheduleEntity[]>;
+  findActiveFirebaseTokenIdsByGatheringGroup: (
+    gatheringGroupId: number
+  ) => Promise<number[]>;
   updateDraft: (
     notificationScheduleId: number,
     input: UpdateDraftNotificationScheduleInput
   ) => Promise<NotificationScheduleEntity | null>;
-  deleteDraftsByEventAndGroup: (
-    eventId: number,
-    gatheringGroupId: number,
-    exceptId?: number
-  ) => Promise<number>;
   existsUser: (userId: number) => Promise<boolean>;
   existsNotification: (notificationId: number) => Promise<boolean>;
-  existsEventGatheringGroup: (
-    eventId: number,
-    gatheringGroupId: number
-  ) => Promise<boolean>;
+  existsEvent: (eventId: number) => Promise<boolean>;
+  existsFirebaseToken: (firebaseTokenId: number) => Promise<boolean>;
   claimDue: (now: string) => Promise<NotificationScheduleEntity[]>;
-  findTargetTokensByGatheringGroupIds: (
-    gatheringGroupIds: number[]
-  ) => Promise<NotificationTargetTokenByGroup[]>;
   markSent: (scheduleId: number, fcmMessageId: string) => Promise<void>;
   markFailed: (scheduleId: number, reason: string) => Promise<void>;
 }

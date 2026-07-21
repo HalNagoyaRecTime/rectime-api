@@ -19,14 +19,14 @@ describe('GatheringController', () => {
   it('一覧をJSONで返す', async () => {
     const { app, service } = setup();
     (service.getAllGatherings as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { gathering_id: 1, gathering_group_name: '赤組' },
+      { gathering_id: 1, gathering_group_user_id: 5 },
     ]);
 
     const response = await app.request('/gatherings');
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([
-      { gathering_id: 1, gathering_group_name: '赤組' },
+      { gathering_id: 1, gathering_group_user_id: 5 },
     ]);
   });
 

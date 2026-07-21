@@ -23,7 +23,7 @@ const gathering = {
   gathering_spot_id: 4,
   gathering_time: '10:10',
   round: 1,
-  gathering_group_name: 'A組',
+  gathering_group_user_id: 9,
   event_name: '大縄跳び',
   gathering_spot_name: '体育館前',
   created_at: '2026-01-01',
@@ -39,9 +39,10 @@ const notification = {
 };
 const schedule = {
   notification_send_schedule_id: 6,
-  user_id: 7,
+  created_user_id: 7,
   event_id: 1,
-  gathering_group_id: 3,
+  firebase_token_id: 42,
+  fcm_token: 'token-42',
   notification_id: 5,
   importance: 2,
   notification_type: 'event_reminder',
@@ -77,14 +78,14 @@ function setup() {
     findAll: vi.fn(),
     findById: vi.fn(),
     deleteDraft: vi.fn(),
-    findDraftsByEventAndGroup: vi.fn().mockResolvedValue([schedule]),
+    findDraftsByEventAndTokens: vi.fn().mockResolvedValue([schedule]),
+    findActiveFirebaseTokenIdsByGatheringGroup: vi.fn().mockResolvedValue([42]),
     updateDraft: vi.fn().mockResolvedValue(schedule),
-    deleteDraftsByEventAndGroup: vi.fn().mockResolvedValue(0),
     existsUser: vi.fn(),
     existsNotification: vi.fn(),
-    existsEventGatheringGroup: vi.fn(),
+    existsEvent: vi.fn(),
+    existsFirebaseToken: vi.fn(),
     claimDue: vi.fn(),
-    findTargetTokensByGatheringGroupIds: vi.fn(),
     markSent: vi.fn(),
     markFailed: vi.fn(),
   };
@@ -128,7 +129,7 @@ describe('EventScheduleService', () => {
     await expect(service.updateEventSchedule(input)).resolves.toEqual({
       event,
       notification_enabled: true,
-      notification_schedule: schedule,
+      notification_schedules: [schedule],
     });
     expect(eventScheduleRepository.apply).toHaveBeenCalledWith({
       event_id: 1,
@@ -143,8 +144,11 @@ describe('EventScheduleService', () => {
       send_at: '2026-11-07T01:15:00.000Z',
     });
     expect(
-      notificationScheduleRepository.findDraftsByEventAndGroup
-    ).toHaveBeenCalledWith(1, 3);
+      notificationScheduleRepository.findActiveFirebaseTokenIdsByGatheringGroup
+    ).toHaveBeenCalledWith(3);
+    expect(
+      notificationScheduleRepository.findDraftsByEventAndTokens
+    ).toHaveBeenCalledWith(1, [42]);
   });
 
   it('通知なしでは関連draftだけを削除する', async () => {
@@ -156,13 +160,16 @@ describe('EventScheduleService', () => {
     ).resolves.toEqual({
       event,
       notification_enabled: false,
-      notification_schedule: null,
+      notification_schedules: [],
     });
     expect(eventScheduleRepository.apply).toHaveBeenCalledWith(
       expect.objectContaining({ notification_enabled: false })
     );
     expect(
-      notificationScheduleRepository.findDraftsByEventAndGroup
+      notificationScheduleRepository.findActiveFirebaseTokenIdsByGatheringGroup
+    ).not.toHaveBeenCalled();
+    expect(
+      notificationScheduleRepository.findDraftsByEventAndTokens
     ).not.toHaveBeenCalled();
   });
 

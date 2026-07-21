@@ -8,12 +8,19 @@ describe('GatheringRepository', () => {
   let groupIds: number[] = [];
   let eventIds: number[] = [];
   let spotIds: number[] = [];
+  let userIds: number[] = [];
 
   async function createReferences(suffix: string) {
-    const group = await env.DB.prepare(
-      'INSERT INTO gathering_groups (gathering_group_name) VALUES (?) RETURNING gathering_group_id'
+    const user = await env.DB.prepare(
+      'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
     )
-      .bind(`集会テストグループ-${suffix}`)
+      .bind(`集会テストオーナー-${suffix}`)
+      .first<{ user_id: number }>();
+    userIds.push(user!.user_id);
+    const group = await env.DB.prepare(
+      'INSERT INTO gathering_groups (user_id) VALUES (?) RETURNING gathering_group_id'
+    )
+      .bind(user!.user_id)
       .first<{ gathering_group_id: number }>();
     groupIds.push(group!.gathering_group_id);
     const spot = await env.DB.prepare(
@@ -30,6 +37,7 @@ describe('GatheringRepository', () => {
     eventIds.push(event!.event_id);
     return {
       groupId: group!.gathering_group_id,
+      userId: user!.user_id,
       spotId: spot!.gathering_spot_id,
       eventId: event!.event_id,
     };
@@ -70,14 +78,23 @@ describe('GatheringRepository', () => {
         )
       );
     }
+    if (userIds.length > 0) {
+      await env.DB.batch(
+        userIds.map(id =>
+          env.DB.prepare('DELETE FROM users WHERE user_id = ?').bind(id)
+        )
+      );
+    }
     gatheringIds = [];
     groupIds = [];
     eventIds = [];
     spotIds = [];
+    userIds = [];
   });
 
   it('イベント・グループ・集合場所を結合した集会情報を作成・取得できる', async () => {
-    const { groupId, spotId, eventId } = await createReferences('作成取得');
+    const { groupId, userId, spotId, eventId } =
+      await createReferences('作成取得');
     const created = await repository.create({
       gathering_group_id: groupId,
       event_id: eventId,
@@ -88,7 +105,7 @@ describe('GatheringRepository', () => {
     gatheringIds.push(created.gathering_id);
 
     expect(created).toMatchObject({
-      gathering_group_name: '集会テストグループ-作成取得',
+      gathering_group_user_id: userId,
       event_name: '集会テストイベント-作成取得',
       gathering_spot_name: '集会テスト場所-作成取得',
       gathering_time: '08:50',
