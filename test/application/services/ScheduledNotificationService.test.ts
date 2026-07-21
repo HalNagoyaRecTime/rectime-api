@@ -43,6 +43,7 @@ describe('ScheduledNotificationService', () => {
       existsNotification: vi.fn(),
       existsEvent: vi.fn(),
       existsFirebaseToken: vi.fn(),
+      existsFirebaseTokenGatheringForEvent: vi.fn(),
       claimDue: vi.fn().mockResolvedValue(schedules),
       markSent: vi.fn(),
       markFailed: vi.fn(),
@@ -143,5 +144,20 @@ describe('ScheduledNotificationService', () => {
 
     expect(firebaseTokenRepository.deactivate).not.toHaveBeenCalled();
     expect(result).toEqual({ checkedEvents: 1, sent: 0, failed: 1 });
+  });
+
+  it('送信自体は成功した後の記録失敗をfailedとして誤記録しない', async () => {
+    const { service, notificationScheduleRepository } = setup([
+      buildSchedule(),
+    ]);
+    (
+      notificationScheduleRepository.markSent as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(new Error('D1 write failed'));
+
+    await expect(service.sendScheduledEventNotifications()).rejects.toThrow(
+      'D1 write failed'
+    );
+
+    expect(notificationScheduleRepository.markFailed).not.toHaveBeenCalled();
   });
 });

@@ -42,6 +42,15 @@ export function createGatheringGroupController(
       );
       return c.json(gatheringGroup, 201);
     } catch (error) {
+      if (error instanceof Error && error.message === 'User not found') {
+        return c.json({ error: error.message }, 404);
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'User already owns a gathering group'
+      ) {
+        return c.json({ error: error.message }, 409);
+      }
       return c.json(
         {
           error: 'Failed to create gathering group',

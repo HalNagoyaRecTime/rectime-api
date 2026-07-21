@@ -132,6 +132,35 @@ describe('NotificationScheduleController', () => {
     expect(await response.json()).toEqual(schedule);
   });
 
+  it('イベントに紐づかないFirebaseトークンは400を返す', async () => {
+    const { app, service } = setup();
+    (
+      service.createNotificationSchedule as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(
+      new Error(
+        'Firebase token is not associated with a gathering for this event'
+      )
+    );
+
+    const response = await app.request('/notification-schedules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        createdUserId: 1,
+        eventId: 2,
+        firebaseTokenId: 3,
+        notificationId: 4,
+        importance: 2,
+        sendAt: '2026-07-23T09:00:00.000Z',
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Firebase token is not associated with a gathering for this event',
+    });
+  });
+
   it('重要度2以外は400を返す', async () => {
     const { app, service } = setup();
 

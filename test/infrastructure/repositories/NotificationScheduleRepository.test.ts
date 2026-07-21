@@ -9,6 +9,8 @@ describe('NotificationScheduleRepository', () => {
   const scheduleIds: number[] = [];
   const firebaseTokenIds: number[] = [];
   const gatheringGroupMemberIds: number[] = [];
+  const gatheringIds: number[] = [];
+  const gatheringSpotIds: number[] = [];
   const notificationIds: number[] = [];
   const groupIds: number[] = [];
   const eventIds: number[] = [];
@@ -93,6 +95,18 @@ describe('NotificationScheduleRepository', () => {
         .bind(id)
         .run();
     }
+    for (const id of gatheringIds) {
+      await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
+        .bind(id)
+        .run();
+    }
+    for (const id of gatheringSpotIds) {
+      await env.DB.prepare(
+        'DELETE FROM gathering_spots WHERE gathering_spot_id = ?'
+      )
+        .bind(id)
+        .run();
+    }
     for (const id of groupIds) {
       await env.DB.prepare(
         'DELETE FROM gathering_groups WHERE gathering_group_id = ?'
@@ -127,6 +141,8 @@ describe('NotificationScheduleRepository', () => {
     scheduleIds.length = 0;
     firebaseTokenIds.length = 0;
     gatheringGroupMemberIds.length = 0;
+    gatheringIds.length = 0;
+    gatheringSpotIds.length = 0;
     notificationIds.length = 0;
     groupIds.length = 0;
     eventIds.length = 0;
@@ -273,5 +289,56 @@ describe('NotificationScheduleRepository', () => {
       );
 
     expect(tokenIds).toEqual([activeUser.firebaseTokenId]);
+  });
+
+  it('イベントに紐づくgatheringのグループに所属するトークンのみ関連ありと判定する', async () => {
+    const member = await createFixture({
+      sendAt: '2026-07-23T09:00:00.000Z',
+    });
+    const outsider = await createFixture({
+      sendAt: '2026-07-23T09:05:00.000Z',
+    });
+
+    const group = await env.DB.prepare(
+      'INSERT INTO gathering_groups (user_id) VALUES (?) RETURNING gathering_group_id'
+    )
+      .bind(member.userId)
+      .first<{ gathering_group_id: number }>();
+    groupIds.push(group!.gathering_group_id);
+    const groupMember = await env.DB.prepare(
+      'INSERT INTO gathering_group_members (gathering_group_id, user_id) VALUES (?, ?) RETURNING gathering_group_member_id'
+    )
+      .bind(group!.gathering_group_id, member.userId)
+      .first<{ gathering_group_member_id: number }>();
+    gatheringGroupMemberIds.push(groupMember!.gathering_group_member_id);
+    const spot = await env.DB.prepare(
+      "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('体育館前') RETURNING gathering_spot_id"
+    ).first<{ gathering_spot_id: number }>();
+    gatheringSpotIds.push(spot!.gathering_spot_id);
+    const gathering = await env.DB.prepare(
+      'INSERT INTO gatherings (gathering_group_id, event_id, gathering_spot_id) VALUES (?, ?, ?) RETURNING gathering_id'
+    )
+      .bind(group!.gathering_group_id, member.eventId, spot!.gathering_spot_id)
+      .first<{ gathering_id: number }>();
+    gatheringIds.push(gathering!.gathering_id);
+
+    await expect(
+      repository.existsFirebaseTokenGatheringForEvent(
+        member.eventId,
+        member.firebaseTokenId
+      )
+    ).resolves.toBe(true);
+    await expect(
+      repository.existsFirebaseTokenGatheringForEvent(
+        member.eventId,
+        outsider.firebaseTokenId
+      )
+    ).resolves.toBe(false);
+    await expect(
+      repository.existsFirebaseTokenGatheringForEvent(
+        outsider.eventId,
+        member.firebaseTokenId
+      )
+    ).resolves.toBe(false);
   });
 });

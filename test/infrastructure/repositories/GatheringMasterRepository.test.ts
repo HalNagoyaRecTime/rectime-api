@@ -118,6 +118,23 @@ describe('Gathering master repositories', () => {
     ]);
   });
 
+  it('ユーザーの存在を確認でき、既にグループを持つユーザーの再作成を防止する', async () => {
+    const owner = await createOwner();
+    await expect(gatheringGroupRepository.existsUser(owner)).resolves.toBe(
+      true
+    );
+    await expect(gatheringGroupRepository.existsUser(999999)).resolves.toBe(
+      false
+    );
+
+    const group = await gatheringGroupRepository.create(owner);
+    gatheringGroupIds.push(group.gathering_group_id);
+
+    await expect(gatheringGroupRepository.create(owner)).rejects.toThrow(
+      'User already owns a gathering group'
+    );
+  });
+
   it('グループ所属を追加・一覧取得・解除でき、重複追加は防止する', async () => {
     const owner = await createOwner();
     const group = await gatheringGroupRepository.create(owner);

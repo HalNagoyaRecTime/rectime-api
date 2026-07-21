@@ -8,6 +8,7 @@ import {
   events,
   firebase_tokens,
   gathering_group_members,
+  gatherings,
   notification_schedules,
   notifications,
   users,
@@ -271,6 +272,32 @@ export function createNotificationScheduleRepository(
           .select({ id: firebase_tokens.firebaseTokenId })
           .from(firebase_tokens)
           .where(eq(firebase_tokens.firebaseTokenId, firebaseTokenId))
+          .get()
+      );
+    },
+
+    async existsFirebaseTokenGatheringForEvent(eventId, firebaseTokenId) {
+      return Boolean(
+        await orm
+          .select({ id: gatherings.id })
+          .from(gatherings)
+          .innerJoin(
+            gathering_group_members,
+            eq(
+              gathering_group_members.gatheringGroupId,
+              gatherings.gatheringGroupId
+            )
+          )
+          .innerJoin(
+            firebase_tokens,
+            eq(firebase_tokens.userId, gathering_group_members.userId)
+          )
+          .where(
+            and(
+              eq(gatherings.eventId, eventId),
+              eq(firebase_tokens.firebaseTokenId, firebaseTokenId)
+            )
+          )
           .get()
       );
     },

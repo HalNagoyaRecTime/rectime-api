@@ -23,8 +23,9 @@ export function createScheduledNotificationService(deps: {
       let failed = 0;
 
       for (const schedule of schedules) {
+        let result;
         try {
-          const result = await fcmService.sendNotificationToToken({
+          result = await fcmService.sendNotificationToToken({
             token: schedule.fcm_token,
             title: schedule.title,
             body: schedule.body,
@@ -33,11 +34,6 @@ export function createScheduledNotificationService(deps: {
               eventId: String(schedule.event_id),
             },
           });
-          await notificationScheduleRepository.markSent(
-            schedule.notification_send_schedule_id,
-            result.messageId
-          );
-          sent += 1;
         } catch (error) {
           failed += 1;
           await notificationScheduleRepository.markFailed(
@@ -49,7 +45,15 @@ export function createScheduledNotificationService(deps: {
               schedule.firebase_token_id
             );
           }
+          continue;
         }
+        // 送信自体は成功しているため、以降の記録失敗をmarkFailedとして
+        // 誤って上書きしないようtry/catchの外で扱う。
+        sent += 1;
+        await notificationScheduleRepository.markSent(
+          schedule.notification_send_schedule_id,
+          result.messageId
+        );
       }
 
       return {

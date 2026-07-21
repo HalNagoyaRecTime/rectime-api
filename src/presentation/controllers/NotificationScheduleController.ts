@@ -180,6 +180,13 @@ export function createNotificationScheduleController(
       ) {
         return c.json({ error: error.message }, 404);
       }
+      if (
+        error instanceof Error &&
+        error.message ===
+          'Firebase token is not associated with a gathering for this event'
+      ) {
+        return c.json({ error: error.message }, 400);
+      }
       return c.json(
         {
           error: 'Failed to create notification schedule',

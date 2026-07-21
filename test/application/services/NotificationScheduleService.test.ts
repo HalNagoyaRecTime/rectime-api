@@ -19,6 +19,7 @@ describe('NotificationScheduleService', () => {
       existsNotification: vi.fn().mockResolvedValue(true),
       existsEvent: vi.fn().mockResolvedValue(true),
       existsFirebaseToken: vi.fn().mockResolvedValue(true),
+      existsFirebaseTokenGatheringForEvent: vi.fn().mockResolvedValue(true),
       claimDue: vi.fn(),
       markSent: vi.fn(),
       markFailed: vi.fn(),
@@ -46,6 +47,9 @@ describe('NotificationScheduleService', () => {
     expect(repository.existsUser).toHaveBeenCalledWith(1);
     expect(repository.existsEvent).toHaveBeenCalledWith(2);
     expect(repository.existsFirebaseToken).toHaveBeenCalledWith(3);
+    expect(
+      repository.existsFirebaseTokenGatheringForEvent
+    ).toHaveBeenCalledWith(2, 3);
     expect(repository.existsNotification).toHaveBeenCalledWith(4);
     expect(repository.create).toHaveBeenCalledWith(input);
   });
@@ -133,6 +137,20 @@ describe('NotificationScheduleService', () => {
 
     await expect(service.createNotificationSchedule(input)).rejects.toThrow(
       'Firebase token not found'
+    );
+    expect(repository.create).not.toHaveBeenCalled();
+  });
+
+  it('イベントに紐づくgatheringのグループに所属しないトークンは作成しない', async () => {
+    const { repository, service } = setup();
+    (
+      repository.existsFirebaseTokenGatheringForEvent as ReturnType<
+        typeof vi.fn
+      >
+    ).mockResolvedValue(false);
+
+    await expect(service.createNotificationSchedule(input)).rejects.toThrow(
+      'Firebase token is not associated with a gathering for this event'
     );
     expect(repository.create).not.toHaveBeenCalled();
   });

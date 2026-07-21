@@ -35,6 +35,14 @@ export interface INotificationScheduleRepository {
   existsNotification: (notificationId: number) => Promise<boolean>;
   existsEvent: (eventId: number) => Promise<boolean>;
   existsFirebaseToken: (firebaseTokenId: number) => Promise<boolean>;
+  /**
+   * firebaseTokenIdの所有ユーザーが、eventIdに紐づくいずれかの
+   * gathering(集合)のグループに所属しているかを確認する。
+   */
+  existsFirebaseTokenGatheringForEvent: (
+    eventId: number,
+    firebaseTokenId: number
+  ) => Promise<boolean>;
   claimDue: (now: string) => Promise<NotificationScheduleEntity[]>;
   markSent: (scheduleId: number, fcmMessageId: string) => Promise<void>;
   markFailed: (scheduleId: number, reason: string) => Promise<void>;

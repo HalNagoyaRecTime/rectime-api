@@ -88,6 +88,25 @@ describe('Gathering master controllers', () => {
     expect(gatheringGroupService.createGatheringGroup).toHaveBeenCalledWith(5);
   });
 
+  it.each([
+    ['User not found', 404],
+    ['User already owns a gathering group', 409],
+  ] as const)('集合グループ作成エラー%sを%sで返す', async (message, status) => {
+    const { app, gatheringGroupService } = setup();
+    (
+      gatheringGroupService.createGatheringGroup as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(new Error(message));
+
+    const response = await app.request('/gathering-groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: 5 }),
+    });
+
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ error: message });
+  });
+
   it('空の名称は400で拒否する', async () => {
     const { app, gatheringSpotService } = setup();
 

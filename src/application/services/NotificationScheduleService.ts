@@ -62,6 +62,16 @@ export function createNotificationScheduleService(
         throw new Error('Firebase token not found');
       }
       if (
+        !(await notificationScheduleRepository.existsFirebaseTokenGatheringForEvent(
+          input.event_id,
+          input.firebase_token_id
+        ))
+      ) {
+        throw new Error(
+          'Firebase token is not associated with a gathering for this event'
+        );
+      }
+      if (
         !(await notificationScheduleRepository.existsNotification(
           input.notification_id
         ))

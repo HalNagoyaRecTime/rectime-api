@@ -85,6 +85,7 @@ function setup() {
     existsNotification: vi.fn(),
     existsEvent: vi.fn(),
     existsFirebaseToken: vi.fn(),
+    existsFirebaseTokenGatheringForEvent: vi.fn(),
     claimDue: vi.fn(),
     markSent: vi.fn(),
     markFailed: vi.fn(),
