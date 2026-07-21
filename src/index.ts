@@ -68,6 +68,7 @@ app.get('/', c => {
       notifications: '/api/v1/notifications',
       testNotification: '/api/v1/notifications/test',
       notificationSchedules: '/api/v1/notification-schedules',
+      runScheduledNotifications: '/api/v1/notifications/schedule/run',
     },
     swagger: '/swagger.yml',
   });
@@ -84,6 +85,12 @@ apiV1.get('/students', c => {
 });
 apiV1.get('/students/:studentId', c => {
   return c.get('container').studentController.getStudentById(c);
+});
+apiV1.post('/students', c => {
+  return c.get('container').studentController.createStudent(c);
+});
+apiV1.put('/students/:studentId', c => {
+  return c.get('container').studentController.updateStudent(c);
 });
 
 // Event routes
@@ -168,19 +175,34 @@ apiV1.post('/notification-schedules', c => {
     .get('container')
     .notificationScheduleController.createNotificationSchedule(c);
 });
-apiV1.get('/notification-schedules/:id', c => {
-  return c
-    .get('container')
-    .notificationScheduleController.getNotificationScheduleById(c);
-});
-apiV1.delete('/notification-schedules/:id', c => {
-  return c
-    .get('container')
-    .notificationScheduleController.deleteNotificationSchedule(c);
-});
 
 apiV1.post('/notifications/test', c => {
   return c.get('container').notificationController.sendTestNotification(c);
+});
+
+apiV1.post('/notifications/schedule/run', async c => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const now =
+      body && typeof body.now === 'string' ? new Date(body.now) : new Date();
+
+    if (Number.isNaN(now.getTime())) {
+      return c.json({ error: 'Invalid now value' }, 400);
+    }
+
+    const result = await c
+      .get('container')
+      .scheduledNotificationService.sendScheduledEventNotifications(now);
+    return c.json(result);
+  } catch (error) {
+    return c.json(
+      {
+        error: 'Failed to run scheduled notifications',
+        details: error instanceof Error ? error.message : String(error),
+      },
+      500
+    );
+  }
 });
 
 // Mount API v1
