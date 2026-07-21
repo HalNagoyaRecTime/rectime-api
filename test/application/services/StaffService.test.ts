@@ -27,7 +27,6 @@ describe('StaffService', () => {
       expect(dto).toEqual({
         staff_id: staff.staff_id,
         user_id: staff.user_id,
-        display_name: staff.user_name,
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
     });
@@ -59,8 +58,10 @@ describe('StaffService', () => {
 
       const dtos = await service.getAllStaffs();
 
-      expect(dtos).toHaveLength(2);
-      expect(dtos.map(d => d.display_name)).toEqual(['佐々木職員', '伊藤職員']);
+      expect(dtos).toEqual([
+        { staff_id: 1, user_id: staffs[0].user_id },
+        { staff_id: 2, user_id: staffs[1].user_id },
+      ]);
     });
 
     it('リポジトリが空配列を返す場合は空配列を返す', async () => {

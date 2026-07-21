@@ -7,7 +7,6 @@ function toDTO(staff: StaffEntity): StaffDTO {
   return {
     staff_id: staff.staff_id,
     user_id: staff.user_id,
-    display_name: staff.user_name,
   };
 }
 

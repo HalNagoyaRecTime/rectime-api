@@ -586,25 +586,21 @@ components:
 
     Staff:
       type: object
-      required: [staff_id, user_id, display_name]
+      required: [staff_id, user_id]
       properties:
         staff_id:
           type: integer
         user_id:
           type: integer
-        display_name:
-          type: string
 
     Teacher:
       type: object
-      required: [teacher_id, user_id, display_name]
+      required: [teacher_id, user_id]
       properties:
         teacher_id:
           type: integer
         user_id:
           type: integer
-        display_name:
-          type: string
 
     Event:
       type: object
@@ -975,7 +971,7 @@ tags:
   - name: Students
     description: 学生情報
   - name: Staffs
-    description: 職員情報
+    description: レク委員情報
   - name: Teachers
     description: 教員情報
   - name: Events

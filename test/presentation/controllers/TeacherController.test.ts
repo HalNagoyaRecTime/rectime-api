@@ -8,7 +8,6 @@ function buildTeacher(overrides: Partial<TeacherDTO> = {}): TeacherDTO {
   return {
     teacher_id: 1,
     user_id: 10,
-    display_name: '山田先生',
     ...overrides,
   };
 }

@@ -27,7 +27,6 @@ describe('TeacherService', () => {
       expect(dto).toEqual({
         teacher_id: teacher.teacher_id,
         user_id: teacher.user_id,
-        display_name: teacher.user_name,
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
     });
@@ -59,8 +58,10 @@ describe('TeacherService', () => {
 
       const dtos = await service.getAllTeachers();
 
-      expect(dtos).toHaveLength(2);
-      expect(dtos.map(d => d.display_name)).toEqual(['山田先生', '中村先生']);
+      expect(dtos).toEqual([
+        { teacher_id: 1, user_id: teachers[0].user_id },
+        { teacher_id: 2, user_id: teachers[1].user_id },
+      ]);
     });
 
     it('リポジトリが空配列を返す場合は空配列を返す', async () => {

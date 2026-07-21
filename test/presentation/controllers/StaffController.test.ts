@@ -8,7 +8,6 @@ function buildStaff(overrides: Partial<StaffDTO> = {}): StaffDTO {
   return {
     staff_id: 1,
     user_id: 10,
-    display_name: '佐々木職員',
     ...overrides,
   };
 }

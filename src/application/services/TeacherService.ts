@@ -7,7 +7,6 @@ function toDTO(teacher: TeacherEntity): TeacherDTO {
   return {
     teacher_id: teacher.teacher_id,
     user_id: teacher.user_id,
-    display_name: teacher.user_name,
   };
 }
 
