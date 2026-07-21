@@ -15,5 +15,14 @@ export function createGatheringSpotService(
     ): Promise<GatheringSpotEntity> {
       return gatheringSpotRepository.create(gatheringSpotName);
     },
+
+    async updateGatheringSpot(gatheringSpotId, input) {
+      const gatheringSpot = await gatheringSpotRepository.update(
+        gatheringSpotId,
+        input
+      );
+      if (!gatheringSpot) throw new Error('Gathering spot not found');
+      return gatheringSpot;
+    },
   };
 }

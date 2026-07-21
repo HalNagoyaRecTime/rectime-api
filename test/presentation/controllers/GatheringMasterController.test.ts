@@ -11,6 +11,7 @@ function setup() {
   const gatheringSpotService: IGatheringSpotService = {
     getAllGatheringSpots: vi.fn(),
     createGatheringSpot: vi.fn(),
+    updateGatheringSpot: vi.fn(),
   };
   const gatheringGroupService: IGatheringGroupService = {
     getAllGatheringGroups: vi.fn(),
@@ -35,6 +36,9 @@ function setup() {
   );
   app.post('/gathering-spots', c =>
     gatheringSpotController.createGatheringSpot(c)
+  );
+  app.put('/gathering-spots/:gatheringSpotId', c =>
+    gatheringSpotController.updateGatheringSpot(c)
   );
   app.get('/gathering-groups', c =>
     gatheringGroupController.getAllGatheringGroups(c)
@@ -101,6 +105,68 @@ describe('Gathering master controllers', () => {
 
     expect(response.status).toBe(400);
     expect(gatheringSpotService.createGatheringSpot).not.toHaveBeenCalled();
+  });
+
+  it('集合場所の名称を更新して200を返す', async () => {
+    const { app, gatheringSpotService } = setup();
+    (
+      gatheringSpotService.updateGatheringSpot as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      gathering_spot_id: 1,
+      gathering_spot_name: '正門前',
+    });
+
+    const response = await app.request('/gathering-spots/1', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gatheringSpotName: '正門前' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(gatheringSpotService.updateGatheringSpot).toHaveBeenCalledWith(1, {
+      gathering_spot_name: '正門前',
+    });
+  });
+
+  it('更新時に不正なIDを400で拒否する', async () => {
+    const { app, gatheringSpotService } = setup();
+
+    const response = await app.request('/gathering-spots/invalid', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gatheringSpotName: '正門前' }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(gatheringSpotService.updateGatheringSpot).not.toHaveBeenCalled();
+  });
+
+  it('更新時に空の名称を400で拒否する', async () => {
+    const { app, gatheringSpotService } = setup();
+
+    const response = await app.request('/gathering-spots/1', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gatheringSpotName: '   ' }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(gatheringSpotService.updateGatheringSpot).not.toHaveBeenCalled();
+  });
+
+  it('更新対象が存在しない場合は404を返す', async () => {
+    const { app, gatheringSpotService } = setup();
+    (
+      gatheringSpotService.updateGatheringSpot as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(new Error('Gathering spot not found'));
+
+    const response = await app.request('/gathering-spots/999', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gatheringSpotName: '正門前' }),
+    });
+
+    expect(response.status).toBe(404);
   });
 
   it('集合場所・集合グループの一覧をJSONで返す', async () => {

@@ -85,6 +85,25 @@ describe('Gathering master repositories', () => {
     ]);
   });
 
+  it('集合場所の名称を更新し、存在しないIDはnullを返す', async () => {
+    const spot = await gatheringSpotRepository.create('体育館前');
+    gatheringSpotIds.push(spot.gathering_spot_id);
+
+    await expect(
+      gatheringSpotRepository.update(spot.gathering_spot_id, {
+        gathering_spot_name: '正門前',
+      })
+    ).resolves.toMatchObject({
+      gathering_spot_id: spot.gathering_spot_id,
+      gathering_spot_name: '正門前',
+    });
+    await expect(
+      gatheringSpotRepository.update(999999, {
+        gathering_spot_name: '存在しない場所',
+      })
+    ).resolves.toBeNull();
+  });
+
   it('集合グループを作成し、ID順で取得できる', async () => {
     const first = await gatheringGroupRepository.create('赤組');
     const second = await gatheringGroupRepository.create('青組');

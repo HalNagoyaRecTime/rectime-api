@@ -4,3 +4,7 @@ export interface GatheringSpotEntity {
   created_at: string;
   updated_at: string;
 }
+
+export interface UpdateGatheringSpotInput {
+  gathering_spot_name: string;
+}

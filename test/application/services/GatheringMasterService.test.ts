@@ -25,6 +25,7 @@ describe('Gathering master services', () => {
     const gatheringSpotRepository: IGatheringSpotRepository = {
       findAll: vi.fn().mockResolvedValue(spots),
       create: vi.fn().mockResolvedValue(spot),
+      update: vi.fn(),
     };
     const gatheringGroupRepository: IGatheringGroupRepository = {
       findAll: vi.fn().mockResolvedValue(groups),
