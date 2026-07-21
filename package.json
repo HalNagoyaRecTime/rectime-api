@@ -5,7 +5,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "wrangler dev --env development",
+    "dev": "wrangler dev --env development --ip 0.0.0.0",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate:remote": "wrangler d1 migrations apply rectime-api --remote",

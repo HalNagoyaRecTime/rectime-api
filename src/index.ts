@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
 import {
@@ -26,7 +27,13 @@ app.use('*', (c, next) => {
     origin: origin =>
       isAllowedOrigin(origin, allowedOriginRules) ? origin : null,
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Client-Type',
+      'X-PKCE-Code-Challenge',
+      'X-State',
+    ],
     credentials: true,
     maxAge: 600,
   })(c, next);
@@ -182,6 +189,9 @@ apiV1.delete('/notification-schedules/:id', c => {
 apiV1.post('/notifications/test', c => {
   return c.get('container').notificationController.sendTestNotification(c);
 });
+
+// Auth routes
+apiV1.route('/auth', authRouter);
 
 // Mount API v1
 app.route('/api/v1', apiV1);
