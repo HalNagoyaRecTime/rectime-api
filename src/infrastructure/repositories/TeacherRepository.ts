@@ -1,12 +1,7 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
-import {
-  class_rooms,
-  teacher_class_assignments,
-  teachers,
-  users,
-} from '../database/schema';
+import { class_rooms, teachers, users } from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
 import {
@@ -31,11 +26,6 @@ type TeacherJoinRow = {
   users: typeof users.$inferSelect;
 };
 
-type ClassRoomAssignmentRow = {
-  teacher_class_assignments: typeof teacher_class_assignments.$inferSelect;
-  class_rooms: typeof class_rooms.$inferSelect;
-};
-
 function toClassRoom(row: typeof class_rooms.$inferSelect) {
   return {
     class_room_id: row.id,
@@ -51,20 +41,17 @@ async function loadClassRoomsByTeacherIds(
   const map = new Map<number, ReturnType<typeof toClassRoom>[]>();
   if (teacherIds.length === 0) return map;
 
-  const rows = (await orm
+  const rows = await orm
     .select()
-    .from(teacher_class_assignments)
-    .innerJoin(
-      class_rooms,
-      eq(teacher_class_assignments.classRoomId, class_rooms.id)
-    )
-    .where(inArray(teacher_class_assignments.teacherId, teacherIds))
-    .all()) as ClassRoomAssignmentRow[];
+    .from(class_rooms)
+    .where(inArray(class_rooms.teacherId, teacherIds))
+    .all();
 
   for (const row of rows) {
-    const teacherId = row.teacher_class_assignments.teacherId;
+    // teacherId は上の where 句で絞り込み済みのため必ず値を持つ
+    const teacherId = row.teacherId as number;
     const list = map.get(teacherId) ?? [];
-    list.push(toClassRoom(row.class_rooms));
+    list.push(toClassRoom(row));
     map.set(teacherId, list);
   }
   return map;
@@ -125,16 +112,15 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       }
 
       if (filter.classRoomId !== undefined) {
-        const assignmentRows = await orm
-          .select({ teacherId: teacher_class_assignments.teacherId })
-          .from(teacher_class_assignments)
-          .where(eq(teacher_class_assignments.classRoomId, filter.classRoomId))
-          .all();
-        const teacherIdsForClassFilter = assignmentRows.map(r => r.teacherId);
-        if (teacherIdsForClassFilter.length === 0) {
+        const assignedTeacher = await orm
+          .select({ teacherId: class_rooms.teacherId })
+          .from(class_rooms)
+          .where(eq(class_rooms.id, filter.classRoomId))
+          .get();
+        if (!assignedTeacher?.teacherId) {
           return { items: [], total: 0, page, limit };
         }
-        conditions.push(inArray(teachers.id, teacherIdsForClassFilter));
+        conditions.push(eq(teachers.id, assignedTeacher.teacherId));
       }
 
       const whereClause =
@@ -206,31 +192,43 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         })
         .where(eq(users.id, existing.users.id));
 
-      const deleteAssignmentsStatement = orm
-        .delete(teacher_class_assignments)
-        .where(eq(teacher_class_assignments.teacherId, id));
-
+      // 1クラスの担当教員は最大1人のため、担当クラスの入れ替えは
+      // class_rooms.teacher_id の付け替えで表現する。
+      // まずこの教員が現在担当している全クラスを teacher_id = NULL に戻し、
+      // そのうえで新しい classRoomIds に対してのみ teacher_id = id を立て直す。
       // D1のbatch()は複数文を1つのトランザクションとして原子的に実行するため、
-      // 途中の文が失敗しても users の更新や既存の担当クラス削除が
+      // 途中の文が失敗しても users の更新や担当クラスの解除が
       // 反映されたまま残ることはない。
+      const clearAssignmentsStatement = orm
+        .update(class_rooms)
+        .set({ teacherId: null, updatedAt: now })
+        .where(eq(class_rooms.teacherId, id));
+
       if (input.classRoomIds.length > 0) {
-        const insertAssignmentsStatement = orm
-          .insert(teacher_class_assignments)
-          .values(
-            input.classRoomIds.map(classRoomId => ({
-              teacherId: id,
-              classRoomId,
-              createdAt: now,
-              updatedAt: now,
-            }))
-          );
+        // class_rooms.teacher_id への UPDATE は、存在しないIDを条件に含めても
+        // 単に0件更新で成功してしまいFK制約による検知が働かない。
+        // そのため、事前にSELECTで対象クラスが全件実在することを確認し、
+        // 欠けていれば users 更新も含めて何もコミットせずに失敗させる。
+        const existingClassRooms = await orm
+          .select({ id: class_rooms.id })
+          .from(class_rooms)
+          .where(inArray(class_rooms.id, input.classRoomIds))
+          .all();
+        if (existingClassRooms.length !== input.classRoomIds.length) {
+          throw new Error('Class room not found');
+        }
+
+        const setAssignmentsStatement = orm
+          .update(class_rooms)
+          .set({ teacherId: id, updatedAt: now })
+          .where(inArray(class_rooms.id, input.classRoomIds));
         await orm.batch([
           updateUserStatement,
-          deleteAssignmentsStatement,
-          insertAssignmentsStatement,
+          clearAssignmentsStatement,
+          setAssignmentsStatement,
         ]);
       } else {
-        await orm.batch([updateUserStatement, deleteAssignmentsStatement]);
+        await orm.batch([updateUserStatement, clearAssignmentsStatement]);
       }
 
       const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [id]);
@@ -250,14 +248,19 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
 
     async hasClassAssignments(id: number): Promise<boolean> {
       const row = await orm
-        .select({ id: teacher_class_assignments.id })
-        .from(teacher_class_assignments)
-        .where(eq(teacher_class_assignments.teacherId, id))
+        .select({ id: class_rooms.id })
+        .from(class_rooms)
+        .where(eq(class_rooms.teacherId, id))
         .get();
       return Boolean(row);
     },
 
     async delete(id: number): Promise<boolean> {
+      // class_rooms.teacher_id は ON DELETE の挙動を明示していない外部キーのため、
+      // 割り当てが残ったまま削除しようとするとFK制約違反になる。
+      // hasClassAssignments によるチェックと実際の delete の間に、別リクエストが
+      // 担当クラスを新規に割り当てる競合が起きても、このエラーを検知して
+      // 呼び出し元（Service層）が既存の参照エラーと同じ扱いをできるようにする。
       try {
         const row = await orm
           .delete(teachers)
@@ -266,10 +269,6 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           .get();
         return Boolean(row);
       } catch (err) {
-        // hasClassAssignments によるチェックと実際の delete の間に、別リクエストが
-        // 担当クラスを新規に割り当てる競合が起きると、teacher_class_assignments
-        // 側のFK制約違反でここに到達し得る。SQLiteのエラーメッセージで判別し、
-        // 呼び出し元（Service層）が既存の参照エラーと同じ扱いをできるようにする。
         const message =
           err instanceof Error && err.cause instanceof Error
             ? err.cause.message

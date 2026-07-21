@@ -7,17 +7,25 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 
-export const class_rooms = sqliteTable('class_rooms', {
-  id: integer('class_room_id').primaryKey({ autoIncrement: true }),
-  classCode: text('class_code').notNull(),
-  name: text('class_name').notNull(),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const class_rooms = sqliteTable(
+  'class_rooms',
+  {
+    id: integer('class_room_id').primaryKey({ autoIncrement: true }),
+    classCode: text('class_code').notNull(),
+    name: text('class_name').notNull(),
+    // 1クラスの担当教員は最大1人という運用前提のカラム。クラス作成時点では
+    // 未定のこともあるためNULLを許容する。逆方向（1人の教員が複数クラスを
+    // 担当すること）は許容するため、UNIQUE制約は付けない。
+    teacherId: integer('teacher_id').references(() => teachers.id),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [index('idx_class_rooms_teacher_id').on(table.teacherId)]
+);
 
 export const users = sqliteTable('users', {
   id: integer('user_id').primaryKey({ autoIncrement: true }),
@@ -81,34 +89,6 @@ export const teachers = sqliteTable('teachers', {
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
 });
-
-export const teacher_class_assignments = sqliteTable(
-  'teacher_class_assignments',
-  {
-    id: integer('teacher_class_assignment_id').primaryKey({
-      autoIncrement: true,
-    }),
-    teacherId: integer('teacher_id')
-      .notNull()
-      .references(() => teachers.id),
-    classRoomId: integer('class_room_id')
-      .notNull()
-      .references(() => class_rooms.id),
-    createdAt: text('created_at')
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: text('updated_at')
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
-  },
-  table => [
-    uniqueIndex('uq_teacher_class_assignments_teacher_class').on(
-      table.teacherId,
-      table.classRoomId
-    ),
-    index('idx_teacher_class_assignments_class_room_id').on(table.classRoomId),
-  ]
-);
 
 export const events = sqliteTable('events', {
   id: integer('event_id').primaryKey({ autoIncrement: true }),

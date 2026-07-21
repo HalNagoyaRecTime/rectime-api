@@ -4,7 +4,6 @@ import * as schema from '../../src/infrastructure/database/schema';
 import {
   class_rooms,
   staffs as staffsTable,
-  teacher_class_assignments,
   teachers as teachersTable,
   students as studentsTable,
   users,
@@ -51,6 +50,8 @@ export type SeededData = {
 };
 
 // テスト用の職員・教員データを返す関数。
+// teachers[0] は classRooms[0] の担任として割り当て済み（担当クラスあり/参照ありのケース検証用）、
+// teachers[1] はどのクラスも担当していない（担当クラスなしのケース検証用）。
 export async function seedStaffsTeachers(db: D1Database): Promise<SeededData> {
   const orm = drizzle(db, { schema });
 
@@ -58,32 +59,15 @@ export async function seedStaffsTeachers(db: D1Database): Promise<SeededData> {
   await db.prepare('DELETE FROM notification_schedules').run();
   await db.prepare('DELETE FROM gatherings').run();
   await db.prepare('DELETE FROM events').run();
-  await orm.delete(teacher_class_assignments);
+  await orm.delete(studentsTable);
+  // class_rooms.teacher_id が teachers を参照しているため、
+  // teachers を消す前に class_rooms 側の参照を外しておく必要がある。
+  await orm.delete(class_rooms);
   await orm.delete(staffsTable);
   await orm.delete(teachersTable);
-  await orm.delete(studentsTable);
   await orm.delete(users);
-  await orm.delete(class_rooms);
 
   const now = new Date().toISOString();
-
-  const seededClassRooms: SeededClassRoom[] = [];
-  for (const c of CLASS_ROOMS) {
-    const [classRoom] = await orm
-      .insert(class_rooms)
-      .values({
-        classCode: c.classCode,
-        name: c.name,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-    seededClassRooms.push({
-      classRoomId: classRoom.id,
-      classCode: classRoom.classCode,
-      className: classRoom.name,
-    });
-  }
 
   const seededStaffs: SeededStaff[] = [];
   for (const s of STAFFS) {
@@ -123,13 +107,26 @@ export async function seedStaffsTeachers(db: D1Database): Promise<SeededData> {
     });
   }
 
-  // 最初の教員を最初のクラスに割り当てる（担当クラスあり/参照ありのケース検証用）
-  await orm.insert(teacher_class_assignments).values({
-    teacherId: seededTeachers[0].teacherId,
-    classRoomId: seededClassRooms[0].classRoomId,
-    createdAt: now,
-    updatedAt: now,
-  });
+  const seededClassRooms: SeededClassRoom[] = [];
+  for (const [index, c] of CLASS_ROOMS.entries()) {
+    // 最初のクラスだけ最初の教員を担任として割り当てる
+    const teacherId = index === 0 ? seededTeachers[0].teacherId : null;
+    const [classRoom] = await orm
+      .insert(class_rooms)
+      .values({
+        classCode: c.classCode,
+        name: c.name,
+        teacherId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    seededClassRooms.push({
+      classRoomId: classRoom.id,
+      classCode: classRoom.classCode,
+      className: classRoom.name,
+    });
+  }
 
   // staff/teacher を持たないユーザーを1名追加（findAll の inner join で除外される）
   const [student] = await orm
