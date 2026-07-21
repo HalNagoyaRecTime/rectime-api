@@ -16,6 +16,19 @@ describe('GET /health', () => {
   });
 });
 
+describe('通知配信の実行経路', () => {
+  it('HTTP経由のschedule/runを公開しない', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/api/v1/notifications/schedule/run', {
+        method: 'POST',
+      }),
+      env
+    );
+
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('CORS middleware', () => {
   it('ALLOWED_ORIGINS に含まれるオリジンには Access-Control-Allow-Origin を付与する', async () => {
     const res = await app.fetch(

@@ -65,9 +65,9 @@ app.get('/', c => {
       gatheringGroups: '/api/v1/gathering-groups',
       gatherings: '/api/v1/gatherings',
       firebaseTokens: '/api/v1/firebase-tokens',
+      notifications: '/api/v1/notifications',
       testNotification: '/api/v1/notifications/test',
       notificationSchedules: '/api/v1/notification-schedules',
-      runScheduledNotifications: '/api/v1/notifications/schedule/run',
     },
     swagger: '/swagger.yml',
   });
@@ -145,6 +145,19 @@ apiV1.post('/firebase-tokens', c => {
 });
 
 // Notification routes
+apiV1.post('/notifications', c => {
+  return c.get('container').notificationController.createNotification(c);
+});
+apiV1.get('/notifications', c => {
+  return c.get('container').notificationController.getNotifications(c);
+});
+apiV1.get('/notifications/:id', c => {
+  return c.get('container').notificationController.getNotificationById(c);
+});
+apiV1.put('/notifications/:id', c => {
+  return c.get('container').notificationController.updateNotification(c);
+});
+
 apiV1.get('/notification-schedules', c => {
   return c
     .get('container')
@@ -155,34 +168,19 @@ apiV1.post('/notification-schedules', c => {
     .get('container')
     .notificationScheduleController.createNotificationSchedule(c);
 });
+apiV1.get('/notification-schedules/:id', c => {
+  return c
+    .get('container')
+    .notificationScheduleController.getNotificationScheduleById(c);
+});
+apiV1.delete('/notification-schedules/:id', c => {
+  return c
+    .get('container')
+    .notificationScheduleController.deleteNotificationSchedule(c);
+});
 
 apiV1.post('/notifications/test', c => {
   return c.get('container').notificationController.sendTestNotification(c);
-});
-
-apiV1.post('/notifications/schedule/run', async c => {
-  try {
-    const body = await c.req.json().catch(() => ({}));
-    const now =
-      body && typeof body.now === 'string' ? new Date(body.now) : new Date();
-
-    if (Number.isNaN(now.getTime())) {
-      return c.json({ error: 'Invalid now value' }, 400);
-    }
-
-    const result = await c
-      .get('container')
-      .scheduledNotificationService.sendScheduledEventNotifications(now);
-    return c.json(result);
-  } catch (error) {
-    return c.json(
-      {
-        error: 'Failed to run scheduled notifications',
-        details: error instanceof Error ? error.message : String(error),
-      },
-      500
-    );
-  }
 });
 
 // Mount API v1

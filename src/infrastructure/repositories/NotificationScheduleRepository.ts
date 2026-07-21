@@ -1,9 +1,9 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, asc, eq, lte, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type {
   NotificationScheduleEntity,
-  NotificationTargetToken,
+  NotificationTargetTokenByGroup,
 } from '../../domain/entities/NotificationSchedule';
 import type { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
 import * as schema from '../database/schema';
@@ -40,8 +40,10 @@ export function createNotificationScheduleRepository(
 ): INotificationScheduleRepository {
   const orm = drizzle(db, { schema });
 
-  const findById = async (scheduleId: number) =>
-    orm
+  const findById = async (
+    scheduleId: number
+  ): Promise<NotificationScheduleEntity | null> => {
+    const row = await orm
       .select(selection)
       .from(notification_schedules)
       .innerJoin(
@@ -50,6 +52,8 @@ export function createNotificationScheduleRepository(
       )
       .where(eq(notification_schedules.id, scheduleId))
       .get();
+    return (row as NotificationScheduleEntity | undefined) ?? null;
+  };
 
   return {
     async create(input) {
@@ -70,19 +74,89 @@ export function createNotificationScheduleRepository(
       return schedule as NotificationScheduleEntity;
     },
 
-    async findAll() {
-      return orm
-        .select(selection)
-        .from(notification_schedules)
-        .innerJoin(
-          notifications,
+    async findAll(options) {
+      const conditions: SQL[] = [];
+      if (options.send_status) {
+        conditions.push(
+          eq(notification_schedules.sendStatus, options.send_status)
+        );
+      }
+      if (options.event_id !== undefined) {
+        conditions.push(eq(notification_schedules.eventId, options.event_id));
+      }
+      if (options.gathering_group_id !== undefined) {
+        conditions.push(
           eq(
-            notification_schedules.notificationId,
-            notifications.notificationId
+            notification_schedules.gatheringGroupId,
+            options.gathering_group_id
+          )
+        );
+      }
+      if (options.from) {
+        conditions.push(
+          sql`datetime(${notification_schedules.sendAt}) >= datetime(${options.from})`
+        );
+      }
+      if (options.to) {
+        conditions.push(
+          sql`datetime(${notification_schedules.sendAt}) <= datetime(${options.to})`
+        );
+      }
+      const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+      const [rows, totalResult] = await Promise.all([
+        orm
+          .select(selection)
+          .from(notification_schedules)
+          .innerJoin(
+            notifications,
+            eq(
+              notification_schedules.notificationId,
+              notifications.notificationId
+            )
+          )
+          .where(where)
+          .orderBy(
+            asc(notification_schedules.sendAt),
+            asc(notification_schedules.id)
+          )
+          .limit(options.limit)
+          .offset(options.offset)
+          .all(),
+        orm
+          .select({ total: count() })
+          .from(notification_schedules)
+          .where(where)
+          .get(),
+      ]);
+
+      return {
+        notification_schedules: rows as NotificationScheduleEntity[],
+        total: totalResult?.total ?? 0,
+      };
+    },
+
+    findById,
+
+    async deleteDraft(notificationScheduleId) {
+      const deleted = await orm
+        .delete(notification_schedules)
+        .where(
+          and(
+            eq(notification_schedules.id, notificationScheduleId),
+            eq(notification_schedules.sendStatus, 'draft')
           )
         )
-        .orderBy(asc(notification_schedules.sendAt))
-        .all() as Promise<NotificationScheduleEntity[]>;
+        .returning({ id: notification_schedules.id })
+        .get();
+      if (deleted) return 'deleted';
+
+      const existing = await orm
+        .select({ id: notification_schedules.id })
+        .from(notification_schedules)
+        .where(eq(notification_schedules.id, notificationScheduleId))
+        .get();
+      return existing ? 'not_draft' : 'not_found';
     },
 
     async existsUser(userId) {
@@ -122,39 +196,47 @@ export function createNotificationScheduleRepository(
     },
 
     async claimDue(now) {
-      const candidates = await orm
-        .select({ id: notification_schedules.id })
-        .from(notification_schedules)
+      const claimed = await orm
+        .update(notification_schedules)
+        .set({ sendStatus: 'sending', updatedAt: sql`CURRENT_TIMESTAMP` })
         .where(
           and(
             eq(notification_schedules.sendStatus, 'draft'),
-            lte(notification_schedules.sendAt, now)
+            sql`datetime(${notification_schedules.sendAt}) <= datetime(${now})`
           )
         )
+        .returning({ id: notification_schedules.id })
         .all();
-      const claimed: NotificationScheduleEntity[] = [];
-      for (const candidate of candidates) {
-        const result = await orm
-          .update(notification_schedules)
-          .set({ sendStatus: 'sending', updatedAt: sql`CURRENT_TIMESTAMP` })
-          .where(
-            and(
-              eq(notification_schedules.id, candidate.id),
-              eq(notification_schedules.sendStatus, 'draft')
-            )
+      if (claimed.length === 0) return [];
+
+      return orm
+        .select(selection)
+        .from(notification_schedules)
+        .innerJoin(
+          notifications,
+          eq(
+            notification_schedules.notificationId,
+            notifications.notificationId
           )
-          .returning({ id: notification_schedules.id })
-          .get();
-        if (!result) continue;
-        const schedule = await findById(result.id);
-        if (schedule) claimed.push(schedule as NotificationScheduleEntity);
-      }
-      return claimed;
+        )
+        .where(
+          inArray(
+            notification_schedules.id,
+            claimed.map(schedule => schedule.id)
+          )
+        )
+        .orderBy(
+          asc(notification_schedules.sendAt),
+          asc(notification_schedules.id)
+        )
+        .all() as Promise<NotificationScheduleEntity[]>;
     },
 
-    async findTargetTokens(gatheringGroupId) {
+    async findTargetTokensByGatheringGroupIds(gatheringGroupIds) {
+      if (gatheringGroupIds.length === 0) return [];
       return orm
         .select({
+          gathering_group_id: gathering_group_members.gatheringGroupId,
           firebase_token_id: firebase_tokens.firebaseTokenId,
           fcm_token: firebase_tokens.fcmToken,
         })
@@ -165,12 +247,18 @@ export function createNotificationScheduleRepository(
         )
         .where(
           and(
-            eq(gathering_group_members.gatheringGroupId, gatheringGroupId),
+            inArray(
+              gathering_group_members.gatheringGroupId,
+              gatheringGroupIds
+            ),
             eq(firebase_tokens.isFirebaseActive, 1)
           )
         )
-        .orderBy(asc(firebase_tokens.firebaseTokenId))
-        .all() as Promise<NotificationTargetToken[]>;
+        .orderBy(
+          asc(gathering_group_members.gatheringGroupId),
+          asc(firebase_tokens.firebaseTokenId)
+        )
+        .all() as Promise<NotificationTargetTokenByGroup[]>;
     },
 
     async markSent(scheduleId, fcmMessageId) {

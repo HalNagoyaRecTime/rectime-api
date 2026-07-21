@@ -5,7 +5,6 @@ import { events } from '../../src/infrastructure/database/schema';
 
 const EVENTS = [
   {
-    userId: -1,
     name: 'バスケットボール大会',
     ruleText: '3on3',
     venue: '体育館',
@@ -13,7 +12,6 @@ const EVENTS = [
     endTime: '1300',
   },
   {
-    userId: -1,
     name: '文化祭準備',
     ruleText: '展示準備',
     venue: '第1教室',
@@ -21,7 +19,6 @@ const EVENTS = [
     endTime: '1600',
   },
   {
-    userId: -1,
     name: '英語スピーチコンテスト',
     ruleText: null,
     venue: '講堂',
