@@ -7,7 +7,6 @@ import type { EventEntity } from '../../../src/domain/entities/Event';
 function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
   return {
     event_id: 1,
-    user_id: -1,
     event_name: '徒競走',
     rule_text: null,
     venue: 'トラック',
