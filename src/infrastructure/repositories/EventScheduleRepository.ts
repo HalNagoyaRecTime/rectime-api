@@ -17,10 +17,13 @@ export function createEventScheduleRepository(
       const [draftNotifications, audience] = await Promise.all([
         db
           .prepare(
-            `SELECT DISTINCT notification_id
-             FROM notification_schedules
-             WHERE event_id = ?
-               AND send_status = 'draft'`
+            `SELECT DISTINCT ns.notification_id
+             FROM notification_schedules ns
+             INNER JOIN notifications n
+               ON n.notification_id = ns.notification_id
+             WHERE ns.event_id = ?
+               AND ns.send_status = 'draft'
+               AND n.notification_type = 'event_reminder'`
           )
           .bind(input.event_id)
           .all<{ notification_id: number }>(),
@@ -64,7 +67,12 @@ export function createEventScheduleRepository(
           .prepare(
             `DELETE FROM notification_schedules
              WHERE event_id = ?
-               AND send_status = 'draft'`
+               AND send_status = 'draft'
+               AND notification_id IN (
+                 SELECT notification_id
+                 FROM notifications
+                 WHERE notification_type = 'event_reminder'
+               )`
           )
           .bind(input.event_id),
       ];

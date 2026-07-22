@@ -143,4 +143,49 @@ describe('EventScheduleRepository', () => {
       .first();
     expect(history).toMatchObject({ send_status: 'sent' });
   });
+
+  it('同じイベントの手動draft通知は時刻変更時も保持する', async () => {
+    const fixture = await createFixture();
+    await repository.apply(buildInput(fixture));
+    const token = await env.DB.prepare(
+      'SELECT firebase_token_id FROM firebase_tokens WHERE user_id = ?'
+    )
+      .bind(fixture.userId)
+      .first<{ firebase_token_id: number }>();
+    const manual = await env.DB.prepare(
+      "INSERT INTO notifications (notification_type, title, body) VALUES ('manual', '手動通知', '本文') RETURNING notification_id"
+    ).first<{ notification_id: number }>();
+    await env.DB.prepare(
+      `INSERT INTO notification_schedules (
+         created_user_id, event_id, notification_id, firebase_token_id,
+         importance, send_status, send_at
+       ) VALUES (?, ?, ?, ?, 2, 'draft', ?)`
+    )
+      .bind(
+        fixture.userId,
+        fixture.eventId,
+        manual!.notification_id,
+        token!.firebase_token_id,
+        '2026-11-07T02:00:00.000Z'
+      )
+      .run();
+
+    await repository.apply({
+      ...buildInput(fixture),
+      send_at: '2026-11-07T01:25:00.000Z',
+    });
+
+    const manualSchedule = await env.DB.prepare(
+      `SELECT ns.send_status, ns.send_at
+       FROM notification_schedules ns
+       INNER JOIN notifications n ON n.notification_id = ns.notification_id
+       WHERE ns.event_id = ? AND n.notification_type = 'manual'`
+    )
+      .bind(fixture.eventId)
+      .first();
+    expect(manualSchedule).toMatchObject({
+      send_status: 'draft',
+      send_at: '2026-11-07T02:00:00.000Z',
+    });
+  });
 });

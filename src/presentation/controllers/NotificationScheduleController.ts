@@ -38,7 +38,34 @@ const notificationScheduleListQuerySchema = z
 export function createNotificationScheduleController(
   notificationScheduleService: INotificationScheduleService
 ) {
+  const authorizeManager = async (
+    c: Context
+  ): Promise<{ userId: number } | Response> => {
+    const sessionId = getSessionIdFromCookie(c.req.header('Cookie') ?? null);
+    const session = sessionId
+      ? await getSession((c.env as Env).AUTH_KV, sessionId)
+      : null;
+    const userId = Number(session?.user_id);
+    if (!session || !Number.isInteger(userId) || userId <= 0) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+    if (
+      !(await notificationScheduleService.canManageNotificationSchedules(
+        userId
+      ))
+    ) {
+      return c.json(
+        { error: 'Notification schedule management forbidden' },
+        403
+      );
+    }
+    return { userId };
+  };
+
   const getAllNotificationSchedules = async (c: Context) => {
+    const authorization = await authorizeManager(c);
+    if (authorization instanceof Response) return authorization;
+
     const parsedQuery = notificationScheduleListQuerySchema.safeParse({
       sendStatus: c.req.query('sendStatus'),
       eventId: c.req.query('eventId'),
@@ -89,6 +116,9 @@ export function createNotificationScheduleController(
   };
 
   const getNotificationScheduleById = async (c: Context) => {
+    const authorization = await authorizeManager(c);
+    if (authorization instanceof Response) return authorization;
+
     const parsedId = notificationScheduleIdSchema.safeParse(c.req.param('id'));
     if (!parsedId.success) {
       return c.json({ error: 'Invalid notification schedule ID' }, 400);
@@ -118,6 +148,9 @@ export function createNotificationScheduleController(
   };
 
   const deleteNotificationSchedule = async (c: Context) => {
+    const authorization = await authorizeManager(c);
+    if (authorization instanceof Response) return authorization;
+
     const parsedId = notificationScheduleIdSchema.safeParse(c.req.param('id'));
     if (!parsedId.success) {
       return c.json({ error: 'Invalid notification schedule ID' }, 400);
@@ -152,6 +185,9 @@ export function createNotificationScheduleController(
   };
 
   const createNotificationSchedule = async (c: Context) => {
+    const authorization = await authorizeManager(c);
+    if (authorization instanceof Response) return authorization;
+
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createNotificationScheduleSchema.safeParse(body);
     if (!parsedBody.success) {
@@ -164,19 +200,10 @@ export function createNotificationScheduleController(
       );
     }
 
-    const sessionId = getSessionIdFromCookie(c.req.header('Cookie') ?? null);
-    const session = sessionId
-      ? await getSession((c.env as Env).AUTH_KV, sessionId)
-      : null;
-    const userId = Number(session?.user_id);
-    if (!session || !Number.isInteger(userId) || userId <= 0) {
-      return c.json({ error: 'Authentication required' }, 401);
-    }
-
     try {
       const schedule =
         await notificationScheduleService.createNotificationSchedule({
-          created_user_id: userId,
+          created_user_id: authorization.userId,
           event_id: parsedBody.data.eventId ?? null,
           notification_id: parsedBody.data.notificationId,
           firebase_token_id: parsedBody.data.firebaseTokenId,

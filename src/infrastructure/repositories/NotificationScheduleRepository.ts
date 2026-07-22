@@ -169,7 +169,8 @@ export function createNotificationScheduleRepository(
         .where(
           and(
             eq(notification_schedules.eventId, eventId),
-            eq(notification_schedules.sendStatus, 'draft')
+            eq(notification_schedules.sendStatus, 'draft'),
+            eq(notifications.notificationType, 'event_reminder')
           )
         )
         .orderBy(asc(notification_schedules.id))
