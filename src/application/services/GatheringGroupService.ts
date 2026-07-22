@@ -10,10 +10,11 @@ export function createGatheringGroupService(
       return gatheringGroupRepository.findAll();
     },
 
-    createGatheringGroup(
-      gatheringGroupName: string
-    ): Promise<GatheringGroupEntity> {
-      return gatheringGroupRepository.create(gatheringGroupName);
+    async createGatheringGroup(userId: number): Promise<GatheringGroupEntity> {
+      if (!(await gatheringGroupRepository.existsUser(userId))) {
+        throw new Error('User not found');
+      }
+      return gatheringGroupRepository.create(userId);
     },
   };
 }

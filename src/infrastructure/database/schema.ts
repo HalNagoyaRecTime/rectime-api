@@ -7,17 +7,22 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 
-export const class_rooms = sqliteTable('class_rooms', {
-  id: integer('class_room_id').primaryKey({ autoIncrement: true }),
-  classCode: text('class_code').notNull(),
-  name: text('class_name').notNull(),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const class_rooms = sqliteTable(
+  'class_rooms',
+  {
+    id: integer('class_room_id').primaryKey({ autoIncrement: true }),
+    classCode: text('class_code').notNull(),
+    name: text('class_name').notNull(),
+    teacherId: integer('teacher_id').references(() => teachers.id),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [index('idx_class_rooms_teacher_id').on(table.teacherId)]
+);
 
 export const users = sqliteTable('users', {
   id: integer('user_id').primaryKey({ autoIncrement: true }),
@@ -139,7 +144,10 @@ export const gathering_spots = sqliteTable('gathering_spots', {
 
 export const gathering_groups = sqliteTable('gathering_groups', {
   id: integer('gathering_group_id').primaryKey({ autoIncrement: true }),
-  name: text('gathering_group_name').notNull(),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id)
+    .unique(),
   createdAt: text('created_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),

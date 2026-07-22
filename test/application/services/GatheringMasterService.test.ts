@@ -16,7 +16,7 @@ describe('Gathering master services', () => {
     };
     const group = {
       gathering_group_id: 2,
-      gathering_group_name: '赤組',
+      user_id: 5,
       created_at: '2026-01-01 00:00:00',
       updated_at: '2026-01-01 00:00:00',
     };
@@ -28,6 +28,7 @@ describe('Gathering master services', () => {
     };
     const gatheringGroupRepository: IGatheringGroupRepository = {
       findAll: vi.fn().mockResolvedValue(groups),
+      existsUser: vi.fn().mockResolvedValue(true),
       create: vi.fn().mockResolvedValue(group),
     };
     const gatheringSpotService = createGatheringSpotService(
@@ -43,17 +44,34 @@ describe('Gathering master services', () => {
     await expect(gatheringSpotService.getAllGatheringSpots()).resolves.toBe(
       spots
     );
-    await expect(
-      gatheringGroupService.createGatheringGroup('赤組')
-    ).resolves.toBe(group);
+    await expect(gatheringGroupService.createGatheringGroup(5)).resolves.toBe(
+      group
+    );
     await expect(gatheringGroupService.getAllGatheringGroups()).resolves.toBe(
       groups
     );
 
     expect(gatheringSpotRepository.create).toHaveBeenCalledWith('体育館前');
     expect(gatheringSpotRepository.findAll).toHaveBeenCalledOnce();
-    expect(gatheringGroupRepository.create).toHaveBeenCalledWith('赤組');
+    expect(gatheringGroupRepository.existsUser).toHaveBeenCalledWith(5);
+    expect(gatheringGroupRepository.create).toHaveBeenCalledWith(5);
     expect(gatheringGroupRepository.findAll).toHaveBeenCalledOnce();
+  });
+
+  it('存在しないuserIdでは集合グループを作成しない', async () => {
+    const gatheringGroupRepository: IGatheringGroupRepository = {
+      findAll: vi.fn(),
+      existsUser: vi.fn().mockResolvedValue(false),
+      create: vi.fn(),
+    };
+    const gatheringGroupService = createGatheringGroupService(
+      gatheringGroupRepository
+    );
+
+    await expect(
+      gatheringGroupService.createGatheringGroup(999999)
+    ).rejects.toThrow('User not found');
+    expect(gatheringGroupRepository.create).not.toHaveBeenCalled();
   });
 
   it('所属の追加・一覧取得・解除をRepositoryへ委譲する', async () => {

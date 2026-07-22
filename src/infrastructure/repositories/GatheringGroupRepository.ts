@@ -1,17 +1,17 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringGroupEntity } from '../../domain/entities/GatheringGroup';
 import { IGatheringGroupRepository } from '../../domain/interfaces/repositories/IGatheringGroupRepository';
 import * as schema from '../database/schema';
-import { gathering_groups } from '../database/schema';
+import { gathering_groups, users } from '../database/schema';
 
 function toEntity(
   row: typeof gathering_groups.$inferSelect
 ): GatheringGroupEntity {
   return {
     gathering_group_id: row.id,
-    gathering_group_name: row.name,
+    user_id: row.userId,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
@@ -32,13 +32,24 @@ export function createGatheringGroupRepository(
       return rows.map(toEntity);
     },
 
-    async create(gatheringGroupName: string): Promise<GatheringGroupEntity> {
+    async existsUser(userId: number): Promise<boolean> {
+      return Boolean(
+        await orm
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, userId))
+          .get()
+      );
+    },
+
+    async create(userId: number): Promise<GatheringGroupEntity> {
       const row = await orm
         .insert(gathering_groups)
-        .values({ name: gatheringGroupName })
+        .values({ userId })
+        .onConflictDoNothing({ target: gathering_groups.userId })
         .returning()
         .get();
-      if (!row) throw new Error('Failed to create gathering group');
+      if (!row) throw new Error('User already owns a gathering group');
       return toEntity(row);
     },
   };

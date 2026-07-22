@@ -14,6 +14,19 @@ describe('Gathering master repositories', () => {
   let gatheringSpotIds: number[] = [];
   let gatheringGroupIds: number[] = [];
   let testUserIds: number[] = [];
+  let ownerSequence = 940100;
+
+  async function createOwner(): Promise<number> {
+    ownerSequence += 1;
+    const id = ownerSequence;
+    testUserIds.push(id);
+    await env.DB.prepare(
+      'INSERT INTO users (user_id, user_name, is_live_active) VALUES (?, ?, ?)'
+    )
+      .bind(id, `集会テストオーナー${id}`, 1)
+      .run();
+    return id;
+  }
 
   beforeEach(async () => {
     gatheringSpotIds = [];
@@ -86,8 +99,10 @@ describe('Gathering master repositories', () => {
   });
 
   it('集合グループを作成し、ID順で取得できる', async () => {
-    const first = await gatheringGroupRepository.create('赤組');
-    const second = await gatheringGroupRepository.create('青組');
+    const firstOwner = await createOwner();
+    const secondOwner = await createOwner();
+    const first = await gatheringGroupRepository.create(firstOwner);
+    const second = await gatheringGroupRepository.create(secondOwner);
     gatheringGroupIds.push(first.gathering_group_id, second.gathering_group_id);
 
     const groups = await gatheringGroupRepository.findAll();
@@ -103,8 +118,26 @@ describe('Gathering master repositories', () => {
     ]);
   });
 
+  it('ユーザーの存在を確認でき、既にグループを持つユーザーの再作成を防止する', async () => {
+    const owner = await createOwner();
+    await expect(gatheringGroupRepository.existsUser(owner)).resolves.toBe(
+      true
+    );
+    await expect(gatheringGroupRepository.existsUser(999999)).resolves.toBe(
+      false
+    );
+
+    const group = await gatheringGroupRepository.create(owner);
+    gatheringGroupIds.push(group.gathering_group_id);
+
+    await expect(gatheringGroupRepository.create(owner)).rejects.toThrow(
+      'User already owns a gathering group'
+    );
+  });
+
   it('グループ所属を追加・一覧取得・解除でき、重複追加は防止する', async () => {
-    const group = await gatheringGroupRepository.create('黄組');
+    const owner = await createOwner();
+    const group = await gatheringGroupRepository.create(owner);
     gatheringGroupIds.push(group.gathering_group_id);
     const member = await gatheringGroupMemberRepository.create(
       group.gathering_group_id,
@@ -137,7 +170,8 @@ describe('Gathering master repositories', () => {
   });
 
   it('存在しないグループまたはユーザーへの所属追加は失敗し、所属を作成しない', async () => {
-    const group = await gatheringGroupRepository.create('緑組');
+    const owner = await createOwner();
+    const group = await gatheringGroupRepository.create(owner);
     gatheringGroupIds.push(group.gathering_group_id);
 
     await expect(
@@ -154,7 +188,8 @@ describe('Gathering master repositories', () => {
   });
 
   it('グループとユーザーの存在を確認できる', async () => {
-    const group = await gatheringGroupRepository.create('橙組');
+    const owner = await createOwner();
+    const group = await gatheringGroupRepository.create(owner);
     gatheringGroupIds.push(group.gathering_group_id);
 
     await expect(
@@ -174,8 +209,10 @@ describe('Gathering master repositories', () => {
   });
 
   it('グループで所属を絞り込み、ID順で取得できる', async () => {
-    const firstGroup = await gatheringGroupRepository.create('白組');
-    const secondGroup = await gatheringGroupRepository.create('黒組');
+    const firstOwner = await createOwner();
+    const secondOwner = await createOwner();
+    const firstGroup = await gatheringGroupRepository.create(firstOwner);
+    const secondGroup = await gatheringGroupRepository.create(secondOwner);
     gatheringGroupIds.push(
       firstGroup.gathering_group_id,
       secondGroup.gathering_group_id
@@ -215,7 +252,8 @@ describe('Gathering master repositories', () => {
   });
 
   it('存在しない所属の解除はfalseを返す', async () => {
-    const group = await gatheringGroupRepository.create('紫組');
+    const owner = await createOwner();
+    const group = await gatheringGroupRepository.create(owner);
     gatheringGroupIds.push(group.gathering_group_id);
 
     await expect(
