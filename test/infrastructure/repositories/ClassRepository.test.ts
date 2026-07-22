@@ -38,23 +38,23 @@ describe('ClassRepository', () => {
 
   describe('findAll', () => {
     it('class_rooms を class_room_id 昇順で全件返す', async () => {
-      const result = await repo.findAll();
+      const result = await repo.findAll(1, 20);
 
-      expect(result).toHaveLength(2);
-      const ids = result.map(c => c.f_class_room_id);
+      expect(result.classes).toHaveLength(2);
+      const ids = result.classes.map(c => c.class_room_id);
       expect(ids).toEqual([...ids].sort((a, b) => a - b));
     });
 
     it('各カラムを ClassEntity のフィールドにマッピングする', async () => {
-      const result = await repo.findAll();
+      const result = await repo.findAll(1, 20);
 
-      expect(result[0]).toMatchObject({
-        f_class_code: '12B',
-        f_name: '2年Bクラス',
+      expect(result.classes[0]).toMatchObject({
+        class_code: '12B',
+        name: '2年Bクラス',
       });
-      expect(result[1]).toMatchObject({
-        f_class_code: '11A',
-        f_name: '1年Aクラス',
+      expect(result.classes[1]).toMatchObject({
+        class_code: '11A',
+        name: '1年Aクラス',
       });
     });
   });

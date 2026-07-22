@@ -104,6 +104,18 @@ apiV1.put('/events/:eventId', c => {
 apiV1.get('/classes', c => {
   return c.get('container').classController.getAllClasses(c);
 });
+apiV1.get('/classes/:classId', c => {
+  return c.get('container').classController.getClassById(c);
+});
+apiV1.post('/classes', c => {
+  return c.get('container').classController.createClass(c);
+});
+apiV1.put('/classes/:classId', c => {
+  return c.get('container').classController.updateClass(c);
+});
+apiV1.delete('/classes/:classId', c => {
+  return c.get('container').classController.deleteClass(c);
+});
 
 // Gathering spot routes
 apiV1.get('/gathering-spots', c => {

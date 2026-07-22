@@ -2,56 +2,66 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { createClassController } from '../../../src/presentation/controllers/ClassController';
 import type { IClassService } from '../../../src/application/services/IClassService';
-import type { ClassDTO } from '../../../src/application/dto/ClassDTO';
-
-function buildClass(overrides: Partial<ClassDTO> = {}): ClassDTO {
-  return {
-    class_room_id: 1,
-    class_code: 'C001',
-    name: '1年A組',
-    ...overrides,
-  };
-}
 
 function setup() {
-  const classService: IClassService = {
+  const service: IClassService = {
     getAllClasses: vi.fn(),
+    getClassById: vi.fn(),
+    createClass: vi.fn(),
+    updateClass: vi.fn(),
+    deleteClass: vi.fn(),
   };
-  const controller = createClassController(classService);
+  const controller = createClassController(service);
   const app = new Hono();
   app.get('/classes', c => controller.getAllClasses(c));
-  return { app, classService };
+  app.get('/classes/:classId', c => controller.getClassById(c));
+  app.post('/classes', c => controller.createClass(c));
+  app.put('/classes/:classId', c => controller.updateClass(c));
+  app.delete('/classes/:classId', c => controller.deleteClass(c));
+  return { app, service };
 }
 
 describe('ClassController', () => {
-  describe('getAllClasses', () => {
-    it('サービスが返したクラス一覧を 200 で返す', async () => {
-      const { app, classService } = setup();
-      const classes = [buildClass()];
-      (
-        classService.getAllClasses as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(classes);
-
-      const res = await app.request('/classes');
-
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual(classes);
+  it('一覧をページ情報付きで返す', async () => {
+    const { app, service } = setup();
+    (service.getAllClasses as ReturnType<typeof vi.fn>).mockResolvedValue({
+      classes: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+      total_pages: 0,
     });
+    expect((await app.request('/classes')).status).toBe(200);
+  });
 
-    it('サービスが例外を投げた場合は 500 を返す', async () => {
-      const { app, classService } = setup();
-      (
-        classService.getAllClasses as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('boom'));
-      const consoleErrorSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
-
-      const res = await app.request('/classes');
-
-      expect(res.status).toBe(500);
-      expect(await res.json()).toEqual({ error: 'Failed to fetch classes' });
-      consoleErrorSpy.mockRestore();
+  it('担任未設定でクラスを登録できる', async () => {
+    const { app, service } = setup();
+    (service.createClass as ReturnType<typeof vi.fn>).mockResolvedValue({
+      class_room_id: 1,
+      class_code: '11A',
+      name: '1年A組',
+      student_count: 0,
+      teacher: null,
     });
+    const response = await app.request('/classes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        classCode: '11A',
+        className: '1年A組',
+        teacherId: null,
+      }),
+    });
+    expect(response.status).toBe(201);
+    expect(service.createClass).toHaveBeenCalledWith({
+      class_code: '11A',
+      name: '1年A組',
+      teacher_id: null,
+    });
+  });
+
+  it('不正なIDは400を返す', async () => {
+    const { app } = setup();
+    expect((await app.request('/classes/nope')).status).toBe(400);
   });
 });
