@@ -14,6 +14,28 @@ const studentWriteSchema = z.object({
   student_id_number: z.string().trim().min(1).max(100),
 });
 
+function getErrorChainMessage(error: unknown): string {
+  const messages: string[] = [];
+  const visited = new Set<Error>();
+  let current = error;
+
+  while (current instanceof Error && !visited.has(current)) {
+    visited.add(current);
+    messages.push(current.message);
+    current = current.cause;
+  }
+
+  return messages.join(' ');
+}
+
+function isStudentNumberUniqueConstraintError(error: unknown): boolean {
+  const message = getErrorChainMessage(error);
+  return (
+    message.includes('UNIQUE constraint failed') &&
+    message.includes('students.student_id_number')
+  );
+}
+
 export function createStudentController(studentService: IStudentService) {
   const getStudentById = async (c: Context) => {
     try {
@@ -123,6 +145,9 @@ function toStudentErrorResponse(
     return c.json({ error: 'Class room not found' }, 404);
   }
   if (error.message === 'Student number already exists') {
+    return c.json({ error: 'Student number already exists' }, 409);
+  }
+  if (isStudentNumberUniqueConstraintError(error)) {
     return c.json({ error: 'Student number already exists' }, 409);
   }
   return c.json({ error: fallbackMessage }, 500);

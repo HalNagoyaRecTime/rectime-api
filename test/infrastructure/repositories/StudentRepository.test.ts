@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createStudentRepository } from '../../../src/infrastructure/repositories/StudentRepository';
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import { seedStudents, type SeededData } from '../../fixtures/students';
@@ -72,6 +72,7 @@ describe('StudentRepository', () => {
         attendance_number: 10,
         student_id_number: '10010',
       };
+      const findByStudentNumSpy = vi.spyOn(repo, 'findByStudentNum');
       const created = await repo.create(input);
 
       expect(created).toMatchObject({
@@ -79,7 +80,9 @@ describe('StudentRepository', () => {
         class_room_name: 'テスト教室',
         is_live_active: true,
       });
+      expect(findByStudentNumSpy).not.toHaveBeenCalled();
 
+      const findByIdSpy = vi.spyOn(repo, 'findById');
       const updated = await repo.update(created.student_id, {
         ...input,
         display_name: '更新学生',
@@ -89,6 +92,18 @@ describe('StudentRepository', () => {
         user_name: '更新学生',
         attendance_number: 11,
       });
+      expect(findByIdSpy).not.toHaveBeenCalled();
+    });
+
+    it('存在しない学生の更新は null を返す', async () => {
+      await expect(
+        repo.update(999999, {
+          display_name: '存在しない学生',
+          class_room_id: seeded.classRoomId,
+          attendance_number: 99,
+          student_id_number: '19999',
+        })
+      ).resolves.toBeNull();
     });
   });
 });

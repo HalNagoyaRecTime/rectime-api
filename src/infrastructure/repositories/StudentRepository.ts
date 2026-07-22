@@ -14,6 +14,21 @@ type StudentJoinRow = {
   class_rooms: typeof class_rooms.$inferSelect;
 };
 
+type ReturnedUserRow = {
+  user_id: number;
+  user_name: string;
+  is_live_active: number;
+};
+
+type ReturnedStudentRow = {
+  student_id: number;
+  user_id: number;
+  class_room_id: number;
+  class_room_name: string;
+  attendance_number: number;
+  student_id_number: string;
+};
+
 function toEntity(row: StudentJoinRow): StudentEntity {
   return {
     student_id: row.students.id,
@@ -24,6 +39,22 @@ function toEntity(row: StudentJoinRow): StudentEntity {
     attendance_number: row.students.attendanceNumber,
     student_id_number: row.students.studentIdNumber,
     is_live_active: row.users.isLiveActive === 1,
+  };
+}
+
+function toWrittenEntity(
+  user: ReturnedUserRow,
+  student: ReturnedStudentRow
+): StudentEntity {
+  return {
+    student_id: student.student_id,
+    user_id: user.user_id,
+    user_name: user.user_name,
+    class_room_id: student.class_room_id,
+    class_room_name: student.class_room_name,
+    attendance_number: student.attendance_number,
+    student_id_number: student.student_id_number,
+    is_live_active: user.is_live_active === 1,
   };
 }
 
@@ -90,10 +121,14 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
     },
 
     async create(student: StudentWriteDTO): Promise<StudentEntity> {
-      await db.batch([
+      const [userResult, studentResult] = await db.batch<
+        ReturnedUserRow | ReturnedStudentRow
+      >([
         db
           .prepare(
-            'INSERT INTO users (user_name, updated_at) VALUES (?, CURRENT_TIMESTAMP)'
+            `INSERT INTO users (user_name, updated_at)
+             VALUES (?, CURRENT_TIMESTAMP)
+             RETURNING user_id, user_name, is_live_active`
           )
           .bind(student.display_name),
         db
@@ -104,50 +139,85 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
               attendance_number,
               student_id_number,
               updated_at
-            ) VALUES (last_insert_rowid(), ?, ?, ?, CURRENT_TIMESTAMP)`
+            ) VALUES (last_insert_rowid(), ?, ?, ?, CURRENT_TIMESTAMP)
+            RETURNING
+              student_id,
+              user_id,
+              class_room_id,
+              attendance_number,
+              student_id_number,
+              (
+                SELECT class_name
+                FROM class_rooms
+                WHERE class_room_id = ?
+              ) AS class_room_name`
           )
           .bind(
             student.class_room_id,
             student.attendance_number,
-            student.student_id_number
+            student.student_id_number,
+            student.class_room_id
           ),
       ]);
 
-      const created = await this.findByStudentNum(student.student_id_number);
-      if (!created) {
+      const user = userResult.results[0] as ReturnedUserRow | undefined;
+      const created = studentResult.results[0] as
+        | ReturnedStudentRow
+        | undefined;
+      if (!user || !created) {
         throw new Error('Failed to create student');
       }
-      return created;
+      return toWrittenEntity(user, created);
     },
 
     async update(
       id: number,
       student: StudentWriteDTO
     ): Promise<StudentEntity | null> {
-      const existing = await this.findById(id);
-      if (!existing) return null;
-
-      await db.batch([
+      const [userResult, studentResult] = await db.batch<
+        ReturnedUserRow | ReturnedStudentRow
+      >([
         db
           .prepare(
-            'UPDATE users SET user_name = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
+            `UPDATE users
+             SET user_name = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = (
+               SELECT user_id FROM students WHERE student_id = ?
+             )
+             RETURNING user_id, user_name, is_live_active`
           )
-          .bind(student.display_name, existing.user_id),
+          .bind(student.display_name, id),
         db
           .prepare(
             `UPDATE students
              SET class_room_id = ?, attendance_number = ?, student_id_number = ?, updated_at = CURRENT_TIMESTAMP
-             WHERE student_id = ?`
+             WHERE student_id = ?
+             RETURNING
+               student_id,
+               user_id,
+               class_room_id,
+               attendance_number,
+               student_id_number,
+               (
+                 SELECT class_name
+                 FROM class_rooms
+                 WHERE class_room_id = ?
+               ) AS class_room_name`
           )
           .bind(
             student.class_room_id,
             student.attendance_number,
             student.student_id_number,
-            id
+            id,
+            student.class_room_id
           ),
       ]);
 
-      return this.findById(id);
+      const user = userResult.results[0] as ReturnedUserRow | undefined;
+      const updated = studentResult.results[0] as
+        | ReturnedStudentRow
+        | undefined;
+      return user && updated ? toWrittenEntity(user, updated) : null;
     },
   };
 }

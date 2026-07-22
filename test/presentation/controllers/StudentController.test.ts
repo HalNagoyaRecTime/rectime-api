@@ -176,6 +176,54 @@ describe('StudentController', () => {
         error: 'Student number already exists',
       });
     });
+
+    it('DBの学籍番号UNIQUE制約違反がラップされていても409を返す', async () => {
+      const { app, studentService } = setup();
+      const sqliteError = new Error(
+        'UNIQUE constraint failed: students.student_id_number'
+      );
+      const d1Error = new Error('D1_ERROR: constraint failed', {
+        cause: sqliteError,
+      });
+      (
+        studentService.createStudent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(
+        new Error('Failed query: insert into students', {
+          cause: d1Error,
+        })
+      );
+
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: 'Student number already exists',
+      });
+    });
+
+    it('別のUNIQUE制約違反は500を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.createStudent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(
+        new Error('UNIQUE constraint failed: students.user_id')
+      );
+
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({
+        error: 'Failed to create student',
+      });
+    });
   });
 
   describe('updateStudent', () => {
@@ -200,6 +248,26 @@ describe('StudentController', () => {
 
       expect(res.status).toBe(200);
       expect(studentService.updateStudent).toHaveBeenCalledWith(1, input);
+    });
+
+    it('更新時の学籍番号UNIQUE制約違反も409を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.updateStudent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(
+        new Error('UNIQUE constraint failed: students.student_id_number')
+      );
+
+      const res = await app.request('/students/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: 'Student number already exists',
+      });
     });
   });
 });
