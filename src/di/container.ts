@@ -64,7 +64,6 @@ export function createDIContainer(env: Env) {
   const eventScheduleService = createEventScheduleService({
     eventRepository,
     eventScheduleRepository,
-    gatheringRepository,
     notificationScheduleRepository,
     userRepository,
   });

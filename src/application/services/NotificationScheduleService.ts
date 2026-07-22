@@ -44,16 +44,18 @@ export function createNotificationScheduleService(
     async createNotificationSchedule(
       input: CreateNotificationScheduleInput
     ): Promise<NotificationScheduleEntity> {
-      if (!(await notificationScheduleRepository.existsUser(input.user_id))) {
-        throw new Error('User not found');
-      }
       if (
-        !(await notificationScheduleRepository.existsEventGatheringGroup(
-          input.event_id,
-          input.gathering_group_id
+        !(await notificationScheduleRepository.existsFirebaseToken(
+          input.firebase_token_id
         ))
       ) {
-        throw new Error('Gathering group is not assigned to event');
+        throw new Error('Firebase token not found');
+      }
+      if (
+        input.event_id != null &&
+        !(await notificationScheduleRepository.existsEvent(input.event_id))
+      ) {
+        throw new Error('Event not found');
       }
       if (
         !(await notificationScheduleRepository.existsNotification(

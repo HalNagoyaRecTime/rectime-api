@@ -35,7 +35,6 @@ function setup() {
 const validBody = {
   startTime: '1030',
   endTime: '1100',
-  gatheringGroupId: 3,
   notificationEnabled: true,
 };
 
@@ -59,7 +58,6 @@ describe('EventScheduleController', () => {
     expect(service.updateEventSchedule).toHaveBeenCalledWith({
       event_id: 1,
       user_id: 7,
-      gathering_group_id: 3,
       start_time: '1030',
       end_time: '1100',
       notification_enabled: true,

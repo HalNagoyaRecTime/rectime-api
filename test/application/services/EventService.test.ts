@@ -24,7 +24,6 @@ describe('EventService', () => {
       const repository: IEventRepository = {
         findAll: vi.fn().mockResolvedValue({ events, total: 1 }),
         findById: vi.fn(),
-        updateTimes: vi.fn(),
       };
       const service = createEventService(repository);
 
@@ -49,7 +48,6 @@ describe('EventService', () => {
       const repository: IEventRepository = {
         findAll: vi.fn(),
         findById: vi.fn().mockResolvedValue(event),
-        updateTimes: vi.fn(),
       };
       const service = createEventService(repository);
 
@@ -61,7 +59,6 @@ describe('EventService', () => {
       const repository: IEventRepository = {
         findAll: vi.fn(),
         findById: vi.fn().mockResolvedValue(null),
-        updateTimes: vi.fn(),
       };
 
       await expect(

@@ -234,7 +234,8 @@ export const firebase_tokens = sqliteTable('firebase_tokens', {
   }),
   userId: integer('user_id')
     .notNull()
-    .references(() => users.id),
+    .references(() => users.id)
+    .unique(),
   platform: integer('platform').notNull(),
   fcmToken: text('fcm_token').notNull().unique(),
   isFirebaseActive: integer('is_firebase_active').notNull().default(1),
@@ -252,24 +253,20 @@ export const firebase_tokens = sqliteTable('firebase_tokens', {
 export const notification_schedules = sqliteTable(
   'notification_schedules',
   {
-    id: integer('notification_send_schedule_id').primaryKey({
+    id: integer('notification_schedule_id').primaryKey({
       autoIncrement: true,
     }),
-    userId: integer('user_id')
-      .notNull()
-      .references(() => users.id),
-    eventId: integer('event_id')
-      .notNull()
-      .references(() => events.id),
-    gatheringGroupId: integer('gathering_group_id')
-      .notNull()
-      .references(() => gathering_groups.id),
+    createdUserId: integer('created_user_id').references(() => users.id),
+    eventId: integer('event_id').references(() => events.id),
     notificationId: integer('notification_id')
       .notNull()
       .references(() => notifications.notificationId),
+    firebaseTokenId: integer('firebase_token_id')
+      .notNull()
+      .references(() => firebase_tokens.firebaseTokenId),
     importance: integer('importance').notNull().default(2),
     sendStatus: text('send_status').notNull().default('draft'),
-    fcmMessageId: text('fcm_message_id').unique(),
+    fcmMessageId: text('fcm_message_id'),
     failedReason: text('failed_reason'),
     sendAt: text('send_at').notNull(),
     createdAt: text('created_at')
@@ -282,8 +279,11 @@ export const notification_schedules = sqliteTable(
   table => [
     index('idx_notification_schedules_due').on(table.sendStatus, table.sendAt),
     index('idx_notification_schedules_event_id').on(table.eventId),
-    index('idx_notification_schedules_gathering_group_id').on(
-      table.gatheringGroupId
+    index('idx_notification_schedules_notification_id').on(
+      table.notificationId
+    ),
+    index('idx_notification_schedules_firebase_token_id').on(
+      table.firebaseTokenId
     ),
   ]
 );

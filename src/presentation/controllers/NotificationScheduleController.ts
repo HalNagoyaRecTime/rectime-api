@@ -1,12 +1,16 @@
 import type { Context } from 'hono';
 import { z } from 'zod';
 import type { INotificationScheduleService } from '../../application/services/INotificationScheduleService';
+import {
+  getSession,
+  getSessionIdFromCookie,
+} from '../../infrastructure/auth/session';
+import type { Env } from '../../lib/env';
 
 const createNotificationScheduleSchema = z.object({
-  userId: z.number().int().positive(),
-  eventId: z.number().int().positive(),
-  gatheringGroupId: z.number().int().positive(),
+  eventId: z.number().int().positive().nullable().optional(),
   notificationId: z.number().int().positive(),
+  firebaseTokenId: z.number().int().positive(),
   importance: z.literal(2).optional(),
   // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00.000Z
   sendAt: z.string().datetime({ offset: true }),
@@ -18,7 +22,8 @@ const notificationScheduleListQuerySchema = z
   .object({
     sendStatus: z.enum(['draft', 'sending', 'sent', 'failed']).optional(),
     eventId: z.coerce.number().int().positive().optional(),
-    gatheringGroupId: z.coerce.number().int().positive().optional(),
+    createdUserId: z.coerce.number().int().positive().optional(),
+    firebaseTokenId: z.coerce.number().int().positive().optional(),
     from: z.string().datetime({ offset: true }).optional(),
     to: z.string().datetime({ offset: true }).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -37,7 +42,8 @@ export function createNotificationScheduleController(
     const parsedQuery = notificationScheduleListQuerySchema.safeParse({
       sendStatus: c.req.query('sendStatus'),
       eventId: c.req.query('eventId'),
-      gatheringGroupId: c.req.query('gatheringGroupId'),
+      createdUserId: c.req.query('createdUserId'),
+      firebaseTokenId: c.req.query('firebaseTokenId'),
       from: c.req.query('from'),
       to: c.req.query('to'),
       limit: c.req.query('limit'),
@@ -58,7 +64,8 @@ export function createNotificationScheduleController(
         await notificationScheduleService.getAllNotificationSchedules({
           send_status: parsedQuery.data.sendStatus,
           event_id: parsedQuery.data.eventId,
-          gathering_group_id: parsedQuery.data.gatheringGroupId,
+          created_user_id: parsedQuery.data.createdUserId,
+          firebase_token_id: parsedQuery.data.firebaseTokenId,
           from: parsedQuery.data.from,
           to: parsedQuery.data.to,
           limit: parsedQuery.data.limit,
@@ -157,13 +164,22 @@ export function createNotificationScheduleController(
       );
     }
 
+    const sessionId = getSessionIdFromCookie(c.req.header('Cookie') ?? null);
+    const session = sessionId
+      ? await getSession((c.env as Env).AUTH_KV, sessionId)
+      : null;
+    const userId = Number(session?.user_id);
+    if (!session || !Number.isInteger(userId) || userId <= 0) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+
     try {
       const schedule =
         await notificationScheduleService.createNotificationSchedule({
-          user_id: parsedBody.data.userId,
-          event_id: parsedBody.data.eventId,
-          gathering_group_id: parsedBody.data.gatheringGroupId,
+          created_user_id: userId,
+          event_id: parsedBody.data.eventId ?? null,
           notification_id: parsedBody.data.notificationId,
+          firebase_token_id: parsedBody.data.firebaseTokenId,
           importance: parsedBody.data.importance,
           send_at: parsedBody.data.sendAt,
         });
@@ -172,8 +188,8 @@ export function createNotificationScheduleController(
       if (
         error instanceof Error &&
         [
-          'User not found',
-          'Gathering group is not assigned to event',
+          'Firebase token not found',
+          'Event not found',
           'Notification not found',
         ].includes(error.message)
       ) {

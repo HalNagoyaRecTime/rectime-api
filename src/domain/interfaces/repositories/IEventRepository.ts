@@ -1,4 +1,4 @@
-import { EventEntity, UpdateEventTimesInput } from '../../entities/Event';
+import { EventEntity } from '../../entities/Event';
 
 export interface IEventRepository {
   findAll: (options: {
@@ -7,8 +7,4 @@ export interface IEventRepository {
     offset?: number;
   }) => Promise<{ events: EventEntity[]; total: number }>;
   findById: (id: number) => Promise<EventEntity | null>;
-  updateTimes: (
-    id: number,
-    input: UpdateEventTimesInput
-  ) => Promise<EventEntity | null>;
 }
