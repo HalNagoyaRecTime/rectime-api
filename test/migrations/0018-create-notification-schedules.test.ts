@@ -4,15 +4,16 @@ import { describe, expect, it } from 'vitest';
 describe('0018_create_notification_schedules.sql', () => {
   it('通知予定テーブルのカラム、外部キー、検索用indexを作成し、旧送信ログを削除する', async () => {
     // user_id/gathering_group_id は migrations/0025 でそれぞれ
-    // created_user_id への改名・firebase_token_id への置き換えが行われている。
+    // created_user_id への改名・firebase_token_id への置き換えが行われている
+    // （created_user_id/event_id は nullable、主キーは notification_schedule_id）。
     const columns = await env.DB.prepare(
       'PRAGMA table_info(notification_schedules)'
     ).all<{ name: string; notnull: number; pk: number; dflt_value: string | null }>();
     expect(columns.results).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: 'notification_send_schedule_id', pk: 1 }),
-        expect.objectContaining({ name: 'created_user_id', notnull: 1 }),
-        expect.objectContaining({ name: 'event_id', notnull: 1 }),
+        expect.objectContaining({ name: 'notification_schedule_id', pk: 1 }),
+        expect.objectContaining({ name: 'created_user_id' }),
+        expect.objectContaining({ name: 'event_id' }),
         expect.objectContaining({ name: 'firebase_token_id', notnull: 1 }),
         expect.objectContaining({ name: 'notification_id', notnull: 1 }),
         expect.objectContaining({ name: 'importance', notnull: 1, dflt_value: '2' }),
@@ -54,6 +55,7 @@ describe('0018_create_notification_schedules.sql', () => {
       expect.arrayContaining([
         'idx_notification_schedules_due',
         'idx_notification_schedules_event_id',
+        'idx_notification_schedules_notification_id',
         'idx_notification_schedules_firebase_token_id',
       ])
     );
