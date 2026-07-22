@@ -61,4 +61,82 @@ describe('ClassService', () => {
       })
     ).rejects.toThrow('Teacher not found');
   });
+
+  it('存在する担任を指定してクラスを登録できる', async () => {
+    const repo = repository();
+    const input = { class_code: '11A', name: '1年A組', teacher_id: 1 };
+    const classroom = {
+      class_room_id: 1,
+      class_code: '11A',
+      name: '1年A組',
+      student_count: 0,
+      teacher: { teacher_id: 1, user_id: 10, display_name: '担任教員' },
+    };
+    (repo.teacherExists as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    (repo.create as ReturnType<typeof vi.fn>).mockResolvedValue(classroom);
+
+    await expect(createClassService(repo).createClass(input)).resolves.toEqual(
+      classroom
+    );
+    expect(repo.create).toHaveBeenCalledWith(input);
+  });
+
+  it('クラスコード重複を409用エラーにする', async () => {
+    const repo = repository();
+    (repo.create as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('UNIQUE constraint failed: class_rooms.class_code')
+    );
+
+    await expect(
+      createClassService(repo).createClass({
+        class_code: '11A',
+        name: '1年A組',
+        teacher_id: null,
+      })
+    ).rejects.toThrow('Class code already exists');
+  });
+
+  it('存在しないクラスを更新すると404用エラーにする', async () => {
+    const repo = repository();
+    (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    await expect(
+      createClassService(repo).updateClass(999, {
+        class_code: '11A',
+        name: '1年A組',
+        teacher_id: null,
+      })
+    ).rejects.toThrow('Class not found');
+  });
+
+  it('学生が所属するクラスの削除を拒否する', async () => {
+    const repo = repository();
+    (repo.hasStudents as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+
+    await expect(createClassService(repo).deleteClass(1)).rejects.toThrow(
+      'Class is referenced by students'
+    );
+    expect(repo.delete).not.toHaveBeenCalled();
+  });
+
+  it('存在しないクラスの削除を404用エラーにする', async () => {
+    const repo = repository();
+    (repo.hasStudents as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    (repo.delete as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+    await expect(createClassService(repo).deleteClass(999)).rejects.toThrow(
+      'Class not found'
+    );
+  });
+
+  it('学生がいないクラスを削除できる', async () => {
+    const repo = repository();
+    (repo.hasStudents as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    (repo.delete as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+
+    await expect(
+      createClassService(repo).deleteClass(1)
+    ).resolves.toBeUndefined();
+    expect(repo.delete).toHaveBeenCalledWith(1);
+  });
 });
