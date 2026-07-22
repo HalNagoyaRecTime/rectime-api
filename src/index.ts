@@ -92,6 +92,12 @@ apiV1.get('/students', c => {
 apiV1.get('/students/:studentId', c => {
   return c.get('container').studentController.getStudentById(c);
 });
+apiV1.post('/students', c => {
+  return c.get('container').studentController.createStudent(c);
+});
+apiV1.put('/students/:studentId', c => {
+  return c.get('container').studentController.updateStudent(c);
+});
 
 // Event routes
 apiV1.get('/events', c => {

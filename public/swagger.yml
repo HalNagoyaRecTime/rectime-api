@@ -14,16 +14,54 @@ paths:
   /students:
     get:
       tags: [Students]
-      summary: 学生一覧を取得する
+      summary: 学生一覧をページ単位で取得する
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: 学生一覧
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Student'
+                $ref: '#/components/schemas/StudentPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Students]
+      summary: 学生を登録する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentWriteRequest'
+      responses:
+        '201':
+          description: 登録した学生
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Student'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -46,7 +84,32 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
-
+    put:
+      tags: [Students]
+      summary: 学生を更新する
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentWriteRequest'
+      responses:
+        '200':
+          description: 更新後の学生
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Student'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
   /events:
     get:
       tags: [Events]
@@ -892,20 +955,56 @@ components:
     Student:
       type: object
       required:
-        [student_id, user_id, user_name, class_room_id, attendance_number, student_id_number]
+        [student_id, display_name, class_room_id, class_room_name, attendance_number, student_id_number, is_live_active]
       properties:
         student_id:
           type: integer
-        user_id:
-          type: integer
-        user_name:
+        display_name:
           type: string
         class_room_id:
           type: integer
+        class_room_name:
+          type: string
         attendance_number:
           type: integer
         student_id_number:
           type: string
+        is_live_active:
+          type: boolean
+
+    StudentWriteRequest:
+      type: object
+      required: [display_name, class_room_id, attendance_number, student_id_number]
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        class_room_id:
+          type: integer
+          minimum: 1
+        attendance_number:
+          type: integer
+          minimum: 1
+        student_id_number:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    StudentPage:
+      type: object
+      required: [students, total, limit, offset]
+      properties:
+        students:
+          type: array
+          items:
+            $ref: '#/components/schemas/Student'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
 
     Event:
       type: object
