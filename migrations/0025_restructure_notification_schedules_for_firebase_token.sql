@@ -19,16 +19,16 @@ DROP INDEX IF EXISTS idx_notification_schedules_gathering_group_id;
 ALTER TABLE notification_schedules RENAME TO notification_schedules_legacy;
 
 CREATE TABLE notification_schedules (
-  notification_send_schedule_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  created_user_id INTEGER NOT NULL REFERENCES users(user_id),
-  event_id INTEGER NOT NULL REFERENCES events(event_id),
-  firebase_token_id INTEGER NOT NULL REFERENCES firebase_tokens(firebase_token_id),
+  notification_schedule_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_user_id INTEGER REFERENCES users(user_id),
+  event_id INTEGER REFERENCES events(event_id),
   notification_id INTEGER NOT NULL REFERENCES notifications(notification_id),
+  firebase_token_id INTEGER NOT NULL REFERENCES firebase_tokens(firebase_token_id),
   importance INTEGER NOT NULL DEFAULT 2
     CHECK (importance BETWEEN 1 AND 4),
   send_status TEXT NOT NULL DEFAULT 'draft'
     CHECK (send_status IN ('draft', 'sending', 'sent', 'failed')),
-  fcm_message_id TEXT UNIQUE,
+  fcm_message_id TEXT,
   failed_reason TEXT,
   send_at TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -41,5 +41,7 @@ CREATE INDEX idx_notification_schedules_due
   ON notification_schedules(send_status, send_at);
 CREATE INDEX idx_notification_schedules_event_id
   ON notification_schedules(event_id);
+CREATE INDEX idx_notification_schedules_notification_id
+  ON notification_schedules(notification_id);
 CREATE INDEX idx_notification_schedules_firebase_token_id
   ON notification_schedules(firebase_token_id);

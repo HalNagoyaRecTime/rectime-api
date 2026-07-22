@@ -2,19 +2,20 @@ import { describe, expect, it, vi } from 'vitest';
 import { createScheduledNotificationService } from '../../../src/application/services/ScheduledNotificationService';
 import type { IFcmService } from '../../../src/application/services/IFcmService';
 import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
+import type { DueNotificationSchedule } from '../../../src/domain/entities/NotificationSchedule';
 import type { INotificationScheduleRepository } from '../../../src/domain/interfaces/repositories/INotificationScheduleRepository';
-import type { NotificationScheduleEntity } from '../../../src/domain/entities/NotificationSchedule';
 
 function buildSchedule(
-  overrides: Partial<NotificationScheduleEntity> = {}
-): NotificationScheduleEntity {
+  overrides: Partial<DueNotificationSchedule> = {}
+): DueNotificationSchedule {
   return {
-    notification_send_schedule_id: 1,
-    created_user_id: 1,
+    notification_schedule_id: 1,
+    created_user_id: 7,
     event_id: 2,
+    notification_id: 4,
     firebase_token_id: 9,
     fcm_token: 'token-a',
-    notification_id: 4,
+    is_firebase_active: 1,
     notification_type: 'event_reminder',
     title: '集合のお知らせ',
     body: '集合時刻です。',
@@ -30,20 +31,16 @@ function buildSchedule(
 }
 
 describe('ScheduledNotificationService', () => {
-  function setup(schedules: NotificationScheduleEntity[] = []) {
+  function setup(schedules: DueNotificationSchedule[] = []) {
     const notificationScheduleRepository: INotificationScheduleRepository = {
       create: vi.fn(),
       findAll: vi.fn(),
       findById: vi.fn(),
       deleteDraft: vi.fn(),
-      findDraftsByEventAndTokens: vi.fn(),
-      findActiveFirebaseTokenIdsByGatheringGroup: vi.fn(),
-      updateDraft: vi.fn(),
-      existsUser: vi.fn(),
-      existsNotification: vi.fn(),
-      existsEvent: vi.fn(),
+      findDraftsByEvent: vi.fn(),
       existsFirebaseToken: vi.fn(),
-      existsFirebaseTokenGatheringForEvent: vi.fn(),
+      existsEvent: vi.fn(),
+      existsNotification: vi.fn(),
       claimDue: vi.fn().mockResolvedValue(schedules),
       markSent: vi.fn(),
       markFailed: vi.fn(),
@@ -71,18 +68,12 @@ describe('ScheduledNotificationService', () => {
     };
   }
 
-  it('期限到来した予定をそのFirebaseトークンへ送信し、送信済みにする', async () => {
-    const schedule = buildSchedule();
+  it('token単位の予定を対応する端末へ送信してsentにする', async () => {
     const { service, notificationScheduleRepository, fcmService } = setup([
-      schedule,
+      buildSchedule(),
     ]);
-
     const result = await service.sendScheduledEventNotifications(
       new Date('2026-01-01T09:00:00.000Z')
-    );
-
-    expect(notificationScheduleRepository.claimDue).toHaveBeenCalledWith(
-      '2026-01-01T09:00:00.000Z'
     );
     expect(fcmService.sendNotificationToToken).toHaveBeenCalledWith({
       token: 'token-a',
@@ -97,67 +88,54 @@ describe('ScheduledNotificationService', () => {
     expect(result).toEqual({ checkedEvents: 1, sent: 1, failed: 0 });
   });
 
-  it('複数の予定を独立に送信し、成功と失敗を個別に記録する', async () => {
-    const first = buildSchedule({
-      notification_send_schedule_id: 1,
-      firebase_token_id: 9,
-      fcm_token: 'token-a',
-    });
-    const second = buildSchedule({
-      notification_send_schedule_id: 2,
-      firebase_token_id: 10,
-      fcm_token: 'token-b',
-    });
+  it('1件が失敗しても別tokenの予定を続けて送信する', async () => {
+    const schedules = [
+      buildSchedule({
+        notification_schedule_id: 1,
+        firebase_token_id: 9,
+        fcm_token: 'token-a',
+      }),
+      buildSchedule({
+        notification_schedule_id: 2,
+        firebase_token_id: 10,
+        fcm_token: 'token-b',
+      }),
+      buildSchedule({
+        notification_schedule_id: 3,
+        firebase_token_id: 11,
+        fcm_token: 'token-c',
+      }),
+    ];
     const {
       service,
       notificationScheduleRepository,
       firebaseTokenRepository,
       fcmService,
-    } = setup([first, second]);
+    } = setup(schedules);
     (fcmService.sendNotificationToToken as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({ success: true, messageId: 'message-1' })
-      .mockRejectedValueOnce(new Error('UNREGISTERED'));
-
+      .mockRejectedValueOnce(new Error('UNREGISTERED'))
+      .mockResolvedValueOnce({ success: true, messageId: 'message-3' });
     const result = await service.sendScheduledEventNotifications();
-
-    expect(notificationScheduleRepository.markSent).toHaveBeenCalledWith(
-      1,
-      'message-1'
-    );
+    expect(fcmService.sendNotificationToToken).toHaveBeenCalledTimes(3);
+    expect(firebaseTokenRepository.deactivate).toHaveBeenCalledWith(10);
     expect(notificationScheduleRepository.markFailed).toHaveBeenCalledWith(
       2,
       'UNREGISTERED'
     );
-    expect(firebaseTokenRepository.deactivate).toHaveBeenCalledWith(10);
-    expect(result).toEqual({ checkedEvents: 2, sent: 1, failed: 1 });
+    expect(result).toEqual({ checkedEvents: 3, sent: 2, failed: 1 });
   });
 
-  it('無効化対象ではないエラーではトークンを無効化しない', async () => {
-    const { service, firebaseTokenRepository, fcmService } = setup([
-      buildSchedule(),
+  it('無効化済みtokenは送らず予定をfailedにする', async () => {
+    const { service, notificationScheduleRepository, fcmService } = setup([
+      buildSchedule({ is_firebase_active: 0 }),
     ]);
-    (
-      fcmService.sendNotificationToToken as ReturnType<typeof vi.fn>
-    ).mockRejectedValue(new Error('internal error'));
-
     const result = await service.sendScheduledEventNotifications();
-
-    expect(firebaseTokenRepository.deactivate).not.toHaveBeenCalled();
-    expect(result).toEqual({ checkedEvents: 1, sent: 0, failed: 1 });
-  });
-
-  it('送信自体は成功した後の記録失敗をfailedとして誤記録しない', async () => {
-    const { service, notificationScheduleRepository } = setup([
-      buildSchedule(),
-    ]);
-    (
-      notificationScheduleRepository.markSent as ReturnType<typeof vi.fn>
-    ).mockRejectedValue(new Error('D1 write failed'));
-
-    await expect(service.sendScheduledEventNotifications()).rejects.toThrow(
-      'D1 write failed'
+    expect(fcmService.sendNotificationToToken).not.toHaveBeenCalled();
+    expect(notificationScheduleRepository.markFailed).toHaveBeenCalledWith(
+      1,
+      'Firebase token is inactive'
     );
-
-    expect(notificationScheduleRepository.markFailed).not.toHaveBeenCalled();
+    expect(result).toEqual({ checkedEvents: 1, sent: 0, failed: 1 });
   });
 });

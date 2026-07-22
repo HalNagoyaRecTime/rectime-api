@@ -141,8 +141,6 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -387,7 +385,12 @@ paths:
           schema:
             type: integer
             minimum: 1
-        - name: gatheringGroupId
+        - name: createdUserId
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: firebaseTokenId
           in: query
           schema:
             type: integer
@@ -424,6 +427,10 @@ paths:
                 $ref: '#/components/schemas/NotificationScheduleListResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
     post:
@@ -444,6 +451,10 @@ paths:
                 $ref: '#/components/schemas/NotificationSchedule'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -469,6 +480,10 @@ paths:
                 $ref: '#/components/schemas/NotificationSchedule'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -481,6 +496,10 @@ paths:
           description: 削除成功
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -730,7 +749,7 @@ components:
 
     UpdateEventScheduleRequest:
       type: object
-      required: [startTime, endTime, gatheringGroupId, notificationEnabled]
+      required: [startTime, endTime, notificationEnabled]
       properties:
         startTime:
           type: string
@@ -742,24 +761,21 @@ components:
           description: JSTの終了時刻（HHMM形式）。開始時刻より後を指定します。
           pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
           example: '1100'
-        gatheringGroupId:
-          type: integer
-          minimum: 1
         notificationEnabled:
           type: boolean
 
     EventScheduleResult:
       type: object
-      required: [event, notification_enabled, notification_schedule]
+      required: [event, notification_enabled, notification_schedules]
       properties:
         event:
           $ref: '#/components/schemas/Event'
         notification_enabled:
           type: boolean
-        notification_schedule:
-          nullable: true
-          allOf:
-            - $ref: '#/components/schemas/NotificationSchedule'
+        notification_schedules:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationSchedule'
 
     ClassRoom:
       type: object
@@ -978,16 +994,18 @@ components:
     NotificationSchedule:
       type: object
       required:
-        [notification_send_schedule_id, user_id, event_id, gathering_group_id, notification_id, importance, notification_type, title, body, send_status, send_at, created_at, updated_at]
+        [notification_schedule_id, notification_id, firebase_token_id, importance, notification_type, title, body, send_status, send_at, created_at, updated_at]
       properties:
-        notification_send_schedule_id:
+        notification_schedule_id:
           type: integer
-        user_id:
+        created_user_id:
           type: integer
+          nullable: true
           description: 通知予定を登録したユーザー
         event_id:
           type: integer
-        gathering_group_id:
+          nullable: true
+        firebase_token_id:
           type: integer
         notification_id:
           type: integer
@@ -1023,15 +1041,13 @@ components:
 
     CreateNotificationScheduleRequest:
       type: object
-      required: [userId, eventId, gatheringGroupId, notificationId, sendAt]
+      required: [notificationId, firebaseTokenId, sendAt]
       properties:
-        userId:
-          type: integer
-          minimum: 1
         eventId:
           type: integer
           minimum: 1
-        gatheringGroupId:
+          nullable: true
+        firebaseTokenId:
           type: integer
           minimum: 1
         notificationId:

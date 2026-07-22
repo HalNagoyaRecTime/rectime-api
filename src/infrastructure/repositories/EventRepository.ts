@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/d1';
-import { and, asc, count, eq, sql, SQL } from 'drizzle-orm';
+import { and, asc, count, eq, SQL } from 'drizzle-orm';
 import * as schema from '../database/schema';
 import { events } from '../database/schema';
 
@@ -68,20 +68,6 @@ export function createEventRepository(db: D1Database): IEventRepository {
         .get();
 
       return result ? toEntity(result) : null;
-    },
-
-    async updateTimes(id, input) {
-      const row = await orm
-        .update(events)
-        .set({
-          startTime: input.start_time,
-          endTime: input.end_time,
-          updatedAt: sql`CURRENT_TIMESTAMP`,
-        })
-        .where(eq(events.id, id))
-        .returning()
-        .get();
-      return row ? toEntity(row) : null;
     },
   };
 }

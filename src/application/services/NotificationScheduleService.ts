@@ -5,12 +5,18 @@ import type {
   NotificationScheduleListResult,
 } from '../../domain/entities/NotificationSchedule';
 import type { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
+import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { INotificationScheduleService } from './INotificationScheduleService';
 
 export function createNotificationScheduleService(
-  notificationScheduleRepository: INotificationScheduleRepository
+  notificationScheduleRepository: INotificationScheduleRepository,
+  userRepository: IUserRepository
 ): INotificationScheduleService {
   return {
+    canManageNotificationSchedules(userId: number): Promise<boolean> {
+      return userRepository.isStaffOrTeacher(userId);
+    },
+
     getAllNotificationSchedules(
       options: NotificationScheduleListOptions
     ): Promise<NotificationScheduleListResult> {
@@ -44,40 +50,26 @@ export function createNotificationScheduleService(
     async createNotificationSchedule(
       input: CreateNotificationScheduleInput
     ): Promise<NotificationScheduleEntity> {
-      // 各存在確認は互いに独立しているため並行実行し、D1への往復回数分の
-      // 待ち時間が直列に積み上がらないようにする。エラーの優先順位は
-      // 従来どおり user → event → token → token-event関連 → notification。
-      const [
-        userExists,
-        eventExists,
-        firebaseTokenExists,
-        firebaseTokenGatheringForEventExists,
-        notificationExists,
-      ] = await Promise.all([
-        notificationScheduleRepository.existsUser(input.created_user_id),
-        notificationScheduleRepository.existsEvent(input.event_id),
-        notificationScheduleRepository.existsFirebaseToken(
+      if (
+        !(await notificationScheduleRepository.existsFirebaseToken(
           input.firebase_token_id
-        ),
-        notificationScheduleRepository.existsFirebaseTokenGatheringForEvent(
-          input.event_id,
-          input.firebase_token_id
-        ),
-        notificationScheduleRepository.existsNotification(
-          input.notification_id
-        ),
-      ]);
-
-      if (!userExists) throw new Error('User not found');
-      if (!eventExists) throw new Error('Event not found');
-      if (!firebaseTokenExists) throw new Error('Firebase token not found');
-      if (!firebaseTokenGatheringForEventExists) {
-        throw new Error(
-          'Firebase token is not associated with a gathering for this event'
-        );
+        ))
+      ) {
+        throw new Error('Firebase token not found');
       }
-      if (!notificationExists) throw new Error('Notification not found');
-
+      if (
+        input.event_id != null &&
+        !(await notificationScheduleRepository.existsEvent(input.event_id))
+      ) {
+        throw new Error('Event not found');
+      }
+      if (
+        !(await notificationScheduleRepository.existsNotification(
+          input.notification_id
+        ))
+      ) {
+        throw new Error('Notification not found');
+      }
       return notificationScheduleRepository.create(input);
     },
   };

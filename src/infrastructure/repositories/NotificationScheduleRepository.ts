@@ -1,26 +1,25 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { and, asc, count, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
-import type { NotificationScheduleEntity } from '../../domain/entities/NotificationSchedule';
+import type {
+  DueNotificationSchedule,
+  NotificationScheduleEntity,
+} from '../../domain/entities/NotificationSchedule';
 import type { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
 import * as schema from '../database/schema';
 import {
   events,
   firebase_tokens,
-  gathering_group_members,
-  gatherings,
   notification_schedules,
   notifications,
-  users,
 } from '../database/schema';
 
 const selection = {
-  notification_send_schedule_id: notification_schedules.id,
+  notification_schedule_id: notification_schedules.id,
   created_user_id: notification_schedules.createdUserId,
   event_id: notification_schedules.eventId,
-  firebase_token_id: notification_schedules.firebaseTokenId,
-  fcm_token: firebase_tokens.fcmToken,
   notification_id: notification_schedules.notificationId,
+  firebase_token_id: notification_schedules.firebaseTokenId,
   importance: notification_schedules.importance,
   notification_type: notifications.notificationType,
   title: notifications.title,
@@ -48,13 +47,6 @@ export function createNotificationScheduleRepository(
         notifications,
         eq(notification_schedules.notificationId, notifications.notificationId)
       )
-      .innerJoin(
-        firebase_tokens,
-        eq(
-          notification_schedules.firebaseTokenId,
-          firebase_tokens.firebaseTokenId
-        )
-      )
       .where(eq(notification_schedules.id, scheduleId))
       .get();
     return (row as NotificationScheduleEntity | undefined) ?? null;
@@ -66,17 +58,17 @@ export function createNotificationScheduleRepository(
         .insert(notification_schedules)
         .values({
           createdUserId: input.created_user_id,
-          eventId: input.event_id,
-          firebaseTokenId: input.firebase_token_id,
+          eventId: input.event_id ?? null,
           notificationId: input.notification_id,
-          importance: input.importance,
+          firebaseTokenId: input.firebase_token_id,
+          importance: input.importance ?? 2,
           sendAt: input.send_at,
         })
         .returning({ id: notification_schedules.id })
         .get();
       const schedule = inserted && (await findById(inserted.id));
       if (!schedule) throw new Error('Failed to create notification schedule');
-      return schedule as NotificationScheduleEntity;
+      return schedule;
     },
 
     async findAll(options) {
@@ -88,6 +80,11 @@ export function createNotificationScheduleRepository(
       }
       if (options.event_id !== undefined) {
         conditions.push(eq(notification_schedules.eventId, options.event_id));
+      }
+      if (options.created_user_id !== undefined) {
+        conditions.push(
+          eq(notification_schedules.createdUserId, options.created_user_id)
+        );
       }
       if (options.firebase_token_id !== undefined) {
         conditions.push(
@@ -105,7 +102,6 @@ export function createNotificationScheduleRepository(
         );
       }
       const where = conditions.length > 0 ? and(...conditions) : undefined;
-
       const [rows, totalResult] = await Promise.all([
         orm
           .select(selection)
@@ -115,13 +111,6 @@ export function createNotificationScheduleRepository(
             eq(
               notification_schedules.notificationId,
               notifications.notificationId
-            )
-          )
-          .innerJoin(
-            firebase_tokens,
-            eq(
-              notification_schedules.firebaseTokenId,
-              firebase_tokens.firebaseTokenId
             )
           )
           .where(where)
@@ -138,7 +127,6 @@ export function createNotificationScheduleRepository(
           .where(where)
           .get(),
       ]);
-
       return {
         notification_schedules: rows as NotificationScheduleEntity[],
         total: totalResult?.total ?? 0,
@@ -159,7 +147,6 @@ export function createNotificationScheduleRepository(
         .returning({ id: notification_schedules.id })
         .get();
       if (deleted) return 'deleted';
-
       const existing = await orm
         .select({ id: notification_schedules.id })
         .from(notification_schedules)
@@ -168,8 +155,7 @@ export function createNotificationScheduleRepository(
       return existing ? 'not_draft' : 'not_found';
     },
 
-    async findDraftsByEventAndTokens(eventId, firebaseTokenIds) {
-      if (firebaseTokenIds.length === 0) return [];
+    async findDraftsByEvent(eventId) {
       return orm
         .select(selection)
         .from(notification_schedules)
@@ -180,90 +166,15 @@ export function createNotificationScheduleRepository(
             notifications.notificationId
           )
         )
-        .innerJoin(
-          firebase_tokens,
-          eq(
-            notification_schedules.firebaseTokenId,
-            firebase_tokens.firebaseTokenId
-          )
-        )
         .where(
           and(
             eq(notification_schedules.eventId, eventId),
-            inArray(notification_schedules.firebaseTokenId, firebaseTokenIds),
-            eq(notification_schedules.sendStatus, 'draft')
+            eq(notification_schedules.sendStatus, 'draft'),
+            eq(notifications.notificationType, 'event_reminder')
           )
         )
         .orderBy(asc(notification_schedules.id))
         .all() as Promise<NotificationScheduleEntity[]>;
-    },
-
-    async updateDraft(notificationScheduleId, input) {
-      const updated = await orm
-        .update(notification_schedules)
-        .set({
-          notificationId: input.notification_id,
-          sendAt: input.send_at,
-          updatedAt: sql`CURRENT_TIMESTAMP`,
-        })
-        .where(
-          and(
-            eq(notification_schedules.id, notificationScheduleId),
-            eq(notification_schedules.sendStatus, 'draft')
-          )
-        )
-        .returning({ id: notification_schedules.id })
-        .get();
-      return updated ? findById(updated.id) : null;
-    },
-
-    async existsUser(userId) {
-      return Boolean(
-        await orm
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.id, userId))
-          .get()
-      );
-    },
-
-    async existsNotification(notificationId) {
-      return Boolean(
-        await orm
-          .select({ id: notifications.notificationId })
-          .from(notifications)
-          .where(eq(notifications.notificationId, notificationId))
-          .get()
-      );
-    },
-
-    async findActiveFirebaseTokenIdsByGatheringGroup(gatheringGroupId) {
-      const rows = await orm
-        .select({ firebaseTokenId: firebase_tokens.firebaseTokenId })
-        .from(gathering_group_members)
-        .innerJoin(
-          firebase_tokens,
-          eq(gathering_group_members.userId, firebase_tokens.userId)
-        )
-        .where(
-          and(
-            eq(gathering_group_members.gatheringGroupId, gatheringGroupId),
-            eq(firebase_tokens.isFirebaseActive, 1)
-          )
-        )
-        .orderBy(asc(firebase_tokens.firebaseTokenId))
-        .all();
-      return rows.map(row => row.firebaseTokenId);
-    },
-
-    async existsEvent(eventId) {
-      return Boolean(
-        await orm
-          .select({ id: events.id })
-          .from(events)
-          .where(eq(events.id, eventId))
-          .get()
-      );
     },
 
     async existsFirebaseToken(firebaseTokenId) {
@@ -276,28 +187,22 @@ export function createNotificationScheduleRepository(
       );
     },
 
-    async existsFirebaseTokenGatheringForEvent(eventId, firebaseTokenId) {
+    async existsEvent(eventId) {
       return Boolean(
         await orm
-          .select({ id: gatherings.id })
-          .from(gatherings)
-          .innerJoin(
-            gathering_group_members,
-            eq(
-              gathering_group_members.gatheringGroupId,
-              gatherings.gatheringGroupId
-            )
-          )
-          .innerJoin(
-            firebase_tokens,
-            eq(firebase_tokens.userId, gathering_group_members.userId)
-          )
-          .where(
-            and(
-              eq(gatherings.eventId, eventId),
-              eq(firebase_tokens.firebaseTokenId, firebaseTokenId)
-            )
-          )
+          .select({ id: events.id })
+          .from(events)
+          .where(eq(events.id, eventId))
+          .get()
+      );
+    },
+
+    async existsNotification(notificationId) {
+      return Boolean(
+        await orm
+          .select({ id: notifications.notificationId })
+          .from(notifications)
+          .where(eq(notifications.notificationId, notificationId))
           .get()
       );
     },
@@ -317,7 +222,11 @@ export function createNotificationScheduleRepository(
       if (claimed.length === 0) return [];
 
       return orm
-        .select(selection)
+        .select({
+          ...selection,
+          fcm_token: firebase_tokens.fcmToken,
+          is_firebase_active: firebase_tokens.isFirebaseActive,
+        })
         .from(notification_schedules)
         .innerJoin(
           notifications,
@@ -336,14 +245,14 @@ export function createNotificationScheduleRepository(
         .where(
           inArray(
             notification_schedules.id,
-            claimed.map(schedule => schedule.id)
+            claimed.map(row => row.id)
           )
         )
         .orderBy(
           asc(notification_schedules.sendAt),
           asc(notification_schedules.id)
         )
-        .all() as Promise<NotificationScheduleEntity[]>;
+        .all() as Promise<DueNotificationSchedule[]>;
     },
 
     async markSent(scheduleId, fcmMessageId) {

@@ -64,7 +64,6 @@ export function createDIContainer(env: Env) {
   const eventScheduleService = createEventScheduleService({
     eventRepository,
     eventScheduleRepository,
-    gatheringRepository,
     notificationScheduleRepository,
     userRepository,
   });
@@ -84,7 +83,8 @@ export function createDIContainer(env: Env) {
     fcmService,
   });
   const notificationScheduleService = createNotificationScheduleService(
-    notificationScheduleRepository
+    notificationScheduleRepository,
+    userRepository
   );
   const notificationService = createNotificationService(notificationRepository);
   const gatheringSpotService = createGatheringSpotService(
