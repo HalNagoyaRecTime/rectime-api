@@ -176,9 +176,9 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /classes:
+  /classrooms:
     get:
-      tags: [Classes]
+      tags: [ClassRooms]
       summary: クラス一覧を取得する
       responses:
         '200':
@@ -1036,13 +1036,13 @@ components:
 
     ClassRoom:
       type: object
-      required: [f_class_room_id, f_class_code, f_name]
+      required: [class_room_id, class_code, class_name]
       properties:
-        f_class_room_id:
+        class_room_id:
           type: integer
-        f_class_code:
+        class_code:
           type: string
-        f_name:
+        class_name:
           type: string
 
     GatheringSpot:
@@ -1514,7 +1514,7 @@ tags:
     description: 学生情報
   - name: Events
     description: イベント
-  - name: Classes
+  - name: ClassRooms
     description: クラス
   - name: Gathering spots
     description: 集合場所
