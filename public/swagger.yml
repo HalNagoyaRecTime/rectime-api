@@ -176,6 +176,10 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ClassRequest' }
+            example:
+              classCode: PM-001
+              className: Postman検証クラス
+              teacherId: null
       responses:
         '201':
           description: 登録したクラス
@@ -210,6 +214,10 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ClassRequest' }
+            example:
+              classCode: PM-001
+              className: Postman検証クラス
+              teacherId: null
       responses:
         '200':
           description: 更新したクラス
