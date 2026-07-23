@@ -22,6 +22,7 @@ function setup() {
     getStudentById: vi.fn(),
     getAllStudents: vi.fn(),
     createStudent: vi.fn(),
+    bulkImportStudents: vi.fn(),
   };
   const controller = createStudentController(studentService);
   const app = new Hono();
@@ -31,6 +32,7 @@ function setup() {
   );
   app.get('/students/by-id/:id', c => controller.getStudentById(c));
   app.post('/students', c => controller.createStudent(c));
+  app.post('/students/bulk-import', c => controller.bulkImportStudents(c));
   return { app, studentService };
 }
 
@@ -43,6 +45,26 @@ const validCreateBody = {
 
 function postStudents(app: Hono, body: unknown) {
   return app.request('/students', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+const validBulkImportBody = {
+  rows: [
+    {
+      class_code: '11A',
+      attendance_number: 1,
+      student_id_number: '24001',
+      last_name: '田中',
+      first_name: '太郎',
+    },
+  ],
+};
+
+function postBulkImport(app: Hono, body: unknown) {
+  return app.request('/students/bulk-import', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -307,6 +329,103 @@ describe('StudentController', () => {
 
       expect(res.status).toBe(500);
       expect(await res.json()).toEqual({ error: 'Failed to create student' });
+    });
+  });
+
+  describe('bulkImportStudents', () => {
+    it('成功時は201でサービスの返り値をそのまま返す', async () => {
+      const { app, studentService } = setup();
+      const result = { imported: 1, skipped: [] };
+      (
+        studentService.bulkImportStudents as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(result);
+
+      const res = await postBulkImport(app, validBulkImportBody);
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual(result);
+      expect(studentService.bulkImportStudents).toHaveBeenCalledWith(
+        validBulkImportBody
+      );
+    });
+
+    it('スキップされた行があってもサービスの返り値をそのまま201で返す', async () => {
+      const { app, studentService } = setup();
+      const result = {
+        imported: 0,
+        skipped: [
+          {
+            row_index: 0,
+            class_code: '11A',
+            attendance_number: 1,
+            student_id_number: '24001',
+            user_name: '田中太郎',
+            reason: 'student_id_number_duplicate_in_db',
+          },
+        ],
+      };
+      (
+        studentService.bulkImportStudents as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(result);
+
+      const res = await postBulkImport(app, validBulkImportBody);
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual(result);
+    });
+
+    it('rows が空配列の場合は400を返し、サービスは呼ばれない', async () => {
+      const { app, studentService } = setup();
+
+      const res = await postBulkImport(app, { rows: [] });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe('Invalid student bulk import request body');
+      expect(studentService.bulkImportStudents).not.toHaveBeenCalled();
+    });
+
+    it('body が空の場合は500ではなく400を返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students/bulk-import', {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.bulkImportStudents).not.toHaveBeenCalled();
+    });
+
+    it('行に last_name が無い場合は400を返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await postBulkImport(app, {
+        rows: [
+          {
+            class_code: '11A',
+            attendance_number: 1,
+            student_id_number: '24001',
+            first_name: '太郎',
+          },
+        ],
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.bulkImportStudents).not.toHaveBeenCalled();
+    });
+
+    it('その他の予期しないエラーは500を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.bulkImportStudents as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('boom'));
+
+      const res = await postBulkImport(app, validBulkImportBody);
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({
+        error: 'Failed to import students',
+      });
     });
   });
 });

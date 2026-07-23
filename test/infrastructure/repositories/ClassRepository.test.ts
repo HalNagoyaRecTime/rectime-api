@@ -75,4 +75,21 @@ describe('ClassRepository', () => {
       });
     });
   });
+
+  describe('create', () => {
+    it('新しいクラスを作成し、作成したエンティティを返す', async () => {
+      const created = await repo.create({
+        classCode: '13C',
+        name: '3年Cクラス',
+      });
+
+      expect(created).toMatchObject({
+        f_class_code: '13C',
+        f_name: '3年Cクラス',
+      });
+
+      const found = await repo.findById(created.f_class_room_id);
+      expect(found).toEqual(created);
+    });
+  });
 });

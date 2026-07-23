@@ -1,6 +1,9 @@
 import { D1Database } from '@cloudflare/workers-types';
 import { ClassEntity } from '../../domain/entities/Class';
-import { IClassRepository } from '../../domain/interfaces/repositories/IClassRepository';
+import {
+  IClassRepository,
+  NewClassInput,
+} from '../../domain/interfaces/repositories/IClassRepository';
 
 function toEntity(row: Record<string, unknown>): ClassEntity {
   return {
@@ -31,6 +34,21 @@ export function createClassRepository(db: D1Database): IClassRepository {
         .first();
 
       return row ? toEntity(row) : null;
+    },
+
+    async create(input: NewClassInput): Promise<ClassEntity> {
+      const row = await db
+        .prepare(
+          'INSERT INTO class_rooms (class_code, class_name) VALUES (?, ?) RETURNING class_room_id, class_code, class_name'
+        )
+        .bind(input.classCode, input.name)
+        .first();
+
+      if (!row) {
+        throw new Error('Failed to create class room');
+      }
+
+      return toEntity(row);
     },
   };
 }

@@ -13,6 +13,7 @@ describe('ClassService', () => {
       const repository: IClassRepository = {
         findAll: vi.fn().mockResolvedValue(classes),
         findById: vi.fn(),
+        create: vi.fn(),
       };
       const service = createClassService(repository);
 
@@ -29,6 +30,7 @@ describe('ClassService', () => {
       const repository: IClassRepository = {
         findAll: vi.fn().mockResolvedValue([]),
         findById: vi.fn(),
+        create: vi.fn(),
       };
       const service = createClassService(repository);
 

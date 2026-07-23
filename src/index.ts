@@ -88,6 +88,9 @@ apiV1.get('/students/:studentId', c => {
 apiV1.post('/students', c => {
   return c.get('container').studentController.createStudent(c);
 });
+apiV1.post('/students/bulk-import', c => {
+  return c.get('container').studentController.bulkImportStudents(c);
+});
 
 // Event routes
 apiV1.get('/events', c => {
