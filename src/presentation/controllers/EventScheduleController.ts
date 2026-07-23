@@ -1,13 +1,10 @@
 import type { Context } from 'hono';
 import { z } from 'zod';
 import type { IEventScheduleService } from '../../application/services/IEventScheduleService';
-import {
-  getSession,
-  getSessionIdFromCookie,
-} from '../../infrastructure/auth/session';
 import type { Env } from '../../lib/env';
 import { isValidEventDate } from '../../lib/eventDate';
 import type { ContainerVariables } from '../middleware/diContainer';
+import type { AuthenticationVariables } from '../middleware/sessionAuthentication';
 
 const eventIdSchema = z.coerce.number().int().positive();
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
@@ -24,7 +21,7 @@ const updateEventScheduleSchema = z
 
 type EventScheduleContext = Context<{
   Bindings: Env;
-  Variables: ContainerVariables;
+  Variables: ContainerVariables & AuthenticationVariables;
 }>;
 
 export function createEventScheduleController(
@@ -44,12 +41,8 @@ export function createEventScheduleController(
       );
     }
 
-    const sessionId = getSessionIdFromCookie(c.req.header('Cookie') ?? null);
-    const session = sessionId
-      ? await getSession(c.env.AUTH_KV, sessionId)
-      : null;
-    const userId = Number(session?.user_id);
-    if (!session || !Number.isInteger(userId) || userId <= 0) {
+    const userId = c.get('authenticatedUserId');
+    if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
     }
     const eventDate = c.env.EVENT_DATE;

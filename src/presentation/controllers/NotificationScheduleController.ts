@@ -1,11 +1,9 @@
 import type { Context } from 'hono';
 import { z } from 'zod';
 import type { INotificationScheduleService } from '../../application/services/INotificationScheduleService';
-import {
-  getSession,
-  getSessionIdFromCookie,
-} from '../../infrastructure/auth/session';
 import type { Env } from '../../lib/env';
+import type { ContainerVariables } from '../middleware/diContainer';
+import type { AuthenticationVariables } from '../middleware/sessionAuthentication';
 
 const createNotificationScheduleSchema = z.object({
   eventId: z.number().int().positive().nullable().optional(),
@@ -17,6 +15,11 @@ const createNotificationScheduleSchema = z.object({
 });
 
 const notificationScheduleIdSchema = z.coerce.number().int().positive();
+
+type NotificationScheduleContext = Context<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthenticationVariables;
+}>;
 
 const notificationScheduleListQuerySchema = z
   .object({
@@ -39,14 +42,10 @@ export function createNotificationScheduleController(
   notificationScheduleService: INotificationScheduleService
 ) {
   const authorizeManager = async (
-    c: Context
+    c: NotificationScheduleContext
   ): Promise<{ userId: number } | Response> => {
-    const sessionId = getSessionIdFromCookie(c.req.header('Cookie') ?? null);
-    const session = sessionId
-      ? await getSession((c.env as Env).AUTH_KV, sessionId)
-      : null;
-    const userId = Number(session?.user_id);
-    if (!session || !Number.isInteger(userId) || userId <= 0) {
+    const userId = c.get('authenticatedUserId');
+    if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
     }
     if (
@@ -62,7 +61,9 @@ export function createNotificationScheduleController(
     return { userId };
   };
 
-  const getAllNotificationSchedules = async (c: Context) => {
+  const getAllNotificationSchedules = async (
+    c: NotificationScheduleContext
+  ) => {
     const authorization = await authorizeManager(c);
     if (authorization instanceof Response) return authorization;
 
@@ -115,7 +116,9 @@ export function createNotificationScheduleController(
     }
   };
 
-  const getNotificationScheduleById = async (c: Context) => {
+  const getNotificationScheduleById = async (
+    c: NotificationScheduleContext
+  ) => {
     const authorization = await authorizeManager(c);
     if (authorization instanceof Response) return authorization;
 
@@ -147,7 +150,7 @@ export function createNotificationScheduleController(
     }
   };
 
-  const deleteNotificationSchedule = async (c: Context) => {
+  const deleteNotificationSchedule = async (c: NotificationScheduleContext) => {
     const authorization = await authorizeManager(c);
     if (authorization instanceof Response) return authorization;
 
@@ -184,7 +187,7 @@ export function createNotificationScheduleController(
     }
   };
 
-  const createNotificationSchedule = async (c: Context) => {
+  const createNotificationSchedule = async (c: NotificationScheduleContext) => {
     const authorization = await authorizeManager(c);
     if (authorization instanceof Response) return authorization;
 

@@ -107,6 +107,33 @@ describe('EventScheduleRepository', () => {
     expect(rows.results).toEqual([{ send_at: '2026-11-07T01:25:00.000Z' }]);
   });
 
+  it('同じイベントを並行更新してもtokenごとのdraftを重複させない', async () => {
+    const fixture = await createFixture();
+
+    await Promise.all([
+      repository.apply(buildInput(fixture)),
+      repository.apply(buildInput(fixture)),
+    ]);
+
+    const schedules = await env.DB.prepare(
+      `SELECT firebase_token_id, COUNT(*) AS count
+       FROM notification_schedules
+       WHERE event_id = ? AND send_status = 'draft'
+       GROUP BY firebase_token_id`
+    )
+      .bind(fixture.eventId)
+      .all<{ firebase_token_id: number; count: number }>();
+    const notifications = await env.DB.prepare(
+      `SELECT COUNT(*) AS count
+       FROM notifications
+       WHERE notification_type = 'event_reminder'`
+    ).first<{ count: number }>();
+
+    expect(schedules.results).toHaveLength(1);
+    expect(schedules.results[0]?.count).toBe(1);
+    expect(notifications?.count).toBe(1);
+  });
+
   it('通知OFFではdraftと孤立した自動通知だけを削除する', async () => {
     const fixture = await createFixture();
     await repository.apply(buildInput(fixture));

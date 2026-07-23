@@ -14,47 +14,30 @@ export function createEventScheduleRepository(
 ): IEventScheduleRepository {
   return {
     async apply(input) {
-      const [draftNotifications, audience] = await Promise.all([
-        db
-          .prepare(
-            `SELECT DISTINCT ns.notification_id
-             FROM notification_schedules ns
-             INNER JOIN notifications n
-               ON n.notification_id = ns.notification_id
-             WHERE ns.event_id = ?
-               AND ns.send_status = 'draft'
-               AND n.notification_type = 'event_reminder'`
-          )
-          .bind(input.event_id)
-          .all<{ notification_id: number }>(),
-        input.notification_enabled
-          ? db
-              .prepare(
-                `SELECT DISTINCT
-                   g.gathering_group_id,
-                   gs.gathering_spot_name
-                 FROM gatherings g
-                 INNER JOIN gathering_spots gs
-                   ON gs.gathering_spot_id = g.gathering_spot_id
-                 WHERE g.event_id = ?
-                   AND EXISTS (
-                     SELECT 1
-                     FROM gathering_group_members ggm
-                     INNER JOIN firebase_tokens ft
-                       ON ft.user_id = ggm.user_id
-                      AND ft.is_firebase_active = 1
-                     WHERE ggm.gathering_group_id = g.gathering_group_id
-                   )
-                 ORDER BY g.gathering_group_id`
-              )
-              .bind(input.event_id)
-              .all<EventAudienceRow>()
-          : Promise.resolve({ results: [] as EventAudienceRow[] }),
-      ]);
+      const audience = input.notification_enabled
+        ? await db
+            .prepare(
+              `SELECT DISTINCT
+                 g.gathering_group_id,
+                 gs.gathering_spot_name
+               FROM gatherings g
+               INNER JOIN gathering_spots gs
+                 ON gs.gathering_spot_id = g.gathering_spot_id
+               WHERE g.event_id = ?
+                 AND EXISTS (
+                   SELECT 1
+                   FROM gathering_group_members ggm
+                   INNER JOIN firebase_tokens ft
+                     ON ft.user_id = ggm.user_id
+                    AND ft.is_firebase_active = 1
+                   WHERE ggm.gathering_group_id = g.gathering_group_id
+                 )
+               ORDER BY g.gathering_group_id`
+            )
+            .bind(input.event_id)
+            .all<EventAudienceRow>()
+        : { results: [] as EventAudienceRow[] };
 
-      const draftNotificationIds = draftNotifications.results.map(
-        row => row.notification_id
-      );
       const statements: D1PreparedStatement[] = [
         db
           .prepare(
@@ -76,7 +59,6 @@ export function createEventScheduleRepository(
           )
           .bind(input.event_id),
       ];
-      appendOrphanNotificationCleanup(db, statements, draftNotificationIds);
 
       if (input.notification_enabled) {
         for (const row of audience.results) {
@@ -94,6 +76,7 @@ export function createEventScheduleRepository(
           );
         }
       }
+      statements.push(buildOrphanNotificationCleanup(db));
 
       await db.batch(statements);
     },
@@ -133,25 +116,14 @@ function buildScheduleInsert(
     .bind(input.user_id, input.event_id, input.send_at, gatheringGroupId);
 }
 
-function appendOrphanNotificationCleanup(
-  db: D1Database,
-  statements: D1PreparedStatement[],
-  notificationIds: number[]
-): void {
-  if (notificationIds.length === 0) return;
-  const placeholders = notificationIds.map(() => '?').join(', ');
-  statements.push(
-    db
-      .prepare(
-        `DELETE FROM notifications
-         WHERE notification_id IN (${placeholders})
-           AND notification_type = 'event_reminder'
-           AND NOT EXISTS (
-             SELECT 1
-             FROM notification_schedules
-             WHERE notification_schedules.notification_id = notifications.notification_id
-           )`
-      )
-      .bind(...notificationIds)
+function buildOrphanNotificationCleanup(db: D1Database): D1PreparedStatement {
+  return db.prepare(
+    `DELETE FROM notifications
+     WHERE notification_type = 'event_reminder'
+       AND NOT EXISTS (
+         SELECT 1
+         FROM notification_schedules
+         WHERE notification_schedules.notification_id = notifications.notification_id
+       )`
   );
 }

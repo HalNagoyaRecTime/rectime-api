@@ -8,6 +8,10 @@ import {
   diContainerMiddleware,
   type ContainerVariables,
 } from './presentation/middleware/diContainer';
+import {
+  sessionAuthenticationMiddleware,
+  type AuthenticationVariables,
+} from './presentation/middleware/sessionAuthentication';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -83,9 +87,13 @@ app.get('/', c => {
 });
 
 // API v1 routes
-const apiV1 = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
+const apiV1 = new Hono<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthenticationVariables;
+}>();
 
 apiV1.use('*', diContainerMiddleware);
+apiV1.use('*', sessionAuthenticationMiddleware);
 
 // Student routes
 apiV1.get('/students', c => {
