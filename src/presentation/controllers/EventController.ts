@@ -79,7 +79,10 @@ export function createEventController(eventService: IEventService) {
       return c.json(await eventService.createEvent(parsed.data), 201);
     } catch (error) {
       return c.json(
-        { error: 'Failed to create event', details: String(error) },
+        {
+          error: 'Failed to create event',
+          details: error instanceof Error ? error.message : String(error),
+        },
         500
       );
     }
@@ -148,5 +151,11 @@ function eventError(c: Context, error: unknown, fallback: string) {
   if (error instanceof Error && error.message === 'Event is in use') {
     return c.json({ error: 'Event is in use' }, 409);
   }
-  return c.json({ error: fallback }, 500);
+  return c.json(
+    {
+      error: fallback,
+      details: error instanceof Error ? error.message : String(error),
+    },
+    500
+  );
 }

@@ -244,6 +244,31 @@ describe('EventController', () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual(event);
     });
+
+    it('想定外の例外は500とdetailsを返す', async () => {
+      const { app, eventService } = setup();
+      (eventService.updateEvent as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('db error')
+      );
+
+      const response = await app.request('/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue: 'トラック',
+          start_time: '0930',
+          end_time: '0950',
+        }),
+      });
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({
+        error: 'Failed to update event',
+        details: 'db error',
+      });
+    });
   });
 
   describe('deleteEvent', () => {
