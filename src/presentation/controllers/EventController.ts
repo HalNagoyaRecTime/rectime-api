@@ -25,6 +25,13 @@ export function createEventController(eventService: IEventService) {
       const limit = c.req.query('limit');
       const offset = c.req.query('offset');
 
+      if (startTime !== undefined && !hhmmSchema.safeParse(startTime).success) {
+        return c.json(
+          { error: 'Invalid start_time', code: 'INVALID_START_TIME' },
+          400
+        );
+      }
+
       return c.json(
         await eventService.getAllEvents({
           start_time: startTime,

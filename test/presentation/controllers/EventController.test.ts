@@ -86,6 +86,22 @@ describe('EventController', () => {
       });
     });
 
+    it.each(['2460', '2360', '9999'])(
+      'HHMMとして不正なstart_timeクエリ %s は400を返す',
+      async invalid => {
+        const { app, eventService } = setup();
+
+        const response = await app.request(`/events?start_time=${invalid}`);
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: 'Invalid start_time',
+          code: 'INVALID_START_TIME',
+        });
+        expect(eventService.getAllEvents).not.toHaveBeenCalled();
+      }
+    );
+
     it('サービスが例外を投げた場合は500とdetailsを返す', async () => {
       const { app, eventService } = setup();
       (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockRejectedValue(
