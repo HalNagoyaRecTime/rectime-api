@@ -10,7 +10,6 @@ export interface GatheringEntity {
 }
 
 export interface GatheringDetailsEntity extends GatheringEntity {
-  gathering_group_name: string;
   event_name: string;
   gathering_spot_name: string;
 }

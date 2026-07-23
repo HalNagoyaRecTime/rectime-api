@@ -11,10 +11,8 @@ describe('GatheringRepository', () => {
 
   async function createReferences(suffix: string) {
     const group = await env.DB.prepare(
-      'INSERT INTO gathering_groups (gathering_group_name) VALUES (?) RETURNING gathering_group_id'
-    )
-      .bind(`集会テストグループ-${suffix}`)
-      .first<{ gathering_group_id: number }>();
+      'INSERT INTO gathering_groups DEFAULT VALUES RETURNING gathering_group_id'
+    ).first<{ gathering_group_id: number }>();
     groupIds.push(group!.gathering_group_id);
     const spot = await env.DB.prepare(
       'INSERT INTO gathering_spots (gathering_spot_name) VALUES (?) RETURNING gathering_spot_id'
@@ -76,7 +74,7 @@ describe('GatheringRepository', () => {
     spotIds = [];
   });
 
-  it('イベント・グループ・集合場所を結合した集会情報を作成・取得できる', async () => {
+  it('イベント・集合場所を結合した集会情報を作成・取得できる', async () => {
     const { groupId, spotId, eventId } = await createReferences('作成取得');
     const created = await repository.create({
       gathering_group_id: groupId,
@@ -88,7 +86,6 @@ describe('GatheringRepository', () => {
     gatheringIds.push(created.gathering_id);
 
     expect(created).toMatchObject({
-      gathering_group_name: '集会テストグループ-作成取得',
       event_name: '集会テストイベント-作成取得',
       gathering_spot_name: '集会テスト場所-作成取得',
       gathering_time: '08:50',

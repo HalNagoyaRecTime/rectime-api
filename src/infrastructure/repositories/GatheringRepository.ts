@@ -23,7 +23,6 @@ const detailSelection = {
   round: gatherings.round,
   created_at: gatherings.createdAt,
   updated_at: gatherings.updatedAt,
-  gathering_group_name: gathering_groups.name,
   event_name: events.name,
   gathering_spot_name: gathering_spots.name,
 };
@@ -39,10 +38,6 @@ export function createGatheringRepository(
     const row = await orm
       .select(detailSelection)
       .from(gatherings)
-      .innerJoin(
-        gathering_groups,
-        eq(gatherings.gatheringGroupId, gathering_groups.id)
-      )
       .innerJoin(events, eq(gatherings.eventId, events.id))
       .innerJoin(
         gathering_spots,
@@ -58,10 +53,6 @@ export function createGatheringRepository(
       return orm
         .select(detailSelection)
         .from(gatherings)
-        .innerJoin(
-          gathering_groups,
-          eq(gatherings.gatheringGroupId, gathering_groups.id)
-        )
         .innerJoin(events, eq(gatherings.eventId, events.id))
         .innerJoin(
           gathering_spots,

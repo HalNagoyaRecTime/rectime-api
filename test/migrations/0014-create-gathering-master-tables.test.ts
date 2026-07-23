@@ -30,7 +30,6 @@ describe('0014_create_gathering_master_tables.sql', () => {
     expect(gatheringGroupColumns.results).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'gathering_group_id', pk: 1 }),
-        expect.objectContaining({ name: 'gathering_group_name', notnull: 1 }),
         expect.objectContaining({ name: 'created_at', notnull: 1 }),
         expect.objectContaining({ name: 'updated_at', notnull: 1 }),
       ])

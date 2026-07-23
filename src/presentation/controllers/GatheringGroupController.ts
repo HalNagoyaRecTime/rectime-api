@@ -2,9 +2,7 @@ import { Context } from 'hono';
 import { z } from 'zod';
 import { IGatheringGroupService } from '../../application/services/IGatheringGroupService';
 
-const createGatheringGroupSchema = z.object({
-  gatheringGroupName: z.string().trim().min(1),
-});
+const createGatheringGroupSchema = z.object({}).strict();
 
 export function createGatheringGroupController(
   gatheringGroupService: IGatheringGroupService
@@ -37,9 +35,7 @@ export function createGatheringGroupController(
     }
 
     try {
-      const gatheringGroup = await gatheringGroupService.createGatheringGroup(
-        parsedBody.data.gatheringGroupName
-      );
+      const gatheringGroup = await gatheringGroupService.createGatheringGroup();
       return c.json(gatheringGroup, 201);
     } catch (error) {
       return c.json(

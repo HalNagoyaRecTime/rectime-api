@@ -16,7 +16,6 @@ describe('Gathering master services', () => {
     };
     const group = {
       gathering_group_id: 2,
-      gathering_group_name: '赤組',
       created_at: '2026-01-01 00:00:00',
       updated_at: '2026-01-01 00:00:00',
     };
@@ -44,7 +43,7 @@ describe('Gathering master services', () => {
       spots
     );
     await expect(
-      gatheringGroupService.createGatheringGroup('赤組')
+      gatheringGroupService.createGatheringGroup()
     ).resolves.toBe(group);
     await expect(gatheringGroupService.getAllGatheringGroups()).resolves.toBe(
       groups
@@ -52,7 +51,7 @@ describe('Gathering master services', () => {
 
     expect(gatheringSpotRepository.create).toHaveBeenCalledWith('体育館前');
     expect(gatheringSpotRepository.findAll).toHaveBeenCalledOnce();
-    expect(gatheringGroupRepository.create).toHaveBeenCalledWith('赤組');
+    expect(gatheringGroupRepository.create).toHaveBeenCalledWith();
     expect(gatheringGroupRepository.findAll).toHaveBeenCalledOnce();
   });
 

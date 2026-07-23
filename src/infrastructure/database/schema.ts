@@ -139,7 +139,6 @@ export const gathering_spots = sqliteTable('gathering_spots', {
 
 export const gathering_groups = sqliteTable('gathering_groups', {
   id: integer('gathering_group_id').primaryKey({ autoIncrement: true }),
-  name: text('gathering_group_name').notNull(),
   createdAt: text('created_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
