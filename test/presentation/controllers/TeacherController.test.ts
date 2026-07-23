@@ -192,6 +192,25 @@ describe('TeacherController', () => {
       expect(body.error).toBe('Invalid teacher update request body');
     });
 
+    it('classRoomIds に重複がある場合は 400 を返す', async () => {
+      const { app, teacherService } = setup();
+
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userName: '更新済み先生',
+          isLiveActive: false,
+          classRoomIds: [1, 1, 2],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe('Invalid teacher update request body');
+      expect(teacherService.updateTeacher).not.toHaveBeenCalled();
+    });
+
     it('サービスが Teacher not found を投げた場合は 404 を返す', async () => {
       const { app, teacherService } = setup();
       (

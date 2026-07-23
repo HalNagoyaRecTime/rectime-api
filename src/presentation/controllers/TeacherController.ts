@@ -6,7 +6,11 @@ import { TeacherSearchFilter } from '../../domain/entities/Teacher';
 const updateTeacherSchema = z.object({
   userName: z.string().min(1),
   isLiveActive: z.boolean(),
-  classRoomIds: z.array(z.number().int().positive()),
+  classRoomIds: z
+    .array(z.number().int().positive())
+    .refine(ids => new Set(ids).size === ids.length, {
+      message: 'classRoomIds must not contain duplicate values',
+    }),
 });
 
 function getTeacherId(c: Context): number | null {

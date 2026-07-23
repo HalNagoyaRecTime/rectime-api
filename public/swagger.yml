@@ -864,6 +864,8 @@ components:
           type: boolean
         classRoomIds:
           type: array
+          uniqueItems: true
+          description: 重複したIDを指定した場合は400を返す
           items:
             type: integer
             minimum: 1
