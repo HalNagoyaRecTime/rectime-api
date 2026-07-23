@@ -4,13 +4,14 @@ import type { CreateEventRequestDTO } from '../../application/dto/EventDTO';
 import type { IEventService } from '../../application/services/IEventService';
 
 const eventIdSchema = z.coerce.number().int().positive();
+const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
 const eventWriteSchema = z
   .object({
     event_name: z.string().trim().min(1).max(100),
     rule_text: z.string().trim().max(1000).nullable().optional(),
     venue: z.string().trim().min(1).max(100),
-    start_time: z.string().regex(/^\d{4}$/),
-    end_time: z.string().regex(/^\d{4}$/),
+    start_time: hhmmSchema,
+    end_time: hhmmSchema,
   })
   .refine(data => data.start_time < data.end_time, {
     message: 'end_time must be after start_time',

@@ -190,6 +190,28 @@ describe('EventController', () => {
       expect(response.status).toBe(201);
       expect(await response.json()).toEqual(event);
     });
+
+    it.each(['2460', '2360', '9999'])(
+      'HHMMとして不正な時刻 %s は400を返す',
+      async invalid => {
+        const { app, eventService } = setup();
+
+        const response = await app.request('/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event_name: '徒競走',
+            rule_text: null,
+            venue: 'トラック',
+            start_time: invalid,
+            end_time: '2359',
+          }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(eventService.createEvent).not.toHaveBeenCalled();
+      }
+    );
   });
 
   describe('updateEvent', () => {
