@@ -21,8 +21,8 @@ describe('ClassService', () => {
       classrooms: [
         {
           class_room_id: 1,
-          class_code: '11A',
-          class_name: '1年A組',
+          class_code: 'IA14A',
+          class_name: '高度情報学科AI開発先行コース',
           student_count: 2,
           teacher: null,
         },
@@ -37,8 +37,8 @@ describe('ClassService', () => {
       classrooms: [
         {
           class_room_id: 1,
-          class_code: '11A',
-          class_name: '1年A組',
+          class_code: 'IA14A',
+          class_name: '高度情報学科AI開発先行コース',
           student_count: 2,
           teacher: null,
         },
@@ -55,8 +55,8 @@ describe('ClassService', () => {
     (repo.teacherExists as ReturnType<typeof vi.fn>).mockResolvedValue(false);
     await expect(
       createClassService(repo).createClass({
-        class_code: '11A',
-        class_name: '1年A組',
+        class_code: 'IA14A',
+        class_name: '高度情報学科AI開発先行コース',
         teacher_id: 1,
       })
     ).rejects.toThrow('Teacher not found');
@@ -64,11 +64,15 @@ describe('ClassService', () => {
 
   it('存在する担任を指定してクラスを登録できる', async () => {
     const repo = repository();
-    const input = { class_code: '11A', class_name: '1年A組', teacher_id: 1 };
+    const input = {
+      class_code: 'IA14A',
+      class_name: '高度情報学科AI開発先行コース',
+      teacher_id: 1,
+    };
     const classroom = {
       class_room_id: 1,
-      class_code: '11A',
-      class_name: '1年A組',
+      class_code: 'IA14A',
+      class_name: '高度情報学科AI開発先行コース',
       student_count: 0,
       teacher: { teacher_id: 1, user_id: 10, display_name: '担任教員' },
     };
@@ -89,8 +93,8 @@ describe('ClassService', () => {
 
     await expect(
       createClassService(repo).createClass({
-        class_code: '11A',
-        class_name: '1年A組',
+        class_code: 'IA14A',
+        class_name: '高度情報学科AI開発先行コース',
         teacher_id: null,
       })
     ).rejects.toThrow('Class code already exists');
@@ -102,8 +106,8 @@ describe('ClassService', () => {
 
     await expect(
       createClassService(repo).updateClass(999, {
-        class_code: '11A',
-        class_name: '1年A組',
+        class_code: 'IA14A',
+        class_name: '高度情報学科AI開発先行コース',
         teacher_id: null,
       })
     ).rejects.toThrow('Class not found');

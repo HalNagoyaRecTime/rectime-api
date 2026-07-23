@@ -39,7 +39,7 @@ describe('ClassRepository', () => {
       .insert(class_rooms)
       .values([
         { classCode: '12B', name: '2年Bクラス', teacherId: teacher.id },
-        { classCode: '11A', name: '1年Aクラス' },
+        { classCode: 'IA14A', name: '高度情報学科AI開発先行コース' },
       ])
       .returning();
     const [studentUser] = await orm
@@ -76,8 +76,8 @@ describe('ClassRepository', () => {
         teacher: { display_name: '担任教員' },
       });
       expect(result.classrooms[1]).toMatchObject({
-        class_code: '11A',
-        class_name: '1年Aクラス',
+        class_code: 'IA14A',
+        class_name: '高度情報学科AI開発先行コース',
         student_count: 0,
         teacher: null,
       });
@@ -125,7 +125,7 @@ describe('ClassRepository', () => {
   it('class_codeの一意制約を適用する', async () => {
     await expect(
       repo.create({
-        class_code: '11A',
+        class_code: 'IA14A',
         class_name: '重複クラス',
         teacher_id: null,
       })
@@ -135,7 +135,7 @@ describe('ClassRepository', () => {
   it('学生の所属有無を返す', async () => {
     const classrooms = (await repo.findAll(1, 20)).classrooms;
     const assigned = classrooms.find(c => c.class_code === '12B');
-    const unassigned = classrooms.find(c => c.class_code === '11A');
+    const unassigned = classrooms.find(c => c.class_code === 'IA14A');
 
     await expect(repo.hasStudents(assigned!.class_room_id)).resolves.toBe(true);
     await expect(repo.hasStudents(unassigned!.class_room_id)).resolves.toBe(

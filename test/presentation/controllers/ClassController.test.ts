@@ -47,8 +47,8 @@ describe('ClassController', () => {
     const { app, service } = setup();
     (service.getClassById as ReturnType<typeof vi.fn>).mockResolvedValue({
       class_room_id: 1,
-      class_code: '11A',
-      class_name: '1年A組',
+      class_code: 'IA14A',
+      class_name: '高度情報学科AI開発先行コース',
       student_count: 0,
       teacher: null,
     });
@@ -77,8 +77,8 @@ describe('ClassController', () => {
     const { app, service } = setup();
     (service.createClass as ReturnType<typeof vi.fn>).mockResolvedValue({
       class_room_id: 1,
-      class_code: '11A',
-      class_name: '1年A組',
+      class_code: 'IA14A',
+      class_name: '高度情報学科AI開発先行コース',
       student_count: 0,
       teacher: null,
     });
@@ -86,15 +86,15 @@ describe('ClassController', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        classCode: '11A',
-        className: '1年A組',
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
         teacherId: null,
       }),
     });
     expect(response.status).toBe(201);
     expect(service.createClass).toHaveBeenCalledWith({
-      class_code: '11A',
-      class_name: '1年A組',
+      class_code: 'IA14A',
+      class_name: '高度情報学科AI開発先行コース',
       teacher_id: null,
     });
   });
@@ -104,7 +104,10 @@ describe('ClassController', () => {
     const response = await app.request('/classrooms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ classCode: '11A', className: '1年A組' }),
+      body: JSON.stringify({
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+      }),
     });
 
     expect(response.status).toBe(400);
@@ -120,8 +123,8 @@ describe('ClassController', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        classCode: '11A',
-        className: '1年A組',
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
         teacherId: 999,
       }),
     });
@@ -142,8 +145,8 @@ describe('ClassController', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        classCode: '11A',
-        className: '1年A組',
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
         teacherId: null,
       }),
     });
