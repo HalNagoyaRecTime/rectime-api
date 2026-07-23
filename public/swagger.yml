@@ -3,7 +3,7 @@ info:
   title: RecTime API
   description: |
     RecTime のバックエンドAPIです。
-    認証エンドポイントおよびイベントの書き込みAPIは、現時点では公開していません。
+    イベントの書き込みAPIは、現時点では公開していません。
   version: 1.0.0
 
 servers:
@@ -14,16 +14,54 @@ paths:
   /students:
     get:
       tags: [Students]
-      summary: 学生一覧を取得する
+      summary: 学生一覧をページ単位で取得する
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: 学生一覧
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Student'
+                $ref: '#/components/schemas/StudentPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Students]
+      summary: 学生を登録する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentWriteRequest'
+      responses:
+        '201':
+          description: 登録した学生
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Student'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -156,6 +194,11 @@ paths:
       summary: 教員情報と担当クラスを更新する
       parameters:
         - $ref: '#/components/parameters/TeacherId'
+    put:
+      tags: [Students]
+      summary: 学生を更新する
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
       requestBody:
         required: true
         content:
@@ -183,6 +226,14 @@ paths:
       responses:
         '204':
           description: 削除成功
+              $ref: '#/components/schemas/StudentWriteRequest'
+      responses:
+        '200':
+          description: 更新後の学生
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Student'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -258,9 +309,9 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /classes:
+  /classrooms:
     get:
-      tags: [Classes]
+      tags: [ClassRooms]
       summary: クラス一覧を取得する
       responses:
         '200':
@@ -724,6 +775,229 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /auth/microsoft/login:
+    get:
+      tags: [Auth]
+      summary: Microsoftログイン認可URLを取得・リダイレクトする
+      description: |
+        Webクライアントの場合はMicrosoftの認可画面へ302リダイレクトします（PKCEはサーバー側で管理）。
+        Mobileクライアントの場合は認可URLをJSONで返します（PKCEはクライアント側で管理し、
+        `X-State` / `X-PKCE-Code-Challenge` ヘッダーの指定が必須）。
+      parameters:
+        - $ref: '#/components/parameters/ClientType'
+        - name: X-State
+          in: header
+          description: Mobileクライアントのみ必須。PKCEのstate（Base64URL、デコード後32バイト以上）
+          schema:
+            type: string
+        - name: X-PKCE-Code-Challenge
+          in: header
+          description: Mobileクライアントのみ必須。PKCEのcode_challenge（Base64URL）
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Mobileクライアント向けの認可URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [auth_url]
+                properties:
+                  auth_url:
+                    type: string
+        '302':
+          description: Webクライアント向け、Microsoftの認可画面へのリダイレクト
+        '400':
+          $ref: '#/components/responses/AuthBadRequest'
+
+  /auth/microsoft/callback:
+    get:
+      tags: [Auth]
+      summary: Microsoftからの認可コールバックを処理する
+      description: |
+        Webクライアントの認可コードフロー専用エンドポイントです。Microsoftからのリダイレクトで
+        呼び出され、認証成功時はセッションCookieを発行してフロントエンドへリダイレクトします。
+        失敗時は `FRONTEND_URL/login?error=auth_failed` へリダイレクトします。
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: error
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: 認証成功時はフロントエンドへ、失敗時はログイン画面へリダイレクト
+          headers:
+            Set-Cookie:
+              description: 認証成功時のみ、セッションCookie（`session`）を発行
+              schema:
+                type: string
+
+  /auth/microsoft/token:
+    post:
+      tags: [Auth]
+      summary: Mobileクライアントの認可コードをアクセストークンと交換する
+      description: 'Mobileクライアント専用（`X-Client-Type: mobile` が必須）です。'
+      parameters:
+        - $ref: '#/components/parameters/ClientType'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenExchangeRequest'
+      responses:
+        '200':
+          description: モバイル用アクセストークン・リフレッシュトークン
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileTokenResponse'
+        '400':
+          $ref: '#/components/responses/AuthBadRequest'
+        '401':
+          $ref: '#/components/responses/AuthUnauthorized'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: ログイン中のユーザー情報を取得する
+      description: 'Webクライアントはセッション Cookie、Mobileクライアントは `Authorization: Bearer` で認証します。'
+      parameters:
+        - $ref: '#/components/parameters/ClientType'
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: ログイン中のユーザー情報
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    $ref: '#/components/schemas/AuthUser'
+        '400':
+          $ref: '#/components/responses/AuthBadRequest'
+        '401':
+          $ref: '#/components/responses/AuthUnauthorized'
+
+  /auth/me/photo:
+    get:
+      tags: [Auth]
+      summary: ログイン中のユーザーのMicrosoftアカウント写真を取得する
+      description: Microsoft Graph からユーザーの写真を取得して返却します。
+      parameters:
+        - $ref: '#/components/parameters/ClientType'
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 写真データ
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/AuthBadRequest'
+        '401':
+          $ref: '#/components/responses/AuthUnauthorized'
+        '404':
+          description: Microsoftアカウントに写真が登録されていない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: ログアウトする
+      parameters:
+        - $ref: '#/components/parameters/ClientType'
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      requestBody:
+        required: false
+        description: Mobileクライアントの場合のみ、`refresh_token_id` を指定可能
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token_id:
+                  type: string
+      responses:
+        '200':
+          description: ログアウト成功
+          headers:
+            Set-Cookie:
+              description: Webクライアントの場合、セッションCookieを削除
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message]
+                properties:
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/AuthBadRequest'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: セッション・トークンを更新する
+      description: Webクライアントはセッション Cookie を、Mobileクライアントは `refresh_token_id` を用いて更新します。
+      parameters:
+        - $ref: '#/components/parameters/ClientType'
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      requestBody:
+        required: false
+        description: Mobileクライアントの場合のみ必須
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token_id:
+                  type: string
+      responses:
+        '200':
+          description: 更新結果（Webはセッション更新のみ、Mobileは新しいトークンを返却）
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/RefreshWebResponse'
+                  - $ref: '#/components/schemas/MobileTokenResponse'
+          headers:
+            Set-Cookie:
+              description: Webクライアントの場合のみ、更新後のセッションCookieを発行
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/AuthBadRequest'
+        '401':
+          $ref: '#/components/responses/AuthUnauthorized'
+
 components:
   parameters:
     StudentId:
@@ -768,6 +1042,13 @@ components:
       schema:
         type: integer
         minimum: 1
+    ClientType:
+      name: X-Client-Type
+      in: header
+      description: クライアント種別（省略時は `web` 扱い）
+      schema:
+        type: string
+        enum: [web, mobile]
 
   responses:
     BadRequest:
@@ -794,25 +1075,83 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    AuthBadRequest:
+      description: リクエストが不正
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthError'
+    AuthUnauthorized:
+      description: 認証が必要、またはセッション・トークンが無効
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthError'
+
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
 
   schemas:
     Student:
       type: object
       required:
-        [student_id, user_id, user_name, class_room_id, attendance_number, student_id_number]
+        [student_id, display_name, class_room_id, class_room_name, attendance_number, student_id_number, is_live_active]
       properties:
         student_id:
           type: integer
-        user_id:
-          type: integer
-        user_name:
+        display_name:
           type: string
         class_room_id:
           type: integer
+        class_room_name:
+          type: string
         attendance_number:
           type: integer
         student_id_number:
           type: string
+        is_live_active:
+          type: boolean
+
+    StudentWriteRequest:
+      type: object
+      required: [display_name, class_room_id, attendance_number, student_id_number]
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        class_room_id:
+          type: integer
+          minimum: 1
+        attendance_number:
+          type: integer
+          minimum: 1
+        student_id_number:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    StudentPage:
+      type: object
+      required: [students, total, limit, offset]
+      properties:
+        students:
+          type: array
+          items:
+            $ref: '#/components/schemas/Student'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
 
     Staff:
       type: object
@@ -917,13 +1256,13 @@ components:
 
     ClassRoom:
       type: object
-      required: [f_class_room_id, f_class_code, f_name]
+      required: [class_room_id, class_code, class_name]
       properties:
-        f_class_room_id:
+        class_room_id:
           type: integer
-        f_class_code:
+        class_code:
           type: string
-        f_name:
+        class_name:
           type: string
 
     GatheringSpot:
@@ -1325,6 +1664,71 @@ components:
           type: object
           additionalProperties: true
 
+    AuthUser:
+      type: object
+      required: [id, email, display_name, avatar_url, avatar_updated_at]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        display_name:
+          type: string
+        avatar_url:
+          type: string
+        avatar_updated_at:
+          type: string
+          nullable: true
+
+    TokenExchangeRequest:
+      type: object
+      required: [code, state, code_verifier]
+      properties:
+        code:
+          type: string
+        state:
+          type: string
+        code_verifier:
+          type: string
+          minLength: 43
+          maxLength: 128
+
+    MobileTokenResponse:
+      type: object
+      required: [access_token, refresh_token_id, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+        refresh_token_id:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+        user:
+          $ref: '#/components/schemas/AuthUser'
+
+    RefreshWebResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    AuthError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
 tags:
   - name: Students
     description: 学生情報
@@ -1334,7 +1738,7 @@ tags:
     description: 教員情報
   - name: Events
     description: イベント
-  - name: Classes
+  - name: ClassRooms
     description: クラス
   - name: Gathering spots
     description: 集合場所
@@ -1350,3 +1754,5 @@ tags:
     description: 通知予定
   - name: Notifications
     description: Firebase通知
+  - name: Auth
+    description: 認証
