@@ -1,8 +1,8 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createClassRepository } from '../../../src/infrastructure/repositories/ClassRepository';
-import type { IClassRepository } from '../../../src/domain/interfaces/repositories/IClassRepository';
+import { createClassRoomRepository } from '../../../src/infrastructure/repositories/ClassRoomRepository';
+import type { IClassRoomRepository } from '../../../src/domain/interfaces/repositories/IClassRoomRepository';
 import * as schema from '../../../src/infrastructure/database/schema';
 import {
   class_rooms,
@@ -10,8 +10,8 @@ import {
   users,
 } from '../../../src/infrastructure/database/schema';
 
-describe('ClassRepository', () => {
-  let repo: IClassRepository;
+describe('ClassRoomRepository', () => {
+  let repo: IClassRoomRepository;
 
   beforeAll(async () => {
     const orm = drizzle(env.DB, { schema });
@@ -33,7 +33,7 @@ describe('ClassRepository', () => {
       ])
       .returning();
 
-    repo = createClassRepository(env.DB);
+    repo = createClassRoomRepository(env.DB);
   });
 
   describe('findAll', () => {
@@ -41,20 +41,20 @@ describe('ClassRepository', () => {
       const result = await repo.findAll();
 
       expect(result).toHaveLength(2);
-      const ids = result.map(c => c.f_class_room_id);
+      const ids = result.map(c => c.class_room_id);
       expect(ids).toEqual([...ids].sort((a, b) => a - b));
     });
 
-    it('各カラムを ClassEntity のフィールドにマッピングする', async () => {
+    it('各カラムを ClassRoomEntity のフィールドにマッピングする', async () => {
       const result = await repo.findAll();
 
       expect(result[0]).toMatchObject({
-        f_class_code: '12B',
-        f_name: '2年Bクラス',
+        class_code: '12B',
+        class_name: '2年Bクラス',
       });
       expect(result[1]).toMatchObject({
-        f_class_code: '11A',
-        f_name: '1年Aクラス',
+        class_code: '11A',
+        class_name: '1年Aクラス',
       });
     });
   });
