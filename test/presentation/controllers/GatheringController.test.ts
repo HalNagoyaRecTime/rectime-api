@@ -25,9 +25,7 @@ describe('GatheringController', () => {
     const response = await app.request('/gatherings');
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual([
-      { gathering_id: 1 },
-    ]);
+    expect(await response.json()).toEqual([{ gathering_id: 1 }]);
   });
 
   it('一覧取得時の想定外例外は500を返す', async () => {

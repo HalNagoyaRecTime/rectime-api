@@ -42,9 +42,9 @@ describe('Gathering master services', () => {
     await expect(gatheringSpotService.getAllGatheringSpots()).resolves.toBe(
       spots
     );
-    await expect(
-      gatheringGroupService.createGatheringGroup()
-    ).resolves.toBe(group);
+    await expect(gatheringGroupService.createGatheringGroup()).resolves.toBe(
+      group
+    );
     await expect(gatheringGroupService.getAllGatheringGroups()).resolves.toBe(
       groups
     );
