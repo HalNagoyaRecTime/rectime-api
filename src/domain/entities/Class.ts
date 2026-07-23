@@ -7,7 +7,7 @@ export interface ClassTeacher {
 export interface ClassEntity {
   class_room_id: number;
   class_code: string;
-  name: string;
+  class_name: string;
   student_count: number;
   teacher: ClassTeacher | null;
 }
@@ -21,6 +21,6 @@ export interface ClassPage {
 
 export interface ClassInput {
   class_code: string;
-  name: string;
+  class_name: string;
   teacher_id: number | null;
 }

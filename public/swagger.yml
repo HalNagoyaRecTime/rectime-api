@@ -847,13 +847,13 @@ components:
 
     ClassRoom:
       type: object
-      required: [class_room_id, class_code, name, student_count, teacher]
+      required: [class_room_id, class_code, class_name, student_count, teacher]
       properties:
         class_room_id:
           type: integer
         class_code:
           type: string
-        name:
+        class_name:
           type: string
         student_count:
           type: integer

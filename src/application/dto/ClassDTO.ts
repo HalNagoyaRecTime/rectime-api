@@ -3,7 +3,7 @@ import type { ClassTeacher } from '../../domain/entities/Class';
 export interface ClassDTO {
   class_room_id: number;
   class_code: string;
-  name: string;
+  class_name: string;
   student_count: number;
   teacher: ClassTeacher | null;
 }
@@ -18,6 +18,6 @@ export interface ClassPageDTO {
 
 export interface ClassRequestDTO {
   class_code: string;
-  name: string;
+  class_name: string;
   teacher_id: number | null;
 }

@@ -9,7 +9,7 @@ import type { IClassRepository } from '../../domain/interfaces/repositories/ICla
 type ClassRow = {
   class_room_id: number;
   class_code: string;
-  name: string;
+  class_name: string;
   student_count: number;
   teacher_id: number | null;
   teacher_user_id: number | null;
@@ -20,7 +20,7 @@ const classSelect = `
   SELECT
     c.class_room_id,
     c.class_code,
-    c.class_name AS name,
+    c.class_name,
     COUNT(s.student_id) AS student_count,
     t.teacher_id,
     u.user_id AS teacher_user_id,
@@ -35,7 +35,7 @@ function toEntity(row: ClassRow): ClassEntity {
   return {
     class_room_id: row.class_room_id,
     class_code: row.class_code,
-    name: row.name,
+    class_name: row.class_name,
     student_count: Number(row.student_count),
     teacher:
       row.teacher_id === null ||
@@ -90,7 +90,7 @@ export function createClassRepository(db: D1Database): IClassRepository {
         .prepare(
           'INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES (?, ?, ?) RETURNING class_room_id'
         )
-        .bind(input.class_code, input.name, input.teacher_id)
+        .bind(input.class_code, input.class_name, input.teacher_id)
         .first<{ class_room_id: number }>();
       if (!row) throw new Error('Failed to create class');
       const classroom = await findById(row.class_room_id);
@@ -103,7 +103,7 @@ export function createClassRepository(db: D1Database): IClassRepository {
         .prepare(
           'UPDATE class_rooms SET class_code = ?, class_name = ?, teacher_id = ?, updated_at = CURRENT_TIMESTAMP WHERE class_room_id = ? RETURNING class_room_id'
         )
-        .bind(input.class_code, input.name, input.teacher_id, id)
+        .bind(input.class_code, input.class_name, input.teacher_id, id)
         .first<{ class_room_id: number }>();
       return row ? findById(row.class_room_id) : null;
     },

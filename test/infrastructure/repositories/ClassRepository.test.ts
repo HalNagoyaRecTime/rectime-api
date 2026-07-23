@@ -71,13 +71,13 @@ describe('ClassRepository', () => {
 
       expect(result.classrooms[0]).toMatchObject({
         class_code: '12B',
-        name: '2年Bクラス',
+        class_name: '2年Bクラス',
         student_count: 1,
         teacher: { display_name: '担任教員' },
       });
       expect(result.classrooms[1]).toMatchObject({
         class_code: '11A',
-        name: '1年Aクラス',
+        class_name: '1年Aクラス',
         student_count: 0,
         teacher: null,
       });
@@ -99,22 +99,25 @@ describe('ClassRepository', () => {
   it('担任未設定のクラスを作成・更新・削除できる', async () => {
     const created = await repo.create({
       class_code: '13A',
-      name: '3年Aクラス',
+      class_name: '3年Aクラス',
       teacher_id: null,
     });
     expect(created).toMatchObject({
       class_code: '13A',
-      name: '3年Aクラス',
+      class_name: '3年Aクラス',
       student_count: 0,
       teacher: null,
     });
 
     const updated = await repo.update(created.class_room_id, {
       class_code: '13B',
-      name: '3年Bクラス',
+      class_name: '3年Bクラス',
       teacher_id: null,
     });
-    expect(updated).toMatchObject({ class_code: '13B', name: '3年Bクラス' });
+    expect(updated).toMatchObject({
+      class_code: '13B',
+      class_name: '3年Bクラス',
+    });
     await expect(repo.delete(created.class_room_id)).resolves.toBe(true);
     await expect(repo.findById(created.class_room_id)).resolves.toBeNull();
   });
@@ -123,7 +126,7 @@ describe('ClassRepository', () => {
     await expect(
       repo.create({
         class_code: '11A',
-        name: '重複クラス',
+        class_name: '重複クラス',
         teacher_id: null,
       })
     ).rejects.toThrow();

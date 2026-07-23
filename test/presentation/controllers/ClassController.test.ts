@@ -48,7 +48,7 @@ describe('ClassController', () => {
     (service.getClassById as ReturnType<typeof vi.fn>).mockResolvedValue({
       class_room_id: 1,
       class_code: '11A',
-      name: '1年A組',
+      class_name: '1年A組',
       student_count: 0,
       teacher: null,
     });
@@ -78,7 +78,7 @@ describe('ClassController', () => {
     (service.createClass as ReturnType<typeof vi.fn>).mockResolvedValue({
       class_room_id: 1,
       class_code: '11A',
-      name: '1年A組',
+      class_name: '1年A組',
       student_count: 0,
       teacher: null,
     });
@@ -94,7 +94,7 @@ describe('ClassController', () => {
     expect(response.status).toBe(201);
     expect(service.createClass).toHaveBeenCalledWith({
       class_code: '11A',
-      name: '1年A組',
+      class_name: '1年A組',
       teacher_id: null,
     });
   });
@@ -159,7 +159,7 @@ describe('ClassController', () => {
     (service.updateClass as ReturnType<typeof vi.fn>).mockResolvedValue({
       class_room_id: 1,
       class_code: '11B',
-      name: '1年B組',
+      class_name: '1年B組',
       student_count: 0,
       teacher: null,
     });
@@ -177,7 +177,7 @@ describe('ClassController', () => {
     expect(response.status).toBe(200);
     expect(service.updateClass).toHaveBeenCalledWith(1, {
       class_code: '11B',
-      name: '1年B組',
+      class_name: '1年B組',
       teacher_id: null,
     });
   });

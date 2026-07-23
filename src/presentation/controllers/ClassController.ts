@@ -68,7 +68,7 @@ export function createClassController(classService: IClassService) {
       return c.json(
         await classService.createClass({
           class_code: body.data.classCode,
-          name: body.data.className,
+          class_name: body.data.className,
           teacher_id: body.data.teacherId,
         }),
         201
@@ -91,7 +91,7 @@ export function createClassController(classService: IClassService) {
       return c.json(
         await classService.updateClass(id.data, {
           class_code: body.data.classCode,
-          name: body.data.className,
+          class_name: body.data.className,
           teacher_id: body.data.teacherId,
         })
       );
