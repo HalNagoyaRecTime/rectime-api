@@ -55,7 +55,10 @@ export function createDIContainer(env: Env) {
 
   // Services
   const authService = createAuthService(userRepository, env.AUTH_KV);
-  const studentService = createStudentService(studentRepository);
+  const studentService = createStudentService(
+    studentRepository,
+    classRoomRepository
+  );
   const eventService = createEventService(eventRepository);
   const classRoomService = createClassRoomService(classRoomRepository);
   const firebaseTokenService = createFirebaseTokenService(

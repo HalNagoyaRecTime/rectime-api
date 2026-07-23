@@ -4,7 +4,10 @@ import { class_rooms } from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
 import { ClassRoomEntity } from '../../domain/entities/ClassRoom';
-import { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
+import {
+  IClassRoomRepository,
+  NewClassRoomInput,
+} from '../../domain/interfaces/repositories/IClassRoomRepository';
 
 function toEntity(row: typeof class_rooms.$inferSelect): ClassRoomEntity {
   return {
@@ -24,6 +27,18 @@ export function createClassRoomRepository(
       const result = await orm.select().from(class_rooms).all();
 
       return result ? result.map(toEntity) : [];
+    },
+
+    async create(input: NewClassRoomInput): Promise<ClassRoomEntity> {
+      const [created] = await orm
+        .insert(class_rooms)
+        .values({ classCode: input.classCode, name: input.name })
+        .returning();
+
+      if (!created) {
+        throw new Error('Failed to create class room');
+      }
+      return toEntity(created);
     },
   };
 }

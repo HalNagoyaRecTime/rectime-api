@@ -12,6 +12,7 @@ describe('ClassRoomService', () => {
       ];
       const repository: IClassRoomRepository = {
         findAll: vi.fn().mockResolvedValue(classRooms),
+        create: vi.fn(),
       };
       const service = createClassRoomService(repository);
 
@@ -27,6 +28,7 @@ describe('ClassRoomService', () => {
     it('リポジトリが空配列を返す場合は空配列を返す', async () => {
       const repository: IClassRoomRepository = {
         findAll: vi.fn().mockResolvedValue([]),
+        create: vi.fn(),
       };
       const service = createClassRoomService(repository);
 

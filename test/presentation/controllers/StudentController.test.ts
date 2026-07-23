@@ -23,6 +23,7 @@ function setup() {
     getAllStudents: vi.fn(),
     createStudent: vi.fn(),
     updateStudent: vi.fn(),
+    bulkImportStudents: vi.fn(),
   };
   const controller = createStudentController(studentService);
   const app = new Hono();
@@ -30,6 +31,7 @@ function setup() {
   app.get('/students/:studentId', c => controller.getStudentById(c));
   app.post('/students', c => controller.createStudent(c));
   app.put('/students/:studentId', c => controller.updateStudent(c));
+  app.post('/students/bulk-import', c => controller.bulkImportStudents(c));
   return { app, studentService };
 }
 
@@ -267,6 +269,122 @@ describe('StudentController', () => {
       expect(res.status).toBe(409);
       expect(await res.json()).toEqual({
         error: 'Student number already exists',
+      });
+    });
+  });
+
+  describe('bulkImportStudents', () => {
+    const validRow = {
+      class_code: '11A',
+      attendance_number: 1,
+      student_id_number: 'S010',
+      last_name: '新規',
+      first_name: '太郎',
+    };
+
+    it('サービスの結果をそのまま201で返す', async () => {
+      const { app, studentService } = setup();
+      const result = { imported: 1, skipped: [] };
+      (
+        studentService.bulkImportStudents as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(result);
+
+      const res = await app.request('/students/bulk-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [validRow] }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual(result);
+      expect(studentService.bulkImportStudents).toHaveBeenCalledWith({
+        rows: [validRow],
+      });
+    });
+
+    it('スキップ行があっても201を返す', async () => {
+      const { app, studentService } = setup();
+      const result = {
+        imported: 0,
+        skipped: [
+          {
+            row_index: 0,
+            class_code: '11A',
+            attendance_number: 1,
+            student_id_number: 'S010',
+            display_name: '新規太郎',
+            reason: 'student_id_number_duplicate_in_db',
+          },
+        ],
+      };
+      (
+        studentService.bulkImportStudents as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(result);
+
+      const res = await app.request('/students/bulk-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [validRow] }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual(result);
+    });
+
+    it('rowsが空配列の場合は400を返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students/bulk-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [] }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.bulkImportStudents).not.toHaveBeenCalled();
+    });
+
+    it('不正なJSONの場合は400を返す', async () => {
+      const { app } = setup();
+
+      const res = await app.request('/students/bulk-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{invalid json',
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('last_nameが欠けている場合は400を返す', async () => {
+      const { app } = setup();
+      const rowWithoutLastName: Record<string, unknown> = { ...validRow };
+      delete rowWithoutLastName.last_name;
+
+      const res = await app.request('/students/bulk-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [rowWithoutLastName] }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('サービスが例外を投げた場合は500を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.bulkImportStudents as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('boom'));
+
+      const res = await app.request('/students/bulk-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [validRow] }),
+      });
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({
+        error: 'Failed to bulk import students',
       });
     });
   });

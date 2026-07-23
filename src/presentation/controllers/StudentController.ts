@@ -14,6 +14,21 @@ const studentWriteSchema = z.object({
   student_id_number: z.string().trim().min(1).max(100),
 });
 
+const bulkImportStudentRowSchema = z.object({
+  class_code: z.string().trim().min(1).max(100),
+  attendance_number: z.number().int().positive(),
+  student_id_number: z
+    .union([z.string(), z.number()])
+    .transform(value => String(value))
+    .pipe(z.string().trim().min(1).max(100)),
+  last_name: z.string().trim().min(1).max(100),
+  first_name: z.string().trim().min(1).max(100),
+});
+
+const bulkImportStudentsSchema = z.object({
+  rows: z.array(bulkImportStudentRowSchema).min(1),
+});
+
 function getErrorChainMessage(error: unknown): string {
   const messages: string[] = [];
   const visited = new Set<Error>();
@@ -104,11 +119,33 @@ export function createStudentController(studentService: IStudentService) {
     }
   };
 
+  const bulkImportStudents = async (c: Context) => {
+    const body = await c.req.json().catch(() => undefined);
+    const parsedBody = bulkImportStudentsSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return c.json(
+        {
+          error: 'Invalid bulk import request body',
+          details: parsedBody.error.flatten(),
+        },
+        400
+      );
+    }
+
+    try {
+      const result = await studentService.bulkImportStudents(parsedBody.data);
+      return c.json(result, 201);
+    } catch {
+      return c.json({ error: 'Failed to bulk import students' }, 500);
+    }
+  };
+
   return {
     getStudentById,
     getAllStudent,
     createStudent,
     updateStudent,
+    bulkImportStudents,
   };
 }
 

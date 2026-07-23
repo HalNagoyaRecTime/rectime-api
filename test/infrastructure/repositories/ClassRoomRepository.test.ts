@@ -58,4 +58,21 @@ describe('ClassRoomRepository', () => {
       });
     });
   });
+
+  describe('create', () => {
+    it('新しいクラスを作成し、作成したエンティティを返す', async () => {
+      const created = await repo.create({
+        classCode: '13C',
+        name: '3年Cクラス',
+      });
+
+      expect(created).toMatchObject({
+        class_code: '13C',
+        class_name: '3年Cクラス',
+      });
+
+      const all = await repo.findAll();
+      expect(all).toContainEqual(created);
+    });
+  });
 });
