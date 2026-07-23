@@ -76,7 +76,7 @@ describe('GatheringRepository', () => {
     spotIds = [];
   });
 
-  it('イベント・グループ・集合場所を結合した集会情報を作成・取得できる', async () => {
+  it('イベント・集合場所を結合した集合予定を作成・取得できる', async () => {
     const { groupId, spotId, eventId } = await createReferences('作成取得');
     const created = await repository.create({
       gathering_group_id: groupId,
@@ -87,8 +87,11 @@ describe('GatheringRepository', () => {
     });
     gatheringIds.push(created.gathering_id);
 
-    expect(created).toMatchObject({
-      gathering_group_name: '集会テストグループ-作成取得',
+    expect(created).toEqual({
+      gathering_id: created.gathering_id,
+      gathering_group_id: groupId,
+      event_id: eventId,
+      gathering_spot_id: spotId,
       event_name: '集会テストイベント-作成取得',
       gathering_spot_name: '集会テスト場所-作成取得',
       gathering_time: '08:50',

@@ -23,14 +23,14 @@ describe('GatheringController', () => {
   it('一覧をJSONで返す', async () => {
     const { app, service } = setup();
     (service.getAllGatherings as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { gathering_id: 1, gathering_group_name: '赤組' },
+      { gathering_id: 1, gathering_spot_name: '東側正面口' },
     ]);
 
     const response = await app.request('/gatherings');
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([
-      { gathering_id: 1, gathering_group_name: '赤組' },
+      { gathering_id: 1, gathering_spot_name: '東側正面口' },
     ]);
   });
 
@@ -47,7 +47,7 @@ describe('GatheringController', () => {
 
   it('イベントIDを指定して集合予定を返す', async () => {
     const { app, service } = setup();
-    const gathering = { gathering_id: 1, gathering_time: '08:45' };
+    const gathering = { gathering_id: 1, gathering_time: '16:45' };
     (
       service.getGatheringByEventId as ReturnType<typeof vi.fn>
     ).mockResolvedValue(gathering);

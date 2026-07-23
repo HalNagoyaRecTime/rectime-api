@@ -866,7 +866,7 @@ components:
     Gathering:
       type: object
       required:
-        [gathering_id, gathering_group_id, event_id, gathering_spot_id, gathering_time, round, created_at, updated_at, gathering_group_name, event_name, gathering_spot_name]
+        [gathering_id, gathering_group_id, event_id, gathering_spot_id, gathering_time, round, event_name, gathering_spot_name]
       properties:
         gathering_id:
           type: integer
@@ -879,22 +879,16 @@ components:
         gathering_time:
           type: string
           description: HH:MM形式。`99:59`は集合時刻が未設定であることを表します。
-          example: '08:45'
+          example: '16:45'
         round:
           type: integer
           minimum: 1
-        gathering_group_name:
-          type: string
         event_name:
           type: string
+          example: クラス対抗リレー
         gathering_spot_name:
           type: string
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
+          example: 東側正面口
 
     CreateGatheringRequest:
       type: object
