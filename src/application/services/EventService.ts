@@ -82,7 +82,19 @@ export function createEventService(
       if (await eventRepository.hasReferences(id)) {
         throw new Error('Event is in use');
       }
-      if (!(await eventRepository.delete(id))) {
+      let deleted: boolean;
+      try {
+        deleted = await eventRepository.delete(id);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message.includes('FOREIGN KEY constraint failed')
+        ) {
+          throw new Error('Event is in use');
+        }
+        throw error;
+      }
+      if (!deleted) {
         throw new Error('Event not found');
       }
     },

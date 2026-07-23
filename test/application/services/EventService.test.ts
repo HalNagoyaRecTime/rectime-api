@@ -145,5 +145,31 @@ describe('EventService', () => {
       ).rejects.toThrow('Event is in use');
       expect(repository.delete).not.toHaveBeenCalled();
     });
+
+    it('削除時のFK制約違反は409用のEvent is in useへ変換する', async () => {
+      const repository = createRepository({
+        hasReferences: vi.fn().mockResolvedValue(false),
+        delete: vi
+          .fn()
+          .mockRejectedValue(
+            new Error('D1_ERROR: FOREIGN KEY constraint failed')
+          ),
+      });
+
+      await expect(
+        createEventService(repository).deleteEvent(1)
+      ).rejects.toThrow('Event is in use');
+    });
+
+    it('存在しないイベントの削除はEvent not foundを投げる', async () => {
+      const repository = createRepository({
+        hasReferences: vi.fn().mockResolvedValue(false),
+        delete: vi.fn().mockResolvedValue(false),
+      });
+
+      await expect(
+        createEventService(repository).deleteEvent(1)
+      ).rejects.toThrow('Event not found');
+    });
   });
 });
