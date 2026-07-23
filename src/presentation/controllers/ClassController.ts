@@ -4,8 +4,8 @@ import type { IClassService } from '../../application/services/IClassService';
 
 const classIdSchema = z.coerce.number().int().positive();
 const paginationSchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
 });
 const classRequestSchema = z.object({
   classCode: z.string().trim().min(1),
@@ -16,8 +16,8 @@ const classRequestSchema = z.object({
 export function createClassController(classService: IClassService) {
   const getAllClassrooms = async (c: Context) => {
     const query = paginationSchema.safeParse({
-      page: c.req.query('page'),
       limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
     });
     if (!query.success) {
       return c.json(
@@ -27,7 +27,7 @@ export function createClassController(classService: IClassService) {
     }
     try {
       return c.json(
-        await classService.getAllClassrooms(query.data.page, query.data.limit)
+        await classService.getAllClassrooms(query.data.limit, query.data.offset)
       );
     } catch (error) {
       return c.json(

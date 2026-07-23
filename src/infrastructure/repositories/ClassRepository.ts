@@ -62,8 +62,7 @@ export function createClassRepository(db: D1Database): IClassRepository {
   };
 
   return {
-    async findAll(page: number, limit: number): Promise<ClassPage> {
-      const offset = (page - 1) * limit;
+    async findAll(limit: number, offset: number): Promise<ClassPage> {
       const [rows, count] = await Promise.all([
         db
           .prepare(
@@ -78,8 +77,8 @@ export function createClassRepository(db: D1Database): IClassRepository {
       return {
         classrooms: rows.results.map(toEntity),
         total: Number(count?.total ?? 0),
-        page,
         limit,
+        offset,
       };
     },
 

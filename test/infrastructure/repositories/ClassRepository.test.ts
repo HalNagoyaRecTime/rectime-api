@@ -57,17 +57,18 @@ describe('ClassRepository', () => {
   });
 
   describe('findAll', () => {
-    it('class_rooms を class_room_id 昇順で返し、ページ情報を保持する', async () => {
+    it('class_rooms を class_room_id 昇順で返し、limitとoffsetを適用する', async () => {
       const result = await repo.findAll(1, 1);
 
       expect(result.classrooms).toHaveLength(1);
-      expect(result).toMatchObject({ total: 2, page: 1, limit: 1 });
+      expect(result).toMatchObject({ total: 2, limit: 1, offset: 1 });
+      expect(result.classrooms[0].class_code).toBe('IA14A');
       const ids = result.classrooms.map(c => c.class_room_id);
       expect(ids).toEqual([...ids].sort((a, b) => a - b));
     });
 
     it('学生数と担任をClassEntityへマッピングする', async () => {
-      const result = await repo.findAll(1, 20);
+      const result = await repo.findAll(20, 0);
 
       expect(result.classrooms[0]).toMatchObject({
         class_code: '12B',
@@ -85,7 +86,7 @@ describe('ClassRepository', () => {
   });
 
   it('詳細を取得できる', async () => {
-    const classroom = (await repo.findAll(1, 1)).classrooms[0];
+    const classroom = (await repo.findAll(1, 0)).classrooms[0];
 
     await expect(repo.findById(classroom.class_room_id)).resolves.toMatchObject(
       {
@@ -133,7 +134,7 @@ describe('ClassRepository', () => {
   });
 
   it('学生の所属有無を返す', async () => {
-    const classrooms = (await repo.findAll(1, 20)).classrooms;
+    const classrooms = (await repo.findAll(20, 0)).classrooms;
     const assigned = classrooms.find(c => c.class_code === '12B');
     const unassigned = classrooms.find(c => c.class_code === 'IA14A');
 

@@ -18,14 +18,16 @@ export function createClassService(
   };
 
   return {
-    async getAllClassrooms(page: number, limit: number): Promise<ClassPageDTO> {
-      const result = await classRepository.findAll(page, limit);
+    async getAllClassrooms(
+      limit: number,
+      offset: number
+    ): Promise<ClassPageDTO> {
+      const result = await classRepository.findAll(limit, offset);
       return {
         classrooms: result.classrooms.map(toDTO),
         total: result.total,
-        page: result.page,
         limit: result.limit,
-        total_pages: Math.ceil(result.total / result.limit),
+        offset: result.offset,
       };
     },
 

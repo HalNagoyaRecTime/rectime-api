@@ -15,7 +15,7 @@ function repository(): IClassRepository {
 }
 
 describe('ClassService', () => {
-  it('一覧をページ情報付きで返す', async () => {
+  it('一覧をlimitとoffset付きで返す', async () => {
     const repo = repository();
     (repo.findAll as ReturnType<typeof vi.fn>).mockResolvedValue({
       classrooms: [
@@ -28,11 +28,11 @@ describe('ClassService', () => {
         },
       ],
       total: 1,
-      page: 1,
       limit: 20,
+      offset: 0,
     });
     await expect(
-      createClassService(repo).getAllClassrooms(1, 20)
+      createClassService(repo).getAllClassrooms(20, 0)
     ).resolves.toEqual({
       classrooms: [
         {
@@ -44,9 +44,8 @@ describe('ClassService', () => {
         },
       ],
       total: 1,
-      page: 1,
       limit: 20,
-      total_pages: 1,
+      offset: 0,
     });
   });
 

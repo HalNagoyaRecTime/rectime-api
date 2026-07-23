@@ -11,9 +11,8 @@ export interface ClassDTO {
 export interface ClassPageDTO {
   classrooms: ClassDTO[];
   total: number;
-  page: number;
   limit: number;
-  total_pages: number;
+  offset: number;
 }
 
 export interface ClassRequestDTO {

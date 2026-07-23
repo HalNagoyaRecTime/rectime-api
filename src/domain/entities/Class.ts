@@ -15,8 +15,8 @@ export interface ClassEntity {
 export interface ClassPage {
   classrooms: ClassEntity[];
   total: number;
-  page: number;
   limit: number;
+  offset: number;
 }
 
 export interface ClassInput {

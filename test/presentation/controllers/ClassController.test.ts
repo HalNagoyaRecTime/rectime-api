@@ -22,25 +22,24 @@ function setup() {
 }
 
 describe('ClassController', () => {
-  it('一覧をページ情報付きで返す', async () => {
+  it('一覧をlimitとoffset付きで返す', async () => {
     const { app, service } = setup();
     (service.getAllClassrooms as ReturnType<typeof vi.fn>).mockResolvedValue({
       classrooms: [],
       total: 0,
-      page: 1,
       limit: 20,
-      total_pages: 0,
+      offset: 0,
     });
-    const response = await app.request('/classrooms?page=2&limit=10');
+    const response = await app.request('/classrooms?limit=10&offset=20');
 
     expect(response.status).toBe(200);
-    expect(service.getAllClassrooms).toHaveBeenCalledWith(2, 10);
+    expect(service.getAllClassrooms).toHaveBeenCalledWith(10, 20);
   });
 
   it('不正な一覧パラメータは400を返す', async () => {
     const { app } = setup();
 
-    expect((await app.request('/classrooms?page=0')).status).toBe(400);
+    expect((await app.request('/classrooms?offset=-1')).status).toBe(400);
   });
 
   it('クラス詳細を返す', async () => {

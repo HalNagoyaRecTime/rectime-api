@@ -151,12 +151,12 @@ paths:
       tags: [Classrooms]
       summary: クラス一覧を取得する
       parameters:
-        - name: page
-          in: query
-          schema: { type: integer, minimum: 1, default: 1 }
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
       responses:
         '200':
           description: クラス一覧
@@ -883,15 +883,14 @@ components:
 
     ClassroomPage:
       type: object
-      required: [classrooms, total, page, limit, total_pages]
+      required: [classrooms, total, limit, offset]
       properties:
         classrooms:
           type: array
           items: { $ref: '#/components/schemas/ClassRoom' }
         total: { type: integer }
-        page: { type: integer }
         limit: { type: integer }
-        total_pages: { type: integer }
+        offset: { type: integer }
 
     GatheringSpot:
       type: object
