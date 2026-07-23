@@ -18,10 +18,10 @@ export function createClassService(
   };
 
   return {
-    async getAllClasses(page: number, limit: number): Promise<ClassPageDTO> {
+    async getAllClassrooms(page: number, limit: number): Promise<ClassPageDTO> {
       const result = await classRepository.findAll(page, limit);
       return {
-        classes: result.classes.map(toDTO),
+        classrooms: result.classrooms.map(toDTO),
         total: result.total,
         page: result.page,
         limit: result.limit,

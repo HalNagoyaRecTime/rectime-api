@@ -14,7 +14,7 @@ const classRequestSchema = z.object({
 });
 
 export function createClassController(classService: IClassService) {
-  const getAllClasses = async (c: Context) => {
+  const getAllClassrooms = async (c: Context) => {
     const query = paginationSchema.safeParse({
       page: c.req.query('page'),
       limit: c.req.query('limit'),
@@ -27,12 +27,12 @@ export function createClassController(classService: IClassService) {
     }
     try {
       return c.json(
-        await classService.getAllClasses(query.data.page, query.data.limit)
+        await classService.getAllClassrooms(query.data.page, query.data.limit)
       );
     } catch (error) {
       return c.json(
         {
-          error: 'Failed to fetch classes',
+          error: 'Failed to fetch classrooms',
           details: error instanceof Error ? error.message : String(error),
         },
         500
@@ -118,7 +118,13 @@ export function createClassController(classService: IClassService) {
     }
   };
 
-  return { getAllClasses, getClassById, createClass, updateClass, deleteClass };
+  return {
+    getAllClassrooms,
+    getClassById,
+    createClass,
+    updateClass,
+    deleteClass,
+  };
 }
 
 function handleWriteError(c: Context, error: unknown, fallback: string) {

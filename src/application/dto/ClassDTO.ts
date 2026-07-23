@@ -9,7 +9,7 @@ export interface ClassDTO {
 }
 
 export interface ClassPageDTO {
-  classes: ClassDTO[];
+  classrooms: ClassDTO[];
   total: number;
   page: number;
   limit: number;

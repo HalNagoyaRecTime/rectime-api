@@ -13,7 +13,7 @@ export interface ClassEntity {
 }
 
 export interface ClassPage {
-  classes: ClassEntity[];
+  classrooms: ClassEntity[];
   total: number;
   page: number;
   limit: number;

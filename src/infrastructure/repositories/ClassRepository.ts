@@ -76,7 +76,7 @@ export function createClassRepository(db: D1Database): IClassRepository {
           .first<{ total: number }>(),
       ]);
       return {
-        classes: rows.results.map(toEntity),
+        classrooms: rows.results.map(toEntity),
         total: Number(count?.total ?? 0),
         page,
         limit,

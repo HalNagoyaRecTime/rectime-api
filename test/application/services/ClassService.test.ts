@@ -18,7 +18,7 @@ describe('ClassService', () => {
   it('一覧をページ情報付きで返す', async () => {
     const repo = repository();
     (repo.findAll as ReturnType<typeof vi.fn>).mockResolvedValue({
-      classes: [
+      classrooms: [
         {
           class_room_id: 1,
           class_code: '11A',
@@ -32,9 +32,9 @@ describe('ClassService', () => {
       limit: 20,
     });
     await expect(
-      createClassService(repo).getAllClasses(1, 20)
+      createClassService(repo).getAllClassrooms(1, 20)
     ).resolves.toEqual({
-      classes: [
+      classrooms: [
         {
           class_room_id: 1,
           class_code: '11A',

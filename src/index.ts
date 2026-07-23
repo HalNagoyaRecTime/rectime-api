@@ -62,7 +62,7 @@ app.get('/', c => {
     endpoints: {
       students: '/api/v1/students/{studentId}',
       events: '/api/v1/events',
-      classes: '/api/v1/classes',
+      classrooms: '/api/v1/classrooms',
       gatheringSpots: '/api/v1/gathering-spots',
       gatheringGroups: '/api/v1/gathering-groups',
       gatherings: '/api/v1/gatherings',
@@ -100,20 +100,20 @@ apiV1.put('/events/:eventId', c => {
   return c.get('container').eventScheduleController.updateEventSchedule(c);
 });
 
-// Class routes
-apiV1.get('/classes', c => {
-  return c.get('container').classController.getAllClasses(c);
+// Classroom routes
+apiV1.get('/classrooms', c => {
+  return c.get('container').classController.getAllClassrooms(c);
 });
-apiV1.get('/classes/:classId', c => {
+apiV1.get('/classrooms/:classId', c => {
   return c.get('container').classController.getClassById(c);
 });
-apiV1.post('/classes', c => {
+apiV1.post('/classrooms', c => {
   return c.get('container').classController.createClass(c);
 });
-apiV1.put('/classes/:classId', c => {
+apiV1.put('/classrooms/:classId', c => {
   return c.get('container').classController.updateClass(c);
 });
-apiV1.delete('/classes/:classId', c => {
+apiV1.delete('/classrooms/:classId', c => {
   return c.get('container').classController.deleteClass(c);
 });
 

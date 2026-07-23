@@ -5,7 +5,7 @@ import type { IClassService } from '../../../src/application/services/IClassServ
 
 function setup() {
   const service: IClassService = {
-    getAllClasses: vi.fn(),
+    getAllClassrooms: vi.fn(),
     getClassById: vi.fn(),
     createClass: vi.fn(),
     updateClass: vi.fn(),
@@ -13,34 +13,34 @@ function setup() {
   };
   const controller = createClassController(service);
   const app = new Hono();
-  app.get('/classes', c => controller.getAllClasses(c));
-  app.get('/classes/:classId', c => controller.getClassById(c));
-  app.post('/classes', c => controller.createClass(c));
-  app.put('/classes/:classId', c => controller.updateClass(c));
-  app.delete('/classes/:classId', c => controller.deleteClass(c));
+  app.get('/classrooms', c => controller.getAllClassrooms(c));
+  app.get('/classrooms/:classId', c => controller.getClassById(c));
+  app.post('/classrooms', c => controller.createClass(c));
+  app.put('/classrooms/:classId', c => controller.updateClass(c));
+  app.delete('/classrooms/:classId', c => controller.deleteClass(c));
   return { app, service };
 }
 
 describe('ClassController', () => {
   it('一覧をページ情報付きで返す', async () => {
     const { app, service } = setup();
-    (service.getAllClasses as ReturnType<typeof vi.fn>).mockResolvedValue({
-      classes: [],
+    (service.getAllClassrooms as ReturnType<typeof vi.fn>).mockResolvedValue({
+      classrooms: [],
       total: 0,
       page: 1,
       limit: 20,
       total_pages: 0,
     });
-    const response = await app.request('/classes?page=2&limit=10');
+    const response = await app.request('/classrooms?page=2&limit=10');
 
     expect(response.status).toBe(200);
-    expect(service.getAllClasses).toHaveBeenCalledWith(2, 10);
+    expect(service.getAllClassrooms).toHaveBeenCalledWith(2, 10);
   });
 
   it('不正な一覧パラメータは400を返す', async () => {
     const { app } = setup();
 
-    expect((await app.request('/classes?page=0')).status).toBe(400);
+    expect((await app.request('/classrooms?page=0')).status).toBe(400);
   });
 
   it('クラス詳細を返す', async () => {
@@ -53,7 +53,7 @@ describe('ClassController', () => {
       teacher: null,
     });
 
-    const response = await app.request('/classes/1');
+    const response = await app.request('/classrooms/1');
 
     expect(response.status).toBe(200);
     expect(service.getClassById).toHaveBeenCalledWith(1);
@@ -65,7 +65,7 @@ describe('ClassController', () => {
       new Error('Class not found')
     );
 
-    const response = await app.request('/classes/999');
+    const response = await app.request('/classrooms/999');
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({
@@ -82,7 +82,7 @@ describe('ClassController', () => {
       student_count: 0,
       teacher: null,
     });
-    const response = await app.request('/classes', {
+    const response = await app.request('/classrooms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -101,7 +101,7 @@ describe('ClassController', () => {
 
   it('teacherIdが未指定の登録は400を返す', async () => {
     const { app } = setup();
-    const response = await app.request('/classes', {
+    const response = await app.request('/classrooms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ classCode: '11A', className: '1年A組' }),
@@ -116,7 +116,7 @@ describe('ClassController', () => {
       new Error('Teacher not found')
     );
 
-    const response = await app.request('/classes', {
+    const response = await app.request('/classrooms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -138,7 +138,7 @@ describe('ClassController', () => {
       new Error('Class code already exists')
     );
 
-    const response = await app.request('/classes', {
+    const response = await app.request('/classrooms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -164,7 +164,7 @@ describe('ClassController', () => {
       teacher: null,
     });
 
-    const response = await app.request('/classes/1', {
+    const response = await app.request('/classrooms/1', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -188,7 +188,7 @@ describe('ClassController', () => {
       new Error('Class not found')
     );
 
-    const response = await app.request('/classes/999', {
+    const response = await app.request('/classrooms/999', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -204,7 +204,7 @@ describe('ClassController', () => {
   it('クラスを削除すると204を返す', async () => {
     const { app, service } = setup();
 
-    const response = await app.request('/classes/1', { method: 'DELETE' });
+    const response = await app.request('/classrooms/1', { method: 'DELETE' });
 
     expect(response.status).toBe(204);
     expect(service.deleteClass).toHaveBeenCalledWith(1);
@@ -216,7 +216,7 @@ describe('ClassController', () => {
       new Error('Class is referenced by students')
     );
 
-    const response = await app.request('/classes/1', { method: 'DELETE' });
+    const response = await app.request('/classrooms/1', { method: 'DELETE' });
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
@@ -230,13 +230,13 @@ describe('ClassController', () => {
       new Error('Class not found')
     );
 
-    const response = await app.request('/classes/999', { method: 'DELETE' });
+    const response = await app.request('/classrooms/999', { method: 'DELETE' });
 
     expect(response.status).toBe(404);
   });
 
   it('不正なIDは400を返す', async () => {
     const { app } = setup();
-    expect((await app.request('/classes/nope')).status).toBe(400);
+    expect((await app.request('/classrooms/nope')).status).toBe(400);
   });
 });
