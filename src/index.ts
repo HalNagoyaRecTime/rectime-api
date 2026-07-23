@@ -98,8 +98,11 @@ apiV1.post('/students', c => {
 apiV1.put('/students/:studentId', c => {
   return c.get('container').studentController.updateStudent(c);
 });
-apiV1.post('/students/bulk-import', c => {
-  return c.get('container').studentController.bulkImportStudents(c);
+apiV1.post('/students/master-imports/validate', c => {
+  return c.get('container').studentController.validateStudentImport(c);
+});
+apiV1.post('/students/master-imports/commit', c => {
+  return c.get('container').studentController.commitStudentImport(c);
 });
 
 // Event routes

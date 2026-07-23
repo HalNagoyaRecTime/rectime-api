@@ -14,7 +14,7 @@ const studentWriteSchema = z.object({
   student_id_number: z.string().trim().min(1).max(100),
 });
 
-const bulkImportStudentRowSchema = z.object({
+const studentImportRowSchema = z.object({
   class_code: z.string().trim().min(1).max(100),
   attendance_number: z.number().int().positive(),
   student_id_number: z
@@ -25,8 +25,8 @@ const bulkImportStudentRowSchema = z.object({
   first_name: z.string().trim().min(1).max(100),
 });
 
-const bulkImportStudentsSchema = z.object({
-  rows: z.array(bulkImportStudentRowSchema).min(1),
+const studentImportSchema = z.object({
+  rows: z.array(studentImportRowSchema).min(1),
 });
 
 function getErrorChainMessage(error: unknown): string {
@@ -119,13 +119,18 @@ export function createStudentController(studentService: IStudentService) {
     }
   };
 
-  const bulkImportStudents = async (c: Context) => {
-    const body = await c.req.json().catch(() => undefined);
-    const parsedBody = bulkImportStudentsSchema.safeParse(body);
+  const parseStudentImportBody = (c: Context) =>
+    c.req
+      .json()
+      .catch(() => undefined)
+      .then(body => studentImportSchema.safeParse(body));
+
+  const validateStudentImport = async (c: Context) => {
+    const parsedBody = await parseStudentImportBody(c);
     if (!parsedBody.success) {
       return c.json(
         {
-          error: 'Invalid bulk import request body',
+          error: 'Invalid student import request body',
           details: parsedBody.error.flatten(),
         },
         400
@@ -133,10 +138,35 @@ export function createStudentController(studentService: IStudentService) {
     }
 
     try {
-      const result = await studentService.bulkImportStudents(parsedBody.data);
+      const result = await studentService.validateStudentImport(
+        parsedBody.data
+      );
+      return c.json(result, 200);
+    } catch {
+      return c.json({ error: 'Failed to validate student import' }, 500);
+    }
+  };
+
+  const commitStudentImport = async (c: Context) => {
+    const parsedBody = await parseStudentImportBody(c);
+    if (!parsedBody.success) {
+      return c.json(
+        {
+          error: 'Invalid student import request body',
+          details: parsedBody.error.flatten(),
+        },
+        400
+      );
+    }
+
+    try {
+      const result = await studentService.commitStudentImport(parsedBody.data);
+      if (result.error_count > 0) {
+        return c.json(result, 422);
+      }
       return c.json(result, 201);
     } catch {
-      return c.json({ error: 'Failed to bulk import students' }, 500);
+      return c.json({ error: 'Failed to commit student import' }, 500);
     }
   };
 
@@ -145,7 +175,8 @@ export function createStudentController(studentService: IStudentService) {
     getAllStudent,
     createStudent,
     updateStudent,
-    bulkImportStudents,
+    validateStudentImport,
+    commitStudentImport,
   };
 }
 

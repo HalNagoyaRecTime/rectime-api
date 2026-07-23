@@ -1,7 +1,8 @@
 import {
-  BulkImportStudentsInput,
-  BulkImportStudentsResult,
   StudentDTO,
+  StudentImportCommitResult,
+  StudentImportInput,
+  StudentImportValidationResult,
   StudentPageDTO,
   StudentWriteDTO,
 } from '../dto/StudentDTO';
@@ -14,7 +15,10 @@ export interface IStudentService {
   }) => Promise<StudentPageDTO>;
   createStudent: (student: StudentWriteDTO) => Promise<StudentDTO>;
   updateStudent: (id: number, student: StudentWriteDTO) => Promise<StudentDTO>;
-  bulkImportStudents: (
-    input: BulkImportStudentsInput
-  ) => Promise<BulkImportStudentsResult>;
+  validateStudentImport: (
+    input: StudentImportInput
+  ) => Promise<StudentImportValidationResult>;
+  commitStudentImport: (
+    input: StudentImportInput
+  ) => Promise<StudentImportCommitResult>;
 }

@@ -22,7 +22,7 @@ export interface StudentPageDTO {
   offset: number;
 }
 
-export interface BulkImportStudentRow {
+export interface StudentImportRow {
   class_code: string;
   attendance_number: number;
   student_id_number: string;
@@ -30,24 +30,33 @@ export interface BulkImportStudentRow {
   first_name: string;
 }
 
-export interface BulkImportStudentsInput {
-  rows: BulkImportStudentRow[];
+export interface StudentImportInput {
+  rows: StudentImportRow[];
 }
 
-export type BulkImportSkipReason =
+export type StudentImportErrorReason =
   | 'student_id_number_duplicate_in_file'
   | 'student_id_number_duplicate_in_db';
 
-export interface BulkImportSkippedRow {
+export interface StudentImportRowError {
   row_index: number;
   class_code: string;
   attendance_number: number;
   student_id_number: string;
   display_name: string;
-  reason: BulkImportSkipReason;
+  reason: StudentImportErrorReason;
 }
 
-export interface BulkImportStudentsResult {
+export interface StudentImportValidationResult {
+  total: number;
+  success_count: number;
+  error_count: number;
+  errors: StudentImportRowError[];
+}
+
+export interface StudentImportCommitResult {
+  total: number;
   imported: number;
-  skipped: BulkImportSkippedRow[];
+  error_count: number;
+  errors: StudentImportRowError[];
 }

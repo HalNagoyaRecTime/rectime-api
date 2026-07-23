@@ -1,9 +1,11 @@
 import {
-  BulkImportSkippedRow,
-  BulkImportSkipReason,
-  BulkImportStudentsInput,
-  BulkImportStudentsResult,
   StudentDTO,
+  StudentImportCommitResult,
+  StudentImportErrorReason,
+  StudentImportInput,
+  StudentImportRow,
+  StudentImportRowError,
+  StudentImportValidationResult,
   StudentPageDTO,
   StudentWriteDTO,
 } from '../dto/StudentDTO';
@@ -22,6 +24,43 @@ function toDTO(student: StudentEntity): StudentDTO {
     student_id_number: student.student_id_number,
     is_live_active: student.is_live_active,
   };
+}
+
+async function findImportErrors(
+  rows: StudentImportRow[],
+  studentRepository: IStudentRepository
+): Promise<StudentImportRowError[]> {
+  const seenInFile = new Set<string>();
+  const errors: StudentImportRowError[] = [];
+
+  for (const [rowIndex, row] of rows.entries()) {
+    const displayName = `${row.last_name}${row.first_name}`;
+    const pushError = (reason: StudentImportErrorReason) => {
+      errors.push({
+        row_index: rowIndex,
+        class_code: row.class_code,
+        attendance_number: row.attendance_number,
+        student_id_number: row.student_id_number,
+        display_name: displayName,
+        reason,
+      });
+    };
+
+    if (seenInFile.has(row.student_id_number)) {
+      pushError('student_id_number_duplicate_in_file');
+      continue;
+    }
+    seenInFile.add(row.student_id_number);
+
+    const existing = await studentRepository.findByStudentNum(
+      row.student_id_number
+    );
+    if (existing) {
+      pushError('student_id_number_duplicate_in_db');
+    }
+  }
+
+  return errors;
 }
 
 export function createStudentService(
@@ -83,31 +122,37 @@ export function createStudentService(
       return toDTO(updated);
     },
 
-    async bulkImportStudents(
-      input: BulkImportStudentsInput
-    ): Promise<BulkImportStudentsResult> {
+    async validateStudentImport(
+      input: StudentImportInput
+    ): Promise<StudentImportValidationResult> {
+      const errors = await findImportErrors(input.rows, studentRepository);
+      return {
+        total: input.rows.length,
+        success_count: input.rows.length - errors.length,
+        error_count: errors.length,
+        errors,
+      };
+    },
+
+    async commitStudentImport(
+      input: StudentImportInput
+    ): Promise<StudentImportCommitResult> {
+      const errors = await findImportErrors(input.rows, studentRepository);
+      if (errors.length > 0) {
+        return {
+          total: input.rows.length,
+          imported: 0,
+          error_count: errors.length,
+          errors,
+        };
+      }
+
       const classRooms = await classRoomRepository.findAll();
       const classRoomIdByCode = new Map(
         classRooms.map(room => [room.class_code, room.class_room_id])
       );
 
-      const seenInFile = new Set<string>();
-      const skipped: BulkImportSkippedRow[] = [];
-      let imported = 0;
-
-      for (const [rowIndex, row] of input.rows.entries()) {
-        const displayName = `${row.last_name}${row.first_name}`;
-        const skip = (reason: BulkImportSkipReason) => {
-          skipped.push({
-            row_index: rowIndex,
-            class_code: row.class_code,
-            attendance_number: row.attendance_number,
-            student_id_number: row.student_id_number,
-            display_name: displayName,
-            reason,
-          });
-        };
-
+      for (const row of input.rows) {
         let classRoomId = classRoomIdByCode.get(row.class_code);
         if (classRoomId === undefined) {
           // クラス記号がclass_roomsに無い場合、クラス名の情報はファイルに無いため
@@ -120,31 +165,20 @@ export function createStudentService(
           classRoomIdByCode.set(row.class_code, classRoomId);
         }
 
-        if (seenInFile.has(row.student_id_number)) {
-          skip('student_id_number_duplicate_in_file');
-          continue;
-        }
-
-        const existing = await studentRepository.findByStudentNum(
-          row.student_id_number
-        );
-        if (existing) {
-          skip('student_id_number_duplicate_in_db');
-          continue;
-        }
-
-        seenInFile.add(row.student_id_number);
-
         await studentRepository.create({
-          display_name: displayName,
+          display_name: `${row.last_name}${row.first_name}`,
           class_room_id: classRoomId,
           attendance_number: row.attendance_number,
           student_id_number: row.student_id_number,
         });
-        imported++;
       }
 
-      return { imported, skipped };
+      return {
+        total: input.rows.length,
+        imported: input.rows.length,
+        error_count: 0,
+        errors: [],
+      };
     },
   };
 
