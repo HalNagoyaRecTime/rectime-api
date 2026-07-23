@@ -1,5 +1,6 @@
 import { Context } from 'hono';
 import { z } from 'zod';
+import type { CreateGatheringGroupRequestDTO } from '../../application/dto/GatheringGroupDTO';
 import { IGatheringGroupService } from '../../application/services/IGatheringGroupService';
 
 const createGatheringGroupSchema = z.object({
@@ -38,7 +39,7 @@ export function createGatheringGroupController(
 
     try {
       const gatheringGroup = await gatheringGroupService.createGatheringGroup(
-        parsedBody.data.gatheringGroupName
+        parsedBody.data satisfies CreateGatheringGroupRequestDTO
       );
       return c.json(gatheringGroup, 201);
     } catch (error) {
@@ -52,5 +53,44 @@ export function createGatheringGroupController(
     }
   };
 
-  return { getAllGatheringGroups, createGatheringGroup };
+  const deleteGatheringGroup = async (c: Context) => {
+    const gatheringGroupId = Number(c.req.param('gatheringGroupId'));
+    if (!Number.isInteger(gatheringGroupId) || gatheringGroupId <= 0) {
+      return c.json({ error: 'Invalid gathering group ID' }, 400);
+    }
+
+    try {
+      await gatheringGroupService.deleteGatheringGroup(gatheringGroupId);
+      return c.body(null, 204);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'Gathering group not found'
+      ) {
+        return c.json({ error: error.message }, 404);
+      }
+      if (
+        error instanceof Error &&
+        [
+          'Gathering group is assigned to an event',
+          'Gathering group is in use by notification schedules',
+        ].includes(error.message)
+      ) {
+        return c.json({ error: error.message }, 409);
+      }
+      return c.json(
+        {
+          error: 'Failed to delete gathering group',
+          details: error instanceof Error ? error.message : String(error),
+        },
+        500
+      );
+    }
+  };
+
+  return {
+    getAllGatheringGroups,
+    createGatheringGroup,
+    deleteGatheringGroup,
+  };
 }

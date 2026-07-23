@@ -122,6 +122,9 @@ apiV1.get('/gathering-groups', c => {
 apiV1.post('/gathering-groups', c => {
   return c.get('container').gatheringGroupController.createGatheringGroup(c);
 });
+apiV1.delete('/gathering-groups/:gatheringGroupId', c => {
+  return c.get('container').gatheringGroupController.deleteGatheringGroup(c);
+});
 apiV1.get('/gathering-groups/:gatheringGroupId/members', c => {
   return c
     .get('container')
@@ -144,6 +147,9 @@ apiV1.get('/gatherings', c => {
 });
 apiV1.post('/gatherings', c => {
   return c.get('container').gatheringController.createGathering(c);
+});
+apiV1.delete('/gatherings/:gatheringId', c => {
+  return c.get('container').gatheringController.deleteGathering(c);
 });
 
 // Firebase token routes

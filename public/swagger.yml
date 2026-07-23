@@ -201,6 +201,25 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /gathering-groups/{gatheringGroupId}:
+    delete:
+      tags: [Gathering groups]
+      summary: 集合グループを削除する
+      description: 所属メンバーも削除します。イベント集合設定または通知予定から参照されている場合は削除できません。
+      parameters:
+        - $ref: '#/components/parameters/GatheringGroupId'
+      responses:
+        '204':
+          description: 削除成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /gathering-groups/{gatheringGroupId}/members:
     get:
       tags: [Gathering group members]
@@ -311,6 +330,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /gatherings/{gatheringId}:
+    delete:
+      tags: [Gatherings]
+      summary: 集合予定を削除する
+      description: 参加者グループと所属メンバーは保持します。通知予定から参照されている場合は削除できません。
+      parameters:
+        - $ref: '#/components/parameters/GatheringId'
+      responses:
+        '204':
+          description: 削除成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -804,6 +842,13 @@ paths:
 
 components:
   parameters:
+    GatheringId:
+      name: gatheringId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
     StudentId:
       name: studentId
       in: path

@@ -1,10 +1,15 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringGroupEntity } from '../../domain/entities/GatheringGroup';
 import { IGatheringGroupRepository } from '../../domain/interfaces/repositories/IGatheringGroupRepository';
 import * as schema from '../database/schema';
-import { gathering_groups } from '../database/schema';
+import {
+  gathering_group_members,
+  gathering_groups,
+  gatherings,
+  notification_schedules,
+} from '../database/schema';
 
 function toEntity(
   row: typeof gathering_groups.$inferSelect
@@ -40,6 +45,51 @@ export function createGatheringGroupRepository(
         .get();
       if (!row) throw new Error('Failed to create gathering group');
       return toEntity(row);
+    },
+
+    async exists(gatheringGroupId: number): Promise<boolean> {
+      return Boolean(
+        await orm
+          .select({ id: gathering_groups.id })
+          .from(gathering_groups)
+          .where(eq(gathering_groups.id, gatheringGroupId))
+          .get()
+      );
+    },
+
+    async hasGathering(gatheringGroupId: number): Promise<boolean> {
+      return Boolean(
+        await orm
+          .select({ id: gatherings.id })
+          .from(gatherings)
+          .where(eq(gatherings.gatheringGroupId, gatheringGroupId))
+          .get()
+      );
+    },
+
+    async hasNotificationSchedules(gatheringGroupId: number): Promise<boolean> {
+      return Boolean(
+        await orm
+          .select({ id: notification_schedules.id })
+          .from(notification_schedules)
+          .where(eq(notification_schedules.gatheringGroupId, gatheringGroupId))
+          .get()
+      );
+    },
+
+    async remove(gatheringGroupId: number): Promise<boolean> {
+      const statements = [
+        orm
+          .delete(gathering_group_members)
+          .where(
+            eq(gathering_group_members.gatheringGroupId, gatheringGroupId)
+          ),
+        orm
+          .delete(gathering_groups)
+          .where(eq(gathering_groups.id, gatheringGroupId)),
+      ] as const;
+      const results = await orm.batch(statements);
+      return results[1].meta.changes === 1;
     },
   };
 }

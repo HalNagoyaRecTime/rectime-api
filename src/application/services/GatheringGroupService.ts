@@ -1,4 +1,8 @@
-import { GatheringGroupEntity } from '../../domain/entities/GatheringGroup';
+import type {
+  CreateGatheringGroupRequestDTO,
+  GatheringGroupDTO,
+} from '../dto/GatheringGroupDTO';
+import type { GatheringGroupEntity } from '../../domain/entities/GatheringGroup';
 import { IGatheringGroupRepository } from '../../domain/interfaces/repositories/IGatheringGroupRepository';
 import { IGatheringGroupService } from './IGatheringGroupService';
 
@@ -6,14 +10,39 @@ export function createGatheringGroupService(
   gatheringGroupRepository: IGatheringGroupRepository
 ): IGatheringGroupService {
   return {
-    getAllGatheringGroups(): Promise<GatheringGroupEntity[]> {
-      return gatheringGroupRepository.findAll();
+    async getAllGatheringGroups(): Promise<GatheringGroupDTO[]> {
+      return (await gatheringGroupRepository.findAll()).map(toDTO);
     },
 
-    createGatheringGroup(
-      gatheringGroupName: string
-    ): Promise<GatheringGroupEntity> {
-      return gatheringGroupRepository.create(gatheringGroupName);
+    async createGatheringGroup(
+      input: CreateGatheringGroupRequestDTO
+    ): Promise<GatheringGroupDTO> {
+      return toDTO(
+        await gatheringGroupRepository.create(input.gatheringGroupName)
+      );
+    },
+
+    async deleteGatheringGroup(gatheringGroupId: number): Promise<void> {
+      if (!(await gatheringGroupRepository.exists(gatheringGroupId))) {
+        throw new Error('Gathering group not found');
+      }
+      if (await gatheringGroupRepository.hasGathering(gatheringGroupId)) {
+        throw new Error('Gathering group is assigned to an event');
+      }
+      if (
+        await gatheringGroupRepository.hasNotificationSchedules(
+          gatheringGroupId
+        )
+      ) {
+        throw new Error('Gathering group is in use by notification schedules');
+      }
+      if (!(await gatheringGroupRepository.remove(gatheringGroupId))) {
+        throw new Error('Gathering group not found');
+      }
     },
   };
+}
+
+function toDTO(group: GatheringGroupEntity): GatheringGroupDTO {
+  return { ...group };
 }
