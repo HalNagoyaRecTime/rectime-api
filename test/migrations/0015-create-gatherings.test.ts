@@ -90,9 +90,8 @@ describe('0015_create_gatherings.sql', () => {
 
     try {
       const group = await env.DB.prepare(
-        'INSERT INTO gathering_groups (gathering_group_name) VALUES (?) RETURNING gathering_group_id'
+        'INSERT INTO gathering_groups DEFAULT VALUES RETURNING gathering_group_id'
       )
-        .bind('migration集会グループ')
         .first<{ gathering_group_id: number }>();
       groupId = group!.gathering_group_id;
       const event = await env.DB.prepare(

@@ -246,12 +246,6 @@ paths:
     post:
       tags: [Gathering groups]
       summary: 対象グループを作成する
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateGatheringGroupRequest'
       responses:
         '201':
           description: 作成した対象グループ
@@ -1115,26 +1109,16 @@ components:
 
     GatheringGroup:
       type: object
-      required: [gathering_group_id, gathering_group_name, created_at, updated_at]
+      required: [gathering_group_id, created_at, updated_at]
       properties:
         gathering_group_id:
           type: integer
-        gathering_group_name:
-          type: string
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
-
-    CreateGatheringGroupRequest:
-      type: object
-      required: [gatheringGroupName]
-      properties:
-        gatheringGroupName:
-          type: string
-          minLength: 1
 
     GatheringGroupMember:
       type: object
@@ -1164,7 +1148,7 @@ components:
     Gathering:
       type: object
       required:
-        [gathering_id, gathering_group_id, event_id, gathering_spot_id, gathering_time, round, created_at, updated_at, gathering_group_name, event_name, gathering_spot_name]
+        [gathering_id, gathering_group_id, event_id, gathering_spot_id, gathering_time, round, created_at, updated_at, event_name, gathering_spot_name]
       properties:
         gathering_id:
           type: integer
@@ -1181,8 +1165,6 @@ components:
         round:
           type: integer
           minimum: 1
-        gathering_group_name:
-          type: string
         event_name:
           type: string
         gathering_spot_name:

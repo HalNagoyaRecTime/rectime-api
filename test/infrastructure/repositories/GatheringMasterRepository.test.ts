@@ -86,8 +86,8 @@ describe('Gathering master repositories', () => {
   });
 
   it('集合グループを作成し、ID順で取得できる', async () => {
-    const first = await gatheringGroupRepository.create('赤組');
-    const second = await gatheringGroupRepository.create('青組');
+    const first = await gatheringGroupRepository.create();
+    const second = await gatheringGroupRepository.create();
     gatheringGroupIds.push(first.gathering_group_id, second.gathering_group_id);
 
     const groups = await gatheringGroupRepository.findAll();
@@ -104,7 +104,7 @@ describe('Gathering master repositories', () => {
   });
 
   it('グループ所属を追加・一覧取得・解除でき、重複追加は防止する', async () => {
-    const group = await gatheringGroupRepository.create('黄組');
+    const group = await gatheringGroupRepository.create();
     gatheringGroupIds.push(group.gathering_group_id);
     const member = await gatheringGroupMemberRepository.create(
       group.gathering_group_id,
@@ -137,7 +137,7 @@ describe('Gathering master repositories', () => {
   });
 
   it('存在しないグループまたはユーザーへの所属追加は失敗し、所属を作成しない', async () => {
-    const group = await gatheringGroupRepository.create('緑組');
+    const group = await gatheringGroupRepository.create();
     gatheringGroupIds.push(group.gathering_group_id);
 
     await expect(
@@ -154,7 +154,7 @@ describe('Gathering master repositories', () => {
   });
 
   it('グループとユーザーの存在を確認できる', async () => {
-    const group = await gatheringGroupRepository.create('橙組');
+    const group = await gatheringGroupRepository.create();
     gatheringGroupIds.push(group.gathering_group_id);
 
     await expect(
@@ -174,8 +174,8 @@ describe('Gathering master repositories', () => {
   });
 
   it('グループで所属を絞り込み、ID順で取得できる', async () => {
-    const firstGroup = await gatheringGroupRepository.create('白組');
-    const secondGroup = await gatheringGroupRepository.create('黒組');
+    const firstGroup = await gatheringGroupRepository.create();
+    const secondGroup = await gatheringGroupRepository.create();
     gatheringGroupIds.push(
       firstGroup.gathering_group_id,
       secondGroup.gathering_group_id
@@ -215,7 +215,7 @@ describe('Gathering master repositories', () => {
   });
 
   it('存在しない所属の解除はfalseを返す', async () => {
-    const group = await gatheringGroupRepository.create('紫組');
+    const group = await gatheringGroupRepository.create();
     gatheringGroupIds.push(group.gathering_group_id);
 
     await expect(

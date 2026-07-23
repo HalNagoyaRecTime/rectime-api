@@ -37,9 +37,8 @@ describe('NotificationScheduleRepository', () => {
     eventIds.push(event!.event_id);
 
     const group = await env.DB.prepare(
-      'INSERT INTO gathering_groups (gathering_group_name) VALUES (?) RETURNING gathering_group_id'
+      'INSERT INTO gathering_groups DEFAULT VALUES RETURNING gathering_group_id'
     )
-      .bind(`通知予定テストグループ-${suffix}`)
       .first<{ gathering_group_id: number }>();
     groupIds.push(group!.gathering_group_id);
 

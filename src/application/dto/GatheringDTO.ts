@@ -7,7 +7,6 @@ export interface GatheringDTO {
   round: number;
   created_at: string;
   updated_at: string;
-  gathering_group_name: string;
   event_name: string;
   gathering_spot_name: string;
 }

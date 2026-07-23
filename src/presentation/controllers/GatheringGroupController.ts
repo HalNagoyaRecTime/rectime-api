@@ -1,11 +1,5 @@
 import { Context } from 'hono';
-import { z } from 'zod';
-import type { CreateGatheringGroupRequestDTO } from '../../application/dto/GatheringGroupDTO';
 import { IGatheringGroupService } from '../../application/services/IGatheringGroupService';
-
-const createGatheringGroupSchema = z.object({
-  gatheringGroupName: z.string().trim().min(1),
-});
 
 export function createGatheringGroupController(
   gatheringGroupService: IGatheringGroupService
@@ -25,22 +19,8 @@ export function createGatheringGroupController(
   };
 
   const createGatheringGroup = async (c: Context) => {
-    const body = await c.req.json().catch(() => undefined);
-    const parsedBody = createGatheringGroupSchema.safeParse(body);
-    if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid gathering group request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
-      );
-    }
-
     try {
-      const gatheringGroup = await gatheringGroupService.createGatheringGroup(
-        parsedBody.data satisfies CreateGatheringGroupRequestDTO
-      );
+      const gatheringGroup = await gatheringGroupService.createGatheringGroup();
       return c.json(gatheringGroup, 201);
     } catch (error) {
       return c.json(

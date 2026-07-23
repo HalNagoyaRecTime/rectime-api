@@ -1,7 +1,4 @@
-import type {
-  CreateGatheringGroupRequestDTO,
-  GatheringGroupDTO,
-} from '../dto/GatheringGroupDTO';
+import type { GatheringGroupDTO } from '../dto/GatheringGroupDTO';
 import type { GatheringGroupEntity } from '../../domain/entities/GatheringGroup';
 import { IGatheringGroupRepository } from '../../domain/interfaces/repositories/IGatheringGroupRepository';
 import { IGatheringGroupService } from './IGatheringGroupService';
@@ -14,12 +11,8 @@ export function createGatheringGroupService(
       return (await gatheringGroupRepository.findAll()).map(toDTO);
     },
 
-    async createGatheringGroup(
-      input: CreateGatheringGroupRequestDTO
-    ): Promise<GatheringGroupDTO> {
-      return toDTO(
-        await gatheringGroupRepository.create(input.gatheringGroupName)
-      );
+    async createGatheringGroup(): Promise<GatheringGroupDTO> {
+      return toDTO(await gatheringGroupRepository.create());
     },
 
     async deleteGatheringGroup(gatheringGroupId: number): Promise<void> {
