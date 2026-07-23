@@ -118,6 +118,20 @@ apiV1.get('/events/:eventId', c => {
 apiV1.get('/classrooms', c => {
   return c.get('container').classRoomController.getAllClassRooms(c);
 });
+apiV1.post('/classrooms/master-imports/validate', c => {
+  return c.get('container').classRoomController.validateClassRoomImport(c);
+});
+apiV1.post('/classrooms/master-imports/commit', c => {
+  return c.get('container').classRoomController.commitClassRoomImport(c);
+});
+
+// Teacher routes
+apiV1.post('/teachers/master-imports/validate', c => {
+  return c.get('container').teacherController.validateTeacherImport(c);
+});
+apiV1.post('/teachers/master-imports/commit', c => {
+  return c.get('container').teacherController.commitTeacherImport(c);
+});
 
 // Gathering spot routes
 apiV1.get('/gathering-spots', c => {

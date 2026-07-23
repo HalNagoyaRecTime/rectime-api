@@ -9,6 +9,7 @@ import { createGatheringSpotRepository } from '../infrastructure/repositories/Ga
 import { createGatheringGroupRepository } from '../infrastructure/repositories/GatheringGroupRepository';
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
+import { createTeacherRepository } from '../infrastructure/repositories/TeacherRepository';
 import { createStudentService } from '../application/services/StudentService';
 import { createEventService } from '../application/services/EventService';
 import { createClassRoomService } from '../application/services/ClassRoomService';
@@ -21,6 +22,7 @@ import { createGatheringSpotService } from '../application/services/GatheringSpo
 import { createGatheringGroupService } from '../application/services/GatheringGroupService';
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createGatheringService } from '../application/services/GatheringService';
+import { createTeacherService } from '../application/services/TeacherService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createEventController } from '../presentation/controllers/EventController';
 import { createClassRoomController } from '../presentation/controllers/ClassRoomController';
@@ -31,6 +33,7 @@ import { createGatheringSpotController } from '../presentation/controllers/Gathe
 import { createGatheringGroupController } from '../presentation/controllers/GatheringGroupController';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createGatheringController } from '../presentation/controllers/GatheringController';
+import { createTeacherController } from '../presentation/controllers/TeacherController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createAuthService } from '../application/services/authService';
 import type { Env } from '../lib/env';
@@ -52,6 +55,7 @@ export function createDIContainer(env: Env) {
   const gatheringGroupMemberRepository =
     createGatheringGroupMemberRepository(db);
   const gatheringRepository = createGatheringRepository(db);
+  const teacherRepository = createTeacherRepository(db);
 
   // Services
   const authService = createAuthService(userRepository, env.AUTH_KV);
@@ -89,6 +93,7 @@ export function createDIContainer(env: Env) {
     gatheringGroupMemberRepository
   );
   const gatheringService = createGatheringService(gatheringRepository);
+  const teacherService = createTeacherService(teacherRepository);
 
   // Controllers
   const studentController = createStudentController(studentService);
@@ -112,6 +117,7 @@ export function createDIContainer(env: Env) {
     gatheringGroupMemberService
   );
   const gatheringController = createGatheringController(gatheringService);
+  const teacherController = createTeacherController(teacherService);
 
   return {
     authService,
@@ -126,6 +132,7 @@ export function createDIContainer(env: Env) {
     gatheringGroupController,
     gatheringGroupMemberController,
     gatheringController,
+    teacherController,
   };
 }
 
