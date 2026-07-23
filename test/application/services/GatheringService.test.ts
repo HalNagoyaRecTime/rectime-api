@@ -50,7 +50,9 @@ describe('GatheringService', () => {
 
   it('存在しないイベントでは集合予定を取得しない', async () => {
     const { repository, service } = setup();
-    (repository.existsEvent as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    (repository.existsEvent as ReturnType<typeof vi.fn>).mockResolvedValue(
+      false
+    );
 
     await expect(service.getGatheringByEventId(999)).rejects.toThrow(
       'Event not found'
