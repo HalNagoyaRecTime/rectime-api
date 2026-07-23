@@ -68,9 +68,7 @@ export function createEventService(
       return toEventDTO(event);
     },
     async createEvent(event) {
-      return toEventDTO(
-        await eventRepository.create(toEventWriteInput(event))
-      );
+      return toEventDTO(await eventRepository.create(toEventWriteInput(event)));
     },
     async updateEvent(id, event) {
       const updated = await eventRepository.update(

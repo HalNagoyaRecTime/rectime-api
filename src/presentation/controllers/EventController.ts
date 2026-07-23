@@ -24,11 +24,13 @@ export function createEventController(eventService: IEventService) {
       const limit = c.req.query('limit');
       const offset = c.req.query('offset');
 
-      return c.json(await eventService.getAllEvents({
-        start_time: startTime,
-        limit: limit ? parseInt(limit) : undefined,
-        offset: offset ? parseInt(offset) : undefined,
-      }));
+      return c.json(
+        await eventService.getAllEvents({
+          start_time: startTime,
+          limit: limit ? parseInt(limit) : undefined,
+          offset: offset ? parseInt(offset) : undefined,
+        })
+      );
     } catch (error) {
       return c.json(
         {
