@@ -71,6 +71,27 @@ export function createGatheringRepository(
         .all();
     },
 
+    async findByEventId(
+      eventId: number
+    ): Promise<GatheringDetailsEntity | null> {
+      const row = await orm
+        .select(detailSelection)
+        .from(gatherings)
+        .innerJoin(
+          gathering_groups,
+          eq(gatherings.gatheringGroupId, gathering_groups.id)
+        )
+        .innerJoin(events, eq(gatherings.eventId, events.id))
+        .innerJoin(
+          gathering_spots,
+          eq(gatherings.gatheringSpotId, gathering_spots.id)
+        )
+        .where(eq(gatherings.eventId, eventId))
+        .orderBy(asc(gatherings.id))
+        .get();
+      return row ?? null;
+    },
+
     async existsGatheringGroup(gatheringGroupId: number): Promise<boolean> {
       return Boolean(
         await orm

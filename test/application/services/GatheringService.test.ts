@@ -19,6 +19,7 @@ const gathering = {
 function setup() {
   const repository: IGatheringRepository = {
     findAll: vi.fn(),
+    findByEventId: vi.fn(),
     existsGatheringGroup: vi.fn().mockResolvedValue(true),
     existsEvent: vi.fn().mockResolvedValue(true),
     existsGatheringSpot: vi.fn().mockResolvedValue(true),
@@ -37,6 +38,27 @@ describe('GatheringService', () => {
 
     await expect(service.getAllGatherings()).resolves.toBe(gatherings);
     expect(repository.findAll).toHaveBeenCalledOnce();
+  });
+
+  it('イベントの存在を確認して集合予定を取得する', async () => {
+    const { repository, service } = setup();
+    (repository.findByEventId as ReturnType<typeof vi.fn>).mockResolvedValue(
+      gathering
+    );
+
+    await expect(service.getGatheringByEventId(3)).resolves.toBe(gathering);
+    expect(repository.existsEvent).toHaveBeenCalledWith(3);
+    expect(repository.findByEventId).toHaveBeenCalledWith(3);
+  });
+
+  it('存在しないイベントでは集合予定を取得しない', async () => {
+    const { repository, service } = setup();
+    (repository.existsEvent as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+    await expect(service.getGatheringByEventId(999)).rejects.toThrow(
+      'Event not found'
+    );
+    expect(repository.findByEventId).not.toHaveBeenCalled();
   });
 
   it('すべての参照先を確認後、入力をそのまま作成処理へ渡す', async () => {

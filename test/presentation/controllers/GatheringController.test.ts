@@ -6,11 +6,15 @@ import type { IGatheringService } from '../../../src/application/services/IGathe
 function setup() {
   const service: IGatheringService = {
     getAllGatherings: vi.fn(),
+    getGatheringByEventId: vi.fn(),
     createGathering: vi.fn(),
   };
   const controller = createGatheringController(service);
   const app = new Hono();
   app.get('/gatherings', c => controller.getAllGatherings(c));
+  app.get('/events/:eventId/gatherings', c =>
+    controller.getGatheringByEventId(c)
+  );
   app.post('/gatherings', c => controller.createGathering(c));
   return { app, service };
 }
@@ -39,6 +43,45 @@ describe('GatheringController', () => {
     const response = await app.request('/gatherings');
 
     expect(response.status).toBe(500);
+  });
+
+  it('イベントIDを指定して集合予定を返す', async () => {
+    const { app, service } = setup();
+    const gathering = { gathering_id: 1, gathering_time: '08:45' };
+    (
+      service.getGatheringByEventId as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(gathering);
+
+    const response = await app.request('/events/2/gatherings');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(gathering);
+    expect(service.getGatheringByEventId).toHaveBeenCalledWith(2);
+  });
+
+  it('集合予定が未登録なら200でnullを返す', async () => {
+    const { app, service } = setup();
+    (
+      service.getGatheringByEventId as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(null);
+
+    const response = await app.request('/events/2/gatherings');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toBeNull();
+  });
+
+  it('不正なイベントIDは400、存在しないイベントは404を返す', async () => {
+    const { app, service } = setup();
+    (
+      service.getGatheringByEventId as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(new Error('Event not found'));
+
+    const invalid = await app.request('/events/invalid/gatherings');
+    const notFound = await app.request('/events/999/gatherings');
+
+    expect(invalid.status).toBe(400);
+    expect(notFound.status).toBe(404);
   });
 
   it('作成リクエストをServiceへ変換して201を返す', async () => {

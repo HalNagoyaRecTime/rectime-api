@@ -134,6 +134,31 @@ describe('GatheringRepository', () => {
     ]);
   });
 
+  it('イベントIDを指定して集合予定を取得できる', async () => {
+    const { groupId, spotId, eventId } = await createReferences('イベント指定');
+    const created = await repository.create({
+      gathering_group_id: groupId,
+      event_id: eventId,
+      gathering_spot_id: spotId,
+      gathering_time: '08:45',
+      round: 1,
+    });
+    gatheringIds.push(created.gathering_id);
+
+    await expect(repository.findByEventId(eventId)).resolves.toMatchObject({
+      gathering_id: created.gathering_id,
+      event_id: eventId,
+      gathering_spot_name: '集会テスト場所-イベント指定',
+      gathering_time: '08:45',
+    });
+  });
+
+  it('集合予定が未登録のイベントではnullを返す', async () => {
+    const { eventId } = await createReferences('未登録');
+
+    await expect(repository.findByEventId(eventId)).resolves.toBeNull();
+  });
+
   it('同じグループへの重複作成を拒否する', async () => {
     const { groupId, spotId, eventId } = await createReferences('重複');
     const created = await repository.create({

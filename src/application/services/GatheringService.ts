@@ -13,6 +13,15 @@ export function createGatheringService(
       return gatheringRepository.findAll();
     },
 
+    async getGatheringByEventId(
+      eventId: number
+    ): Promise<GatheringDetailsEntity | null> {
+      if (!(await gatheringRepository.existsEvent(eventId))) {
+        throw new Error('Event not found');
+      }
+      return gatheringRepository.findByEventId(eventId);
+    },
+
     async createGathering(
       input: CreateGatheringInput
     ): Promise<GatheringDetailsEntity> {

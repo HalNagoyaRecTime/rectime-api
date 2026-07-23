@@ -13,6 +13,7 @@ const createGatheringSchema = z.object({
     .optional(),
   round: z.number().int().min(1).max(99).optional(),
 });
+const eventIdSchema = z.coerce.number().int().positive();
 
 export function createGatheringController(gatheringService: IGatheringService) {
   const getAllGatherings = async (c: Context) => {
@@ -22,6 +23,30 @@ export function createGatheringController(gatheringService: IGatheringService) {
       return c.json(
         {
           error: 'Failed to fetch gatherings',
+          details: error instanceof Error ? error.message : String(error),
+        },
+        500
+      );
+    }
+  };
+
+  const getGatheringByEventId = async (c: Context) => {
+    const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
+    if (!parsedId.success) {
+      return c.json({ error: 'Invalid event ID' }, 400);
+    }
+
+    try {
+      return c.json(
+        await gatheringService.getGatheringByEventId(parsedId.data)
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Event not found') {
+        return c.json({ error: error.message }, 404);
+      }
+      return c.json(
+        {
+          error: 'Failed to fetch gathering',
           details: error instanceof Error ? error.message : String(error),
         },
         500
@@ -78,5 +103,5 @@ export function createGatheringController(gatheringService: IGatheringService) {
     }
   };
 
-  return { getAllGatherings, createGathering };
+  return { getAllGatherings, getGatheringByEventId, createGathering };
 }
