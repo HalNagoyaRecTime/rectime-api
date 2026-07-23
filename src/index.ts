@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
@@ -28,7 +29,13 @@ app.use('*', (c, next) => {
     origin: origin =>
       isAllowedOrigin(origin, allowedOriginRules) ? origin : null,
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Client-Type',
+      'X-PKCE-Code-Challenge',
+      'X-State',
+    ],
     credentials: true,
     maxAge: 600,
   })(c, next);
@@ -62,7 +69,7 @@ app.get('/', c => {
     endpoints: {
       students: '/api/v1/students/{studentId}',
       events: '/api/v1/events',
-      classes: '/api/v1/classes',
+      classRooms: '/api/v1/classrooms',
       gatheringSpots: '/api/v1/gathering-spots',
       gatheringGroups: '/api/v1/gathering-groups',
       gatherings: '/api/v1/gatherings',
@@ -87,6 +94,12 @@ apiV1.get('/students', c => {
 apiV1.get('/students/:studentId', c => {
   return c.get('container').studentController.getStudentById(c);
 });
+apiV1.post('/students', c => {
+  return c.get('container').studentController.createStudent(c);
+});
+apiV1.put('/students/:studentId', c => {
+  return c.get('container').studentController.updateStudent(c);
+});
 
 // Event routes
 apiV1.get('/events', c => {
@@ -101,8 +114,8 @@ apiV1.put('/events/:eventId', c => {
 });
 
 // Class routes
-apiV1.get('/classes', c => {
-  return c.get('container').classController.getAllClasses(c);
+apiV1.get('/classrooms', c => {
+  return c.get('container').classRoomController.getAllClassRooms(c);
 });
 
 // Gathering spot routes
@@ -187,6 +200,9 @@ apiV1.delete('/notification-schedules/:id', c => {
 apiV1.post('/notifications/test', c => {
   return c.get('container').notificationController.sendTestNotification(c);
 });
+
+// Auth routes
+apiV1.route('/auth', authRouter);
 
 // Mount API v1
 app.route('/api/v1', apiV1);
