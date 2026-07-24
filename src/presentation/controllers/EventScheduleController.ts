@@ -5,6 +5,7 @@ import type { Env } from '../../lib/env';
 import { isValidEventDate } from '../../lib/eventDate';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
+import type { AuthVariables } from '../middleware/requireAuth';
 
 const eventIdSchema = z.coerce.number().int().positive();
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
@@ -21,7 +22,7 @@ const updateEventScheduleSchema = z
 
 type EventScheduleContext = Context<{
   Bindings: Env;
-  Variables: ContainerVariables & AuthenticationVariables;
+  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>;
 
 export function createEventScheduleController(

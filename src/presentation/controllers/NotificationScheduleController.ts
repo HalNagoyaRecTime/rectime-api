@@ -4,6 +4,7 @@ import type { INotificationScheduleService } from '../../application/services/IN
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
+import type { AuthVariables } from '../middleware/requireAuth';
 
 const createNotificationScheduleSchema = z.object({
   eventId: z.number().int().positive().nullable().optional(),
@@ -18,7 +19,7 @@ const notificationScheduleIdSchema = z.coerce.number().int().positive();
 
 type NotificationScheduleContext = Context<{
   Bindings: Env;
-  Variables: ContainerVariables & AuthenticationVariables;
+  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>;
 
 const notificationScheduleListQuerySchema = z
