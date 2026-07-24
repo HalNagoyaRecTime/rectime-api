@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-cloudflare-workers-${{ github.event.workflow_run.head_branch || github.ref_name }}
+  group: deploy-cloudflare-workers-production
   cancel-in-progress: true
 
 permissions:
@@ -23,7 +23,7 @@ jobs:
        (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'develop'))
     name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
     runs-on: ubuntu-latest
-    environment: ${{ (github.event.workflow_run.head_branch || github.ref_name) == 'main' && 'production' || 'development' }}
+    environment: production
 
     steps:
       - name: Checkout code
@@ -40,28 +40,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Set deploy target
-        id: target
-        run: |
-          BRANCH="${{ github.event.workflow_run.head_branch || github.ref_name }}"
-          if [ "$BRANCH" = "main" ]; then
-            echo 'env_flag=--env ""' >> "$GITHUB_OUTPUT"
-            echo "d1_database=rectime-api" >> "$GITHUB_OUTPUT"
-          else
-            echo "env_flag=--env development" >> "$GITHUB_OUTPUT"
-            echo "d1_database=rectime-api-dev" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Apply D1 migrations
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 migrations apply ${{ steps.target.outputs.d1_database }} --remote ${{ steps.target.outputs.env_flag }}
+          command: d1 migrations apply rectime-api --remote
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --minify ${{ steps.target.outputs.env_flag }}
+          command: deploy --minify
