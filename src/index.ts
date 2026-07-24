@@ -130,9 +130,21 @@ apiV1.put('/events/:eventId/schedule', c => {
   return c.get('container').eventScheduleController.updateEventSchedule(c);
 });
 
-// Class routes
+// Classroom routes
 apiV1.get('/classrooms', c => {
-  return c.get('container').classRoomController.getAllClassRooms(c);
+  return c.get('container').classRoomController.getAllClassrooms(c);
+});
+apiV1.get('/classrooms/:classId', c => {
+  return c.get('container').classRoomController.getClassroomById(c);
+});
+apiV1.post('/classrooms', c => {
+  return c.get('container').classRoomController.createClassroom(c);
+});
+apiV1.put('/classrooms/:classId', c => {
+  return c.get('container').classRoomController.updateClassroom(c);
+});
+apiV1.delete('/classrooms/:classId', c => {
+  return c.get('container').classRoomController.deleteClassroom(c);
 });
 
 // Gathering spot routes

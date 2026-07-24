@@ -269,19 +269,96 @@ paths:
 
   /classrooms:
     get:
-      tags: [ClassRooms]
+      tags: [Classrooms]
       summary: クラス一覧を取得する
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
       responses:
         '200':
           description: クラス一覧
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ClassRoom'
+                $ref: '#/components/schemas/ClassroomPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Classrooms]
+      summary: クラスを登録する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClassRequest' }
+            example:
+              classCode: IA14A
+              className: 高度情報学科AI開発先行コース
+              teacherId: null
+      responses:
+        '201':
+          description: 登録したクラス
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClassRoom' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /classrooms/{classId}:
+    get:
+      tags: [Classrooms]
+      summary: クラス詳細を取得する
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        '200':
+          description: クラス詳細
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClassRoom' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Classrooms]
+      summary: クラスを更新する
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClassRequest' }
+            example:
+              classCode: IA14A
+              className: 高度情報学科AI開発先行コース
+              teacherId: null
+      responses:
+        '200':
+          description: 更新したクラス
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClassRoom' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Classrooms]
+      summary: クラスを削除する
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        '204': { description: 削除成功 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
 
   /gathering-spots:
     get:
@@ -971,6 +1048,13 @@ paths:
 
 components:
   parameters:
+    ClassId:
+      name: classId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
     StudentId:
       name: studentId
       in: path
@@ -1200,7 +1284,7 @@ components:
 
     ClassRoom:
       type: object
-      required: [class_room_id, class_code, class_name]
+      required: [class_room_id, class_code, class_name, student_count, teacher]
       properties:
         class_room_id:
           type: integer
@@ -1208,6 +1292,42 @@ components:
           type: string
         class_name:
           type: string
+        student_count:
+          type: integer
+        teacher:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ClassTeacher'
+
+    ClassTeacher:
+      type: object
+      required: [teacher_id, user_id, display_name]
+      properties:
+        teacher_id: { type: integer }
+        user_id: { type: integer }
+        display_name: { type: string }
+
+    ClassRequest:
+      type: object
+      required: [classCode, className, teacherId]
+      properties:
+        classCode: { type: string, minLength: 1 }
+        className: { type: string, minLength: 1 }
+        teacherId:
+          type: integer
+          minimum: 1
+          nullable: true
+
+    ClassroomPage:
+      type: object
+      required: [classrooms, total, limit, offset]
+      properties:
+        classrooms:
+          type: array
+          items: { $ref: '#/components/schemas/ClassRoom' }
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
 
     GatheringSpot:
       type: object
@@ -1666,7 +1786,7 @@ tags:
     description: 学生情報
   - name: Events
     description: イベント
-  - name: ClassRooms
+  - name: Classrooms
     description: クラス
   - name: Gathering spots
     description: 集合場所

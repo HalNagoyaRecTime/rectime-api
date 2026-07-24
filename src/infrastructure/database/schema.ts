@@ -21,7 +21,10 @@ export const class_rooms = sqliteTable(
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
   },
-  table => [index('idx_class_rooms_teacher_id').on(table.teacherId)]
+  table => [
+    uniqueIndex('uq_class_rooms_class_code').on(table.classCode),
+    index('idx_class_rooms_teacher_id').on(table.teacherId),
+  ]
 );
 
 export const users = sqliteTable('users', {
