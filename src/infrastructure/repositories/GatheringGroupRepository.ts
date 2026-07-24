@@ -8,7 +8,6 @@ import {
   gathering_group_members,
   gathering_groups,
   gatherings,
-  notification_schedules,
 } from '../database/schema';
 
 function toEntity(
@@ -42,7 +41,6 @@ export function createGatheringGroupRepository(
         .values({})
         .returning()
         .get();
-      if (!row) throw new Error('Failed to create gathering group');
       return toEntity(row);
     },
 
@@ -62,16 +60,6 @@ export function createGatheringGroupRepository(
           .select({ id: gatherings.id })
           .from(gatherings)
           .where(eq(gatherings.gatheringGroupId, gatheringGroupId))
-          .get()
-      );
-    },
-
-    async hasNotificationSchedules(gatheringGroupId: number): Promise<boolean> {
-      return Boolean(
-        await orm
-          .select({ id: notification_schedules.id })
-          .from(notification_schedules)
-          .where(eq(notification_schedules.gatheringGroupId, gatheringGroupId))
           .get()
       );
     },

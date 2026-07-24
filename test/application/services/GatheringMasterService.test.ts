@@ -30,7 +30,6 @@ describe('Gathering master services', () => {
       create: vi.fn().mockResolvedValue(group),
       exists: vi.fn().mockResolvedValue(true),
       hasGathering: vi.fn().mockResolvedValue(false),
-      hasNotificationSchedules: vi.fn().mockResolvedValue(false),
       remove: vi.fn().mockResolvedValue(true),
     };
     const gatheringSpotService = createGatheringSpotService(
@@ -46,9 +45,9 @@ describe('Gathering master services', () => {
     await expect(gatheringSpotService.getAllGatheringSpots()).resolves.toBe(
       spots
     );
-    await expect(
-      gatheringGroupService.createGatheringGroup()
-    ).resolves.toEqual(group);
+    await expect(gatheringGroupService.createGatheringGroup()).resolves.toEqual(
+      group
+    );
     await expect(
       gatheringGroupService.getAllGatheringGroups()
     ).resolves.toEqual(groups);
@@ -59,13 +58,12 @@ describe('Gathering master services', () => {
     expect(gatheringGroupRepository.findAll).toHaveBeenCalledOnce();
   });
 
-  it('イベントに未紐付けかつ通知予定に未使用の集合グループを削除する', async () => {
+  it('イベントに未紐付けの集合グループを削除する', async () => {
     const repository: IGatheringGroupRepository = {
       findAll: vi.fn(),
       create: vi.fn(),
       exists: vi.fn().mockResolvedValue(true),
       hasGathering: vi.fn().mockResolvedValue(false),
-      hasNotificationSchedules: vi.fn().mockResolvedValue(false),
       remove: vi.fn().mockResolvedValue(true),
     };
     const service = createGatheringGroupService(repository);

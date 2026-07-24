@@ -35,10 +35,11 @@ describe('0014_create_gathering_master_tables.sql', () => {
       ])
     );
     expect(
-      gatheringGroupColumns.results.some(
-        column => column.name === 'gathering_group_name'
-      )
-    ).toBe(false);
+      gatheringGroupColumns.results.map(column => column.name)
+    ).not.toContain('gathering_group_name');
+    expect(
+      gatheringGroupColumns.results.map(column => column.name)
+    ).not.toContain('user_id');
 
     const gatheringGroupMemberColumns = await env.DB.prepare(
       'PRAGMA table_info(gathering_group_members)'

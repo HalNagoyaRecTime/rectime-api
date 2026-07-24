@@ -22,13 +22,6 @@ export function createGatheringGroupService(
       if (await gatheringGroupRepository.hasGathering(gatheringGroupId)) {
         throw new Error('Gathering group is assigned to an event');
       }
-      if (
-        await gatheringGroupRepository.hasNotificationSchedules(
-          gatheringGroupId
-        )
-      ) {
-        throw new Error('Gathering group is in use by notification schedules');
-      }
       if (!(await gatheringGroupRepository.remove(gatheringGroupId))) {
         throw new Error('Gathering group not found');
       }

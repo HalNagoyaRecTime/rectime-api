@@ -5,6 +5,5 @@ export interface IGatheringGroupRepository {
   create: () => Promise<GatheringGroupEntity>;
   exists: (gatheringGroupId: number) => Promise<boolean>;
   hasGathering: (gatheringGroupId: number) => Promise<boolean>;
-  hasNotificationSchedules: (gatheringGroupId: number) => Promise<boolean>;
   remove: (gatheringGroupId: number) => Promise<boolean>;
 }

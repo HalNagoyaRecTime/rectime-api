@@ -51,10 +51,7 @@ export function createGatheringGroupController(
       }
       if (
         error instanceof Error &&
-        [
-          'Gathering group is assigned to an event',
-          'Gathering group is in use by notification schedules',
-        ].includes(error.message)
+        error.message === 'Gathering group is assigned to an event'
       ) {
         return c.json({ error: error.message }, 409);
       }

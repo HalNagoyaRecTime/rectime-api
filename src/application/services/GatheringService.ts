@@ -44,16 +44,6 @@ export function createGatheringService(
     },
 
     async deleteGathering(gatheringId: number): Promise<void> {
-      const gatheringGroupId =
-        await gatheringRepository.findGatheringGroupId(gatheringId);
-      if (gatheringGroupId === null) {
-        throw new Error('Gathering not found');
-      }
-      if (
-        await gatheringRepository.hasNotificationSchedules(gatheringGroupId)
-      ) {
-        throw new Error('Gathering is in use by notification schedules');
-      }
       if (!(await gatheringRepository.remove(gatheringId))) {
         throw new Error('Gathering not found');
       }

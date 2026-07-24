@@ -64,7 +64,7 @@ function setup() {
 }
 
 describe('Gathering master controllers', () => {
-  it('集合場所と集合グループを作成して201を返す', async () => {
+  it('集合場所とIDベースの集合グループを作成し、201を返す', async () => {
     const { app, gatheringSpotService, gatheringGroupService } = setup();
     (
       gatheringSpotService.createGatheringSpot as ReturnType<typeof vi.fn>
@@ -112,9 +112,7 @@ describe('Gathering master controllers', () => {
     ]);
     (
       gatheringGroupService.getAllGatheringGroups as ReturnType<typeof vi.fn>
-    ).mockResolvedValue([
-      { gathering_group_id: 2 },
-    ]);
+    ).mockResolvedValue([{ gathering_group_id: 2 }]);
 
     const spotResponse = await app.request('/gathering-spots');
     const groupResponse = await app.request('/gathering-groups');
@@ -122,9 +120,7 @@ describe('Gathering master controllers', () => {
     expect(await spotResponse.json()).toEqual([
       { gathering_spot_id: 1, gathering_spot_name: '体育館前' },
     ]);
-    expect(await groupResponse.json()).toEqual([
-      { gathering_group_id: 2 },
-    ]);
+    expect(await groupResponse.json()).toEqual([{ gathering_group_id: 2 }]);
   });
 
   it('グループ所属の一覧取得・追加・解除をServiceへ委譲する', async () => {

@@ -12,8 +12,7 @@ describe('GatheringRepository', () => {
   async function createReferences(suffix: string) {
     const group = await env.DB.prepare(
       'INSERT INTO gathering_groups DEFAULT VALUES RETURNING gathering_group_id'
-    )
-      .first<{ gathering_group_id: number }>();
+    ).first<{ gathering_group_id: number }>();
     groupIds.push(group!.gathering_group_id);
     const spot = await env.DB.prepare(
       'INSERT INTO gathering_spots (gathering_spot_name) VALUES (?) RETURNING gathering_spot_id'

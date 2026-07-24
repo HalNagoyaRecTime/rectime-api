@@ -103,6 +103,19 @@ describe('Gathering master repositories', () => {
     ]);
   });
 
+  it('ユーザーや名称を指定せず集合グループを作成できる', async () => {
+    const group = await gatheringGroupRepository.create();
+    gatheringGroupIds.push(group.gathering_group_id);
+
+    expect(group).toEqual(
+      expect.objectContaining({
+        gathering_group_id: expect.any(Number),
+        created_at: expect.any(String),
+        updated_at: expect.any(String),
+      })
+    );
+  });
+
   it('グループ所属を追加・一覧取得・解除でき、重複追加は防止する', async () => {
     const group = await gatheringGroupRepository.create();
     gatheringGroupIds.push(group.gathering_group_id);

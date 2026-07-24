@@ -22,8 +22,6 @@ function setup() {
     existsEvent: vi.fn().mockResolvedValue(true),
     existsGatheringSpot: vi.fn().mockResolvedValue(true),
     create: vi.fn(),
-    findGatheringGroupId: vi.fn().mockResolvedValue(2),
-    hasNotificationSchedules: vi.fn().mockResolvedValue(false),
     remove: vi.fn().mockResolvedValue(true),
   };
   return { repository, service: createGatheringService(repository) };
@@ -133,35 +131,20 @@ describe('GatheringService', () => {
     ).rejects.toThrow('database error');
   });
 
-  it('通知予定に使われていない集合設定を削除する', async () => {
+  it('集合設定を削除する', async () => {
     const { repository, service } = setup();
 
     await expect(service.deleteGathering(1)).resolves.toBeUndefined();
-    expect(repository.findGatheringGroupId).toHaveBeenCalledWith(1);
-    expect(repository.hasNotificationSchedules).toHaveBeenCalledWith(2);
     expect(repository.remove).toHaveBeenCalledWith(1);
   });
 
-  it('存在しない集合設定と通知予定に使われる集合設定を削除しない', async () => {
+  it('存在しない集合設定を削除しない', async () => {
     const { repository, service } = setup();
-    (
-      repository.findGatheringGroupId as ReturnType<typeof vi.fn>
-    ).mockResolvedValueOnce(null);
+    (repository.remove as ReturnType<typeof vi.fn>).mockResolvedValue(false);
 
     await expect(service.deleteGathering(1)).rejects.toThrow(
       'Gathering not found'
     );
-    expect(repository.remove).not.toHaveBeenCalled();
-
-    (
-      repository.findGatheringGroupId as ReturnType<typeof vi.fn>
-    ).mockResolvedValueOnce(2);
-    (
-      repository.hasNotificationSchedules as ReturnType<typeof vi.fn>
-    ).mockResolvedValueOnce(true);
-    await expect(service.deleteGathering(2)).rejects.toThrow(
-      'Gathering is in use by notification schedules'
-    );
-    expect(repository.remove).not.toHaveBeenCalled();
+    expect(repository.remove).toHaveBeenCalledWith(1);
   });
 });

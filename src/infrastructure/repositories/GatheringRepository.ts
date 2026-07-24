@@ -12,7 +12,6 @@ import {
   gathering_groups,
   gathering_spots,
   gatherings,
-  notification_schedules,
 } from '../database/schema';
 
 const detailSelection = {
@@ -119,25 +118,6 @@ export function createGatheringRepository(
       const gathering = await findById(row.id);
       if (!gathering) throw new Error('Failed to create gathering');
       return gathering;
-    },
-
-    async findGatheringGroupId(gatheringId: number): Promise<number | null> {
-      const row = await orm
-        .select({ gathering_group_id: gatherings.gatheringGroupId })
-        .from(gatherings)
-        .where(eq(gatherings.id, gatheringId))
-        .get();
-      return row?.gathering_group_id ?? null;
-    },
-
-    async hasNotificationSchedules(gatheringGroupId: number): Promise<boolean> {
-      return Boolean(
-        await orm
-          .select({ id: notification_schedules.id })
-          .from(notification_schedules)
-          .where(eq(notification_schedules.gatheringGroupId, gatheringGroupId))
-          .get()
-      );
     },
 
     async remove(gatheringId: number): Promise<boolean> {

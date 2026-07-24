@@ -85,5 +85,15 @@ export function createAuthService(
         expirationTtl: ttl,
       });
     },
+
+    async getSession(sessionId: string) {
+      const raw = await kv.get(`session:${sessionId}`);
+      if (!raw) return null;
+
+      const session = JSON.parse(raw) as Session;
+      if (new Date(session.expires_at) < new Date()) return null;
+
+      return session;
+    },
   };
 }

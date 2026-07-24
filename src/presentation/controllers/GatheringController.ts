@@ -88,12 +88,6 @@ export function createGatheringController(gatheringService: IGatheringService) {
       if (error instanceof Error && error.message === 'Gathering not found') {
         return c.json({ error: error.message }, 404);
       }
-      if (
-        error instanceof Error &&
-        error.message === 'Gathering is in use by notification schedules'
-      ) {
-        return c.json({ error: error.message }, 409);
-      }
       return c.json(
         {
           error: 'Failed to delete gathering',
