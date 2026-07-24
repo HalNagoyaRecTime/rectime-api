@@ -21,6 +21,7 @@ import {
   exchangeMicrosoftToken,
   upsertUser,
   userResponse,
+  getUserCategories,
 } from '../helpers';
 import {
   type PkceEntry,
@@ -332,12 +333,14 @@ microsoft.post('/token', async c => {
     jwtTtl
   );
 
+  const categories = await getUserCategories(c, user.id);
+
   return c.json({
     access_token: accessToken,
     refresh_token_id: refreshTokenId,
     token_type: 'Bearer',
     expires_in: jwtTtl,
-    user: userResponse(user),
+    user: userResponse(user, categories),
   });
 });
 
