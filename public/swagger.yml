@@ -120,7 +120,7 @@ paths:
           description: JSTの開始時刻（HHMM形式）で完全一致検索する
           schema:
             type: string
-            pattern: '^\\d{4}$'
+            pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
             example: '0930'
         - name: limit
           in: query
@@ -155,6 +155,26 @@ paths:
                     type: integer
         '500':
           $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Events]
+      summary: イベントを登録する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventWriteRequest'
+      responses:
+        '201':
+          description: 登録したイベント
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /events/{eventId}:
     get:
@@ -173,6 +193,44 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [Events]
+      summary: イベントを更新する
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventWriteRequest'
+      responses:
+        '200':
+          description: 更新後のイベント
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Events]
+      summary: イベントを削除する
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '204':
+          description: 削除完了
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1033,6 +1091,24 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    EventWriteRequest:
+      type: object
+      required: [event_name, venue, start_time, end_time]
+      properties:
+        event_name:
+          type: string
+        rule_text:
+          type: string
+          nullable: true
+        venue:
+          type: string
+        start_time:
+          type: string
+          pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
+        end_time:
+          type: string
+          pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
 
     ClassRoom:
       type: object
