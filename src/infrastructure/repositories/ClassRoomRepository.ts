@@ -1,12 +1,12 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type {
-  ClassEntity,
-  ClassInput,
-  ClassPage,
-} from '../../domain/entities/Class';
-import type { IClassRepository } from '../../domain/interfaces/repositories/IClassRepository';
+  ClassRoomEntity,
+  ClassRoomInput,
+  ClassRoomPage,
+} from '../../domain/entities/ClassRoom';
+import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 
-type ClassRow = {
+type ClassRoomRow = {
   class_room_id: number;
   class_code: string;
   class_name: string;
@@ -16,7 +16,7 @@ type ClassRow = {
   teacher_display_name: string | null;
 };
 
-const classSelect = `
+const classRoomSelect = `
   SELECT
     c.class_room_id,
     c.class_code,
@@ -31,7 +31,7 @@ const classSelect = `
   LEFT JOIN users u ON u.user_id = t.user_id
 `;
 
-function toEntity(row: ClassRow): ClassEntity {
+function toEntity(row: ClassRoomRow): ClassRoomEntity {
   return {
     class_room_id: row.class_room_id,
     class_code: row.class_code,
@@ -50,26 +50,28 @@ function toEntity(row: ClassRow): ClassEntity {
   };
 }
 
-export function createClassRepository(db: D1Database): IClassRepository {
-  const findById = async (id: number): Promise<ClassEntity | null> => {
+export function createClassRoomRepository(
+  db: D1Database
+): IClassRoomRepository {
+  const findById = async (id: number): Promise<ClassRoomEntity | null> => {
     const row = await db
       .prepare(
-        `${classSelect} WHERE c.class_room_id = ? GROUP BY c.class_room_id`
+        `${classRoomSelect} WHERE c.class_room_id = ? GROUP BY c.class_room_id`
       )
       .bind(id)
-      .first<ClassRow>();
+      .first<ClassRoomRow>();
     return row ? toEntity(row) : null;
   };
 
   return {
-    async findAll(limit: number, offset: number): Promise<ClassPage> {
+    async findAll(limit: number, offset: number): Promise<ClassRoomPage> {
       const [rows, count] = await Promise.all([
         db
           .prepare(
-            `${classSelect} GROUP BY c.class_room_id ORDER BY c.class_room_id LIMIT ? OFFSET ?`
+            `${classRoomSelect} GROUP BY c.class_room_id ORDER BY c.class_room_id LIMIT ? OFFSET ?`
           )
           .bind(limit, offset)
-          .all<ClassRow>(),
+          .all<ClassRoomRow>(),
         db
           .prepare('SELECT COUNT(*) AS total FROM class_rooms')
           .first<{ total: number }>(),
@@ -84,7 +86,7 @@ export function createClassRepository(db: D1Database): IClassRepository {
 
     findById,
 
-    async create(input: ClassInput): Promise<ClassEntity> {
+    async create(input: ClassRoomInput): Promise<ClassRoomEntity> {
       const row = await db
         .prepare(
           'INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES (?, ?, ?) RETURNING class_room_id'
@@ -97,7 +99,10 @@ export function createClassRepository(db: D1Database): IClassRepository {
       return classroom;
     },
 
-    async update(id: number, input: ClassInput): Promise<ClassEntity | null> {
+    async update(
+      id: number,
+      input: ClassRoomInput
+    ): Promise<ClassRoomEntity | null> {
       const row = await db
         .prepare(
           'UPDATE class_rooms SET class_code = ?, class_name = ?, teacher_id = ?, updated_at = CURRENT_TIMESTAMP WHERE class_room_id = ? RETURNING class_room_id'

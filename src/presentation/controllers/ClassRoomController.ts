@@ -1,19 +1,19 @@
 import type { Context } from 'hono';
 import { z } from 'zod';
-import type { IClassService } from '../../application/services/IClassService';
+import type { IClassRoomService } from '../../application/services/IClassRoomService';
 
 const classIdSchema = z.coerce.number().int().positive();
 const paginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
 });
-const classRequestSchema = z.object({
+const classRoomRequestSchema = z.object({
   classCode: z.string().trim().min(1),
   className: z.string().trim().min(1),
   teacherId: z.number().int().positive().nullable(),
 });
 
-export function createClassController(classService: IClassService) {
+export function createClassRoomController(classService: IClassRoomService) {
   const getAllClassrooms = async (c: Context) => {
     const query = paginationSchema.safeParse({
       limit: c.req.query('limit'),
@@ -40,33 +40,35 @@ export function createClassController(classService: IClassService) {
     }
   };
 
-  const getClassById = async (c: Context) => {
+  const getClassroomById = async (c: Context) => {
     const id = classIdSchema.safeParse(c.req.param('classId'));
     if (!id.success) return c.json({ error: 'Invalid class ID' }, 400);
     try {
-      return c.json(await classService.getClassById(id.data));
+      return c.json(await classService.getClassroomById(id.data));
     } catch (error) {
-      if (error instanceof Error && error.message === 'Class not found')
+      if (error instanceof Error && error.message === 'Class not found') {
         return c.json({ error: error.message }, 404);
+      }
       return c.json({ error: 'Failed to fetch class' }, 500);
     }
   };
 
   const parseBody = async (c: Context) => {
     const body = await c.req.json().catch(() => undefined);
-    return classRequestSchema.safeParse(body);
+    return classRoomRequestSchema.safeParse(body);
   };
 
-  const createClass = async (c: Context) => {
+  const createClassroom = async (c: Context) => {
     const body = await parseBody(c);
-    if (!body.success)
+    if (!body.success) {
       return c.json(
         { error: 'Invalid class request body', details: body.error.flatten() },
         400
       );
+    }
     try {
       return c.json(
-        await classService.createClass({
+        await classService.createClassroom({
           class_code: body.data.classCode,
           class_name: body.data.className,
           teacher_id: body.data.teacherId,
@@ -78,18 +80,19 @@ export function createClassController(classService: IClassService) {
     }
   };
 
-  const updateClass = async (c: Context) => {
+  const updateClassroom = async (c: Context) => {
     const id = classIdSchema.safeParse(c.req.param('classId'));
     if (!id.success) return c.json({ error: 'Invalid class ID' }, 400);
     const body = await parseBody(c);
-    if (!body.success)
+    if (!body.success) {
       return c.json(
         { error: 'Invalid class request body', details: body.error.flatten() },
         400
       );
+    }
     try {
       return c.json(
-        await classService.updateClass(id.data, {
+        await classService.updateClassroom(id.data, {
           class_code: body.data.classCode,
           class_name: body.data.className,
           teacher_id: body.data.teacherId,
@@ -100,40 +103,45 @@ export function createClassController(classService: IClassService) {
     }
   };
 
-  const deleteClass = async (c: Context) => {
+  const deleteClassroom = async (c: Context) => {
     const id = classIdSchema.safeParse(c.req.param('classId'));
     if (!id.success) return c.json({ error: 'Invalid class ID' }, 400);
     try {
-      await classService.deleteClass(id.data);
+      await classService.deleteClassroom(id.data);
       return c.body(null, 204);
     } catch (error) {
-      if (error instanceof Error && error.message === 'Class not found')
+      if (error instanceof Error && error.message === 'Class not found') {
         return c.json({ error: error.message }, 404);
+      }
       if (
         error instanceof Error &&
         error.message === 'Class is referenced by students'
-      )
+      ) {
         return c.json({ error: error.message }, 409);
+      }
       return c.json({ error: 'Failed to delete class' }, 500);
     }
   };
 
   return {
     getAllClassrooms,
-    getClassById,
-    createClass,
-    updateClass,
-    deleteClass,
+    getClassroomById,
+    createClassroom,
+    updateClassroom,
+    deleteClassroom,
   };
 }
 
 function handleWriteError(c: Context, error: unknown, fallback: string) {
-  if (error instanceof Error && error.message === 'Teacher not found')
+  if (error instanceof Error && error.message === 'Teacher not found') {
     return c.json({ error: error.message }, 404);
-  if (error instanceof Error && error.message === 'Class not found')
+  }
+  if (error instanceof Error && error.message === 'Class not found') {
     return c.json({ error: error.message }, 404);
-  if (error instanceof Error && error.message === 'Class code already exists')
+  }
+  if (error instanceof Error && error.message === 'Class code already exists') {
     return c.json({ error: error.message }, 409);
+  }
   return c.json(
     {
       error: fallback,

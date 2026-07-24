@@ -53,10 +53,12 @@ export function buildSessionCookie(
   secure: boolean
 ): string {
   const secureAttribute = secure ? '; Secure' : '';
-  return `session=${sessionId}; HttpOnly${secureAttribute}; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
+  const sameSite = secure ? 'None' : 'Lax';
+  return `session=${sessionId}; HttpOnly${secureAttribute}; SameSite=${sameSite}; Path=/; Max-Age=${maxAge}`;
 }
 
 export function clearSessionCookie(secure: boolean): string {
   const secureAttribute = secure ? '; Secure' : '';
-  return `session=; HttpOnly${secureAttribute}; SameSite=Lax; Path=/; Max-Age=0`;
+  const sameSite = secure ? 'None' : 'Lax';
+  return `session=; HttpOnly${secureAttribute}; SameSite=${sameSite}; Path=/; Max-Age=0`;
 }

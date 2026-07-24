@@ -5,6 +5,18 @@ import {
   BASE64_URL_PATTERN,
   ACCOUNT_PHOTO_PATH,
 } from '../../domain/auth/types';
+import type { Session, AppUser } from '../../domain/auth/types';
+import type { IdTokenClaims } from '../../infrastructure/auth/verifyIdToken';
+import {
+  buildMicrosoftAuthorizeUrl as infraBuildAuthorizeUrl,
+  exchangeMicrosoftToken as infraExchangeToken,
+  refreshMicrosoftAccessToken as infraRefreshToken,
+} from '../../infrastructure/auth/microsoftClient';
+import { createUserRepository } from '../../infrastructure/repositories/UserRepository';
+import {
+  createAuthService,
+  getSessionTtlSeconds,
+} from '../../application/services/authService';
 
 export type AppContext = Context<{ Bindings: Bindings }>;
 
@@ -74,4 +86,71 @@ export function userResponse(user: {
     avatar_url: user.avatar_url ?? ACCOUNT_PHOTO_PATH,
     avatar_updated_at: user.avatar_updated_at ?? null,
   };
+}
+
+export function buildMicrosoftAuthorizeUrl(
+  c: AppContext,
+  redirectUri: string,
+  state: string,
+  codeChallenge: string,
+  nonce: string
+): string {
+  return infraBuildAuthorizeUrl(
+    c.env.MICROSOFT_CLIENT_ID,
+    c.env.MICROSOFT_TENANT,
+    redirectUri,
+    state,
+    codeChallenge,
+    nonce
+  );
+}
+
+export async function exchangeMicrosoftToken(
+  c: AppContext,
+  params: Record<string, string>,
+  options?: { includeClientAssertion?: boolean }
+) {
+  return infraExchangeToken(
+    c.env.MICROSOFT_CLIENT_ID,
+    c.env.MICROSOFT_TENANT,
+    c.env.MICROSOFT_CLIENT_PRIVATE_KEY,
+    c.env.MICROSOFT_CERT_THUMBPRINT,
+    params,
+    options
+  );
+}
+
+export async function refreshMicrosoftAccessToken(
+  c: AppContext,
+  refreshToken: string,
+  options?: { includeClientAssertion?: boolean }
+) {
+  return infraRefreshToken(
+    c.env.MICROSOFT_CLIENT_ID,
+    c.env.MICROSOFT_TENANT,
+    c.env.MICROSOFT_CLIENT_PRIVATE_KEY,
+    c.env.MICROSOFT_CERT_THUMBPRINT,
+    refreshToken,
+    options
+  );
+}
+
+export async function saveSession(
+  c: AppContext,
+  sessionId: string,
+  session: Session
+): Promise<void> {
+  const ttl = getSessionTtlSeconds(session.expires_at);
+  await c.env.AUTH_KV.put(`session:${sessionId}`, JSON.stringify(session), {
+    expirationTtl: ttl,
+  });
+}
+
+export async function upsertUser(
+  c: AppContext,
+  claims: IdTokenClaims
+): Promise<AppUser> {
+  const userRepository = createUserRepository(c.env.DB);
+  const authService = createAuthService(userRepository, c.env.AUTH_KV);
+  return authService.upsertUser(claims);
 }

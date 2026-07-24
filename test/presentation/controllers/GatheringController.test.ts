@@ -19,15 +19,13 @@ describe('GatheringController', () => {
   it('一覧をJSONで返す', async () => {
     const { app, service } = setup();
     (service.getAllGatherings as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { gathering_id: 1, gathering_group_user_id: 5 },
+      { gathering_id: 1 },
     ]);
 
     const response = await app.request('/gatherings');
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual([
-      { gathering_id: 1, gathering_group_user_id: 5 },
-    ]);
+    expect(await response.json()).toEqual([{ gathering_id: 1 }]);
   });
 
   it('一覧取得時の想定外例外は500を返す', async () => {

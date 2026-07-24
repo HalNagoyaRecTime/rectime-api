@@ -23,37 +23,43 @@ export function createScheduledNotificationService(deps: {
       let failed = 0;
 
       for (const schedule of schedules) {
-        let result;
+        if (schedule.is_firebase_active !== 1) {
+          await notificationScheduleRepository.markFailed(
+            schedule.notification_schedule_id,
+            'Firebase token is inactive'
+          );
+          failed += 1;
+          continue;
+        }
         try {
-          result = await fcmService.sendNotificationToToken({
+          const result = await fcmService.sendNotificationToToken({
             token: schedule.fcm_token,
             title: schedule.title,
             body: schedule.body,
             data: {
               type: schedule.notification_type,
-              eventId: String(schedule.event_id),
+              ...(schedule.event_id == null
+                ? {}
+                : { eventId: String(schedule.event_id) }),
             },
           });
-        } catch (error) {
-          failed += 1;
-          await notificationScheduleRepository.markFailed(
-            schedule.notification_send_schedule_id,
-            error instanceof Error ? error.message : String(error)
+          await notificationScheduleRepository.markSent(
+            schedule.notification_schedule_id,
+            result.messageId
           );
+          sent += 1;
+        } catch (error) {
           if (shouldDeactivateToken(error)) {
             await firebaseTokenRepository.deactivate(
               schedule.firebase_token_id
             );
           }
-          continue;
+          failed += 1;
+          await notificationScheduleRepository.markFailed(
+            schedule.notification_schedule_id,
+            error instanceof Error ? error.message : String(error)
+          );
         }
-        // 送信自体は成功しているため、以降の記録失敗をmarkFailedとして
-        // 誤って上書きしないようtry/catchの外で扱う。
-        sent += 1;
-        await notificationScheduleRepository.markSent(
-          schedule.notification_send_schedule_id,
-          result.messageId
-        );
       }
 
       return {

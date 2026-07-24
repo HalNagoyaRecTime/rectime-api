@@ -10,11 +10,8 @@ export function createGatheringGroupService(
       return gatheringGroupRepository.findAll();
     },
 
-    async createGatheringGroup(userId: number): Promise<GatheringGroupEntity> {
-      if (!(await gatheringGroupRepository.existsUser(userId))) {
-        throw new Error('User not found');
-      }
-      return gatheringGroupRepository.create(userId);
+    createGatheringGroup(): Promise<GatheringGroupEntity> {
+      return gatheringGroupRepository.create();
     },
   };
 }

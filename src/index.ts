@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
@@ -7,6 +8,10 @@ import {
   diContainerMiddleware,
   type ContainerVariables,
 } from './presentation/middleware/diContainer';
+import {
+  sessionAuthenticationMiddleware,
+  type AuthenticationVariables,
+} from './presentation/middleware/sessionAuthentication';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -28,7 +33,13 @@ app.use('*', (c, next) => {
     origin: origin =>
       isAllowedOrigin(origin, allowedOriginRules) ? origin : null,
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Client-Type',
+      'X-PKCE-Code-Challenge',
+      'X-State',
+    ],
     credentials: true,
     maxAge: 600,
   })(c, next);
@@ -62,7 +73,7 @@ app.get('/', c => {
     endpoints: {
       students: '/api/v1/students/{studentId}',
       events: '/api/v1/events',
-      classrooms: '/api/v1/classrooms',
+      classRooms: '/api/v1/classrooms',
       gatheringSpots: '/api/v1/gathering-spots',
       gatheringGroups: '/api/v1/gathering-groups',
       gatherings: '/api/v1/gatherings',
@@ -76,9 +87,13 @@ app.get('/', c => {
 });
 
 // API v1 routes
-const apiV1 = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
+const apiV1 = new Hono<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthenticationVariables;
+}>();
 
 apiV1.use('*', diContainerMiddleware);
+apiV1.use('*', sessionAuthenticationMiddleware);
 
 // Student routes
 apiV1.get('/students', c => {
@@ -86,6 +101,12 @@ apiV1.get('/students', c => {
 });
 apiV1.get('/students/:studentId', c => {
   return c.get('container').studentController.getStudentById(c);
+});
+apiV1.post('/students', c => {
+  return c.get('container').studentController.createStudent(c);
+});
+apiV1.put('/students/:studentId', c => {
+  return c.get('container').studentController.updateStudent(c);
 });
 
 // Event routes
@@ -96,25 +117,34 @@ apiV1.get('/events', c => {
 apiV1.get('/events/:eventId', c => {
   return c.get('container').eventController.getEventById(c);
 });
+apiV1.post('/events', c => {
+  return c.get('container').eventController.createEvent(c);
+});
 apiV1.put('/events/:eventId', c => {
+  return c.get('container').eventController.updateEvent(c);
+});
+apiV1.delete('/events/:eventId', c => {
+  return c.get('container').eventController.deleteEvent(c);
+});
+apiV1.put('/events/:eventId/schedule', c => {
   return c.get('container').eventScheduleController.updateEventSchedule(c);
 });
 
 // Classroom routes
 apiV1.get('/classrooms', c => {
-  return c.get('container').classController.getAllClassrooms(c);
+  return c.get('container').classRoomController.getAllClassrooms(c);
 });
 apiV1.get('/classrooms/:classId', c => {
-  return c.get('container').classController.getClassById(c);
+  return c.get('container').classRoomController.getClassroomById(c);
 });
 apiV1.post('/classrooms', c => {
-  return c.get('container').classController.createClass(c);
+  return c.get('container').classRoomController.createClassroom(c);
 });
 apiV1.put('/classrooms/:classId', c => {
-  return c.get('container').classController.updateClass(c);
+  return c.get('container').classRoomController.updateClassroom(c);
 });
 apiV1.delete('/classrooms/:classId', c => {
-  return c.get('container').classController.deleteClass(c);
+  return c.get('container').classRoomController.deleteClassroom(c);
 });
 
 // Gathering spot routes
@@ -199,6 +229,9 @@ apiV1.delete('/notification-schedules/:id', c => {
 apiV1.post('/notifications/test', c => {
   return c.get('container').notificationController.sendTestNotification(c);
 });
+
+// Auth routes
+apiV1.route('/auth', authRouter);
 
 // Mount API v1
 app.route('/api/v1', apiV1);

@@ -60,7 +60,7 @@ function setup() {
 }
 
 describe('Gathering master controllers', () => {
-  it('集合場所・集合グループの作成時に名前をServiceへ渡し、201を返す', async () => {
+  it('集合場所とIDベースの集合グループを作成し、201を返す', async () => {
     const { app, gatheringSpotService, gatheringGroupService } = setup();
     (
       gatheringSpotService.createGatheringSpot as ReturnType<typeof vi.fn>
@@ -76,8 +76,6 @@ describe('Gathering master controllers', () => {
     });
     const groupResponse = await app.request('/gathering-groups', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: 5 }),
     });
 
     expect(spotResponse.status).toBe(201);
@@ -85,26 +83,7 @@ describe('Gathering master controllers', () => {
     expect(gatheringSpotService.createGatheringSpot).toHaveBeenCalledWith(
       '体育館前'
     );
-    expect(gatheringGroupService.createGatheringGroup).toHaveBeenCalledWith(5);
-  });
-
-  it.each([
-    ['User not found', 404],
-    ['User already owns a gathering group', 409],
-  ] as const)('集合グループ作成エラー%sを%sで返す', async (message, status) => {
-    const { app, gatheringGroupService } = setup();
-    (
-      gatheringGroupService.createGatheringGroup as ReturnType<typeof vi.fn>
-    ).mockRejectedValue(new Error(message));
-
-    const response = await app.request('/gathering-groups', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: 5 }),
-    });
-
-    expect(response.status).toBe(status);
-    expect(await response.json()).toEqual({ error: message });
+    expect(gatheringGroupService.createGatheringGroup).toHaveBeenCalledWith();
   });
 
   it('空の名称は400で拒否する', async () => {
@@ -129,7 +108,7 @@ describe('Gathering master controllers', () => {
     ]);
     (
       gatheringGroupService.getAllGatheringGroups as ReturnType<typeof vi.fn>
-    ).mockResolvedValue([{ gathering_group_id: 2, user_id: 5 }]);
+    ).mockResolvedValue([{ gathering_group_id: 2 }]);
 
     const spotResponse = await app.request('/gathering-spots');
     const groupResponse = await app.request('/gathering-groups');
@@ -137,9 +116,7 @@ describe('Gathering master controllers', () => {
     expect(await spotResponse.json()).toEqual([
       { gathering_spot_id: 1, gathering_spot_name: '体育館前' },
     ]);
-    expect(await groupResponse.json()).toEqual([
-      { gathering_group_id: 2, user_id: 5 },
-    ]);
+    expect(await groupResponse.json()).toEqual([{ gathering_group_id: 2 }]);
   });
 
   it('グループ所属の一覧取得・追加・解除をServiceへ委譲する', async () => {
@@ -267,8 +244,6 @@ describe('Gathering master controllers', () => {
     const spotResponse = await app.request('/gathering-spots');
     const groupResponse = await app.request('/gathering-groups', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: 5 }),
     });
     const memberResponse = await app.request('/gathering-groups/1/members', {
       method: 'POST',
