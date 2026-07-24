@@ -49,7 +49,7 @@ jobs:
             echo "d1_database=rectime-api" >> "$GITHUB_OUTPUT"
           else
             echo "env_flag=--env preview" >> "$GITHUB_OUTPUT"
-            echo "d1_database=rectime-api-preview" >> "$GITHUB_OUTPUT"
+            echo "d1_database=rectime-api-dev" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Apply D1 migrations

@@ -140,11 +140,14 @@
           "id": "b5a0d8dfae2b4d9288a9ff443d034938",
         },
       ],
+      // D1は意図的にenv.developmentと同じrectime-api-devを共用する
+      // (Preview専用D1は作成していない)。マイグレーション状態・データは
+      // development/previewで完全に共有される。
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "rectime-api-preview",
-          "database_id": "REPLACE_WITH_PREVIEW_D1_DATABASE_ID",
+          "database_name": "rectime-api-dev",
+          "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
           "migrations_dir": "migrations",
         },
       ],
