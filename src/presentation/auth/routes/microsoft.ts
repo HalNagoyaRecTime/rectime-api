@@ -304,18 +304,9 @@ microsoft.post('/token', async c => {
     jwtTtl
   );
 
-  if (clientType === 'mobile') {
-    return c.json({
-      access_token: accessToken,
-      refresh_token_id: refreshTokenId,
-      token_type: 'Bearer',
-      expires_in: jwtTtl,
-      user: userResponse(user),
-    });
-  }
-
   return c.json({
     access_token: accessToken,
+    refresh_token_id: refreshTokenId,
     token_type: 'Bearer',
     expires_in: jwtTtl,
     user: userResponse(user),

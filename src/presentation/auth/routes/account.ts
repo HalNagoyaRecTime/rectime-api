@@ -190,9 +190,11 @@ account.get('/me/photo', async c => {
 });
 
 // POST /auth/logout
+// mobile/web共通: refresh_token_id が保持するMicrosoftリフレッシュトークンの
+// KVエントリを破棄する。
 account.post('/logout', async c => {
   const clientType = getClientType(c);
-  if (!clientType) {
+  if (clientType !== 'web' && clientType !== 'mobile') {
     return errorResponse(
       c,
       400,
@@ -201,60 +203,45 @@ account.post('/logout', async c => {
     );
   }
 
-  if (clientType === 'mobile') {
-    const token = getBearerToken(c);
-    if (!token) {
-      return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
-    }
-
-    let claims: AccessTokenClaims;
-    try {
-      claims = await verifyAccessToken(token, c.env.JWT_SECRET, 'mobile');
-    } catch {
-      return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
-    }
-
-    const body = (await c.req.json().catch(() => null)) as {
-      refresh_token_id?: unknown;
-    } | null;
-    if (
-      body &&
-      typeof body.refresh_token_id === 'string' &&
-      body.refresh_token_id.length > 0
-    ) {
-      await c.env.AUTH_KV.delete(`mobile_refresh:${body.refresh_token_id}`);
-    }
-    await c.env.AUTH_KV.delete(`mobile_refresh_by_user:${claims.sub}`);
-
-    return c.json({ message: 'Logged out successfully' });
+  const token = getBearerToken(c);
+  if (!token) {
+    return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
   }
 
-  // web はステートレスな Bearer トークンのみで認証しているため、サーバー側で
-  // 破棄すべきセッションは存在しない。クライアント側でトークンを破棄すれば
-  // ログアウトは完了する。
+  let claims: AccessTokenClaims;
+  try {
+    claims = await verifyAccessToken(token, c.env.JWT_SECRET, clientType);
+  } catch {
+    return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
+  }
+
+  const body = (await c.req.json().catch(() => null)) as {
+    refresh_token_id?: unknown;
+  } | null;
+  if (
+    body &&
+    typeof body.refresh_token_id === 'string' &&
+    body.refresh_token_id.length > 0
+  ) {
+    await c.env.AUTH_KV.delete(`mobile_refresh:${body.refresh_token_id}`);
+  }
+  await c.env.AUTH_KV.delete(`mobile_refresh_by_user:${claims.sub}`);
+
   return c.json({ message: 'Logged out successfully' });
 });
 
 // POST /auth/refresh
+// mobile/web共通: refresh_token_id を使ってrectime-apiのアクセストークンを
+// 再発行する。refresh_token_id はローテーションし、レスポンスの
+// client_type は要求元(X-Client-Type)に合わせる。
 account.post('/refresh', async c => {
   const clientType = getClientType(c);
-  if (!clientType) {
+  if (clientType !== 'web' && clientType !== 'mobile') {
     return errorResponse(
       c,
       400,
       'INVALID_CLIENT_TYPE',
       'クライアント種別が不正です。'
-    );
-  }
-
-  if (clientType === 'web') {
-    // web は mobile のような refresh_token_id をクライアントで保持しない
-    // ため、アクセストークンが失効した場合は再ログインが必要になる。
-    return errorResponse(
-      c,
-      401,
-      'REFRESH_NOT_SUPPORTED',
-      'Web クライアントではトークンの更新に対応していません。再ログインしてください。'
     );
   }
 
@@ -290,7 +277,7 @@ account.post('/refresh', async c => {
     c,
     refresh.ms_refresh_token,
     {
-      includeClientAssertion: false,
+      includeClientAssertion: clientType === 'web',
     }
   );
   if (!tokens?.refresh_token) {
@@ -331,7 +318,7 @@ account.post('/refresh', async c => {
       display_name: refresh.display_name,
       avatar_url: refresh.avatar_url ?? ACCOUNT_PHOTO_PATH,
       avatar_updated_at: refresh.avatar_updated_at ?? null,
-      client_type: 'mobile',
+      client_type: clientType,
     },
     c.env.JWT_SECRET,
     jwtTtl

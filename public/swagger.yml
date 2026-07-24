@@ -724,13 +724,11 @@ paths:
               $ref: '#/components/schemas/TokenExchangeRequest'
       responses:
         '200':
-          description: アクセストークン（mobileは併せてrefresh_token_idも返却）
+          description: アクセストークン(refresh_token_idも併せて返却)
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/MobileTokenResponse'
-                  - $ref: '#/components/schemas/WebTokenResponse'
+                $ref: '#/components/schemas/TokenResponse'
         '400':
           $ref: '#/components/responses/AuthBadRequest'
         '401':
@@ -794,15 +792,15 @@ paths:
       tags: [Auth]
       summary: ログアウトする
       description: >-
-        webはステートレスなBearerトークンのみで認証しているため、サーバー側で
-        破棄すべき状態は無く常に成功します。クライアント側でトークンを破棄してください。
+        Mobile/Web共通。Bearerトークンで認証したうえで、`refresh_token_id`が
+        保持するMicrosoftリフレッシュトークンのKVエントリを破棄します。
       parameters:
         - $ref: '#/components/parameters/ClientType'
       security:
         - bearerAuth: []
       requestBody:
         required: false
-        description: Mobileクライアントの場合のみ、`refresh_token_id` を指定可能
+        description: '`refresh_token_id` を指定可能'
         content:
           application/json:
             schema:
@@ -823,36 +821,36 @@ paths:
                     type: string
         '400':
           $ref: '#/components/responses/AuthBadRequest'
+        '401':
+          $ref: '#/components/responses/AuthUnauthorized'
 
   /auth/refresh:
     post:
       tags: [Auth]
       summary: アクセストークンを更新する
       description: >-
-        Mobileクライアントは `refresh_token_id` を用いて更新します。
-        Webクライアントはrefresh_token_idを保持しないため非対応で、常に401
-        (`REFRESH_NOT_SUPPORTED`) を返します。トークン失効時は再ログインしてください。
+        Mobile/Web共通。`refresh_token_id` を用いてrectime-apiのアクセス
+        トークンを再発行します。`refresh_token_id` は使用の都度ローテーション
+        されます。
       parameters:
         - $ref: '#/components/parameters/ClientType'
-      security:
-        - bearerAuth: []
       requestBody:
-        required: false
-        description: Mobileクライアントの場合のみ必須
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [refresh_token_id]
               properties:
                 refresh_token_id:
                   type: string
       responses:
         '200':
-          description: Mobileの新しいアクセストークン・リフレッシュトークン
+          description: 新しいアクセストークン・refresh_token_id
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MobileTokenResponse'
+                $ref: '#/components/schemas/TokenResponse'
         '400':
           $ref: '#/components/responses/AuthBadRequest'
         '401':
@@ -1463,7 +1461,7 @@ components:
           maxLength: 128
           description: mobileクライアントのみ必須。webはサーバー側で保存済みのものを使うため不要。
 
-    MobileTokenResponse:
+    TokenResponse:
       type: object
       required: [access_token, refresh_token_id, token_type, expires_in]
       properties:
@@ -1471,20 +1469,8 @@ components:
           type: string
         refresh_token_id:
           type: string
-        token_type:
-          type: string
-          example: Bearer
-        expires_in:
-          type: integer
-        user:
-          $ref: '#/components/schemas/AuthUser'
-
-    WebTokenResponse:
-      type: object
-      required: [access_token, token_type, expires_in, user]
-      properties:
-        access_token:
-          type: string
+          description: >-
+            POST /auth/refresh で使うトークンID。使用の都度ローテーションされる。
         token_type:
           type: string
           example: Bearer
