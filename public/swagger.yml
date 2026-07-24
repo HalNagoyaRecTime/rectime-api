@@ -541,7 +541,11 @@ paths:
     post:
       tags: [Firebase tokens]
       summary: Firebaseトークンを登録または更新する
-      description: 学籍番号で学生を特定し、Firebaseトークンを登録または更新します。
+      description: |
+        Mobile Bearer Tokenからログイン中の利用者を特定し、AndroidのFirebase Registration Tokenを登録または更新します。
+        userIdや学籍番号をリクエストで指定することはできません。
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -557,6 +561,8 @@ paths:
                 $ref: '#/components/schemas/RegisterFirebaseTokenResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -1445,51 +1451,31 @@ components:
 
     RegisterFirebaseTokenRequest:
       type: object
-      required: [studentNumber, platform]
+      additionalProperties: false
+      required: [fcmToken, platform]
       properties:
-        studentNumber:
-          type: string
-          minLength: 1
         platform:
-          type: integer
-          enum: [1, 2]
-          description: '`1`: iOS、`2`: Android'
+          type: string
+          enum: [android]
         fcmToken:
           type: string
           minLength: 1
-        token:
-          type: string
-          minLength: 1
-          deprecated: true
-          description: '`fcmToken` の後方互換用の別名'
-      anyOf:
-        - required: [fcmToken]
-        - required: [token]
 
     RegisterFirebaseTokenResponse:
       type: object
-      required: [user, firebaseToken]
+      required:
+        [firebase_token_id, user_id, platform, is_firebase_active, last_seen_at]
       properties:
-        user:
-          $ref: '#/components/schemas/NotificationTargetUser'
-        firebaseToken:
-          $ref: '#/components/schemas/FirebaseToken'
-
-    NotificationTargetUser:
-      type: object
-      required: [user_id, user_name, is_live_active, created_at, updated_at]
-      properties:
+        firebase_token_id:
+          type: integer
         user_id:
           type: integer
-        user_name:
+        platform:
           type: string
-        is_live_active:
-          type: integer
-          enum: [0, 1]
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
+          enum: [android]
+        is_firebase_active:
+          type: boolean
+        last_seen_at:
           type: string
           format: date-time
 

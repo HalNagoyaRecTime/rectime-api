@@ -1,25 +1,39 @@
 import { Context } from 'hono';
 import { z } from 'zod';
 import { IFirebaseTokenService } from '../../application/services/IFirebaseTokenService';
+import type { Env } from '../../lib/env';
+import type { ContainerVariables } from '../middleware/diContainer';
+import type { AuthenticationVariables } from '../middleware/sessionAuthentication';
 
 const registerFirebaseTokenSchema = z
   .object({
-    studentNumber: z.string().min(1),
-    platform: z.union([z.literal(1), z.literal(2)]),
-    fcmToken: z.string().min(1).optional(),
-    token: z.string().min(1).optional(),
+    fcmToken: z.string().min(1),
+    platform: z.literal('android'),
   })
-  .refine(value => value.fcmToken || value.token, {
-    message: 'fcmToken or token is required',
-    path: ['fcmToken'],
-  });
+  .strict();
+
+type FirebaseTokenContext = Context<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthenticationVariables;
+}>;
 
 export function createFirebaseTokenController(
   firebaseTokenService: IFirebaseTokenService
 ) {
-  const registerFirebaseToken = async (c: Context) => {
+  const registerFirebaseToken = async (c: FirebaseTokenContext) => {
     try {
-      const body = await c.req.json();
+      const userId = c.get('authenticatedUserId');
+      if (!userId) {
+        return c.json({ error: 'Authentication required' }, 401);
+      }
+
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: 'Invalid Firebase token request body' }, 400);
+      }
+
       const parsedBody = registerFirebaseTokenSchema.safeParse(body);
 
       if (!parsedBody.success) {
@@ -33,20 +47,19 @@ export function createFirebaseTokenController(
       }
 
       const result = await firebaseTokenService.registerFirebaseToken({
-        studentNumber: parsedBody.data.studentNumber,
+        userId,
         platform: parsedBody.data.platform,
-        fcmToken: parsedBody.data.fcmToken ?? parsedBody.data.token ?? '',
+        fcmToken: parsedBody.data.fcmToken,
       });
 
       return c.json(result);
     } catch (error) {
-      if (error instanceof Error && error.message === 'Student not found') {
+      if (error instanceof Error && error.message === 'User not found') {
         return c.json({ error: error.message }, 404);
       }
       return c.json(
         {
           error: 'Failed to register Firebase token',
-          details: error instanceof Error ? error.message : String(error),
         },
         500
       );
