@@ -22,7 +22,9 @@ function setup() {
     );
     await next();
   });
-  app.put('/events/:eventId', c => controller.updateEventSchedule(c));
+  app.put('/events/:eventId/schedule', c =>
+    controller.updateEventSchedule(c)
+  );
   const bindings = {
     EVENT_DATE: '2026-11-07',
   } as Env;
@@ -39,7 +41,7 @@ describe('EventScheduleController', () => {
   it('セッションのuser_idとEVENT_DATEを使って更新する', async () => {
     const { app, service, bindings } = setup();
     const response = await app.request(
-      '/events/1',
+      '/events/1/schedule',
       {
         method: 'PUT',
         headers: {
@@ -65,7 +67,7 @@ describe('EventScheduleController', () => {
   it('セッションがない場合は401を返し、userIdをリクエストから受け取らない', async () => {
     const { app, service, bindings } = setup();
     const response = await app.request(
-      '/events/1',
+      '/events/1/schedule',
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -85,7 +87,7 @@ describe('EventScheduleController', () => {
   ])('不正なHHMMまたは時刻順では400を返す', async body => {
     const { app, service, bindings } = setup();
     const response = await app.request(
-      '/events/1',
+      '/events/1/schedule',
       {
         method: 'PUT',
         headers: {
@@ -104,7 +106,7 @@ describe('EventScheduleController', () => {
   it('EVENT_DATEが未設定の場合は500を返す', async () => {
     const { app, service, bindings } = setup();
     const response = await app.request(
-      '/events/1',
+      '/events/1/schedule',
       {
         method: 'PUT',
         headers: {
@@ -127,7 +129,7 @@ describe('EventScheduleController', () => {
     );
 
     const response = await app.request(
-      '/events/1',
+      '/events/1/schedule',
       {
         method: 'PUT',
         headers: {
