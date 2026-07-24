@@ -55,7 +55,6 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
     MICROSOFT_CERT_THUMBPRINT: 'thumbprint',
     MICROSOFT_TENANT: 'common',
     ALLOWED_MICROSOFT_TENANTS: '',
-    MICROSOFT_REDIRECT_URI: 'https://example.com/callback',
     MICROSOFT_MOBILE_REDIRECT_URI: 'https://example.com/mobile-callback',
     FRONTEND_URL: 'https://example.com',
     JWT_SECRET,

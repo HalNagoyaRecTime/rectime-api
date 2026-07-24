@@ -77,6 +77,16 @@ export function userResponse(user: {
   };
 }
 
+// web向けMicrosoft OAuthのredirect_uriを、環境ごとの固定secretではなく
+// 実際のリクエストURLから動的に組み立てる。production/development/preview
+// のいずれであっても、そのWorker自身の実際のオリジンに対して常に正しい
+// callback URLになるため、環境ごとに別値のsecretを管理する必要がなくなる。
+// (Microsoft Entra側には、実際に使われる各オリジンのcallback URLを
+// redirect URIとして事前に登録しておく必要がある)
+export function buildWebRedirectUri(c: AppContext): string {
+  return `${new URL(c.req.url).origin}/api/v1/auth/microsoft/callback`;
+}
+
 export function buildMicrosoftAuthorizeUrl(
   c: AppContext,
   redirectUri: string,

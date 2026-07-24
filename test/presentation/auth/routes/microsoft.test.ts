@@ -102,8 +102,6 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
     MICROSOFT_CERT_THUMBPRINT: 'thumbprint',
     MICROSOFT_TENANT: TENANT,
     ALLOWED_MICROSOFT_TENANTS: 'tid-1',
-    MICROSOFT_REDIRECT_URI:
-      'https://api.example.com/api/v1/auth/microsoft/callback',
     MICROSOFT_MOBILE_REDIRECT_URI: 'com.example.app://auth/callback',
     FRONTEND_URL: 'https://app.example.com',
     JWT_SECRET,
@@ -255,6 +253,11 @@ describe('GET /auth/microsoft/login', () => {
     expect(res.status).toBe(302);
     const location = res.headers.get('Location') ?? '';
     expect(location).toContain('login.microsoftonline.com');
+    // redirect_uriは固定secretではなく、リクエスト自身のオリジンから動的に
+    // 組み立てられる(webはMICROSOFT_REDIRECT_URIを持たない)。
+    expect(new URL(location).searchParams.get('redirect_uri')).toBe(
+      'http://localhost/api/v1/auth/microsoft/callback'
+    );
 
     const state = new URL(location).searchParams.get('state') as string;
     const stored = JSON.parse(
@@ -417,7 +420,7 @@ describe('POST /auth/microsoft/token', () => {
         created_at: new Date().toISOString(),
       } satisfies PkceEntry)
     );
-    stubMicrosoftFetch(idToken);
+    const fetchMock = stubMicrosoftFetch(idToken);
     const app = buildApp();
 
     const res = await app.request(
@@ -439,6 +442,21 @@ describe('POST /auth/microsoft/token', () => {
     };
     expect(body.token_type).toBe('Bearer');
     expect(body.user.email).toBe('tanaka@example.com');
+
+    // Microsoftとのトークン交換でも、/loginと同じ動的なredirect_uriが
+    // 送信されていること(固定secretではなくリクエスト自身のオリジンから
+    // 組み立てられる)を確認する。
+    const tokenExchangeCall = fetchMock.mock.calls.find(([input]) =>
+      (typeof input === 'string' ? input : input.toString()).includes(
+        '/oauth2/v2.0/token'
+      )
+    );
+    const sentBody = new URLSearchParams(
+      tokenExchangeCall?.[1]?.body as string
+    );
+    expect(sentBody.get('redirect_uri')).toBe(
+      'http://localhost/api/v1/auth/microsoft/callback'
+    );
 
     const claims = await verifyAccessToken(
       body.access_token,

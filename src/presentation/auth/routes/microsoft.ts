@@ -13,6 +13,7 @@ import {
   isValidBase64Url,
   hasMinimumDecodedBytes,
   buildMicrosoftAuthorizeUrl,
+  buildWebRedirectUri,
   exchangeMicrosoftToken,
   upsertUser,
   userResponse,
@@ -108,7 +109,7 @@ microsoft.get('/login', async c => {
   return c.redirect(
     buildMicrosoftAuthorizeUrl(
       c,
-      c.env.MICROSOFT_REDIRECT_URI,
+      buildWebRedirectUri(c),
       state,
       codeChallenge,
       nonce
@@ -230,7 +231,7 @@ microsoft.post('/token', async c => {
       redirect_uri:
         clientType === 'mobile'
           ? c.env.MICROSOFT_MOBILE_REDIRECT_URI
-          : c.env.MICROSOFT_REDIRECT_URI,
+          : buildWebRedirectUri(c),
       code_verifier: codeVerifier,
     },
     { includeClientAssertion: clientType === 'web' }
