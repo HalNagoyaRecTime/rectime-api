@@ -1,4 +1,5 @@
 {
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "rectime-api",
   "account_id": "539494518db0c8b96ec2f6fdd30fb990",
   "compatibility_date": "2024-09-23",
@@ -11,6 +12,29 @@
     "NODE_ENV": "production",
     "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
   },
+  // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
+  // 公開されている(README.md参照)。カスタムドメイン/routesは未設定のため、
+  // workers_dev/preview_urls はここでは変更しない(falseにすると本番アクセス不能になる)。
+  "secrets": {
+    "required": [
+      "MICROSOFT_CLIENT_ID",
+      "MICROSOFT_CLIENT_PRIVATE_KEY",
+      "MICROSOFT_CERT_THUMBPRINT",
+      "MICROSOFT_TENANT",
+      "ALLOWED_MICROSOFT_TENANTS",
+      "MICROSOFT_REDIRECT_URI",
+      "MICROSOFT_MOBILE_REDIRECT_URI",
+      "FRONTEND_URL",
+      "SESSION_EXPIRES_SEC",
+      "JWT_SECRET",
+      "JWT_EXPIRES_SEC",
+      "MOBILE_REFRESH_EXPIRES_SEC",
+      "FIREBASE_PROJECT_ID",
+      "FIREBASE_CLIENT_EMAIL",
+      "FIREBASE_PRIVATE_KEY",
+      "TEST_FCM_TOKEN",
+    ],
+  },
   "triggers": {
     "crons": ["* * * * *"],
   },
@@ -18,32 +42,19 @@
     {
       "binding": "AUTH_KV",
       "id": "70197622340f44df8e24365695b5f1d0",
-      "preview_id": "4c0dddfe16d94166841579765390f697",
+    },
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rectime-api",
+      "database_id": "f031b887-a3a2-41f1-8c54-5ccdd323fcbb",
+      "migrations_dir": "migrations",
     },
   ],
   "env": {
-    "default": {
-      "vars": {
-        "NODE_ENV": "development",
-        "PORT": "8787",
-        "HOST": "0.0.0.0",
-        "ALLOWED_ORIGINS": "http://localhost:5173",
-      },
-      "kv_namespaces": [
-        {
-          "binding": "AUTH_KV",
-          "id": "local-auth-kv",
-          "preview_id": "local-auth-kv",
-        },
-      ],
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "rectime-api-dev",
-          "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
-        },
-      ],
-    },
+    // ローカル開発用(wrangler dev --env development)。env.default は
+    // development と重複していたため削除した。
     "development": {
       "vars": {
         "NODE_ENV": "development",
@@ -51,10 +62,17 @@
         "HOST": "0.0.0.0",
         "ALLOWED_ORIGINS": "http://localhost:5173,https://*.recwatch.pages.dev",
       },
+      // secrets.required はここでは宣言しない: vitest-pool-workers
+      // (test/apply-migrations.ts) がこの環境で62ファイル分のWorkerを並列起動する際、
+      // 各起動ごとの追加検証コストでD1マイグレーションのbeforeAllフックが
+      // 10秒タイムアウトし、テストスイートが不安定になることを確認したため。
       "kv_namespaces": [
         {
           "binding": "AUTH_KV",
           "id": "7bdb66e8753148b09d88626e563193aa",
+          // preview_id は `wrangler dev --remote` 専用。このリポジトリの
+          // `npm run dev` はローカルシミュレーションのみで使わないが、
+          // 既にdry-runで動作確認済みの値のため維持する。
           "preview_id": "7bdb66e8753148b09d88626e563193aa",
         },
       ],
@@ -63,15 +81,62 @@
           "binding": "DB",
           "database_name": "rectime-api-dev",
           "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
+          "migrations_dir": "migrations",
+        },
+      ],
+    },
+    // Cloudflare上のPreview環境。`rectime-api-preview` という別Workerとして
+    // 作成される。KV/D1のIDはプレースホルダーのため、以下を実行してから
+    // 実際のIDに置き換えること:
+    //   wrangler d1 create rectime-api-preview
+    //   wrangler kv namespace create rectime-api-preview-auth
+    //   wrangler secret put <NAME> --env preview (各secretごとに)
+    "preview": {
+      "name": "rectime-api-preview",
+      "workers_dev": false,
+      "preview_urls": true,
+      "vars": {
+        "NODE_ENV": "preview",
+        "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+      },
+      "secrets": {
+        "required": [
+          "MICROSOFT_CLIENT_ID",
+          "MICROSOFT_CLIENT_PRIVATE_KEY",
+          "MICROSOFT_CERT_THUMBPRINT",
+          "MICROSOFT_TENANT",
+          "ALLOWED_MICROSOFT_TENANTS",
+          "MICROSOFT_REDIRECT_URI",
+          "MICROSOFT_MOBILE_REDIRECT_URI",
+          "FRONTEND_URL",
+          "SESSION_EXPIRES_SEC",
+          "JWT_SECRET",
+          "JWT_EXPIRES_SEC",
+          "MOBILE_REFRESH_EXPIRES_SEC",
+          "FIREBASE_PROJECT_ID",
+          "FIREBASE_CLIENT_EMAIL",
+          "FIREBASE_PRIVATE_KEY",
+          "TEST_FCM_TOKEN",
+        ],
+      },
+      // Preview環境で本番同様のcronが毎分走らないようにする
+      "triggers": {
+        "crons": [],
+      },
+      "kv_namespaces": [
+        {
+          "binding": "AUTH_KV",
+          "id": "REPLACE_WITH_PREVIEW_AUTH_KV_ID",
+        },
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "rectime-api-preview",
+          "database_id": "REPLACE_WITH_PREVIEW_D1_DATABASE_ID",
+          "migrations_dir": "migrations",
         },
       ],
     },
   },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "rectime-api",
-      "database_id": "f031b887-a3a2-41f1-8c54-5ccdd323fcbb",
-    },
-  ],
 }
