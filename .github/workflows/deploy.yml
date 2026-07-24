@@ -18,7 +18,8 @@ jobs:
   deploy:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success' &&
        (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'develop'))
     name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
     runs-on: ubuntu-latest
