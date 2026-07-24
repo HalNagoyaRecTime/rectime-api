@@ -99,10 +99,10 @@ apiV1.get('/students', requireAuth, c => {
 apiV1.get('/students/:studentId', requireAuth, c => {
   return c.get('container').studentController.getStudentById(c);
 });
-apiV1.post('/students', c => {
+apiV1.post('/students', requireAuth, c => {
   return c.get('container').studentController.createStudent(c);
 });
-apiV1.put('/students/:studentId', c => {
+apiV1.put('/students/:studentId', requireAuth, c => {
   return c.get('container').studentController.updateStudent(c);
 });
 
