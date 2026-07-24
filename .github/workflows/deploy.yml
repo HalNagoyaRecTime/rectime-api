@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-cloudflare-workers
-  cancel-in-progress: false
+  group: deploy-cloudflare-workers-${{ github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ jobs:
     if: github.ref_name == 'main' || github.ref_name == 'develop'
     name: Deploy (${{ github.ref_name }})
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
 
     steps:
       - name: Checkout code
@@ -38,16 +38,27 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Set deploy target
+        id: target
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo 'env_flag=--env ""' >> "$GITHUB_OUTPUT"
+            echo "d1_database=rectime-api" >> "$GITHUB_OUTPUT"
+          else
+            echo "env_flag=--env development" >> "$GITHUB_OUTPUT"
+            echo "d1_database=rectime-api-dev" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Apply D1 migrations
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 migrations apply rectime-api --remote
+          command: d1 migrations apply ${{ steps.target.outputs.d1_database }} --remote ${{ steps.target.outputs.env_flag }}
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --minify
+          command: deploy --minify ${{ steps.target.outputs.env_flag }}
