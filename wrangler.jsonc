@@ -54,8 +54,8 @@
       "kv_namespaces": [
         {
           "binding": "AUTH_KV",
-          "id": "local-auth-kv",
-          "preview_id": "local-auth-kv",
+          "id": "7bdb66e8753148b09d88626e563193aa",
+          "preview_id": "7bdb66e8753148b09d88626e563193aa",
         },
       ],
       "d1_databases": [
