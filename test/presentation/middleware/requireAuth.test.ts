@@ -5,7 +5,7 @@ import {
   requireAuth,
   type AuthVariables,
 } from '../../../src/presentation/middleware/requireAuth';
-import { signMobileJwt } from '../../../src/infrastructure/auth/jwt';
+import { signAccessToken } from '../../../src/infrastructure/auth/jwt';
 import { createSession } from '../../../src/infrastructure/auth/session';
 import type { Env } from '../../../src/lib/env';
 import type { Session } from '../../../src/domain/auth/types';
@@ -123,7 +123,7 @@ describe('requireAuth', () => {
   describe('mobile (Bearer JWT)', () => {
     it('有効なJWTがあれば authUser を設定して次へ進む', async () => {
       const env = buildEnv();
-      const token = await signMobileJwt(
+      const token = await signAccessToken(
         {
           sub: 'user-1',
           oid: 'oid-1',
@@ -159,7 +159,7 @@ describe('requireAuth', () => {
 
     it('認証成功後にハンドラが例外を投げても401にはならない', async () => {
       const env = buildEnv();
-      const token = await signMobileJwt(
+      const token = await signAccessToken(
         {
           sub: 'user-1',
           oid: 'oid-1',
@@ -220,7 +220,7 @@ describe('requireAuth', () => {
 
     it('期限切れのJWTの場合は401を返す', async () => {
       const env = buildEnv();
-      const token = await signMobileJwt(
+      const token = await signAccessToken(
         {
           sub: 'user-1',
           oid: 'oid-1',
@@ -245,6 +245,113 @@ describe('requireAuth', () => {
       );
 
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe('web (Bearer JWT)', () => {
+    it('有効なJWTがあればCookie無しでも authUser を設定して次へ進む', async () => {
+      const env = buildEnv();
+      const token = await signAccessToken(
+        {
+          sub: 'user-1',
+          oid: 'oid-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+          client_type: 'web',
+        },
+        JWT_SECRET,
+        3600
+      );
+      const app = buildApp();
+
+      const res = await app.request(
+        '/protected',
+        { headers: { Authorization: `Bearer ${token}` } },
+        env
+      );
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        authUser: {
+          id: 'user-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+        },
+      });
+    });
+
+    it('Authorizationヘッダーが不正な場合、有効なCookieがあってもフォールバックせず401を返す', async () => {
+      const env = buildEnv();
+      const sessionId = await createSession(
+        env.AUTH_KV,
+        buildSessionData(),
+        3600
+      );
+      const app = buildApp();
+
+      const res = await app.request(
+        '/protected',
+        {
+          headers: {
+            Cookie: `session=${sessionId}`,
+            Authorization: 'Bearer not-a-valid-jwt',
+          },
+        },
+        env
+      );
+
+      expect(res.status).toBe(401);
+    });
+
+    it('mobile用に発行されたJWTをwebで使おうとすると401を返す', async () => {
+      const env = buildEnv();
+      const token = await signAccessToken(
+        {
+          sub: 'user-1',
+          oid: 'oid-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+          client_type: 'mobile',
+        },
+        JWT_SECRET,
+        3600
+      );
+      const app = buildApp();
+
+      const res = await app.request(
+        '/protected',
+        { headers: { Authorization: `Bearer ${token}` } },
+        env
+      );
+
+      expect(res.status).toBe(401);
+    });
+
+    it('認証成功後にハンドラが例外を投げても401にはならない', async () => {
+      const env = buildEnv();
+      const token = await signAccessToken(
+        {
+          sub: 'user-1',
+          oid: 'oid-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+          client_type: 'web',
+        },
+        JWT_SECRET,
+        3600
+      );
+      const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
+      app.get('/protected', requireAuth, () => {
+        throw new Error('downstream failure');
+      });
+
+      const res = await app.request(
+        '/protected',
+        { headers: { Authorization: `Bearer ${token}` } },
+        env
+      );
+
+      expect(res.status).not.toBe(401);
     });
   });
 

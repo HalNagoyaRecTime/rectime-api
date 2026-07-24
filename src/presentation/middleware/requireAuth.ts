@@ -10,7 +10,7 @@ import {
   getSession,
   getSessionIdFromCookie,
 } from '../../infrastructure/auth/session';
-import { verifyMobileJwt } from '../../infrastructure/auth/jwt';
+import { verifyAccessToken } from '../../infrastructure/auth/jwt';
 
 export type AuthUser = {
   id: string;
@@ -40,7 +40,7 @@ export const requireAuth = createMiddleware<{
 
     let claims;
     try {
-      claims = await verifyMobileJwt(token, c.env.JWT_SECRET);
+      claims = await verifyAccessToken(token, c.env.JWT_SECRET, 'mobile');
     } catch {
       return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
     }
@@ -56,6 +56,28 @@ export const requireAuth = createMiddleware<{
 
   if (clientType !== 'web') {
     return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
+  }
+
+  // Webは新しい apiClient がAuthorizationヘッダー(Bearer)を送るようになった
+  // ため、その存在を優先して検証する。指定されているのに無効な場合は
+  // Cookieへフォールバックせず、明示的に401とする（意図しない認証方式への
+  // すり替わりを防ぐため）。
+  const bearerToken = getBearerToken(appContext);
+  if (bearerToken) {
+    let claims;
+    try {
+      claims = await verifyAccessToken(bearerToken, c.env.JWT_SECRET, 'web');
+    } catch {
+      return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
+    }
+
+    c.set('authUser', {
+      id: claims.sub,
+      email: claims.email,
+      display_name: claims.display_name,
+    });
+    await next();
+    return;
   }
 
   const sessionId = getSessionIdFromCookie(c.req.header('Cookie') ?? null);

@@ -737,7 +737,12 @@ paths:
     get:
       tags: [Auth]
       summary: ログイン中のユーザー情報を取得する
-      description: 'Webクライアントはセッション Cookie、Mobileクライアントは `Authorization: Bearer` で認証します。'
+      description: >-
+        Webクライアントはセッション Cookie（または既に取得済みのBearerトークン）、
+        Mobileクライアントは `Authorization: Bearer` で認証します。
+        Webの場合、レスポンスに apiClient 用の短命なBearerアクセストークンが
+        含まれます（Cookieがセッションの実体で、このトークンは以降のAPI呼び出しの
+        利便性のために毎回再発行される派生的な認証情報です）。
       parameters:
         - $ref: '#/components/parameters/ClientType'
       security:
@@ -749,11 +754,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required: [user]
-                properties:
-                  user:
-                    $ref: '#/components/schemas/AuthUser'
+                oneOf:
+                  - $ref: '#/components/schemas/WebMeResponse'
+                  - type: object
+                    required: [user]
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/AuthUser'
         '400':
           $ref: '#/components/responses/AuthBadRequest'
         '401':
@@ -1480,6 +1487,20 @@ components:
         access_token:
           type: string
         refresh_token_id:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+        user:
+          $ref: '#/components/schemas/AuthUser'
+
+    WebMeResponse:
+      type: object
+      required: [access_token, token_type, expires_in, user]
+      properties:
+        access_token:
           type: string
         token_type:
           type: string

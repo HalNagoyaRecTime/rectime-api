@@ -5,7 +5,7 @@ import {
   generateCodeChallenge,
 } from '../../../infrastructure/auth/pkce';
 import { verifyIdToken } from '../../../infrastructure/auth/verifyIdToken';
-import { signMobileJwt } from '../../../infrastructure/auth/jwt';
+import { signAccessToken } from '../../../infrastructure/auth/jwt';
 import {
   createSession,
   buildSessionCookie,
@@ -318,7 +318,7 @@ microsoft.post('/token', async c => {
   });
 
   const jwtTtl = getNumberEnv(c.env.JWT_EXPIRES_SEC, 3600);
-  const accessToken = await signMobileJwt(
+  const accessToken = await signAccessToken(
     {
       sub: user.id,
       oid: user.oid,

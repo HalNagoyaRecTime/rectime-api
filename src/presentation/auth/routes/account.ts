@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import type { Env as Bindings } from '../../../lib/env';
 import {
-  signMobileJwt,
-  verifyMobileJwt,
-  type MobileJwtClaims,
+  signAccessToken,
+  verifyAccessToken,
+  type AccessTokenClaims,
 } from '../../../infrastructure/auth/jwt';
 import {
   getSession,
@@ -50,7 +50,7 @@ account.get('/me', async c => {
     }
 
     try {
-      const claims = await verifyMobileJwt(token, c.env.JWT_SECRET);
+      const claims = await verifyAccessToken(token, c.env.JWT_SECRET, 'mobile');
       return c.json({
         user: userResponse({
           id: claims.sub,
@@ -88,7 +88,25 @@ account.get('/me', async c => {
     );
   }
 
+  const webTokenTtl = getNumberEnv(c.env.JWT_EXPIRES_SEC, 3600);
+  const accessToken = await signAccessToken(
+    {
+      sub: session.sub,
+      oid: session.oid,
+      email: session.email,
+      display_name: session.display_name,
+      avatar_url: session.avatar_url ?? ACCOUNT_PHOTO_PATH,
+      avatar_updated_at: session.avatar_updated_at ?? null,
+      client_type: 'web',
+    },
+    c.env.JWT_SECRET,
+    webTokenTtl
+  );
+
   return c.json({
+    access_token: accessToken,
+    token_type: 'Bearer',
+    expires_in: webTokenTtl,
     user: userResponse({
       id: session.user_id,
       email: session.email,
@@ -139,9 +157,9 @@ account.get('/me/photo', async c => {
       return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
     }
 
-    let claims: MobileJwtClaims;
+    let claims: AccessTokenClaims;
     try {
-      claims = await verifyMobileJwt(token, c.env.JWT_SECRET);
+      claims = await verifyAccessToken(token, c.env.JWT_SECRET, 'mobile');
     } catch {
       return errorResponse(c, 401, 'UNAUTHORIZED', '認証が不正です。');
     }
@@ -287,9 +305,9 @@ account.post('/logout', async c => {
       return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
     }
 
-    let claims: MobileJwtClaims;
+    let claims: AccessTokenClaims;
     try {
-      claims = await verifyMobileJwt(token, c.env.JWT_SECRET);
+      claims = await verifyAccessToken(token, c.env.JWT_SECRET, 'mobile');
     } catch {
       return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
     }
@@ -449,7 +467,7 @@ account.post('/refresh', async c => {
   await c.env.AUTH_KV.delete(refreshKey);
 
   const jwtTtl = getNumberEnv(c.env.JWT_EXPIRES_SEC, 3600);
-  const accessToken = await signMobileJwt(
+  const accessToken = await signAccessToken(
     {
       sub: refresh.user_id,
       oid: refresh.oid,
