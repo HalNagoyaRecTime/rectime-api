@@ -203,6 +203,44 @@ describe('POST /auth/logout', () => {
     expect(await env.AUTH_KV.get('mobile_refresh:refresh-1')).toBeNull();
     expect(await env.AUTH_KV.get('mobile_refresh_by_user:user-1')).toBeNull();
   });
+
+  it('他ユーザーが所有するrefresh_token_idを指定しても削除しない', async () => {
+    const env = buildEnv();
+    const token = await buildWebToken();
+    const otherUsersEntry = JSON.stringify({
+      user_id: 'other-user',
+      oid: 'oid-other',
+      tid: 'tid-1',
+      sub: 'sub-other',
+      email: 'other@example.com',
+      display_name: '他ユーザー',
+      ms_refresh_token: 'ms-refresh-other',
+      created_at: new Date().toISOString(),
+    } satisfies MobileRefreshEntry);
+    await env.AUTH_KV.put(
+      'mobile_refresh:other-users-refresh',
+      otherUsersEntry
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/logout',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'other-users-refresh' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    expect(await env.AUTH_KV.get('mobile_refresh:other-users-refresh')).toBe(
+      otherUsersEntry
+    );
+  });
 });
 
 describe('POST /auth/refresh', () => {

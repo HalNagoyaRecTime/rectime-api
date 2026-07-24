@@ -223,7 +223,18 @@ account.post('/logout', async c => {
     typeof body.refresh_token_id === 'string' &&
     body.refresh_token_id.length > 0
   ) {
-    await c.env.AUTH_KV.delete(`mobile_refresh:${body.refresh_token_id}`);
+    // 呼び出し元が認証されたユーザー自身のrefresh_token_idのみを削除できる
+    // ようにする(他ユーザーのrefresh_token_idを渡された場合に誤って
+    // そのセッションを破棄してしまわないようにするための所有者チェック)。
+    const refreshRaw = await c.env.AUTH_KV.get(
+      `mobile_refresh:${body.refresh_token_id}`
+    );
+    if (refreshRaw) {
+      const entry = JSON.parse(refreshRaw) as MobileRefreshEntry;
+      if (entry.user_id === claims.sub) {
+        await c.env.AUTH_KV.delete(`mobile_refresh:${body.refresh_token_id}`);
+      }
+    }
   }
   await c.env.AUTH_KV.delete(`mobile_refresh_by_user:${claims.sub}`);
 
