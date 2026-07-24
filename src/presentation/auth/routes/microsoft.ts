@@ -7,14 +7,9 @@ import {
 import { verifyIdToken } from '../../../infrastructure/auth/verifyIdToken';
 import { signAccessToken } from '../../../infrastructure/auth/jwt';
 import {
-  createSession,
-  buildSessionCookie,
-} from '../../../infrastructure/auth/session';
-import {
   errorResponse,
   getClientType,
   getNumberEnv,
-  shouldUseSecureCookie,
   isValidBase64Url,
   hasMinimumDecodedBytes,
   buildMicrosoftAuthorizeUrl,
@@ -123,6 +118,9 @@ microsoft.get('/login', async c => {
 });
 
 // GET /auth/microsoft/callback
+// Microsoft からのリダイレクトを受け、code/state をフロントエンドの
+// /auth/callback へそのまま中継するだけ。トークン交換は行わない
+// (フロントエンドが POST /auth/microsoft/token で自ら交換する)。
 microsoft.get('/callback', async c => {
   const { code, state, error } = c.req.query();
   const frontendUrl = c.env.FRONTEND_URL;
@@ -131,81 +129,26 @@ microsoft.get('/callback', async c => {
     return c.redirect(`${frontendUrl}/login?error=auth_failed`, 302);
   }
 
-  const pkceRaw = await c.env.AUTH_KV.get(`pkce:${state}`);
-  if (!pkceRaw) {
-    return c.redirect(`${frontendUrl}/login?error=auth_failed`, 302);
-  }
-  await c.env.AUTH_KV.delete(`pkce:${state}`);
-
-  const pkce = JSON.parse(pkceRaw) as PkceEntry;
-  if (pkce.client_type !== 'web' || !pkce.code_verifier) {
-    return c.redirect(`${frontendUrl}/login?error=auth_failed`, 302);
-  }
-
-  const tokens = await exchangeMicrosoftToken(c, {
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: c.env.MICROSOFT_REDIRECT_URI,
-    code_verifier: pkce.code_verifier,
-  });
-  if (!tokens?.id_token || !tokens.refresh_token) {
-    return c.redirect(`${frontendUrl}/login?error=auth_failed`, 302);
-  }
-
-  try {
-    const claims = await verifyIdToken(
-      tokens.id_token,
-      c.env.AUTH_KV,
-      c.env.MICROSOFT_CLIENT_ID,
-      pkce.nonce,
-      c.env.MICROSOFT_TENANT,
-      c.env.ALLOWED_MICROSOFT_TENANTS
-    );
-
-    const user = await upsertUser(c, claims);
-    const ttl = getNumberEnv(c.env.SESSION_EXPIRES_SEC, 86400);
-    const sessionId = await createSession(
-      c.env.AUTH_KV,
-      {
-        user_id: user.id,
-        oid: user.oid,
-        tid: user.tid,
-        sub: user.sub,
-        email: user.email,
-        display_name: user.display_name,
-        avatar_url: ACCOUNT_PHOTO_PATH,
-        avatar_updated_at: null,
-        ms_refresh_token: tokens.refresh_token,
-      },
-      ttl
-    );
-
-    return new Response(null, {
-      status: 302,
-      headers: {
-        Location: frontendUrl,
-        'Set-Cookie': buildSessionCookie(
-          sessionId,
-          ttl,
-          shouldUseSecureCookie(c)
-        ),
-      },
-    });
-  } catch (error) {
-    console.error('[Auth] Microsoft callback failed', error);
-    return c.redirect(`${frontendUrl}/login?error=auth_failed`, 302);
-  }
+  return c.redirect(
+    `${frontendUrl}/auth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+    302
+  );
 });
 
 // POST /auth/microsoft/token
+// Mobile/Web 共通: authorization code を Microsoft のトークンと交換し、
+// rectime-api 自身のアクセストークンを発行する。
+// - mobile: code_verifier はクライアントが生成し、ボディで送信する。
+// - web: code_verifier は /auth/microsoft/login 時にサーバー側で生成・
+//   KV 保存済みのものを使うため、ボディでは code/state のみを要求する。
 microsoft.post('/token', async c => {
   const clientType = getClientType(c);
-  if (clientType !== 'mobile') {
+  if (clientType !== 'mobile' && clientType !== 'web') {
     return errorResponse(
       c,
       400,
       'INVALID_CLIENT_TYPE',
-      'Mobile クライアント専用のエンドポイントです。'
+      'クライアント種別が不正です。'
     );
   }
 
@@ -220,11 +163,22 @@ microsoft.post('/token', async c => {
     typeof body.code !== 'string' ||
     body.code.length === 0 ||
     typeof body.state !== 'string' ||
-    body.state.length === 0 ||
-    typeof body.code_verifier !== 'string' ||
-    body.code_verifier.length < 43 ||
-    body.code_verifier.length > 128 ||
-    !isValidBase64Url(body.code_verifier)
+    body.state.length === 0
+  ) {
+    return errorResponse(
+      c,
+      400,
+      'INVALID_REQUEST',
+      'リクエストボディが不正です。'
+    );
+  }
+
+  if (
+    clientType === 'mobile' &&
+    (typeof body.code_verifier !== 'string' ||
+      body.code_verifier.length < 43 ||
+      body.code_verifier.length > 128 ||
+      !isValidBase64Url(body.code_verifier))
   ) {
     return errorResponse(
       c,
@@ -246,7 +200,7 @@ microsoft.post('/token', async c => {
   await c.env.AUTH_KV.delete(`pkce:${body.state}`);
 
   const pkce = JSON.parse(pkceRaw) as PkceEntry;
-  if (pkce.client_type !== 'mobile') {
+  if (pkce.client_type !== clientType) {
     return errorResponse(
       c,
       400,
@@ -255,15 +209,31 @@ microsoft.post('/token', async c => {
     );
   }
 
+  const codeVerifier =
+    clientType === 'mobile'
+      ? (body.code_verifier as string)
+      : pkce.code_verifier;
+  if (!codeVerifier) {
+    return errorResponse(
+      c,
+      401,
+      'STATE_MISMATCH',
+      'state が一致しないか期限切れです。'
+    );
+  }
+
   const tokens = await exchangeMicrosoftToken(
     c,
     {
       grant_type: 'authorization_code',
       code: body.code,
-      redirect_uri: c.env.MICROSOFT_MOBILE_REDIRECT_URI,
-      code_verifier: body.code_verifier,
+      redirect_uri:
+        clientType === 'mobile'
+          ? c.env.MICROSOFT_MOBILE_REDIRECT_URI
+          : c.env.MICROSOFT_REDIRECT_URI,
+      code_verifier: codeVerifier,
     },
-    { includeClientAssertion: false }
+    { includeClientAssertion: clientType === 'web' }
   );
   if (!tokens?.id_token || !tokens.refresh_token) {
     return errorResponse(
@@ -297,6 +267,8 @@ microsoft.post('/token', async c => {
   const refreshTokenId = crypto.randomUUID();
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
 
+  // mobile_refresh KV は mobile/web 共通で使う。Microsoft の refresh_token を
+  // sub 単位で保持し、/auth/me/photo からの Graph アクセストークン取得に使う。
   await c.env.AUTH_KV.put(
     `mobile_refresh:${refreshTokenId}`,
     JSON.stringify({
@@ -326,15 +298,24 @@ microsoft.post('/token', async c => {
       display_name: user.display_name,
       avatar_url: ACCOUNT_PHOTO_PATH,
       avatar_updated_at: null,
-      client_type: 'mobile',
+      client_type: clientType,
     },
     c.env.JWT_SECRET,
     jwtTtl
   );
 
+  if (clientType === 'mobile') {
+    return c.json({
+      access_token: accessToken,
+      refresh_token_id: refreshTokenId,
+      token_type: 'Bearer',
+      expires_in: jwtTtl,
+      user: userResponse(user),
+    });
+  }
+
   return c.json({
     access_token: accessToken,
-    refresh_token_id: refreshTokenId,
     token_type: 'Bearer',
     expires_in: jwtTtl,
     user: userResponse(user),

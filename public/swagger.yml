@@ -683,8 +683,10 @@ paths:
       tags: [Auth]
       summary: Microsoftからの認可コールバックを処理する
       description: |
-        Webクライアントの認可コードフロー専用エンドポイントです。Microsoftからのリダイレクトで
-        呼び出され、認証成功時はセッションCookieを発行してフロントエンドへリダイレクトします。
+        Microsoftからのリダイレクトで呼び出され、トークン交換は行わずに
+        `code` / `state` をそのまま `FRONTEND_URL/auth/callback` へ中継します。
+        フロントエンドはそこから `POST /auth/microsoft/token`（`client_type: web`）を
+        呼び出して自らトークン交換を行います。
         失敗時は `FRONTEND_URL/login?error=auth_failed` へリダイレクトします。
       parameters:
         - name: code
@@ -701,18 +703,17 @@ paths:
             type: string
       responses:
         '302':
-          description: 認証成功時はフロントエンドへ、失敗時はログイン画面へリダイレクト
-          headers:
-            Set-Cookie:
-              description: 認証成功時のみ、セッションCookie（`session`）を発行
-              schema:
-                type: string
+          description: 成功時は `FRONTEND_URL/auth/callback?code=...&state=...` へ、失敗時はログイン画面へリダイレクト
 
   /auth/microsoft/token:
     post:
       tags: [Auth]
-      summary: Mobileクライアントの認可コードをアクセストークンと交換する
-      description: 'Mobileクライアント専用（`X-Client-Type: mobile` が必須）です。'
+      summary: 認可コードをrectime-apiのアクセストークンと交換する
+      description: |
+        Mobile/Web共通のエンドポイントです（`X-Client-Type` で切り替え）。
+        - mobile: `code_verifier` はクライアントが生成し、ボディで送信します。
+        - web: `code_verifier` は `/auth/microsoft/login` 時にサーバー側で生成・
+          保存済みのものを使うため、ボディでは `code` / `state` のみを送信します。
       parameters:
         - $ref: '#/components/parameters/ClientType'
       requestBody:
@@ -723,11 +724,13 @@ paths:
               $ref: '#/components/schemas/TokenExchangeRequest'
       responses:
         '200':
-          description: モバイル用アクセストークン・リフレッシュトークン
+          description: アクセストークン（mobileは併せてrefresh_token_idも返却）
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MobileTokenResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/MobileTokenResponse'
+                  - $ref: '#/components/schemas/WebTokenResponse'
         '400':
           $ref: '#/components/responses/AuthBadRequest'
         '401':
@@ -737,16 +740,10 @@ paths:
     get:
       tags: [Auth]
       summary: ログイン中のユーザー情報を取得する
-      description: >-
-        Webクライアントはセッション Cookie（または既に取得済みのBearerトークン）、
-        Mobileクライアントは `Authorization: Bearer` で認証します。
-        Webの場合、レスポンスに apiClient 用の短命なBearerアクセストークンが
-        含まれます（Cookieがセッションの実体で、このトークンは以降のAPI呼び出しの
-        利便性のために毎回再発行される派生的な認証情報です）。
+      description: 'Mobile/Webいずれも `Authorization: Bearer` で認証します。Cookieは使用しません。'
       parameters:
         - $ref: '#/components/parameters/ClientType'
       security:
-        - sessionCookie: []
         - bearerAuth: []
       responses:
         '200':
@@ -754,13 +751,11 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/WebMeResponse'
-                  - type: object
-                    required: [user]
-                    properties:
-                      user:
-                        $ref: '#/components/schemas/AuthUser'
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    $ref: '#/components/schemas/AuthUser'
         '400':
           $ref: '#/components/responses/AuthBadRequest'
         '401':
@@ -774,7 +769,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ClientType'
       security:
-        - sessionCookie: []
         - bearerAuth: []
       responses:
         '200':
@@ -799,10 +793,12 @@ paths:
     post:
       tags: [Auth]
       summary: ログアウトする
+      description: >-
+        webはステートレスなBearerトークンのみで認証しているため、サーバー側で
+        破棄すべき状態は無く常に成功します。クライアント側でトークンを破棄してください。
       parameters:
         - $ref: '#/components/parameters/ClientType'
       security:
-        - sessionCookie: []
         - bearerAuth: []
       requestBody:
         required: false
@@ -817,11 +813,6 @@ paths:
       responses:
         '200':
           description: ログアウト成功
-          headers:
-            Set-Cookie:
-              description: Webクライアントの場合、セッションCookieを削除
-              schema:
-                type: string
           content:
             application/json:
               schema:
@@ -836,12 +827,14 @@ paths:
   /auth/refresh:
     post:
       tags: [Auth]
-      summary: セッション・トークンを更新する
-      description: Webクライアントはセッション Cookie を、Mobileクライアントは `refresh_token_id` を用いて更新します。
+      summary: アクセストークンを更新する
+      description: >-
+        Mobileクライアントは `refresh_token_id` を用いて更新します。
+        Webクライアントはrefresh_token_idを保持しないため非対応で、常に401
+        (`REFRESH_NOT_SUPPORTED`) を返します。トークン失効時は再ログインしてください。
       parameters:
         - $ref: '#/components/parameters/ClientType'
       security:
-        - sessionCookie: []
         - bearerAuth: []
       requestBody:
         required: false
@@ -855,18 +848,11 @@ paths:
                   type: string
       responses:
         '200':
-          description: 更新結果（Webはセッション更新のみ、Mobileは新しいトークンを返却）
+          description: Mobileの新しいアクセストークン・リフレッシュトークン
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/RefreshWebResponse'
-                  - $ref: '#/components/schemas/MobileTokenResponse'
-          headers:
-            Set-Cookie:
-              description: Webクライアントの場合のみ、更新後のセッションCookieを発行
-              schema:
-                type: string
+                $ref: '#/components/schemas/MobileTokenResponse'
         '400':
           $ref: '#/components/responses/AuthBadRequest'
         '401':
@@ -949,10 +935,6 @@ components:
             $ref: '#/components/schemas/AuthError'
 
   securitySchemes:
-    sessionCookie:
-      type: apiKey
-      in: cookie
-      name: session
     bearerAuth:
       type: http
       scheme: bearer
@@ -1469,7 +1451,7 @@ components:
 
     TokenExchangeRequest:
       type: object
-      required: [code, state, code_verifier]
+      required: [code, state]
       properties:
         code:
           type: string
@@ -1479,6 +1461,7 @@ components:
           type: string
           minLength: 43
           maxLength: 128
+          description: mobileクライアントのみ必須。webはサーバー側で保存済みのものを使うため不要。
 
     MobileTokenResponse:
       type: object
@@ -1496,7 +1479,7 @@ components:
         user:
           $ref: '#/components/schemas/AuthUser'
 
-    WebMeResponse:
+    WebTokenResponse:
       type: object
       required: [access_token, token_type, expires_in, user]
       properties:
@@ -1509,13 +1492,6 @@ components:
           type: integer
         user:
           $ref: '#/components/schemas/AuthUser'
-
-    RefreshWebResponse:
-      type: object
-      required: [message]
-      properties:
-        message:
-          type: string
 
     AuthError:
       type: object

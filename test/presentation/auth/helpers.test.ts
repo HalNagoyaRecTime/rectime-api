@@ -7,7 +7,6 @@ import {
   getNumberEnv,
   hasMinimumDecodedBytes,
   isValidBase64Url,
-  shouldUseSecureCookie,
   userResponse,
   type AppContext,
 } from '../../../src/presentation/auth/helpers';
@@ -89,41 +88,6 @@ describe('presentation/auth/helpers', () => {
     it('0 以下の場合は fallback を返す', () => {
       expect(getNumberEnv('0', 60)).toBe(60);
       expect(getNumberEnv('-10', 60)).toBe(60);
-    });
-  });
-
-  describe('shouldUseSecureCookie', () => {
-    it('MICROSOFT_REDIRECT_URI が https の場合は true を返す', async () => {
-      const { app, env } = buildApp(
-        c => c.json({ value: shouldUseSecureCookie(c) }),
-        { MICROSOFT_REDIRECT_URI: 'https://example.com/callback' }
-      );
-
-      const res = await app.request('/', {}, env);
-
-      expect(await res.json()).toEqual({ value: true });
-    });
-
-    it('MICROSOFT_REDIRECT_URI が http の場合は false を返す', async () => {
-      const { app, env } = buildApp(
-        c => c.json({ value: shouldUseSecureCookie(c) }),
-        { MICROSOFT_REDIRECT_URI: 'http://localhost:8787/callback' }
-      );
-
-      const res = await app.request('/', {}, env);
-
-      expect(await res.json()).toEqual({ value: false });
-    });
-
-    it('MICROSOFT_REDIRECT_URI が不正なURLの場合は true (安全側) を返す', async () => {
-      const { app, env } = buildApp(
-        c => c.json({ value: shouldUseSecureCookie(c) }),
-        { MICROSOFT_REDIRECT_URI: 'not-a-valid-url' }
-      );
-
-      const res = await app.request('/', {}, env);
-
-      expect(await res.json()).toEqual({ value: true });
     });
   });
 

@@ -23,7 +23,6 @@ function buildEnv(): Env {
     MICROSOFT_REDIRECT_URI: 'https://example.com/callback',
     MICROSOFT_MOBILE_REDIRECT_URI: 'https://example.com/mobile-callback',
     FRONTEND_URL: 'https://example.com',
-    SESSION_EXPIRES_SEC: '3600',
     JWT_SECRET: 'a'.repeat(32),
     JWT_EXPIRES_SEC: '3600',
     MOBILE_REFRESH_EXPIRES_SEC: '2592000',

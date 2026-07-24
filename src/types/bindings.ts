@@ -16,7 +16,6 @@ export type Bindings = {
   MICROSOFT_REDIRECT_URI: string;
   MICROSOFT_MOBILE_REDIRECT_URI: string;
   FRONTEND_URL: string;
-  SESSION_EXPIRES_SEC: string;
   JWT_SECRET: string;
   JWT_EXPIRES_SEC: string;
   MOBILE_REFRESH_EXPIRES_SEC: string;

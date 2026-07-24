@@ -6,10 +6,6 @@ import {
   getClientType,
   type AppContext,
 } from '../auth/helpers';
-import {
-  getSession,
-  getSessionIdFromCookie,
-} from '../../infrastructure/auth/session';
 import { verifyAccessToken } from '../../infrastructure/auth/jwt';
 
 export type AuthUser = {
@@ -32,68 +28,26 @@ export const requireAuth = createMiddleware<{
   const appContext = c as unknown as AppContext;
   const clientType = getClientType(appContext);
 
-  if (clientType === 'mobile') {
-    const token = getBearerToken(appContext);
-    if (!token) {
-      return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
-    }
-
-    let claims;
-    try {
-      claims = await verifyAccessToken(token, c.env.JWT_SECRET, 'mobile');
-    } catch {
-      return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
-    }
-
-    c.set('authUser', {
-      id: claims.sub,
-      email: claims.email,
-      display_name: claims.display_name,
-    });
-    await next();
-    return;
-  }
-
-  if (clientType !== 'web') {
+  if (clientType !== 'mobile' && clientType !== 'web') {
     return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
   }
 
-  // Webは新しい apiClient がAuthorizationヘッダー(Bearer)を送るようになった
-  // ため、その存在を優先して検証する。指定されているのに無効な場合は
-  // Cookieへフォールバックせず、明示的に401とする（意図しない認証方式への
-  // すり替わりを防ぐため）。
-  const bearerToken = getBearerToken(appContext);
-  if (bearerToken) {
-    let claims;
-    try {
-      claims = await verifyAccessToken(bearerToken, c.env.JWT_SECRET, 'web');
-    } catch {
-      return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
-    }
-
-    c.set('authUser', {
-      id: claims.sub,
-      email: claims.email,
-      display_name: claims.display_name,
-    });
-    await next();
-    return;
-  }
-
-  const sessionId = getSessionIdFromCookie(c.req.header('Cookie') ?? null);
-  if (!sessionId) {
+  const token = getBearerToken(appContext);
+  if (!token) {
     return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
   }
 
-  const session = await getSession(c.env.AUTH_KV, sessionId);
-  if (!session) {
+  let claims;
+  try {
+    claims = await verifyAccessToken(token, c.env.JWT_SECRET, clientType);
+  } catch {
     return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
   }
 
   c.set('authUser', {
-    id: session.user_id,
-    email: session.email,
-    display_name: session.display_name,
+    id: claims.sub,
+    email: claims.email,
+    display_name: claims.display_name,
   });
   await next();
 });

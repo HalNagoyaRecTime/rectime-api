@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { KVNamespace } from '@cloudflare/workers-types';
-import {
-  getSessionTtlSeconds,
-  createAuthService,
-} from '../../../src/application/services/authService';
+import { createAuthService } from '../../../src/application/services/authService';
 import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
-import type { AppUser, Session } from '../../../src/domain/auth/types';
+import type { AppUser } from '../../../src/domain/auth/types';
 import type { MicrosoftClaims } from '../../../src/application/services/IAuthService';
 
 function buildClaims(
@@ -33,25 +29,6 @@ function buildAppUser(overrides: Partial<AppUser> = {}): AppUser {
   };
 }
 
-describe('getSessionTtlSeconds', () => {
-  it('未来の日時であれば正の秒数を返す', () => {
-    const future = new Date(Date.now() + 3600 * 1000).toISOString();
-    const ttl = getSessionTtlSeconds(future);
-    expect(ttl).toBeGreaterThan(3500);
-    expect(ttl).toBeLessThanOrEqual(3600);
-  });
-
-  it('過去の日時の場合は SESSION_ALREADY_EXPIRED を投げる', () => {
-    const past = new Date(Date.now() - 1000).toISOString();
-    expect(() => getSessionTtlSeconds(past)).toThrow('SESSION_ALREADY_EXPIRED');
-  });
-
-  it('TTL が60秒未満の場合は SESSION_TTL_TOO_SHORT を投げる', () => {
-    const soon = new Date(Date.now() + 30 * 1000).toISOString();
-    expect(() => getSessionTtlSeconds(soon)).toThrow('SESSION_TTL_TOO_SHORT');
-  });
-});
-
 describe('createAuthService', () => {
   function setup() {
     const userRepository: IUserRepository = {
@@ -59,9 +36,8 @@ describe('createAuthService', () => {
       createUserWithMicrosoftLink: vi.fn(),
       updateUser: vi.fn(),
     };
-    const kv = { put: vi.fn() } as unknown as KVNamespace;
-    const service = createAuthService(userRepository, kv);
-    return { userRepository, kv, service };
+    const service = createAuthService(userRepository);
+    return { userRepository, service };
   }
 
   describe('upsertUser', () => {
@@ -217,29 +193,6 @@ describe('createAuthService', () => {
 
       await expect(service.upsertUser(buildClaims())).rejects.toThrow(
         'CREATE_USER_FAILED'
-      );
-    });
-  });
-
-  describe('saveSession', () => {
-    it('KV に session:<id> というキーで TTL 付きで保存する', async () => {
-      const { kv, service } = setup();
-      const session: Session = {
-        user_id: 'user-1',
-        oid: 'oid-1',
-        tid: 'tid-1',
-        sub: 'sub-1',
-        email: 'tanaka@example.com',
-        display_name: '田中太郎',
-        expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
-      };
-
-      await service.saveSession('session-abc', session);
-
-      expect(kv.put).toHaveBeenCalledWith(
-        'session:session-abc',
-        JSON.stringify(session),
-        expect.objectContaining({ expirationTtl: expect.any(Number) })
       );
     });
   });

@@ -5,7 +5,7 @@ import {
   BASE64_URL_PATTERN,
   ACCOUNT_PHOTO_PATH,
 } from '../../domain/auth/types';
-import type { Session, AppUser } from '../../domain/auth/types';
+import type { AppUser } from '../../domain/auth/types';
 import type { IdTokenClaims } from '../../infrastructure/auth/verifyIdToken';
 import {
   buildMicrosoftAuthorizeUrl as infraBuildAuthorizeUrl,
@@ -13,10 +13,7 @@ import {
   refreshMicrosoftAccessToken as infraRefreshToken,
 } from '../../infrastructure/auth/microsoftClient';
 import { createUserRepository } from '../../infrastructure/repositories/UserRepository';
-import {
-  createAuthService,
-  getSessionTtlSeconds,
-} from '../../application/services/authService';
+import { createAuthService } from '../../application/services/authService';
 
 export type AppContext = Context<{ Bindings: Bindings }>;
 
@@ -41,14 +38,6 @@ export function getNumberEnv(
 ): number {
   const parsed = Number.parseInt(value ?? '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-export function shouldUseSecureCookie(c: AppContext): boolean {
-  try {
-    return new URL(c.env.MICROSOFT_REDIRECT_URI).protocol === 'https:';
-  } catch {
-    return true;
-  }
 }
 
 export function getBearerToken(c: AppContext): string | null {
@@ -135,22 +124,11 @@ export async function refreshMicrosoftAccessToken(
   );
 }
 
-export async function saveSession(
-  c: AppContext,
-  sessionId: string,
-  session: Session
-): Promise<void> {
-  const ttl = getSessionTtlSeconds(session.expires_at);
-  await c.env.AUTH_KV.put(`session:${sessionId}`, JSON.stringify(session), {
-    expirationTtl: ttl,
-  });
-}
-
 export async function upsertUser(
   c: AppContext,
   claims: IdTokenClaims
 ): Promise<AppUser> {
   const userRepository = createUserRepository(c.env.DB);
-  const authService = createAuthService(userRepository, c.env.AUTH_KV);
+  const authService = createAuthService(userRepository);
   return authService.upsertUser(claims);
 }
