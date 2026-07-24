@@ -91,6 +91,17 @@
     //   wrangler d1 create rectime-api-preview
     //   wrangler kv namespace create rectime-api-preview-auth
     //   wrangler secret put <NAME> --env preview (各secretごとに)
+    //
+    // 重要: secrets.required は名前の宣言のみで、値は本番からコピーしない。
+    // 特にURLに依存する以下は必ずpreview環境専用の値を設定すること:
+    //   - MICROSOFT_REDIRECT_URI / MICROSOFT_MOBILE_REDIRECT_URI:
+    //     実際にデプロイされるpreview WorkerのコールバックURL
+    //     (`wrangler versions upload --env preview --preview-alias <固定名>`
+    //     で得られる `https://<固定名>-rectime-api-preview.<subdomain>.workers.dev/...`)
+    //     を、事前にMicrosoft Entraアプリ登録のリダイレクトURIとして追加登録した上で設定する。
+    //     preview-aliasを固定名で使い続けないとURLが変わり登録と食い違う。
+    //   - FRONTEND_URL: このpreview backendに実際に接続するフロントエンド
+    //     (例: recwatchのPRプレビューURL)を設定する。
     "preview": {
       "name": "rectime-api-preview",
       "workers_dev": false,
