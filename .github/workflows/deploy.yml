@@ -1,12 +1,14 @@
 name: Deploy to Cloudflare Workers
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main, develop]
   workflow_dispatch:
 
 concurrency:
-  group: deploy-cloudflare-workers-${{ github.ref_name }}
+  group: deploy-cloudflare-workers-${{ github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -14,14 +16,19 @@ permissions:
 
 jobs:
   deploy:
-    if: github.ref_name == 'main' || github.ref_name == 'develop'
-    name: Deploy (${{ github.ref_name }})
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'develop'))
+    name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    environment: ${{ (github.event.workflow_run.head_branch || github.ref_name) == 'main' && 'production' || 'development' }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -32,16 +39,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run checks (lint / format / type-check)
-        run: npm run check
-
-      - name: Run tests
-        run: npm test
-
       - name: Set deploy target
         id: target
         run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
+          BRANCH="${{ github.event.workflow_run.head_branch || github.ref_name }}"
+          if [ "$BRANCH" = "main" ]; then
             echo 'env_flag=--env ""' >> "$GITHUB_OUTPUT"
             echo "d1_database=rectime-api" >> "$GITHUB_OUTPUT"
           else
