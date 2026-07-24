@@ -11,7 +11,6 @@ const gathering = {
   round: 1,
   created_at: '2026-01-01 00:00:00',
   updated_at: '2026-01-01 00:00:00',
-  gathering_group_user_id: 5,
   event_name: '運動会',
   gathering_spot_name: '体育館前',
 };

@@ -37,6 +37,10 @@ function setup() {
   const eventRepository: IEventRepository = {
     findAll: vi.fn(),
     findById: vi.fn().mockResolvedValue(event),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    hasReferences: vi.fn(),
   };
   const eventScheduleRepository: IEventScheduleRepository = { apply: vi.fn() };
   const notificationScheduleRepository: INotificationScheduleRepository = {

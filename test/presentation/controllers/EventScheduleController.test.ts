@@ -22,9 +22,7 @@ function setup() {
     );
     await next();
   });
-  app.put('/events/:eventId/schedule', c =>
-    controller.updateEventSchedule(c)
-  );
+  app.put('/events/:eventId/schedule', c => controller.updateEventSchedule(c));
   const bindings = {
     EVENT_DATE: '2026-11-07',
   } as Env;

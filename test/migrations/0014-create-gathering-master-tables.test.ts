@@ -24,19 +24,22 @@ describe('0014_create_gathering_master_tables.sql', () => {
       ])
     );
 
-    // gathering_groups.user_id は migrations/0024 で gathering_group_name の
-    // 代わりに追加されたカラム（グループのオーナー）。
     const gatheringGroupColumns = await env.DB.prepare(
       'PRAGMA table_info(gathering_groups)'
     ).all<{ name: string; notnull: number; pk: number }>();
     expect(gatheringGroupColumns.results).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'gathering_group_id', pk: 1 }),
-        expect.objectContaining({ name: 'user_id', notnull: 1 }),
         expect.objectContaining({ name: 'created_at', notnull: 1 }),
         expect.objectContaining({ name: 'updated_at', notnull: 1 }),
       ])
     );
+    expect(
+      gatheringGroupColumns.results.map(column => column.name)
+    ).not.toContain('gathering_group_name');
+    expect(
+      gatheringGroupColumns.results.map(column => column.name)
+    ).not.toContain('user_id');
 
     const gatheringGroupMemberColumns = await env.DB.prepare(
       'PRAGMA table_info(gathering_group_members)'
