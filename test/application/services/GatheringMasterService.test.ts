@@ -72,6 +72,23 @@ describe('Gathering master services', () => {
     expect(repository.remove).toHaveBeenCalledWith(1);
   });
 
+  it('イベントに紐付く集合グループは削除しない', async () => {
+    const repository: IGatheringGroupRepository = {
+      findAll: vi.fn(),
+      create: vi.fn(),
+      exists: vi.fn().mockResolvedValue(true),
+      hasGathering: vi.fn().mockResolvedValue(true),
+      remove: vi.fn(),
+    };
+    const service = createGatheringGroupService(repository);
+
+    await expect(service.deleteGatheringGroup(1)).rejects.toThrow(
+      'Gathering group is assigned to an event'
+    );
+    expect(repository.hasGathering).toHaveBeenCalledWith(1);
+    expect(repository.remove).not.toHaveBeenCalled();
+  });
+
   it('所属の追加・一覧取得・解除をRepositoryへ委譲する', async () => {
     const member = {
       gathering_group_member_id: 3,

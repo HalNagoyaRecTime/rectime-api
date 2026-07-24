@@ -283,4 +283,21 @@ describe('Gathering master controllers', () => {
     expect(response.status).toBe(204);
     expect(gatheringGroupService.deleteGatheringGroup).toHaveBeenCalledWith(1);
   });
+
+  it('集合設定に紐付く集合グループの削除は409を返す', async () => {
+    const { app, gatheringGroupService } = setup();
+    (
+      gatheringGroupService.deleteGatheringGroup as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(new Error('Gathering group is assigned to an event'));
+
+    const response = await app.request('/gathering-groups/1', {
+      method: 'DELETE',
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: 'Gathering group is assigned to an event',
+    });
+    expect(gatheringGroupService.deleteGatheringGroup).toHaveBeenCalledWith(1);
+  });
 });

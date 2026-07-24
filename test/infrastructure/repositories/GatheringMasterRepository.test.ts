@@ -235,4 +235,38 @@ describe('Gathering master repositories', () => {
       gatheringGroupMemberRepository.remove(group.gathering_group_id, userId)
     ).resolves.toBe(false);
   });
+
+  it('集合グループと所属を削除し、存在しないグループはfalseを返す', async () => {
+    const group = await gatheringGroupRepository.create();
+    gatheringGroupIds.push(group.gathering_group_id);
+    await gatheringGroupMemberRepository.create(
+      group.gathering_group_id,
+      userId
+    );
+
+    await expect(
+      gatheringGroupRepository.remove(group.gathering_group_id)
+    ).resolves.toBe(true);
+
+    const deletedGroup = await env.DB.prepare(
+      'SELECT gathering_group_id FROM gathering_groups WHERE gathering_group_id = ?'
+    )
+      .bind(group.gathering_group_id)
+      .first();
+    const deletedMember = await env.DB.prepare(
+      'SELECT gathering_group_member_id FROM gathering_group_members WHERE gathering_group_id = ?'
+    )
+      .bind(group.gathering_group_id)
+      .first();
+    const remainingUser = await env.DB.prepare(
+      'SELECT user_id FROM users WHERE user_id = ?'
+    )
+      .bind(userId)
+      .first();
+
+    expect(deletedGroup).toBeNull();
+    expect(deletedMember).toBeNull();
+    expect(remainingUser).not.toBeNull();
+    await expect(gatheringGroupRepository.remove(999999)).resolves.toBe(false);
+  });
 });
