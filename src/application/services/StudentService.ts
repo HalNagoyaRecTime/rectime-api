@@ -148,30 +148,29 @@ export function createStudentService(
       }
 
       const classRooms = await classRoomRepository.findAll();
-      const classRoomIdByCode = new Map(
-        classRooms.map(room => [room.class_code, room.class_room_id])
+      const existingClassCodes = new Set(
+        classRooms.map(room => room.class_code)
       );
 
+      const newClassCodes = new Set<string>();
       for (const row of input.rows) {
-        let classRoomId = classRoomIdByCode.get(row.class_code);
-        if (classRoomId === undefined) {
-          // クラス記号がclass_roomsに無い場合、クラス名の情報はファイルに無いため
-          // class_codeをそのままクラス名として仮登録する。後から手動で正しい名前に直す想定。
-          const createdClassRoom = await classRoomRepository.create({
-            classCode: row.class_code,
-            name: row.class_code,
-          });
-          classRoomId = createdClassRoom.class_room_id;
-          classRoomIdByCode.set(row.class_code, classRoomId);
+        if (!existingClassCodes.has(row.class_code)) {
+          newClassCodes.add(row.class_code);
         }
-
-        await studentRepository.create({
-          display_name: `${row.last_name}${row.first_name}`,
-          class_room_id: classRoomId,
-          attendance_number: row.attendance_number,
-          student_id_number: row.student_id_number,
-        });
       }
+
+      await studentRepository.createMany({
+        newClassRooms: Array.from(newClassCodes).map(classCode => ({
+          classCode,
+          name: classCode,
+        })),
+        students: input.rows.map(row => ({
+          displayName: `${row.last_name}${row.first_name}`,
+          classCode: row.class_code,
+          attendanceNumber: row.attendance_number,
+          studentIdNumber: row.student_id_number,
+        })),
+      });
 
       return {
         total: input.rows.length,

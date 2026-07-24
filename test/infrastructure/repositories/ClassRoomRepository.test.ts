@@ -75,4 +75,37 @@ describe('ClassRoomRepository', () => {
       expect(all).toContainEqual(created);
     });
   });
+
+  describe('createMany', () => {
+    it('複数のクラスをまとめて作成する', async () => {
+      const created = await repo.createMany([
+        { classCode: '14D', name: '4年Dクラス' },
+        { classCode: '14E', name: '4年Eクラス' },
+      ]);
+
+      expect(created).toHaveLength(2);
+      expect(created[0]).toMatchObject({
+        class_code: '14D',
+        class_name: '4年Dクラス',
+      });
+      expect(created[1]).toMatchObject({
+        class_code: '14E',
+        class_name: '4年Eクラス',
+      });
+
+      const all = await repo.findAll();
+      expect(all).toContainEqual(created[0]);
+      expect(all).toContainEqual(created[1]);
+    });
+
+    it('空配列の場合は何も作成せず空配列を返す', async () => {
+      const before = await repo.findAll();
+
+      const created = await repo.createMany([]);
+
+      expect(created).toEqual([]);
+      const after = await repo.findAll();
+      expect(after).toHaveLength(before.length);
+    });
+  });
 });

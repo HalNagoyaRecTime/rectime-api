@@ -40,6 +40,7 @@ function createRepository(
     classRoomExists: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    createMany: vi.fn(),
     ...overrides,
   };
 }
@@ -50,6 +51,7 @@ function createClassRoomRepository(
   return {
     findAll: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
+    createMany: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -314,14 +316,14 @@ describe('StudentService', () => {
   });
 
   describe('commitStudentImport', () => {
-    it('全行が有効な場合は全件作成する', async () => {
+    it('全行が有効な場合は全件分をまとめてcreateManyに渡す', async () => {
       const classRoomRepository = createClassRoomRepository({
         findAll: vi.fn().mockResolvedValue([buildClassRoom()]),
       });
-      const create = vi.fn().mockResolvedValue(buildStudent());
+      const createMany = vi.fn();
       const repository = createRepository({
         findByStudentNum: vi.fn().mockResolvedValue(null),
-        create,
+        createMany,
       });
       const service = createStudentService(repository, classRoomRepository);
 
@@ -350,31 +352,34 @@ describe('StudentService', () => {
         error_count: 0,
         errors: [],
       });
-      expect(create).toHaveBeenCalledTimes(2);
-      expect(create).toHaveBeenNthCalledWith(1, {
-        class_room_id: 1,
-        display_name: '田中太郎',
-        attendance_number: 1,
-        student_id_number: '24001',
+      expect(createMany).toHaveBeenCalledTimes(1);
+      expect(createMany).toHaveBeenCalledWith({
+        newClassRooms: [],
+        students: [
+          {
+            displayName: '田中太郎',
+            classCode: '11A',
+            attendanceNumber: 1,
+            studentIdNumber: '24001',
+          },
+          {
+            displayName: '佐藤花子',
+            classCode: '11A',
+            attendanceNumber: 2,
+            studentIdNumber: '24002',
+          },
+        ],
       });
     });
 
-    it('クラス記号が見つからない場合はクラスコードを仮の名前として自動作成し、生徒も作成する', async () => {
-      const createClassRoom = vi.fn().mockResolvedValue(
-        buildClassRoom({
-          class_room_id: 99,
-          class_code: '99Z',
-          class_name: '99Z',
-        })
-      );
+    it('クラス記号が見つからない場合はクラスコードを仮の名前として新規クラス作成をcreateManyに含める', async () => {
       const classRoomRepository = createClassRoomRepository({
         findAll: vi.fn().mockResolvedValue([]),
-        create: createClassRoom,
       });
-      const createStudent = vi.fn().mockResolvedValue(buildStudent());
+      const createMany = vi.fn();
       const repository = createRepository({
         findByStudentNum: vi.fn().mockResolvedValue(null),
-        create: createStudent,
+        createMany,
       });
       const service = createStudentService(repository, classRoomRepository);
 
@@ -396,34 +401,27 @@ describe('StudentService', () => {
         error_count: 0,
         errors: [],
       });
-      expect(createClassRoom).toHaveBeenCalledWith({
-        classCode: '99Z',
-        name: '99Z',
-      });
-      expect(createStudent).toHaveBeenCalledWith({
-        class_room_id: 99,
-        display_name: '新規クラス',
-        attendance_number: 1,
-        student_id_number: '24010',
+      expect(createMany).toHaveBeenCalledWith({
+        newClassRooms: [{ classCode: '99Z', name: '99Z' }],
+        students: [
+          {
+            displayName: '新規クラス',
+            classCode: '99Z',
+            attendanceNumber: 1,
+            studentIdNumber: '24010',
+          },
+        ],
       });
     });
 
-    it('同じ未登録クラス記号の行が複数あっても、クラスの自動作成は1回だけ行う', async () => {
-      const createClassRoom = vi.fn().mockResolvedValue(
-        buildClassRoom({
-          class_room_id: 99,
-          class_code: '99Z',
-          class_name: '99Z',
-        })
-      );
+    it('同じ未登録クラス記号の行が複数あっても、newClassRoomsには1件だけ含める', async () => {
       const classRoomRepository = createClassRoomRepository({
         findAll: vi.fn().mockResolvedValue([]),
-        create: createClassRoom,
       });
-      const createStudent = vi.fn().mockResolvedValue(buildStudent());
+      const createMany = vi.fn();
       const repository = createRepository({
         findByStudentNum: vi.fn().mockResolvedValue(null),
-        create: createStudent,
+        createMany,
       });
       const service = createStudentService(repository, classRoomRepository);
 
@@ -447,20 +445,19 @@ describe('StudentService', () => {
       });
 
       expect(result.imported).toBe(2);
-      expect(createClassRoom).toHaveBeenCalledTimes(1);
-      expect(createStudent).toHaveBeenCalledTimes(2);
+      const call = createMany.mock.calls[0][0];
+      expect(call.newClassRooms).toEqual([{ classCode: '99Z', name: '99Z' }]);
+      expect(call.students).toHaveLength(2);
     });
 
     it('ファイル内で学籍番号が重複する行がある場合は1件も登録しない', async () => {
-      const createClassRoom = vi.fn();
       const classRoomRepository = createClassRoomRepository({
         findAll: vi.fn().mockResolvedValue([buildClassRoom()]),
-        create: createClassRoom,
       });
-      const create = vi.fn();
+      const createMany = vi.fn();
       const repository = createRepository({
         findByStudentNum: vi.fn().mockResolvedValue(null),
-        create,
+        createMany,
       });
       const service = createStudentService(repository, classRoomRepository);
 
@@ -487,22 +484,19 @@ describe('StudentService', () => {
           }),
         ],
       });
-      expect(create).not.toHaveBeenCalled();
-      expect(createClassRoom).not.toHaveBeenCalled();
+      expect(createMany).not.toHaveBeenCalled();
     });
 
     it('既存DBと学籍番号が重複する行がある場合は1件も登録しない', async () => {
-      const createClassRoom = vi.fn();
       const classRoomRepository = createClassRoomRepository({
         findAll: vi.fn().mockResolvedValue([buildClassRoom()]),
-        create: createClassRoom,
       });
-      const create = vi.fn();
+      const createMany = vi.fn();
       const repository = createRepository({
         findByStudentNum: vi
           .fn()
           .mockResolvedValue(buildStudent({ student_id_number: '24030' })),
-        create,
+        createMany,
       });
       const service = createStudentService(repository, classRoomRepository);
 
@@ -529,8 +523,7 @@ describe('StudentService', () => {
           }),
         ],
       });
-      expect(create).not.toHaveBeenCalled();
-      expect(createClassRoom).not.toHaveBeenCalled();
+      expect(createMany).not.toHaveBeenCalled();
     });
   });
 });

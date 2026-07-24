@@ -84,12 +84,12 @@ export function createClassRoomService(
         };
       }
 
-      for (const row of input.rows) {
-        await classRoomRepository.create({
+      await classRoomRepository.createMany(
+        input.rows.map(row => ({
           classCode: row.class_code,
           name: row.class_name,
-        });
-      }
+        }))
+      );
 
       return {
         total: input.rows.length,

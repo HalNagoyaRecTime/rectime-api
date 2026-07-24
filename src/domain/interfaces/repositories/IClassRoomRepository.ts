@@ -8,4 +8,5 @@ export interface NewClassRoomInput {
 export interface IClassRoomRepository {
   findAll: () => Promise<ClassRoomEntity[]>;
   create: (input: NewClassRoomInput) => Promise<ClassRoomEntity>;
+  createMany: (inputs: NewClassRoomInput[]) => Promise<ClassRoomEntity[]>;
 }

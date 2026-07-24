@@ -3,9 +3,12 @@ import * as schema from '../database/schema';
 import { asc, count, eq } from 'drizzle-orm';
 import { class_rooms, students, users } from '../database/schema';
 
-import { D1Database } from '@cloudflare/workers-types';
+import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import { StudentEntity } from '../../domain/entities/Student';
-import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
+import {
+  BulkCreateStudentsInput,
+  IStudentRepository,
+} from '../../domain/interfaces/repositories/IStudentRepository';
 import { StudentWriteDTO } from '../../application/dto/StudentDTO';
 
 type StudentJoinRow = {
@@ -218,6 +221,60 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         | ReturnedStudentRow
         | undefined;
       return user && updated ? toWrittenEntity(user, updated) : null;
+    },
+
+    async createMany(input: BulkCreateStudentsInput): Promise<void> {
+      if (input.students.length === 0) {
+        return;
+      }
+
+      const statements: D1PreparedStatement[] = [];
+
+      for (const newClassRoom of input.newClassRooms) {
+        statements.push(
+          db
+            .prepare(
+              `INSERT INTO class_rooms (class_code, class_name, updated_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)`
+            )
+            .bind(newClassRoom.classCode, newClassRoom.name)
+        );
+      }
+
+      for (const student of input.students) {
+        statements.push(
+          db
+            .prepare(
+              `INSERT INTO users (user_name, updated_at)
+               VALUES (?, CURRENT_TIMESTAMP)`
+            )
+            .bind(student.displayName)
+        );
+        statements.push(
+          db
+            .prepare(
+              `INSERT INTO students (
+                user_id,
+                class_room_id,
+                attendance_number,
+                student_id_number,
+                updated_at
+              ) VALUES (
+                last_insert_rowid(),
+                (SELECT class_room_id FROM class_rooms WHERE class_code = ?),
+                ?, ?,
+                CURRENT_TIMESTAMP
+              )`
+            )
+            .bind(
+              student.classCode,
+              student.attendanceNumber,
+              student.studentIdNumber
+            )
+        );
+      }
+
+      await db.batch(statements);
     },
   };
 }
