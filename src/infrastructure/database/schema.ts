@@ -24,7 +24,10 @@ export const class_rooms = sqliteTable(
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
   },
-  table => [index('idx_class_rooms_teacher_id').on(table.teacherId)]
+  table => [
+    uniqueIndex('uq_class_rooms_class_code').on(table.classCode),
+    index('idx_class_rooms_teacher_id').on(table.teacherId),
+  ]
 );
 
 export const users = sqliteTable('users', {
@@ -147,7 +150,6 @@ export const gathering_spots = sqliteTable('gathering_spots', {
 
 export const gathering_groups = sqliteTable('gathering_groups', {
   id: integer('gathering_group_id').primaryKey({ autoIncrement: true }),
-  name: text('gathering_group_name').notNull(),
   createdAt: text('created_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
@@ -242,7 +244,8 @@ export const firebase_tokens = sqliteTable('firebase_tokens', {
   }),
   userId: integer('user_id')
     .notNull()
-    .references(() => users.id),
+    .references(() => users.id)
+    .unique(),
   platform: integer('platform').notNull(),
   fcmToken: text('fcm_token').notNull().unique(),
   isFirebaseActive: integer('is_firebase_active').notNull().default(1),
@@ -260,24 +263,20 @@ export const firebase_tokens = sqliteTable('firebase_tokens', {
 export const notification_schedules = sqliteTable(
   'notification_schedules',
   {
-    id: integer('notification_send_schedule_id').primaryKey({
+    id: integer('notification_schedule_id').primaryKey({
       autoIncrement: true,
     }),
-    userId: integer('user_id')
-      .notNull()
-      .references(() => users.id),
-    eventId: integer('event_id')
-      .notNull()
-      .references(() => events.id),
-    gatheringGroupId: integer('gathering_group_id')
-      .notNull()
-      .references(() => gathering_groups.id),
+    createdUserId: integer('created_user_id').references(() => users.id),
+    eventId: integer('event_id').references(() => events.id),
     notificationId: integer('notification_id')
       .notNull()
       .references(() => notifications.notificationId),
+    firebaseTokenId: integer('firebase_token_id')
+      .notNull()
+      .references(() => firebase_tokens.firebaseTokenId),
     importance: integer('importance').notNull().default(2),
     sendStatus: text('send_status').notNull().default('draft'),
-    fcmMessageId: text('fcm_message_id').unique(),
+    fcmMessageId: text('fcm_message_id'),
     failedReason: text('failed_reason'),
     sendAt: text('send_at').notNull(),
     createdAt: text('created_at')
@@ -290,8 +289,11 @@ export const notification_schedules = sqliteTable(
   table => [
     index('idx_notification_schedules_due').on(table.sendStatus, table.sendAt),
     index('idx_notification_schedules_event_id').on(table.eventId),
-    index('idx_notification_schedules_gathering_group_id').on(
-      table.gatheringGroupId
+    index('idx_notification_schedules_notification_id').on(
+      table.notificationId
+    ),
+    index('idx_notification_schedules_firebase_token_id').on(
+      table.firebaseTokenId
     ),
   ]
 );

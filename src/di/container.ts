@@ -3,6 +3,7 @@ import { createStudentRepository } from '../infrastructure/repositories/StudentR
 import { createStaffRepository } from '../infrastructure/repositories/StaffRepository';
 import { createTeacherRepository } from '../infrastructure/repositories/TeacherRepository';
 import { createEventRepository } from '../infrastructure/repositories/EventRepository';
+import { createEventScheduleRepository } from '../infrastructure/repositories/EventScheduleRepository';
 import { createClassRoomRepository } from '../infrastructure/repositories/ClassRoomRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
@@ -15,6 +16,7 @@ import { createStudentService } from '../application/services/StudentService';
 import { createStaffService } from '../application/services/StaffService';
 import { createTeacherService } from '../application/services/TeacherService';
 import { createEventService } from '../application/services/EventService';
+import { createEventScheduleService } from '../application/services/EventScheduleService';
 import { createClassRoomService } from '../application/services/ClassRoomService';
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
@@ -29,6 +31,7 @@ import { createStudentController } from '../presentation/controllers/StudentCont
 import { createStaffController } from '../presentation/controllers/StaffController';
 import { createTeacherController } from '../presentation/controllers/TeacherController';
 import { createEventController } from '../presentation/controllers/EventController';
+import { createEventScheduleController } from '../presentation/controllers/EventScheduleController';
 import { createClassRoomController } from '../presentation/controllers/ClassRoomController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
@@ -50,6 +53,7 @@ export function createDIContainer(env: Env) {
   const staffRepository = createStaffRepository(db);
   const teacherRepository = createTeacherRepository(db);
   const eventRepository = createEventRepository(db);
+  const eventScheduleRepository = createEventScheduleRepository(db);
   const classRoomRepository = createClassRoomRepository(db);
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
   const notificationScheduleRepository =
@@ -67,6 +71,12 @@ export function createDIContainer(env: Env) {
   const staffService = createStaffService(staffRepository);
   const teacherService = createTeacherService(teacherRepository);
   const eventService = createEventService(eventRepository);
+  const eventScheduleService = createEventScheduleService({
+    eventRepository,
+    eventScheduleRepository,
+    notificationScheduleRepository,
+    userRepository,
+  });
   const classRoomService = createClassRoomService(classRoomRepository);
   const firebaseTokenService = createFirebaseTokenService(
     firebaseTokenRepository
@@ -83,7 +93,8 @@ export function createDIContainer(env: Env) {
     fcmService,
   });
   const notificationScheduleService = createNotificationScheduleService(
-    notificationScheduleRepository
+    notificationScheduleRepository,
+    userRepository
   );
   const notificationService = createNotificationService(notificationRepository);
   const gatheringSpotService = createGatheringSpotService(
@@ -102,6 +113,8 @@ export function createDIContainer(env: Env) {
   const staffController = createStaffController(staffService);
   const teacherController = createTeacherController(teacherService);
   const eventController = createEventController(eventService);
+  const eventScheduleController =
+    createEventScheduleController(eventScheduleService);
   const classRoomController = createClassRoomController(classRoomService);
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
@@ -128,6 +141,7 @@ export function createDIContainer(env: Env) {
     staffController,
     teacherController,
     eventController,
+    eventScheduleController,
     classRoomController,
     firebaseTokenController,
     notificationController,
