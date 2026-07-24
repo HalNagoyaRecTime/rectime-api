@@ -130,7 +130,7 @@ describe('ClassRoomRepository', () => {
         class_name: '重複クラス',
         teacher_id: null,
       })
-    ).rejects.toThrow();
+    ).rejects.toThrow(/UNIQUE/);
   });
 
   it('学生の所属有無を返す', async () => {
