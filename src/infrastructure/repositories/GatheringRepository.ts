@@ -23,7 +23,6 @@ const detailSelection = {
   round: gatherings.round,
   created_at: gatherings.createdAt,
   updated_at: gatherings.updatedAt,
-  gathering_group_name: gathering_groups.name,
   event_name: events.name,
   gathering_spot_name: gathering_spots.name,
 };

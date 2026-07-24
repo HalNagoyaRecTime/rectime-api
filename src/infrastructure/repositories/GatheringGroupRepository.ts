@@ -11,7 +11,6 @@ function toEntity(
 ): GatheringGroupEntity {
   return {
     gathering_group_id: row.id,
-    gathering_group_name: row.name,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
@@ -32,13 +31,12 @@ export function createGatheringGroupRepository(
       return rows.map(toEntity);
     },
 
-    async create(gatheringGroupName: string): Promise<GatheringGroupEntity> {
+    async create(): Promise<GatheringGroupEntity> {
       const row = await orm
         .insert(gathering_groups)
-        .values({ name: gatheringGroupName })
+        .values({})
         .returning()
         .get();
-      if (!row) throw new Error('Failed to create gathering group');
       return toEntity(row);
     },
   };

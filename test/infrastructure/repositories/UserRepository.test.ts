@@ -48,6 +48,38 @@ describe('UserRepository', () => {
     });
   });
 
+  describe('isStaffOrTeacher', () => {
+    it.each(['staffs', 'teachers'] as const)(
+      '%sに登録されたユーザーには更新権限がある',
+      async table => {
+        const user = await env.DB.prepare(
+          "INSERT INTO users (user_name) VALUES ('管理者') RETURNING user_id"
+        ).first<{ user_id: number }>();
+        await env.DB.prepare(`INSERT INTO ${table} (user_id) VALUES (?)`)
+          .bind(user!.user_id)
+          .run();
+
+        await expect(repo.isStaffOrTeacher(user!.user_id)).resolves.toBe(true);
+      }
+    );
+
+    it('studentsにのみ登録されたユーザーには更新権限がない', async () => {
+      const classRoom = await env.DB.prepare(
+        "INSERT INTO class_rooms (class_code, class_name) VALUES ('AUTHZ', '権限確認') RETURNING class_room_id"
+      ).first<{ class_room_id: number }>();
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('学生') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await env.DB.prepare(
+        "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, 'AUTHZ-001')"
+      )
+        .bind(user!.user_id, classRoom!.class_room_id)
+        .run();
+
+      await expect(repo.isStaffOrTeacher(user!.user_id)).resolves.toBe(false);
+    });
+  });
+
   describe('createUserWithMicrosoftLink', () => {
     it('users と microsoft_account_links に新規行を作成し、AppUser を返す', async () => {
       const result = await repo.createUserWithMicrosoftLink({

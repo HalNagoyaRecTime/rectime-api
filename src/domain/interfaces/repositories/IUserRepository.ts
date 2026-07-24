@@ -1,6 +1,7 @@
 import type { AppUser } from '../../auth/types';
 
 export interface IUserRepository {
+  isStaffOrTeacher(userId: number): Promise<boolean>;
   findUserIdByMicrosoftAccount(
     oid: string,
     tid: string

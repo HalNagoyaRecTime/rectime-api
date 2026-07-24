@@ -1,12 +1,14 @@
 import type { Context } from 'hono';
 import { z } from 'zod';
 import type { INotificationScheduleService } from '../../application/services/INotificationScheduleService';
+import type { Env } from '../../lib/env';
+import type { ContainerVariables } from '../middleware/diContainer';
+import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 
 const createNotificationScheduleSchema = z.object({
-  userId: z.number().int().positive(),
-  eventId: z.number().int().positive(),
-  gatheringGroupId: z.number().int().positive(),
+  eventId: z.number().int().positive().nullable().optional(),
   notificationId: z.number().int().positive(),
+  firebaseTokenId: z.number().int().positive(),
   importance: z.literal(2).optional(),
   // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00.000Z
   sendAt: z.string().datetime({ offset: true }),
@@ -14,11 +16,17 @@ const createNotificationScheduleSchema = z.object({
 
 const notificationScheduleIdSchema = z.coerce.number().int().positive();
 
+type NotificationScheduleContext = Context<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthenticationVariables;
+}>;
+
 const notificationScheduleListQuerySchema = z
   .object({
     sendStatus: z.enum(['draft', 'sending', 'sent', 'failed']).optional(),
     eventId: z.coerce.number().int().positive().optional(),
-    gatheringGroupId: z.coerce.number().int().positive().optional(),
+    createdUserId: z.coerce.number().int().positive().optional(),
+    firebaseTokenId: z.coerce.number().int().positive().optional(),
     from: z.string().datetime({ offset: true }).optional(),
     to: z.string().datetime({ offset: true }).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -33,11 +41,37 @@ const notificationScheduleListQuerySchema = z
 export function createNotificationScheduleController(
   notificationScheduleService: INotificationScheduleService
 ) {
-  const getAllNotificationSchedules = async (c: Context) => {
+  const authorizeManager = async (
+    c: NotificationScheduleContext
+  ): Promise<{ userId: number } | Response> => {
+    const userId = c.get('authenticatedUserId');
+    if (userId === null) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+    if (
+      !(await notificationScheduleService.canManageNotificationSchedules(
+        userId
+      ))
+    ) {
+      return c.json(
+        { error: 'Notification schedule management forbidden' },
+        403
+      );
+    }
+    return { userId };
+  };
+
+  const getAllNotificationSchedules = async (
+    c: NotificationScheduleContext
+  ) => {
+    const authorization = await authorizeManager(c);
+    if (authorization instanceof Response) return authorization;
+
     const parsedQuery = notificationScheduleListQuerySchema.safeParse({
       sendStatus: c.req.query('sendStatus'),
       eventId: c.req.query('eventId'),
-      gatheringGroupId: c.req.query('gatheringGroupId'),
+      createdUserId: c.req.query('createdUserId'),
+      firebaseTokenId: c.req.query('firebaseTokenId'),
       from: c.req.query('from'),
       to: c.req.query('to'),
       limit: c.req.query('limit'),
@@ -58,7 +92,8 @@ export function createNotificationScheduleController(
         await notificationScheduleService.getAllNotificationSchedules({
           send_status: parsedQuery.data.sendStatus,
           event_id: parsedQuery.data.eventId,
-          gathering_group_id: parsedQuery.data.gatheringGroupId,
+          created_user_id: parsedQuery.data.createdUserId,
+          firebase_token_id: parsedQuery.data.firebaseTokenId,
           from: parsedQuery.data.from,
           to: parsedQuery.data.to,
           limit: parsedQuery.data.limit,
@@ -81,7 +116,12 @@ export function createNotificationScheduleController(
     }
   };
 
-  const getNotificationScheduleById = async (c: Context) => {
+  const getNotificationScheduleById = async (
+    c: NotificationScheduleContext
+  ) => {
+    const authorization = await authorizeManager(c);
+    if (authorization instanceof Response) return authorization;
+
     const parsedId = notificationScheduleIdSchema.safeParse(c.req.param('id'));
     if (!parsedId.success) {
       return c.json({ error: 'Invalid notification schedule ID' }, 400);
@@ -110,7 +150,10 @@ export function createNotificationScheduleController(
     }
   };
 
-  const deleteNotificationSchedule = async (c: Context) => {
+  const deleteNotificationSchedule = async (c: NotificationScheduleContext) => {
+    const authorization = await authorizeManager(c);
+    if (authorization instanceof Response) return authorization;
+
     const parsedId = notificationScheduleIdSchema.safeParse(c.req.param('id'));
     if (!parsedId.success) {
       return c.json({ error: 'Invalid notification schedule ID' }, 400);
@@ -144,7 +187,10 @@ export function createNotificationScheduleController(
     }
   };
 
-  const createNotificationSchedule = async (c: Context) => {
+  const createNotificationSchedule = async (c: NotificationScheduleContext) => {
+    const authorization = await authorizeManager(c);
+    if (authorization instanceof Response) return authorization;
+
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createNotificationScheduleSchema.safeParse(body);
     if (!parsedBody.success) {
@@ -160,10 +206,10 @@ export function createNotificationScheduleController(
     try {
       const schedule =
         await notificationScheduleService.createNotificationSchedule({
-          user_id: parsedBody.data.userId,
-          event_id: parsedBody.data.eventId,
-          gathering_group_id: parsedBody.data.gatheringGroupId,
+          created_user_id: authorization.userId,
+          event_id: parsedBody.data.eventId ?? null,
           notification_id: parsedBody.data.notificationId,
+          firebase_token_id: parsedBody.data.firebaseTokenId,
           importance: parsedBody.data.importance,
           send_at: parsedBody.data.sendAt,
         });
@@ -172,8 +218,8 @@ export function createNotificationScheduleController(
       if (
         error instanceof Error &&
         [
-          'User not found',
-          'Gathering group is not assigned to event',
+          'Firebase token not found',
+          'Event not found',
           'Notification not found',
         ].includes(error.message)
       ) {

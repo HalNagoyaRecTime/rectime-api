@@ -1,14 +1,34 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import * as schema from '../database/schema';
-import { microsoft_account_links, users } from '../database/schema';
+import {
+  microsoft_account_links,
+  staffs,
+  teachers,
+  users,
+} from '../database/schema';
 
 export function createUserRepository(db: D1Database): IUserRepository {
   const orm = drizzle(db, { schema });
 
   return {
+    async isStaffOrTeacher(userId) {
+      const row = await orm
+        .select({ userId: users.id })
+        .from(users)
+        .leftJoin(staffs, eq(staffs.userId, users.id))
+        .leftJoin(teachers, eq(teachers.userId, users.id))
+        .where(
+          and(
+            eq(users.id, userId),
+            sql`${staffs.id} IS NOT NULL OR ${teachers.id} IS NOT NULL`
+          )
+        )
+        .get();
+      return Boolean(row);
+    },
     async findUserIdByMicrosoftAccount(oid, tid) {
       const row = await orm
         .select({ userId: users.id })

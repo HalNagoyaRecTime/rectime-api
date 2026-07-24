@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
+import { isEventDate, isValidEventDate } from './lib/eventDate';
 import {
   diContainerMiddleware,
   type ContainerVariables,
@@ -11,12 +12,17 @@ import {
   requireAuth,
   type AuthVariables,
 } from './presentation/middleware/requireAuth';
+import {
+  bearerAuthenticationMiddleware,
+  type AuthenticationVariables,
+} from './presentation/middleware/bearerAuthentication';
 
 const app = new Hono<{ Bindings: Env }>();
 
 let corsWarnLogged = false;
 const allowedOriginRulesCache = new Map<string, AllowedOriginRule[]>();
 let tenantWarnLogged = false;
+let eventDateWarnLogged = false;
 
 app.use('*', (c, next) => {
   const allowedOrigins = c.env.ALLOWED_ORIGINS ?? '';
@@ -70,6 +76,8 @@ app.get('/', c => {
     version: '1.0.0',
     endpoints: {
       students: '/api/v1/students/{studentId}',
+      staffs: '/api/v1/staffs/{staffId}',
+      teachers: '/api/v1/teachers/{teacherId}',
       events: '/api/v1/events',
       classRooms: '/api/v1/classrooms',
       gatheringSpots: '/api/v1/gathering-spots',
@@ -87,10 +95,11 @@ app.get('/', c => {
 // API v1 routes
 const apiV1 = new Hono<{
   Bindings: Env;
-  Variables: ContainerVariables & AuthVariables;
+  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>();
 
 apiV1.use('*', diContainerMiddleware);
+apiV1.use('*', bearerAuthenticationMiddleware);
 
 // Student routes
 apiV1.get('/students', requireAuth, c => {
@@ -106,6 +115,28 @@ apiV1.put('/students/:studentId', requireAuth, c => {
   return c.get('container').studentController.updateStudent(c);
 });
 
+// Staff routes
+apiV1.get('/staffs', requireAuth, c => {
+  return c.get('container').staffController.getAllStaffs(c);
+});
+apiV1.get('/staffs/:staffId', requireAuth, c => {
+  return c.get('container').staffController.getStaffById(c);
+});
+
+// Teacher routes
+apiV1.get('/teachers', requireAuth, c => {
+  return c.get('container').teacherController.getAllTeachers(c);
+});
+apiV1.get('/teachers/:teacherId', requireAuth, c => {
+  return c.get('container').teacherController.getTeacherById(c);
+});
+apiV1.put('/teachers/:teacherId', requireAuth, c => {
+  return c.get('container').teacherController.updateTeacher(c);
+});
+apiV1.delete('/teachers/:teacherId', requireAuth, c => {
+  return c.get('container').teacherController.deleteTeacher(c);
+});
+
 // Event routes
 apiV1.get('/events', requireAuth, c => {
   return c.get('container').eventController.getAllEvents(c);
@@ -114,10 +145,34 @@ apiV1.get('/events', requireAuth, c => {
 apiV1.get('/events/:eventId', requireAuth, c => {
   return c.get('container').eventController.getEventById(c);
 });
+apiV1.post('/events', requireAuth, c => {
+  return c.get('container').eventController.createEvent(c);
+});
+apiV1.put('/events/:eventId', requireAuth, c => {
+  return c.get('container').eventController.updateEvent(c);
+});
+apiV1.delete('/events/:eventId', requireAuth, c => {
+  return c.get('container').eventController.deleteEvent(c);
+});
+apiV1.put('/events/:eventId/schedule', requireAuth, c => {
+  return c.get('container').eventScheduleController.updateEventSchedule(c);
+});
 
-// Class routes
+// Classroom routes
 apiV1.get('/classrooms', requireAuth, c => {
-  return c.get('container').classRoomController.getAllClassRooms(c);
+  return c.get('container').classRoomController.getAllClassrooms(c);
+});
+apiV1.get('/classrooms/:classId', requireAuth, c => {
+  return c.get('container').classRoomController.getClassroomById(c);
+});
+apiV1.post('/classrooms', requireAuth, c => {
+  return c.get('container').classRoomController.createClassroom(c);
+});
+apiV1.put('/classrooms/:classId', requireAuth, c => {
+  return c.get('container').classRoomController.updateClassroom(c);
+});
+apiV1.delete('/classrooms/:classId', requireAuth, c => {
+  return c.get('container').classRoomController.deleteClassroom(c);
 });
 
 // Gathering spot routes
@@ -217,10 +272,25 @@ export { app };
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    if (!isValidEventDate(env.EVENT_DATE)) {
+      if (!eventDateWarnLogged) {
+        console.error(
+          '[CRON] EVENT_DATE must be configured in YYYY-MM-DD format; notification delivery is disabled'
+        );
+        eventDateWarnLogged = true;
+      }
+      return;
+    }
+
+    const scheduledAt = new Date(event.scheduledTime);
+    if (!isEventDate(env.EVENT_DATE, scheduledAt)) return;
+
     const container = createDIContainer(env);
     ctx.waitUntil(
-      container.scheduledNotificationService.sendScheduledEventNotifications()
+      container.scheduledNotificationService.sendScheduledEventNotifications(
+        scheduledAt
+      )
     );
   },
 };

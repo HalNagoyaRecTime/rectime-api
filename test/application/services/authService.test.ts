@@ -32,6 +32,7 @@ function buildAppUser(overrides: Partial<AppUser> = {}): AppUser {
 describe('createAuthService', () => {
   function setup() {
     const userRepository: IUserRepository = {
+      isStaffOrTeacher: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
       createUserWithMicrosoftLink: vi.fn(),
       updateUser: vi.fn(),

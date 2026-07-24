@@ -60,7 +60,7 @@ function setup() {
 }
 
 describe('Gathering master controllers', () => {
-  it('集合場所・集合グループの作成時に名前をServiceへ渡し、201を返す', async () => {
+  it('集合場所とIDベースの集合グループを作成し、201を返す', async () => {
     const { app, gatheringSpotService, gatheringGroupService } = setup();
     (
       gatheringSpotService.createGatheringSpot as ReturnType<typeof vi.fn>
@@ -76,8 +76,6 @@ describe('Gathering master controllers', () => {
     });
     const groupResponse = await app.request('/gathering-groups', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gatheringGroupName: '赤組' }),
     });
 
     expect(spotResponse.status).toBe(201);
@@ -85,9 +83,7 @@ describe('Gathering master controllers', () => {
     expect(gatheringSpotService.createGatheringSpot).toHaveBeenCalledWith(
       '体育館前'
     );
-    expect(gatheringGroupService.createGatheringGroup).toHaveBeenCalledWith(
-      '赤組'
-    );
+    expect(gatheringGroupService.createGatheringGroup).toHaveBeenCalledWith();
   });
 
   it('空の名称は400で拒否する', async () => {
@@ -112,9 +108,7 @@ describe('Gathering master controllers', () => {
     ]);
     (
       gatheringGroupService.getAllGatheringGroups as ReturnType<typeof vi.fn>
-    ).mockResolvedValue([
-      { gathering_group_id: 2, gathering_group_name: '赤組' },
-    ]);
+    ).mockResolvedValue([{ gathering_group_id: 2 }]);
 
     const spotResponse = await app.request('/gathering-spots');
     const groupResponse = await app.request('/gathering-groups');
@@ -122,9 +116,7 @@ describe('Gathering master controllers', () => {
     expect(await spotResponse.json()).toEqual([
       { gathering_spot_id: 1, gathering_spot_name: '体育館前' },
     ]);
-    expect(await groupResponse.json()).toEqual([
-      { gathering_group_id: 2, gathering_group_name: '赤組' },
-    ]);
+    expect(await groupResponse.json()).toEqual([{ gathering_group_id: 2 }]);
   });
 
   it('グループ所属の一覧取得・追加・解除をServiceへ委譲する', async () => {
@@ -252,8 +244,6 @@ describe('Gathering master controllers', () => {
     const spotResponse = await app.request('/gathering-spots');
     const groupResponse = await app.request('/gathering-groups', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gatheringGroupName: '赤組' }),
     });
     const memberResponse = await app.request('/gathering-groups/1/members', {
       method: 'POST',
