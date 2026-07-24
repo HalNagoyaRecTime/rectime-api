@@ -72,6 +72,8 @@ app.get('/', c => {
     version: '1.0.0',
     endpoints: {
       students: '/api/v1/students/{studentId}',
+      staffs: '/api/v1/staffs/{staffId}',
+      teachers: '/api/v1/teachers/{teacherId}',
       events: '/api/v1/events',
       classRooms: '/api/v1/classrooms',
       gatheringSpots: '/api/v1/gathering-spots',
@@ -107,6 +109,28 @@ apiV1.post('/students', c => {
 });
 apiV1.put('/students/:studentId', c => {
   return c.get('container').studentController.updateStudent(c);
+});
+
+// Staff routes
+apiV1.get('/staffs', c => {
+  return c.get('container').staffController.getAllStaffs(c);
+});
+apiV1.get('/staffs/:staffId', c => {
+  return c.get('container').staffController.getStaffById(c);
+});
+
+// Teacher routes
+apiV1.get('/teachers', c => {
+  return c.get('container').teacherController.getAllTeachers(c);
+});
+apiV1.get('/teachers/:teacherId', c => {
+  return c.get('container').teacherController.getTeacherById(c);
+});
+apiV1.put('/teachers/:teacherId', c => {
+  return c.get('container').teacherController.updateTeacher(c);
+});
+apiV1.delete('/teachers/:teacherId', c => {
+  return c.get('container').teacherController.deleteTeacher(c);
 });
 
 // Event routes
