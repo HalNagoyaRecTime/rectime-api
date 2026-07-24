@@ -111,11 +111,11 @@ describe('UserRepository', () => {
           .bind(user!.user_id)
           .run();
 
-        const categories = await repo.getUserCategories(user!.user_id);
-        expect(categories.is_student).toBe(false);
-        expect(categories[table === 'staffs' ? 'is_staff' : 'is_teacher']).toBe(
-          true
-        );
+        await expect(repo.getUserCategories(user!.user_id)).resolves.toEqual({
+          is_student: false,
+          is_staff: table === 'staffs',
+          is_teacher: table === 'teachers',
+        });
       }
     );
 
