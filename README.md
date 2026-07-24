@@ -97,6 +97,7 @@ cp .dev.vars.example .dev.vars
 | `MICROSOFT_MOBILE_REDIRECT_URI` | `com.rectime.mobile://auth/callback` |
 | `FRONTEND_URL` | `http://localhost:5173` |
 | `ALLOWED_ORIGINS` | CORS で許可するフロントエンドの origin（カンマ区切り複数可） |
+| `EVENT_DATE` | 通知配信を許可する開催日（JST、`YYYY-MM-DD`）。未設定・不正な値の場合は配信しない |
 | `JWT_SECRET` | 32 文字以上のランダム文字列 |
 
 `MICROSOFT_CLIENT_PRIVATE_KEY` の設定例:

@@ -234,6 +234,39 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /events/{eventId}/schedule:
+    put:
+      tags: [Events]
+      summary: イベント時刻と通知予定を更新する
+      description: |
+        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        通知ありの場合は、開催日の競技開始15分前に送信するdraft通知予定を作成または更新します。
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEventScheduleRequest'
+      responses:
+        '200':
+          description: 更新したイベントと通知予定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventScheduleResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /classrooms:
     get:
       tags: [ClassRooms]
@@ -304,12 +337,6 @@ paths:
     post:
       tags: [Gathering groups]
       summary: 対象グループを作成する
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateGatheringGroupRequest'
       responses:
         '201':
           description: 作成した対象グループ
@@ -317,8 +344,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GatheringGroup'
-        '400':
-          $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -475,7 +500,12 @@ paths:
           schema:
             type: integer
             minimum: 1
-        - name: gatheringGroupId
+        - name: createdUserId
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: firebaseTokenId
           in: query
           schema:
             type: integer
@@ -512,6 +542,10 @@ paths:
                 $ref: '#/components/schemas/NotificationScheduleListResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
     post:
@@ -532,6 +566,10 @@ paths:
                 $ref: '#/components/schemas/NotificationSchedule'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -557,6 +595,10 @@ paths:
                 $ref: '#/components/schemas/NotificationSchedule'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -569,6 +611,10 @@ paths:
           description: 削除成功
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -968,6 +1014,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: 認証が必要
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: 操作権限がない
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     NotFound:
       description: 対象リソースが存在しない
       content:
@@ -1092,6 +1150,36 @@ components:
           type: string
           format: date-time
 
+    UpdateEventScheduleRequest:
+      type: object
+      required: [startTime, endTime, notificationEnabled]
+      properties:
+        startTime:
+          type: string
+          description: JSTの開始時刻（HHMM形式）
+          pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
+          example: '1030'
+        endTime:
+          type: string
+          description: JSTの終了時刻（HHMM形式）。開始時刻より後を指定します。
+          pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
+          example: '1100'
+        notificationEnabled:
+          type: boolean
+
+    EventScheduleResult:
+      type: object
+      required: [event, notification_enabled, notification_schedules]
+      properties:
+        event:
+          $ref: '#/components/schemas/Event'
+        notification_enabled:
+          type: boolean
+        notification_schedules:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationSchedule'
+
     EventWriteRequest:
       type: object
       required: [event_name, venue, start_time, end_time]
@@ -1146,26 +1234,16 @@ components:
 
     GatheringGroup:
       type: object
-      required: [gathering_group_id, gathering_group_name, created_at, updated_at]
+      required: [gathering_group_id, created_at, updated_at]
       properties:
         gathering_group_id:
           type: integer
-        gathering_group_name:
-          type: string
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
-
-    CreateGatheringGroupRequest:
-      type: object
-      required: [gatheringGroupName]
-      properties:
-        gatheringGroupName:
-          type: string
-          minLength: 1
 
     GatheringGroupMember:
       type: object
@@ -1195,7 +1273,7 @@ components:
     Gathering:
       type: object
       required:
-        [gathering_id, gathering_group_id, event_id, gathering_spot_id, gathering_time, round, created_at, updated_at, gathering_group_name, event_name, gathering_spot_name]
+        [gathering_id, gathering_group_id, event_id, gathering_spot_id, gathering_time, round, created_at, updated_at, event_name, gathering_spot_name]
       properties:
         gathering_id:
           type: integer
@@ -1212,8 +1290,6 @@ components:
         round:
           type: integer
           minimum: 1
-        gathering_group_name:
-          type: string
         event_name:
           type: string
         gathering_spot_name:
@@ -1327,16 +1403,18 @@ components:
     NotificationSchedule:
       type: object
       required:
-        [notification_send_schedule_id, user_id, event_id, gathering_group_id, notification_id, importance, notification_type, title, body, send_status, send_at, created_at, updated_at]
+        [notification_schedule_id, notification_id, firebase_token_id, importance, notification_type, title, body, send_status, send_at, created_at, updated_at]
       properties:
-        notification_send_schedule_id:
+        notification_schedule_id:
           type: integer
-        user_id:
+        created_user_id:
           type: integer
+          nullable: true
           description: 通知予定を登録したユーザー
         event_id:
           type: integer
-        gathering_group_id:
+          nullable: true
+        firebase_token_id:
           type: integer
         notification_id:
           type: integer
@@ -1372,15 +1450,13 @@ components:
 
     CreateNotificationScheduleRequest:
       type: object
-      required: [userId, eventId, gatheringGroupId, notificationId, sendAt]
+      required: [notificationId, firebaseTokenId, sendAt]
       properties:
-        userId:
-          type: integer
-          minimum: 1
         eventId:
           type: integer
           minimum: 1
-        gatheringGroupId:
+          nullable: true
+        firebaseTokenId:
           type: integer
           minimum: 1
         notificationId:

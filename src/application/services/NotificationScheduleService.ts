@@ -5,12 +5,18 @@ import type {
   NotificationScheduleListResult,
 } from '../../domain/entities/NotificationSchedule';
 import type { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
+import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { INotificationScheduleService } from './INotificationScheduleService';
 
 export function createNotificationScheduleService(
-  notificationScheduleRepository: INotificationScheduleRepository
+  notificationScheduleRepository: INotificationScheduleRepository,
+  userRepository: IUserRepository
 ): INotificationScheduleService {
   return {
+    canManageNotificationSchedules(userId: number): Promise<boolean> {
+      return userRepository.isStaffOrTeacher(userId);
+    },
+
     getAllNotificationSchedules(
       options: NotificationScheduleListOptions
     ): Promise<NotificationScheduleListResult> {
@@ -44,16 +50,18 @@ export function createNotificationScheduleService(
     async createNotificationSchedule(
       input: CreateNotificationScheduleInput
     ): Promise<NotificationScheduleEntity> {
-      if (!(await notificationScheduleRepository.existsUser(input.user_id))) {
-        throw new Error('User not found');
-      }
       if (
-        !(await notificationScheduleRepository.existsEventGatheringGroup(
-          input.event_id,
-          input.gathering_group_id
+        !(await notificationScheduleRepository.existsFirebaseToken(
+          input.firebase_token_id
         ))
       ) {
-        throw new Error('Gathering group is not assigned to event');
+        throw new Error('Firebase token not found');
+      }
+      if (
+        input.event_id != null &&
+        !(await notificationScheduleRepository.existsEvent(input.event_id))
+      ) {
+        throw new Error('Event not found');
       }
       if (
         !(await notificationScheduleRepository.existsNotification(

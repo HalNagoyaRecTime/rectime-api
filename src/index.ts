@@ -3,16 +3,22 @@ import { cors } from 'hono/cors';
 import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
+import { isEventDate, isValidEventDate } from './lib/eventDate';
 import {
   diContainerMiddleware,
   type ContainerVariables,
 } from './presentation/middleware/diContainer';
+import {
+  sessionAuthenticationMiddleware,
+  type AuthenticationVariables,
+} from './presentation/middleware/sessionAuthentication';
 
 const app = new Hono<{ Bindings: Env }>();
 
 let corsWarnLogged = false;
 const allowedOriginRulesCache = new Map<string, AllowedOriginRule[]>();
 let tenantWarnLogged = false;
+let eventDateWarnLogged = false;
 
 app.use('*', (c, next) => {
   const allowedOrigins = c.env.ALLOWED_ORIGINS ?? '';
@@ -81,9 +87,13 @@ app.get('/', c => {
 });
 
 // API v1 routes
-const apiV1 = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
+const apiV1 = new Hono<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthenticationVariables;
+}>();
 
 apiV1.use('*', diContainerMiddleware);
+apiV1.use('*', sessionAuthenticationMiddleware);
 
 // Student routes
 apiV1.get('/students', c => {
@@ -115,6 +125,9 @@ apiV1.put('/events/:eventId', c => {
 });
 apiV1.delete('/events/:eventId', c => {
   return c.get('container').eventController.deleteEvent(c);
+});
+apiV1.put('/events/:eventId/schedule', c => {
+  return c.get('container').eventScheduleController.updateEventSchedule(c);
 });
 
 // Class routes
@@ -215,10 +228,25 @@ export { app };
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    if (!isValidEventDate(env.EVENT_DATE)) {
+      if (!eventDateWarnLogged) {
+        console.error(
+          '[CRON] EVENT_DATE must be configured in YYYY-MM-DD format; notification delivery is disabled'
+        );
+        eventDateWarnLogged = true;
+      }
+      return;
+    }
+
+    const scheduledAt = new Date(event.scheduledTime);
+    if (!isEventDate(env.EVENT_DATE, scheduledAt)) return;
+
     const container = createDIContainer(env);
     ctx.waitUntil(
-      container.scheduledNotificationService.sendScheduledEventNotifications()
+      container.scheduledNotificationService.sendScheduledEventNotifications(
+        scheduledAt
+      )
     );
   },
 };
