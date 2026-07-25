@@ -4,6 +4,15 @@ import type { IScheduleService } from '../../application/services/IScheduleServi
 
 const scheduleIdSchema = z.coerce.number().int().positive();
 
+const createScheduleSchema = z.object({
+  eventId: z.number().int().positive().nullable().optional(),
+  notificationId: z.number().int().positive(),
+  firebaseTokenId: z.number().int().positive(),
+  importance: z.literal(2).optional(),
+  // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00.000Z
+  sendAt: z.string().datetime({ offset: true }),
+});
+
 export function createScheduleController(scheduleService: IScheduleService) {
   const getAllSchedules = async (c: Context) => {
     try {
