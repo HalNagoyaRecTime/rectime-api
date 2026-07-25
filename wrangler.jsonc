@@ -97,9 +97,13 @@
     // secrets.required に残っているのは実際に機密なJWT_SECRET/クライアント証明書/Firebase系のみ。
     // それ以外(テナントID・モバイルredirect URI・TTL秒数)はvarsとして直接設定する
     // (値は本番の実値と異なっていて構わないもの、または環境によらず同一のもの)。
+    // workers_dev はtrueのままにする(既定値どおり)。developブランチへのpushは
+    // `wrangler versions upload --preview-alias` ではなく通常の `wrangler deploy` で
+    // env.previewへデプロイされるため、workers_devをfalseにするとその「常設Preview Worker」に
+    // rectime-api-preview.<subdomain>.workers.dev から一切アクセスできなくなってしまう
+    // (PRごとのpreview-alias URLはpreview_urls側の機能でworkers_devとは独立に動作するため影響しない)。
     "preview": {
       "name": "rectime-api-preview",
-      "workers_dev": false,
       "preview_urls": true,
       "vars": {
         "NODE_ENV": "preview",
