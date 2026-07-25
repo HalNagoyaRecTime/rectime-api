@@ -22,7 +22,6 @@
       "MICROSOFT_CERT_THUMBPRINT",
       "MICROSOFT_TENANT",
       "ALLOWED_MICROSOFT_TENANTS",
-      "MICROSOFT_REDIRECT_URI",
       "MICROSOFT_MOBILE_REDIRECT_URI",
       "FRONTEND_URL",
       "SESSION_EXPIRES_SEC",
@@ -86,22 +85,18 @@
       ],
     },
     // Cloudflare上のPreview環境。`rectime-api-preview` という別Workerとして
-    // 作成される。KV/D1のIDはプレースホルダーのため、以下を実行してから
-    // 実際のIDに置き換えること:
-    //   wrangler d1 create rectime-api-preview
-    //   wrangler kv namespace create rectime-api-preview-auth
-    //   wrangler secret put <NAME> --env preview (各secretごとに)
+    // 作成される。KV/D1のIDは実リソースに差し替え済み。
     //
-    // 重要: secrets.required は名前の宣言のみで、値は本番からコピーしない。
-    // 特にURLに依存する以下は必ずpreview環境専用の値を設定すること:
-    //   - MICROSOFT_REDIRECT_URI / MICROSOFT_MOBILE_REDIRECT_URI:
-    //     実際にデプロイされるpreview WorkerのコールバックURL
-    //     (`wrangler versions upload --env preview --preview-alias <固定名>`
-    //     で得られる `https://<固定名>-rectime-api-preview.<subdomain>.workers.dev/...`)
-    //     を、事前にMicrosoft Entraアプリ登録のリダイレクトURIとして追加登録した上で設定する。
-    //     preview-aliasを固定名で使い続けないとURLが変わり登録と食い違う。
-    //   - FRONTEND_URL: このpreview backendに実際に接続するフロントエンド
-    //     (例: recwatchのPRプレビューURL)を設定する。
+    // web向けMicrosoft OAuthのredirect_uriは(#151により)リクエストURLから動的に
+    // 組み立てられるため、wrangler側での設定は不要。ただしMicrosoft Entra側の
+    // アプリ登録には、実際にデプロイされるpreview WorkerのコールバックURL
+    // (`wrangler versions upload --env preview --preview-alias <固定名>` で得られる
+    // `https://<固定名>-rectime-api-preview.<subdomain>.workers.dev/api/v1/auth/microsoft/callback`)
+    // を事前に追加登録しておく必要がある(preview-aliasを固定名で使い続けないとURLが変わり登録と食い違う)。
+    //
+    // secrets.required に残っているのは実際に機密なJWT_SECRET/クライアント証明書/Firebase系のみ。
+    // それ以外(テナントID・モバイルredirect URI・TTL秒数)はvarsとして直接設定する
+    // (値は本番の実値と異なっていて構わないもの、または環境によらず同一のもの)。
     "preview": {
       "name": "rectime-api-preview",
       "workers_dev": false,
@@ -109,21 +104,27 @@
       "vars": {
         "NODE_ENV": "preview",
         "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+        // Entraのマルチテナント共通エンドポイント値。環境によらず同一。
+        "MICROSOFT_TENANT": "organizations",
+        // 許可するEntraテナントID。
+        "ALLOWED_MICROSOFT_TENANTS": "8d41d6d7-36ce-4e0c-8c6d-cf2c54c39039",
+        // モバイルアプリのカスタムスキーム。バックエンドの環境によらず同一。
+        "MICROSOFT_MOBILE_REDIRECT_URI": "com.rectime.mobile://auth/callback",
+        // このpreview backendに実際に接続するフロントエンド。
+        // TODO: recwatchのPRごとのPreview URLに応じた動的化を別途検討する
+        // (Refererヘッダーから取得しALLOWED_ORIGINSで検証する方式を予定)。
+        // それまでは固定値。
+        "FRONTEND_URL": "https://recwatch.pages.dev",
+        "SESSION_EXPIRES_SEC": "86400",
+        "JWT_EXPIRES_SEC": "3600",
+        "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
       },
       "secrets": {
         "required": [
           "MICROSOFT_CLIENT_ID",
           "MICROSOFT_CLIENT_PRIVATE_KEY",
           "MICROSOFT_CERT_THUMBPRINT",
-          "MICROSOFT_TENANT",
-          "ALLOWED_MICROSOFT_TENANTS",
-          "MICROSOFT_REDIRECT_URI",
-          "MICROSOFT_MOBILE_REDIRECT_URI",
-          "FRONTEND_URL",
-          "SESSION_EXPIRES_SEC",
           "JWT_SECRET",
-          "JWT_EXPIRES_SEC",
-          "MOBILE_REFRESH_EXPIRES_SEC",
           "FIREBASE_PROJECT_ID",
           "FIREBASE_CLIENT_EMAIL",
           "FIREBASE_PRIVATE_KEY",
