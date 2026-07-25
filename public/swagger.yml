@@ -565,6 +565,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Firebaseトークンが別の利用者に登録済み
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

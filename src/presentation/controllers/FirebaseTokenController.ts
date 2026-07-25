@@ -17,6 +17,24 @@ type FirebaseTokenContext = Context<{
   Variables: ContainerVariables & AuthenticationVariables;
 }>;
 
+function isFirebaseTokenUniqueConstraintError(error: unknown): boolean {
+  const visited = new Set<Error>();
+  let current = error;
+
+  while (current instanceof Error && !visited.has(current)) {
+    visited.add(current);
+    if (
+      current.message.includes('UNIQUE constraint failed') &&
+      current.message.includes('firebase_tokens.fcm_token')
+    ) {
+      return true;
+    }
+    current = current.cause;
+  }
+
+  return false;
+}
+
 export function createFirebaseTokenController(
   firebaseTokenService: IFirebaseTokenService
 ) {
@@ -56,6 +74,12 @@ export function createFirebaseTokenController(
     } catch (error) {
       if (error instanceof Error && error.message === 'User not found') {
         return c.json({ error: error.message }, 404);
+      }
+      if (isFirebaseTokenUniqueConstraintError(error)) {
+        return c.json(
+          { error: 'Firebase token is already registered to another user' },
+          409
+        );
       }
       return c.json(
         {

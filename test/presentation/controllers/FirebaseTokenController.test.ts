@@ -131,6 +131,83 @@ describe('FirebaseTokenController', () => {
     expect(response.status).toBe(404);
   });
 
+  it('別ユーザーに登録済みのTokenには409を返す', async () => {
+    const { app, firebaseTokenService } = setup();
+    (
+      firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(
+      new Error('UNIQUE constraint failed: firebase_tokens.fcm_token')
+    );
+
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fcmToken: 'registered-token',
+        platform: 'android',
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: 'Firebase token is already registered to another user',
+    });
+  });
+
+  it('D1でラップされたToken重複エラーにも409を返す', async () => {
+    const { app, firebaseTokenService } = setup();
+    const sqliteError = new Error(
+      'UNIQUE constraint failed: firebase_tokens.fcm_token'
+    );
+    const d1Error = new Error('D1_ERROR: constraint failed', {
+      cause: sqliteError,
+    });
+    (
+      firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(
+      new Error('Failed query: update firebase_tokens', {
+        cause: d1Error,
+      })
+    );
+
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fcmToken: 'registered-token',
+        platform: 'android',
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: 'Firebase token is already registered to another user',
+    });
+  });
+
+  it('別のUNIQUE制約違反には500を返す', async () => {
+    const { app, firebaseTokenService } = setup();
+    (
+      firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(
+      new Error('UNIQUE constraint failed: firebase_tokens.user_id')
+    );
+
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fcmToken: 'fcm-abc',
+        platform: 'android',
+      }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: 'Failed to register Firebase token',
+    });
+  });
+
   it('想定外エラーでは機密値を含まない500を返す', async () => {
     const { app, firebaseTokenService } = setup();
     (
