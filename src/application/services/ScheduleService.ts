@@ -15,5 +15,9 @@ export function createScheduleService(
       const schedule = await scheduleRepository.findAll();
       return toDTO(schedule);
     },
+    getScheduleById: async (id: number) => {
+      const schedule = await scheduleRepository.findById(id);
+      return schedule ? toDTO(schedule) : null;
+    },
   };
 }

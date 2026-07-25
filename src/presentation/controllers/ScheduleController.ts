@@ -1,16 +1,38 @@
 import { Context } from 'hono';
-// import { z } from 'zod';
+import { z } from 'zod';
 import type { IScheduleService } from '../../application/services/IScheduleService';
 
+const scheduleIdSchema = z.coerce.number().int().positive();
+
 export function createScheduleController(scheduleService: IScheduleService) {
-  return {
-    getAllSchedules: async (c: Context) => {
-      try {
-        const schedules = await scheduleService.getAllSchedules();
-        return c.json(schedules);
-      } catch {
-        return c.json({ error: 'Failed to fetch schedules' }, 500);
+  const getAllSchedules = async (c: Context) => {
+    try {
+      const schedules = await scheduleService.getAllSchedules();
+      return c.json(schedules);
+    } catch {
+      return c.json({ error: 'Failed to fetch schedules' }, 500);
+    }
+  };
+
+  const getScheduleById = async (c: Context) => {
+    const parsedId = scheduleIdSchema.safeParse(c.req.param('scheduleId'));
+    if (!parsedId.success) {
+      return c.json({ error: 'Invalid schedule ID' }, 400);
+    }
+
+    try {
+      const schedule = await scheduleService.getScheduleById(parsedId.data);
+      if (!schedule) {
+        return c.json({ error: 'Schedule not found' }, 404);
       }
-    },
+      return c.json(schedule);
+    } catch {
+      return c.json({ error: 'Failed to fetch schedule' }, 500);
+    }
+  };
+
+  return {
+    getAllSchedules,
+    getScheduleById,
   };
 }

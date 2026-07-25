@@ -79,11 +79,25 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
           start_time: events.startTime,
           end_time: events.endTime,
           send_time: notification_schedules.sendAt,
-          draft_deliveries: sql<number>`cast(count(case when ${notification_schedules.sendStatus} = 'draft' then 1 end) as signed)`,
-          sending_deliveries: sql<number>`cast(count(case when ${notification_schedules.sendStatus} = 'sending' then 1 end) as signed)`,
-          sent_deliveries: sql<number>`cast(count(case when ${notification_schedules.sendStatus} = 'sent' then 1 end) as signed)`,
-          failed_deliveries: sql<number>`cast(count(case when ${notification_schedules.sendStatus} = 'failed' then 1 end) as signed)`,
-          total_deliveries: sql<number>`cast(count(*) as signed)`,
+          draft_deliveries:
+            sql<number>`cast(count(case when ${notification_schedules.sendStatus} = 'draft' then 1 end) as signed)`.mapWith(
+              Number
+            ),
+          sending_deliveries:
+            sql<number>`cast(count(case when ${notification_schedules.sendStatus} = 'sending' then 1 end) as signed)`.mapWith(
+              Number
+            ),
+          sent_deliveries:
+            sql<number>`cast(count(case when ${notification_schedules.sendStatus} = 'sent' then 1 end) as signed)`.mapWith(
+              Number
+            ),
+          failed_deliveries:
+            sql<number>`cast(count(case when ${notification_schedules.sendStatus} = 'failed' then 1 end) as signed)`.mapWith(
+              Number
+            ),
+          total_deliveries: sql<number>`cast(count(*) as signed)`.mapWith(
+            Number
+          ),
         })
         .from(notification_schedules)
         .leftJoin(users, eq(notification_schedules.createdUserId, users.id))
@@ -120,6 +134,78 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
       return {
         notification_schedules: result.map(toNotificationSchedule),
       };
+    },
+
+    async findById(id: number): Promise<ScheduleEntity | null> {
+      const result = await orm
+        .select({
+          notification_id: notification_schedules.notificationId,
+          notification_type: notifications.notificationType,
+          title: notifications.title,
+          body: notifications.body,
+          created_user_id: users.id,
+          created_user_name: users.userName,
+          event_id: events.id,
+          event_name: events.name,
+          start_time: events.startTime,
+          end_time: events.endTime,
+          send_time: notification_schedules.sendAt,
+          draft_deliveries:
+            sql<number>`cast(count(case when ${notification_schedules.sendStatus} = 'draft' then 1 end) as signed)`.mapWith(
+              Number
+            ),
+          sending_deliveries:
+            sql<number>`cast(count(case when ${notification_schedules.sendStatus} = 'sending' then 1 end) as signed)`.mapWith(
+              Number
+            ),
+          sent_deliveries:
+            sql<number>`cast(count(case when ${notification_schedules.sendStatus} = 'sent' then 1 end) as signed)`.mapWith(
+              Number
+            ),
+          failed_deliveries:
+            sql<number>`cast(count(case when ${notification_schedules.sendStatus} = 'failed' then 1 end) as signed)`.mapWith(
+              Number
+            ),
+          total_deliveries: sql<number>`cast(count(*) as signed)`.mapWith(
+            Number
+          ),
+        })
+        .from(notification_schedules)
+        .leftJoin(users, eq(notification_schedules.createdUserId, users.id))
+        .leftJoin(events, eq(notification_schedules.eventId, events.id))
+        .leftJoin(
+          notifications,
+          eq(
+            notification_schedules.notificationId,
+            notifications.notificationId
+          )
+        )
+        .leftJoin(
+          firebase_tokens,
+          eq(
+            notification_schedules.firebaseTokenId,
+            firebase_tokens.firebaseTokenId
+          )
+        )
+        .where(eq(notification_schedules.notificationId, id))
+        .groupBy(
+          notification_schedules.notificationId,
+          notifications.notificationType,
+          notifications.title,
+          notifications.body,
+          users.id,
+          users.userName,
+          events.id,
+          events.name,
+          events.startTime,
+          events.endTime,
+          notification_schedules.sendAt
+        )
+        .get();
+
+      return result
+        ? { notification_schedules: [toNotificationSchedule(result)] }
+        : null;
     },
   };
 }
