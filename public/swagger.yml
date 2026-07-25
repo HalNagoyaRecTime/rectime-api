@@ -529,6 +529,32 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /gathering-spots/{gatheringSpotId}:
+    put:
+      tags: [Gathering spots]
+      summary: 集合場所を更新する
+      parameters:
+        - $ref: '#/components/parameters/GatheringSpotId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGatheringSpotRequest'
+      responses:
+        '200':
+          description: 更新した集合場所
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatheringSpot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /gathering-groups:
     get:
       tags: [Gathering groups]
@@ -1223,6 +1249,13 @@ components:
       schema:
         type: integer
         minimum: 1
+    GatheringSpotId:
+      name: gatheringSpotId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
     UserId:
       name: userId
       in: path
@@ -1565,6 +1598,14 @@ components:
           format: date-time
 
     CreateGatheringSpotRequest:
+      type: object
+      required: [gatheringSpotName]
+      properties:
+        gatheringSpotName:
+          type: string
+          minLength: 1
+
+    UpdateGatheringSpotRequest:
       type: object
       required: [gatheringSpotName]
       properties:

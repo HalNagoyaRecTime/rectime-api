@@ -24,6 +24,7 @@ describe('Gathering master services', () => {
     const gatheringSpotRepository: IGatheringSpotRepository = {
       findAll: vi.fn().mockResolvedValue(spots),
       create: vi.fn().mockResolvedValue(spot),
+      update: vi.fn(),
     };
     const gatheringGroupRepository: IGatheringGroupRepository = {
       findAll: vi.fn().mockResolvedValue(groups),
@@ -53,6 +54,46 @@ describe('Gathering master services', () => {
     expect(gatheringSpotRepository.findAll).toHaveBeenCalledOnce();
     expect(gatheringGroupRepository.create).toHaveBeenCalledWith();
     expect(gatheringGroupRepository.findAll).toHaveBeenCalledOnce();
+  });
+
+  it('集合場所の更新をIDと入力値ごとRepositoryへ委譲する', async () => {
+    const updatedSpot = {
+      gathering_spot_id: 1,
+      gathering_spot_name: '正門前',
+      created_at: '2026-01-01 00:00:00',
+      updated_at: '2026-01-02 00:00:00',
+    };
+    const repository: IGatheringSpotRepository = {
+      findAll: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn().mockResolvedValue(updatedSpot),
+    };
+    const service = createGatheringSpotService(repository);
+    const input = { gathering_spot_name: '正門前' };
+
+    await expect(service.updateGatheringSpot(1, input)).resolves.toBe(
+      updatedSpot
+    );
+    expect(repository.update).toHaveBeenCalledOnce();
+    expect(repository.update).toHaveBeenCalledWith(1, input);
+  });
+
+  it('集合場所の更新対象が存在しない場合はエラーを送出する', async () => {
+    const repository: IGatheringSpotRepository = {
+      findAll: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn().mockResolvedValue(null),
+    };
+    const service = createGatheringSpotService(repository);
+
+    await expect(
+      service.updateGatheringSpot(999, {
+        gathering_spot_name: '正門前',
+      })
+    ).rejects.toThrow('Gathering spot not found');
+    expect(repository.update).toHaveBeenCalledWith(999, {
+      gathering_spot_name: '正門前',
+    });
   });
 
   it('所属の追加・一覧取得・解除をRepositoryへ委譲する', async () => {

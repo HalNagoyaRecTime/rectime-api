@@ -178,6 +178,9 @@ apiV1.get('/gathering-spots', c => {
 apiV1.post('/gathering-spots', c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
+apiV1.put('/gathering-spots/:gatheringSpotId', c => {
+  return c.get('container').gatheringSpotController.updateGatheringSpot(c);
+});
 
 // Gathering group routes
 apiV1.get('/gathering-groups', c => {
