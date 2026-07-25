@@ -10,7 +10,10 @@ import {
 import { sql, eq } from 'drizzle-orm';
 
 import type { D1Database } from '@cloudflare/workers-types';
-import type { ScheduleEntity, NotificationSchedule } from '../../domain/entities/Schedule';
+import type {
+  ScheduleEntity,
+  NotificationSchedule,
+} from '../../domain/entities/Schedule';
 import type { IScheduleRepository } from '../../domain/interfaces/repositories/IScheduleRepository';
 
 type ScheduleRow = {
