@@ -30,5 +30,5 @@ export interface NotificationSchedule {
 }
 
 export interface ScheduleDTO {
-  schedules: NotificationSchedule[];
+  notification_schedules: NotificationSchedule[];
 }

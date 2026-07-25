@@ -12,8 +12,8 @@ export function createScheduleService(
 
   return {
     getAllSchedules: async () => {
-      const schedules = await scheduleRepository.findAll();
-      return schedules.map(toDTO);
+      const schedule = await scheduleRepository.findAll();
+      return toDTO(schedule);
     },
   };
 }

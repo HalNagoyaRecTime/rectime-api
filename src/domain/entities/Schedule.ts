@@ -30,5 +30,5 @@ export interface NotificationSchedule {
 }
 
 export interface ScheduleEntity {
-  schedules: NotificationSchedule[];
+  notification_schedules: NotificationSchedule[];
 }

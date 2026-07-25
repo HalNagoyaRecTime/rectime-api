@@ -10,7 +10,7 @@ import {
 import { sql, eq } from 'drizzle-orm';
 
 import type { D1Database } from '@cloudflare/workers-types';
-import type { ScheduleEntity } from '../../domain/entities/Schedule';
+import type { ScheduleEntity, NotificationSchedule } from '../../domain/entities/Schedule';
 import type { IScheduleRepository } from '../../domain/interfaces/repositories/IScheduleRepository';
 
 type ScheduleRow = {
@@ -32,41 +32,37 @@ type ScheduleRow = {
   failed_deliveries: number;
 };
 
-function toEntity(row: ScheduleRow): ScheduleEntity {
+function toNotificationSchedule(row: ScheduleRow): NotificationSchedule {
   return {
-    schedules: [
-      {
-        notification_id: row.notification_id,
-        notification_type: row.notification_type ?? '',
-        title: row.title ?? '',
-        body: row.body ?? '',
-        created_user: {
-          user_id: row.created_user_id ?? 0,
-          user_name: row.created_user_name ?? '',
-        },
-        event: {
-          event_id: row.event_id ?? 0,
-          event_name: row.event_name ?? '',
-          start_time: row.start_time ?? '',
-          end_time: row.end_time ?? '',
-        },
-        send_time: row.send_time,
-        delivery_summary: {
-          total: row.total_deliveries,
-          draft: row.draft_deliveries,
-          sending: row.sending_deliveries,
-          sent: row.sent_deliveries,
-          failed: row.failed_deliveries,
-        },
-      },
-    ],
+    notification_id: row.notification_id,
+    notification_type: row.notification_type ?? '',
+    title: row.title ?? '',
+    body: row.body ?? '',
+    created_user: {
+      user_id: row.created_user_id ?? 0,
+      user_name: row.created_user_name ?? '',
+    },
+    event: {
+      event_id: row.event_id ?? 0,
+      event_name: row.event_name ?? '',
+      start_time: row.start_time ?? '',
+      end_time: row.end_time ?? '',
+    },
+    send_time: row.send_time,
+    delivery_summary: {
+      total: row.total_deliveries,
+      draft: row.draft_deliveries,
+      sending: row.sending_deliveries,
+      sent: row.sent_deliveries,
+      failed: row.failed_deliveries,
+    },
   };
 }
 
 export function createScheduleRepository(db: D1Database): IScheduleRepository {
   const orm = drizzle(db, { schema });
   return {
-    async findAll(): Promise<ScheduleEntity[]> {
+    async findAll(): Promise<ScheduleEntity> {
       const result = await orm
         .select({
           notification_id: notification_schedules.notificationId,
@@ -118,7 +114,9 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
         )
         .all();
 
-      return result.map(toEntity);
+      return {
+        notification_schedules: result.map(toNotificationSchedule),
+      };
     },
   };
 }
