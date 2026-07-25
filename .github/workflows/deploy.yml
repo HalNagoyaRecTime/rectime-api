@@ -45,7 +45,7 @@ jobs:
         run: |
           BRANCH="${{ github.event.workflow_run.head_branch || github.ref_name }}"
           if [ "$BRANCH" = "main" ]; then
-            echo 'env_flag=--env ""' >> "$GITHUB_OUTPUT"
+            echo "env_flag=" >> "$GITHUB_OUTPUT"
             echo "d1_database=rectime-api" >> "$GITHUB_OUTPUT"
           else
             echo "env_flag=--env preview" >> "$GITHUB_OUTPUT"
