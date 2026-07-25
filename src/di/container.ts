@@ -44,6 +44,11 @@ import { createUserRepository } from '../infrastructure/repositories/UserReposit
 import { createAuthService } from '../application/services/authService';
 import type { Env } from '../lib/env';
 
+// いったんわかりやすいようにここに配置後で入れる
+import { createScheduleRepository } from '../infrastructure/repositories/ScheduleRepository';
+import { createScheduleService } from '../application/services/ScheduleService';
+import { createScheduleController } from '../presentation/controllers/ScheduleController';
+
 export function createDIContainer(env: Env) {
   const db = getDb(env);
 
@@ -64,6 +69,7 @@ export function createDIContainer(env: Env) {
   const gatheringGroupMemberRepository =
     createGatheringGroupMemberRepository(db);
   const gatheringRepository = createGatheringRepository(db);
+  const scheduleRepository = createScheduleRepository(db); // いったんわかりやすいようにここに配置後で入れる
 
   // Services
   const authService = createAuthService(userRepository, env.AUTH_KV);
@@ -107,6 +113,7 @@ export function createDIContainer(env: Env) {
     gatheringGroupMemberRepository
   );
   const gatheringService = createGatheringService(gatheringRepository);
+  const scheduleService = createScheduleService(scheduleRepository);
 
   // Controllers
   const studentController = createStudentController(studentService);
@@ -134,6 +141,7 @@ export function createDIContainer(env: Env) {
     gatheringGroupMemberService
   );
   const gatheringController = createGatheringController(gatheringService);
+  const scheduleController = createScheduleController(scheduleService); // いったんわかりやすいようにここに配置後で入れる
 
   return {
     authService,
@@ -151,6 +159,7 @@ export function createDIContainer(env: Env) {
     gatheringGroupController,
     gatheringGroupMemberController,
     gatheringController,
+    scheduleController, // いったんわかりやすいようにここに配置後で入れる
   };
 }
 
