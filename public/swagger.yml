@@ -110,6 +110,57 @@ paths:
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
+
+  /students/master-imports/validate:
+    post:
+      tags: [Students]
+      summary: 学生の一括取込データを検査する（DBへの書き込みは行わない）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentImportRequest'
+      responses:
+        '200':
+          description: 検査結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentImportValidationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /students/master-imports/commit:
+    post:
+      tags: [Students]
+      summary: 学生を一括登録する（1件でもエラーがあれば1件も登録しない）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentImportRequest'
+      responses:
+        '201':
+          description: 全件登録に成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentImportCommitResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          description: エラー行が存在するため1件も登録されなかった
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentImportCommitResult'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /events:
     get:
       tags: [Events]
@@ -189,6 +240,109 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/ClassRoom'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /classrooms/master-imports/validate:
+    post:
+      tags: [ClassRooms]
+      summary: クラスの一括取込データを検査する（DBへの書き込みは行わない）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassRoomImportRequest'
+      responses:
+        '200':
+          description: 検査結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassRoomImportValidationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /classrooms/master-imports/commit:
+    post:
+      tags: [ClassRooms]
+      summary: クラスを一括登録する（1件でもエラーがあれば1件も登録しない）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassRoomImportRequest'
+      responses:
+        '201':
+          description: 全件登録に成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassRoomImportCommitResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          description: エラー行が存在するため1件も登録されなかった
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassRoomImportCommitResult'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /teachers/master-imports/validate:
+    post:
+      tags: [Teachers]
+      summary: 教官の一括取込データを検査する（DBへの書き込みは行わない）
+      description: |
+        teachersテーブルには学籍番号のような一意キーが存在しないため、
+        重複チェックは行わない（氏名の必須チェックのみ）。同姓同名でも別教官として登録される。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeacherImportRequest'
+      responses:
+        '200':
+          description: 検査結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeacherImportValidationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /teachers/master-imports/commit:
+    post:
+      tags: [Teachers]
+      summary: 教官を一括登録する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeacherImportRequest'
+      responses:
+        '201':
+          description: 全件登録に成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeacherImportCommitResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          description: エラー行が存在するため1件も登録されなかった
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeacherImportCommitResult'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1006,6 +1160,89 @@ components:
         offset:
           type: integer
 
+    StudentImportRow:
+      type: object
+      required: [class_code, attendance_number, student_id_number, last_name, first_name]
+      properties:
+        class_code:
+          type: string
+          description: 既存クラスに無い場合、このコードをクラス名として仮登録し自動作成する
+        attendance_number:
+          type: integer
+          minimum: 1
+        student_id_number:
+          oneOf:
+            - type: string
+            - type: integer
+          description: 文字列または数値で受け付ける（内部的に文字列へ変換される）
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    StudentImportRequest:
+      type: object
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/StudentImportRow'
+
+    StudentImportRowError:
+      type: object
+      required: [row_index, class_code, attendance_number, student_id_number, display_name, reason]
+      properties:
+        row_index:
+          type: integer
+        class_code:
+          type: string
+        attendance_number:
+          type: integer
+        student_id_number:
+          type: string
+        display_name:
+          type: string
+        reason:
+          type: string
+          enum: [student_id_number_duplicate_in_file, student_id_number_duplicate_in_db]
+
+    StudentImportValidationResult:
+      type: object
+      required: [total, success_count, error_count, errors]
+      properties:
+        total:
+          type: integer
+        success_count:
+          type: integer
+        error_count:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentImportRowError'
+
+    StudentImportCommitResult:
+      type: object
+      required: [total, imported, error_count, errors]
+      properties:
+        total:
+          type: integer
+        imported:
+          type: integer
+          description: 全件失敗方式のため、error_countが1以上の場合は常に0
+        error_count:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentImportRowError'
+
     Event:
       type: object
       required: [event_id, event_name, venue, start_time, end_time, created_at, updated_at]
@@ -1044,6 +1281,141 @@ components:
           type: string
         class_name:
           type: string
+
+    ClassRoomImportRow:
+      type: object
+      required: [class_code, class_name]
+      properties:
+        class_code:
+          type: string
+          minLength: 1
+          maxLength: 100
+        class_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    ClassRoomImportRequest:
+      type: object
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ClassRoomImportRow'
+
+    ClassRoomImportRowError:
+      type: object
+      required: [row_index, class_code, class_name, reason]
+      properties:
+        row_index:
+          type: integer
+        class_code:
+          type: string
+        class_name:
+          type: string
+        reason:
+          type: string
+          enum: [class_code_duplicate_in_file, class_code_duplicate_in_db]
+
+    ClassRoomImportValidationResult:
+      type: object
+      required: [total, success_count, error_count, errors]
+      properties:
+        total:
+          type: integer
+        success_count:
+          type: integer
+        error_count:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClassRoomImportRowError'
+
+    ClassRoomImportCommitResult:
+      type: object
+      required: [total, imported, error_count, errors]
+      properties:
+        total:
+          type: integer
+        imported:
+          type: integer
+          description: 全件失敗方式のため、error_countが1以上の場合は常に0
+        error_count:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClassRoomImportRowError'
+
+    TeacherImportRow:
+      type: object
+      required: [last_name, first_name]
+      properties:
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    TeacherImportRequest:
+      type: object
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/TeacherImportRow'
+
+    TeacherImportRowError:
+      type: object
+      required: [row_index, last_name, first_name, reason]
+      description: teachersテーブルに一意キーが無いため、現状このエラーが返ることはない
+      properties:
+        row_index:
+          type: integer
+        last_name:
+          type: string
+        first_name:
+          type: string
+        reason:
+          type: string
+
+    TeacherImportValidationResult:
+      type: object
+      required: [total, success_count, error_count, errors]
+      properties:
+        total:
+          type: integer
+        success_count:
+          type: integer
+        error_count:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeacherImportRowError'
+
+    TeacherImportCommitResult:
+      type: object
+      required: [total, imported, error_count, errors]
+      properties:
+        total:
+          type: integer
+        imported:
+          type: integer
+        error_count:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeacherImportRowError'
 
     GatheringSpot:
       type: object
@@ -1516,6 +1888,8 @@ tags:
     description: イベント
   - name: ClassRooms
     description: クラス
+  - name: Teachers
+    description: 教官
   - name: Gathering spots
     description: 集合場所
   - name: Gathering groups

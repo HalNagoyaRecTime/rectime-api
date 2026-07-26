@@ -1,4 +1,4 @@
-import { D1Database } from '@cloudflare/workers-types';
+import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import { TeacherEntity } from '../../domain/entities/Teacher';
 import {
   ITeacherRepository,
@@ -48,6 +48,54 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         user_id: user.user_id,
         user_name: user.user_name,
       };
+    },
+
+    async createMany(inputs: NewTeacherInput[]): Promise<TeacherEntity[]> {
+      if (inputs.length === 0) {
+        return [];
+      }
+
+      const statements: D1PreparedStatement[] = [];
+      for (const input of inputs) {
+        statements.push(
+          db
+            .prepare(
+              `INSERT INTO users (user_name, updated_at)
+               VALUES (?, CURRENT_TIMESTAMP)
+               RETURNING user_id, user_name`
+            )
+            .bind(input.displayName)
+        );
+        statements.push(
+          db.prepare(
+            `INSERT INTO teachers (user_id, updated_at)
+             VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
+             RETURNING teacher_id, user_id`
+          )
+        );
+      }
+
+      const results = await db.batch<ReturnedUserRow | ReturnedTeacherRow>(
+        statements
+      );
+
+      const created: TeacherEntity[] = [];
+      for (let i = 0; i < inputs.length; i++) {
+        const user = results[i * 2].results[0] as ReturnedUserRow | undefined;
+        const teacher = results[i * 2 + 1].results[0] as
+          | ReturnedTeacherRow
+          | undefined;
+        if (!user || !teacher) {
+          throw new Error('Failed to create teacher');
+        }
+        created.push({
+          teacher_id: teacher.teacher_id,
+          user_id: user.user_id,
+          user_name: user.user_name,
+        });
+      }
+
+      return created;
     },
   };
 }

@@ -7,6 +7,7 @@ function createRepository(
 ): ITeacherRepository {
   return {
     create: vi.fn(),
+    createMany: vi.fn(),
     ...overrides,
   };
 }
@@ -14,8 +15,8 @@ function createRepository(
 describe('TeacherService', () => {
   describe('validateTeacherImport', () => {
     it('重複チェックを行わず、常にerrorsが空の結果を返す(DBへの書き込みは行わない)', async () => {
-      const create = vi.fn();
-      const repository = createRepository({ create });
+      const createMany = vi.fn();
+      const repository = createRepository({ createMany });
       const service = createTeacherService(repository);
 
       const result = await service.validateTeacherImport({
@@ -31,18 +32,14 @@ describe('TeacherService', () => {
         error_count: 0,
         errors: [],
       });
-      expect(create).not.toHaveBeenCalled();
+      expect(createMany).not.toHaveBeenCalled();
     });
   });
 
   describe('commitTeacherImport', () => {
-    it('全行を作成する', async () => {
-      const create = vi.fn().mockResolvedValue({
-        teacher_id: 1,
-        user_id: 1,
-        user_name: '田中太郎',
-      });
-      const repository = createRepository({ create });
+    it('全行分をまとめてcreateManyに渡す', async () => {
+      const createMany = vi.fn();
+      const repository = createRepository({ createMany });
       const service = createTeacherService(repository);
 
       const result = await service.commitTeacherImport({
@@ -58,9 +55,11 @@ describe('TeacherService', () => {
         error_count: 0,
         errors: [],
       });
-      expect(create).toHaveBeenCalledTimes(2);
-      expect(create).toHaveBeenNthCalledWith(1, { displayName: '田中太郎' });
-      expect(create).toHaveBeenNthCalledWith(2, { displayName: '佐藤花子' });
+      expect(createMany).toHaveBeenCalledTimes(1);
+      expect(createMany).toHaveBeenCalledWith([
+        { displayName: '田中太郎' },
+        { displayName: '佐藤花子' },
+      ]);
     });
   });
 });

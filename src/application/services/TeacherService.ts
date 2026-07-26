@@ -24,11 +24,11 @@ export function createTeacherService(
     async commitTeacherImport(
       input: TeacherImportInput
     ): Promise<TeacherImportCommitResult> {
-      for (const row of input.rows) {
-        await teacherRepository.create({
+      await teacherRepository.createMany(
+        input.rows.map(row => ({
           displayName: `${row.last_name}${row.first_name}`,
-        });
-      }
+        }))
+      );
 
       return {
         total: input.rows.length,

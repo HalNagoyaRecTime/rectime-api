@@ -6,4 +6,5 @@ export interface NewTeacherInput {
 
 export interface ITeacherRepository {
   create: (input: NewTeacherInput) => Promise<TeacherEntity>;
+  createMany: (inputs: NewTeacherInput[]) => Promise<TeacherEntity[]>;
 }
