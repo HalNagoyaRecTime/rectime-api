@@ -88,6 +88,86 @@ describe('EventScheduleRepository', () => {
     });
   });
 
+  it('同じ集合に登録した複数の利用者を通知対象にする', async () => {
+    const fixture = await createFixture();
+    const secondUser = await env.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('参加者2') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await env.DB.batch([
+      env.DB.prepare(
+        'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+      ).bind(fixture.gatheringId, secondUser!.user_id),
+      env.DB.prepare(
+        "INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, 'participant-token-2')"
+      ).bind(secondUser!.user_id),
+    ]);
+
+    await repository.apply(buildInput(fixture));
+
+    const schedules = await env.DB.prepare(
+      `SELECT ft.user_id
+       FROM notification_schedules ns
+       INNER JOIN firebase_tokens ft
+         ON ft.firebase_token_id = ns.firebase_token_id
+       WHERE ns.event_id = ?
+       ORDER BY ft.user_id`
+    )
+      .bind(fixture.eventId)
+      .all<{ user_id: number }>();
+    expect(schedules.results).toEqual([
+      { user_id: fixture.userId },
+      { user_id: secondUser!.user_id },
+    ]);
+  });
+
+  it('同じ競技に複数の集合がある場合も各集合の利用者へ通知する', async () => {
+    const fixture = await createFixture();
+    const secondUser = await env.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('別集合の参加者') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const secondSpot = await env.DB.prepare(
+      "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('正門前') RETURNING gathering_spot_id"
+    ).first<{ gathering_spot_id: number }>();
+    const secondGathering = await env.DB.prepare(
+      'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id'
+    )
+      .bind(fixture.eventId, secondSpot!.gathering_spot_id)
+      .first<{ gathering_id: number }>();
+    await env.DB.batch([
+      env.DB.prepare(
+        'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+      ).bind(secondGathering!.gathering_id, secondUser!.user_id),
+      env.DB.prepare(
+        "INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, 'second-gathering-token')"
+      ).bind(secondUser!.user_id),
+    ]);
+
+    await repository.apply(buildInput(fixture));
+
+    const schedules = await env.DB.prepare(
+      `SELECT ft.user_id, n.body
+       FROM notification_schedules ns
+       INNER JOIN firebase_tokens ft
+         ON ft.firebase_token_id = ns.firebase_token_id
+       INNER JOIN notifications n
+         ON n.notification_id = ns.notification_id
+       WHERE ns.event_id = ?
+       ORDER BY ft.user_id`
+    )
+      .bind(fixture.eventId)
+      .all<{ user_id: number; body: string }>();
+    expect(schedules.results).toEqual([
+      {
+        user_id: fixture.userId,
+        body: '大縄跳びの開始時間が近づいています。該当チームは体育館前へ集合してください。',
+      },
+      {
+        user_id: secondUser!.user_id,
+        body: '大縄跳びの開始時間が近づいています。該当チームは正門前へ集合してください。',
+      },
+    ]);
+  });
+
   it('同じイベントを更新すると既存draftを削除して再生成する', async () => {
     const fixture = await createFixture();
     await repository.apply(buildInput(fixture));
