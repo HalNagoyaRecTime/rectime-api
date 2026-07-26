@@ -20,6 +20,21 @@ function toEntity(
   };
 }
 
+function isForeignKeyConstraintError(error: unknown): boolean {
+  const visited = new Set<Error>();
+  let current = error;
+
+  while (current instanceof Error && !visited.has(current)) {
+    if (current.message.includes('FOREIGN KEY constraint failed')) {
+      return true;
+    }
+    visited.add(current);
+    current = current.cause;
+  }
+
+  return false;
+}
+
 export function createGatheringGroupRepository(
   db: D1Database
 ): IGatheringGroupRepository {
@@ -75,8 +90,15 @@ export function createGatheringGroupRepository(
           .delete(gathering_groups)
           .where(eq(gathering_groups.id, gatheringGroupId)),
       ] as const;
-      const results = await orm.batch(statements);
-      return results[1].meta.changes === 1;
+      try {
+        const results = await orm.batch(statements);
+        return results[1].meta.changes === 1;
+      } catch (error) {
+        if (isForeignKeyConstraintError(error)) {
+          throw new Error('Gathering group is assigned to an event');
+        }
+        throw error;
+      }
     },
   };
 }

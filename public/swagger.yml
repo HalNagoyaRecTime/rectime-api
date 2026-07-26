@@ -84,6 +84,116 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
+
+  /staffs:
+    get:
+      tags: [Staffs]
+      summary: 職員一覧を取得する
+      responses:
+        '200':
+          description: 職員一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Staff'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /staffs/{staffId}:
+    get:
+      tags: [Staffs]
+      summary: 職員を取得する
+      parameters:
+        - $ref: '#/components/parameters/StaffId'
+      responses:
+        '200':
+          description: 職員
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Staff'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /teachers:
+    get:
+      tags: [Teachers]
+      summary: 教員一覧を検索する
+      parameters:
+        - name: teacherId
+          in: query
+          description: 教員IDで絞り込む
+          schema:
+            type: integer
+            minimum: 1
+        - name: userName
+          in: query
+          description: 氏名の部分一致で絞り込む
+          schema:
+            type: string
+        - name: classRoomId
+          in: query
+          description: 担当クラスのIDで絞り込む
+          schema:
+            type: integer
+            minimum: 1
+        - name: isLiveActive
+          in: query
+          description: 有効状態で絞り込む
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          description: ページ番号（1始まり、デフォルト1）
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          description: 1ページあたりの件数（デフォルト20）
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: 教員一覧（ページ分け済み）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeacherPage'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /teachers/{teacherId}:
+    get:
+      tags: [Teachers]
+      summary: 教員を取得する
+      parameters:
+        - $ref: '#/components/parameters/TeacherId'
+      responses:
+        '200':
+          description: 教員
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Teacher'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [Teachers]
+      summary: 教員情報と担当クラスを更新する
+      parameters:
+        - $ref: '#/components/parameters/TeacherId'
     put:
       tags: [Students]
       summary: 学生を更新する
@@ -94,6 +204,28 @@ paths:
         content:
           application/json:
             schema:
+              $ref: '#/components/schemas/TeacherUpdateRequest'
+      responses:
+        '200':
+          description: 更新後の教員
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Teacher'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Teachers]
+      summary: 教員を削除する（担当クラスに割り当てられている場合は削除できない）
+      parameters:
+        - $ref: '#/components/parameters/TeacherId'
+      responses:
+        '204':
+          description: 削除成功
               $ref: '#/components/schemas/StudentWriteRequest'
       responses:
         '200':
@@ -110,6 +242,7 @@ paths:
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
+
   /events:
     get:
       tags: [Events]
@@ -393,6 +526,32 @@ paths:
                 $ref: '#/components/schemas/GatheringSpot'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /gathering-spots/{gatheringSpotId}:
+    put:
+      tags: [Gathering spots]
+      summary: 集合場所を更新する
+      parameters:
+        - $ref: '#/components/parameters/GatheringSpotId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGatheringSpotRequest'
+      responses:
+        '200':
+          description: 更新した集合場所
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatheringSpot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1105,6 +1264,20 @@ components:
       schema:
         type: integer
         minimum: 1
+    StaffId:
+      name: staffId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    TeacherId:
+      name: teacherId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
     GatheringId:
       name: gatheringId
       in: path
@@ -1114,6 +1287,13 @@ components:
         minimum: 1
     GatheringGroupId:
       name: gatheringGroupId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    GatheringSpotId:
+      name: gatheringSpotId
       in: path
       required: true
       schema:
@@ -1247,6 +1427,79 @@ components:
         limit:
           type: integer
         offset:
+          type: integer
+
+    Staff:
+      type: object
+      required: [staff_id, user_id, display_name]
+      properties:
+        staff_id:
+          type: integer
+        user_id:
+          type: integer
+        display_name:
+          type: string
+
+    TeacherClassRoom:
+      type: object
+      required: [class_room_id, class_code, class_name]
+      properties:
+        class_room_id:
+          type: integer
+        class_code:
+          type: string
+        class_name:
+          type: string
+
+    Teacher:
+      type: object
+      required: [teacher_id, user_id, display_name, is_live_active, class_rooms]
+      properties:
+        teacher_id:
+          type: integer
+        user_id:
+          type: integer
+        display_name:
+          type: string
+        is_live_active:
+          type: boolean
+        class_rooms:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeacherClassRoom'
+
+    TeacherUpdateRequest:
+      type: object
+      required: [userName, isLiveActive, classRoomIds]
+      properties:
+        userName:
+          type: string
+          minLength: 1
+        isLiveActive:
+          type: boolean
+        classRoomIds:
+          type: array
+          uniqueItems: true
+          description: 重複したIDを指定した場合は400を返す
+          items:
+            type: integer
+            minimum: 1
+
+    TeacherPage:
+      type: object
+      required: [items, total, page, limit, total_pages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Teacher'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        total_pages:
           type: integer
 
     Event:
@@ -1388,6 +1641,14 @@ components:
           format: date-time
 
     CreateGatheringSpotRequest:
+      type: object
+      required: [gatheringSpotName]
+      properties:
+        gatheringSpotName:
+          type: string
+          minLength: 1
+
+    UpdateGatheringSpotRequest:
       type: object
       required: [gatheringSpotName]
       properties:
@@ -1827,6 +2088,10 @@ components:
 tags:
   - name: Students
     description: 学生情報
+  - name: Staffs
+    description: 職員情報
+  - name: Teachers
+    description: 教員情報
   - name: Events
     description: イベント
   - name: Classrooms

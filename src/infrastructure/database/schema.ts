@@ -13,6 +13,9 @@ export const class_rooms = sqliteTable(
     id: integer('class_room_id').primaryKey({ autoIncrement: true }),
     classCode: text('class_code').notNull(),
     name: text('class_name').notNull(),
+    // 1クラスの担当教員は最大1人という運用前提のカラム。クラス作成時点では
+    // 未定のこともあるためNULLを許容する。逆方向（1人の教員が複数クラスを
+    // 担当すること）は許容するため、UNIQUE制約は付けない。
     teacherId: integer('teacher_id').references(() => teachers.id),
     createdAt: text('created_at')
       .notNull()
