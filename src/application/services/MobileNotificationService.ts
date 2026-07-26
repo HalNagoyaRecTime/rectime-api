@@ -9,7 +9,7 @@ function toDTO(notification: MobileNotificationEntity): MobileNotificationDTO {
     notification_type: notification.type,
     title: notification.title,
     body: notification.body,
-    sent_at: notification.sentAt,
+    scheduled_at: notification.scheduledAt,
     related_event: notification.relatedEvent
       ? {
           event_id: notification.relatedEvent.id,

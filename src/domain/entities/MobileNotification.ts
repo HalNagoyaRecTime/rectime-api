@@ -11,7 +11,7 @@ export interface MobileNotificationEntity {
   type: string;
   title: string;
   body: string;
-  sentAt: string;
+  scheduledAt: string;
   relatedEvent: MobileNotificationEvent | null;
 }
 

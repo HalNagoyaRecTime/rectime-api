@@ -35,7 +35,7 @@ describe('MobileNotificationService', () => {
       type: 'manual',
       title: 'お知らせ',
       body: '本文',
-      sentAt: '2026-07-23T09:00:00+09:00',
+      scheduledAt: '2026-07-23T09:00:00+09:00',
       relatedEvent: null,
     };
     (repository.findByIdForUser as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -47,7 +47,7 @@ describe('MobileNotificationService', () => {
       notification_type: 'manual',
       title: 'お知らせ',
       body: '本文',
-      sent_at: '2026-07-23T09:00:00+09:00',
+      scheduled_at: '2026-07-23T09:00:00+09:00',
       related_event: null,
     });
     expect(repository.findByIdForUser).toHaveBeenCalledWith(5, 12);
@@ -62,7 +62,7 @@ describe('MobileNotificationService', () => {
           type: 'event_reminder',
           title: '競技通知',
           body: '本文',
-          sentAt: '2026-07-23T10:15:00+09:00',
+          scheduledAt: '2026-07-23T10:15:00+09:00',
           relatedEvent: {
             id: 3,
             name: '綱引き',
@@ -82,7 +82,7 @@ describe('MobileNotificationService', () => {
           notification_type: 'event_reminder',
           title: '競技通知',
           body: '本文',
-          sent_at: '2026-07-23T10:15:00+09:00',
+          scheduled_at: '2026-07-23T10:15:00+09:00',
           related_event: {
             event_id: 3,
             event_name: '綱引き',

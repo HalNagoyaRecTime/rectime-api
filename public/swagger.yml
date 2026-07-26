@@ -2014,7 +2014,7 @@ components:
     MobileNotification:
       type: object
       required:
-        [notification_id, notification_type, title, body, sent_at, related_event]
+        [notification_id, notification_type, title, body, scheduled_at, related_event]
       properties:
         notification_id:
           type: integer
@@ -2024,10 +2024,10 @@ components:
           type: string
         body:
           type: string
-        sent_at:
+        scheduled_at:
           type: string
           format: date-time
-          description: 通知予定に記録された送信日時
+          description: notification_schedules.send_atに記録された通知予定日時
         related_event:
           allOf:
             - $ref: '#/components/schemas/MobileNotificationEvent'

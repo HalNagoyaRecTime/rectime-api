@@ -20,7 +20,7 @@ const selection = {
   notification_type: notifications.notificationType,
   title: notifications.title,
   body: notifications.body,
-  sent_at: notification_schedules.sendAt,
+  scheduled_at: notification_schedules.sendAt,
   event_id: events.id,
   event_name: events.name,
   venue: events.venue,
@@ -33,7 +33,7 @@ type MobileNotificationRow = {
   notification_type: string;
   title: string;
   body: string;
-  sent_at: string;
+  scheduled_at: string;
   event_id: number | null;
   event_name: string | null;
   venue: string | null;
@@ -47,7 +47,7 @@ function toEntity(row: MobileNotificationRow): MobileNotificationEntity {
     type: row.notification_type,
     title: row.title,
     body: row.body,
-    sentAt: row.sent_at,
+    scheduledAt: row.scheduled_at,
     relatedEvent:
       row.event_id === null
         ? null

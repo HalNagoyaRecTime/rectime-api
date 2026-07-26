@@ -11,7 +11,7 @@ export interface MobileNotificationDTO {
   notification_type: string;
   title: string;
   body: string;
-  sent_at: string;
+  scheduled_at: string;
   related_event: MobileNotificationEventDTO | null;
 }
 

@@ -11,7 +11,7 @@ const notification = {
   notification_type: 'event_reminder',
   title: '競技開始のお知らせ',
   body: '競技開始時間が近づいています。',
-  sent_at: '2026-07-23T10:15:00+09:00',
+  scheduled_at: '2026-07-23T10:15:00+09:00',
   related_event: {
     event_id: 3,
     event_name: '綱引き',
