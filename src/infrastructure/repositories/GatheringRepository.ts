@@ -7,16 +7,10 @@ import {
 } from '../../domain/entities/Gathering';
 import { IGatheringRepository } from '../../domain/interfaces/repositories/IGatheringRepository';
 import * as schema from '../database/schema';
-import {
-  events,
-  gathering_groups,
-  gathering_spots,
-  gatherings,
-} from '../database/schema';
+import { events, gathering_spots, gatherings } from '../database/schema';
 
 const detailSelection = {
   gathering_id: gatherings.id,
-  gathering_group_id: gatherings.gatheringGroupId,
   event_id: gatherings.eventId,
   gathering_spot_id: gatherings.gatheringSpotId,
   gathering_time: gatherings.gatheringTime,
@@ -38,10 +32,6 @@ export function createGatheringRepository(
     const row = await orm
       .select(detailSelection)
       .from(gatherings)
-      .innerJoin(
-        gathering_groups,
-        eq(gatherings.gatheringGroupId, gathering_groups.id)
-      )
       .innerJoin(events, eq(gatherings.eventId, events.id))
       .innerJoin(
         gathering_spots,
@@ -57,10 +47,6 @@ export function createGatheringRepository(
       return orm
         .select(detailSelection)
         .from(gatherings)
-        .innerJoin(
-          gathering_groups,
-          eq(gatherings.gatheringGroupId, gathering_groups.id)
-        )
         .innerJoin(events, eq(gatherings.eventId, events.id))
         .innerJoin(
           gathering_spots,
@@ -70,14 +56,18 @@ export function createGatheringRepository(
         .all();
     },
 
-    async existsGatheringGroup(gatheringGroupId: number): Promise<boolean> {
-      return Boolean(
-        await orm
-          .select({ id: gathering_groups.id })
-          .from(gathering_groups)
-          .where(eq(gathering_groups.id, gatheringGroupId))
-          .get()
-      );
+    async findByEventId(eventId: number): Promise<GatheringDetailsEntity[]> {
+      return orm
+        .select(detailSelection)
+        .from(gatherings)
+        .innerJoin(events, eq(gatherings.eventId, events.id))
+        .innerJoin(
+          gathering_spots,
+          eq(gatherings.gatheringSpotId, gathering_spots.id)
+        )
+        .where(eq(gatherings.eventId, eventId))
+        .orderBy(asc(gatherings.id))
+        .all();
     },
 
     async existsEvent(eventId: number): Promise<boolean> {
@@ -104,20 +94,32 @@ export function createGatheringRepository(
       const row = await orm
         .insert(gatherings)
         .values({
-          gatheringGroupId: input.gathering_group_id,
           eventId: input.event_id,
           gatheringSpotId: input.gathering_spot_id,
           gatheringTime: input.gathering_time,
           round: input.round,
         })
-        .onConflictDoNothing({ target: gatherings.gatheringGroupId })
         .returning({ id: gatherings.id })
         .get();
-      if (!row) throw new Error('Gathering already exists for this group');
+      if (!row) throw new Error('Failed to create gathering');
 
       const gathering = await findById(row.id);
       if (!gathering) throw new Error('Failed to create gathering');
       return gathering;
+    },
+
+    async remove(gatheringId: number): Promise<boolean> {
+      // D1 batchはトランザクションとして実行される。集合メンバーだけ、または
+      // 集合だけが削除された状態を残さないよう、子から順にまとめて削除する。
+      const [, gatheringResult] = await db.batch([
+        db
+          .prepare('DELETE FROM gathering_group_members WHERE gathering_id = ?')
+          .bind(gatheringId),
+        db
+          .prepare('DELETE FROM gatherings WHERE gathering_id = ?')
+          .bind(gatheringId),
+      ]);
+      return (gatheringResult.meta.changes ?? 0) > 0;
     },
   };
 }

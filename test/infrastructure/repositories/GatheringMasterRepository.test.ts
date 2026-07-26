@@ -1,53 +1,72 @@
 import { env } from 'cloudflare:workers';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createGatheringGroupMemberRepository } from '../../../src/infrastructure/repositories/GatheringGroupMemberRepository';
-import { createGatheringGroupRepository } from '../../../src/infrastructure/repositories/GatheringGroupRepository';
 import { createGatheringSpotRepository } from '../../../src/infrastructure/repositories/GatheringSpotRepository';
 
 describe('Gathering master repositories', () => {
   const gatheringSpotRepository = createGatheringSpotRepository(env.DB);
-  const gatheringGroupRepository = createGatheringGroupRepository(env.DB);
-  const gatheringGroupMemberRepository = createGatheringGroupMemberRepository(
-    env.DB
-  );
-  const userId = 940001;
+  const memberRepository = createGatheringGroupMemberRepository(env.DB);
+  let gatheringIds: number[] = [];
   let gatheringSpotIds: number[] = [];
-  let gatheringGroupIds: number[] = [];
-  let testUserIds: number[] = [];
+  let eventIds: number[] = [];
+  let userIds: number[] = [];
 
-  beforeEach(async () => {
-    gatheringSpotIds = [];
-    gatheringGroupIds = [];
-    testUserIds = [userId];
-    await env.DB.prepare(
-      'DELETE FROM gathering_group_members WHERE user_id = ?'
+  async function createGathering(suffix: string): Promise<number> {
+    const event = await env.DB.prepare(
+      'INSERT INTO events (event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?) RETURNING event_id'
     )
-      .bind(userId)
-      .run();
-    await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
-      .bind(userId)
-      .run();
-    await env.DB.prepare(
-      'INSERT INTO users (user_id, user_name, is_live_active) VALUES (?, ?, ?)'
+      .bind(`所属テスト競技-${suffix}`, '体育館', '0900', '1000')
+      .first<{ event_id: number }>();
+    eventIds.push(event!.event_id);
+    const spot = await env.DB.prepare(
+      'INSERT INTO gathering_spots (gathering_spot_name) VALUES (?) RETURNING gathering_spot_id'
     )
-      .bind(userId, '集会テスト利用者', 1)
-      .run();
-  });
+      .bind(`所属テスト場所-${suffix}`)
+      .first<{ gathering_spot_id: number }>();
+    gatheringSpotIds.push(spot!.gathering_spot_id);
+    const gathering = await env.DB.prepare(
+      'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id'
+    )
+      .bind(event!.event_id, spot!.gathering_spot_id)
+      .first<{ gathering_id: number }>();
+    gatheringIds.push(gathering!.gathering_id);
+    return gathering!.gathering_id;
+  }
+
+  async function createUser(name: string): Promise<number> {
+    const user = await env.DB.prepare(
+      'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
+    )
+      .bind(name)
+      .first<{ user_id: number }>();
+    userIds.push(user!.user_id);
+    return user!.user_id;
+  }
 
   afterEach(async () => {
-    await env.DB.batch(
-      testUserIds.map(id =>
-        env.DB.prepare(
-          'DELETE FROM gathering_group_members WHERE user_id = ?'
-        ).bind(id)
-      )
-    );
-    if (gatheringGroupIds.length > 0) {
+    if (gatheringIds.length > 0) {
       await env.DB.batch(
-        gatheringGroupIds.map(id =>
+        gatheringIds.flatMap(id => [
           env.DB.prepare(
-            'DELETE FROM gathering_groups WHERE gathering_group_id = ?'
-          ).bind(id)
+            'DELETE FROM gathering_group_members WHERE gathering_id = ?'
+          ).bind(id),
+          env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?').bind(
+            id
+          ),
+        ])
+      );
+    }
+    if (userIds.length > 0) {
+      await env.DB.batch(
+        userIds.map(id =>
+          env.DB.prepare('DELETE FROM users WHERE user_id = ?').bind(id)
+        )
+      );
+    }
+    if (eventIds.length > 0) {
+      await env.DB.batch(
+        eventIds.map(id =>
+          env.DB.prepare('DELETE FROM events WHERE event_id = ?').bind(id)
         )
       );
     }
@@ -60,11 +79,10 @@ describe('Gathering master repositories', () => {
         )
       );
     }
-    await env.DB.batch(
-      testUserIds.map(id =>
-        env.DB.prepare('DELETE FROM users WHERE user_id = ?').bind(id)
-      )
-    );
+    gatheringIds = [];
+    gatheringSpotIds = [];
+    eventIds = [];
+    userIds = [];
   });
 
   it('集合場所を作成し、ID順で取得できる', async () => {
@@ -73,13 +91,13 @@ describe('Gathering master repositories', () => {
     gatheringSpotIds.push(first.gathering_spot_id, second.gathering_spot_id);
 
     const spots = await gatheringSpotRepository.findAll();
-    const createdSpots = spots.filter(spot =>
+    const created = spots.filter(spot =>
       [first.gathering_spot_id, second.gathering_spot_id].includes(
         spot.gathering_spot_id
       )
     );
 
-    expect(createdSpots.map(spot => spot.gathering_spot_id)).toEqual([
+    expect(created.map(spot => spot.gathering_spot_id)).toEqual([
       first.gathering_spot_id,
       second.gathering_spot_id,
     ]);
@@ -104,154 +122,81 @@ describe('Gathering master repositories', () => {
     ).resolves.toBeNull();
   });
 
-  it('集合グループを作成し、ID順で取得できる', async () => {
-    const first = await gatheringGroupRepository.create();
-    const second = await gatheringGroupRepository.create();
-    gatheringGroupIds.push(first.gathering_group_id, second.gathering_group_id);
-
-    const groups = await gatheringGroupRepository.findAll();
-    const createdGroups = groups.filter(group =>
-      [first.gathering_group_id, second.gathering_group_id].includes(
-        group.gathering_group_id
-      )
-    );
-
-    expect(createdGroups.map(group => group.gathering_group_id)).toEqual([
-      first.gathering_group_id,
-      second.gathering_group_id,
-    ]);
-  });
-
-  it('ユーザーや名称を指定せず集合グループを作成できる', async () => {
-    const group = await gatheringGroupRepository.create();
-    gatheringGroupIds.push(group.gathering_group_id);
-
-    expect(group).toEqual(
-      expect.objectContaining({
-        gathering_group_id: expect.any(Number),
-        created_at: expect.any(String),
-        updated_at: expect.any(String),
-      })
-    );
-  });
-
-  it('グループ所属を追加・一覧取得・解除でき、重複追加は防止する', async () => {
-    const group = await gatheringGroupRepository.create();
-    gatheringGroupIds.push(group.gathering_group_id);
-    const member = await gatheringGroupMemberRepository.create(
-      group.gathering_group_id,
-      userId
-    );
+  it('集合対象者を追加・一覧取得・解除でき、重複追加を防止する', async () => {
+    const gatheringId = await createGathering('基本');
+    const userId = await createUser('集合対象者1');
+    const member = await memberRepository.create(gatheringId, userId);
 
     await expect(
-      gatheringGroupMemberRepository.findByGatheringGroupId(
-        group.gathering_group_id
-      )
+      memberRepository.findByGatheringId(gatheringId)
     ).resolves.toEqual([
       expect.objectContaining({
         gathering_group_member_id: member.gathering_group_member_id,
-        gathering_group_id: group.gathering_group_id,
+        gathering_id: gatheringId,
         user_id: userId,
       }),
     ]);
-    await expect(
-      gatheringGroupMemberRepository.create(group.gathering_group_id, userId)
-    ).rejects.toThrow('Gathering group member already exists');
+    await expect(memberRepository.create(gatheringId, userId)).rejects.toThrow(
+      'Gathering member already exists'
+    );
 
+    await expect(memberRepository.remove(gatheringId, userId)).resolves.toBe(
+      true
+    );
     await expect(
-      gatheringGroupMemberRepository.remove(group.gathering_group_id, userId)
-    ).resolves.toBe(true);
-    await expect(
-      gatheringGroupMemberRepository.findByGatheringGroupId(
-        group.gathering_group_id
-      )
+      memberRepository.findByGatheringId(gatheringId)
     ).resolves.toEqual([]);
   });
 
-  it('存在しないグループまたはユーザーへの所属追加は失敗し、所属を作成しない', async () => {
-    const group = await gatheringGroupRepository.create();
-    gatheringGroupIds.push(group.gathering_group_id);
+  it('1つの集合に複数人を登録でき、同じ利用者を別の集合にも登録できる', async () => {
+    const firstGatheringId = await createGathering('複数1');
+    const secondGatheringId = await createGathering('複数2');
+    const firstUserId = await createUser('集合対象者2');
+    const secondUserId = await createUser('集合対象者3');
+
+    await memberRepository.create(firstGatheringId, firstUserId);
+    await memberRepository.create(firstGatheringId, secondUserId);
+    await memberRepository.create(secondGatheringId, firstUserId);
 
     await expect(
-      gatheringGroupMemberRepository.create(999999, userId)
+      memberRepository.findByGatheringId(firstGatheringId)
+    ).resolves.toHaveLength(2);
+    await expect(
+      memberRepository.findByGatheringId(secondGatheringId)
+    ).resolves.toHaveLength(1);
+  });
+
+  it('存在しない集合または利用者への追加を拒否する', async () => {
+    const gatheringId = await createGathering('外部キー');
+    const userId = await createUser('集合対象者4');
+
+    await expect(memberRepository.create(999999, userId)).rejects.toThrow();
+    await expect(
+      memberRepository.create(gatheringId, 999999)
     ).rejects.toThrow();
     await expect(
-      gatheringGroupMemberRepository.create(group.gathering_group_id, 999999)
-    ).rejects.toThrow();
-    await expect(
-      gatheringGroupMemberRepository.findByGatheringGroupId(
-        group.gathering_group_id
-      )
+      memberRepository.findByGatheringId(gatheringId)
     ).resolves.toEqual([]);
   });
 
-  it('グループとユーザーの存在を確認できる', async () => {
-    const group = await gatheringGroupRepository.create();
-    gatheringGroupIds.push(group.gathering_group_id);
+  it('集合と利用者の存在を確認できる', async () => {
+    const gatheringId = await createGathering('存在確認');
+    const userId = await createUser('集合対象者5');
 
-    await expect(
-      gatheringGroupMemberRepository.existsGatheringGroup(
-        group.gathering_group_id
-      )
-    ).resolves.toBe(true);
-    await expect(
-      gatheringGroupMemberRepository.existsGatheringGroup(999999)
-    ).resolves.toBe(false);
-    await expect(
-      gatheringGroupMemberRepository.existsUser(userId)
-    ).resolves.toBe(true);
-    await expect(
-      gatheringGroupMemberRepository.existsUser(999999)
-    ).resolves.toBe(false);
+    await expect(memberRepository.existsGathering(gatheringId)).resolves.toBe(
+      true
+    );
+    await expect(memberRepository.existsGathering(999999)).resolves.toBe(false);
+    await expect(memberRepository.existsUser(userId)).resolves.toBe(true);
+    await expect(memberRepository.existsUser(999999)).resolves.toBe(false);
   });
 
-  it('グループで所属を絞り込み、ID順で取得できる', async () => {
-    const firstGroup = await gatheringGroupRepository.create();
-    const secondGroup = await gatheringGroupRepository.create();
-    gatheringGroupIds.push(
-      firstGroup.gathering_group_id,
-      secondGroup.gathering_group_id
-    );
-    const first = await gatheringGroupMemberRepository.create(
-      firstGroup.gathering_group_id,
-      userId
-    );
-    const secondUserId = 940002;
-    testUserIds.push(secondUserId);
-    await env.DB.prepare(
-      'INSERT INTO users (user_id, user_name, is_live_active) VALUES (?, ?, ?)'
-    )
-      .bind(secondUserId, '集会テスト利用者2', 1)
-      .run();
-    const second = await gatheringGroupMemberRepository.create(
-      firstGroup.gathering_group_id,
-      secondUserId
-    );
-    await gatheringGroupMemberRepository.create(
-      secondGroup.gathering_group_id,
-      userId
-    );
+  it('存在しない集合対象者の解除はfalseを返す', async () => {
+    const gatheringId = await createGathering('解除');
+    const userId = await createUser('集合対象者6');
 
-    await expect(
-      gatheringGroupMemberRepository.findByGatheringGroupId(
-        firstGroup.gathering_group_id
-      )
-    ).resolves.toEqual([
-      expect.objectContaining({
-        gathering_group_member_id: first.gathering_group_member_id,
-      }),
-      expect.objectContaining({
-        gathering_group_member_id: second.gathering_group_member_id,
-      }),
-    ]);
-  });
-
-  it('存在しない所属の解除はfalseを返す', async () => {
-    const group = await gatheringGroupRepository.create();
-    gatheringGroupIds.push(group.gathering_group_id);
-
-    await expect(
-      gatheringGroupMemberRepository.remove(group.gathering_group_id, userId)
-    ).resolves.toBe(false);
+    await expect(memberRepository.remove(gatheringId, userId)).resolves.toBe(
+      false
+    );
   });
 });

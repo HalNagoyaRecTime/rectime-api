@@ -1,6 +1,5 @@
 export interface GatheringEntity {
   gathering_id: number;
-  gathering_group_id: number;
   event_id: number;
   gathering_spot_id: number;
   gathering_time: string;
@@ -15,7 +14,6 @@ export interface GatheringDetailsEntity extends GatheringEntity {
 }
 
 export interface CreateGatheringInput {
-  gathering_group_id: number;
   event_id: number;
   gathering_spot_id: number;
   // HH:MM形式。未指定時は未設定を表す99:59を保存する。

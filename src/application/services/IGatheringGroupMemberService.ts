@@ -1,15 +1,15 @@
 import { GatheringGroupMemberEntity } from '../../domain/entities/GatheringGroupMember';
 
 export interface IGatheringGroupMemberService {
-  getGatheringGroupMembers: (
-    gatheringGroupId: number
+  getGatheringMembers: (
+    gatheringId: number
   ) => Promise<GatheringGroupMemberEntity[]>;
-  addGatheringGroupMember: (
-    gatheringGroupId: number,
+  addGatheringMember: (
+    gatheringId: number,
     userId: number
   ) => Promise<GatheringGroupMemberEntity>;
-  removeGatheringGroupMember: (
-    gatheringGroupId: number,
+  removeGatheringMember: (
+    gatheringId: number,
     userId: number
   ) => Promise<boolean>;
 }

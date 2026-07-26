@@ -5,7 +5,7 @@ import { createEventScheduleRepository } from '../../../src/infrastructure/repos
 interface Fixture {
   userId: number;
   eventId: number;
-  groupId: number;
+  gatheringId: number;
 }
 
 async function createFixture(): Promise<Fixture> {
@@ -15,19 +15,18 @@ async function createFixture(): Promise<Fixture> {
   const event = await env.DB.prepare(
     "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('大縄跳び', '体育館', '1000', '1030') RETURNING event_id"
   ).first<{ event_id: number }>();
-  const group = await env.DB.prepare(
-    'INSERT INTO gathering_groups DEFAULT VALUES RETURNING gathering_group_id'
-  ).first<{ gathering_group_id: number }>();
   const spot = await env.DB.prepare(
     "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('体育館前') RETURNING gathering_spot_id"
   ).first<{ gathering_spot_id: number }>();
+  const gathering = await env.DB.prepare(
+    'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id'
+  )
+    .bind(event!.event_id, spot!.gathering_spot_id)
+    .first<{ gathering_id: number }>();
   await env.DB.batch([
     env.DB.prepare(
-      'INSERT INTO gatherings (gathering_group_id, event_id, gathering_spot_id) VALUES (?, ?, ?)'
-    ).bind(group!.gathering_group_id, event!.event_id, spot!.gathering_spot_id),
-    env.DB.prepare(
-      'INSERT INTO gathering_group_members (gathering_group_id, user_id) VALUES (?, ?)'
-    ).bind(group!.gathering_group_id, user!.user_id),
+      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+    ).bind(gathering!.gathering_id, user!.user_id),
     env.DB.prepare(
       "INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, 'participant-token')"
     ).bind(user!.user_id),
@@ -35,7 +34,7 @@ async function createFixture(): Promise<Fixture> {
   return {
     userId: user!.user_id,
     eventId: event!.event_id,
-    groupId: group!.gathering_group_id,
+    gatheringId: gathering!.gathering_id,
   };
 }
 
@@ -61,7 +60,6 @@ describe('EventScheduleRepository', () => {
       env.DB.prepare('DELETE FROM firebase_tokens'),
       env.DB.prepare('DELETE FROM gatherings'),
       env.DB.prepare('DELETE FROM gathering_spots'),
-      env.DB.prepare('DELETE FROM gathering_groups'),
       env.DB.prepare('DELETE FROM events'),
       env.DB.prepare('DELETE FROM staffs'),
       env.DB.prepare('DELETE FROM teachers'),

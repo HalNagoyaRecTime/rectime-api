@@ -5,13 +5,9 @@ import { IGatheringGroupMemberService } from './IGatheringGroupMemberService';
 export function createGatheringGroupMemberService(
   gatheringGroupMemberRepository: IGatheringGroupMemberRepository
 ): IGatheringGroupMemberService {
-  async function ensureGatheringGroupExists(gatheringGroupId: number) {
-    if (
-      !(await gatheringGroupMemberRepository.existsGatheringGroup(
-        gatheringGroupId
-      ))
-    ) {
-      throw new Error('Gathering group not found');
+  async function ensureGatheringExists(gatheringId: number) {
+    if (!(await gatheringGroupMemberRepository.existsGathering(gatheringId))) {
+      throw new Error('Gathering not found');
     }
   }
 
@@ -22,35 +18,45 @@ export function createGatheringGroupMemberService(
   }
 
   return {
-    async getGatheringGroupMembers(
-      gatheringGroupId: number
+    async getGatheringMembers(
+      gatheringId: number
     ): Promise<GatheringGroupMemberEntity[]> {
-      await ensureGatheringGroupExists(gatheringGroupId);
-      return gatheringGroupMemberRepository.findByGatheringGroupId(
-        gatheringGroupId
-      );
+      await ensureGatheringExists(gatheringId);
+      return gatheringGroupMemberRepository.findByGatheringId(gatheringId);
     },
 
-    async addGatheringGroupMember(
-      gatheringGroupId: number,
+    async addGatheringMember(
+      gatheringId: number,
       userId: number
     ): Promise<GatheringGroupMemberEntity> {
-      await ensureGatheringGroupExists(gatheringGroupId);
+      await ensureGatheringExists(gatheringId);
       await ensureUserExists(userId);
-      return gatheringGroupMemberRepository.create(gatheringGroupId, userId);
+      try {
+        return await gatheringGroupMemberRepository.create(gatheringId, userId);
+      } catch (error) {
+        // 存在確認後に集合または利用者が削除される競合では、INSERTが
+        // 外部キー制約で失敗する。現在の状態を確認し、500ではなく404へ変換する。
+        const [gatheringExists, userExists] = await Promise.all([
+          gatheringGroupMemberRepository.existsGathering(gatheringId),
+          gatheringGroupMemberRepository.existsUser(userId),
+        ]);
+        if (!gatheringExists) throw new Error('Gathering not found');
+        if (!userExists) throw new Error('User not found');
+        throw error;
+      }
     },
 
-    async removeGatheringGroupMember(
-      gatheringGroupId: number,
+    async removeGatheringMember(
+      gatheringId: number,
       userId: number
     ): Promise<boolean> {
-      await ensureGatheringGroupExists(gatheringGroupId);
+      await ensureGatheringExists(gatheringId);
       await ensureUserExists(userId);
       const removed = await gatheringGroupMemberRepository.remove(
-        gatheringGroupId,
+        gatheringId,
         userId
       );
-      if (!removed) throw new Error('Gathering group member not found');
+      if (!removed) throw new Error('Gathering member not found');
       return true;
     },
   };
