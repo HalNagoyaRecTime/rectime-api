@@ -33,5 +33,41 @@ export function createGatheringGroupController(
     }
   };
 
-  return { getAllGatheringGroups, createGatheringGroup };
+  const deleteGatheringGroup = async (c: Context) => {
+    const gatheringGroupId = Number(c.req.param('gatheringGroupId'));
+    if (!Number.isInteger(gatheringGroupId) || gatheringGroupId <= 0) {
+      return c.json({ error: 'Invalid gathering group ID' }, 400);
+    }
+
+    try {
+      await gatheringGroupService.deleteGatheringGroup(gatheringGroupId);
+      return c.body(null, 204);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'Gathering group not found'
+      ) {
+        return c.json({ error: error.message }, 404);
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'Gathering group is assigned to an event'
+      ) {
+        return c.json({ error: error.message }, 409);
+      }
+      return c.json(
+        {
+          error: 'Failed to delete gathering group',
+          details: error instanceof Error ? error.message : String(error),
+        },
+        500
+      );
+    }
+  };
+
+  return {
+    getAllGatheringGroups,
+    createGatheringGroup,
+    deleteGatheringGroup,
+  };
 }

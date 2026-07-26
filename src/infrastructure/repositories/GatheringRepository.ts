@@ -119,5 +119,14 @@ export function createGatheringRepository(
       if (!gathering) throw new Error('Failed to create gathering');
       return gathering;
     },
+
+    async remove(gatheringId: number): Promise<boolean> {
+      const row = await orm
+        .delete(gatherings)
+        .where(eq(gatherings.id, gatheringId))
+        .returning({ id: gatherings.id })
+        .get();
+      return Boolean(row);
+    },
   };
 }

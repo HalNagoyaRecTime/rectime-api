@@ -7,11 +7,13 @@ function setup() {
   const service: IGatheringService = {
     getAllGatherings: vi.fn(),
     createGathering: vi.fn(),
+    deleteGathering: vi.fn(),
   };
   const controller = createGatheringController(service);
   const app = new Hono();
   app.get('/gatherings', c => controller.getAllGatherings(c));
   app.post('/gatherings', c => controller.createGathering(c));
+  app.delete('/gatherings/:gatheringId', c => controller.deleteGathering(c));
   return { app, service };
 }
 
@@ -19,13 +21,15 @@ describe('GatheringController', () => {
   it('一覧をJSONで返す', async () => {
     const { app, service } = setup();
     (service.getAllGatherings as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { gathering_id: 1 },
+      { gathering_id: 1, gathering_group_id: 2 },
     ]);
 
     const response = await app.request('/gatherings');
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual([{ gathering_id: 1 }]);
+    expect(await response.json()).toEqual([
+      { gathering_id: 1, gathering_group_id: 2 },
+    ]);
   });
 
   it('一覧取得時の想定外例外は500を返す', async () => {
@@ -59,10 +63,10 @@ describe('GatheringController', () => {
 
     expect(response.status).toBe(201);
     expect(service.createGathering).toHaveBeenCalledWith({
-      gathering_group_id: 1,
-      event_id: 2,
-      gathering_spot_id: 3,
-      gathering_time: '08:50',
+      gatheringGroupId: 1,
+      eventId: 2,
+      gatheringSpotId: 3,
+      gatheringTime: '08:50',
       round: 1,
     });
   });
@@ -84,7 +88,7 @@ describe('GatheringController', () => {
     expect(service.createGathering).not.toHaveBeenCalled();
   });
 
-  it('任意の集合時刻と回数を省略した場合もundefinedのままServiceへ渡す', async () => {
+  it('任意の集合時刻と回数を省略した場合、DTOに含めずServiceへ渡す', async () => {
     const { app, service } = setup();
     (service.createGathering as ReturnType<typeof vi.fn>).mockResolvedValue({
       gathering_id: 1,
@@ -102,11 +106,9 @@ describe('GatheringController', () => {
 
     expect(response.status).toBe(201);
     expect(service.createGathering).toHaveBeenCalledWith({
-      gathering_group_id: 1,
-      event_id: 2,
-      gathering_spot_id: 3,
-      gathering_time: undefined,
-      round: undefined,
+      gatheringGroupId: 1,
+      eventId: 2,
+      gatheringSpotId: 3,
     });
   });
 
@@ -142,17 +144,17 @@ describe('GatheringController', () => {
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
     expect(service.createGathering).toHaveBeenNthCalledWith(1, {
-      gathering_group_id: 1,
-      event_id: 2,
-      gathering_spot_id: 3,
-      gathering_time: '99:59',
+      gatheringGroupId: 1,
+      eventId: 2,
+      gatheringSpotId: 3,
+      gatheringTime: '99:59',
       round: 1,
     });
     expect(service.createGathering).toHaveBeenNthCalledWith(2, {
-      gathering_group_id: 4,
-      event_id: 5,
-      gathering_spot_id: 6,
-      gathering_time: '08:50',
+      gatheringGroupId: 4,
+      eventId: 5,
+      gatheringSpotId: 6,
+      gatheringTime: '08:50',
       round: 99,
     });
   });
@@ -240,5 +242,24 @@ describe('GatheringController', () => {
     });
 
     expect(response.status).toBe(500);
+  });
+
+  it('集合設定を削除し、存在しないIDは404、不正なIDは400を返す', async () => {
+    const { app, service } = setup();
+    (service.deleteGathering as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('Gathering not found'));
+
+    const deleted = await app.request('/gatherings/1', { method: 'DELETE' });
+    const missing = await app.request('/gatherings/999', { method: 'DELETE' });
+    const invalid = await app.request('/gatherings/invalid', {
+      method: 'DELETE',
+    });
+
+    expect(deleted.status).toBe(204);
+    expect(missing.status).toBe(404);
+    expect(invalid.status).toBe(400);
+    expect(service.deleteGathering).toHaveBeenCalledWith(1);
+    expect(service.deleteGathering).toHaveBeenCalledWith(999);
   });
 });

@@ -159,4 +159,24 @@ describe('GatheringRepository', () => {
     await expect(repository.existsGatheringSpot(spotId)).resolves.toBe(true);
     await expect(repository.existsGatheringSpot(999999)).resolves.toBe(false);
   });
+
+  it('集合設定を削除し、存在しないIDはfalseを返す', async () => {
+    const { groupId, spotId, eventId } = await createReferences('削除');
+    const created = await repository.create({
+      gathering_group_id: groupId,
+      event_id: eventId,
+      gathering_spot_id: spotId,
+    });
+    gatheringIds.push(created.gathering_id);
+
+    await expect(repository.remove(created.gathering_id)).resolves.toBe(true);
+    await expect(repository.remove(999999)).resolves.toBe(false);
+
+    const deleted = await env.DB.prepare(
+      'SELECT gathering_id FROM gatherings WHERE gathering_id = ?'
+    )
+      .bind(created.gathering_id)
+      .first();
+    expect(deleted).toBeNull();
+  });
 });

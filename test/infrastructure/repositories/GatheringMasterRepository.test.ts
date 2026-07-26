@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createGatheringGroupMemberRepository } from '../../../src/infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringGroupRepository } from '../../../src/infrastructure/repositories/GatheringGroupRepository';
+import { createGatheringRepository } from '../../../src/infrastructure/repositories/GatheringRepository';
 import { createGatheringSpotRepository } from '../../../src/infrastructure/repositories/GatheringSpotRepository';
 
 describe('Gathering master repositories', () => {
@@ -10,12 +11,17 @@ describe('Gathering master repositories', () => {
   const gatheringGroupMemberRepository = createGatheringGroupMemberRepository(
     env.DB
   );
+  const gatheringRepository = createGatheringRepository(env.DB);
   const userId = 940001;
+  let gatheringIds: number[] = [];
+  let eventIds: number[] = [];
   let gatheringSpotIds: number[] = [];
   let gatheringGroupIds: number[] = [];
   let testUserIds: number[] = [];
 
   beforeEach(async () => {
+    gatheringIds = [];
+    eventIds = [];
     gatheringSpotIds = [];
     gatheringGroupIds = [];
     testUserIds = [userId];
@@ -35,6 +41,15 @@ describe('Gathering master repositories', () => {
   });
 
   afterEach(async () => {
+    if (gatheringIds.length > 0) {
+      await env.DB.batch(
+        gatheringIds.map(id =>
+          env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?').bind(
+            id
+          )
+        )
+      );
+    }
     await env.DB.batch(
       testUserIds.map(id =>
         env.DB.prepare(
@@ -57,6 +72,13 @@ describe('Gathering master repositories', () => {
           env.DB.prepare(
             'DELETE FROM gathering_spots WHERE gathering_spot_id = ?'
           ).bind(id)
+        )
+      );
+    }
+    if (eventIds.length > 0) {
+      await env.DB.batch(
+        eventIds.map(id =>
+          env.DB.prepare('DELETE FROM events WHERE event_id = ?').bind(id)
         )
       );
     }
@@ -253,5 +275,86 @@ describe('Gathering master repositories', () => {
     await expect(
       gatheringGroupMemberRepository.remove(group.gathering_group_id, userId)
     ).resolves.toBe(false);
+  });
+
+  it('集合グループと所属を削除し、存在しないグループはfalseを返す', async () => {
+    const group = await gatheringGroupRepository.create();
+    gatheringGroupIds.push(group.gathering_group_id);
+    await gatheringGroupMemberRepository.create(
+      group.gathering_group_id,
+      userId
+    );
+
+    await expect(
+      gatheringGroupRepository.remove(group.gathering_group_id)
+    ).resolves.toBe(true);
+
+    const deletedGroup = await env.DB.prepare(
+      'SELECT gathering_group_id FROM gathering_groups WHERE gathering_group_id = ?'
+    )
+      .bind(group.gathering_group_id)
+      .first();
+    const deletedMember = await env.DB.prepare(
+      'SELECT gathering_group_member_id FROM gathering_group_members WHERE gathering_group_id = ?'
+    )
+      .bind(group.gathering_group_id)
+      .first();
+    const remainingUser = await env.DB.prepare(
+      'SELECT user_id FROM users WHERE user_id = ?'
+    )
+      .bind(userId)
+      .first();
+
+    expect(deletedGroup).toBeNull();
+    expect(deletedMember).toBeNull();
+    expect(remainingUser).not.toBeNull();
+    await expect(gatheringGroupRepository.remove(999999)).resolves.toBe(false);
+  });
+
+  it('集合設定から参照されているグループの削除を拒否し、所属も維持する', async () => {
+    const group = await gatheringGroupRepository.create();
+    gatheringGroupIds.push(group.gathering_group_id);
+    const member = await gatheringGroupMemberRepository.create(
+      group.gathering_group_id,
+      userId
+    );
+    const spot = await gatheringSpotRepository.create('参照中削除テスト場所');
+    gatheringSpotIds.push(spot.gathering_spot_id);
+    const event = await env.DB.prepare(
+      'INSERT INTO events (event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?) RETURNING event_id'
+    )
+      .bind('参照中削除テスト競技', '体育館', '0900', '1000')
+      .first<{ event_id: number }>();
+    eventIds.push(event!.event_id);
+    const gathering = await gatheringRepository.create({
+      gathering_group_id: group.gathering_group_id,
+      event_id: event!.event_id,
+      gathering_spot_id: spot.gathering_spot_id,
+    });
+    gatheringIds.push(gathering.gathering_id);
+
+    await expect(
+      gatheringGroupRepository.remove(group.gathering_group_id)
+    ).rejects.toThrow('Gathering group is assigned to an event');
+
+    const remainingGroup = await env.DB.prepare(
+      'SELECT gathering_group_id FROM gathering_groups WHERE gathering_group_id = ?'
+    )
+      .bind(group.gathering_group_id)
+      .first();
+    const remainingMember = await env.DB.prepare(
+      'SELECT gathering_group_member_id FROM gathering_group_members WHERE gathering_group_member_id = ?'
+    )
+      .bind(member.gathering_group_member_id)
+      .first();
+    const remainingGathering = await env.DB.prepare(
+      'SELECT gathering_id FROM gatherings WHERE gathering_id = ?'
+    )
+      .bind(gathering.gathering_id)
+      .first();
+
+    expect(remainingGroup).not.toBeNull();
+    expect(remainingMember).not.toBeNull();
+    expect(remainingGathering).not.toBeNull();
   });
 });

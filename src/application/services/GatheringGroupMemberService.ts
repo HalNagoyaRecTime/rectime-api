@@ -1,4 +1,8 @@
-import { GatheringGroupMemberEntity } from '../../domain/entities/GatheringGroupMember';
+import type {
+  AddGatheringGroupMemberRequestDTO,
+  GatheringGroupMemberDTO,
+} from '../dto/GatheringGroupMemberDTO';
+import type { GatheringGroupMemberEntity } from '../../domain/entities/GatheringGroupMember';
 import { IGatheringGroupMemberRepository } from '../../domain/interfaces/repositories/IGatheringGroupMemberRepository';
 import { IGatheringGroupMemberService } from './IGatheringGroupMemberService';
 
@@ -24,20 +28,27 @@ export function createGatheringGroupMemberService(
   return {
     async getGatheringGroupMembers(
       gatheringGroupId: number
-    ): Promise<GatheringGroupMemberEntity[]> {
+    ): Promise<GatheringGroupMemberDTO[]> {
       await ensureGatheringGroupExists(gatheringGroupId);
-      return gatheringGroupMemberRepository.findByGatheringGroupId(
-        gatheringGroupId
-      );
+      return (
+        await gatheringGroupMemberRepository.findByGatheringGroupId(
+          gatheringGroupId
+        )
+      ).map(toDTO);
     },
 
     async addGatheringGroupMember(
       gatheringGroupId: number,
-      userId: number
-    ): Promise<GatheringGroupMemberEntity> {
+      input: AddGatheringGroupMemberRequestDTO
+    ): Promise<GatheringGroupMemberDTO> {
       await ensureGatheringGroupExists(gatheringGroupId);
-      await ensureUserExists(userId);
-      return gatheringGroupMemberRepository.create(gatheringGroupId, userId);
+      await ensureUserExists(input.userId);
+      return toDTO(
+        await gatheringGroupMemberRepository.create(
+          gatheringGroupId,
+          input.userId
+        )
+      );
     },
 
     async removeGatheringGroupMember(
@@ -54,4 +65,8 @@ export function createGatheringGroupMemberService(
       return true;
     },
   };
+}
+
+function toDTO(member: GatheringGroupMemberEntity): GatheringGroupMemberDTO {
+  return { ...member };
 }

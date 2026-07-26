@@ -16,6 +16,7 @@ function setup() {
   const gatheringGroupService: IGatheringGroupService = {
     getAllGatheringGroups: vi.fn(),
     createGatheringGroup: vi.fn(),
+    deleteGatheringGroup: vi.fn(),
   };
   const gatheringGroupMemberService: IGatheringGroupMemberService = {
     getGatheringGroupMembers: vi.fn(),
@@ -45,6 +46,9 @@ function setup() {
   );
   app.post('/gathering-groups', c =>
     gatheringGroupController.createGatheringGroup(c)
+  );
+  app.delete('/gathering-groups/:gatheringGroupId', c =>
+    gatheringGroupController.deleteGatheringGroup(c)
   );
   app.get('/gathering-groups/:gatheringGroupId/members', c =>
     gatheringGroupMemberController.getGatheringGroupMembers(c)
@@ -221,7 +225,7 @@ describe('Gathering master controllers', () => {
     ).toHaveBeenCalledWith(1);
     expect(
       gatheringGroupMemberService.addGatheringGroupMember
-    ).toHaveBeenCalledWith(1, 2);
+    ).toHaveBeenCalledWith(1, { userId: 2 });
     expect(
       gatheringGroupMemberService.removeGatheringGroupMember
     ).toHaveBeenCalledWith(1, 2);
@@ -333,5 +337,33 @@ describe('Gathering master controllers', () => {
     expect(
       gatheringGroupMemberService.removeGatheringGroupMember
     ).not.toHaveBeenCalled();
+  });
+
+  it('集合グループを削除する', async () => {
+    const { app, gatheringGroupService } = setup();
+
+    const response = await app.request('/gathering-groups/1', {
+      method: 'DELETE',
+    });
+
+    expect(response.status).toBe(204);
+    expect(gatheringGroupService.deleteGatheringGroup).toHaveBeenCalledWith(1);
+  });
+
+  it('集合設定に紐付く集合グループの削除は409を返す', async () => {
+    const { app, gatheringGroupService } = setup();
+    (
+      gatheringGroupService.deleteGatheringGroup as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(new Error('Gathering group is assigned to an event'));
+
+    const response = await app.request('/gathering-groups/1', {
+      method: 'DELETE',
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: 'Gathering group is assigned to an event',
+    });
+    expect(gatheringGroupService.deleteGatheringGroup).toHaveBeenCalledWith(1);
   });
 });
