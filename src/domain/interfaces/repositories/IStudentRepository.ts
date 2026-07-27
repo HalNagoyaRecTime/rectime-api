@@ -3,6 +3,7 @@ import { StudentWriteDTO } from '../../../application/dto/StudentDTO';
 
 export interface IStudentRepository {
   findById: (id: number) => Promise<StudentEntity | null>;
+  findByUserId: (userId: number) => Promise<StudentEntity | null>;
   findAll: (options: {
     limit: number;
     offset: number;
