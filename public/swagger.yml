@@ -2001,7 +2001,17 @@ components:
 
     AuthUser:
       type: object
-      required: [id, email, display_name, avatar_url, avatar_updated_at]
+      required:
+        [
+          id,
+          email,
+          display_name,
+          avatar_url,
+          avatar_updated_at,
+          is_student,
+          is_staff,
+          is_teacher,
+        ]
       properties:
         id:
           type: string
@@ -2014,6 +2024,15 @@ components:
         avatar_updated_at:
           type: string
           nullable: true
+        is_student:
+          type: boolean
+          description: students テーブルに紐づくアカウントかどうか
+        is_staff:
+          type: boolean
+          description: staffs テーブルに紐づくアカウントかどうか（teachers と排他ではない）
+        is_teacher:
+          type: boolean
+          description: teachers テーブルに紐づくアカウントかどうか（staffs と排他ではない）
 
     TokenExchangeRequest:
       type: object

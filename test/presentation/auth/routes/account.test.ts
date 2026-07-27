@@ -1,5 +1,14 @@
+import { env as workerEnv } from 'cloudflare:workers';
 import { Hono } from 'hono';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type { KVNamespace } from '@cloudflare/workers-types';
 import { account } from '../../../../src/presentation/auth/routes/account';
 import { signAccessToken } from '../../../../src/infrastructure/auth/jwt';
@@ -41,9 +50,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+beforeEach(async () => {
+  await workerEnv.DB.prepare('DELETE FROM staffs').run();
+  await workerEnv.DB.prepare('DELETE FROM teachers').run();
+  await workerEnv.DB.prepare('DELETE FROM students').run();
+  await workerEnv.DB.prepare('DELETE FROM users').run();
+});
+
 function buildEnv(overrides: Partial<Env> = {}): Env {
   return {
-    DB: {} as Env['DB'],
+    DB: workerEnv.DB,
     AUTH_KV: createMockKv(),
     ALLOWED_ORIGINS: '',
     FIREBASE_PROJECT_ID: 'project',
@@ -100,7 +116,21 @@ async function buildWebToken(): Promise<string> {
 describe('GET /auth/me', () => {
   it('webは有効なBearerトークンがあればユーザー情報のみを返す', async () => {
     const env = buildEnv();
-    const token = await buildWebToken();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const userId = String(user!.user_id);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
     const app = buildApp();
 
     const res = await app.request(
@@ -112,14 +142,24 @@ describe('GET /auth/me', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       access_token?: string;
-      user?: { id: string; email: string; display_name: string };
+      user?: {
+        id: string;
+        email: string;
+        display_name: string;
+        is_student: boolean;
+        is_staff: boolean;
+        is_teacher: boolean;
+      };
     };
 
     expect(body.access_token).toBeUndefined();
     expect(body.user).toMatchObject({
-      id: 'user-1',
+      id: userId,
       email: 'tanaka@example.com',
       display_name: '田中太郎',
+      is_student: false,
+      is_staff: false,
+      is_teacher: false,
     });
   });
 

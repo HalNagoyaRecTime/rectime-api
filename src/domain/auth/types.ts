@@ -9,6 +9,14 @@ export interface AppUser {
   display_name: string;
 }
 
+// staffs / teachers は相互排他ではない（同一ユーザーが両方の行を持つことを許容する）ため、
+// 単一の役割ではなく真偽値の組み合わせで表す。
+export interface UserCategories {
+  is_student: boolean;
+  is_staff: boolean;
+  is_teacher: boolean;
+}
+
 export interface PkceEntry {
   code_verifier?: string;
   nonce: string;

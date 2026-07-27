@@ -12,6 +12,7 @@ import {
   getBearerToken,
   refreshMicrosoftAccessToken,
   userResponse,
+  getUserCategories,
 } from '../helpers';
 import {
   type MobileRefreshEntry,
@@ -53,14 +54,18 @@ account.get('/me', async c => {
     return errorResponse(c, 401, code, message);
   }
 
+  const categories = await getUserCategories(c, claims.sub);
   return c.json({
-    user: userResponse({
-      id: claims.sub,
-      email: claims.email,
-      display_name: claims.display_name,
-      avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
-      avatar_updated_at: claims.avatar_updated_at ?? null,
-    }),
+    user: userResponse(
+      {
+        id: claims.sub,
+        email: claims.email,
+        display_name: claims.display_name,
+        avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
+        avatar_updated_at: claims.avatar_updated_at ?? null,
+      },
+      categories
+    ),
   });
 });
 
