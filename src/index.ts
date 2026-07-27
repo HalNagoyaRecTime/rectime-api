@@ -81,6 +81,7 @@ app.get('/', c => {
       gatherings: '/api/v1/gatherings',
       firebaseTokens: '/api/v1/firebase-tokens',
       notifications: '/api/v1/notifications',
+      myNotifications: '/api/v1/me/notifications',
       testNotification: '/api/v1/notifications/test',
       notificationSchedules: '/api/v1/notification-schedules',
     },
@@ -236,6 +237,13 @@ apiV1.get('/notifications/:id', c => {
 });
 apiV1.put('/notifications/:id', c => {
   return c.get('container').notificationController.updateNotification(c);
+});
+
+apiV1.get('/me/notifications', c => {
+  return c.get('container').mobileNotificationController.getNotifications(c);
+});
+apiV1.get('/me/notifications/:notificationId', c => {
+  return c.get('container').mobileNotificationController.getNotificationById(c);
 });
 
 apiV1.get('/notification-schedules', c => {
