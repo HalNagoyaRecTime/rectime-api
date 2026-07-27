@@ -78,6 +78,8 @@ export function userResponse(user: {
   display_name: string;
   avatar_url?: string | null;
   avatar_updated_at?: string | null;
+  student_id_number: string | null;
+  class_room_name: string | null;
 }) {
   return {
     id: user.id,
