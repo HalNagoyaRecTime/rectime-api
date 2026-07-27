@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { IScheduleService } from '../../application/services/IScheduleService';
 
 const scheduleIdSchema = z.coerce.number().int().positive();
+const userIdSchema = z.coerce.number().int().positive();
 
 const createScheduleSchema = z.object({
   eventId: z.number().int().positive().nullable().optional(),
@@ -40,8 +41,71 @@ export function createScheduleController(scheduleService: IScheduleService) {
     }
   };
 
+  // const createSchedule = async (c: Context) => {
+  //   const parsedBody = createScheduleSchema.safeParse(await c.req.json());
+  //   if (!parsedBody.success) {
+  //     return c.json({ error: 'Invalid schedule data' }, 400);
+  //   }
+
+  //   try {
+  //     const schedule = await scheduleService.createSchedule(parsedBody.data);
+  //     return c.json(schedule, 201);
+  //   } catch {
+  //     return c.json({ error: 'Failed to create schedule' }, 500);
+  //   }
+  // };
+
+  const deleteSchedule = async (c: Context) => {
+    const parsedId = scheduleIdSchema.safeParse(c.req.param('scheduleId'));
+    if (!parsedId.success) {
+      return c.json({ error: 'Invalid schedule ID' }, 400);
+    }
+
+    try {
+      await scheduleService.deleteSchedule(parsedId.data);
+      return c.body(null, 204);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Schedule not found') {
+        return c.json({ error: error.message }, 404);
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'Cannot delete a schedule that is not in draft status'
+      ) {
+        return c.json({ error: error.message }, 409);
+      }
+      return c.json(
+        {
+          error: 'Failed to delete schedule',
+          details: error instanceof Error ? error.message : String(error),
+        },
+        500
+      );
+    }
+  };
+
+  const getHistorySchedules = async (c: Context) => {
+    const userId = userIdSchema.safeParse(c.req.param('user_id'));
+    if (!userId.success) {
+      return c.json({ error: 'Missing user_id parameter' }, 400);
+    }
+
+    try {
+      const schedules = await scheduleService.getHistorySchedules(userId.data);
+      if (!schedules) {
+        return c.json({ error: 'History schedules not found' }, 404);
+      }
+      return c.json(schedules);
+    } catch {
+      return c.json({ error: 'Failed to fetch history schedules' }, 500);
+    }
+  };
+
   return {
     getAllSchedules,
     getScheduleById,
+    getHistorySchedules,
+    // createSchedule,
+    deleteSchedule,
   };
 }
