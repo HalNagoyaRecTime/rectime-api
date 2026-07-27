@@ -11,6 +11,43 @@ servers:
     description: APIのベースパス
 
 paths:
+  /admin/notifications:
+    post:
+      tags: [Notifications]
+      summary: 管理画面から手動通知を一括予約する
+      description: |
+        ログイン中のstaffまたはteacherが、配信対象を指定して手動通知を予約します。
+        Backendが対象利用者の有効なFirebase Tokenを解決し、Token単位の通知予定を作成します。
+        `userId` と `firebaseTokenId` はRequestで受け取りません。
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAdminNotificationRequest'
+      responses:
+        '201':
+          description: 作成した手動通知と通知予定件数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminNotificationCreationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /students:
     get:
       tags: [Students]
@@ -1970,6 +2007,108 @@ components:
         limit:
           type: integer
         offset:
+          type: integer
+
+    AdminNotificationAudience:
+      oneOf:
+        - type: object
+          required: [type]
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [all]
+        - type: object
+          required: [type, classRoomId]
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [class_room]
+            classRoomId:
+              type: integer
+              minimum: 1
+        - type: object
+          required: [type, gatheringGroupId]
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [gathering_group]
+            gatheringGroupId:
+              type: integer
+              minimum: 1
+        - type: object
+          required: [type, eventId]
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [event_participants]
+            eventId:
+              type: integer
+              minimum: 1
+      discriminator:
+        propertyName: type
+
+    CreateAdminNotificationRequest:
+      type: object
+      required: [title, body, audience, scheduledAt]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        body:
+          type: string
+          minLength: 1
+        audience:
+          $ref: '#/components/schemas/AdminNotificationAudience'
+        scheduledAt:
+          type: string
+          format: date-time
+          description: UTCオフセットを含むISO 8601形式
+          example: '2026-07-23T09:00:00+09:00'
+
+    AdminNotificationCreationResult:
+      type: object
+      required:
+        - notification_id
+        - notification_type
+        - title
+        - body
+        - audience
+        - scheduled_at
+        - schedule_count
+        - send_status
+        - importance
+        - created_user_id
+      properties:
+        notification_id:
+          type: integer
+        notification_type:
+          type: string
+          enum: [manual]
+        title:
+          type: string
+        body:
+          type: string
+        audience:
+          type: object
+          description: Requestの配信対象をsnake_caseへ変換した値
+          additionalProperties: true
+        scheduled_at:
+          type: string
+          format: date-time
+        schedule_count:
+          type: integer
+          minimum: 1
+        send_status:
+          type: string
+          enum: [draft]
+        importance:
+          type: integer
+          enum: [2]
+        created_user_id:
           type: integer
 
     Notification:

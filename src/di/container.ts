@@ -8,6 +8,7 @@ import { createClassRoomRepository } from '../infrastructure/repositories/ClassR
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
 import { createNotificationRepository } from '../infrastructure/repositories/NotificationRepository';
+import { createAdminNotificationRepository } from '../infrastructure/repositories/AdminNotificationRepository';
 import { createMobileNotificationRepository } from '../infrastructure/repositories/MobileNotificationRepository';
 import { createGatheringSpotRepository } from '../infrastructure/repositories/GatheringSpotRepository';
 import { createGatheringGroupRepository } from '../infrastructure/repositories/GatheringGroupRepository';
@@ -24,6 +25,7 @@ import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
 import { createNotificationScheduleService } from '../application/services/NotificationScheduleService';
 import { createNotificationService } from '../application/services/NotificationService';
+import { createAdminNotificationService } from '../application/services/AdminNotificationService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
 import { createGatheringSpotService } from '../application/services/GatheringSpotService';
 import { createGatheringGroupService } from '../application/services/GatheringGroupService';
@@ -37,6 +39,7 @@ import { createEventScheduleController } from '../presentation/controllers/Event
 import { createClassRoomController } from '../presentation/controllers/ClassRoomController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
+import { createAdminNotificationController } from '../presentation/controllers/AdminNotificationController';
 import { createNotificationScheduleController } from '../presentation/controllers/NotificationScheduleController';
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
@@ -62,6 +65,7 @@ export function createDIContainer(env: Env) {
   const notificationScheduleRepository =
     createNotificationScheduleRepository(db);
   const notificationRepository = createNotificationRepository(db);
+  const adminNotificationRepository = createAdminNotificationRepository(db);
   const mobileNotificationRepository = createMobileNotificationRepository(db);
   const gatheringSpotRepository = createGatheringSpotRepository(db);
   const gatheringGroupRepository = createGatheringGroupRepository(db);
@@ -101,6 +105,10 @@ export function createDIContainer(env: Env) {
     userRepository
   );
   const notificationService = createNotificationService(notificationRepository);
+  const adminNotificationService = createAdminNotificationService(
+    adminNotificationRepository,
+    userRepository
+  );
   const mobileNotificationService = createMobileNotificationService(
     mobileNotificationRepository
   );
@@ -129,6 +137,9 @@ export function createDIContainer(env: Env) {
     fcmService,
     notificationService
   );
+  const adminNotificationController = createAdminNotificationController(
+    adminNotificationService
+  );
   const notificationScheduleController = createNotificationScheduleController(
     notificationScheduleService
   );
@@ -155,6 +166,7 @@ export function createDIContainer(env: Env) {
     classRoomController,
     firebaseTokenController,
     notificationController,
+    adminNotificationController,
     notificationScheduleController,
     mobileNotificationController,
     scheduledNotificationService,
