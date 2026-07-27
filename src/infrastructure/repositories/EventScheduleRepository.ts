@@ -9,6 +9,15 @@ interface EventAudienceRow {
   gathering_spot_name: string;
 }
 
+interface NotificationSummaryRow {
+  scheduled_at: string | null;
+  total: number;
+  draft: number;
+  sending: number;
+  sent: number;
+  failed: number;
+}
+
 export function createEventScheduleRepository(
   db: D1Database
 ): IEventScheduleRepository {
@@ -42,10 +51,22 @@ export function createEventScheduleRepository(
         db
           .prepare(
             `UPDATE events
-             SET start_time = ?, end_time = ?, updated_at = CURRENT_TIMESTAMP
+             SET event_name = ?,
+                 rule_text = ?,
+                 venue = ?,
+                 start_time = ?,
+                 end_time = ?,
+                 updated_at = CURRENT_TIMESTAMP
              WHERE event_id = ?`
           )
-          .bind(input.start_time, input.end_time, input.event_id),
+          .bind(
+            input.event_name,
+            input.rule_text,
+            input.venue,
+            input.start_time,
+            input.end_time,
+            input.event_id
+          ),
         db
           .prepare(
             `DELETE FROM notification_schedules
@@ -79,6 +100,40 @@ export function createEventScheduleRepository(
       statements.push(buildOrphanNotificationCleanup(db));
 
       await db.batch(statements);
+    },
+
+    async getNotificationSummary(eventId) {
+      const summary = await db
+        .prepare(
+          `SELECT
+             COALESCE(
+               MAX(CASE
+                 WHEN ns.send_status IN ('draft', 'sending') THEN ns.send_at
+               END),
+               MAX(ns.send_at)
+             ) AS scheduled_at,
+             COUNT(*) AS total,
+             SUM(CASE WHEN ns.send_status = 'draft' THEN 1 ELSE 0 END) AS draft,
+             SUM(CASE WHEN ns.send_status = 'sending' THEN 1 ELSE 0 END) AS sending,
+             SUM(CASE WHEN ns.send_status = 'sent' THEN 1 ELSE 0 END) AS sent,
+             SUM(CASE WHEN ns.send_status = 'failed' THEN 1 ELSE 0 END) AS failed
+           FROM notification_schedules ns
+           INNER JOIN notifications n
+             ON n.notification_id = ns.notification_id
+           WHERE ns.event_id = ?
+             AND n.notification_type = 'event_reminder'`
+        )
+        .bind(eventId)
+        .first<NotificationSummaryRow>();
+
+      return {
+        scheduled_at: summary?.scheduled_at ?? null,
+        total: Number(summary?.total ?? 0),
+        draft: Number(summary?.draft ?? 0),
+        sending: Number(summary?.sending ?? 0),
+        sent: Number(summary?.sent ?? 0),
+        failed: Number(summary?.failed ?? 0),
+      };
     },
   };
 }

@@ -154,6 +154,11 @@ apiV1.delete('/events/:eventId', c => {
 apiV1.put('/events/:eventId/schedule', c => {
   return c.get('container').eventScheduleController.updateEventSchedule(c);
 });
+apiV1.get('/events/:eventId/notification-summary', c => {
+  return c
+    .get('container')
+    .eventScheduleController.getEventNotificationSummary(c);
+});
 
 // Classroom routes
 apiV1.get('/classrooms', c => {

@@ -1,7 +1,15 @@
 import { Context } from 'hono';
 import { z } from 'zod';
-import type { CreateEventRequestDTO } from '../../application/dto/EventDTO';
+import type {
+  CreateEventRequestDTO,
+  UpdateEventRequestDTO,
+} from '../../application/dto/EventDTO';
+import type { IEventScheduleService } from '../../application/services/IEventScheduleService';
 import type { IEventService } from '../../application/services/IEventService';
+import type { Env } from '../../lib/env';
+import { isValidEventDate } from '../../lib/eventDate';
+import type { ContainerVariables } from '../middleware/diContainer';
+import type { AuthenticationVariables } from '../middleware/sessionAuthentication';
 
 const eventIdSchema = z.coerce.number().int().positive();
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
@@ -18,7 +26,19 @@ const eventWriteSchema = z
     path: ['end_time'],
   });
 
-export function createEventController(eventService: IEventService) {
+const eventUpdateSchema = eventWriteSchema.and(
+  z.object({ notificationEnabled: z.boolean() })
+);
+
+type EventContext = Context<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthenticationVariables;
+}>;
+
+export function createEventController(
+  eventService: IEventService,
+  eventScheduleService: IEventScheduleService
+) {
   const getAllEvents = async (c: Context) => {
     try {
       const startTime = c.req.query('start_time');
@@ -98,10 +118,43 @@ export function createEventController(eventService: IEventService) {
   const updateEvent = async (c: Context) => {
     const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
     if (!parsedId.success) return c.json({ error: 'Invalid event ID' }, 400);
-    const parsed = await parseEventBody(c);
-    if (!parsed.success) return parsed.response;
+    const body = await c.req.json().catch(() => undefined);
+    const parsed = eventUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: 'Invalid event request body',
+          details: parsed.error.flatten(),
+        },
+        400
+      );
+    }
+    const request = {
+      ...parsed.data,
+      rule_text: parsed.data.rule_text ?? null,
+    } satisfies UpdateEventRequestDTO;
+    const eventContext = c as EventContext;
+    const userId = eventContext.get('authenticatedUserId');
+    if (userId === null) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+    if (!isValidEventDate(eventContext.env.EVENT_DATE)) {
+      return c.json({ error: 'EVENT_DATE is not configured correctly' }, 500);
+    }
     try {
-      return c.json(await eventService.updateEvent(parsedId.data, parsed.data));
+      return c.json(
+        await eventScheduleService.updateEventSchedule({
+          event_id: parsedId.data,
+          user_id: userId,
+          event_name: request.event_name,
+          rule_text: request.rule_text,
+          venue: request.venue,
+          start_time: request.start_time,
+          end_time: request.end_time,
+          notification_enabled: request.notificationEnabled,
+          event_date: eventContext.env.EVENT_DATE,
+        })
+      );
     } catch (error) {
       return eventError(c, error, 'Failed to update event');
     }
@@ -157,6 +210,9 @@ function eventError(c: Context, error: unknown, fallback: string) {
   }
   if (error instanceof Error && error.message === 'Event is in use') {
     return c.json({ error: 'Event is in use' }, 409);
+  }
+  if (error instanceof Error && error.message === 'Schedule update forbidden') {
+    return c.json({ error: error.message }, 403);
   }
   return c.json(
     {

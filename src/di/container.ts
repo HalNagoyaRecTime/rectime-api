@@ -119,7 +119,10 @@ export function createDIContainer(env: Env) {
   const studentController = createStudentController(studentService);
   const staffController = createStaffController(staffService);
   const teacherController = createTeacherController(teacherService);
-  const eventController = createEventController(eventService);
+  const eventController = createEventController(
+    eventService,
+    eventScheduleService
+  );
   const eventScheduleController =
     createEventScheduleController(eventScheduleService);
   const classRoomController = createClassRoomController(classRoomService);

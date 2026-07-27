@@ -34,7 +34,10 @@ export function createEventScheduleService(deps: {
       await eventScheduleRepository.apply({
         event_id: input.event_id,
         user_id: input.user_id,
-        event_name: event.event_name,
+        event_name: input.event_name ?? event.event_name,
+        rule_text:
+          input.rule_text === undefined ? event.rule_text : input.rule_text,
+        venue: input.venue ?? event.venue,
         start_time: input.start_time,
         end_time: input.end_time,
         notification_enabled: input.notification_enabled,
@@ -51,6 +54,20 @@ export function createEventScheduleService(deps: {
         event: updatedEvent,
         notification_enabled: input.notification_enabled,
         notification_schedules: drafts,
+      };
+    },
+
+    async getEventNotificationSummary(eventId, userId) {
+      const [authorized, event] = await Promise.all([
+        userRepository.isStaffOrTeacher(userId),
+        eventRepository.findById(eventId),
+      ]);
+      if (!authorized) throw new Error('Schedule update forbidden');
+      if (!event) throw new Error('Event not found');
+
+      return {
+        event_id: eventId,
+        ...(await eventScheduleRepository.getNotificationSummary(eventId)),
       };
     },
   };

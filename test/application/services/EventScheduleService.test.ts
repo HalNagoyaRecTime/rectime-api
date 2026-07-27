@@ -38,11 +38,20 @@ function setup() {
     findAll: vi.fn(),
     findById: vi.fn().mockResolvedValue(event),
     create: vi.fn(),
-    update: vi.fn(),
     delete: vi.fn(),
     hasReferences: vi.fn(),
   };
-  const eventScheduleRepository: IEventScheduleRepository = { apply: vi.fn() };
+  const eventScheduleRepository: IEventScheduleRepository = {
+    apply: vi.fn(),
+    getNotificationSummary: vi.fn().mockResolvedValue({
+      scheduled_at: null,
+      total: 0,
+      draft: 0,
+      sending: 0,
+      sent: 0,
+      failed: 0,
+    }),
+  };
   const notificationScheduleRepository: INotificationScheduleRepository = {
     create: vi.fn(),
     findAll: vi.fn(),
@@ -99,6 +108,8 @@ describe('EventScheduleService', () => {
       event_id: 1,
       user_id: 7,
       event_name: '大縄跳び',
+      rule_text: null,
+      venue: '体育館',
       start_time: '1030',
       end_time: '1100',
       notification_enabled: true,
@@ -132,5 +143,61 @@ describe('EventScheduleService', () => {
       'Schedule update forbidden'
     );
     expect(eventScheduleRepository.apply).not.toHaveBeenCalled();
+  });
+
+  it('競技情報と通知設定を同じRepository処理へ渡す', async () => {
+    const { service, eventScheduleRepository } = setup();
+    await service.updateEventSchedule({
+      ...input,
+      event_name: '大縄跳び決勝',
+      rule_text: '決勝ルール',
+      venue: 'メインアリーナ',
+    });
+
+    expect(eventScheduleRepository.apply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_name: '大縄跳び決勝',
+        rule_text: '決勝ルール',
+        venue: 'メインアリーナ',
+      })
+    );
+  });
+
+  it('競技単位の自動通知集約を返す', async () => {
+    const { service, eventScheduleRepository } = setup();
+    (
+      eventScheduleRepository.getNotificationSummary as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      scheduled_at: '2026-11-07T01:15:00.000Z',
+      total: 3,
+      draft: 1,
+      sending: 0,
+      sent: 1,
+      failed: 1,
+    });
+
+    await expect(service.getEventNotificationSummary(1, 7)).resolves.toEqual({
+      event_id: 1,
+      scheduled_at: '2026-11-07T01:15:00.000Z',
+      total: 3,
+      draft: 1,
+      sending: 0,
+      sent: 1,
+      failed: 1,
+    });
+  });
+
+  it('権限がないユーザーは通知集約を取得できない', async () => {
+    const { service, userRepository, eventScheduleRepository } = setup();
+    (
+      userRepository.isStaffOrTeacher as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(false);
+
+    await expect(service.getEventNotificationSummary(1, 7)).rejects.toThrow(
+      'Schedule update forbidden'
+    );
+    expect(
+      eventScheduleRepository.getNotificationSummary
+    ).not.toHaveBeenCalled();
   });
 });

@@ -27,7 +27,9 @@ export interface CreateEventRequestDTO {
 }
 
 /** PUT /events/:eventId のリクエスト本文。 */
-export type UpdateEventRequestDTO = CreateEventRequestDTO;
+export interface UpdateEventRequestDTO extends CreateEventRequestDTO {
+  notificationEnabled: boolean;
+}
 
 /** GET /events のレスポンス本文。 */
 export interface EventListResponseDTO {

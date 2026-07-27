@@ -44,6 +44,8 @@ function buildInput(fixture: Fixture) {
     event_id: fixture.eventId,
     user_id: fixture.userId,
     event_name: '大縄跳び',
+    rule_text: null,
+    venue: '体育館',
     start_time: '1030',
     end_time: '1100',
     notification_enabled: true,
@@ -87,6 +89,68 @@ describe('EventScheduleRepository', () => {
       send_at: '2026-11-07T01:15:00.000Z',
       title: '大縄跳び開始のお知らせ',
       body: '大縄跳びの開始時間が近づいています。該当チームは体育館前へ集合してください。',
+    });
+  });
+
+  it('競技基本情報と通知予定を同じbatchで更新する', async () => {
+    const fixture = await createFixture();
+    await repository.apply({
+      ...buildInput(fixture),
+      event_name: '大縄跳び決勝',
+      rule_text: '決勝ルール',
+      venue: 'メインアリーナ',
+    });
+
+    const updatedEvent = await env.DB.prepare(
+      `SELECT event_name, rule_text, venue, start_time, end_time
+       FROM events
+       WHERE event_id = ?`
+    )
+      .bind(fixture.eventId)
+      .first();
+    expect(updatedEvent).toMatchObject({
+      event_name: '大縄跳び決勝',
+      rule_text: '決勝ルール',
+      venue: 'メインアリーナ',
+      start_time: '1030',
+      end_time: '1100',
+    });
+  });
+
+  it('通知予定の作成に失敗した場合は競技基本情報も更新しない', async () => {
+    const fixture = await createFixture();
+    await env.DB.prepare(
+      `CREATE TRIGGER reject_event_reminder_schedule
+       BEFORE INSERT ON notification_schedules
+       BEGIN
+         SELECT RAISE(ABORT, 'forced schedule failure');
+       END`
+    ).run();
+
+    try {
+      await expect(
+        repository.apply({
+          ...buildInput(fixture),
+          event_name: '更新されない競技名',
+          venue: '更新されない会場',
+        })
+      ).rejects.toThrow();
+    } finally {
+      await env.DB.prepare(
+        'DROP TRIGGER IF EXISTS reject_event_reminder_schedule'
+      ).run();
+    }
+
+    const event = await env.DB.prepare(
+      'SELECT event_name, venue, start_time, end_time FROM events WHERE event_id = ?'
+    )
+      .bind(fixture.eventId)
+      .first();
+    expect(event).toMatchObject({
+      event_name: '大縄跳び',
+      venue: '体育館',
+      start_time: '1000',
+      end_time: '1030',
     });
   });
 
@@ -213,6 +277,41 @@ describe('EventScheduleRepository', () => {
     expect(manualSchedule).toMatchObject({
       send_status: 'draft',
       send_at: '2026-11-07T02:00:00.000Z',
+    });
+  });
+
+  it('自動通知だけを競技単位で集約し、手動通知を除外する', async () => {
+    const fixture = await createFixture();
+    await repository.apply(buildInput(fixture));
+    const token = await env.DB.prepare(
+      'SELECT firebase_token_id FROM firebase_tokens WHERE user_id = ?'
+    )
+      .bind(fixture.userId)
+      .first<{ firebase_token_id: number }>();
+    const manual = await env.DB.prepare(
+      "INSERT INTO notifications (notification_type, title, body) VALUES ('manual', '手動', '本文') RETURNING notification_id"
+    ).first<{ notification_id: number }>();
+    await env.DB.prepare(
+      `INSERT INTO notification_schedules (
+         event_id, notification_id, firebase_token_id, send_status, send_at
+       ) VALUES (?, ?, ?, 'failed', ?)`
+    )
+      .bind(
+        fixture.eventId,
+        manual!.notification_id,
+        token!.firebase_token_id,
+        '2026-11-07T02:00:00.000Z'
+      )
+      .run();
+
+    const summary = await repository.getNotificationSummary(fixture.eventId);
+    expect(summary).toEqual({
+      scheduled_at: '2026-11-07T01:15:00.000Z',
+      total: 1,
+      draft: 1,
+      sending: 0,
+      sent: 0,
+      failed: 0,
     });
   });
 });
