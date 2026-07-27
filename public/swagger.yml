@@ -906,6 +906,75 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /me/notifications:
+    get:
+      tags: [Mobile notifications]
+      summary: ログイン中の利用者に配信された通知一覧を取得する
+      description: |
+        Bearer Tokenから利用者を特定し、本人のFirebase Tokenに送信済みの通知だけを新しい順で返します。
+        MVPでは未読・既読状態を管理しません。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: 本人宛ての通知一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileNotificationListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /me/notifications/{notificationId}:
+    get:
+      tags: [Mobile notifications]
+      summary: ログイン中の利用者に配信された通知詳細を取得する
+      description: |
+        本人のFirebase Tokenに送信済みの通知だけを返します。
+        他人宛てまたは未送信の通知は404として扱います。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: 本人宛ての通知詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileNotification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /notifications:
     get:
       tags: [Notifications]
@@ -1910,6 +1979,62 @@ components:
           type: string
           format: date-time
 
+    MobileNotificationEvent:
+      type: object
+      required: [event_id, event_name, venue, start_time, end_time]
+      properties:
+        event_id:
+          type: integer
+        event_name:
+          type: string
+        venue:
+          type: string
+        start_time:
+          type: string
+          pattern: '^\d{4}$'
+          example: '1030'
+        end_time:
+          type: string
+          pattern: '^\d{4}$'
+          example: '1100'
+
+    MobileNotification:
+      type: object
+      required:
+        [notification_id, notification_type, title, body, scheduled_at, related_event]
+      properties:
+        notification_id:
+          type: integer
+        notification_type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        scheduled_at:
+          type: string
+          format: date-time
+          description: notification_schedules.send_atに記録された通知予定日時
+        related_event:
+          allOf:
+            - $ref: '#/components/schemas/MobileNotificationEvent'
+          nullable: true
+
+    MobileNotificationListResponse:
+      type: object
+      required: [notifications, total, limit, offset]
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/MobileNotification'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
     CreateNotificationRequest:
       type: object
       required: [notificationType, title, body]
@@ -2104,5 +2229,7 @@ tags:
     description: 通知予定
   - name: Notifications
     description: Firebase通知
+  - name: Mobile notifications
+    description: ログイン利用者本人の通知履歴
   - name: Auth
     description: 認証
