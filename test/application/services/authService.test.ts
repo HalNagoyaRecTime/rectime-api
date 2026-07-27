@@ -55,6 +55,7 @@ describe('getSessionTtlSeconds', () => {
 describe('createAuthService', () => {
   function setup() {
     const userRepository: IUserRepository = {
+      exists: vi.fn(),
       isStaffOrTeacher: vi.fn(),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
