@@ -73,6 +73,7 @@ export function createAdminNotificationManagementRepository(
          LEFT JOIN events e ON e.event_id = ns.event_id
          LEFT JOIN users creator ON creator.user_id = ns.created_user_id
          WHERE n.notification_id = ?
+           AND n.notification_type = 'manual'
          GROUP BY n.notification_id`
       )
       .bind(notificationId)
@@ -92,7 +93,8 @@ export function createAdminNotificationManagementRepository(
                ON ns.notification_id = n.notification_id
              LEFT JOIN events e ON e.event_id = ns.event_id
              LEFT JOIN users creator ON creator.user_id = ns.created_user_id
-             ${filter.where}
+             WHERE n.notification_type = 'manual'
+             ${filter.andConditions}
              GROUP BY n.notification_id
              ORDER BY datetime(MIN(ns.send_at)) ASC, n.notification_id ASC
              LIMIT ? OFFSET ?`
@@ -102,7 +104,8 @@ export function createAdminNotificationManagementRepository(
           .prepare(
             `SELECT COUNT(*) AS total
              FROM notifications n
-             WHERE EXISTS (
+             WHERE n.notification_type = 'manual'
+               AND EXISTS (
                SELECT 1
                FROM notification_schedules ns
                WHERE ns.notification_id = n.notification_id
@@ -144,6 +147,13 @@ export function createAdminNotificationManagementRepository(
             `DELETE FROM notification_schedules
              WHERE notification_id = ?
                AND send_status = 'draft'
+               AND EXISTS (
+                 SELECT 1
+                 FROM notifications
+                 WHERE notifications.notification_id =
+                   notification_schedules.notification_id
+                   AND notifications.notification_type = 'manual'
+               )
                AND NOT EXISTS (
                  SELECT 1
                  FROM notification_schedules guarded
@@ -156,6 +166,7 @@ export function createAdminNotificationManagementRepository(
           .prepare(
             `DELETE FROM notifications
              WHERE notification_id = ?
+               AND notification_type = 'manual'
                AND NOT EXISTS (
                  SELECT 1
                  FROM notification_schedules
@@ -209,7 +220,6 @@ function toSummary(row: AdminNotificationRow): AdminNotificationSummary {
 }
 
 function buildListFilter(options: AdminNotificationListOptions): {
-  where: string;
   andConditions: string;
   bindings: Array<string | number>;
 } {
@@ -258,7 +268,6 @@ function buildListFilter(options: AdminNotificationListOptions): {
 
   const joined = conditions.join(' AND ');
   return {
-    where: joined ? `WHERE ${joined}` : '',
     andConditions: joined ? `AND ${joined}` : '',
     bindings,
   };
@@ -279,6 +288,13 @@ function buildContentUpdateStatements(
            SET send_at = ?, updated_at = CURRENT_TIMESTAMP
            WHERE notification_id = ?
              AND send_status = 'draft'
+             AND EXISTS (
+               SELECT 1
+               FROM notifications
+               WHERE notifications.notification_id =
+                 notification_schedules.notification_id
+                 AND notifications.notification_type = 'manual'
+             )
              AND NOT EXISTS (
                SELECT 1
                FROM notification_schedules guarded
@@ -308,6 +324,13 @@ function buildAudienceUpdateStatements(
         `DELETE FROM notification_schedules
          WHERE notification_id = ?
            AND send_status = 'draft'
+           AND EXISTS (
+             SELECT 1
+             FROM notifications
+             WHERE notifications.notification_id =
+               notification_schedules.notification_id
+               AND notifications.notification_type = 'manual'
+           )
            AND NOT EXISTS (
              SELECT 1
              FROM notification_schedules guarded
@@ -374,6 +397,7 @@ function buildGuardedNotificationUpdate(
            body = COALESCE(?, body),
            updated_at = CURRENT_TIMESTAMP
        WHERE notification_id = ?
+         AND notification_type = 'manual'
          AND EXISTS (
            SELECT 1
            FROM notification_schedules

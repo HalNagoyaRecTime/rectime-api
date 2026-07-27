@@ -11,7 +11,8 @@ interface Fixture {
 }
 
 async function createFixture(
-  statuses: Array<'draft' | 'sending' | 'sent' | 'failed'> = ['draft', 'draft']
+  statuses: Array<'draft' | 'sending' | 'sent' | 'failed'> = ['draft', 'draft'],
+  notificationType: 'manual' | 'event_reminder' = 'manual'
 ): Promise<Fixture> {
   const classroom = await env.DB.prepare(
     "INSERT INTO class_rooms (class_code, class_name) VALUES ('A1', 'A組') RETURNING class_room_id"
@@ -23,8 +24,10 @@ async function createFixture(
     "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('大縄跳び', '体育館', '1000', '1030') RETURNING event_id"
   ).first<{ event_id: number }>();
   const notification = await env.DB.prepare(
-    "INSERT INTO notifications (notification_type, title, body) VALUES ('manual', '変更前', '本文') RETURNING notification_id"
-  ).first<{ notification_id: number }>();
+    "INSERT INTO notifications (notification_type, title, body) VALUES (?, '変更前', '本文') RETURNING notification_id"
+  )
+    .bind(notificationType)
+    .first<{ notification_id: number }>();
   const tokenIds: number[] = [];
 
   for (let index = 0; index < statuses.length; index += 1) {
@@ -116,6 +119,50 @@ describe('AdminNotificationManagementRepository', () => {
       },
       scheduled_at: '2026-07-23T09:00:00+09:00',
     });
+  });
+
+  it('自動競技通知は一覧・詳細・更新・削除の対象にしない', async () => {
+    const fixture = await createFixture(['draft', 'draft'], 'event_reminder');
+
+    await expect(repository.findAll({ limit: 10, offset: 0 })).resolves.toEqual(
+      {
+        notifications: [],
+        total: 0,
+      }
+    );
+    await expect(
+      repository.findById(fixture.notificationId)
+    ).resolves.toBeNull();
+    await expect(
+      repository.update({
+        notification_id: fixture.notificationId,
+        title: '変更後',
+        scheduled_at: '2026-07-23T10:00:00+09:00',
+        created_user_id: fixture.creatorId,
+      })
+    ).resolves.toBe('not_found');
+    await expect(repository.deleteDraft(fixture.notificationId)).resolves.toBe(
+      'not_found'
+    );
+
+    const notification = await env.DB.prepare(
+      'SELECT title FROM notifications WHERE notification_id = ?'
+    )
+      .bind(fixture.notificationId)
+      .first<{ title: string }>();
+    const schedules = await env.DB.prepare(
+      `SELECT send_at
+       FROM notification_schedules
+       WHERE notification_id = ?
+       ORDER BY notification_schedule_id`
+    )
+      .bind(fixture.notificationId)
+      .all<{ send_at: string }>();
+    expect(notification?.title).toBe('変更前');
+    expect(schedules.results).toEqual([
+      { send_at: '2026-07-23T09:00:00+09:00' },
+      { send_at: '2026-07-23T09:00:00+09:00' },
+    ]);
   });
 
   it('状態で絞り込んでも集計件数を欠落させない', async () => {
