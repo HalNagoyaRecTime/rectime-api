@@ -6,6 +6,7 @@ import type { Env } from '../../../src/lib/env';
 import { createFirebaseTokenController } from '../../../src/presentation/controllers/FirebaseTokenController';
 import type { ContainerVariables } from '../../../src/presentation/middleware/diContainer';
 import type { AuthenticationVariables } from '../../../src/presentation/middleware/bearerAuthentication';
+import type { AuthVariables } from '../../../src/presentation/middleware/requireAuth';
 
 function setup(authenticatedUserId: number | null = 7) {
   const firebaseTokenService: IFirebaseTokenService = {
@@ -14,7 +15,7 @@ function setup(authenticatedUserId: number | null = 7) {
   const controller = createFirebaseTokenController(firebaseTokenService);
   const app = new Hono<{
     Bindings: Env;
-    Variables: ContainerVariables & AuthenticationVariables;
+    Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
   }>();
   app.use('*', async (c, next) => {
     c.set('authenticatedUserId', authenticatedUserId);

@@ -4,6 +4,7 @@ import { IFirebaseTokenService } from '../../application/services/IFirebaseToken
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
+import type { AuthVariables } from '../middleware/requireAuth';
 
 const registerFirebaseTokenSchema = z
   .object({
@@ -14,7 +15,7 @@ const registerFirebaseTokenSchema = z
 
 type FirebaseTokenContext = Context<{
   Bindings: Env;
-  Variables: ContainerVariables & AuthenticationVariables;
+  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>;
 
 function isFirebaseTokenUniqueConstraintError(error: unknown): boolean {
