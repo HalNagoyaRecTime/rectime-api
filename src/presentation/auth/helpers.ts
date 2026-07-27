@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import type { Env as Bindings } from '../../lib/env';
+import type { ContainerVariables } from '../middleware/diContainer';
 import { base64URLtoBytes } from '../../infrastructure/auth/base64url';
 import {
   BASE64_URL_PATTERN,
@@ -18,7 +19,7 @@ import {
   getSessionTtlSeconds,
 } from '../../application/services/authService';
 
-export type AppContext = Context<{ Bindings: Bindings }>;
+export type AppContext = Context<{ Bindings: Bindings; Variables: ContainerVariables }>;
 
 export function errorResponse(
   c: AppContext,
@@ -87,6 +88,8 @@ export function userResponse(user: {
     display_name: user.display_name,
     avatar_url: user.avatar_url ?? ACCOUNT_PHOTO_PATH,
     avatar_updated_at: user.avatar_updated_at ?? null,
+    student_id_number: user.student_id_number,
+    class_room_name: user.class_room_name,
   };
 }
 
