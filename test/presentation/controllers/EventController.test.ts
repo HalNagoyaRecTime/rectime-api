@@ -43,6 +43,7 @@ function setup() {
   app.get('/events/:eventId', c => controller.getEventById(c));
   app.post('/events', c => controller.createEvent(c));
   app.put('/events/:eventId', c => controller.updateEvent(c));
+  app.patch('/events/:eventId', c => controller.patchEvent(c));
   app.delete('/events/:eventId', c => controller.deleteEvent(c));
   return { app, eventService, eventScheduleService };
 }
@@ -382,6 +383,80 @@ describe('EventController', () => {
       );
 
       expect(response.status).toBe(403);
+    });
+  });
+
+  describe('patchEvent', () => {
+    it('指定された項目だけをsnake_caseでServiceへ渡す', async () => {
+      const { app, eventScheduleService } = setup();
+      (
+        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        event: buildEvent({ venue: 'サブトラック' }),
+        notification_enabled: false,
+        notification_schedules: [],
+      });
+
+      const response = await app.request(
+        '/events/1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            venue: 'サブトラック',
+            notification_enabled: false,
+          }),
+        },
+        { EVENT_DATE: '2026-11-07' }
+      );
+
+      expect(response.status).toBe(200);
+      expect(eventScheduleService.updateEventSchedule).toHaveBeenCalledWith({
+        event_id: 1,
+        user_id: 7,
+        venue: 'サブトラック',
+        notification_enabled: false,
+        event_date: '2026-11-07',
+      });
+    });
+
+    it('空のRequestは400を返す', async () => {
+      const { app, eventScheduleService } = setup();
+
+      const response = await app.request(
+        '/events/1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+        { EVENT_DATE: '2026-11-07' }
+      );
+
+      expect(response.status).toBe(400);
+      expect(eventScheduleService.updateEventSchedule).not.toHaveBeenCalled();
+    });
+
+    it('既存の時刻と組み合わせて不正になる部分更新は400を返す', async () => {
+      const { app, eventScheduleService } = setup();
+      (
+        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('end_time must be after start_time'));
+
+      const response = await app.request(
+        '/events/1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start_time: '1000' }),
+        },
+        { EVENT_DATE: '2026-11-07' }
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: 'end_time must be after start_time',
+      });
     });
   });
 

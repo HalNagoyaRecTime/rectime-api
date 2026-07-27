@@ -107,11 +107,13 @@ describe('EventScheduleService', () => {
     expect(eventScheduleRepository.apply).toHaveBeenCalledWith({
       event_id: 1,
       user_id: 7,
-      event_name: '大縄跳び',
-      rule_text: null,
-      venue: '体育館',
+      event_name: undefined,
+      rule_text: undefined,
+      venue: undefined,
       start_time: '1030',
       end_time: '1100',
+      resolved_event_name: '大縄跳び',
+      refresh_notifications: true,
       notification_enabled: true,
       send_at: '2026-11-07T01:15:00.000Z',
     });
@@ -210,6 +212,45 @@ describe('EventScheduleService', () => {
         venue: 'メインアリーナ',
       })
     );
+  });
+
+  it('会場だけの部分更新では未指定値を渡さず通知予定を再生成しない', async () => {
+    const { service, eventScheduleRepository } = setup();
+
+    await service.updateEventSchedule({
+      event_id: 1,
+      user_id: 7,
+      venue: 'サブアリーナ',
+      event_date: '2026-11-07',
+    });
+
+    expect(eventScheduleRepository.apply).toHaveBeenCalledWith({
+      event_id: 1,
+      user_id: 7,
+      venue: 'サブアリーナ',
+      event_name: undefined,
+      rule_text: undefined,
+      start_time: undefined,
+      end_time: undefined,
+      resolved_event_name: '大縄跳び',
+      refresh_notifications: false,
+      notification_enabled: true,
+      send_at: '2026-11-07T01:15:00.000Z',
+    });
+  });
+
+  it('部分更新後の開始・終了時刻が不正になる場合は拒否する', async () => {
+    const { service, eventScheduleRepository } = setup();
+
+    await expect(
+      service.updateEventSchedule({
+        event_id: 1,
+        user_id: 7,
+        start_time: '1130',
+        event_date: '2026-11-07',
+      })
+    ).rejects.toThrow('end_time must be after start_time');
+    expect(eventScheduleRepository.apply).not.toHaveBeenCalled();
   });
 
   it('競技単位の自動通知集約を返す', async () => {

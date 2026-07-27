@@ -1,11 +1,13 @@
 export interface ApplyEventScheduleInput {
   event_id: number;
   user_id: number;
-  event_name: string;
-  rule_text: string | null;
-  venue: string;
-  start_time: string;
-  end_time: string;
+  event_name?: string;
+  rule_text?: string | null;
+  venue?: string;
+  start_time?: string;
+  end_time?: string;
+  resolved_event_name: string;
+  refresh_notifications: boolean;
   notification_enabled: boolean;
   send_at: string;
 }

@@ -362,6 +362,41 @@ paths:
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
+    patch:
+      tags: [Events]
+      summary: イベントと自動通知設定を部分更新する
+      description: |
+        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        指定された競技情報だけを更新し、未指定の項目は変更しません。
+        競技名、開始時刻、notification_enabledのいずれかを変更した場合は、
+        未送信のevent_reminderを更新後の内容で再生成します。
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchEventWithNotificationRequest'
+      responses:
+        '200':
+          description: 更新後のイベントと通知予定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventScheduleResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
     delete:
       tags: [Events]
       summary: イベントを削除する
@@ -1715,6 +1750,29 @@ components:
             notificationEnabled:
               type: boolean
               description: 省略時は既存の未送信event_reminderの有無を維持します。
+
+    PatchEventWithNotificationRequest:
+      type: object
+      minProperties: 1
+      properties:
+        event_name:
+          type: string
+        rule_text:
+          type: string
+          nullable: true
+        venue:
+          type: string
+        start_time:
+          type: string
+          pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
+        end_time:
+          type: string
+          pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
+        notification_enabled:
+          type: boolean
+          description: |
+            trueの場合は更新後の競技開始15分前にevent_reminderを再生成し、
+            falseの場合は未送信のevent_reminderを削除します。
 
     EventWriteRequest:
       type: object

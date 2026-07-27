@@ -2,6 +2,7 @@ import { Context } from 'hono';
 import { z } from 'zod';
 import type {
   CreateEventRequestDTO,
+  PatchEventRequestDTO,
   UpdateEventRequestDTO,
 } from '../../application/dto/EventDTO';
 import type { IEventScheduleService } from '../../application/services/IEventScheduleService';
@@ -29,6 +30,28 @@ const eventWriteSchema = z
 const eventUpdateSchema = eventWriteSchema.and(
   z.object({ notificationEnabled: z.boolean().optional() })
 );
+const eventPatchSchema = z
+  .object({
+    event_name: z.string().trim().min(1).max(100).optional(),
+    rule_text: z.string().trim().max(1000).nullable().optional(),
+    venue: z.string().trim().min(1).max(100).optional(),
+    start_time: hhmmSchema.optional(),
+    end_time: hhmmSchema.optional(),
+    notification_enabled: z.boolean().optional(),
+  })
+  .refine(data => Object.values(data).some(value => value !== undefined), {
+    message: 'At least one field is required',
+  })
+  .refine(
+    data =>
+      data.start_time === undefined ||
+      data.end_time === undefined ||
+      data.start_time < data.end_time,
+    {
+      message: 'end_time must be after start_time',
+      path: ['end_time'],
+    }
+  );
 
 type EventContext = Context<{
   Bindings: Env;
@@ -160,6 +183,49 @@ export function createEventController(
     }
   };
 
+  const patchEvent = async (c: Context) => {
+    const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
+    if (!parsedId.success) return c.json({ error: 'Invalid event ID' }, 400);
+    const body = await c.req.json().catch(() => undefined);
+    const parsed = eventPatchSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: 'Invalid event request body',
+          details: parsed.error.flatten(),
+        },
+        400
+      );
+    }
+    const request = parsed.data satisfies PatchEventRequestDTO;
+    const eventContext = c as EventContext;
+    const userId = eventContext.get('authenticatedUserId');
+    if (userId === null) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+    if (!isValidEventDate(eventContext.env.EVENT_DATE)) {
+      return c.json({ error: 'EVENT_DATE is not configured correctly' }, 500);
+    }
+    try {
+      return c.json(
+        await eventScheduleService.updateEventSchedule({
+          event_id: parsedId.data,
+          user_id: userId,
+          ...request,
+          event_date: eventContext.env.EVENT_DATE,
+        })
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'end_time must be after start_time'
+      ) {
+        return c.json({ error: error.message }, 400);
+      }
+      return eventError(c, error, 'Failed to update event');
+    }
+  };
+
   const deleteEvent = async (c: Context) => {
     const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
     if (!parsedId.success) return c.json({ error: 'Invalid event ID' }, 400);
@@ -176,6 +242,7 @@ export function createEventController(
     getEventById,
     createEvent,
     updateEvent,
+    patchEvent,
     deleteEvent,
   };
 }

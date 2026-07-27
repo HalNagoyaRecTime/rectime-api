@@ -27,23 +27,31 @@ export function createEventScheduleService(deps: {
       if (!authorized) throw new Error('Schedule update forbidden');
       if (!event) throw new Error('Event not found');
 
+      const startTime = input.start_time ?? event.start_time;
+      const endTime = input.end_time ?? event.end_time;
+      if (startTime >= endTime) {
+        throw new Error('end_time must be after start_time');
+      }
+
       const notificationEnabled =
         input.notification_enabled ??
         (await notificationScheduleRepository.findDraftsByEvent(input.event_id))
           .length > 0;
-      const sendAt = buildEventNotificationSendAt(
-        input.event_date,
-        input.start_time
-      );
+      const refreshNotifications =
+        input.event_name !== undefined ||
+        input.start_time !== undefined ||
+        input.notification_enabled !== undefined;
+      const sendAt = buildEventNotificationSendAt(input.event_date, startTime);
       await eventScheduleRepository.apply({
         event_id: input.event_id,
         user_id: input.user_id,
-        event_name: input.event_name ?? event.event_name,
-        rule_text:
-          input.rule_text === undefined ? event.rule_text : input.rule_text,
-        venue: input.venue ?? event.venue,
+        event_name: input.event_name,
+        rule_text: input.rule_text,
+        venue: input.venue,
         start_time: input.start_time,
         end_time: input.end_time,
+        resolved_event_name: input.event_name ?? event.event_name,
+        refresh_notifications: refreshNotifications,
         notification_enabled: notificationEnabled,
         send_at: sendAt,
       });

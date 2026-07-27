@@ -23,10 +23,11 @@ export function createEventScheduleRepository(
 ): IEventScheduleRepository {
   return {
     async apply(input) {
-      const audience = input.notification_enabled
-        ? await db
-            .prepare(
-              `SELECT DISTINCT
+      const audience =
+        input.refresh_notifications && input.notification_enabled
+          ? await db
+              .prepare(
+                `SELECT DISTINCT
                  g.gathering_group_id,
                  gs.gathering_spot_name
                FROM gatherings g
@@ -42,34 +43,18 @@ export function createEventScheduleRepository(
                    WHERE ggm.gathering_group_id = g.gathering_group_id
                  )
                ORDER BY g.gathering_group_id`
-            )
-            .bind(input.event_id)
-            .all<EventAudienceRow>()
-        : { results: [] as EventAudienceRow[] };
+              )
+              .bind(input.event_id)
+              .all<EventAudienceRow>()
+          : { results: [] as EventAudienceRow[] };
 
-      const statements: D1PreparedStatement[] = [
-        db
-          .prepare(
-            `UPDATE events
-             SET event_name = ?,
-                 rule_text = ?,
-                 venue = ?,
-                 start_time = ?,
-                 end_time = ?,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE event_id = ?`
-          )
-          .bind(
-            input.event_name,
-            input.rule_text,
-            input.venue,
-            input.start_time,
-            input.end_time,
-            input.event_id
-          ),
-        db
-          .prepare(
-            `DELETE FROM notification_schedules
+      const statements: D1PreparedStatement[] = [buildEventUpdate(db, input)];
+
+      if (input.refresh_notifications) {
+        statements.push(
+          db
+            .prepare(
+              `DELETE FROM notification_schedules
              WHERE event_id = ?
                AND send_status = 'draft'
                AND notification_id IN (
@@ -77,11 +62,12 @@ export function createEventScheduleRepository(
                  FROM notifications
                  WHERE notification_type = 'event_reminder'
                )`
-          )
-          .bind(input.event_id),
-      ];
+            )
+            .bind(input.event_id)
+        );
+      }
 
-      if (input.notification_enabled) {
+      if (input.refresh_notifications && input.notification_enabled) {
         for (const row of audience.results) {
           statements.push(
             db
@@ -90,14 +76,16 @@ export function createEventScheduleRepository(
                  VALUES ('event_reminder', ?, ?)`
               )
               .bind(
-                `${input.event_name}開始のお知らせ`,
-                `${input.event_name}の開始時間が近づいています。該当チームは${row.gathering_spot_name}へ集合してください。`
+                `${input.resolved_event_name}開始のお知らせ`,
+                `${input.resolved_event_name}の開始時間が近づいています。該当チームは${row.gathering_spot_name}へ集合してください。`
               ),
             buildScheduleInsert(db, input, row.gathering_group_id)
           );
         }
       }
-      statements.push(buildOrphanNotificationCleanup(db));
+      if (input.refresh_notifications) {
+        statements.push(buildOrphanNotificationCleanup(db));
+      }
 
       await db.batch(statements);
     },
@@ -136,6 +124,35 @@ export function createEventScheduleRepository(
       };
     },
   };
+}
+
+function buildEventUpdate(
+  db: D1Database,
+  input: Parameters<IEventScheduleRepository['apply']>[0]
+): D1PreparedStatement {
+  const assignments: string[] = [];
+  const values: Array<string | number | null> = [];
+  const add = (column: string, value: string | null | undefined) => {
+    if (value === undefined) return;
+    assignments.push(`${column} = ?`);
+    values.push(value);
+  };
+
+  add('event_name', input.event_name);
+  add('rule_text', input.rule_text);
+  add('venue', input.venue);
+  add('start_time', input.start_time);
+  add('end_time', input.end_time);
+  assignments.push('updated_at = CURRENT_TIMESTAMP');
+  values.push(input.event_id);
+
+  return db
+    .prepare(
+      `UPDATE events
+       SET ${assignments.join(', ')}
+       WHERE event_id = ?`
+    )
+    .bind(...values);
 }
 
 function buildScheduleInsert(

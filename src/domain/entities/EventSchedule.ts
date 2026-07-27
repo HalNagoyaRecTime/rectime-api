@@ -7,8 +7,8 @@ export interface UpdateEventScheduleInput {
   event_name?: string;
   rule_text?: string | null;
   venue?: string;
-  start_time: string;
-  end_time: string;
+  start_time?: string;
+  end_time?: string;
   notification_enabled?: boolean;
   event_date: string;
 }

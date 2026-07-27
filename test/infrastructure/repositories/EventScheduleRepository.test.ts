@@ -48,6 +48,8 @@ function buildInput(fixture: Fixture) {
     venue: '体育館',
     start_time: '1030',
     end_time: '1100',
+    resolved_event_name: '大縄跳び',
+    refresh_notifications: true,
     notification_enabled: true,
     send_at: '2026-11-07T01:15:00.000Z',
   };
@@ -115,6 +117,45 @@ describe('EventScheduleRepository', () => {
       start_time: '1030',
       end_time: '1100',
     });
+  });
+
+  it('一部の競技情報だけを更新し、未指定の値と既存draftを維持する', async () => {
+    const fixture = await createFixture();
+    await repository.apply(buildInput(fixture));
+
+    await repository.apply({
+      event_id: fixture.eventId,
+      user_id: fixture.userId,
+      venue: 'サブアリーナ',
+      resolved_event_name: '大縄跳び',
+      refresh_notifications: false,
+      notification_enabled: true,
+      send_at: '2026-11-07T01:15:00.000Z',
+    });
+
+    const updatedEvent = await env.DB.prepare(
+      `SELECT event_name, rule_text, venue, start_time, end_time
+       FROM events
+       WHERE event_id = ?`
+    )
+      .bind(fixture.eventId)
+      .first();
+    const schedules = await env.DB.prepare(
+      `SELECT COUNT(*) AS count
+       FROM notification_schedules
+       WHERE event_id = ? AND send_status = 'draft'`
+    )
+      .bind(fixture.eventId)
+      .first<{ count: number }>();
+
+    expect(updatedEvent).toMatchObject({
+      event_name: '大縄跳び',
+      rule_text: null,
+      venue: 'サブアリーナ',
+      start_time: '1030',
+      end_time: '1100',
+    });
+    expect(schedules?.count).toBe(1);
   });
 
   it('通知予定の作成に失敗した場合は競技基本情報も更新しない', async () => {
