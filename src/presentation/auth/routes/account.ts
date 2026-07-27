@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Env as Bindings } from '../../../lib/env';
+import type { ContainerVariables } from '../../middleware/diContainer';
 import {
   signMobileJwt,
   verifyMobileJwt,
@@ -29,10 +30,11 @@ import {
 } from '../../../domain/auth/types';
 import { GRAPH_ME_PHOTO_URL } from '../../../infrastructure/auth/microsoftClient';
 
-const account = new Hono<{ Bindings: Bindings }>();
+const account = new Hono<{ Bindings: Bindings; Variables: ContainerVariables }>();
 
 // GET /auth/me
 account.get('/me', async c => {
+  const { studentService } = c.get('container');
   const clientType = getClientType(c);
   if (!clientType) {
     return errorResponse(
@@ -51,6 +53,7 @@ account.get('/me', async c => {
 
     try {
       const claims = await verifyMobileJwt(token, c.env.JWT_SECRET);
+      const student = await studentService.getByUserId(Number(claims.sub));
       return c.json({
         user: userResponse({
           id: claims.sub,
@@ -58,6 +61,8 @@ account.get('/me', async c => {
           display_name: claims.display_name,
           avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
           avatar_updated_at: claims.avatar_updated_at ?? null,
+          student_id_number: student?.student_id_number ?? null,
+          class_room_name: student?.class_room_name ?? null,
         }),
       });
     } catch (error) {
@@ -88,6 +93,8 @@ account.get('/me', async c => {
     );
   }
 
+  const student = await studentService.getByUserId(Number(session.user_id));
+
   return c.json({
     user: userResponse({
       id: session.user_id,
@@ -95,6 +102,8 @@ account.get('/me', async c => {
       display_name: session.display_name,
       avatar_url: session.avatar_url ?? ACCOUNT_PHOTO_PATH,
       avatar_updated_at: session.avatar_updated_at ?? null,
+      student_id_number: student?.student_id_number ?? null,
+      class_room_name: student?.class_room_name ?? null,
     }),
   });
 });
