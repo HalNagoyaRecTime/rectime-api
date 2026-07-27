@@ -11,10 +11,12 @@ function setup() {
   const gatheringSpotService: IGatheringSpotService = {
     getAllGatheringSpots: vi.fn(),
     createGatheringSpot: vi.fn(),
+    updateGatheringSpot: vi.fn(),
   };
   const gatheringGroupService: IGatheringGroupService = {
     getAllGatheringGroups: vi.fn(),
     createGatheringGroup: vi.fn(),
+    deleteGatheringGroup: vi.fn(),
   };
   const gatheringGroupMemberService: IGatheringGroupMemberService = {
     getGatheringGroupMembers: vi.fn(),
@@ -36,11 +38,17 @@ function setup() {
   app.post('/gathering-spots', c =>
     gatheringSpotController.createGatheringSpot(c)
   );
+  app.put('/gathering-spots/:gatheringSpotId', c =>
+    gatheringSpotController.updateGatheringSpot(c)
+  );
   app.get('/gathering-groups', c =>
     gatheringGroupController.getAllGatheringGroups(c)
   );
   app.post('/gathering-groups', c =>
     gatheringGroupController.createGatheringGroup(c)
+  );
+  app.delete('/gathering-groups/:gatheringGroupId', c =>
+    gatheringGroupController.deleteGatheringGroup(c)
   );
   app.get('/gathering-groups/:gatheringGroupId/members', c =>
     gatheringGroupMemberController.getGatheringGroupMembers(c)
@@ -99,6 +107,68 @@ describe('Gathering master controllers', () => {
     expect(gatheringSpotService.createGatheringSpot).not.toHaveBeenCalled();
   });
 
+  it('集合場所の名称を更新して200を返す', async () => {
+    const { app, gatheringSpotService } = setup();
+    (
+      gatheringSpotService.updateGatheringSpot as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      gathering_spot_id: 1,
+      gathering_spot_name: '正門前',
+    });
+
+    const response = await app.request('/gathering-spots/1', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gatheringSpotName: '正門前' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(gatheringSpotService.updateGatheringSpot).toHaveBeenCalledWith(1, {
+      gathering_spot_name: '正門前',
+    });
+  });
+
+  it('更新時に不正なIDを400で拒否する', async () => {
+    const { app, gatheringSpotService } = setup();
+
+    const response = await app.request('/gathering-spots/invalid', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gatheringSpotName: '正門前' }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(gatheringSpotService.updateGatheringSpot).not.toHaveBeenCalled();
+  });
+
+  it('更新時に空の名称を400で拒否する', async () => {
+    const { app, gatheringSpotService } = setup();
+
+    const response = await app.request('/gathering-spots/1', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gatheringSpotName: '   ' }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(gatheringSpotService.updateGatheringSpot).not.toHaveBeenCalled();
+  });
+
+  it('更新対象が存在しない場合は404を返す', async () => {
+    const { app, gatheringSpotService } = setup();
+    (
+      gatheringSpotService.updateGatheringSpot as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(new Error('Gathering spot not found'));
+
+    const response = await app.request('/gathering-spots/999', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gatheringSpotName: '正門前' }),
+    });
+
+    expect(response.status).toBe(404);
+  });
+
   it('集合場所・集合グループの一覧をJSONで返す', async () => {
     const { app, gatheringSpotService, gatheringGroupService } = setup();
     (
@@ -155,7 +225,7 @@ describe('Gathering master controllers', () => {
     ).toHaveBeenCalledWith(1);
     expect(
       gatheringGroupMemberService.addGatheringGroupMember
-    ).toHaveBeenCalledWith(1, 2);
+    ).toHaveBeenCalledWith(1, { userId: 2 });
     expect(
       gatheringGroupMemberService.removeGatheringGroupMember
     ).toHaveBeenCalledWith(1, 2);
@@ -267,5 +337,33 @@ describe('Gathering master controllers', () => {
     expect(
       gatheringGroupMemberService.removeGatheringGroupMember
     ).not.toHaveBeenCalled();
+  });
+
+  it('集合グループを削除する', async () => {
+    const { app, gatheringGroupService } = setup();
+
+    const response = await app.request('/gathering-groups/1', {
+      method: 'DELETE',
+    });
+
+    expect(response.status).toBe(204);
+    expect(gatheringGroupService.deleteGatheringGroup).toHaveBeenCalledWith(1);
+  });
+
+  it('集合設定に紐付く集合グループの削除は409を返す', async () => {
+    const { app, gatheringGroupService } = setup();
+    (
+      gatheringGroupService.deleteGatheringGroup as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(new Error('Gathering group is assigned to an event'));
+
+    const response = await app.request('/gathering-groups/1', {
+      method: 'DELETE',
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: 'Gathering group is assigned to an event',
+    });
+    expect(gatheringGroupService.deleteGatheringGroup).toHaveBeenCalledWith(1);
   });
 });

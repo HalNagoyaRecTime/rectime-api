@@ -182,6 +182,9 @@ apiV1.get('/gathering-spots', requireAuth, c => {
 apiV1.post('/gathering-spots', requireAuth, c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
+apiV1.put('/gathering-spots/:gatheringSpotId', requireAuth, c => {
+  return c.get('container').gatheringSpotController.updateGatheringSpot(c);
+});
 
 // Gathering group routes
 apiV1.get('/gathering-groups', requireAuth, c => {
@@ -189,6 +192,9 @@ apiV1.get('/gathering-groups', requireAuth, c => {
 });
 apiV1.post('/gathering-groups', requireAuth, c => {
   return c.get('container').gatheringGroupController.createGatheringGroup(c);
+});
+apiV1.delete('/gathering-groups/:gatheringGroupId', requireAuth, c => {
+  return c.get('container').gatheringGroupController.deleteGatheringGroup(c);
 });
 apiV1.get('/gathering-groups/:gatheringGroupId/members', requireAuth, c => {
   return c
@@ -216,6 +222,9 @@ apiV1.get('/gatherings', requireAuth, c => {
 });
 apiV1.post('/gatherings', requireAuth, c => {
   return c.get('container').gatheringController.createGathering(c);
+});
+apiV1.delete('/gatherings/:gatheringId', requireAuth, c => {
+  return c.get('container').gatheringController.deleteGathering(c);
 });
 
 // Firebase token routes

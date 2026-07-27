@@ -1,5 +1,6 @@
 import { Context } from 'hono';
 import { z } from 'zod';
+import type { AddGatheringGroupMemberRequestDTO } from '../../application/dto/GatheringGroupMemberDTO';
 import { IGatheringGroupMemberService } from '../../application/services/IGatheringGroupMemberService';
 
 const addGatheringGroupMemberSchema = z.object({
@@ -63,7 +64,7 @@ export function createGatheringGroupMemberController(
     try {
       const member = await gatheringGroupMemberService.addGatheringGroupMember(
         gatheringGroupId,
-        parsedBody.data.userId
+        parsedBody.data satisfies AddGatheringGroupMemberRequestDTO
       );
       return c.json(member, 201);
     } catch (error) {

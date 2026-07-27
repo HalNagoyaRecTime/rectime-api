@@ -1,5 +1,6 @@
 import { Context } from 'hono';
 import { z } from 'zod';
+import type { CreateGatheringRequestDTO } from '../../application/dto/GatheringDTO';
 import { IGatheringService } from '../../application/services/IGatheringService';
 
 const createGatheringSchema = z.object({
@@ -43,13 +44,9 @@ export function createGatheringController(gatheringService: IGatheringService) {
     }
 
     try {
-      const gathering = await gatheringService.createGathering({
-        gathering_group_id: parsedBody.data.gatheringGroupId,
-        event_id: parsedBody.data.eventId,
-        gathering_spot_id: parsedBody.data.gatheringSpotId,
-        gathering_time: parsedBody.data.gatheringTime,
-        round: parsedBody.data.round,
-      });
+      const gathering = await gatheringService.createGathering(
+        parsedBody.data satisfies CreateGatheringRequestDTO
+      );
       return c.json(gathering, 201);
     } catch (error) {
       if (
@@ -78,5 +75,28 @@ export function createGatheringController(gatheringService: IGatheringService) {
     }
   };
 
-  return { getAllGatherings, createGathering };
+  const deleteGathering = async (c: Context) => {
+    const gatheringId = Number(c.req.param('gatheringId'));
+    if (!Number.isInteger(gatheringId) || gatheringId <= 0) {
+      return c.json({ error: 'Invalid gathering ID' }, 400);
+    }
+
+    try {
+      await gatheringService.deleteGathering(gatheringId);
+      return c.body(null, 204);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Gathering not found') {
+        return c.json({ error: error.message }, 404);
+      }
+      return c.json(
+        {
+          error: 'Failed to delete gathering',
+          details: error instanceof Error ? error.message : String(error),
+        },
+        500
+      );
+    }
+  };
+
+  return { getAllGatherings, createGathering, deleteGathering };
 }
