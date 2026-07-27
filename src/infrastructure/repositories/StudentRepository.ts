@@ -73,13 +73,13 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       return result ? toEntity(result) : null;
     },
 
-    async findByUserId(id: number): Promise<StudentEntity | null> {
+    async findByUserId(userId: number): Promise<StudentEntity | null> {
       const result = await orm
         .select()
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
         .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
-        .where(eq(students.userId, id))
+        .where(eq(students.userId, userId))
         .get();
 
       return result ? toEntity(result) : null;
