@@ -1446,7 +1446,7 @@ components:
 
     AuthUser:
       type: object
-      required: [id, email, display_name, avatar_url, avatar_updated_at]
+      required: [id, email, display_name, avatar_url, avatar_updated_at, student_id_number, class_room_name]
       properties:
         id:
           type: string
@@ -1457,6 +1457,12 @@ components:
         avatar_url:
           type: string
         avatar_updated_at:
+          type: string
+          nullable: true
+        student_id_number:
+          type: string
+          nullable: true
+        class_room_name:
           type: string
           nullable: true
 
