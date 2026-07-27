@@ -7,12 +7,15 @@ import {
   notifications,
   firebase_tokens,
 } from '../database/schema';
-import { sql, eq } from 'drizzle-orm';
+import { sql, eq, and } from 'drizzle-orm';
 
 import type { D1Database } from '@cloudflare/workers-types';
 import type {
   ScheduleEntity,
+  ScheduleHistoryEntity,
   NotificationSchedule,
+  // ScheduleDeleteResponse,
+  historyNotificationSchedule,
 } from '../../domain/entities/Schedule';
 import type { IScheduleRepository } from '../../domain/interfaces/repositories/IScheduleRepository';
 
@@ -33,6 +36,16 @@ type ScheduleRow = {
   sending_deliveries: number;
   sent_deliveries: number;
   failed_deliveries: number;
+};
+
+type HistoryScheduleRow = {
+  notification_id: number;
+  notification_type: string | null;
+  title: string | null;
+  body: string | null;
+  send_time: string;
+  event_id: number | null;
+  event_name: string | null;
 };
 
 function toNotificationSchedule(row: ScheduleRow): NotificationSchedule {
@@ -58,6 +71,22 @@ function toNotificationSchedule(row: ScheduleRow): NotificationSchedule {
       sending: row.sending_deliveries,
       sent: row.sent_deliveries,
       failed: row.failed_deliveries,
+    },
+  };
+}
+
+function toHistoryNotificationSchedule(
+  row: HistoryScheduleRow
+): historyNotificationSchedule {
+  return {
+    notification_id: row.notification_id,
+    notification_type: row.notification_type ?? '',
+    title: row.title ?? '',
+    body: row.body ?? '',
+    send_time: row.send_time,
+    event: {
+      event_id: row.event_id ?? 0,
+      event_name: row.event_name ?? '',
     },
   };
 }
@@ -205,6 +234,70 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
 
       return result
         ? { notification_schedules: [toNotificationSchedule(result)] }
+        : null;
+    },
+
+    // async deleteById(id: number): Promise<void> {
+    //   const result = await orm
+    //     .delete(notification_schedules)
+    //     .where(
+    //       and(
+    //         eq(notification_schedules.notificationId, id),
+    //         eq(notification_schedules.sendStatus, 'draft')
+    //       )
+    //     )
+    //     .returning({});
+    // },
+
+    async findByUserId(user_id: number): Promise<ScheduleHistoryEntity | null> {
+      const firebaseTokenExists = await orm
+        .select({ id: firebase_tokens.firebaseTokenId })
+        .from(firebase_tokens)
+        .where(eq(firebase_tokens.userId, user_id))
+        .get();
+
+      if (!firebaseTokenExists) {
+        return null;
+      }
+
+      const result = await orm
+        .select({
+          notification_id: notification_schedules.notificationId,
+          notification_type: notifications.notificationType,
+          title: notifications.title,
+          body: notifications.body,
+          send_time: notification_schedules.sendAt,
+          event_id: events.id,
+          event_name: events.name,
+        })
+        .from(notification_schedules)
+        .leftJoin(users, eq(notification_schedules.createdUserId, users.id))
+        .leftJoin(events, eq(notification_schedules.eventId, events.id))
+        .leftJoin(
+          notifications,
+          eq(
+            notification_schedules.notificationId,
+            notifications.notificationId
+          )
+        )
+        .leftJoin(
+          firebase_tokens,
+          eq(
+            notification_schedules.firebaseTokenId,
+            firebase_tokens.firebaseTokenId
+          )
+        )
+        .where(
+          and(
+            eq(notification_schedules.firebaseTokenId, firebaseTokenExists?.id),
+            eq(notification_schedules.sendStatus, 'sent')
+          )
+        )
+        .orderBy(sql`datetime(${notification_schedules.sendAt}) DESC`)
+        .all();
+
+      return result
+        ? { notifications: result.map(toHistoryNotificationSchedule) }
         : null;
     },
   };
