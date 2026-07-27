@@ -234,10 +234,10 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         statements.push(
           db
             .prepare(
-              `INSERT INTO class_rooms (class_code, class_name, updated_at)
-               VALUES (?, ?, CURRENT_TIMESTAMP)`
+              `INSERT INTO class_rooms (class_code, class_name, teacher_id, updated_at)
+               VALUES (?, ?, NULL, CURRENT_TIMESTAMP)`
             )
-            .bind(newClassRoom.classCode, newClassRoom.name)
+            .bind(newClassRoom.classCode, newClassRoom.className)
         );
       }
 

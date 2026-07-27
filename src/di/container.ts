@@ -1,6 +1,9 @@
 import { getDb } from '../lib/db';
 import { createStudentRepository } from '../infrastructure/repositories/StudentRepository';
+import { createStaffRepository } from '../infrastructure/repositories/StaffRepository';
+import { createTeacherRepository } from '../infrastructure/repositories/TeacherRepository';
 import { createEventRepository } from '../infrastructure/repositories/EventRepository';
+import { createEventScheduleRepository } from '../infrastructure/repositories/EventScheduleRepository';
 import { createClassRoomRepository } from '../infrastructure/repositories/ClassRoomRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
@@ -9,9 +12,11 @@ import { createGatheringSpotRepository } from '../infrastructure/repositories/Ga
 import { createGatheringGroupRepository } from '../infrastructure/repositories/GatheringGroupRepository';
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
-import { createTeacherRepository } from '../infrastructure/repositories/TeacherRepository';
 import { createStudentService } from '../application/services/StudentService';
+import { createStaffService } from '../application/services/StaffService';
+import { createTeacherService } from '../application/services/TeacherService';
 import { createEventService } from '../application/services/EventService';
+import { createEventScheduleService } from '../application/services/EventScheduleService';
 import { createClassRoomService } from '../application/services/ClassRoomService';
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
@@ -22,9 +27,11 @@ import { createGatheringSpotService } from '../application/services/GatheringSpo
 import { createGatheringGroupService } from '../application/services/GatheringGroupService';
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createGatheringService } from '../application/services/GatheringService';
-import { createTeacherService } from '../application/services/TeacherService';
 import { createStudentController } from '../presentation/controllers/StudentController';
+import { createStaffController } from '../presentation/controllers/StaffController';
+import { createTeacherController } from '../presentation/controllers/TeacherController';
 import { createEventController } from '../presentation/controllers/EventController';
+import { createEventScheduleController } from '../presentation/controllers/EventScheduleController';
 import { createClassRoomController } from '../presentation/controllers/ClassRoomController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
@@ -33,7 +40,6 @@ import { createGatheringSpotController } from '../presentation/controllers/Gathe
 import { createGatheringGroupController } from '../presentation/controllers/GatheringGroupController';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createGatheringController } from '../presentation/controllers/GatheringController';
-import { createTeacherController } from '../presentation/controllers/TeacherController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createAuthService } from '../application/services/authService';
 import type { Env } from '../lib/env';
@@ -44,7 +50,10 @@ export function createDIContainer(env: Env) {
   // Repositories
   const userRepository = createUserRepository(db);
   const studentRepository = createStudentRepository(db);
+  const staffRepository = createStaffRepository(db);
+  const teacherRepository = createTeacherRepository(db);
   const eventRepository = createEventRepository(db);
+  const eventScheduleRepository = createEventScheduleRepository(db);
   const classRoomRepository = createClassRoomRepository(db);
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
   const notificationScheduleRepository =
@@ -55,7 +64,6 @@ export function createDIContainer(env: Env) {
   const gatheringGroupMemberRepository =
     createGatheringGroupMemberRepository(db);
   const gatheringRepository = createGatheringRepository(db);
-  const teacherRepository = createTeacherRepository(db);
 
   // Services
   const authService = createAuthService(userRepository, env.AUTH_KV);
@@ -63,7 +71,15 @@ export function createDIContainer(env: Env) {
     studentRepository,
     classRoomRepository
   );
+  const staffService = createStaffService(staffRepository);
+  const teacherService = createTeacherService(teacherRepository);
   const eventService = createEventService(eventRepository);
+  const eventScheduleService = createEventScheduleService({
+    eventRepository,
+    eventScheduleRepository,
+    notificationScheduleRepository,
+    userRepository,
+  });
   const classRoomService = createClassRoomService(classRoomRepository);
   const firebaseTokenService = createFirebaseTokenService(
     firebaseTokenRepository
@@ -80,7 +96,8 @@ export function createDIContainer(env: Env) {
     fcmService,
   });
   const notificationScheduleService = createNotificationScheduleService(
-    notificationScheduleRepository
+    notificationScheduleRepository,
+    userRepository
   );
   const notificationService = createNotificationService(notificationRepository);
   const gatheringSpotService = createGatheringSpotService(
@@ -93,11 +110,14 @@ export function createDIContainer(env: Env) {
     gatheringGroupMemberRepository
   );
   const gatheringService = createGatheringService(gatheringRepository);
-  const teacherService = createTeacherService(teacherRepository);
 
   // Controllers
   const studentController = createStudentController(studentService);
+  const staffController = createStaffController(staffService);
+  const teacherController = createTeacherController(teacherService);
   const eventController = createEventController(eventService);
+  const eventScheduleController =
+    createEventScheduleController(eventScheduleService);
   const classRoomController = createClassRoomController(classRoomService);
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
@@ -117,12 +137,14 @@ export function createDIContainer(env: Env) {
     gatheringGroupMemberService
   );
   const gatheringController = createGatheringController(gatheringService);
-  const teacherController = createTeacherController(teacherService);
 
   return {
     authService,
     studentController,
+    staffController,
+    teacherController,
     eventController,
+    eventScheduleController,
     classRoomController,
     firebaseTokenController,
     notificationController,
@@ -132,7 +154,6 @@ export function createDIContainer(env: Env) {
     gatheringGroupController,
     gatheringGroupMemberController,
     gatheringController,
-    teacherController,
   };
 }
 

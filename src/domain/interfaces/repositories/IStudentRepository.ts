@@ -1,6 +1,5 @@
 import { StudentEntity } from '../../entities/Student';
 import { StudentWriteDTO } from '../../../application/dto/StudentDTO';
-import { NewClassRoomInput } from './IClassRoomRepository';
 
 export interface NewStudentWithClassCodeInput {
   displayName: string;
@@ -10,7 +9,7 @@ export interface NewStudentWithClassCodeInput {
 }
 
 export interface BulkCreateStudentsInput {
-  newClassRooms: NewClassRoomInput[];
+  newClassRooms: { classCode: string; className: string }[];
   students: NewStudentWithClassCodeInput[];
 }
 

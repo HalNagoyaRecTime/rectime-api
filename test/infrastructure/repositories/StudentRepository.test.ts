@@ -141,7 +141,7 @@ describe('StudentRepository', () => {
 
     it('新規クラスの作成と学生の作成を同じbatchでまとめて行う', async () => {
       await repo.createMany({
-        newClassRooms: [{ classCode: 'BULK-NEW', name: 'BULK-NEW' }],
+        newClassRooms: [{ classCode: 'BULK-NEW', className: 'BULK-NEW' }],
         students: [
           {
             displayName: '一括生徒C',

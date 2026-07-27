@@ -22,6 +22,7 @@ import {
   refreshMicrosoftAccessToken,
   saveSession,
   userResponse,
+  getUserCategories,
 } from '../helpers';
 import {
   type MobileRefreshEntry,
@@ -51,14 +52,18 @@ account.get('/me', async c => {
 
     try {
       const claims = await verifyMobileJwt(token, c.env.JWT_SECRET);
+      const categories = await getUserCategories(c, claims.sub);
       return c.json({
-        user: userResponse({
-          id: claims.sub,
-          email: claims.email,
-          display_name: claims.display_name,
-          avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
-          avatar_updated_at: claims.avatar_updated_at ?? null,
-        }),
+        user: userResponse(
+          {
+            id: claims.sub,
+            email: claims.email,
+            display_name: claims.display_name,
+            avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
+            avatar_updated_at: claims.avatar_updated_at ?? null,
+          },
+          categories
+        ),
       });
     } catch (error) {
       const code =
@@ -88,14 +93,18 @@ account.get('/me', async c => {
     );
   }
 
+  const categories = await getUserCategories(c, session.user_id);
   return c.json({
-    user: userResponse({
-      id: session.user_id,
-      email: session.email,
-      display_name: session.display_name,
-      avatar_url: session.avatar_url ?? ACCOUNT_PHOTO_PATH,
-      avatar_updated_at: session.avatar_updated_at ?? null,
-    }),
+    user: userResponse(
+      {
+        id: session.user_id,
+        email: session.email,
+        display_name: session.display_name,
+        avatar_url: session.avatar_url ?? ACCOUNT_PHOTO_PATH,
+        avatar_updated_at: session.avatar_updated_at ?? null,
+      },
+      categories
+    ),
   });
 });
 

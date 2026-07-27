@@ -7,6 +7,7 @@ import * as schema from '../../../src/infrastructure/database/schema';
 import {
   class_rooms,
   students,
+  teachers,
   users,
 } from '../../../src/infrastructure/database/schema';
 
@@ -23,89 +24,169 @@ describe('ClassRoomRepository', () => {
     await env.DB.prepare('DELETE FROM gatherings').run();
     await env.DB.prepare('DELETE FROM events').run();
     await orm.delete(students);
+    await orm.delete(teachers);
     await orm.delete(users);
     await orm.delete(class_rooms);
-    await orm
+    const [teacherUser] = await orm
+      .insert(users)
+      .values({ userName: '担任教員' })
+      .returning();
+    const [teacher] = await orm
+      .insert(teachers)
+      .values({ userId: teacherUser.id })
+      .returning();
+    const classrooms = await orm
       .insert(class_rooms)
       .values([
-        { classCode: '12B', name: '2年Bクラス' },
-        { classCode: '11A', name: '1年Aクラス' },
+        { classCode: '12B', name: '2年Bクラス', teacherId: teacher.id },
+        { classCode: 'IA14A', name: '高度情報学科AI開発先行コース' },
       ])
       .returning();
+    const [studentUser] = await orm
+      .insert(users)
+      .values({ userName: '所属学生' })
+      .returning();
+    await orm.insert(students).values({
+      userId: studentUser.id,
+      classRoomId: classrooms[0].id,
+      attendanceNumber: 1,
+      studentIdNumber: 'CLASS-TEST-001',
+    });
 
     repo = createClassRoomRepository(env.DB);
   });
 
   describe('findAll', () => {
-    it('class_rooms を class_room_id 昇順で全件返す', async () => {
-      const result = await repo.findAll();
+    it('class_rooms を class_room_id 昇順で返し、limitとoffsetを適用する', async () => {
+      const result = await repo.findAll(1, 1);
 
-      expect(result).toHaveLength(2);
-      const ids = result.map(c => c.class_room_id);
+      expect(result.classrooms).toHaveLength(1);
+      expect(result).toMatchObject({ total: 2, limit: 1, offset: 1 });
+      expect(result.classrooms[0].class_code).toBe('IA14A');
+      const ids = result.classrooms.map(c => c.class_room_id);
       expect(ids).toEqual([...ids].sort((a, b) => a - b));
     });
 
-    it('各カラムを ClassRoomEntity のフィールドにマッピングする', async () => {
-      const result = await repo.findAll();
+    it('学生数と担任をClassEntityへマッピングする', async () => {
+      const result = await repo.findAll(20, 0);
 
-      expect(result[0]).toMatchObject({
+      expect(result.classrooms[0]).toMatchObject({
         class_code: '12B',
         class_name: '2年Bクラス',
+        student_count: 1,
+        teacher: { display_name: '担任教員' },
       });
-      expect(result[1]).toMatchObject({
-        class_code: '11A',
-        class_name: '1年Aクラス',
+      expect(result.classrooms[1]).toMatchObject({
+        class_code: 'IA14A',
+        class_name: '高度情報学科AI開発先行コース',
+        student_count: 0,
+        teacher: null,
       });
     });
   });
 
-  describe('create', () => {
-    it('新しいクラスを作成し、作成したエンティティを返す', async () => {
-      const created = await repo.create({
-        classCode: '13C',
-        name: '3年Cクラス',
-      });
+  it('詳細を取得できる', async () => {
+    const classroom = (await repo.findAll(1, 0)).classrooms[0];
 
-      expect(created).toMatchObject({
-        class_code: '13C',
-        class_name: '3年Cクラス',
-      });
+    await expect(repo.findById(classroom.class_room_id)).resolves.toMatchObject(
+      {
+        class_code: '12B',
+        student_count: 1,
+      }
+    );
+    await expect(repo.findById(999999)).resolves.toBeNull();
+  });
 
-      const all = await repo.findAll();
-      expect(all).toContainEqual(created);
+  it('担任未設定のクラスを作成・更新・削除できる', async () => {
+    const created = await repo.create({
+      class_code: '13A',
+      class_name: '3年Aクラス',
+      teacher_id: null,
+    });
+    expect(created).toMatchObject({
+      class_code: '13A',
+      class_name: '3年Aクラス',
+      student_count: 0,
+      teacher: null,
+    });
+
+    const updated = await repo.update(created.class_room_id, {
+      class_code: '13B',
+      class_name: '3年Bクラス',
+      teacher_id: null,
+    });
+    expect(updated).toMatchObject({
+      class_code: '13B',
+      class_name: '3年Bクラス',
+    });
+    await expect(repo.delete(created.class_room_id)).resolves.toBe(true);
+    await expect(repo.findById(created.class_room_id)).resolves.toBeNull();
+  });
+
+  it('class_codeの一意制約を適用する', async () => {
+    await expect(
+      repo.create({
+        class_code: 'IA14A',
+        class_name: '重複クラス',
+        teacher_id: null,
+      })
+    ).rejects.toThrow(/UNIQUE/);
+  });
+
+  it('学生の所属有無を返す', async () => {
+    const classrooms = (await repo.findAll(20, 0)).classrooms;
+    const assigned = classrooms.find(c => c.class_code === '12B');
+    const unassigned = classrooms.find(c => c.class_code === 'IA14A');
+
+    await expect(repo.hasStudents(assigned!.class_room_id)).resolves.toBe(true);
+    await expect(repo.hasStudents(unassigned!.class_room_id)).resolves.toBe(
+      false
+    );
+  });
+
+  describe('findByCode', () => {
+    it('class_codeでクラスを取得できる', async () => {
+      await expect(repo.findByCode('IA14A')).resolves.toMatchObject({
+        class_code: 'IA14A',
+      });
+    });
+
+    it('存在しないclass_codeの場合はnullを返す', async () => {
+      await expect(repo.findByCode('NOPE')).resolves.toBeNull();
     });
   });
 
   describe('createMany', () => {
     it('複数のクラスをまとめて作成する', async () => {
-      const created = await repo.createMany([
-        { classCode: '14D', name: '4年Dクラス' },
-        { classCode: '14E', name: '4年Eクラス' },
+      await repo.createMany([
+        { class_code: '14D', class_name: '4年Dクラス', teacher_id: null },
+        { class_code: '14E', class_name: '4年Eクラス', teacher_id: null },
       ]);
 
-      expect(created).toHaveLength(2);
-      expect(created[0]).toMatchObject({
-        class_code: '14D',
+      await expect(repo.findByCode('14D')).resolves.toMatchObject({
         class_name: '4年Dクラス',
       });
-      expect(created[1]).toMatchObject({
-        class_code: '14E',
+      await expect(repo.findByCode('14E')).resolves.toMatchObject({
         class_name: '4年Eクラス',
       });
-
-      const all = await repo.findAll();
-      expect(all).toContainEqual(created[0]);
-      expect(all).toContainEqual(created[1]);
     });
 
-    it('空配列の場合は何も作成せず空配列を返す', async () => {
-      const before = await repo.findAll();
+    it('空配列の場合は何も作成しない', async () => {
+      const before = (await repo.findAll(100, 0)).total;
+      await repo.createMany([]);
+      const after = (await repo.findAll(100, 0)).total;
+      expect(after).toBe(before);
+    });
 
-      const created = await repo.createMany([]);
+    it('class_codeが重複する行がある場合は1件も登録しない', async () => {
+      await expect(
+        repo.createMany([
+          { class_code: '15A', class_name: '5年Aクラス', teacher_id: null },
+          { class_code: 'IA14A', class_name: '重複クラス', teacher_id: null },
+        ])
+      ).rejects.toThrow();
 
-      expect(created).toEqual([]);
-      const after = await repo.findAll();
-      expect(after).toHaveLength(before.length);
+      await expect(repo.findByCode('15A')).resolves.toBeNull();
     });
   });
 });

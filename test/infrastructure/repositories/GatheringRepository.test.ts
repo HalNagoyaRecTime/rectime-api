@@ -11,10 +11,8 @@ describe('GatheringRepository', () => {
 
   async function createReferences(suffix: string) {
     const group = await env.DB.prepare(
-      'INSERT INTO gathering_groups (gathering_group_name) VALUES (?) RETURNING gathering_group_id'
-    )
-      .bind(`集会テストグループ-${suffix}`)
-      .first<{ gathering_group_id: number }>();
+      'INSERT INTO gathering_groups DEFAULT VALUES RETURNING gathering_group_id'
+    ).first<{ gathering_group_id: number }>();
     groupIds.push(group!.gathering_group_id);
     const spot = await env.DB.prepare(
       'INSERT INTO gathering_spots (gathering_spot_name) VALUES (?) RETURNING gathering_spot_id'
@@ -88,7 +86,6 @@ describe('GatheringRepository', () => {
     gatheringIds.push(created.gathering_id);
 
     expect(created).toMatchObject({
-      gathering_group_name: '集会テストグループ-作成取得',
       event_name: '集会テストイベント-作成取得',
       gathering_spot_name: '集会テスト場所-作成取得',
       gathering_time: '08:50',
@@ -161,5 +158,25 @@ describe('GatheringRepository', () => {
     await expect(repository.existsEvent(999999)).resolves.toBe(false);
     await expect(repository.existsGatheringSpot(spotId)).resolves.toBe(true);
     await expect(repository.existsGatheringSpot(999999)).resolves.toBe(false);
+  });
+
+  it('集合設定を削除し、存在しないIDはfalseを返す', async () => {
+    const { groupId, spotId, eventId } = await createReferences('削除');
+    const created = await repository.create({
+      gathering_group_id: groupId,
+      event_id: eventId,
+      gathering_spot_id: spotId,
+    });
+    gatheringIds.push(created.gathering_id);
+
+    await expect(repository.remove(created.gathering_id)).resolves.toBe(true);
+    await expect(repository.remove(999999)).resolves.toBe(false);
+
+    const deleted = await env.DB.prepare(
+      'SELECT gathering_id FROM gatherings WHERE gathering_id = ?'
+    )
+      .bind(created.gathering_id)
+      .first();
+    expect(deleted).toBeNull();
   });
 });

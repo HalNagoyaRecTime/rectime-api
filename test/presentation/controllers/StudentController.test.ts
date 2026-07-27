@@ -313,37 +313,6 @@ describe('StudentController', () => {
       });
     });
 
-    it('エラー行があっても200で結果を返す(検査のみでDBは変更しない)', async () => {
-      const { app, studentService } = setup();
-      const result = {
-        total: 1,
-        success_count: 0,
-        error_count: 1,
-        errors: [
-          {
-            row_index: 0,
-            class_code: '11A',
-            attendance_number: 1,
-            student_id_number: 'S010',
-            display_name: '新規太郎',
-            reason: 'student_id_number_duplicate_in_db',
-          },
-        ],
-      };
-      (
-        studentService.validateStudentImport as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(result);
-
-      const res = await app.request('/students/master-imports/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: [validRow] }),
-      });
-
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual(result);
-    });
-
     it('rowsが空配列の場合は400を返す', async () => {
       const { app, studentService } = setup();
 

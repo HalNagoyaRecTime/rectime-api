@@ -3,16 +3,22 @@ import { cors } from 'hono/cors';
 import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
+import { isEventDate, isValidEventDate } from './lib/eventDate';
 import {
   diContainerMiddleware,
   type ContainerVariables,
 } from './presentation/middleware/diContainer';
+import {
+  sessionAuthenticationMiddleware,
+  type AuthenticationVariables,
+} from './presentation/middleware/sessionAuthentication';
 
 const app = new Hono<{ Bindings: Env }>();
 
 let corsWarnLogged = false;
 const allowedOriginRulesCache = new Map<string, AllowedOriginRule[]>();
 let tenantWarnLogged = false;
+let eventDateWarnLogged = false;
 
 app.use('*', (c, next) => {
   const allowedOrigins = c.env.ALLOWED_ORIGINS ?? '';
@@ -66,6 +72,8 @@ app.get('/', c => {
     version: '1.0.0',
     endpoints: {
       students: '/api/v1/students/{studentId}',
+      staffs: '/api/v1/staffs/{staffId}',
+      teachers: '/api/v1/teachers/{teacherId}',
       events: '/api/v1/events',
       classRooms: '/api/v1/classrooms',
       gatheringSpots: '/api/v1/gathering-spots',
@@ -81,9 +89,13 @@ app.get('/', c => {
 });
 
 // API v1 routes
-const apiV1 = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
+const apiV1 = new Hono<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthenticationVariables;
+}>();
 
 apiV1.use('*', diContainerMiddleware);
+apiV1.use('*', sessionAuthenticationMiddleware);
 
 // Student routes
 apiV1.get('/students', c => {
@@ -105,6 +117,34 @@ apiV1.post('/students/master-imports/commit', c => {
   return c.get('container').studentController.commitStudentImport(c);
 });
 
+// Staff routes
+apiV1.get('/staffs', c => {
+  return c.get('container').staffController.getAllStaffs(c);
+});
+apiV1.get('/staffs/:staffId', c => {
+  return c.get('container').staffController.getStaffById(c);
+});
+
+// Teacher routes
+apiV1.get('/teachers', c => {
+  return c.get('container').teacherController.getAllTeachers(c);
+});
+apiV1.get('/teachers/:teacherId', c => {
+  return c.get('container').teacherController.getTeacherById(c);
+});
+apiV1.put('/teachers/:teacherId', c => {
+  return c.get('container').teacherController.updateTeacher(c);
+});
+apiV1.delete('/teachers/:teacherId', c => {
+  return c.get('container').teacherController.deleteTeacher(c);
+});
+apiV1.post('/teachers/master-imports/validate', c => {
+  return c.get('container').teacherController.validateTeacherImport(c);
+});
+apiV1.post('/teachers/master-imports/commit', c => {
+  return c.get('container').teacherController.commitTeacherImport(c);
+});
+
 // Event routes
 apiV1.get('/events', c => {
   return c.get('container').eventController.getAllEvents(c);
@@ -113,24 +153,40 @@ apiV1.get('/events', c => {
 apiV1.get('/events/:eventId', c => {
   return c.get('container').eventController.getEventById(c);
 });
+apiV1.post('/events', c => {
+  return c.get('container').eventController.createEvent(c);
+});
+apiV1.put('/events/:eventId', c => {
+  return c.get('container').eventController.updateEvent(c);
+});
+apiV1.delete('/events/:eventId', c => {
+  return c.get('container').eventController.deleteEvent(c);
+});
+apiV1.put('/events/:eventId/schedule', c => {
+  return c.get('container').eventScheduleController.updateEventSchedule(c);
+});
 
-// Class routes
+// Classroom routes
 apiV1.get('/classrooms', c => {
-  return c.get('container').classRoomController.getAllClassRooms(c);
+  return c.get('container').classRoomController.getAllClassrooms(c);
+});
+apiV1.get('/classrooms/:classId', c => {
+  return c.get('container').classRoomController.getClassroomById(c);
+});
+apiV1.post('/classrooms', c => {
+  return c.get('container').classRoomController.createClassroom(c);
+});
+apiV1.put('/classrooms/:classId', c => {
+  return c.get('container').classRoomController.updateClassroom(c);
+});
+apiV1.delete('/classrooms/:classId', c => {
+  return c.get('container').classRoomController.deleteClassroom(c);
 });
 apiV1.post('/classrooms/master-imports/validate', c => {
   return c.get('container').classRoomController.validateClassRoomImport(c);
 });
 apiV1.post('/classrooms/master-imports/commit', c => {
   return c.get('container').classRoomController.commitClassRoomImport(c);
-});
-
-// Teacher routes
-apiV1.post('/teachers/master-imports/validate', c => {
-  return c.get('container').teacherController.validateTeacherImport(c);
-});
-apiV1.post('/teachers/master-imports/commit', c => {
-  return c.get('container').teacherController.commitTeacherImport(c);
 });
 
 // Gathering spot routes
@@ -140,6 +196,9 @@ apiV1.get('/gathering-spots', c => {
 apiV1.post('/gathering-spots', c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
+apiV1.put('/gathering-spots/:gatheringSpotId', c => {
+  return c.get('container').gatheringSpotController.updateGatheringSpot(c);
+});
 
 // Gathering group routes
 apiV1.get('/gathering-groups', c => {
@@ -147,6 +206,9 @@ apiV1.get('/gathering-groups', c => {
 });
 apiV1.post('/gathering-groups', c => {
   return c.get('container').gatheringGroupController.createGatheringGroup(c);
+});
+apiV1.delete('/gathering-groups/:gatheringGroupId', c => {
+  return c.get('container').gatheringGroupController.deleteGatheringGroup(c);
 });
 apiV1.get('/gathering-groups/:gatheringGroupId/members', c => {
   return c
@@ -170,6 +232,9 @@ apiV1.get('/gatherings', c => {
 });
 apiV1.post('/gatherings', c => {
   return c.get('container').gatheringController.createGathering(c);
+});
+apiV1.delete('/gatherings/:gatheringId', c => {
+  return c.get('container').gatheringController.deleteGathering(c);
 });
 
 // Firebase token routes
@@ -226,10 +291,25 @@ export { app };
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    if (!isValidEventDate(env.EVENT_DATE)) {
+      if (!eventDateWarnLogged) {
+        console.error(
+          '[CRON] EVENT_DATE must be configured in YYYY-MM-DD format; notification delivery is disabled'
+        );
+        eventDateWarnLogged = true;
+      }
+      return;
+    }
+
+    const scheduledAt = new Date(event.scheduledTime);
+    if (!isEventDate(env.EVENT_DATE, scheduledAt)) return;
+
     const container = createDIContainer(env);
     ctx.waitUntil(
-      container.scheduledNotificationService.sendScheduledEventNotifications()
+      container.scheduledNotificationService.sendScheduledEventNotifications(
+        scheduledAt
+      )
     );
   },
 };

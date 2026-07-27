@@ -1,80 +1,166 @@
-import { drizzle } from 'drizzle-orm/d1';
-import * as schema from '../database/schema';
-import { class_rooms } from '../database/schema';
+import type { D1Database } from '@cloudflare/workers-types';
+import type {
+  ClassRoomEntity,
+  ClassRoomInput,
+  ClassRoomPage,
+} from '../../domain/entities/ClassRoom';
+import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 
-import { D1Database } from '@cloudflare/workers-types';
-import { ClassRoomEntity } from '../../domain/entities/ClassRoom';
-import {
-  IClassRoomRepository,
-  NewClassRoomInput,
-} from '../../domain/interfaces/repositories/IClassRoomRepository';
-
-type ReturnedClassRoomRow = {
+type ClassRoomRow = {
   class_room_id: number;
   class_code: string;
   class_name: string;
+  student_count: number;
+  teacher_id: number | null;
+  teacher_user_id: number | null;
+  teacher_display_name: string | null;
 };
 
-function toEntity(row: typeof class_rooms.$inferSelect): ClassRoomEntity {
+const classRoomSelect = `
+  SELECT
+    c.class_room_id,
+    c.class_code,
+    c.class_name,
+    COUNT(s.student_id) AS student_count,
+    t.teacher_id,
+    u.user_id AS teacher_user_id,
+    u.user_name AS teacher_display_name
+  FROM class_rooms c
+  LEFT JOIN students s ON s.class_room_id = c.class_room_id
+  LEFT JOIN teachers t ON t.teacher_id = c.teacher_id
+  LEFT JOIN users u ON u.user_id = t.user_id
+`;
+
+function toEntity(row: ClassRoomRow): ClassRoomEntity {
   return {
-    class_room_id: row.id,
-    class_code: row.classCode,
-    class_name: row.name,
+    class_room_id: row.class_room_id,
+    class_code: row.class_code,
+    class_name: row.class_name,
+    student_count: Number(row.student_count),
+    teacher:
+      row.teacher_id === null ||
+      row.teacher_user_id === null ||
+      row.teacher_display_name === null
+        ? null
+        : {
+            teacher_id: row.teacher_id,
+            user_id: row.teacher_user_id,
+            display_name: row.teacher_display_name,
+          },
   };
 }
 
 export function createClassRoomRepository(
   db: D1Database
 ): IClassRoomRepository {
-  const orm = drizzle(db, { schema });
+  const findById = async (id: number): Promise<ClassRoomEntity | null> => {
+    const row = await db
+      .prepare(
+        `${classRoomSelect} WHERE c.class_room_id = ? GROUP BY c.class_room_id`
+      )
+      .bind(id)
+      .first<ClassRoomRow>();
+    return row ? toEntity(row) : null;
+  };
 
   return {
-    async findAll(): Promise<ClassRoomEntity[]> {
-      const result = await orm.select().from(class_rooms).all();
-
-      return result ? result.map(toEntity) : [];
+    async findAll(limit: number, offset: number): Promise<ClassRoomPage> {
+      const [rows, count] = await Promise.all([
+        db
+          .prepare(
+            `${classRoomSelect} GROUP BY c.class_room_id ORDER BY c.class_room_id LIMIT ? OFFSET ?`
+          )
+          .bind(limit, offset)
+          .all<ClassRoomRow>(),
+        db
+          .prepare('SELECT COUNT(*) AS total FROM class_rooms')
+          .first<{ total: number }>(),
+      ]);
+      return {
+        classrooms: rows.results.map(toEntity),
+        total: Number(count?.total ?? 0),
+        limit,
+        offset,
+      };
     },
 
-    async create(input: NewClassRoomInput): Promise<ClassRoomEntity> {
-      const [created] = await orm
-        .insert(class_rooms)
-        .values({ classCode: input.classCode, name: input.name })
-        .returning();
+    findById,
 
-      if (!created) {
-        throw new Error('Failed to create class room');
-      }
-      return toEntity(created);
+    async findByCode(classCode: string): Promise<ClassRoomEntity | null> {
+      const row = await db
+        .prepare(
+          `${classRoomSelect} WHERE c.class_code = ? GROUP BY c.class_room_id`
+        )
+        .bind(classCode)
+        .first<ClassRoomRow>();
+      return row ? toEntity(row) : null;
     },
 
-    async createMany(inputs: NewClassRoomInput[]): Promise<ClassRoomEntity[]> {
+    async create(input: ClassRoomInput): Promise<ClassRoomEntity> {
+      const row = await db
+        .prepare(
+          'INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES (?, ?, ?) RETURNING class_room_id'
+        )
+        .bind(input.class_code, input.class_name, input.teacher_id)
+        .first<{ class_room_id: number }>();
+      if (!row) throw new Error('Failed to create class');
+      const classroom = await findById(row.class_room_id);
+      if (!classroom) throw new Error('Failed to fetch created class');
+      return classroom;
+    },
+
+    async createMany(inputs: ClassRoomInput[]): Promise<void> {
       if (inputs.length === 0) {
-        return [];
+        return;
       }
 
       const statements = inputs.map(input =>
         db
           .prepare(
-            `INSERT INTO class_rooms (class_code, class_name, updated_at)
-             VALUES (?, ?, CURRENT_TIMESTAMP)
-             RETURNING class_room_id, class_code, class_name`
+            'INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES (?, ?, ?)'
           )
-          .bind(input.classCode, input.name)
+          .bind(input.class_code, input.class_name, input.teacher_id)
       );
+      await db.batch(statements);
+    },
 
-      const results = await db.batch<ReturnedClassRoomRow>(statements);
+    async update(
+      id: number,
+      input: ClassRoomInput
+    ): Promise<ClassRoomEntity | null> {
+      const row = await db
+        .prepare(
+          'UPDATE class_rooms SET class_code = ?, class_name = ?, teacher_id = ?, updated_at = CURRENT_TIMESTAMP WHERE class_room_id = ? RETURNING class_room_id'
+        )
+        .bind(input.class_code, input.class_name, input.teacher_id, id)
+        .first<{ class_room_id: number }>();
+      return row ? findById(row.class_room_id) : null;
+    },
 
-      return results.map(result => {
-        const row = result.results[0];
-        if (!row) {
-          throw new Error('Failed to create class room');
-        }
-        return {
-          class_room_id: row.class_room_id,
-          class_code: row.class_code,
-          class_name: row.class_name,
-        };
-      });
+    async delete(id: number): Promise<boolean> {
+      const result = await db
+        .prepare('DELETE FROM class_rooms WHERE class_room_id = ?')
+        .bind(id)
+        .run();
+      return (result.meta.changes ?? 0) > 0;
+    },
+
+    async teacherExists(id: number): Promise<boolean> {
+      const row = await db
+        .prepare('SELECT teacher_id FROM teachers WHERE teacher_id = ?')
+        .bind(id)
+        .first();
+      return row !== null;
+    },
+
+    async hasStudents(id: number): Promise<boolean> {
+      const row = await db
+        .prepare(
+          'SELECT 1 AS referenced FROM students WHERE class_room_id = ? LIMIT 1'
+        )
+        .bind(id)
+        .first();
+      return row !== null;
     },
   };
 }

@@ -4,6 +4,7 @@ export type Env = {
   DB: D1Database;
   AUTH_KV: KVNamespace;
   ALLOWED_ORIGINS?: string;
+  EVENT_DATE?: string;
   FIREBASE_PROJECT_ID: string;
   FIREBASE_CLIENT_EMAIL: string;
   FIREBASE_PRIVATE_KEY: string;

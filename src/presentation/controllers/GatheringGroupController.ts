@@ -1,10 +1,5 @@
 import { Context } from 'hono';
-import { z } from 'zod';
 import { IGatheringGroupService } from '../../application/services/IGatheringGroupService';
-
-const createGatheringGroupSchema = z.object({
-  gatheringGroupName: z.string().trim().min(1),
-});
 
 export function createGatheringGroupController(
   gatheringGroupService: IGatheringGroupService
@@ -24,22 +19,8 @@ export function createGatheringGroupController(
   };
 
   const createGatheringGroup = async (c: Context) => {
-    const body = await c.req.json().catch(() => undefined);
-    const parsedBody = createGatheringGroupSchema.safeParse(body);
-    if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid gathering group request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
-      );
-    }
-
     try {
-      const gatheringGroup = await gatheringGroupService.createGatheringGroup(
-        parsedBody.data.gatheringGroupName
-      );
+      const gatheringGroup = await gatheringGroupService.createGatheringGroup();
       return c.json(gatheringGroup, 201);
     } catch (error) {
       return c.json(
@@ -52,5 +33,41 @@ export function createGatheringGroupController(
     }
   };
 
-  return { getAllGatheringGroups, createGatheringGroup };
+  const deleteGatheringGroup = async (c: Context) => {
+    const gatheringGroupId = Number(c.req.param('gatheringGroupId'));
+    if (!Number.isInteger(gatheringGroupId) || gatheringGroupId <= 0) {
+      return c.json({ error: 'Invalid gathering group ID' }, 400);
+    }
+
+    try {
+      await gatheringGroupService.deleteGatheringGroup(gatheringGroupId);
+      return c.body(null, 204);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'Gathering group not found'
+      ) {
+        return c.json({ error: error.message }, 404);
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'Gathering group is assigned to an event'
+      ) {
+        return c.json({ error: error.message }, 409);
+      }
+      return c.json(
+        {
+          error: 'Failed to delete gathering group',
+          details: error instanceof Error ? error.message : String(error),
+        },
+        500
+      );
+    }
+  };
+
+  return {
+    getAllGatheringGroups,
+    createGatheringGroup,
+    deleteGatheringGroup,
+  };
 }

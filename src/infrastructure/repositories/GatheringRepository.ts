@@ -23,7 +23,6 @@ const detailSelection = {
   round: gatherings.round,
   created_at: gatherings.createdAt,
   updated_at: gatherings.updatedAt,
-  gathering_group_name: gathering_groups.name,
   event_name: events.name,
   gathering_spot_name: gathering_spots.name,
 };
@@ -119,6 +118,15 @@ export function createGatheringRepository(
       const gathering = await findById(row.id);
       if (!gathering) throw new Error('Failed to create gathering');
       return gathering;
+    },
+
+    async remove(gatheringId: number): Promise<boolean> {
+      const row = await orm
+        .delete(gatherings)
+        .where(eq(gatherings.id, gatheringId))
+        .returning({ id: gatherings.id })
+        .get();
+      return Boolean(row);
     },
   };
 }

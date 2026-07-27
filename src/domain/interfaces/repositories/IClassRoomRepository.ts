@@ -1,12 +1,20 @@
-import { ClassRoomEntity } from '../../entities/ClassRoom';
-
-export interface NewClassRoomInput {
-  classCode: string;
-  name: string;
-}
+import {
+  ClassRoomEntity,
+  ClassRoomInput,
+  ClassRoomPage,
+} from '../../entities/ClassRoom';
 
 export interface IClassRoomRepository {
-  findAll: () => Promise<ClassRoomEntity[]>;
-  create: (input: NewClassRoomInput) => Promise<ClassRoomEntity>;
-  createMany: (inputs: NewClassRoomInput[]) => Promise<ClassRoomEntity[]>;
+  findAll: (limit: number, offset: number) => Promise<ClassRoomPage>;
+  findById: (id: number) => Promise<ClassRoomEntity | null>;
+  findByCode: (classCode: string) => Promise<ClassRoomEntity | null>;
+  create: (input: ClassRoomInput) => Promise<ClassRoomEntity>;
+  createMany: (inputs: ClassRoomInput[]) => Promise<void>;
+  update: (
+    id: number,
+    input: ClassRoomInput
+  ) => Promise<ClassRoomEntity | null>;
+  delete: (id: number) => Promise<boolean>;
+  teacherExists: (id: number) => Promise<boolean>;
+  hasStudents: (id: number) => Promise<boolean>;
 }

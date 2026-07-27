@@ -147,23 +147,23 @@ export function createStudentService(
         };
       }
 
-      const classRooms = await classRoomRepository.findAll();
-      const existingClassCodes = new Set(
-        classRooms.map(room => room.class_code)
-      );
-
-      const newClassCodes = new Set<string>();
+      const newClassRooms: { classCode: string; className: string }[] = [];
+      const seenCodes = new Set<string>();
       for (const row of input.rows) {
-        if (!existingClassCodes.has(row.class_code)) {
-          newClassCodes.add(row.class_code);
+        if (seenCodes.has(row.class_code)) {
+          continue;
+        }
+        seenCodes.add(row.class_code);
+        if (!(await classRoomRepository.findByCode(row.class_code))) {
+          newClassRooms.push({
+            classCode: row.class_code,
+            className: row.class_code,
+          });
         }
       }
 
       await studentRepository.createMany({
-        newClassRooms: Array.from(newClassCodes).map(classCode => ({
-          classCode,
-          name: classCode,
-        })),
+        newClassRooms,
         students: input.rows.map(row => ({
           displayName: `${row.last_name}${row.first_name}`,
           classCode: row.class_code,

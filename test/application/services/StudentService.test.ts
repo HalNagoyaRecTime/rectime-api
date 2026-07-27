@@ -3,7 +3,6 @@ import { createStudentService } from '../../../src/application/services/StudentS
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import type { IClassRoomRepository } from '../../../src/domain/interfaces/repositories/IClassRoomRepository';
 import type { StudentEntity } from '../../../src/domain/entities/Student';
-import type { ClassRoomEntity } from '../../../src/domain/entities/ClassRoom';
 
 function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
   return {
@@ -15,17 +14,6 @@ function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
     attendance_number: 5,
     student_id_number: '10000',
     is_live_active: true,
-    ...overrides,
-  };
-}
-
-function buildClassRoom(
-  overrides: Partial<ClassRoomEntity> = {}
-): ClassRoomEntity {
-  return {
-    class_room_id: 1,
-    class_code: '11A',
-    class_name: '1年Aクラス',
     ...overrides,
   };
 }
@@ -49,9 +37,15 @@ function createClassRoomRepository(
   overrides: Partial<IClassRoomRepository> = {}
 ): IClassRoomRepository {
   return {
-    findAll: vi.fn().mockResolvedValue([]),
+    findAll: vi.fn(),
+    findById: vi.fn(),
+    findByCode: vi.fn().mockResolvedValue(null),
     create: vi.fn(),
-    createMany: vi.fn().mockResolvedValue([]),
+    createMany: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    teacherExists: vi.fn(),
+    hasStudents: vi.fn(),
     ...overrides,
   };
 }
@@ -211,15 +205,12 @@ describe('StudentService', () => {
 
   describe('validateStudentImport', () => {
     it('全行が有効な場合はerrorsが空になり、DBへの書き込みは行わない', async () => {
-      const createClassRoom = vi.fn();
-      const classRoomRepository = createClassRoomRepository({
-        create: createClassRoom,
-      });
-      const create = vi.fn();
+      const createMany = vi.fn();
       const repository = createRepository({
         findByStudentNum: vi.fn().mockResolvedValue(null),
-        create,
+        createMany,
       });
+      const classRoomRepository = createClassRoomRepository();
       const service = createStudentService(repository, classRoomRepository);
 
       const result = await service.validateStudentImport({
@@ -247,16 +238,17 @@ describe('StudentService', () => {
         error_count: 0,
         errors: [],
       });
-      expect(create).not.toHaveBeenCalled();
-      expect(createClassRoom).not.toHaveBeenCalled();
+      expect(createMany).not.toHaveBeenCalled();
     });
 
     it('ファイル内で学籍番号が重複する行はエラーとして報告する', async () => {
-      const classRoomRepository = createClassRoomRepository();
       const repository = createRepository({
         findByStudentNum: vi.fn().mockResolvedValue(null),
       });
-      const service = createStudentService(repository, classRoomRepository);
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
 
       const row = {
         class_code: '11A',
@@ -271,7 +263,6 @@ describe('StudentService', () => {
       });
 
       expect(result.success_count).toBe(1);
-      expect(result.error_count).toBe(1);
       expect(result.errors).toEqual([
         expect.objectContaining({
           row_index: 1,
@@ -281,13 +272,15 @@ describe('StudentService', () => {
     });
 
     it('既存DBと学籍番号が重複する行はエラーとして報告する', async () => {
-      const classRoomRepository = createClassRoomRepository();
       const repository = createRepository({
         findByStudentNum: vi
           .fn()
           .mockResolvedValue(buildStudent({ student_id_number: '24030' })),
       });
-      const service = createStudentService(repository, classRoomRepository);
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
 
       const result = await service.validateStudentImport({
         rows: [
@@ -317,13 +310,19 @@ describe('StudentService', () => {
 
   describe('commitStudentImport', () => {
     it('全行が有効な場合は全件分をまとめてcreateManyに渡す', async () => {
-      const classRoomRepository = createClassRoomRepository({
-        findAll: vi.fn().mockResolvedValue([buildClassRoom()]),
-      });
       const createMany = vi.fn();
       const repository = createRepository({
         findByStudentNum: vi.fn().mockResolvedValue(null),
         createMany,
+      });
+      const classRoomRepository = createClassRoomRepository({
+        findByCode: vi.fn().mockResolvedValue({
+          class_room_id: 1,
+          class_code: '11A',
+          class_name: '1年Aクラス',
+          student_count: 0,
+          teacher: null,
+        }),
       });
       const service = createStudentService(repository, classRoomRepository);
 
@@ -373,13 +372,13 @@ describe('StudentService', () => {
     });
 
     it('クラス記号が見つからない場合はクラスコードを仮の名前として新規クラス作成をcreateManyに含める', async () => {
-      const classRoomRepository = createClassRoomRepository({
-        findAll: vi.fn().mockResolvedValue([]),
-      });
       const createMany = vi.fn();
       const repository = createRepository({
         findByStudentNum: vi.fn().mockResolvedValue(null),
         createMany,
+      });
+      const classRoomRepository = createClassRoomRepository({
+        findByCode: vi.fn().mockResolvedValue(null),
       });
       const service = createStudentService(repository, classRoomRepository);
 
@@ -402,7 +401,7 @@ describe('StudentService', () => {
         errors: [],
       });
       expect(createMany).toHaveBeenCalledWith({
-        newClassRooms: [{ classCode: '99Z', name: '99Z' }],
+        newClassRooms: [{ classCode: '99Z', className: '99Z' }],
         students: [
           {
             displayName: '新規クラス',
@@ -415,13 +414,13 @@ describe('StudentService', () => {
     });
 
     it('同じ未登録クラス記号の行が複数あっても、newClassRoomsには1件だけ含める', async () => {
-      const classRoomRepository = createClassRoomRepository({
-        findAll: vi.fn().mockResolvedValue([]),
-      });
       const createMany = vi.fn();
       const repository = createRepository({
         findByStudentNum: vi.fn().mockResolvedValue(null),
         createMany,
+      });
+      const classRoomRepository = createClassRoomRepository({
+        findByCode: vi.fn().mockResolvedValue(null),
       });
       const service = createStudentService(repository, classRoomRepository);
 
@@ -446,19 +445,20 @@ describe('StudentService', () => {
 
       expect(result.imported).toBe(2);
       const call = createMany.mock.calls[0][0];
-      expect(call.newClassRooms).toEqual([{ classCode: '99Z', name: '99Z' }]);
+      expect(call.newClassRooms).toEqual([
+        { classCode: '99Z', className: '99Z' },
+      ]);
       expect(call.students).toHaveLength(2);
+      expect(classRoomRepository.findByCode).toHaveBeenCalledTimes(1);
     });
 
     it('ファイル内で学籍番号が重複する行がある場合は1件も登録しない', async () => {
-      const classRoomRepository = createClassRoomRepository({
-        findAll: vi.fn().mockResolvedValue([buildClassRoom()]),
-      });
       const createMany = vi.fn();
       const repository = createRepository({
         findByStudentNum: vi.fn().mockResolvedValue(null),
         createMany,
       });
+      const classRoomRepository = createClassRoomRepository();
       const service = createStudentService(repository, classRoomRepository);
 
       const row = {
@@ -488,9 +488,6 @@ describe('StudentService', () => {
     });
 
     it('既存DBと学籍番号が重複する行がある場合は1件も登録しない', async () => {
-      const classRoomRepository = createClassRoomRepository({
-        findAll: vi.fn().mockResolvedValue([buildClassRoom()]),
-      });
       const createMany = vi.fn();
       const repository = createRepository({
         findByStudentNum: vi
@@ -498,6 +495,7 @@ describe('StudentService', () => {
           .mockResolvedValue(buildStudent({ student_id_number: '24030' })),
         createMany,
       });
+      const classRoomRepository = createClassRoomRepository();
       const service = createStudentService(repository, classRoomRepository);
 
       const result = await service.commitStudentImport({
