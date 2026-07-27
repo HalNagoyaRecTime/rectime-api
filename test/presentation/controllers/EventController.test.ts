@@ -319,8 +319,15 @@ describe('EventController', () => {
       });
     });
 
-    it('notificationEnabledがない場合は400を返す', async () => {
+    it('notificationEnabledがない既存Requestも受け付ける', async () => {
       const { app, eventScheduleService } = setup();
+      (
+        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        event: buildEvent(),
+        notification_enabled: false,
+        notification_schedules: [],
+      });
       const response = await app.request(
         '/events/1',
         {
@@ -337,8 +344,18 @@ describe('EventController', () => {
         { EVENT_DATE: '2026-11-07' }
       );
 
-      expect(response.status).toBe(400);
-      expect(eventScheduleService.updateEventSchedule).not.toHaveBeenCalled();
+      expect(response.status).toBe(200);
+      expect(eventScheduleService.updateEventSchedule).toHaveBeenCalledWith({
+        event_id: 1,
+        user_id: 7,
+        event_name: '徒競走',
+        rule_text: null,
+        venue: 'トラック',
+        start_time: '0930',
+        end_time: '0950',
+        notification_enabled: undefined,
+        event_date: '2026-11-07',
+      });
     });
 
     it('更新権限がない場合は403を返す', async () => {

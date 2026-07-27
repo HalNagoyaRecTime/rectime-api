@@ -27,7 +27,7 @@ const eventWriteSchema = z
   });
 
 const eventUpdateSchema = eventWriteSchema.and(
-  z.object({ notificationEnabled: z.boolean() })
+  z.object({ notificationEnabled: z.boolean().optional() })
 );
 
 type EventContext = Context<{

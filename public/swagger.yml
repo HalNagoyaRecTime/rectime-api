@@ -1711,10 +1711,10 @@ components:
       allOf:
         - $ref: '#/components/schemas/EventWriteRequest'
         - type: object
-          required: [notificationEnabled]
           properties:
             notificationEnabled:
               type: boolean
+              description: 省略時は既存の未送信event_reminderの有無を維持します。
 
     EventWriteRequest:
       type: object

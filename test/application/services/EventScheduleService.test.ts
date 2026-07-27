@@ -134,6 +134,55 @@ describe('EventScheduleService', () => {
     ).not.toHaveBeenCalled();
   });
 
+  it('通知設定省略時は既存の自動draftを維持して再生成する', async () => {
+    const { service, eventScheduleRepository, notificationScheduleRepository } =
+      setup();
+
+    await expect(
+      service.updateEventSchedule({
+        ...input,
+        notification_enabled: undefined,
+      })
+    ).resolves.toEqual({
+      event,
+      notification_enabled: true,
+      notification_schedules: [schedule],
+    });
+    expect(eventScheduleRepository.apply).toHaveBeenCalledWith(
+      expect.objectContaining({ notification_enabled: true })
+    );
+    expect(
+      notificationScheduleRepository.findDraftsByEvent
+    ).toHaveBeenCalledTimes(2);
+  });
+
+  it('通知設定省略時に自動draftがなければ新規作成しない', async () => {
+    const { service, eventScheduleRepository, notificationScheduleRepository } =
+      setup();
+    (
+      notificationScheduleRepository.findDraftsByEvent as ReturnType<
+        typeof vi.fn
+      >
+    ).mockResolvedValue([]);
+
+    await expect(
+      service.updateEventSchedule({
+        ...input,
+        notification_enabled: undefined,
+      })
+    ).resolves.toEqual({
+      event,
+      notification_enabled: false,
+      notification_schedules: [],
+    });
+    expect(eventScheduleRepository.apply).toHaveBeenCalledWith(
+      expect.objectContaining({ notification_enabled: false })
+    );
+    expect(
+      notificationScheduleRepository.findDraftsByEvent
+    ).toHaveBeenCalledTimes(1);
+  });
+
   it('staffsまたはteachersではないユーザーの更新を拒否する', async () => {
     const { service, userRepository, eventScheduleRepository } = setup();
     (

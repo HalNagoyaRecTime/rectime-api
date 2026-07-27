@@ -9,7 +9,7 @@ export interface UpdateEventScheduleInput {
   venue?: string;
   start_time: string;
   end_time: string;
-  notification_enabled: boolean;
+  notification_enabled?: boolean;
   event_date: string;
 }
 
