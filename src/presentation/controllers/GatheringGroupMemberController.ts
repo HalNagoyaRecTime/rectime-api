@@ -101,11 +101,7 @@ export function createGatheringGroupMemberController(
     } catch (error) {
       if (
         error instanceof Error &&
-        [
-          'Gathering member not found',
-          'Gathering not found',
-          'User not found',
-        ].includes(error.message)
+        error.message === 'Gathering member not found'
       ) {
         return c.json({ error: error.message }, 404);
       }
