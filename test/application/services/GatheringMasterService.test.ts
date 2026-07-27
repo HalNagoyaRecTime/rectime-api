@@ -13,6 +13,7 @@ describe('Gathering master services', () => {
       updated_at: '2026-01-01 00:00:00',
     };
     const repository: IGatheringSpotRepository = {
+      exists: vi.fn(),
       findAll: vi.fn().mockResolvedValue([spot]),
       create: vi.fn().mockResolvedValue(spot),
       update: vi.fn(),
@@ -31,6 +32,7 @@ describe('Gathering master services', () => {
       updated_at: '2026-01-02 00:00:00',
     };
     const repository: IGatheringSpotRepository = {
+      exists: vi.fn(),
       findAll: vi.fn(),
       create: vi.fn(),
       update: vi.fn().mockResolvedValue(updatedSpot),
@@ -46,6 +48,7 @@ describe('Gathering master services', () => {
 
   it('集合場所の更新対象が存在しない場合はエラーにする', async () => {
     const repository: IGatheringSpotRepository = {
+      exists: vi.fn(),
       findAll: vi.fn(),
       create: vi.fn(),
       update: vi.fn().mockResolvedValue(null),

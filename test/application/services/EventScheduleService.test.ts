@@ -35,6 +35,7 @@ const schedule = {
 
 function setup() {
   const eventRepository: IEventRepository = {
+    exists: vi.fn(),
     findAll: vi.fn(),
     findById: vi.fn().mockResolvedValue(event),
     create: vi.fn(),

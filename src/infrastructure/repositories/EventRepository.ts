@@ -28,6 +28,16 @@ export function createEventRepository(db: D1Database): IEventRepository {
   const orm = drizzle(db, { schema });
 
   return {
+    async exists(id: number): Promise<boolean> {
+      return Boolean(
+        await orm
+          .select({ id: events.id })
+          .from(events)
+          .where(eq(events.id, id))
+          .get()
+      );
+    },
+
     async findAll(
       options: EventListOptions
     ): Promise<{ events: EventEntity[]; total: number }> {

@@ -1,9 +1,17 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
+import { createEventRepository } from '../../../src/infrastructure/repositories/EventRepository';
 import { createGatheringRepository } from '../../../src/infrastructure/repositories/GatheringRepository';
+import { createGatheringSpotRepository } from '../../../src/infrastructure/repositories/GatheringSpotRepository';
 
 describe('GatheringRepository', () => {
-  const repository = createGatheringRepository(env.DB);
+  const eventRepository = createEventRepository(env.DB);
+  const gatheringSpotRepository = createGatheringSpotRepository(env.DB);
+  const repository = createGatheringRepository(
+    env.DB,
+    eventRepository,
+    gatheringSpotRepository
+  );
   let gatheringIds: number[] = [];
   let eventIds: number[] = [];
   let spotIds: number[] = [];

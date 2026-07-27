@@ -21,6 +21,7 @@ function createRepository(
   overrides: Partial<IEventRepository> = {}
 ): IEventRepository {
   return {
+    exists: vi.fn(),
     findAll: vi.fn(),
     findById: vi.fn(),
     create: vi.fn(),

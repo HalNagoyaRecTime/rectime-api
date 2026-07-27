@@ -72,7 +72,11 @@ export function createDIContainer(env: Env) {
   const gatheringSpotRepository = createGatheringSpotRepository(db);
   const gatheringGroupMemberRepository =
     createGatheringGroupMemberRepository(db);
-  const gatheringRepository = createGatheringRepository(db);
+  const gatheringRepository = createGatheringRepository(
+    db,
+    eventRepository,
+    gatheringSpotRepository
+  );
 
   // Services
   const authService = createAuthService(userRepository, env.AUTH_KV);
