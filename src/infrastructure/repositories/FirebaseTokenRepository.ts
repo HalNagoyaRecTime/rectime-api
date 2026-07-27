@@ -6,21 +6,10 @@ import {
   FirebasePlatform,
   RegisterFirebaseTokenInput,
   RegisterFirebaseTokenResult,
-  UserEntity,
 } from '../../domain/entities/FirebaseToken';
 import { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 import * as schema from '../database/schema';
-import { firebase_tokens, students, users } from '../database/schema';
-
-function toUserEntity(row: typeof users.$inferSelect): UserEntity {
-  return {
-    user_id: row.id,
-    user_name: row.userName,
-    is_live_active: row.isLiveActive,
-    created_at: row.createdAt,
-    updated_at: row.updatedAt,
-  };
-}
+import { firebase_tokens } from '../database/schema';
 
 function toFirebaseTokenEntity(
   row: typeof firebase_tokens.$inferSelect
@@ -46,64 +35,74 @@ export function createFirebaseTokenRepository(
 ): IFirebaseTokenRepository {
   const orm = drizzle(db, { schema });
 
-  const findStudentUser = async (
-    studentNumber: string
-  ): Promise<UserEntity> => {
-    const row = await orm
-      .select({ user: users })
-      .from(students)
-      .innerJoin(users, eq(students.userId, users.id))
-      .where(eq(students.studentIdNumber, studentNumber))
-      .get();
-
-    if (!row) {
-      throw new Error('Student not found');
-    }
-
-    return toUserEntity(row.user);
-  };
-
-  const upsertFirebaseToken = async (
-    userId: number,
-    input: RegisterFirebaseTokenInput
-  ): Promise<FirebaseTokenEntity> => {
-    const firebaseToken = await orm
-      .insert(firebase_tokens)
-      .values({
-        userId,
-        platform: input.platform,
-        fcmToken: input.fcmToken,
-        isFirebaseActive: 1,
-        lastSeenAt: sql`CURRENT_TIMESTAMP`,
-        updatedAt: sql`CURRENT_TIMESTAMP`,
-      })
-      .onConflictDoUpdate({
-        target: firebase_tokens.fcmToken,
-        set: {
-          userId: sql`excluded.user_id`,
-          platform: sql`excluded.platform`,
-          isFirebaseActive: 1,
-          lastSeenAt: sql`CURRENT_TIMESTAMP`,
-          updatedAt: sql`CURRENT_TIMESTAMP`,
-        },
-      })
-      .returning()
-      .get();
-
-    if (!firebaseToken) {
-      throw new Error('Failed to register Firebase token');
-    }
-
-    return toFirebaseTokenEntity(firebaseToken);
-  };
-
   return {
     async register(
       input: RegisterFirebaseTokenInput
     ): Promise<RegisterFirebaseTokenResult> {
-      const user = await findStudentUser(input.studentNumber);
-      const firebaseToken = await upsertFirebaseToken(user.user_id, input);
-      return { user, firebaseToken };
+      const platform = input.platform === 'android' ? 2 : null;
+      if (platform === null) throw new Error('Unsupported Firebase platform');
+
+      const [, , selectResult] = await db.batch<{
+        firebase_token_id: number;
+        user_id: number;
+        platform: number;
+        is_firebase_active: number;
+        last_seen_at: string;
+      }>([
+        db
+          .prepare(
+            `UPDATE firebase_tokens
+             SET platform = ?,
+                 fcm_token = ?,
+                 is_firebase_active = 1,
+                 last_seen_at = CURRENT_TIMESTAMP,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = ?`
+          )
+          .bind(platform, input.fcmToken, input.userId),
+        db
+          .prepare(
+            `INSERT INTO firebase_tokens (
+               user_id,
+               platform,
+               fcm_token,
+               is_firebase_active,
+               last_seen_at,
+               updated_at
+             )
+             SELECT user_id, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+             FROM users
+             WHERE user_id = ?
+               AND NOT EXISTS (
+                 SELECT 1
+                 FROM firebase_tokens
+                 WHERE user_id = ?
+               )`
+          )
+          .bind(platform, input.fcmToken, input.userId, input.userId),
+        db
+          .prepare(
+            `SELECT
+               firebase_token_id,
+               user_id,
+               platform,
+               is_firebase_active,
+               last_seen_at
+             FROM firebase_tokens
+             WHERE user_id = ?`
+          )
+          .bind(input.userId),
+      ]);
+
+      const registeredToken = selectResult.results[0];
+      if (!registeredToken) throw new Error('User not found');
+      return {
+        firebase_token_id: registeredToken.firebase_token_id,
+        user_id: registeredToken.user_id,
+        platform: 'android',
+        is_firebase_active: registeredToken.is_firebase_active === 1,
+        last_seen_at: registeredToken.last_seen_at,
+      };
     },
 
     async findActiveTokens(): Promise<FirebaseTokenEntity[]> {
