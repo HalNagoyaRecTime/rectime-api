@@ -3,11 +3,12 @@ import { z } from 'zod';
 import type { IMobileNotificationService } from '../../application/services/IMobileNotificationService';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
-import type { AuthenticationVariables } from '../middleware/sessionAuthentication';
+import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
+import type { AuthVariables } from '../middleware/requireAuth';
 
 type MobileNotificationContext = Context<{
   Bindings: Env;
-  Variables: ContainerVariables & AuthenticationVariables;
+  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>;
 
 const notificationIdSchema = z.coerce.number().int().positive();
