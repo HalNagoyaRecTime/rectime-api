@@ -1,6 +1,18 @@
 import { StudentEntity } from '../../entities/Student';
 import { StudentWriteDTO } from '../../../application/dto/StudentDTO';
 
+export interface NewStudentWithClassCodeInput {
+  displayName: string;
+  classCode: string;
+  attendanceNumber: number;
+  studentIdNumber: string;
+}
+
+export interface BulkCreateStudentsInput {
+  newClassRooms: { classCode: string; className: string }[];
+  students: NewStudentWithClassCodeInput[];
+}
+
 export interface IStudentRepository {
   findById: (id: number) => Promise<StudentEntity | null>;
   findAll: (options: {
@@ -14,4 +26,5 @@ export interface IStudentRepository {
     id: number,
     student: StudentWriteDTO
   ) => Promise<StudentEntity | null>;
+  createMany: (input: BulkCreateStudentsInput) => Promise<void>;
 }

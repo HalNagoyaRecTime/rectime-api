@@ -273,4 +273,40 @@ describe('TeacherRepository', () => {
       expect(await repo.findById(target.teacherId)).not.toBeNull();
     });
   });
+
+  describe('create', () => {
+    it('教官を作成し、作成したエンティティを返す', async () => {
+      const created = await repo.create({ displayName: '新規教官' });
+
+      expect(created).toMatchObject({
+        user_name: '新規教官',
+        is_live_active: true,
+        class_rooms: [],
+      });
+      expect(created.teacher_id).toEqual(expect.any(Number));
+      expect(created.user_id).toEqual(expect.any(Number));
+    });
+  });
+
+  describe('createMany', () => {
+    it('複数の教官をまとめて作成する', async () => {
+      await repo.createMany([
+        { displayName: '一括教官A' },
+        { displayName: '一括教官B' },
+      ]);
+
+      const result = await repo.findAll({ userName: '一括教官' });
+      expect(result.items.map(t => t.user_name).sort()).toEqual([
+        '一括教官A',
+        '一括教官B',
+      ]);
+    });
+
+    it('空配列の場合は何も作成しない', async () => {
+      const before = (await repo.findAll()).total;
+      await repo.createMany([]);
+      const after = (await repo.findAll()).total;
+      expect(after).toBe(before);
+    });
+  });
 });

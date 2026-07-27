@@ -110,6 +110,12 @@ apiV1.post('/students', c => {
 apiV1.put('/students/:studentId', c => {
   return c.get('container').studentController.updateStudent(c);
 });
+apiV1.post('/students/master-imports/validate', c => {
+  return c.get('container').studentController.validateStudentImport(c);
+});
+apiV1.post('/students/master-imports/commit', c => {
+  return c.get('container').studentController.commitStudentImport(c);
+});
 
 // Staff routes
 apiV1.get('/staffs', c => {
@@ -131,6 +137,12 @@ apiV1.put('/teachers/:teacherId', c => {
 });
 apiV1.delete('/teachers/:teacherId', c => {
   return c.get('container').teacherController.deleteTeacher(c);
+});
+apiV1.post('/teachers/master-imports/validate', c => {
+  return c.get('container').teacherController.validateTeacherImport(c);
+});
+apiV1.post('/teachers/master-imports/commit', c => {
+  return c.get('container').teacherController.commitTeacherImport(c);
 });
 
 // Event routes
@@ -169,6 +181,12 @@ apiV1.put('/classrooms/:classId', c => {
 });
 apiV1.delete('/classrooms/:classId', c => {
   return c.get('container').classRoomController.deleteClassroom(c);
+});
+apiV1.post('/classrooms/master-imports/validate', c => {
+  return c.get('container').classRoomController.validateClassRoomImport(c);
+});
+apiV1.post('/classrooms/master-imports/commit', c => {
+  return c.get('container').classRoomController.commitClassRoomImport(c);
 });
 
 // Gathering spot routes

@@ -143,4 +143,50 @@ describe('ClassRoomRepository', () => {
       false
     );
   });
+
+  describe('findByCode', () => {
+    it('class_codeでクラスを取得できる', async () => {
+      await expect(repo.findByCode('IA14A')).resolves.toMatchObject({
+        class_code: 'IA14A',
+      });
+    });
+
+    it('存在しないclass_codeの場合はnullを返す', async () => {
+      await expect(repo.findByCode('NOPE')).resolves.toBeNull();
+    });
+  });
+
+  describe('createMany', () => {
+    it('複数のクラスをまとめて作成する', async () => {
+      await repo.createMany([
+        { class_code: '14D', class_name: '4年Dクラス', teacher_id: null },
+        { class_code: '14E', class_name: '4年Eクラス', teacher_id: null },
+      ]);
+
+      await expect(repo.findByCode('14D')).resolves.toMatchObject({
+        class_name: '4年Dクラス',
+      });
+      await expect(repo.findByCode('14E')).resolves.toMatchObject({
+        class_name: '4年Eクラス',
+      });
+    });
+
+    it('空配列の場合は何も作成しない', async () => {
+      const before = (await repo.findAll(100, 0)).total;
+      await repo.createMany([]);
+      const after = (await repo.findAll(100, 0)).total;
+      expect(after).toBe(before);
+    });
+
+    it('class_codeが重複する行がある場合は1件も登録しない', async () => {
+      await expect(
+        repo.createMany([
+          { class_code: '15A', class_name: '5年Aクラス', teacher_id: null },
+          { class_code: 'IA14A', class_name: '重複クラス', teacher_id: null },
+        ])
+      ).rejects.toThrow();
+
+      await expect(repo.findByCode('15A')).resolves.toBeNull();
+    });
+  });
 });

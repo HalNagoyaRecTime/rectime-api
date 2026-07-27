@@ -7,7 +7,9 @@ import {
 export interface IClassRoomRepository {
   findAll: (limit: number, offset: number) => Promise<ClassRoomPage>;
   findById: (id: number) => Promise<ClassRoomEntity | null>;
+  findByCode: (classCode: string) => Promise<ClassRoomEntity | null>;
   create: (input: ClassRoomInput) => Promise<ClassRoomEntity>;
+  createMany: (inputs: ClassRoomInput[]) => Promise<void>;
   update: (
     id: number,
     input: ClassRoomInput

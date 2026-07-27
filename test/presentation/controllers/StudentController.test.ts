@@ -23,6 +23,8 @@ function setup() {
     getAllStudents: vi.fn(),
     createStudent: vi.fn(),
     updateStudent: vi.fn(),
+    validateStudentImport: vi.fn(),
+    commitStudentImport: vi.fn(),
   };
   const controller = createStudentController(studentService);
   const app = new Hono();
@@ -30,6 +32,12 @@ function setup() {
   app.get('/students/:studentId', c => controller.getStudentById(c));
   app.post('/students', c => controller.createStudent(c));
   app.put('/students/:studentId', c => controller.updateStudent(c));
+  app.post('/students/master-imports/validate', c =>
+    controller.validateStudentImport(c)
+  );
+  app.post('/students/master-imports/commit', c =>
+    controller.commitStudentImport(c)
+  );
   return { app, studentService };
 }
 
@@ -267,6 +275,202 @@ describe('StudentController', () => {
       expect(res.status).toBe(409);
       expect(await res.json()).toEqual({
         error: 'Student number already exists',
+      });
+    });
+  });
+
+  describe('validateStudentImport', () => {
+    const validRow = {
+      class_code: '11A',
+      attendance_number: 1,
+      student_id_number: 'S010',
+      last_name: '新規',
+      first_name: '太郎',
+    };
+
+    it('サービスの検査結果をそのまま200で返す', async () => {
+      const { app, studentService } = setup();
+      const result = {
+        total: 1,
+        success_count: 1,
+        error_count: 0,
+        errors: [],
+      };
+      (
+        studentService.validateStudentImport as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(result);
+
+      const res = await app.request('/students/master-imports/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [validRow] }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual(result);
+      expect(studentService.validateStudentImport).toHaveBeenCalledWith({
+        rows: [validRow],
+      });
+    });
+
+    it('rowsが空配列の場合は400を返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students/master-imports/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [] }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.validateStudentImport).not.toHaveBeenCalled();
+    });
+
+    it('不正なJSONの場合は400を返す', async () => {
+      const { app } = setup();
+
+      const res = await app.request('/students/master-imports/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{invalid json',
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('last_nameが欠けている場合は400を返す', async () => {
+      const { app } = setup();
+      const rowWithoutLastName: Record<string, unknown> = { ...validRow };
+      delete rowWithoutLastName.last_name;
+
+      const res = await app.request('/students/master-imports/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [rowWithoutLastName] }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('サービスが例外を投げた場合は500を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.validateStudentImport as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('boom'));
+
+      const res = await app.request('/students/master-imports/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [validRow] }),
+      });
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({
+        error: 'Failed to validate student import',
+      });
+    });
+  });
+
+  describe('commitStudentImport', () => {
+    const validRow = {
+      class_code: '11A',
+      attendance_number: 1,
+      student_id_number: 'S010',
+      last_name: '新規',
+      first_name: '太郎',
+    };
+
+    it('全行成功の場合は201で結果を返す', async () => {
+      const { app, studentService } = setup();
+      const result = { total: 1, imported: 1, error_count: 0, errors: [] };
+      (
+        studentService.commitStudentImport as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(result);
+
+      const res = await app.request('/students/master-imports/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [validRow] }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual(result);
+      expect(studentService.commitStudentImport).toHaveBeenCalledWith({
+        rows: [validRow],
+      });
+    });
+
+    it('エラー行がある場合は422を返し、1件も登録しない', async () => {
+      const { app, studentService } = setup();
+      const result = {
+        total: 1,
+        imported: 0,
+        error_count: 1,
+        errors: [
+          {
+            row_index: 0,
+            class_code: '11A',
+            attendance_number: 1,
+            student_id_number: 'S010',
+            display_name: '新規太郎',
+            reason: 'student_id_number_duplicate_in_db',
+          },
+        ],
+      };
+      (
+        studentService.commitStudentImport as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(result);
+
+      const res = await app.request('/students/master-imports/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [validRow] }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(await res.json()).toEqual(result);
+    });
+
+    it('rowsが空配列の場合は400を返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students/master-imports/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [] }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.commitStudentImport).not.toHaveBeenCalled();
+    });
+
+    it('不正なJSONの場合は400を返す', async () => {
+      const { app } = setup();
+
+      const res = await app.request('/students/master-imports/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{invalid json',
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('サービスが例外を投げた場合は500を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.commitStudentImport as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('boom'));
+
+      const res = await app.request('/students/master-imports/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [validRow] }),
+      });
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({
+        error: 'Failed to commit student import',
       });
     });
   });

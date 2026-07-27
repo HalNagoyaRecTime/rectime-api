@@ -86,6 +86,16 @@ export function createClassRoomRepository(
 
     findById,
 
+    async findByCode(classCode: string): Promise<ClassRoomEntity | null> {
+      const row = await db
+        .prepare(
+          `${classRoomSelect} WHERE c.class_code = ? GROUP BY c.class_room_id`
+        )
+        .bind(classCode)
+        .first<ClassRoomRow>();
+      return row ? toEntity(row) : null;
+    },
+
     async create(input: ClassRoomInput): Promise<ClassRoomEntity> {
       const row = await db
         .prepare(
@@ -97,6 +107,21 @@ export function createClassRoomRepository(
       const classroom = await findById(row.class_room_id);
       if (!classroom) throw new Error('Failed to fetch created class');
       return classroom;
+    },
+
+    async createMany(inputs: ClassRoomInput[]): Promise<void> {
+      if (inputs.length === 0) {
+        return;
+      }
+
+      const statements = inputs.map(input =>
+        db
+          .prepare(
+            'INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES (?, ?, ?)'
+          )
+          .bind(input.class_code, input.class_name, input.teacher_id)
+      );
+      await db.batch(statements);
     },
 
     async update(

@@ -106,4 +106,82 @@ describe('StudentRepository', () => {
       ).resolves.toBeNull();
     });
   });
+
+  describe('createMany', () => {
+    it('既存クラスに複数の学生をまとめて作成する', async () => {
+      await repo.createMany({
+        newClassRooms: [],
+        students: [
+          {
+            displayName: '一括生徒A',
+            classCode: 'TEST-1',
+            attendanceNumber: 20,
+            studentIdNumber: '20000',
+          },
+          {
+            displayName: '一括生徒B',
+            classCode: 'TEST-1',
+            attendanceNumber: 21,
+            studentIdNumber: '20001',
+          },
+        ],
+      });
+
+      const a = await repo.findByStudentNum('20000');
+      const b = await repo.findByStudentNum('20001');
+      expect(a).toMatchObject({
+        user_name: '一括生徒A',
+        class_room_name: 'テスト教室',
+      });
+      expect(b).toMatchObject({
+        user_name: '一括生徒B',
+        class_room_name: 'テスト教室',
+      });
+    });
+
+    it('新規クラスの作成と学生の作成を同じbatchでまとめて行う', async () => {
+      await repo.createMany({
+        newClassRooms: [{ classCode: 'BULK-NEW', className: 'BULK-NEW' }],
+        students: [
+          {
+            displayName: '一括生徒C',
+            classCode: 'BULK-NEW',
+            attendanceNumber: 1,
+            studentIdNumber: '20002',
+          },
+        ],
+      });
+
+      const created = await repo.findByStudentNum('20002');
+      expect(created).toMatchObject({
+        user_name: '一括生徒C',
+        class_room_name: 'BULK-NEW',
+      });
+    });
+
+    it('一部の行が学籍番号のUNIQUE制約に違反する場合、他の行も含めて何も登録されない', async () => {
+      await expect(
+        repo.createMany({
+          newClassRooms: [],
+          students: [
+            {
+              displayName: '登録されないはずの生徒',
+              classCode: 'TEST-1',
+              attendanceNumber: 30,
+              studentIdNumber: '20099',
+            },
+            {
+              displayName: '既存と重複する生徒',
+              classCode: 'TEST-1',
+              attendanceNumber: 31,
+              // seedStudents で既に使われている学籍番号
+              studentIdNumber: seeded.students[0].studentIdNumber,
+            },
+          ],
+        })
+      ).rejects.toThrow();
+
+      expect(await repo.findByStudentNum('20099')).toBeNull();
+    });
+  });
 });
