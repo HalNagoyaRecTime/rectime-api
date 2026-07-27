@@ -19,6 +19,7 @@ paths:
         ログイン中のstaffまたはteacherが、配信対象を指定して手動通知を予約します。
         Backendが対象利用者の有効なFirebase Tokenを解決し、Token単位の通知予定を作成します。
         `userId` と `firebaseTokenId` はRequestで受け取りません。
+        `scheduledAt`はJST基準で環境変数`EVENT_DATE`と同じ開催日だけを受け付けます。
       security:
         - sessionCookie: []
         - bearerAuth: []
@@ -2066,7 +2067,7 @@ components:
         scheduledAt:
           type: string
           format: date-time
-          description: UTCオフセットを含むISO 8601形式
+          description: UTCオフセットを含むISO 8601形式。JST換算の日付がEVENT_DATEと一致する必要があります。
           example: '2026-07-23T09:00:00+09:00'
 
     AdminNotificationCreationResult:

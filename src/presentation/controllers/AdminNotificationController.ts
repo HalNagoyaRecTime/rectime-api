@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { IAdminNotificationService } from '../../application/services/IAdminNotificationService';
 import type { ManualNotificationAudience } from '../../domain/entities/AdminNotification';
 import type { Env } from '../../lib/env';
+import { isEventDate, isValidEventDate } from '../../lib/eventDate';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/sessionAuthentication';
 
@@ -59,6 +60,19 @@ export function createAdminNotificationController(
         {
           error: 'Invalid manual notification request body',
           details: parsedBody.error.flatten(),
+        },
+        400
+      );
+    }
+    const eventDate = c.env.EVENT_DATE;
+    if (!isValidEventDate(eventDate)) {
+      return c.json({ error: 'EVENT_DATE is not configured correctly' }, 500);
+    }
+    if (!isEventDate(eventDate, new Date(parsedBody.data.scheduledAt))) {
+      return c.json(
+        {
+          error: 'scheduledAt must be on EVENT_DATE',
+          code: 'INVALID_NOTIFICATION_DATE',
         },
         400
       );
