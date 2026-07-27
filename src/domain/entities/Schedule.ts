@@ -32,3 +32,24 @@ export interface NotificationSchedule {
 export interface ScheduleEntity {
   notification_schedules: NotificationSchedule[];
 }
+
+export interface historyEvent {
+  event_id: number;
+  event_name: string;
+}
+
+export interface historyNotificationSchedule {
+  notification_id: number;
+  notification_type: string;
+  title: string;
+  body: string;
+  send_time: string;
+  event: historyEvent;
+}
+export interface ScheduleHistoryEntity {
+  notifications: historyNotificationSchedule[];
+}
+
+export interface ScheduleDeleteResponse {
+  message: string;
+}

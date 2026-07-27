@@ -32,3 +32,26 @@ export interface NotificationSchedule {
 export interface ScheduleDTO {
   notification_schedules: NotificationSchedule[];
 }
+
+export interface ScheduleWriteDTO {
+  notification_id: number;
+  event_id: number;
+}
+
+export interface historyEvent {
+  event_id: number;
+  event_name: string;
+}
+
+export interface historyNotificationSchedule {
+  notification_id: number;
+  notification_type: string;
+  title: string;
+  body: string;
+  send_time: string;
+  event: historyEvent;
+}
+
+export interface ScheduleHistoryDTO {
+  notifications: historyNotificationSchedule[];
+}
