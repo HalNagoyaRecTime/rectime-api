@@ -79,6 +79,7 @@ app.get('/', c => {
       gatheringSpots: '/api/v1/gathering-spots',
       gatheringGroups: '/api/v1/gathering-groups',
       gatherings: '/api/v1/gatherings',
+      schedules: '/api/v1/notification/schedules',
       firebaseTokens: '/api/v1/firebase-tokens',
       notifications: '/api/v1/notifications',
       testNotification: '/api/v1/notifications/test',
