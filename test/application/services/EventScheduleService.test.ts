@@ -58,6 +58,7 @@ function setup() {
   };
   const userRepository: IUserRepository = {
     isStaffOrTeacher: vi.fn().mockResolvedValue(true),
+    getUserCategories: vi.fn(),
     findUserIdByMicrosoftAccount: vi.fn(),
     createUserWithMicrosoftLink: vi.fn(),
     updateUser: vi.fn(),

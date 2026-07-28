@@ -13,16 +13,18 @@ export function createGatheringService(
       return gatheringRepository.findAll();
     },
 
+    async getGatheringsByEventId(
+      eventId: number
+    ): Promise<GatheringDetailsEntity[]> {
+      if (!(await gatheringRepository.existsEvent(eventId))) {
+        throw new Error('Event not found');
+      }
+      return gatheringRepository.findByEventId(eventId);
+    },
+
     async createGathering(
       input: CreateGatheringInput
     ): Promise<GatheringDetailsEntity> {
-      if (
-        !(await gatheringRepository.existsGatheringGroup(
-          input.gathering_group_id
-        ))
-      ) {
-        throw new Error('Gathering group not found');
-      }
       if (!(await gatheringRepository.existsEvent(input.event_id))) {
         throw new Error('Event not found');
       }
@@ -34,6 +36,12 @@ export function createGatheringService(
         throw new Error('Gathering spot not found');
       }
       return gatheringRepository.create(input);
+    },
+
+    async deleteGathering(gatheringId: number): Promise<void> {
+      if (!(await gatheringRepository.remove(gatheringId))) {
+        throw new Error('Gathering not found');
+      }
     },
   };
 }

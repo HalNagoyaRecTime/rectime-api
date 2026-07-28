@@ -77,11 +77,12 @@ app.get('/', c => {
       events: '/api/v1/events',
       classRooms: '/api/v1/classrooms',
       gatheringSpots: '/api/v1/gathering-spots',
-      gatheringGroups: '/api/v1/gathering-groups',
       gatherings: '/api/v1/gatherings',
+      gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
       schedules: '/api/v1/notification/schedules',
       firebaseTokens: '/api/v1/firebase-tokens',
       notifications: '/api/v1/notifications',
+      myNotifications: '/api/v1/me/notifications',
       testNotification: '/api/v1/notifications/test',
       notificationSchedules: '/api/v1/notification-schedules',
     },
@@ -142,6 +143,9 @@ apiV1.get('/events', c => {
 apiV1.get('/events/:eventId', c => {
   return c.get('container').eventController.getEventById(c);
 });
+apiV1.get('/events/:eventId/gatherings', c => {
+  return c.get('container').gatheringController.getGatheringsByEventId(c);
+});
 apiV1.post('/events', c => {
   return c.get('container').eventController.createEvent(c);
 });
@@ -179,28 +183,25 @@ apiV1.get('/gathering-spots', c => {
 apiV1.post('/gathering-spots', c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
+apiV1.put('/gathering-spots/:gatheringSpotId', c => {
+  return c.get('container').gatheringSpotController.updateGatheringSpot(c);
+});
 
-// Gathering group routes
-apiV1.get('/gathering-groups', c => {
-  return c.get('container').gatheringGroupController.getAllGatheringGroups(c);
-});
-apiV1.post('/gathering-groups', c => {
-  return c.get('container').gatheringGroupController.createGatheringGroup(c);
-});
-apiV1.get('/gathering-groups/:gatheringGroupId/members', c => {
+// Gathering member routes
+apiV1.get('/gatherings/:gatheringId/members', c => {
   return c
     .get('container')
-    .gatheringGroupMemberController.getGatheringGroupMembers(c);
+    .gatheringGroupMemberController.getGatheringMembers(c);
 });
-apiV1.post('/gathering-groups/:gatheringGroupId/members', c => {
+apiV1.post('/gatherings/:gatheringId/members', c => {
   return c
     .get('container')
-    .gatheringGroupMemberController.addGatheringGroupMember(c);
+    .gatheringGroupMemberController.addGatheringMember(c);
 });
-apiV1.delete('/gathering-groups/:gatheringGroupId/members/:userId', c => {
+apiV1.delete('/gatherings/:gatheringId/members/:userId', c => {
   return c
     .get('container')
-    .gatheringGroupMemberController.removeGatheringGroupMember(c);
+    .gatheringGroupMemberController.removeGatheringMember(c);
 });
 
 // Gathering routes
@@ -209,6 +210,9 @@ apiV1.get('/gatherings', c => {
 });
 apiV1.post('/gatherings', c => {
   return c.get('container').gatheringController.createGathering(c);
+});
+apiV1.delete('/gatherings/:gatheringId', c => {
+  return c.get('container').gatheringController.deleteGathering(c);
 });
 
 // Firebase token routes
@@ -239,6 +243,13 @@ apiV1.get('/notifications/:id', c => {
 });
 apiV1.put('/notifications/:id', c => {
   return c.get('container').notificationController.updateNotification(c);
+});
+
+apiV1.get('/me/notifications', c => {
+  return c.get('container').mobileNotificationController.getNotifications(c);
+});
+apiV1.get('/me/notifications/:notificationId', c => {
+  return c.get('container').mobileNotificationController.getNotificationById(c);
 });
 
 apiV1.get('/notification-schedules', c => {

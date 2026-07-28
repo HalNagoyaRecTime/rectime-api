@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringSpotEntity } from '../../domain/entities/GatheringSpot';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
@@ -40,6 +40,19 @@ export function createGatheringSpotRepository(
         .get();
       if (!row) throw new Error('Failed to create gathering spot');
       return toEntity(row);
+    },
+
+    async update(gatheringSpotId, input): Promise<GatheringSpotEntity | null> {
+      const row = await orm
+        .update(gathering_spots)
+        .set({
+          name: input.gathering_spot_name,
+          updatedAt: sql`CURRENT_TIMESTAMP`,
+        })
+        .where(eq(gathering_spots.id, gatheringSpotId))
+        .returning()
+        .get();
+      return row ? toEntity(row) : null;
     },
   };
 }
