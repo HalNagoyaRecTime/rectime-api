@@ -5,7 +5,7 @@ import type {
 import type { IEventScheduleRepository } from '../../domain/interfaces/repositories/IEventScheduleRepository';
 
 interface EventAudienceRow {
-  gathering_group_id: number;
+  gathering_id: number;
   gathering_spot_name: string;
 }
 
@@ -18,7 +18,7 @@ export function createEventScheduleRepository(
         ? await db
             .prepare(
               `SELECT DISTINCT
-                 g.gathering_group_id,
+                 g.gathering_id,
                  gs.gathering_spot_name
                FROM gatherings g
                INNER JOIN gathering_spots gs
@@ -27,12 +27,14 @@ export function createEventScheduleRepository(
                  AND EXISTS (
                    SELECT 1
                    FROM gathering_group_members ggm
+                   INNER JOIN users u
+                     ON u.user_id = ggm.user_id
                    INNER JOIN firebase_tokens ft
-                     ON ft.user_id = ggm.user_id
+                     ON ft.user_id = u.user_id
                     AND ft.is_firebase_active = 1
-                   WHERE ggm.gathering_group_id = g.gathering_group_id
+                   WHERE ggm.gathering_id = g.gathering_id
                  )
-               ORDER BY g.gathering_group_id`
+               ORDER BY g.gathering_id`
             )
             .bind(input.event_id)
             .all<EventAudienceRow>()
@@ -72,7 +74,7 @@ export function createEventScheduleRepository(
                 `${input.event_name}開始のお知らせ`,
                 `${input.event_name}の開始時間が近づいています。該当チームは${row.gathering_spot_name}へ集合してください。`
               ),
-            buildScheduleInsert(db, input, row.gathering_group_id)
+            buildScheduleInsert(db, input, row.gathering_id)
           );
         }
       }
@@ -86,7 +88,7 @@ export function createEventScheduleRepository(
 function buildScheduleInsert(
   db: D1Database,
   input: Parameters<IEventScheduleRepository['apply']>[0],
-  gatheringGroupId: number
+  gatheringId: number
 ): D1PreparedStatement {
   return db
     .prepare(
@@ -108,12 +110,14 @@ function buildScheduleInsert(
          'draft',
          ?
        FROM gathering_group_members ggm
+       INNER JOIN users u
+         ON u.user_id = ggm.user_id
        INNER JOIN firebase_tokens ft
-         ON ft.user_id = ggm.user_id
+         ON ft.user_id = u.user_id
         AND ft.is_firebase_active = 1
-       WHERE ggm.gathering_group_id = ?`
+       WHERE ggm.gathering_id = ?`
     )
-    .bind(input.user_id, input.event_id, input.send_at, gatheringGroupId);
+    .bind(input.user_id, input.event_id, input.send_at, gatheringId);
 }
 
 function buildOrphanNotificationCleanup(db: D1Database): D1PreparedStatement {
