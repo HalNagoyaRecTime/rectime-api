@@ -27,9 +27,6 @@ export function createScheduleService(
       const schedule = await scheduleRepository.findById(id);
       return schedule ? toDTO(schedule) : null;
     },
-    // deleteSchedule: async (id: number, res: String) => {
-    //   await scheduleRepository.deleteById(id, res);
-    // },
     getHistorySchedules: async (user_id: number) => {
       const schedule = await scheduleRepository.findByUserId(user_id);
       return schedule ? toHistoryDTO(schedule) : null;

@@ -55,35 +55,6 @@ export function createScheduleController(scheduleService: IScheduleService) {
   //   }
   // };
 
-  const deleteSchedule = async (c: Context) => {
-    const parsedId = scheduleIdSchema.safeParse(c.req.param('scheduleId'));
-    if (!parsedId.success) {
-      return c.json({ error: 'Invalid schedule ID' }, 400);
-    }
-
-    try {
-      await scheduleService.deleteSchedule(parsedId.data);
-      return c.body(null, 204);
-    } catch (error) {
-      if (error instanceof Error && error.message === 'Schedule not found') {
-        return c.json({ error: error.message }, 404);
-      }
-      if (
-        error instanceof Error &&
-        error.message === 'Cannot delete a schedule that is not in draft status'
-      ) {
-        return c.json({ error: error.message }, 409);
-      }
-      return c.json(
-        {
-          error: 'Failed to delete schedule',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
-    }
-  };
-
   const getHistorySchedules = async (c: Context) => {
     const userId = userIdSchema.safeParse(c.req.param('user_id'));
     if (!userId.success) {
@@ -106,6 +77,5 @@ export function createScheduleController(scheduleService: IScheduleService) {
     getScheduleById,
     getHistorySchedules,
     // createSchedule,
-    deleteSchedule,
   };
 }
