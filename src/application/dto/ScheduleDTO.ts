@@ -34,24 +34,9 @@ export interface ScheduleDTO {
 }
 
 export interface ScheduleWriteDTO {
+  user_id: number;
   notification_id: number;
   event_id: number;
-}
-
-export interface historyEvent {
-  event_id: number;
-  event_name: string;
-}
-
-export interface historyNotificationSchedule {
-  notification_id: number;
-  notification_type: string;
-  title: string;
-  body: string;
-  send_time: string;
-  event: historyEvent;
-}
-
-export interface ScheduleHistoryDTO {
-  notifications: historyNotificationSchedule[];
+  importance: number;
+  send_at: string; // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00.000Z
 }
