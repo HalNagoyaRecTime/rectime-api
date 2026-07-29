@@ -40,10 +40,10 @@ function parseSearchFilter(c: Context): TeacherSearchFilter {
   if (isLiveActive === 'true') filter.isLiveActive = true;
   else if (isLiveActive === 'false') filter.isLiveActive = false;
 
-  const page = c.req.query('page');
-  if (page !== undefined) {
-    const parsed = Number(page);
-    if (Number.isInteger(parsed) && parsed > 0) filter.page = parsed;
+  const offset = c.req.query('offset');
+  if (offset !== undefined) {
+    const parsed = Number(offset);
+    if (Number.isInteger(parsed) && parsed >= 0) filter.offset = parsed;
   }
 
   const limit = c.req.query('limit');

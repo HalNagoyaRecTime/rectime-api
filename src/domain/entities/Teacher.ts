@@ -17,15 +17,15 @@ export interface TeacherSearchFilter {
   userName?: string;
   classRoomId?: number;
   isLiveActive?: boolean;
-  page?: number;
   limit?: number;
+  offset?: number;
 }
 
 export interface TeacherPage {
   items: TeacherEntity[];
   total: number;
-  page: number;
   limit: number;
+  offset: number;
 }
 
 export interface TeacherUpdateInput {

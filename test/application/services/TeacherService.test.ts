@@ -70,7 +70,7 @@ describe('TeacherService', () => {
       const repository = buildRepository({
         findAll: vi
           .fn()
-          .mockResolvedValue({ items: teachers, total: 2, page: 1, limit: 20 }),
+          .mockResolvedValue({ items: teachers, total: 2, limit: 20, offset: 0 }),
       });
       const service = createTeacherService(repository);
 
@@ -82,8 +82,8 @@ describe('TeacherService', () => {
         '中村先生',
       ]);
       expect(result.total).toBe(2);
-      expect(result.page).toBe(1);
       expect(result.limit).toBe(20);
+      expect(result.offset).toBe(0);
       expect(result.total_pages).toBe(1);
     });
 
@@ -91,7 +91,7 @@ describe('TeacherService', () => {
       const repository = buildRepository({
         findAll: vi
           .fn()
-          .mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 }),
+          .mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       });
       const service = createTeacherService(repository);
 
@@ -104,7 +104,7 @@ describe('TeacherService', () => {
       const repository = buildRepository({
         findAll: vi
           .fn()
-          .mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 }),
+          .mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       });
       const service = createTeacherService(repository);
 
@@ -117,7 +117,7 @@ describe('TeacherService', () => {
       const repository = buildRepository({
         findAll: vi
           .fn()
-          .mockResolvedValue({ items: [], total: 21, page: 1, limit: 20 }),
+          .mockResolvedValue({ items: [], total: 21, limit: 20, offset: 0 }),
       });
       const service = createTeacherService(repository);
 

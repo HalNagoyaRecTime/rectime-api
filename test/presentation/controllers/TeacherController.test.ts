@@ -87,8 +87,8 @@ describe('TeacherController', () => {
       const page = {
         items: [buildTeacher()],
         total: 1,
-        page: 1,
         limit: 20,
+        offset: 0,
         total_pages: 1,
       };
       (
@@ -108,13 +108,13 @@ describe('TeacherController', () => {
       ).mockResolvedValue({
         items: [],
         total: 0,
-        page: 1,
         limit: 20,
+        offset: 0,
         total_pages: 0,
       });
 
       await app.request(
-        '/teachers?teacherId=1&userName=%E5%B1%B1%E7%94%B0&classRoomId=2&isLiveActive=false&page=2&limit=5'
+        '/teachers?teacherId=1&userName=%E5%B1%B1%E7%94%B0&classRoomId=2&isLiveActive=false&offset=5&limit=5'
       );
 
       expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
@@ -122,7 +122,7 @@ describe('TeacherController', () => {
         userName: '山田',
         classRoomId: 2,
         isLiveActive: false,
-        page: 2,
+        offset: 5,
         limit: 5,
       });
     });
