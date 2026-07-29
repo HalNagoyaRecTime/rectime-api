@@ -6,7 +6,7 @@ import { createAdminNotificationRepository } from '../../../src/infrastructure/r
 interface Fixture {
   creatorId: number;
   classRoomId: number;
-  gatheringGroupId: number;
+  gatheringId: number;
   eventId: number;
 }
 
@@ -26,15 +26,17 @@ async function createFixture(): Promise<Fixture> {
   const inactive = await env.DB.prepare(
     "INSERT INTO users (user_name, is_live_active) VALUES ('無効利用者', 0) RETURNING user_id"
   ).first<{ user_id: number }>();
-  const group = await env.DB.prepare(
-    'INSERT INTO gathering_groups DEFAULT VALUES RETURNING gathering_group_id'
-  ).first<{ gathering_group_id: number }>();
   const event = await env.DB.prepare(
     "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('大縄跳び', '体育館', '1000', '1030') RETURNING event_id"
   ).first<{ event_id: number }>();
   const spot = await env.DB.prepare(
     "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('体育館前') RETURNING gathering_spot_id"
   ).first<{ gathering_spot_id: number }>();
+  const gathering = await env.DB.prepare(
+    'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id'
+  )
+    .bind(event!.event_id, spot!.gathering_spot_id)
+    .first<{ gathering_id: number }>();
 
   await env.DB.batch([
     env.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)').bind(
@@ -47,14 +49,11 @@ async function createFixture(): Promise<Fixture> {
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 2, 'S002')"
     ).bind(second!.user_id, classroom!.class_room_id),
     env.DB.prepare(
-      'INSERT INTO gathering_group_members (gathering_group_id, user_id) VALUES (?, ?)'
-    ).bind(group!.gathering_group_id, first!.user_id),
+      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+    ).bind(gathering!.gathering_id, first!.user_id),
     env.DB.prepare(
-      'INSERT INTO gathering_group_members (gathering_group_id, user_id) VALUES (?, ?)'
-    ).bind(group!.gathering_group_id, second!.user_id),
-    env.DB.prepare(
-      'INSERT INTO gatherings (gathering_group_id, event_id, gathering_spot_id) VALUES (?, ?, ?)'
-    ).bind(group!.gathering_group_id, event!.event_id, spot!.gathering_spot_id),
+      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+    ).bind(gathering!.gathering_id, second!.user_id),
     env.DB.prepare(
       "INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, 'token-1')"
     ).bind(first!.user_id),
@@ -69,7 +68,7 @@ async function createFixture(): Promise<Fixture> {
   return {
     creatorId: creator!.user_id,
     classRoomId: classroom!.class_room_id,
-    gatheringGroupId: group!.gathering_group_id,
+    gatheringId: gathering!.gathering_id,
     eventId: event!.event_id,
   };
 }
@@ -85,7 +84,6 @@ describe('AdminNotificationRepository', () => {
       env.DB.prepare('DELETE FROM gathering_group_members'),
       env.DB.prepare('DELETE FROM gatherings'),
       env.DB.prepare('DELETE FROM gathering_spots'),
-      env.DB.prepare('DELETE FROM gathering_groups'),
       env.DB.prepare('DELETE FROM students'),
       env.DB.prepare('DELETE FROM class_rooms'),
       env.DB.prepare('DELETE FROM staffs'),
@@ -105,10 +103,10 @@ describe('AdminNotificationRepository', () => {
       }),
     ],
     [
-      'gathering_group',
+      'gathering',
       (fixture: Fixture) => ({
-        type: 'gathering_group',
-        gathering_group_id: fixture.gatheringGroupId,
+        type: 'gathering',
+        gathering_id: fixture.gatheringId,
       }),
     ],
     [
@@ -173,23 +171,53 @@ describe('AdminNotificationRepository', () => {
 
   it('存在しない対象とTokenがない対象を区別する', async () => {
     const fixture = await createFixture();
-    const emptyGroup = await env.DB.prepare(
-      'INSERT INTO gathering_groups DEFAULT VALUES RETURNING gathering_group_id'
-    ).first<{ gathering_group_id: number }>();
+    const emptyGathering = await env.DB.prepare(
+      'INSERT INTO gatherings (event_id, gathering_spot_id) SELECT event_id, gathering_spot_id FROM gatherings LIMIT 1 RETURNING gathering_id'
+    ).first<{ gathering_id: number }>();
 
     await expect(
       repository.getAudienceStatus({
-        type: 'gathering_group',
-        gathering_group_id: 999999,
+        type: 'gathering',
+        gathering_id: 999999,
       })
     ).resolves.toEqual({ exists: false, active_token_count: 0 });
     await expect(
       repository.getAudienceStatus({
-        type: 'gathering_group',
-        gathering_group_id: emptyGroup!.gathering_group_id,
+        type: 'gathering',
+        gathering_id: emptyGathering!.gathering_id,
       })
     ).resolves.toEqual({ exists: true, active_token_count: 0 });
-    expect(fixture.gatheringGroupId).toBeGreaterThan(0);
+    expect(fixture.gatheringId).toBeGreaterThan(0);
+  });
+
+  it('同じ競技の複数集合に所属する利用者へ通知予定を重複作成しない', async () => {
+    const fixture = await createFixture();
+    const secondGathering = await env.DB.prepare(
+      'INSERT INTO gatherings (event_id, gathering_spot_id) SELECT event_id, gathering_spot_id FROM gatherings WHERE gathering_id = ? RETURNING gathering_id'
+    )
+      .bind(fixture.gatheringId)
+      .first<{ gathering_id: number }>();
+    await env.DB.prepare(
+      `INSERT INTO gathering_group_members (gathering_id, user_id)
+       SELECT ?, user_id
+       FROM gathering_group_members
+       WHERE gathering_id = ?`
+    )
+      .bind(secondGathering!.gathering_id, fixture.gatheringId)
+      .run();
+
+    const result = await repository.create({
+      created_user_id: fixture.creatorId,
+      title: '競技参加者へのお知らせ',
+      body: '集合時間を確認してください。',
+      audience: {
+        type: 'event_participants',
+        event_id: fixture.eventId,
+      },
+      scheduled_at: '2026-07-23T09:00:00+09:00',
+    });
+
+    expect(result.schedule_count).toBe(2);
   });
 
   it('作成直前に対象Tokenが無効化されても孤立した通知本文を残さない', async () => {

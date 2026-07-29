@@ -123,7 +123,7 @@ describe('AdminNotificationManagementController', () => {
       body: JSON.stringify({
         title: '変更後',
         scheduledAt: '2026-07-23T10:00:00+09:00',
-        audience: { type: 'class_room', classRoomId: 3 },
+        audience: { type: 'gathering', gatheringId: 3 },
       }),
     });
 
@@ -133,7 +133,7 @@ describe('AdminNotificationManagementController', () => {
       title: '変更後',
       body: undefined,
       scheduled_at: '2026-07-23T10:00:00+09:00',
-      audience: { type: 'class_room', class_room_id: 3 },
+      audience: { type: 'gathering', gathering_id: 3 },
     });
   });
 

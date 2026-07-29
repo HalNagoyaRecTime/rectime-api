@@ -7,6 +7,7 @@ interface Fixture {
   notificationId: number;
   eventId: number;
   classRoomId: number;
+  gatheringId: number;
   tokenIds: number[];
 }
 
@@ -23,6 +24,14 @@ async function createFixture(
   const event = await env.DB.prepare(
     "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('大縄跳び', '体育館', '1000', '1030') RETURNING event_id"
   ).first<{ event_id: number }>();
+  const spot = await env.DB.prepare(
+    "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('体育館前') RETURNING gathering_spot_id"
+  ).first<{ gathering_spot_id: number }>();
+  const gathering = await env.DB.prepare(
+    'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id'
+  )
+    .bind(event!.event_id, spot!.gathering_spot_id)
+    .first<{ gathering_id: number }>();
   const notification = await env.DB.prepare(
     "INSERT INTO notifications (notification_type, title, body) VALUES (?, '変更前', '本文') RETURNING notification_id"
   )
@@ -40,6 +49,11 @@ async function createFixture(
       'INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, ?, ?)'
     )
       .bind(user!.user_id, classroom!.class_room_id, index + 1, `S${index + 1}`)
+      .run();
+    await env.DB.prepare(
+      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+    )
+      .bind(gathering!.gathering_id, user!.user_id)
       .run();
     const token = await env.DB.prepare(
       'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, ?) RETURNING firebase_token_id'
@@ -69,6 +83,7 @@ async function createFixture(
     notificationId: notification!.notification_id,
     eventId: event!.event_id,
     classRoomId: classroom!.class_room_id,
+    gatheringId: gathering!.gathering_id,
     tokenIds,
   };
 }
@@ -84,7 +99,6 @@ describe('AdminNotificationManagementRepository', () => {
       env.DB.prepare('DELETE FROM gathering_group_members'),
       env.DB.prepare('DELETE FROM gatherings'),
       env.DB.prepare('DELETE FROM gathering_spots'),
-      env.DB.prepare('DELETE FROM gathering_groups'),
       env.DB.prepare('DELETE FROM students'),
       env.DB.prepare('DELETE FROM class_rooms'),
       env.DB.prepare('DELETE FROM staffs'),
@@ -237,6 +251,31 @@ describe('AdminNotificationManagementRepository', () => {
       recipient_count: 3,
       audience: { type: 'resolved_recipients', recipient_count: 3 },
       delivery_summary: { total: 3, draft: 3 },
+    });
+  });
+
+  it('集合対象への変更時はgathering_idからToken単位のdraftを再作成する', async () => {
+    const fixture = await createFixture();
+
+    await expect(
+      repository.update({
+        notification_id: fixture.notificationId,
+        audience: {
+          type: 'gathering',
+          gathering_id: fixture.gatheringId,
+        },
+        scheduled_at: '2026-07-23T10:00:00+09:00',
+        created_user_id: fixture.creatorId,
+      })
+    ).resolves.toBe('updated');
+
+    const detail = await repository.findById(fixture.notificationId);
+    expect(detail).toMatchObject({
+      related_event_id: null,
+      scheduled_at: '2026-07-23T10:00:00+09:00',
+      recipient_count: 2,
+      audience: { type: 'resolved_recipients', recipient_count: 2 },
+      delivery_summary: { total: 2, draft: 2 },
     });
   });
 

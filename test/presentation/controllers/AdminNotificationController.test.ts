@@ -37,7 +37,8 @@ function setup() {
   app.post('/admin/notifications', c => controller.createManualNotification(c));
   const request = async (
     body: unknown,
-    authenticated = true
+    authenticated = true,
+    bindings = { EVENT_DATE: '2026-07-23' } as Env
   ): Promise<Response> =>
     await app.request(
       '/admin/notifications',
@@ -49,7 +50,7 @@ function setup() {
         },
         body: JSON.stringify(body),
       },
-      {} as Env
+      bindings
     );
   return { service, request };
 }
@@ -88,8 +89,8 @@ describe('AdminNotificationController', () => {
       { type: 'class_room', class_room_id: 2 },
     ],
     [
-      { type: 'gathering_group', gatheringGroupId: 3 },
-      { type: 'gathering_group', gathering_group_id: 3 },
+      { type: 'gathering', gatheringId: 3 },
+      { type: 'gathering', gathering_id: 3 },
     ],
     [
       { type: 'event_participants', eventId: 4 },
@@ -124,6 +125,34 @@ describe('AdminNotificationController', () => {
     const response = await request(validBody);
 
     expect(response.status).toBe(403);
+    expect(service.createManualNotification).not.toHaveBeenCalled();
+  });
+
+  it('EVENT_DATEと異なるJST日付のscheduledAtは400を返す', async () => {
+    const { service, request } = setup();
+
+    const response = await request({
+      ...validBody,
+      scheduledAt: '2026-07-24T00:00:00+09:00',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'scheduledAt must be on EVENT_DATE',
+      code: 'INVALID_NOTIFICATION_DATE',
+    });
+    expect(service.createManualNotification).not.toHaveBeenCalled();
+  });
+
+  it('EVENT_DATEが未設定または不正な場合は500を返す', async () => {
+    const { service, request } = setup();
+
+    const response = await request(validBody, true, {} as Env);
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: 'EVENT_DATE is not configured correctly',
+    });
     expect(service.createManualNotification).not.toHaveBeenCalled();
   });
 

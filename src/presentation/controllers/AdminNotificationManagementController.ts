@@ -17,8 +17,8 @@ const audienceSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
-      type: z.literal('gathering_group'),
-      gatheringGroupId: z.number().int().positive(),
+      type: z.literal('gathering'),
+      gatheringId: z.number().int().positive(),
     })
     .strict(),
   z
@@ -229,10 +229,10 @@ function toAudience(
       return audience;
     case 'class_room':
       return { type: audience.type, class_room_id: audience.classRoomId };
-    case 'gathering_group':
+    case 'gathering':
       return {
         type: audience.type,
-        gathering_group_id: audience.gatheringGroupId,
+        gathering_id: audience.gatheringId,
       };
     case 'event_participants':
       return { type: audience.type, event_id: audience.eventId };

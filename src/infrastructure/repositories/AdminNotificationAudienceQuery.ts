@@ -42,12 +42,12 @@ export function buildAudienceStatusStatement(
       .bind(audience.class_room_id, audience.class_room_id);
   }
 
-  if (audience.type === 'gathering_group') {
+  if (audience.type === 'gathering') {
     return db
       .prepare(
         `SELECT
            EXISTS(
-             SELECT 1 FROM gathering_groups WHERE gathering_group_id = ?
+             SELECT 1 FROM gatherings WHERE gathering_id = ?
            ) AS target_exists,
            (
              SELECT COUNT(DISTINCT ft.firebase_token_id)
@@ -58,10 +58,10 @@ export function buildAudienceStatusStatement(
              INNER JOIN firebase_tokens ft
                ON ft.user_id = ggm.user_id
               AND ft.is_firebase_active = 1
-             WHERE ggm.gathering_group_id = ?
+             WHERE ggm.gathering_id = ?
            ) AS active_token_count`
       )
-      .bind(audience.gathering_group_id, audience.gathering_group_id);
+      .bind(audience.gathering_id, audience.gathering_id);
   }
 
   return db
@@ -74,7 +74,7 @@ export function buildAudienceStatusStatement(
            SELECT COUNT(DISTINCT ft.firebase_token_id)
            FROM gatherings g
            INNER JOIN gathering_group_members ggm
-             ON ggm.gathering_group_id = g.gathering_group_id
+             ON ggm.gathering_id = g.gathering_id
            INNER JOIN users u
              ON u.user_id = ggm.user_id
             AND u.is_live_active = 1
@@ -120,7 +120,7 @@ export function buildAudienceTokenSelect(
     };
   }
 
-  if (audience.type === 'gathering_group') {
+  if (audience.type === 'gathering') {
     return {
       sql: `SELECT DISTINCT ft.firebase_token_id
             FROM gathering_group_members ggm
@@ -130,8 +130,8 @@ export function buildAudienceTokenSelect(
             INNER JOIN firebase_tokens ft
               ON ft.user_id = ggm.user_id
              AND ft.is_firebase_active = 1
-            WHERE ggm.gathering_group_id = ?`,
-      bindings: [audience.gathering_group_id],
+            WHERE ggm.gathering_id = ?`,
+      bindings: [audience.gathering_id],
     };
   }
 
@@ -139,7 +139,7 @@ export function buildAudienceTokenSelect(
     sql: `SELECT DISTINCT ft.firebase_token_id
           FROM gatherings g
           INNER JOIN gathering_group_members ggm
-            ON ggm.gathering_group_id = g.gathering_group_id
+            ON ggm.gathering_id = g.gathering_id
           INNER JOIN users u
             ON u.user_id = ggm.user_id
            AND u.is_live_active = 1
