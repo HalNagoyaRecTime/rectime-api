@@ -49,6 +49,7 @@ function buildInput(fixture: Fixture) {
     start_time: '1030',
     end_time: '1100',
     resolved_event_name: '大縄跳び',
+    resolved_venue: '体育館',
     refresh_notifications: true,
     notification_enabled: true,
     send_at: '2026-11-07T01:15:00.000Z',
@@ -90,7 +91,7 @@ describe('EventScheduleRepository', () => {
       importance: 2,
       send_at: '2026-11-07T01:15:00.000Z',
       title: '大縄跳び開始のお知らせ',
-      body: '大縄跳びの開始時間が近づいています。該当チームは体育館前へ集合してください。',
+      body: '大縄跳びの開始時間が近づいています。該当チームは体育館へ集合してください。',
     });
   });
 
@@ -128,6 +129,7 @@ describe('EventScheduleRepository', () => {
       user_id: fixture.userId,
       venue: 'サブアリーナ',
       resolved_event_name: '大縄跳び',
+      resolved_venue: 'サブアリーナ',
       refresh_notifications: false,
       notification_enabled: true,
       send_at: '2026-11-07T01:15:00.000Z',
@@ -156,6 +158,30 @@ describe('EventScheduleRepository', () => {
       end_time: '1100',
     });
     expect(schedules?.count).toBe(1);
+  });
+
+  it('集合場所変更時はevents.venueを通知本文へ反映する', async () => {
+    const fixture = await createFixture();
+
+    await repository.apply({
+      ...buildInput(fixture),
+      venue: 'サブアリーナ',
+      resolved_venue: 'サブアリーナ',
+    });
+
+    const notification = await env.DB.prepare(
+      `SELECT n.body
+       FROM notifications n
+       INNER JOIN notification_schedules ns
+         ON ns.notification_id = n.notification_id
+       WHERE ns.event_id = ? AND ns.send_status = 'draft'`
+    )
+      .bind(fixture.eventId)
+      .first<{ body: string }>();
+
+    expect(notification?.body).toBe(
+      '大縄跳びの開始時間が近づいています。該当チームはサブアリーナへ集合してください。'
+    );
   });
 
   it('通知予定の作成に失敗した場合は競技基本情報も更新しない', async () => {

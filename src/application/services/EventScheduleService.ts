@@ -39,6 +39,7 @@ export function createEventScheduleService(deps: {
           .length > 0;
       const refreshNotifications =
         input.event_name !== undefined ||
+        input.venue !== undefined ||
         input.start_time !== undefined ||
         input.notification_enabled !== undefined;
       const sendAt = buildEventNotificationSendAt(input.event_date, startTime);
@@ -51,6 +52,7 @@ export function createEventScheduleService(deps: {
         start_time: input.start_time,
         end_time: input.end_time,
         resolved_event_name: input.event_name ?? event.event_name,
+        resolved_venue: input.venue ?? event.venue,
         refresh_notifications: refreshNotifications,
         notification_enabled: notificationEnabled,
         send_at: sendAt,

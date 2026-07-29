@@ -7,6 +7,7 @@ export interface ApplyEventScheduleInput {
   start_time?: string;
   end_time?: string;
   resolved_event_name: string;
+  resolved_venue: string;
   refresh_notifications: boolean;
   notification_enabled: boolean;
   send_at: string;

@@ -368,7 +368,7 @@ paths:
       description: |
         staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
         指定された競技情報だけを更新し、未指定の項目は変更しません。
-        競技名、開始時刻、notification_enabledのいずれかを変更した場合は、
+        競技名、集合場所、開始時刻、notification_enabledのいずれかを変更した場合は、
         未送信のevent_reminderを更新後の内容で再生成します。
       parameters:
         - $ref: '#/components/parameters/EventId'

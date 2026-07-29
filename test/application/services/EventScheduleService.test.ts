@@ -113,6 +113,7 @@ describe('EventScheduleService', () => {
       start_time: '1030',
       end_time: '1100',
       resolved_event_name: '大縄跳び',
+      resolved_venue: '体育館',
       refresh_notifications: true,
       notification_enabled: true,
       send_at: '2026-11-07T01:15:00.000Z',
@@ -214,7 +215,7 @@ describe('EventScheduleService', () => {
     );
   });
 
-  it('会場だけの部分更新では未指定値を渡さず通知予定を再生成しない', async () => {
+  it('集合場所だけの部分更新でも変更後の内容で通知予定を再生成する', async () => {
     const { service, eventScheduleRepository } = setup();
 
     await service.updateEventSchedule({
@@ -233,7 +234,8 @@ describe('EventScheduleService', () => {
       start_time: undefined,
       end_time: undefined,
       resolved_event_name: '大縄跳び',
-      refresh_notifications: false,
+      resolved_venue: 'サブアリーナ',
+      refresh_notifications: true,
       notification_enabled: true,
       send_at: '2026-11-07T01:15:00.000Z',
     });
