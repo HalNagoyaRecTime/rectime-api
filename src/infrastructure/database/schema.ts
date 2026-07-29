@@ -1,5 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import {
+  type AnySQLiteColumn,
   integer,
   index,
   sqliteTable,
@@ -112,6 +113,9 @@ export const gatherings = sqliteTable(
   'gatherings',
   {
     id: integer('gathering_id').primaryKey({ autoIncrement: true }),
+    gatheringGroupMemberId: integer('gathering_group_member_id').references(
+      (): AnySQLiteColumn => gathering_group_members.id
+    ),
     eventId: integer('event_id')
       .notNull()
       .references(() => events.id),
@@ -128,6 +132,9 @@ export const gatherings = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`),
   },
   table => [
+    uniqueIndex('uq_gatherings_gathering_group_member_id').on(
+      table.gatheringGroupMemberId
+    ),
     index('idx_gatherings_event_id').on(table.eventId),
     index('idx_gatherings_spot_id').on(table.gatheringSpotId),
   ]
@@ -152,7 +159,7 @@ export const gathering_group_members = sqliteTable(
     }),
     gatheringId: integer('gathering_id')
       .notNull()
-      .references(() => gatherings.id),
+      .references((): AnySQLiteColumn => gatherings.id),
     userId: integer('user_id')
       .notNull()
       .references(() => users.id),
@@ -189,6 +196,10 @@ export const eventsRelations = relations(events, ({ many }) => ({
 
 export const gatheringsRelations = relations(gatherings, ({ one, many }) => ({
   members: many(gathering_group_members),
+  gatheringGroupMember: one(gathering_group_members, {
+    fields: [gatherings.gatheringGroupMemberId],
+    references: [gathering_group_members.id],
+  }),
   event: one(events, {
     fields: [gatherings.eventId],
     references: [events.id],

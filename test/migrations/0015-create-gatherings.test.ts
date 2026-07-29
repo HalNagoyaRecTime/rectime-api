@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 
 describe('集合予定の最終スキーマ', () => {
-  it('gathering_group_idを持たず、競技と集合場所を参照する', async () => {
+  it('gathering_group_idを持たず、集合メンバー・競技・集合場所を参照する', async () => {
     const columns = await env.DB.prepare('PRAGMA table_info(gatherings)').all<{
       name: string;
       notnull: number;
@@ -12,6 +12,10 @@ describe('集合予定の最終スキーマ', () => {
     expect(columns.results).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'gathering_id', pk: 1 }),
+        expect.objectContaining({
+          name: 'gathering_group_member_id',
+          notnull: 0,
+        }),
         expect.objectContaining({ name: 'event_id', notnull: 1 }),
         expect.objectContaining({ name: 'gathering_spot_id', notnull: 1 }),
         expect.objectContaining({
@@ -42,6 +46,11 @@ describe('集合予定の最終スキーマ', () => {
     expect(foreignKeys.results).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          table: 'gathering_group_members',
+          from: 'gathering_group_member_id',
+          to: 'gathering_group_member_id',
+        }),
+        expect.objectContaining({
           table: 'events',
           from: 'event_id',
           to: 'event_id',
@@ -70,7 +79,12 @@ describe('集合予定の最終スキーマ', () => {
         }),
       ])
     );
-    expect(indexes.results.some(index => index.unique === 1)).toBe(false);
+    expect(indexes.results.filter(index => index.unique === 1)).toEqual([
+      expect.objectContaining({
+        name: 'uq_gatherings_gathering_group_member_id',
+        unique: 1,
+      }),
+    ]);
 
     const foreignKeyErrors = await env.DB.prepare(
       'PRAGMA foreign_key_check'
