@@ -6,6 +6,7 @@ import type { IEventScheduleRepository } from '../../domain/interfaces/repositor
 
 interface EventAudienceRow {
   gathering_group_id: number;
+  gathering_spot_name: string;
 }
 
 interface NotificationSummaryRow {
@@ -27,8 +28,11 @@ export function createEventScheduleRepository(
           ? await db
               .prepare(
                 `SELECT DISTINCT
-                 g.gathering_group_id
+                 g.gathering_group_id,
+                 gs.gathering_spot_name
                FROM gatherings g
+               INNER JOIN gathering_spots gs
+                 ON gs.gathering_spot_id = g.gathering_spot_id
                WHERE g.event_id = ?
                  AND EXISTS (
                    SELECT 1
@@ -73,7 +77,7 @@ export function createEventScheduleRepository(
               )
               .bind(
                 `${input.resolved_event_name}開始のお知らせ`,
-                `${input.resolved_event_name}の開始時間が近づいています。該当チームは${input.resolved_venue}へ集合してください。`
+                `${input.resolved_event_name}の開始時間が近づいています。該当チームは${row.gathering_spot_name}へ集合してください。`
               ),
             buildScheduleInsert(db, input, row.gathering_group_id)
           );
