@@ -227,6 +227,9 @@ apiV1.get('/notification/schedules', c => {
 apiV1.get('/notification/schedules/:scheduleId', c => {
   return c.get('container').scheduleController.getScheduleById(c);
 });
+apiV1.post('/notification/schedules', c => {
+  return c.get('container').scheduleController.createSchedule(c);
+});
 
 // Notification routes
 apiV1.post('/notifications', c => {
