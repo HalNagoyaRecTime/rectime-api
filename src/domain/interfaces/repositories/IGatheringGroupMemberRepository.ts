@@ -1,14 +1,14 @@
 import { GatheringGroupMemberEntity } from '../../entities/GatheringGroupMember';
 
 export interface IGatheringGroupMemberRepository {
-  existsGatheringGroup: (gatheringGroupId: number) => Promise<boolean>;
+  existsGathering: (gatheringId: number) => Promise<boolean>;
   existsUser: (userId: number) => Promise<boolean>;
-  findByGatheringGroupId: (
-    gatheringGroupId: number
+  findByGatheringId: (
+    gatheringId: number
   ) => Promise<GatheringGroupMemberEntity[]>;
   create: (
-    gatheringGroupId: number,
+    gatheringId: number,
     userId: number
   ) => Promise<GatheringGroupMemberEntity>;
-  remove: (gatheringGroupId: number, userId: number) => Promise<boolean>;
+  remove: (gatheringId: number, userId: number) => Promise<boolean>;
 }

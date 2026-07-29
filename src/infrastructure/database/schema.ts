@@ -112,10 +112,6 @@ export const gatherings = sqliteTable(
   'gatherings',
   {
     id: integer('gathering_id').primaryKey({ autoIncrement: true }),
-    gatheringGroupId: integer('gathering_group_id')
-      .notNull()
-      .unique()
-      .references(() => gathering_groups.id),
     eventId: integer('event_id')
       .notNull()
       .references(() => events.id),
@@ -148,25 +144,15 @@ export const gathering_spots = sqliteTable('gathering_spots', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const gathering_groups = sqliteTable('gathering_groups', {
-  id: integer('gathering_group_id').primaryKey({ autoIncrement: true }),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
-
 export const gathering_group_members = sqliteTable(
   'gathering_group_members',
   {
     id: integer('gathering_group_member_id').primaryKey({
       autoIncrement: true,
     }),
-    gatheringGroupId: integer('gathering_group_id')
+    gatheringId: integer('gathering_id')
       .notNull()
-      .references(() => gathering_groups.id),
+      .references(() => gatherings.id),
     userId: integer('user_id')
       .notNull()
       .references(() => users.id),
@@ -178,8 +164,8 @@ export const gathering_group_members = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`),
   },
   table => [
-    uniqueIndex('uq_gathering_group_members_group_user').on(
-      table.gatheringGroupId,
+    uniqueIndex('uq_gathering_group_members_gathering_user').on(
+      table.gatheringId,
       table.userId
     ),
     index('idx_gathering_group_members_user_id').on(table.userId),
@@ -189,14 +175,6 @@ export const gathering_group_members = sqliteTable(
 export const usersRelations = relations(users, ({ many }) => ({
   gatheringGroupMembers: many(gathering_group_members),
 }));
-
-export const gatheringGroupsRelations = relations(
-  gathering_groups,
-  ({ many }) => ({
-    members: many(gathering_group_members),
-    gatherings: many(gatherings),
-  })
-);
 
 export const gatheringSpotsRelations = relations(
   gathering_spots,
@@ -209,11 +187,8 @@ export const eventsRelations = relations(events, ({ many }) => ({
   gatherings: many(gatherings),
 }));
 
-export const gatheringsRelations = relations(gatherings, ({ one }) => ({
-  gatheringGroup: one(gathering_groups, {
-    fields: [gatherings.gatheringGroupId],
-    references: [gathering_groups.id],
-  }),
+export const gatheringsRelations = relations(gatherings, ({ one, many }) => ({
+  members: many(gathering_group_members),
   event: one(events, {
     fields: [gatherings.eventId],
     references: [events.id],
@@ -227,9 +202,9 @@ export const gatheringsRelations = relations(gatherings, ({ one }) => ({
 export const gatheringGroupMembersRelations = relations(
   gathering_group_members,
   ({ one }) => ({
-    gatheringGroup: one(gathering_groups, {
-      fields: [gathering_group_members.gatheringGroupId],
-      references: [gathering_groups.id],
+    gathering: one(gatherings, {
+      fields: [gathering_group_members.gatheringId],
+      references: [gatherings.id],
     }),
     user: one(users, {
       fields: [gathering_group_members.userId],

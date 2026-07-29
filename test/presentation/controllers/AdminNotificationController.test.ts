@@ -89,8 +89,8 @@ describe('AdminNotificationController', () => {
       { type: 'class_room', class_room_id: 2 },
     ],
     [
-      { type: 'gathering_group', gatheringGroupId: 3 },
-      { type: 'gathering_group', gathering_group_id: 3 },
+      { type: 'gathering', gatheringId: 3 },
+      { type: 'gathering', gathering_id: 3 },
     ],
     [
       { type: 'event_participants', eventId: 4 },
