@@ -4,18 +4,14 @@ import { drizzle } from 'drizzle-orm/d1';
 import { GatheringGroupMemberEntity } from '../../domain/entities/GatheringGroupMember';
 import { IGatheringGroupMemberRepository } from '../../domain/interfaces/repositories/IGatheringGroupMemberRepository';
 import * as schema from '../database/schema';
-import {
-  gathering_group_members,
-  gathering_groups,
-  users,
-} from '../database/schema';
+import { gathering_group_members, gatherings, users } from '../database/schema';
 
 function toEntity(
   row: typeof gathering_group_members.$inferSelect
 ): GatheringGroupMemberEntity {
   return {
     gathering_group_member_id: row.id,
-    gathering_group_id: row.gatheringGroupId,
+    gathering_id: row.gatheringId,
     user_id: row.userId,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
@@ -28,11 +24,11 @@ export function createGatheringGroupMemberRepository(
   const orm = drizzle(db, { schema });
 
   return {
-    async existsGatheringGroup(gatheringGroupId: number): Promise<boolean> {
+    async existsGathering(gatheringId: number): Promise<boolean> {
       const row = await orm
-        .select({ id: gathering_groups.id })
-        .from(gathering_groups)
-        .where(eq(gathering_groups.id, gatheringGroupId))
+        .select({ id: gatherings.id })
+        .from(gatherings)
+        .where(eq(gatherings.id, gatheringId))
         .get();
       return Boolean(row);
     },
@@ -46,43 +42,43 @@ export function createGatheringGroupMemberRepository(
       return Boolean(row);
     },
 
-    async findByGatheringGroupId(
-      gatheringGroupId: number
+    async findByGatheringId(
+      gatheringId: number
     ): Promise<GatheringGroupMemberEntity[]> {
       const rows = await orm
         .select()
         .from(gathering_group_members)
-        .where(eq(gathering_group_members.gatheringGroupId, gatheringGroupId))
+        .where(eq(gathering_group_members.gatheringId, gatheringId))
         .orderBy(asc(gathering_group_members.id))
         .all();
       return rows.map(toEntity);
     },
 
     async create(
-      gatheringGroupId: number,
+      gatheringId: number,
       userId: number
     ): Promise<GatheringGroupMemberEntity> {
       const row = await orm
         .insert(gathering_group_members)
-        .values({ gatheringGroupId, userId })
+        .values({ gatheringId, userId })
         .onConflictDoNothing({
           target: [
-            gathering_group_members.gatheringGroupId,
+            gathering_group_members.gatheringId,
             gathering_group_members.userId,
           ],
         })
         .returning()
         .get();
-      if (!row) throw new Error('Gathering group member already exists');
+      if (!row) throw new Error('Gathering member already exists');
       return toEntity(row);
     },
 
-    async remove(gatheringGroupId: number, userId: number): Promise<boolean> {
+    async remove(gatheringId: number, userId: number): Promise<boolean> {
       const row = await orm
         .delete(gathering_group_members)
         .where(
           and(
-            eq(gathering_group_members.gatheringGroupId, gatheringGroupId),
+            eq(gathering_group_members.gatheringId, gatheringId),
             eq(gathering_group_members.userId, userId)
           )
         )

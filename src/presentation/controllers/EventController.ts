@@ -28,7 +28,7 @@ const eventWriteSchema = z
   });
 
 const eventUpdateSchema = eventWriteSchema.and(
-  z.object({ notificationEnabled: z.boolean().optional() })
+  z.object({ notification_enabled: z.boolean().optional() })
 );
 const eventPatchSchema = z
   .object({
@@ -174,7 +174,7 @@ export function createEventController(
           venue: request.venue,
           start_time: request.start_time,
           end_time: request.end_time,
-          notification_enabled: request.notificationEnabled,
+          notification_enabled: request.notification_enabled,
           event_date: eventContext.env.EVENT_DATE,
         })
       );

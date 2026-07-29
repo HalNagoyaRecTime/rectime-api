@@ -265,7 +265,7 @@ describe('EventController', () => {
             venue: 'トラック',
             start_time: '1000',
             end_time: '1030',
-            notificationEnabled: true,
+            notification_enabled: true,
           }),
         },
         { EVENT_DATE: '2026-11-07' }
@@ -307,7 +307,7 @@ describe('EventController', () => {
             venue: 'トラック',
             start_time: '0930',
             end_time: '0950',
-            notificationEnabled: false,
+            notification_enabled: false,
           }),
         },
         { EVENT_DATE: '2026-11-07' }
@@ -320,7 +320,7 @@ describe('EventController', () => {
       });
     });
 
-    it('notificationEnabledがない既存Requestも受け付ける', async () => {
+    it('notification_enabledがない既存Requestも受け付ける', async () => {
       const { app, eventScheduleService } = setup();
       (
         eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
@@ -376,7 +376,7 @@ describe('EventController', () => {
             venue: 'トラック',
             start_time: '0930',
             end_time: '0950',
-            notificationEnabled: true,
+            notification_enabled: true,
           }),
         },
         { EVENT_DATE: '2026-11-07' }

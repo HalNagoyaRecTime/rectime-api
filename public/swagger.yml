@@ -84,6 +84,32 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [Students]
+      summary: 学生を更新する
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentWriteRequest'
+      responses:
+        '200':
+          description: 更新後の学生
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Student'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /staffs:
     get:
@@ -194,11 +220,6 @@ paths:
       summary: 教員情報と担当クラスを更新する
       parameters:
         - $ref: '#/components/parameters/TeacherId'
-    put:
-      tags: [Students]
-      summary: 学生を更新する
-      parameters:
-        - $ref: '#/components/parameters/StudentId'
       requestBody:
         required: true
         content:
@@ -226,14 +247,6 @@ paths:
       responses:
         '204':
           description: 削除成功
-              $ref: '#/components/schemas/StudentWriteRequest'
-      responses:
-        '200':
-          description: 更新後の学生
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Student'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -334,7 +347,7 @@ paths:
       description: |
         staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
         競技基本情報と、開始15分前の自動通知予定を1つの処理で更新します。
-        notificationEnabledがfalseの場合は、未送信のevent_reminderのみ削除します。
+        notification_enabledがfalseの場合は、未送信のevent_reminderのみ削除します。
       parameters:
         - $ref: '#/components/parameters/EventId'
       requestBody:
@@ -409,6 +422,29 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /events/{eventId}/gatherings:
+    get:
+      tags: [Events]
+      summary: 競技の集合予定一覧を取得する
+      description: 同じ競技に複数の集合予定がある場合は、集合ID順ですべて返します。
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: 集合予定一覧。未登録の場合は空配列
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Gathering'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -523,7 +559,7 @@ paths:
     get:
       tags: [Classrooms]
       summary: クラス詳細を取得する
-      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      parameters: [{ $ref: '#/components/parameters/ClassId' }]
       responses:
         '200':
           description: クラス詳細
@@ -536,7 +572,7 @@ paths:
     put:
       tags: [Classrooms]
       summary: クラスを更新する
-      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      parameters: [{ $ref: '#/components/parameters/ClassId' }]
       requestBody:
         required: true
         content:
@@ -559,7 +595,7 @@ paths:
     delete:
       tags: [Classrooms]
       summary: クラスを削除する
-      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      parameters: [{ $ref: '#/components/parameters/ClassId' }]
       responses:
         '204': { description: 削除成功 }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -629,68 +665,21 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gathering-groups:
+  /gatherings/{gatheringId}/members:
     get:
-      tags: [Gathering groups]
-      summary: 対象グループ一覧を取得する
+      tags: [Gathering members]
+      summary: 集合の対象者一覧を取得する
+      parameters:
+        - $ref: '#/components/parameters/GatheringId'
       responses:
         '200':
-          description: 対象グループ一覧
+          description: 集合対象者一覧
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/GatheringGroup'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    post:
-      tags: [Gathering groups]
-      summary: 対象グループを作成する
-      responses:
-        '201':
-          description: 作成した対象グループ
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GatheringGroup'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /gathering-groups/{gatheringGroupId}:
-    delete:
-      tags: [Gathering groups]
-      summary: 集合グループを削除する
-      description: 所属メンバーも削除します。集合予定に割り当てられている場合は削除できません。
-      parameters:
-        - $ref: '#/components/parameters/GatheringGroupId'
-      responses:
-        '204':
-          description: 削除成功
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /gathering-groups/{gatheringGroupId}/members:
-    get:
-      tags: [Gathering group members]
-      summary: 対象グループの所属者一覧を取得する
-      parameters:
-        - $ref: '#/components/parameters/GatheringGroupId'
-      responses:
-        '200':
-          description: 所属者一覧
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/GatheringGroupMember'
+                  $ref: '#/components/schemas/GatheringMember'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -698,29 +687,29 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
     post:
-      tags: [Gathering group members]
-      summary: 対象グループへ所属者を追加する
+      tags: [Gathering members]
+      summary: 集合へ対象者を追加する
       parameters:
-        - $ref: '#/components/parameters/GatheringGroupId'
+        - $ref: '#/components/parameters/GatheringId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AddGatheringGroupMemberRequest'
+              $ref: '#/components/schemas/AddGatheringMemberRequest'
       responses:
         '201':
-          description: 追加した所属情報
+          description: 追加した集合対象者
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GatheringGroupMember'
+                $ref: '#/components/schemas/GatheringMember'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: すでに対象グループへ所属している
+          description: すでに同じ集合へ登録されている
           content:
             application/json:
               schema:
@@ -728,12 +717,12 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gathering-groups/{gatheringGroupId}/members/{userId}:
+  /gatherings/{gatheringId}/members/{userId}:
     delete:
-      tags: [Gathering group members]
-      summary: 対象グループから所属者を削除する
+      tags: [Gathering members]
+      summary: 集合から対象者を削除する
       parameters:
-        - $ref: '#/components/parameters/GatheringGroupId'
+        - $ref: '#/components/parameters/GatheringId'
         - $ref: '#/components/parameters/UserId'
       responses:
         '204':
@@ -780,12 +769,6 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
-        '409':
-          description: 対象グループにはすでに集合予定が登録されている
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -793,7 +776,7 @@ paths:
     delete:
       tags: [Gatherings]
       summary: 集合予定を削除する
-      description: 参加者グループと所属メンバーは保持します。
+      description: 紐づく集合対象者も同じ処理で削除します。
       parameters:
         - $ref: '#/components/parameters/GatheringId'
       responses:
@@ -810,11 +793,7 @@ paths:
     post:
       tags: [Firebase tokens]
       summary: Firebaseトークンを登録または更新する
-      description: |
-        Mobile Bearer Tokenからログイン中の利用者を特定し、AndroidのFirebase Registration Tokenを登録または更新します。
-        userIdや学籍番号をリクエストで指定することはできません。
-      security:
-        - bearerAuth: []
+      description: 学籍番号で学生を特定し、Firebaseトークンを登録または更新します。
       requestBody:
         required: true
         content:
@@ -830,16 +809,8 @@ paths:
                 $ref: '#/components/schemas/RegisterFirebaseTokenResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-        '409':
-          description: Firebaseトークンが別の利用者に登録済み
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1440,13 +1411,6 @@ components:
       schema:
         type: integer
         minimum: 1
-    GatheringGroupId:
-      name: gatheringGroupId
-      in: path
-      required: true
-      schema:
-        type: integer
-        minimum: 1
     GatheringSpotId:
       name: gatheringSpotId
       in: path
@@ -1533,7 +1497,15 @@ components:
     Student:
       type: object
       required:
-        [student_id, display_name, class_room_id, class_room_name, attendance_number, student_id_number, is_live_active]
+        [
+          student_id,
+          display_name,
+          class_room_id,
+          class_room_name,
+          attendance_number,
+          student_id_number,
+          is_live_active,
+        ]
       properties:
         student_id:
           type: integer
@@ -1552,7 +1524,8 @@ components:
 
     StudentWriteRequest:
       type: object
-      required: [display_name, class_room_id, attendance_number, student_id_number]
+      required:
+        [display_name, class_room_id, attendance_number, student_id_number]
       properties:
         display_name:
           type: string
@@ -1659,7 +1632,16 @@ components:
 
     Event:
       type: object
-      required: [event_id, event_name, venue, start_time, end_time, created_at, updated_at]
+      required:
+        [
+          event_id,
+          event_name,
+          venue,
+          start_time,
+          end_time,
+          created_at,
+          updated_at,
+        ]
       properties:
         event_id:
           type: integer
@@ -1747,7 +1729,7 @@ components:
         - $ref: '#/components/schemas/EventWriteRequest'
         - type: object
           properties:
-            notificationEnabled:
+            notification_enabled:
               type: boolean
               description: 省略時は既存の未送信event_reminderの有無を維持します。
 
@@ -1870,26 +1852,20 @@ components:
           type: string
           minLength: 1
 
-    GatheringGroup:
+    GatheringMember:
       type: object
-      required: [gathering_group_id, created_at, updated_at]
-      properties:
-        gathering_group_id:
-          type: integer
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-
-    GatheringGroupMember:
-      type: object
-      required: [gathering_group_member_id, gathering_group_id, user_id, created_at, updated_at]
+      required:
+        [
+          gathering_group_member_id,
+          gathering_id,
+          user_id,
+          created_at,
+          updated_at,
+        ]
       properties:
         gathering_group_member_id:
           type: integer
-        gathering_group_id:
+        gathering_id:
           type: integer
         user_id:
           type: integer
@@ -1900,7 +1876,7 @@ components:
           type: string
           format: date-time
 
-    AddGatheringGroupMemberRequest:
+    AddGatheringMemberRequest:
       type: object
       required: [userId]
       properties:
@@ -1911,11 +1887,19 @@ components:
     Gathering:
       type: object
       required:
-        [gathering_id, gathering_group_id, event_id, gathering_spot_id, gathering_time, round, created_at, updated_at, event_name, gathering_spot_name]
+        [
+          gathering_id,
+          event_id,
+          gathering_spot_id,
+          gathering_time,
+          round,
+          created_at,
+          updated_at,
+          event_name,
+          gathering_spot_name,
+        ]
       properties:
         gathering_id:
-          type: integer
-        gathering_group_id:
           type: integer
         event_id:
           type: integer
@@ -1941,11 +1925,8 @@ components:
 
     CreateGatheringRequest:
       type: object
-      required: [gatheringGroupId, eventId, gatheringSpotId]
+      required: [eventId, gatheringSpotId]
       properties:
-        gatheringGroupId:
-          type: integer
-          minimum: 1
         eventId:
           type: integer
           minimum: 1
@@ -1963,38 +1944,67 @@ components:
 
     RegisterFirebaseTokenRequest:
       type: object
-      additionalProperties: false
-      required: [fcmToken, platform]
+      required: [studentNumber, platform]
       properties:
-        platform:
+        studentNumber:
           type: string
-          enum: [android]
+          minLength: 1
+        platform:
+          type: integer
+          enum: [1, 2]
+          description: '`1`: iOS、`2`: Android'
         fcmToken:
           type: string
           minLength: 1
+        token:
+          type: string
+          minLength: 1
+          deprecated: true
+          description: '`fcmToken` の後方互換用の別名'
+      anyOf:
+        - required: [fcmToken]
+        - required: [token]
 
     RegisterFirebaseTokenResponse:
       type: object
-      required:
-        [firebase_token_id, user_id, platform, is_firebase_active, last_seen_at]
+      required: [user, firebaseToken]
       properties:
-        firebase_token_id:
-          type: integer
+        user:
+          $ref: '#/components/schemas/NotificationTargetUser'
+        firebaseToken:
+          $ref: '#/components/schemas/FirebaseToken'
+
+    NotificationTargetUser:
+      type: object
+      required: [user_id, user_name, is_live_active, created_at, updated_at]
+      properties:
         user_id:
           type: integer
-        platform:
+        user_name:
           type: string
-          enum: [android]
-        is_firebase_active:
-          type: boolean
-        last_seen_at:
+        is_live_active:
+          type: integer
+          enum: [0, 1]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
 
     FirebaseToken:
       type: object
       required:
-        [firebase_token_id, user_id, platform, fcm_token, is_firebase_active, last_seen_at, created_at, updated_at]
+        [
+          firebase_token_id,
+          user_id,
+          platform,
+          fcm_token,
+          is_firebase_active,
+          last_seen_at,
+          created_at,
+          updated_at,
+        ]
       properties:
         firebase_token_id:
           type: integer
@@ -2021,7 +2031,19 @@ components:
     NotificationSchedule:
       type: object
       required:
-        [notification_schedule_id, notification_id, firebase_token_id, importance, notification_type, title, body, send_status, send_at, created_at, updated_at]
+        [
+          notification_schedule_id,
+          notification_id,
+          firebase_token_id,
+          importance,
+          notification_type,
+          title,
+          body,
+          send_status,
+          send_at,
+          created_at,
+          updated_at,
+        ]
       properties:
         notification_schedule_id:
           type: integer
@@ -2107,7 +2129,15 @@ components:
 
     Notification:
       type: object
-      required: [notification_id, notification_type, title, body, created_at, updated_at]
+      required:
+        [
+          notification_id,
+          notification_type,
+          title,
+          body,
+          created_at,
+          updated_at,
+        ]
       properties:
         notification_id:
           type: integer
@@ -2367,10 +2397,8 @@ tags:
     description: クラス
   - name: Gathering spots
     description: 集合場所
-  - name: Gathering groups
-    description: 対象グループ
-  - name: Gathering group members
-    description: 対象グループの所属者
+  - name: Gathering members
+    description: 集合ごとの対象者
   - name: Gatherings
     description: 集合予定
   - name: Firebase tokens

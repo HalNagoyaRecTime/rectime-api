@@ -10,7 +10,6 @@ import { createNotificationScheduleRepository } from '../infrastructure/reposito
 import { createNotificationRepository } from '../infrastructure/repositories/NotificationRepository';
 import { createMobileNotificationRepository } from '../infrastructure/repositories/MobileNotificationRepository';
 import { createGatheringSpotRepository } from '../infrastructure/repositories/GatheringSpotRepository';
-import { createGatheringGroupRepository } from '../infrastructure/repositories/GatheringGroupRepository';
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
 import { createStudentService } from '../application/services/StudentService';
@@ -26,7 +25,6 @@ import { createNotificationScheduleService } from '../application/services/Notif
 import { createNotificationService } from '../application/services/NotificationService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
 import { createGatheringSpotService } from '../application/services/GatheringSpotService';
-import { createGatheringGroupService } from '../application/services/GatheringGroupService';
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createGatheringService } from '../application/services/GatheringService';
 import { createStudentController } from '../presentation/controllers/StudentController';
@@ -40,7 +38,6 @@ import { createNotificationController } from '../presentation/controllers/Notifi
 import { createNotificationScheduleController } from '../presentation/controllers/NotificationScheduleController';
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
-import { createGatheringGroupController } from '../presentation/controllers/GatheringGroupController';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createGatheringController } from '../presentation/controllers/GatheringController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
@@ -64,7 +61,6 @@ export function createDIContainer(env: Env) {
   const notificationRepository = createNotificationRepository(db);
   const mobileNotificationRepository = createMobileNotificationRepository(db);
   const gatheringSpotRepository = createGatheringSpotRepository(db);
-  const gatheringGroupRepository = createGatheringGroupRepository(db);
   const gatheringGroupMemberRepository =
     createGatheringGroupMemberRepository(db);
   const gatheringRepository = createGatheringRepository(db);
@@ -107,9 +103,6 @@ export function createDIContainer(env: Env) {
   const gatheringSpotService = createGatheringSpotService(
     gatheringSpotRepository
   );
-  const gatheringGroupService = createGatheringGroupService(
-    gatheringGroupRepository
-  );
   const gatheringGroupMemberService = createGatheringGroupMemberService(
     gatheringGroupMemberRepository
   );
@@ -140,9 +133,6 @@ export function createDIContainer(env: Env) {
   );
   const gatheringSpotController =
     createGatheringSpotController(gatheringSpotService);
-  const gatheringGroupController = createGatheringGroupController(
-    gatheringGroupService
-  );
   const gatheringGroupMemberController = createGatheringGroupMemberController(
     gatheringGroupMemberService
   );
@@ -162,7 +152,6 @@ export function createDIContainer(env: Env) {
     mobileNotificationController,
     scheduledNotificationService,
     gatheringSpotController,
-    gatheringGroupController,
     gatheringGroupMemberController,
     gatheringController,
   };
