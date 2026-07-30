@@ -14,21 +14,6 @@ const studentWriteSchema = z.object({
   student_id_number: z.string().trim().min(1).max(100),
 });
 
-const studentImportRowSchema = z.object({
-  class_code: z.string().trim().min(1).max(100),
-  attendance_number: z.number().int().positive(),
-  student_id_number: z
-    .union([z.string(), z.number()])
-    .transform(value => String(value))
-    .pipe(z.string().trim().min(1).max(100)),
-  last_name: z.string().trim().min(1).max(100),
-  first_name: z.string().trim().min(1).max(100),
-});
-
-const studentImportSchema = z.object({
-  rows: z.array(studentImportRowSchema).min(1),
-});
-
 function getErrorChainMessage(error: unknown): string {
   const messages: string[] = [];
   const visited = new Set<Error>();
@@ -119,64 +104,11 @@ export function createStudentController(studentService: IStudentService) {
     }
   };
 
-  const parseStudentImportBody = (c: Context) =>
-    c.req
-      .json()
-      .catch(() => undefined)
-      .then(body => studentImportSchema.safeParse(body));
-
-  const validateStudentImport = async (c: Context) => {
-    const parsedBody = await parseStudentImportBody(c);
-    if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid student import request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
-      );
-    }
-
-    try {
-      const result = await studentService.validateStudentImport(
-        parsedBody.data
-      );
-      return c.json(result, 200);
-    } catch {
-      return c.json({ error: 'Failed to validate student import' }, 500);
-    }
-  };
-
-  const commitStudentImport = async (c: Context) => {
-    const parsedBody = await parseStudentImportBody(c);
-    if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid student import request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
-      );
-    }
-
-    try {
-      const result = await studentService.commitStudentImport(parsedBody.data);
-      if (result.error_count > 0) {
-        return c.json(result, 422);
-      }
-      return c.json(result, 201);
-    } catch {
-      return c.json({ error: 'Failed to commit student import' }, 500);
-    }
-  };
-
   return {
     getStudentById,
     getAllStudent,
     createStudent,
     updateStudent,
-    validateStudentImport,
-    commitStudentImport,
   };
 }
 

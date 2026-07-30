@@ -18,6 +18,7 @@ import { createTeacherService } from '../application/services/TeacherService';
 import { createEventService } from '../application/services/EventService';
 import { createEventScheduleService } from '../application/services/EventScheduleService';
 import { createClassRoomService } from '../application/services/ClassRoomService';
+import { createMasterImportService } from '../application/services/MasterImportService';
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
@@ -33,6 +34,7 @@ import { createTeacherController } from '../presentation/controllers/TeacherCont
 import { createEventController } from '../presentation/controllers/EventController';
 import { createEventScheduleController } from '../presentation/controllers/EventScheduleController';
 import { createClassRoomController } from '../presentation/controllers/ClassRoomController';
+import { createMasterImportController } from '../presentation/controllers/MasterImportController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
 import { createNotificationScheduleController } from '../presentation/controllers/NotificationScheduleController';
@@ -81,6 +83,12 @@ export function createDIContainer(env: Env) {
     userRepository,
   });
   const classRoomService = createClassRoomService(classRoomRepository);
+  const masterImportService = createMasterImportService(
+    env.AUTH_KV,
+    studentService,
+    classRoomService,
+    teacherService
+  );
   const firebaseTokenService = createFirebaseTokenService(
     firebaseTokenRepository
   );
@@ -119,6 +127,8 @@ export function createDIContainer(env: Env) {
   const eventScheduleController =
     createEventScheduleController(eventScheduleService);
   const classRoomController = createClassRoomController(classRoomService);
+  const masterImportController =
+    createMasterImportController(masterImportService);
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
   const notificationController = createNotificationController(
@@ -146,6 +156,7 @@ export function createDIContainer(env: Env) {
     eventController,
     eventScheduleController,
     classRoomController,
+    masterImportController,
     firebaseTokenController,
     notificationController,
     notificationScheduleController,
