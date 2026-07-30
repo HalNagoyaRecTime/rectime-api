@@ -3,6 +3,8 @@ import { INotificationScheduleRepository } from '../../domain/interfaces/reposit
 import { IFcmService } from './IFcmService';
 import { IScheduledNotificationService } from './IScheduledNotificationService';
 
+const NOTIFICATION_DELIVERY_BATCH_SIZE = 100;
+
 export function createScheduledNotificationService(deps: {
   firebaseTokenRepository: IFirebaseTokenRepository;
   notificationScheduleRepository: INotificationScheduleRepository;
@@ -17,7 +19,8 @@ export function createScheduledNotificationService(deps: {
   return {
     async sendScheduledEventNotifications(now = new Date()) {
       const schedules = await notificationScheduleRepository.claimDue(
-        now.toISOString()
+        now.toISOString(),
+        NOTIFICATION_DELIVERY_BATCH_SIZE
       );
       let sent = 0;
       let failed = 0;

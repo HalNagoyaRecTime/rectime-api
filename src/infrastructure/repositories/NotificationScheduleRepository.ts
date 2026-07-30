@@ -207,14 +207,28 @@ export function createNotificationScheduleRepository(
       );
     },
 
-    async claimDue(now) {
+    async claimDue(now, limit) {
+      const dueScheduleIds = orm
+        .select({ id: notification_schedules.id })
+        .from(notification_schedules)
+        .where(
+          and(
+            eq(notification_schedules.sendStatus, 'draft'),
+            sql`datetime(${notification_schedules.sendAt}) <= datetime(${now})`
+          )
+        )
+        .orderBy(
+          asc(notification_schedules.sendAt),
+          asc(notification_schedules.id)
+        )
+        .limit(limit);
       const claimed = await orm
         .update(notification_schedules)
         .set({ sendStatus: 'sending', updatedAt: sql`CURRENT_TIMESTAMP` })
         .where(
           and(
             eq(notification_schedules.sendStatus, 'draft'),
-            sql`datetime(${notification_schedules.sendAt}) <= datetime(${now})`
+            inArray(notification_schedules.id, dueScheduleIds)
           )
         )
         .returning({ id: notification_schedules.id })

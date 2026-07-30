@@ -86,6 +86,10 @@ describe('ScheduledNotificationService', () => {
       'message-1'
     );
     expect(result).toEqual({ checkedEvents: 1, sent: 1, failed: 0 });
+    expect(notificationScheduleRepository.claimDue).toHaveBeenCalledWith(
+      '2026-01-01T09:00:00.000Z',
+      100
+    );
   });
 
   it('1件が失敗しても別tokenの予定を続けて送信する', async () => {
@@ -137,5 +141,44 @@ describe('ScheduledNotificationService', () => {
       'Firebase token is inactive'
     );
     expect(result).toEqual({ checkedEvents: 1, sent: 0, failed: 1 });
+  });
+
+  it('2000件を100件ずつ処理して重複なく送信する', async () => {
+    const pending = Array.from({ length: 2000 }, (_, index) =>
+      buildSchedule({
+        notification_schedule_id: index + 1,
+        firebase_token_id: index + 1,
+        fcm_token: `token-${index + 1}`,
+      })
+    );
+    const { service, notificationScheduleRepository, fcmService } = setup();
+    (
+      notificationScheduleRepository.claimDue as ReturnType<typeof vi.fn>
+    ).mockImplementation(async (_now: string, limit: number) =>
+      pending.splice(0, limit)
+    );
+
+    const results = [];
+    for (let batch = 0; batch < 20; batch += 1) {
+      results.push(await service.sendScheduledEventNotifications());
+    }
+
+    expect(results).toEqual(
+      Array.from({ length: 20 }, () => ({
+        checkedEvents: 100,
+        sent: 100,
+        failed: 0,
+      }))
+    );
+    expect(fcmService.sendNotificationToToken).toHaveBeenCalledTimes(2000);
+    expect(notificationScheduleRepository.markSent).toHaveBeenCalledTimes(2000);
+    expect(
+      new Set(
+        (
+          notificationScheduleRepository.markSent as ReturnType<typeof vi.fn>
+        ).mock.calls.map(([scheduleId]) => scheduleId)
+      ).size
+    ).toBe(2000);
+    expect(pending).toHaveLength(0);
   });
 });
