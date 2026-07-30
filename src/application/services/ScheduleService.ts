@@ -1,7 +1,12 @@
-import type { ScheduleDTO, ScheduleWriteDTO } from '../dto/ScheduleDTO';
+import type {
+  ScheduleDTO,
+  ScheduleWriteDTO,
+  ScheduleUpdateDTO,
+} from '../dto/ScheduleDTO';
 import type {
   ScheduleEntity,
   ScheduleWriteEntity,
+  ScheduleUpdateEntity,
 } from '../../domain/entities/Schedule';
 import { IScheduleRepository } from '../../domain/interfaces/repositories/IScheduleRepository';
 import type { IScheduleService } from './IScheduleService';
@@ -13,6 +18,9 @@ export function createScheduleService(
     ...schedule,
   });
   const toWriteDTO = (schedule: ScheduleWriteEntity): ScheduleWriteDTO => ({
+    ...schedule,
+  });
+  const toUpdateDTO = (schedule: ScheduleUpdateEntity): ScheduleUpdateDTO => ({
     ...schedule,
   });
 
@@ -28,6 +36,13 @@ export function createScheduleService(
     createSchedule: async schedule => {
       const createdSchedule = await scheduleRepository.createSchedule(schedule);
       return toWriteDTO(createdSchedule);
+    },
+    updateSchedule: async (notificationId, scheduleUpdate) => {
+      const updatedSchedule = await scheduleRepository.updateSchedule(
+        notificationId,
+        scheduleUpdate
+      );
+      return toUpdateDTO(updatedSchedule);
     },
   };
 }

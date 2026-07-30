@@ -17,8 +17,10 @@ import type {
   ScheduleEntity,
   NotificationSchedule,
   ScheduleWriteEntity,
+  ScheduleUpdateEntity,
 } from '../../domain/entities/Schedule';
 import type { IScheduleRepository } from '../../domain/interfaces/repositories/IScheduleRepository';
+import { HttpError } from '../../domain/entities/Schedule';
 
 type ScheduleRow = {
   notification_id: number;
@@ -272,6 +274,92 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
         importance: schedule.importance,
         send_at: schedule.send_at,
       };
+    },
+
+    async updateSchedule(
+      notificationId: number,
+      scheduleUpdate: ScheduleUpdateEntity
+    ): Promise<ScheduleUpdateEntity> {
+      const checkSchedule = await orm
+        .select({ send_status: notification_schedules.sendStatus })
+        .from(notification_schedules)
+        .where(eq(notification_schedules.notificationId, notificationId))
+        .get();
+
+      if (checkSchedule?.send_status !== 'draft') {
+        throw new HttpError(
+          409,
+          'Only schedules with "draft" status can be updated.'
+        );
+      }
+
+      const userIdsRow = await orm
+        .select({ user_id: users.id })
+        .from(gatherings)
+        .leftJoin(
+          gathering_group_members,
+          eq(gatherings.id, gathering_group_members.gatheringId)
+        )
+        .leftJoin(events, eq(gatherings.eventId, events.id))
+        .leftJoin(users, eq(gathering_group_members.userId, users.id))
+        .where(eq(events.id, scheduleUpdate.event_id))
+        .all();
+
+      const userIds = userIdsRow
+        .map(row => row.user_id)
+        .filter((id): id is number => id !== null);
+
+      const tokenRows = await orm
+        .select({ firebase_token_id: firebase_tokens.firebaseTokenId })
+        .from(firebase_tokens)
+        .where(inArray(firebase_tokens.userId, userIds))
+        .all();
+
+      const firebaseTokenIds = tokenRows
+        .map(row => row.firebase_token_id)
+        .filter(
+          (token): token is number => token !== null && token !== undefined
+        );
+
+      const statements = [
+        db
+          .prepare(
+            'DELETE FROM notification_schedules WHERE notification_id = ?'
+          )
+          .bind(notificationId),
+      ];
+
+      if (firebaseTokenIds.length > 0) {
+        for (const tokenId of firebaseTokenIds) {
+          statements.push(
+            db
+              .prepare(
+                `INSERT INTO notification_schedules (
+                   created_user_id,
+                   event_id,
+                   notification_id,
+                   firebase_token_id,
+                   send_status,
+                   fcm_message_id,
+                   importance,
+                   send_at
+                 ) VALUES (?, ?, ?, ?, 'draft', NULL, ?, ?)`
+              )
+              .bind(
+                scheduleUpdate.user_id,
+                scheduleUpdate.event_id,
+                notificationId,
+                tokenId,
+                scheduleUpdate.importance,
+                scheduleUpdate.send_at
+              )
+          );
+        }
+      }
+
+      await db.batch(statements);
+
+      return scheduleUpdate;
     },
   };
 }

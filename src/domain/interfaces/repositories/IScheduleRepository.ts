@@ -1,4 +1,8 @@
-import { ScheduleEntity, ScheduleWriteEntity } from '../../entities/Schedule';
+import {
+  ScheduleEntity,
+  ScheduleWriteEntity,
+  ScheduleUpdateEntity,
+} from '../../entities/Schedule';
 
 export interface IScheduleRepository {
   findAll: () => Promise<ScheduleEntity>;
@@ -6,4 +10,8 @@ export interface IScheduleRepository {
   createSchedule: (
     schedule: ScheduleWriteEntity
   ) => Promise<ScheduleWriteEntity>;
+  updateSchedule: (
+    notificationId: number,
+    scheduleUpdate: ScheduleUpdateEntity
+  ) => Promise<ScheduleUpdateEntity>;
 }
