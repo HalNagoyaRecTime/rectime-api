@@ -125,6 +125,19 @@ describe('TeacherController', () => {
       });
     });
 
+    it('limit が上限(100)を超える場合は100に丸める', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.getAllTeachers as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 });
+
+      await app.request('/teachers?limit=1000000');
+
+      expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
+        limit: 100,
+      });
+    });
+
     it('サービスが例外を投げた場合は 500 を返す', async () => {
       const { app, teacherService } = setup();
       (

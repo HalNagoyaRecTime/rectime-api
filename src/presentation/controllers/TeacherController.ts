@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { ITeacherService } from '../../application/services/ITeacherService';
 import { TeacherSearchFilter } from '../../domain/entities/Teacher';
 
+const MAX_LIMIT = 100;
+
 const updateTeacherSchema = z.object({
   userName: z.string().min(1),
   isLiveActive: z.boolean(),
@@ -49,7 +51,9 @@ function parseSearchFilter(c: Context): TeacherSearchFilter {
   const limit = c.req.query('limit');
   if (limit !== undefined) {
     const parsed = Number(limit);
-    if (Number.isInteger(parsed) && parsed > 0) filter.limit = parsed;
+    if (Number.isInteger(parsed) && parsed > 0) {
+      filter.limit = Math.min(parsed, MAX_LIMIT);
+    }
   }
 
   return filter;
