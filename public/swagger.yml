@@ -356,18 +356,19 @@ paths:
           description: 有効状態で絞り込む
           schema:
             type: boolean
-        - name: page
-          in: query
-          description: ページ番号（1始まり、デフォルト1）
-          schema:
-            type: integer
-            minimum: 1
         - name: limit
           in: query
-          description: 1ページあたりの件数（デフォルト20）
+          description: 取得件数（デフォルト20、最大100）
           schema:
             type: integer
             minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: 取得開始位置（0始まり、デフォルト0）
+          schema:
+            type: integer
+            minimum: 0
       responses:
         '200':
           description: 教員一覧（ページ分け済み）
@@ -1723,7 +1724,7 @@ components:
 
     TeacherPage:
       type: object
-      required: [items, total, page, limit, total_pages]
+      required: [items, total, limit, offset]
       properties:
         items:
           type: array
@@ -1731,11 +1732,9 @@ components:
             $ref: '#/components/schemas/Teacher'
         total:
           type: integer
-        page:
-          type: integer
         limit:
           type: integer
-        total_pages:
+        offset:
           type: integer
 
     Event:

@@ -12,7 +12,7 @@ import {
 } from '../../domain/entities/Teacher';
 import { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
 
-const DEFAULT_PAGE = 1;
+const DEFAULT_OFFSET = 0;
 const DEFAULT_LIMIT = 20;
 
 // LIKE検索の対象文字列に % や _ そのものが含まれていても、ワイルドカードとして
@@ -88,10 +88,10 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
     },
 
     async findAll(filter: TeacherSearchFilter = {}): Promise<TeacherPage> {
-      const page =
-        filter.page !== undefined && filter.page > 0
-          ? filter.page
-          : DEFAULT_PAGE;
+      const offset =
+        filter.offset !== undefined && filter.offset >= 0
+          ? filter.offset
+          : DEFAULT_OFFSET;
       const limit =
         filter.limit !== undefined && filter.limit > 0
           ? filter.limit
@@ -118,7 +118,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           .where(eq(class_rooms.id, filter.classRoomId))
           .get();
         if (!assignedTeacher?.teacherId) {
-          return { items: [], total: 0, page, limit };
+          return { items: [], total: 0, limit, offset };
         }
         conditions.push(eq(teachers.id, assignedTeacher.teacherId));
       }
@@ -144,7 +144,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       )
         .orderBy(asc(teachers.id))
         .limit(limit)
-        .offset((page - 1) * limit)
+        .offset(offset)
         .all();
 
       const teacherIds = results.map(r => r.teachers.id);
@@ -156,7 +156,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         toEntity(row, classRoomsByTeacher.get(row.teachers.id) ?? [])
       );
 
-      return { items, total, page, limit };
+      return { items, total, limit, offset };
     },
 
     async existsClassRooms(classRoomIds: number[]): Promise<boolean> {
