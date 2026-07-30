@@ -81,6 +81,7 @@ app.get('/', c => {
       gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
       firebaseTokens: '/api/v1/firebase-tokens',
       notifications: '/api/v1/notifications',
+      adminNotifications: '/api/v1/admin/notifications',
       myNotifications: '/api/v1/me/notifications',
       testNotification: '/api/v1/notifications/test',
       notificationSchedules: '/api/v1/notification-schedules',
@@ -220,6 +221,12 @@ apiV1.post('/firebase-tokens', c => {
 });
 
 // Notification routes
+apiV1.post('/admin/notifications', c => {
+  return c
+    .get('container')
+    .adminNotificationController.createManualNotification(c);
+});
+
 apiV1.post('/notifications', c => {
   return c.get('container').notificationController.createNotification(c);
 });
