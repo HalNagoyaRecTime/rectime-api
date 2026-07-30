@@ -1,6 +1,8 @@
-import type { AppUser } from '../../auth/types';
+import type { AppUser, UserCategories } from '../../auth/types';
 
 export interface IUserRepository {
+  isStaffOrTeacher(userId: number): Promise<boolean>;
+  getUserCategories(userId: number): Promise<UserCategories>;
   findUserIdByMicrosoftAccount(
     oid: string,
     tid: string

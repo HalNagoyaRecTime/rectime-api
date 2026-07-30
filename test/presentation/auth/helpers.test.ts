@@ -192,11 +192,14 @@ describe('presentation/auth/helpers', () => {
 
   describe('userResponse', () => {
     it('avatar_url / avatar_updated_at が無い場合はデフォルト値を補完する', () => {
-      const result = userResponse({
-        id: 'user-1',
-        email: 'tanaka@example.com',
-        display_name: '田中太郎',
-      });
+      const result = userResponse(
+        {
+          id: 'user-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+        },
+        { is_student: false, is_staff: false, is_teacher: false }
+      );
 
       expect(result).toEqual({
         id: 'user-1',
@@ -204,17 +207,23 @@ describe('presentation/auth/helpers', () => {
         display_name: '田中太郎',
         avatar_url: ACCOUNT_PHOTO_PATH,
         avatar_updated_at: null,
+        is_student: false,
+        is_staff: false,
+        is_teacher: false,
       });
     });
 
     it('avatar_url / avatar_updated_at が指定されている場合はそのまま使う', () => {
-      const result = userResponse({
-        id: 'user-1',
-        email: 'tanaka@example.com',
-        display_name: '田中太郎',
-        avatar_url: 'https://example.com/avatar.png',
-        avatar_updated_at: '2026-01-01T00:00:00.000Z',
-      });
+      const result = userResponse(
+        {
+          id: 'user-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+          avatar_url: 'https://example.com/avatar.png',
+          avatar_updated_at: '2026-01-01T00:00:00.000Z',
+        },
+        { is_student: true, is_staff: false, is_teacher: false }
+      );
 
       expect(result).toEqual({
         id: 'user-1',
@@ -222,6 +231,9 @@ describe('presentation/auth/helpers', () => {
         display_name: '田中太郎',
         avatar_url: 'https://example.com/avatar.png',
         avatar_updated_at: '2026-01-01T00:00:00.000Z',
+        is_student: true,
+        is_staff: false,
+        is_teacher: false,
       });
     });
   });

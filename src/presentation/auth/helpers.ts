@@ -6,7 +6,7 @@ import {
   BASE64_URL_PATTERN,
   ACCOUNT_PHOTO_PATH,
 } from '../../domain/auth/types';
-import type { Session, AppUser } from '../../domain/auth/types';
+import type { Session, AppUser, UserCategories } from '../../domain/auth/types';
 import type { IdTokenClaims } from '../../infrastructure/auth/verifyIdToken';
 import {
   buildMicrosoftAuthorizeUrl as infraBuildAuthorizeUrl,
@@ -73,15 +73,19 @@ export function hasMinimumDecodedBytes(
   }
 }
 
-export function userResponse(user: {
-  id: string;
-  email: string;
-  display_name: string;
-  avatar_url?: string | null;
-  avatar_updated_at?: string | null;
-  student_id_number: string | null;
-  class_room_name: string | null;
-}) {
+
+export function userResponse(
+  user: {
+    id: string;
+    email: string;
+    display_name: string;
+    avatar_url?: string | null;
+    avatar_updated_at?: string | null;
+    student_id_number: string | null;
+    class_room_name: string | null;
+  },
+  categories: UserCategories
+) {
   return {
     id: user.id,
     email: user.email,
@@ -90,6 +94,9 @@ export function userResponse(user: {
     avatar_updated_at: user.avatar_updated_at ?? null,
     student_id_number: user.student_id_number,
     class_room_name: user.class_room_name,
+    is_student: categories.is_student,
+    is_staff: categories.is_staff,
+    is_teacher: categories.is_teacher,
   };
 }
 
@@ -158,4 +165,12 @@ export async function upsertUser(
   const userRepository = createUserRepository(c.env.DB);
   const authService = createAuthService(userRepository, c.env.AUTH_KV);
   return authService.upsertUser(claims);
+}
+
+export async function getUserCategories(
+  c: AppContext,
+  userId: string
+): Promise<UserCategories> {
+  const userRepository = createUserRepository(c.env.DB);
+  return userRepository.getUserCategories(Number(userId));
 }

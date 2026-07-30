@@ -23,6 +23,7 @@ import {
   refreshMicrosoftAccessToken,
   saveSession,
   userResponse,
+  getUserCategories,
 } from '../helpers';
 import {
   type MobileRefreshEntry,
@@ -54,16 +55,20 @@ account.get('/me', async c => {
     try {
       const claims = await verifyMobileJwt(token, c.env.JWT_SECRET);
       const student = await studentService.getByUserId(Number(claims.sub));
+      const categories = await getUserCategories(c, claims.sub);
       return c.json({
-        user: userResponse({
-          id: claims.sub,
-          email: claims.email,
-          display_name: claims.display_name,
-          avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
-          avatar_updated_at: claims.avatar_updated_at ?? null,
-          student_id_number: student?.student_id_number ?? null,
-          class_room_name: student?.class_room_name ?? null,
-        }),
+        user: userResponse(
+          {
+            id: claims.sub,
+            email: claims.email,
+            display_name: claims.display_name,
+            avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
+            avatar_updated_at: claims.avatar_updated_at ?? null,
+            student_id_number: student?.student_id_number ?? null,
+            class_room_name: student?.class_room_name ?? null,
+          },
+          categories
+        ),
       });
     } catch (error) {
       const code =
@@ -93,18 +98,22 @@ account.get('/me', async c => {
     );
   }
 
-  const student = await studentService.getByUserId(Number(session.user_id));
 
+  const student = await studentService.getByUserId(Number(session.user_id));
+  const categories = await getUserCategories(c, session.user_id);
   return c.json({
-    user: userResponse({
-      id: session.user_id,
-      email: session.email,
-      display_name: session.display_name,
-      avatar_url: session.avatar_url ?? ACCOUNT_PHOTO_PATH,
-      avatar_updated_at: session.avatar_updated_at ?? null,
-      student_id_number: student?.student_id_number ?? null,
-      class_room_name: student?.class_room_name ?? null,
-    }),
+    user: userResponse(
+      {
+        id: session.user_id,
+        email: session.email,
+        display_name: session.display_name,
+        avatar_url: session.avatar_url ?? ACCOUNT_PHOTO_PATH,
+        avatar_updated_at: session.avatar_updated_at ?? null,
+        student_id_number: student?.student_id_number ?? null,
+        class_room_name: student?.class_room_name ?? null,
+      },
+      categories
+    ),
   });
 });
 

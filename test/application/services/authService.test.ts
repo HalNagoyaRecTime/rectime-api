@@ -55,11 +55,16 @@ describe('getSessionTtlSeconds', () => {
 describe('createAuthService', () => {
   function setup() {
     const userRepository: IUserRepository = {
+      isStaffOrTeacher: vi.fn(),
+      getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
       createUserWithMicrosoftLink: vi.fn(),
       updateUser: vi.fn(),
     };
-    const kv = { put: vi.fn() } as unknown as KVNamespace;
+    const kv = {
+      get: vi.fn(),
+      put: vi.fn(),
+    } as unknown as KVNamespace;
     const service = createAuthService(userRepository, kv);
     return { userRepository, kv, service };
   }
@@ -241,6 +246,42 @@ describe('createAuthService', () => {
         JSON.stringify(session),
         expect.objectContaining({ expirationTtl: expect.any(Number) })
       );
+    });
+  });
+
+  describe('getSession', () => {
+    it('有効なセッションを返す', async () => {
+      const { kv, service } = setup();
+      const session: Session = {
+        user_id: '1',
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+      };
+      (kv.get as ReturnType<typeof vi.fn>).mockResolvedValue(
+        JSON.stringify(session)
+      );
+
+      await expect(service.getSession('session-abc')).resolves.toEqual(session);
+      expect(kv.get).toHaveBeenCalledWith('session:session-abc');
+    });
+
+    it('存在しない、または期限切れのセッションはnullを返す', async () => {
+      const { kv, service } = setup();
+      (kv.get as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            user_id: '1',
+            expires_at: new Date(Date.now() - 1000).toISOString(),
+          })
+        );
+
+      await expect(service.getSession('missing')).resolves.toBeNull();
+      await expect(service.getSession('expired')).resolves.toBeNull();
     });
   });
 });

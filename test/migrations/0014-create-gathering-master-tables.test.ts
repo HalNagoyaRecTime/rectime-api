@@ -1,14 +1,13 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 
-describe('0014_create_gathering_master_tables.sql', () => {
-  it('集合場所・集合グループ・所属テーブルと制約を作成している', async () => {
+describe('集合場所・集合メンバーの最終スキーマ', () => {
+  it('gathering_groupsを持たず、集合メンバーをgathering_idで管理する', async () => {
     const tables = await env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('gathering_spots', 'gathering_groups', 'gathering_group_members') ORDER BY name"
     ).all<{ name: string }>();
     expect(tables.results).toEqual([
       { name: 'gathering_group_members' },
-      { name: 'gathering_groups' },
       { name: 'gathering_spots' },
     ]);
 
@@ -24,29 +23,20 @@ describe('0014_create_gathering_master_tables.sql', () => {
       ])
     );
 
-    const gatheringGroupColumns = await env.DB.prepare(
-      'PRAGMA table_info(gathering_groups)'
-    ).all<{ name: string; notnull: number; pk: number }>();
-    expect(gatheringGroupColumns.results).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: 'gathering_group_id', pk: 1 }),
-        expect.objectContaining({ name: 'gathering_group_name', notnull: 1 }),
-        expect.objectContaining({ name: 'created_at', notnull: 1 }),
-        expect.objectContaining({ name: 'updated_at', notnull: 1 }),
-      ])
-    );
-
-    const gatheringGroupMemberColumns = await env.DB.prepare(
+    const memberColumns = await env.DB.prepare(
       'PRAGMA table_info(gathering_group_members)'
     ).all<{ name: string; notnull: number; pk: number }>();
-    expect(gatheringGroupMemberColumns.results).toEqual(
+    expect(memberColumns.results).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'gathering_group_member_id', pk: 1 }),
-        expect.objectContaining({ name: 'gathering_group_id', notnull: 1 }),
+        expect.objectContaining({ name: 'gathering_id', notnull: 1 }),
         expect.objectContaining({ name: 'user_id', notnull: 1 }),
         expect.objectContaining({ name: 'created_at', notnull: 1 }),
         expect.objectContaining({ name: 'updated_at', notnull: 1 }),
       ])
+    );
+    expect(memberColumns.results.map(column => column.name)).not.toContain(
+      'gathering_group_id'
     );
 
     const foreignKeys = await env.DB.prepare(
@@ -55,9 +45,9 @@ describe('0014_create_gathering_master_tables.sql', () => {
     expect(foreignKeys.results).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          table: 'gathering_groups',
-          from: 'gathering_group_id',
-          to: 'gathering_group_id',
+          table: 'gatherings',
+          from: 'gathering_id',
+          to: 'gathering_id',
         }),
         expect.objectContaining({
           table: 'users',
@@ -76,16 +66,18 @@ describe('0014_create_gathering_master_tables.sql', () => {
           name: 'idx_gathering_group_members_user_id',
           unique: 0,
         }),
+        expect.objectContaining({
+          name: 'uq_gathering_group_members_gathering_user',
+          unique: 1,
+        }),
       ])
     );
 
-    const uniqueIndex = indexes.results.find(index => index.unique === 1);
-    expect(uniqueIndex).toBeDefined();
     const uniqueIndexColumns = await env.DB.prepare(
-      `PRAGMA index_info(${uniqueIndex!.name})`
+      'PRAGMA index_info(uq_gathering_group_members_gathering_user)'
     ).all<{ name: string }>();
     expect(uniqueIndexColumns.results.map(column => column.name)).toEqual([
-      'gathering_group_id',
+      'gathering_id',
       'user_id',
     ]);
 
