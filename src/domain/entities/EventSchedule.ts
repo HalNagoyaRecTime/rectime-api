@@ -10,7 +10,7 @@ export interface UpdateEventScheduleInput {
   start_time?: string;
   end_time?: string;
   notification_enabled?: boolean;
-  event_date: string;
+  event_date?: string;
 }
 
 export interface EventScheduleResult {

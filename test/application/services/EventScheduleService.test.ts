@@ -112,7 +112,7 @@ describe('EventScheduleService', () => {
       venue: undefined,
       start_time: '1030',
       end_time: '1100',
-      resolved_event_name: '大縄跳び',
+      expected_event: event,
       refresh_notifications: true,
       notification_enabled: true,
       send_at: '2026-11-07T01:15:00.000Z',
@@ -214,14 +214,13 @@ describe('EventScheduleService', () => {
     );
   });
 
-  it('会場だけの部分更新では未指定値を渡さず通知予定を再生成しない', async () => {
+  it('会場だけの部分更新はEVENT_DATEなしでも通知予定を再生成しない', async () => {
     const { service, eventScheduleRepository } = setup();
 
     await service.updateEventSchedule({
       event_id: 1,
       user_id: 7,
       venue: 'サブアリーナ',
-      event_date: '2026-11-07',
     });
 
     expect(eventScheduleRepository.apply).toHaveBeenCalledWith({
@@ -232,11 +231,43 @@ describe('EventScheduleService', () => {
       rule_text: undefined,
       start_time: undefined,
       end_time: undefined,
-      resolved_event_name: '大縄跳び',
+      expected_event: event,
       refresh_notifications: false,
       notification_enabled: true,
-      send_at: '2026-11-07T01:15:00.000Z',
+      send_at: undefined,
     });
+  });
+
+  it('通知OFFはEVENT_DATEなしでもdraft削除処理へ進む', async () => {
+    const { service, eventScheduleRepository } = setup();
+
+    await service.updateEventSchedule({
+      event_id: 1,
+      user_id: 7,
+      notification_enabled: false,
+    });
+
+    expect(eventScheduleRepository.apply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expected_event: event,
+        refresh_notifications: true,
+        notification_enabled: false,
+        send_at: undefined,
+      })
+    );
+  });
+
+  it('自動通知を生成する更新はEVENT_DATEがなければ拒否する', async () => {
+    const { service, eventScheduleRepository } = setup();
+
+    await expect(
+      service.updateEventSchedule({
+        event_id: 1,
+        user_id: 7,
+        start_time: '1040',
+      })
+    ).rejects.toThrow('EVENT_DATE is not configured correctly');
+    expect(eventScheduleRepository.apply).not.toHaveBeenCalled();
   });
 
   it('部分更新後の開始・終了時刻が不正になる場合は拒否する', async () => {

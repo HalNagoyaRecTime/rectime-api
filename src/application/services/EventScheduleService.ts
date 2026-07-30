@@ -2,7 +2,10 @@ import type { IEventRepository } from '../../domain/interfaces/repositories/IEve
 import type { IEventScheduleRepository } from '../../domain/interfaces/repositories/IEventScheduleRepository';
 import type { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
-import { buildEventNotificationSendAt } from '../../lib/eventDate';
+import {
+  buildEventNotificationSendAt,
+  isValidEventDate,
+} from '../../lib/eventDate';
 import type { IEventScheduleService } from './IEventScheduleService';
 
 export function createEventScheduleService(deps: {
@@ -41,7 +44,13 @@ export function createEventScheduleService(deps: {
         input.event_name !== undefined ||
         input.start_time !== undefined ||
         input.notification_enabled !== undefined;
-      const sendAt = buildEventNotificationSendAt(input.event_date, startTime);
+      let sendAt: string | undefined;
+      if (refreshNotifications && notificationEnabled) {
+        if (!isValidEventDate(input.event_date)) {
+          throw new Error('EVENT_DATE is not configured correctly');
+        }
+        sendAt = buildEventNotificationSendAt(input.event_date, startTime);
+      }
       await eventScheduleRepository.apply({
         event_id: input.event_id,
         user_id: input.user_id,
@@ -50,7 +59,7 @@ export function createEventScheduleService(deps: {
         venue: input.venue,
         start_time: input.start_time,
         end_time: input.end_time,
-        resolved_event_name: input.event_name ?? event.event_name,
+        expected_event: event,
         refresh_notifications: refreshNotifications,
         notification_enabled: notificationEnabled,
         send_at: sendAt,

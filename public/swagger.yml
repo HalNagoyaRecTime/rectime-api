@@ -348,6 +348,7 @@ paths:
         staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
         競技基本情報と、開始15分前の自動通知予定を1つの処理で更新します。
         notification_enabledがfalseの場合は、未送信のevent_reminderのみ削除します。
+        同じイベントが先に更新された場合は409 Conflictを返します。
       parameters:
         - $ref: '#/components/parameters/EventId'
       requestBody:
@@ -383,6 +384,7 @@ paths:
         指定された競技情報だけを更新し、未指定の項目は変更しません。
         競技名、開始時刻、notification_enabledのいずれかを変更した場合は、
         未送信のevent_reminderを更新後の内容で再生成します。
+        同じイベントが先に更新された場合は409 Conflictを返します。
       parameters:
         - $ref: '#/components/parameters/EventId'
       requestBody:

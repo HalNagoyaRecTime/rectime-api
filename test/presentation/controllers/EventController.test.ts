@@ -32,7 +32,7 @@ function setup() {
   };
   const controller = createEventController(eventService, eventScheduleService);
   const app = new Hono<{
-    Bindings: { EVENT_DATE: string };
+    Bindings: { EVENT_DATE?: string };
     Variables: { authenticatedUserId: number | null };
   }>();
   app.use('*', async (c, next) => {
@@ -384,6 +384,35 @@ describe('EventController', () => {
 
       expect(response.status).toBe(403);
     });
+
+    it('既存時刻との組み合わせが不正な場合は400を返す', async () => {
+      const { app, eventScheduleService } = setup();
+      (
+        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('end_time must be after start_time'));
+
+      const response = await app.request(
+        '/events/1',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event_name: '徒競走',
+            rule_text: null,
+            venue: 'トラック',
+            start_time: '0930',
+            end_time: '0950',
+            notification_enabled: false,
+          }),
+        },
+        { EVENT_DATE: '2026-11-07' }
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: 'end_time must be after start_time',
+      });
+    });
   });
 
   describe('patchEvent', () => {
@@ -456,6 +485,54 @@ describe('EventController', () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({
         error: 'end_time must be after start_time',
+      });
+    });
+
+    it('通知を生成しない会場更新はEVENT_DATEなしでもServiceへ渡す', async () => {
+      const { app, eventScheduleService } = setup();
+      (
+        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        event: buildEvent({ venue: 'サブトラック' }),
+        notification_enabled: false,
+        notification_schedules: [],
+      });
+
+      const response = await app.request('/events/1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ venue: 'サブトラック' }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(eventScheduleService.updateEventSchedule).toHaveBeenCalledWith({
+        event_id: 1,
+        user_id: 7,
+        venue: 'サブトラック',
+        event_date: undefined,
+      });
+    });
+
+    it('同時更新の競合は409を返す', async () => {
+      const { app, eventScheduleService } = setup();
+      (
+        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Event update conflict'));
+
+      const response = await app.request(
+        '/events/1',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ venue: 'サブトラック' }),
+        },
+        { EVENT_DATE: '2026-11-07' }
+      );
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({
+        error: 'Event update conflict',
+        code: 'EVENT_UPDATE_CONFLICT',
       });
     });
   });

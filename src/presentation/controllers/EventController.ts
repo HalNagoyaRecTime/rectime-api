@@ -8,7 +8,6 @@ import type {
 import type { IEventScheduleService } from '../../application/services/IEventScheduleService';
 import type { IEventService } from '../../application/services/IEventService';
 import type { Env } from '../../lib/env';
-import { isValidEventDate } from '../../lib/eventDate';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/sessionAuthentication';
 
@@ -161,9 +160,6 @@ export function createEventController(
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
     }
-    if (!isValidEventDate(eventContext.env.EVENT_DATE)) {
-      return c.json({ error: 'EVENT_DATE is not configured correctly' }, 500);
-    }
     try {
       return c.json(
         await eventScheduleService.updateEventSchedule({
@@ -175,7 +171,7 @@ export function createEventController(
           start_time: request.start_time,
           end_time: request.end_time,
           notification_enabled: request.notification_enabled,
-          event_date: eventContext.env.EVENT_DATE,
+          event_date: eventContext.env?.EVENT_DATE,
         })
       );
     } catch (error) {
@@ -203,25 +199,16 @@ export function createEventController(
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
     }
-    if (!isValidEventDate(eventContext.env.EVENT_DATE)) {
-      return c.json({ error: 'EVENT_DATE is not configured correctly' }, 500);
-    }
     try {
       return c.json(
         await eventScheduleService.updateEventSchedule({
           event_id: parsedId.data,
           user_id: userId,
           ...request,
-          event_date: eventContext.env.EVENT_DATE,
+          event_date: eventContext.env?.EVENT_DATE,
         })
       );
     } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === 'end_time must be after start_time'
-      ) {
-        return c.json({ error: error.message }, 400);
-      }
       return eventError(c, error, 'Failed to update event');
     }
   };
@@ -272,6 +259,12 @@ async function parseEventBody(c: Context) {
 }
 
 function eventError(c: Context, error: unknown, fallback: string) {
+  if (
+    error instanceof Error &&
+    error.message === 'end_time must be after start_time'
+  ) {
+    return c.json({ error: error.message }, 400);
+  }
   if (error instanceof Error && error.message === 'Event not found') {
     return c.json({ error: 'Event not found', code: 'EVENT_NOT_FOUND' }, 404);
   }
@@ -280,6 +273,15 @@ function eventError(c: Context, error: unknown, fallback: string) {
   }
   if (error instanceof Error && error.message === 'Schedule update forbidden') {
     return c.json({ error: error.message }, 403);
+  }
+  if (error instanceof Error && error.message === 'Event update conflict') {
+    return c.json({ error: error.message, code: 'EVENT_UPDATE_CONFLICT' }, 409);
+  }
+  if (
+    error instanceof Error &&
+    error.message === 'EVENT_DATE is not configured correctly'
+  ) {
+    return c.json({ error: error.message }, 500);
   }
   return c.json(
     {

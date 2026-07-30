@@ -1,3 +1,5 @@
+import type { EventEntity } from '../../entities/Event';
+
 export interface ApplyEventScheduleInput {
   event_id: number;
   user_id: number;
@@ -6,10 +8,10 @@ export interface ApplyEventScheduleInput {
   venue?: string;
   start_time?: string;
   end_time?: string;
-  resolved_event_name: string;
+  expected_event: EventEntity;
   refresh_notifications: boolean;
   notification_enabled: boolean;
-  send_at: string;
+  send_at?: string;
 }
 
 export interface EventNotificationSummaryRecord {
