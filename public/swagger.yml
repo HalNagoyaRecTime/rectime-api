@@ -1568,7 +1568,7 @@ components:
 
     TeacherPage:
       type: object
-      required: [items, total, limit, offset, total_pages]
+      required: [items, total, limit, offset]
       properties:
         items:
           type: array
@@ -1579,8 +1579,6 @@ components:
         limit:
           type: integer
         offset:
-          type: integer
-        total_pages:
           type: integer
 
     Event:

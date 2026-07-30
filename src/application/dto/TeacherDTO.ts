@@ -17,5 +17,4 @@ export interface TeacherPageDTO {
   total: number;
   limit: number;
   offset: number;
-  total_pages: number;
 }

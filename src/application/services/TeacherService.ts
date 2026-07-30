@@ -37,7 +37,6 @@ export function createTeacherService(
         total: page.total,
         limit: page.limit,
         offset: page.offset,
-        total_pages: page.limit > 0 ? Math.ceil(page.total / page.limit) : 0,
       };
     },
 

@@ -89,7 +89,6 @@ describe('TeacherController', () => {
         total: 1,
         limit: 20,
         offset: 0,
-        total_pages: 1,
       };
       (
         teacherService.getAllTeachers as ReturnType<typeof vi.fn>
@@ -110,7 +109,6 @@ describe('TeacherController', () => {
         total: 0,
         limit: 20,
         offset: 0,
-        total_pages: 0,
       });
 
       await app.request(
