@@ -57,6 +57,32 @@ describe('parseImportFile', () => {
 
       expect(rows).toEqual([]);
     });
+
+    it('日本語ヘッダーをsnake_caseのキーに正規化する', async () => {
+      const file = csvFile(
+        'クラス記号,出席番号,学籍番号,氏名（姓）,氏名（名）\n11A,1,10001,山田,太郎\n'
+      );
+
+      const rows = await parseImportFile(file, 'students.csv');
+
+      expect(rows).toEqual([
+        {
+          class_code: '11A',
+          attendance_number: '1',
+          student_id_number: '10001',
+          last_name: '山田',
+          first_name: '太郎',
+        },
+      ]);
+    });
+
+    it('日本語ヘッダーと英語ヘッダーが混在していても正規化する', async () => {
+      const file = csvFile('クラス記号,class_name\n13C,3年Cクラス\n');
+
+      const rows = await parseImportFile(file, 'classrooms.csv');
+
+      expect(rows).toEqual([{ class_code: '13C', class_name: '3年Cクラス' }]);
+    });
   });
 
   it('.csv/.xlsx/.xls以外の拡張子はエラーを投げる', async () => {

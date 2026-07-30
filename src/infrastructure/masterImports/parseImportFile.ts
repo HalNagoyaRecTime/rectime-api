@@ -53,11 +53,26 @@ function parseCsvText(text: string): string[][] {
   return rows.filter(r => !(r.length === 1 && r[0] === ''));
 }
 
+// Header row may use either the API's snake_case field names or the
+// Japanese labels shown in the UI (recwatch's MASTER_IMPORT_COLUMN_LABEL).
+// Anything not listed here passes through unchanged.
+const HEADER_ALIASES: Record<string, string> = {
+  クラス記号: 'class_code',
+  出席番号: 'attendance_number',
+  学籍番号: 'student_id_number',
+  '氏名（姓）': 'last_name',
+  '氏名（名）': 'first_name',
+};
+
+function normalizeHeader(header: string): string {
+  return HEADER_ALIASES[header] ?? header;
+}
+
 function rowsToObjects(rows: unknown[][]): ParsedRow[] {
   if (rows.length === 0) {
     return [];
   }
-  const headers = rows[0].map(h => String(h ?? '').trim());
+  const headers = rows[0].map(h => normalizeHeader(String(h ?? '').trim()));
   return rows.slice(1).map(row => {
     const obj: ParsedRow = {};
     headers.forEach((header, index) => {
