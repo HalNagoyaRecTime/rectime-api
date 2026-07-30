@@ -123,6 +123,48 @@ describe('ScheduleRepository', () => {
     });
   });
 
+  it('スケジュールを作成し一覧・詳細に反映する', async () => {
+    const fixture = await createFixture();
+
+    const created = await repository.createSchedule({
+      user_id: fixture.userId,
+      event_id: fixture.eventId,
+      notification_id: fixture.notificationId,
+      importance: 2,
+      send_at: '2026-07-23T09:00:00.000Z',
+    });
+
+    expect(created).toMatchObject({
+      user_id: fixture.userId,
+      event_id: fixture.eventId,
+      notification_id: fixture.notificationId,
+      importance: 2,
+      send_at: '2026-07-23T09:00:00.000Z',
+    });
+    expect(created.firebase_token_id).toBe(fixture.tokenId);
+
+    const all = await repository.findAll();
+    expect(all.notification_schedules).toHaveLength(1);
+    expect(all.notification_schedules[0]).toMatchObject({
+      notification_id: fixture.notificationId,
+      title: '件名',
+      body: '本文',
+      created_user: { user_id: fixture.userId },
+      event: { event_id: fixture.eventId },
+      delivery_summary: { total: 1, draft: 1 },
+    });
+
+    const byId = await repository.findById(fixture.notificationId);
+    expect(byId?.notification_schedules).toHaveLength(1);
+    expect(byId?.notification_schedules[0].notification_id).toBe(
+      fixture.notificationId
+    );
+  });
+
+  it('存在しないIDの詳細取得はnullを返す', async () => {
+    await expect(repository.findById(9999)).resolves.toBeNull();
+  });
+
   it('draft以外の通知は更新できない', async () => {
     const fixture = await createFixture();
     await env.DB.prepare(
