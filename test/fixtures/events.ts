@@ -5,78 +5,51 @@ import { events } from '../../src/infrastructure/database/schema';
 
 const EVENTS = [
   {
-    eventCode: 'REC001',
     name: 'バスケットボール大会',
-    time: '1100',
-    duration: '120',
-    place: '体育館',
-    gatherTime: '1050',
-    summary: '3on3バスケットボールトーナメント',
+    ruleText: '3on3',
+    venue: '体育館',
+    startTime: '1100',
+    endTime: '1300',
   },
   {
-    eventCode: 'REC002',
     name: '文化祭準備',
-    time: '1400',
-    duration: '120',
-    place: '第1教室',
-    gatherTime: '1350',
-    summary: '来月の文化祭に向けた展示物準備',
+    ruleText: '展示準備',
+    venue: '第1教室',
+    startTime: '1400',
+    endTime: '1600',
   },
   {
-    eventCode: 'REC003',
     name: '英語スピーチコンテスト',
-    time: '1630',
-    duration: '90',
-    place: '講堂',
-    gatherTime: '1620',
-    summary: '学年対抗英語プレゼンテーション大会',
-  },
-  {
-    eventCode: 'REC004',
-    name: 'プログラミング勉強会',
-    time: '1900',
-    duration: '120',
-    place: 'PC教室',
-    gatherTime: '1850',
-    summary: 'React/TypeScript実践セッション',
+    ruleText: null,
+    venue: '講堂',
+    startTime: '1630',
+    endTime: '1800',
   },
 ] as const;
 
 export type SeededEvent = {
   eventId: number;
-  eventCode: string;
   name: string;
-  time: string;
-  duration: string;
-  place: string;
-  gatherTime: string;
-  summary: string | null;
+  startTime: string;
+  endTime: string;
+  venue: string;
 };
-
-export type SeededEventData = {
-  events: SeededEvent[];
-};
+export type SeededEventData = { events: SeededEvent[] };
 
 export async function seedEvents(db: D1Database): Promise<SeededEventData> {
   const orm = drizzle(db, { schema });
-
-  // 全てのイベントテーブルにあるレコードを削除する。
   await orm.delete(events);
-
   const seeded: SeededEvent[] = [];
-  for (const e of EVENTS) {
-    const [row] = await orm.insert(events).values(e).returning();
+  for (const event of EVENTS) {
+    const row = await orm.insert(events).values(event).returning().get();
+    if (!row) throw new Error('failed to seed event');
     seeded.push({
       eventId: row.id,
-      eventCode: e.eventCode,
-      name: e.name,
-      time: e.time,
-      duration: e.duration,
-      place: e.place,
-      gatherTime: e.gatherTime,
-      summary: e.summary,
+      name: row.name,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      venue: row.venue,
     });
   }
-
   return { events: seeded };
 }

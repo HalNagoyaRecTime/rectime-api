@@ -1,12 +1,16 @@
-import { EventEntity } from '../../entities/Event';
+import {
+  EventEntity,
+  EventListOptions,
+  EventWriteInput,
+} from '../../entities/Event';
 
 export interface IEventRepository {
-  findAll: (options: {
-    eventCode?: string;
-    time?: string;
-    limit?: number;
-    offset?: number;
-  }) => Promise<{ events: EventEntity[]; total: number }>;
+  findAll: (
+    options: EventListOptions
+  ) => Promise<{ events: EventEntity[]; total: number }>;
   findById: (id: number) => Promise<EventEntity | null>;
-  findByEventCode: (eventCode: string) => Promise<EventEntity | null>;
+  create: (event: EventWriteInput) => Promise<EventEntity>;
+  update: (id: number, event: EventWriteInput) => Promise<EventEntity | null>;
+  delete: (id: number) => Promise<boolean>;
+  hasReferences: (id: number) => Promise<boolean>;
 }

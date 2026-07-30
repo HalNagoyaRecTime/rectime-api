@@ -4,6 +4,9 @@
   "compatibility_date": "2024-09-23",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/index.ts",
+  "assets": {
+    "directory": "./public",
+  },
   "vars": {
     "NODE_ENV": "production",
     "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
@@ -11,6 +14,13 @@
   "triggers": {
     "crons": ["* * * * *"],
   },
+  "kv_namespaces": [
+    {
+      "binding": "AUTH_KV",
+      "id": "70197622340f44df8e24365695b5f1d0",
+      "preview_id": "4c0dddfe16d94166841579765390f697",
+    },
+  ],
   "env": {
     "default": {
       "vars": {
@@ -19,6 +29,13 @@
         "HOST": "0.0.0.0",
         "ALLOWED_ORIGINS": "http://localhost:5173",
       },
+      "kv_namespaces": [
+        {
+          "binding": "AUTH_KV",
+          "id": "local-auth-kv",
+          "preview_id": "local-auth-kv",
+        },
+      ],
       "d1_databases": [
         {
           "binding": "DB",
@@ -34,6 +51,13 @@
         "HOST": "0.0.0.0",
         "ALLOWED_ORIGINS": "http://localhost:5173",
       },
+      "kv_namespaces": [
+        {
+          "binding": "AUTH_KV",
+          "id": "local-auth-kv",
+          "preview_id": "local-auth-kv",
+        },
+      ],
       "d1_databases": [
         {
           "binding": "DB",

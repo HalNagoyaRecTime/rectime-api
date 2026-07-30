@@ -1,131 +1,213 @@
 import { env } from 'cloudflare:workers';
-import { beforeEach, describe, expect, it } from 'vitest';
-import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
+import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
+
+let sequence = 0;
 
 describe('FirebaseTokenRepository', () => {
-  let repo: IFirebaseTokenRepository;
+  let repository: IFirebaseTokenRepository;
+  let classRoomId: number;
+  let userIds: number[];
+
+  async function createUser(userName: string): Promise<number> {
+    const user = await env.DB.prepare(
+      'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
+    )
+      .bind(userName)
+      .first<{ user_id: number }>();
+    userIds.push(user!.user_id);
+    return user!.user_id;
+  }
 
   beforeEach(async () => {
+    sequence += 1;
+    userIds = [];
     await env.DB.prepare('DELETE FROM firebase_tokens').run();
-    await env.DB.prepare('DELETE FROM users').run();
-    repo = createFirebaseTokenRepository(env.DB);
+    const classRoom = await env.DB.prepare(
+      'INSERT INTO class_rooms (class_code, class_name) VALUES (?, ?) RETURNING class_room_id'
+    )
+      .bind(`FIREBASE-TEST-${sequence}`, 'Firebaseトークンテスト用学級')
+      .first<{ class_room_id: number }>();
+    classRoomId = classRoom!.class_room_id;
+    repository = createFirebaseTokenRepository(env.DB);
   });
 
-  describe('register', () => {
-    it('未登録の student_number の場合、auth_users と firebase_tokens を新規作成する', async () => {
-      const result = await repo.register({
-        studentNumber: '10000',
-        platform: 'android',
-        fcmToken: 'token-a',
-        authProvider: 'firebase',
-        providerUserId: 'uid-a',
-        email: 'a@example.com',
-      });
-
-      expect(result.user).toMatchObject({
-        student_number: '10000',
-        auth_provider: 'firebase',
-        provider_user_id: 'uid-a',
-        email: 'a@example.com',
-        is_active: 1,
-      });
-      expect(result.firebaseToken).toMatchObject({
-        user_id: result.user.id,
-        platform: 'android',
-        fcm_token: 'token-a',
-        is_active: 1,
-      });
-    });
-
-    it('同じ student_number で再登録すると auth_users を更新する（COALESCEで未指定項目は既存値を維持）', async () => {
-      const first = await repo.register({
-        studentNumber: '10000',
-        platform: 'android',
-        fcmToken: 'token-a',
-        authProvider: 'firebase',
-        providerUserId: 'uid-a',
-        email: 'a@example.com',
-      });
-
-      const second = await repo.register({
-        studentNumber: '10000',
-        platform: 'android',
-        fcmToken: 'token-b',
-      });
-
-      expect(second.user.id).toBe(first.user.id);
-      expect(second.user).toMatchObject({
-        auth_provider: 'firebase',
-        provider_user_id: 'uid-a',
-        email: 'a@example.com',
-      });
-    });
-
-    it('同じ fcm_token で再登録すると firebase_tokens を更新する（新規行を作らない）', async () => {
-      const first = await repo.register({
-        studentNumber: '10000',
-        platform: 'android',
-        fcmToken: 'token-a',
-      });
-
-      const second = await repo.register({
-        studentNumber: '10000',
-        platform: 'ios',
-        fcmToken: 'token-a',
-      });
-
-      expect(second.firebaseToken.id).toBe(first.firebaseToken.id);
-      expect(second.firebaseToken.platform).toBe('ios');
-
-      const tokens = await repo.findActiveTokens();
-      expect(tokens).toHaveLength(1);
-    });
-  });
-
-  describe('findActiveTokens', () => {
-    it('is_active = 1 のトークンのみを id 昇順で返す', async () => {
-      await repo.register({
-        studentNumber: '10000',
-        platform: 'android',
-        fcmToken: 'token-a',
-      });
-      // users.uid は NOT NULL DEFAULT '' + UNIQUE 制約があり、
-      // 2人目を register() 経由の素の INSERT に任せると uid='' 同士が衝突するため、
-      // 事前に別 uid を持つ行を用意して ON CONFLICT(student_number) の UPDATE 経路に乗せる
-      await env.DB.prepare(
-        'INSERT INTO users (student_number, uid) VALUES (?, ?)'
-      )
-        .bind('10001', 'placeholder-uid-10001')
+  afterEach(async () => {
+    await env.DB.prepare('DELETE FROM firebase_tokens').run();
+    for (const userId of userIds) {
+      await env.DB.prepare('DELETE FROM students WHERE user_id = ?')
+        .bind(userId)
         .run();
-      const second = await repo.register({
-        studentNumber: '10001',
-        platform: 'ios',
-        fcmToken: 'token-b',
-      });
-      await repo.deactivate(second.firebaseToken.id);
-
-      const tokens = await repo.findActiveTokens();
-
-      expect(tokens).toHaveLength(1);
-      expect(tokens[0].fcm_token).toBe('token-a');
-    });
+      await env.DB.prepare('DELETE FROM staffs WHERE user_id = ?')
+        .bind(userId)
+        .run();
+      await env.DB.prepare('DELETE FROM teachers WHERE user_id = ?')
+        .bind(userId)
+        .run();
+      await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+        .bind(userId)
+        .run();
+    }
+    await env.DB.prepare('DELETE FROM class_rooms WHERE class_room_id = ?')
+      .bind(classRoomId)
+      .run();
   });
 
-  describe('deactivate', () => {
-    it('指定した id のトークンを is_active = 0 にする', async () => {
-      const registered = await repo.register({
-        studentNumber: '10000',
+  it.each(['student', 'staff', 'teacher'] as const)(
+    '%sのusers.user_idへTokenを登録できる',
+    async userType => {
+      const userId = await createUser(`Firebaseテスト-${userType}`);
+      if (userType === 'student') {
+        await env.DB.prepare(
+          `INSERT INTO students (
+             user_id, class_room_id, attendance_number, student_id_number
+           ) VALUES (?, ?, 1, ?)`
+        )
+          .bind(userId, classRoomId, `FIREBASE-${sequence}`)
+          .run();
+      } else if (userType === 'staff') {
+        await env.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+          .bind(userId)
+          .run();
+      } else {
+        await env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+          .bind(userId)
+          .run();
+      }
+
+      await expect(
+        repository.register({
+          userId,
+          platform: 'android',
+          fcmToken: `token-${userType}`,
+        })
+      ).resolves.toMatchObject({
+        user_id: userId,
         platform: 'android',
-        fcmToken: 'token-a',
+        is_firebase_active: true,
       });
+    }
+  );
 
-      await repo.deactivate(registered.firebaseToken.id);
-
-      const tokens = await repo.findActiveTokens();
-      expect(
-        tokens.find(t => t.id === registered.firebaseToken.id)
-      ).toBeUndefined();
+  it('同じ利用者のToken更新時に既存行を最新Tokenへ更新する', async () => {
+    const userId = await createUser('Firebaseトークン更新利用者');
+    const first = await repository.register({
+      userId,
+      platform: 'android',
+      fcmToken: 'token-before',
     });
+    const second = await repository.register({
+      userId,
+      platform: 'android',
+      fcmToken: 'token-after',
+    });
+
+    expect(second.firebase_token_id).toBe(first.firebase_token_id);
+    const stored = await env.DB.prepare(
+      'SELECT fcm_token FROM firebase_tokens WHERE user_id = ?'
+    )
+      .bind(userId)
+      .first<{ fcm_token: string }>();
+    expect(stored?.fcm_token).toBe('token-after');
+  });
+
+  it('無効化済みTokenの再登録時に有効化する', async () => {
+    const userId = await createUser('Firebaseトークン再登録利用者');
+    const registered = await repository.register({
+      userId,
+      platform: 'android',
+      fcmToken: 'token-reactivate',
+    });
+    await repository.deactivate(registered.firebase_token_id);
+
+    const reactivated = await repository.register({
+      userId,
+      platform: 'android',
+      fcmToken: 'token-reactivate',
+    });
+
+    expect(reactivated.is_firebase_active).toBe(true);
+    await expect(repository.findActiveTokens()).resolves.toHaveLength(1);
+  });
+
+  it('別利用者に登録済みのTokenを上書きしない', async () => {
+    const firstUserId = await createUser('Firebase Token所有者');
+    const secondUserId = await createUser('Firebase Token別利用者');
+    await repository.register({
+      userId: firstUserId,
+      platform: 'android',
+      fcmToken: 'token-owned',
+    });
+
+    await expect(
+      repository.register({
+        userId: secondUserId,
+        platform: 'android',
+        fcmToken: 'token-owned',
+      })
+    ).rejects.toThrow();
+
+    const owner = await env.DB.prepare(
+      'SELECT user_id FROM firebase_tokens WHERE fcm_token = ?'
+    )
+      .bind('token-owned')
+      .first<{ user_id: number }>();
+    expect(owner?.user_id).toBe(firstUserId);
+  });
+
+  it('同一利用者から並行登録されてもToken行を重複させない', async () => {
+    const userId = await createUser('Firebase Token並行登録利用者');
+
+    await Promise.all([
+      repository.register({
+        userId,
+        platform: 'android',
+        fcmToken: 'token-concurrent',
+      }),
+      repository.register({
+        userId,
+        platform: 'android',
+        fcmToken: 'token-concurrent',
+      }),
+    ]);
+
+    const count = await env.DB.prepare(
+      'SELECT COUNT(*) AS count FROM firebase_tokens WHERE user_id = ?'
+    )
+      .bind(userId)
+      .first<{ count: number }>();
+    expect(count?.count).toBe(1);
+  });
+
+  it('存在しないusers.user_idでは登録しない', async () => {
+    await expect(
+      repository.register({
+        userId: 999999,
+        platform: 'android',
+        fcmToken: 'token-unknown-user',
+      })
+    ).rejects.toThrow('User not found');
+  });
+
+  it('有効なTokenのみをfirebase_token_id昇順で返す', async () => {
+    const firstUserId = await createUser('Firebase有効利用者');
+    const secondUserId = await createUser('Firebase無効利用者');
+    await repository.register({
+      userId: firstUserId,
+      platform: 'android',
+      fcmToken: 'token-active',
+    });
+    const inactive = await repository.register({
+      userId: secondUserId,
+      platform: 'android',
+      fcmToken: 'token-inactive',
+    });
+    await repository.deactivate(inactive.firebase_token_id);
+
+    const tokens = await repository.findActiveTokens();
+
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].fcm_token).toBe('token-active');
   });
 });

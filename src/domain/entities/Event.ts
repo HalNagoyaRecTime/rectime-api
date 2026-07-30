@@ -1,10 +1,29 @@
 export interface EventEntity {
-  f_event_id: number;
-  f_event_code: string;
-  f_event_name: string;
-  f_time: string; // 「0930」などHHMM文字列
-  f_duration: string; // 「20」等分単位文字列
-  f_place: string;
-  f_gather_time: string;
-  f_summary: string | null;
+  event_id: number;
+  event_name: string;
+  rule_text: string | null;
+  venue: string;
+  start_time: string; // JSTのHHMM形式（例: "0930"）
+  end_time: string; // JSTのHHMM形式（例: "1745"）
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * 作成・更新時にRepositoryへ渡すドメイン内部の値。
+ * HTTPのsnake_caseとは切り離し、DBカラムにも依存しない。
+ */
+export interface EventWriteInput {
+  name: string;
+  ruleText: string | null;
+  venue: string;
+  startTime: string;
+  endTime: string;
+}
+
+/** Repositoryでイベント一覧を取得する際の内部条件。 */
+export interface EventListOptions {
+  startTime?: string;
+  limit?: number;
+  offset?: number;
 }

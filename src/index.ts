@@ -1,17 +1,24 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
+import { isEventDate, isValidEventDate } from './lib/eventDate';
 import {
   diContainerMiddleware,
   type ContainerVariables,
 } from './presentation/middleware/diContainer';
+import {
+  sessionAuthenticationMiddleware,
+  type AuthenticationVariables,
+} from './presentation/middleware/sessionAuthentication';
 
 const app = new Hono<{ Bindings: Env }>();
 
 let corsWarnLogged = false;
 const allowedOriginRulesCache = new Map<string, AllowedOriginRule[]>();
 let tenantWarnLogged = false;
+let eventDateWarnLogged = false;
 
 app.use('*', (c, next) => {
   const allowedOrigins = c.env.ALLOWED_ORIGINS ?? '';
@@ -26,7 +33,13 @@ app.use('*', (c, next) => {
     origin: origin =>
       isAllowedOrigin(origin, allowedOriginRules) ? origin : null,
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Client-Type',
+      'X-PKCE-Code-Challenge',
+      'X-State',
+    ],
     credentials: true,
     maxAge: 600,
   })(c, next);
@@ -59,22 +72,32 @@ app.get('/', c => {
     version: '1.0.0',
     endpoints: {
       students: '/api/v1/students/{studentId}',
+      staffs: '/api/v1/staffs/{staffId}',
+      teachers: '/api/v1/teachers/{teacherId}',
       events: '/api/v1/events',
-      classes: '/api/v1/classes',
-      schedules: '/api/v1/schedules',
-      scheduleDetail: '/api/v1/schedules/{scheduleId}',
+      classRooms: '/api/v1/classrooms',
+      gatheringSpots: '/api/v1/gathering-spots',
+      gatherings: '/api/v1/gatherings',
+      gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
       firebaseTokens: '/api/v1/firebase-tokens',
+      notifications: '/api/v1/notifications',
+      adminNotifications: '/api/v1/admin/notifications',
+      myNotifications: '/api/v1/me/notifications',
       testNotification: '/api/v1/notifications/test',
-      runScheduledNotifications: '/api/v1/notifications/schedule/run',
+      notificationSchedules: '/api/v1/notification-schedules',
     },
     swagger: '/swagger.yml',
   });
 });
 
 // API v1 routes
-const apiV1 = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
+const apiV1 = new Hono<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthenticationVariables;
+}>();
 
 apiV1.use('*', diContainerMiddleware);
+apiV1.use('*', sessionAuthenticationMiddleware);
 
 // Student routes
 apiV1.get('/students', c => {
@@ -82,6 +105,34 @@ apiV1.get('/students', c => {
 });
 apiV1.get('/students/:studentId', c => {
   return c.get('container').studentController.getStudentById(c);
+});
+apiV1.post('/students', c => {
+  return c.get('container').studentController.createStudent(c);
+});
+apiV1.put('/students/:studentId', c => {
+  return c.get('container').studentController.updateStudent(c);
+});
+
+// Staff routes
+apiV1.get('/staffs', c => {
+  return c.get('container').staffController.getAllStaffs(c);
+});
+apiV1.get('/staffs/:staffId', c => {
+  return c.get('container').staffController.getStaffById(c);
+});
+
+// Teacher routes
+apiV1.get('/teachers', c => {
+  return c.get('container').teacherController.getAllTeachers(c);
+});
+apiV1.get('/teachers/:teacherId', c => {
+  return c.get('container').teacherController.getTeacherById(c);
+});
+apiV1.put('/teachers/:teacherId', c => {
+  return c.get('container').teacherController.updateTeacher(c);
+});
+apiV1.delete('/teachers/:teacherId', c => {
+  return c.get('container').teacherController.deleteTeacher(c);
 });
 
 // Event routes
@@ -92,19 +143,76 @@ apiV1.get('/events', c => {
 apiV1.get('/events/:eventId', c => {
   return c.get('container').eventController.getEventById(c);
 });
-
-// Class routes
-apiV1.get('/classes', c => {
-  return c.get('container').classController.getAllClasses(c);
+apiV1.get('/events/:eventId/gatherings', c => {
+  return c.get('container').gatheringController.getGatheringsByEventId(c);
+});
+apiV1.post('/events', c => {
+  return c.get('container').eventController.createEvent(c);
+});
+apiV1.put('/events/:eventId', c => {
+  return c.get('container').eventController.updateEvent(c);
+});
+apiV1.delete('/events/:eventId', c => {
+  return c.get('container').eventController.deleteEvent(c);
+});
+apiV1.put('/events/:eventId/schedule', c => {
+  return c.get('container').eventScheduleController.updateEventSchedule(c);
 });
 
-// Schedule routes
-apiV1.get('/schedules', c => {
-  return c.get('container').scheduleController.getAllSchedules(c);
+// Classroom routes
+apiV1.get('/classrooms', c => {
+  return c.get('container').classRoomController.getAllClassrooms(c);
+});
+apiV1.get('/classrooms/:classId', c => {
+  return c.get('container').classRoomController.getClassroomById(c);
+});
+apiV1.post('/classrooms', c => {
+  return c.get('container').classRoomController.createClassroom(c);
+});
+apiV1.put('/classrooms/:classId', c => {
+  return c.get('container').classRoomController.updateClassroom(c);
+});
+apiV1.delete('/classrooms/:classId', c => {
+  return c.get('container').classRoomController.deleteClassroom(c);
 });
 
-apiV1.get('/schedules/:scheduleId', c => {
-  return c.get('container').scheduleController.getScheduleById(c);
+// Gathering spot routes
+apiV1.get('/gathering-spots', c => {
+  return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
+});
+apiV1.post('/gathering-spots', c => {
+  return c.get('container').gatheringSpotController.createGatheringSpot(c);
+});
+apiV1.put('/gathering-spots/:gatheringSpotId', c => {
+  return c.get('container').gatheringSpotController.updateGatheringSpot(c);
+});
+
+// Gathering member routes
+apiV1.get('/gatherings/:gatheringId/members', c => {
+  return c
+    .get('container')
+    .gatheringGroupMemberController.getGatheringMembers(c);
+});
+apiV1.post('/gatherings/:gatheringId/members', c => {
+  return c
+    .get('container')
+    .gatheringGroupMemberController.addGatheringMember(c);
+});
+apiV1.delete('/gatherings/:gatheringId/members/:userId', c => {
+  return c
+    .get('container')
+    .gatheringGroupMemberController.removeGatheringMember(c);
+});
+
+// Gathering routes
+apiV1.get('/gatherings', c => {
+  return c.get('container').gatheringController.getAllGatherings(c);
+});
+apiV1.post('/gatherings', c => {
+  return c.get('container').gatheringController.createGathering(c);
+});
+apiV1.delete('/gatherings/:gatheringId', c => {
+  return c.get('container').gatheringController.deleteGathering(c);
 });
 
 // Firebase token routes
@@ -113,34 +221,79 @@ apiV1.post('/firebase-tokens', c => {
 });
 
 // Notification routes
+apiV1.post('/admin/notifications', c => {
+  return c
+    .get('container')
+    .adminNotificationController.createManualNotification(c);
+});
+apiV1.get('/admin/notifications', c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.getAdminNotifications(c);
+});
+apiV1.get('/admin/notifications/:notificationId', c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.getAdminNotificationById(c);
+});
+apiV1.put('/admin/notifications/:notificationId', c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.updateAdminNotification(c);
+});
+apiV1.delete('/admin/notifications/:notificationId', c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.deleteAdminNotification(c);
+});
+
+apiV1.post('/notifications', c => {
+  return c.get('container').notificationController.createNotification(c);
+});
+apiV1.get('/notifications', c => {
+  return c.get('container').notificationController.getNotifications(c);
+});
+apiV1.get('/notifications/:id', c => {
+  return c.get('container').notificationController.getNotificationById(c);
+});
+apiV1.put('/notifications/:id', c => {
+  return c.get('container').notificationController.updateNotification(c);
+});
+
+apiV1.get('/me/notifications', c => {
+  return c.get('container').mobileNotificationController.getNotifications(c);
+});
+apiV1.get('/me/notifications/:notificationId', c => {
+  return c.get('container').mobileNotificationController.getNotificationById(c);
+});
+
+apiV1.get('/notification-schedules', c => {
+  return c
+    .get('container')
+    .notificationScheduleController.getAllNotificationSchedules(c);
+});
+apiV1.post('/notification-schedules', c => {
+  return c
+    .get('container')
+    .notificationScheduleController.createNotificationSchedule(c);
+});
+apiV1.get('/notification-schedules/:id', c => {
+  return c
+    .get('container')
+    .notificationScheduleController.getNotificationScheduleById(c);
+});
+apiV1.delete('/notification-schedules/:id', c => {
+  return c
+    .get('container')
+    .notificationScheduleController.deleteNotificationSchedule(c);
+});
+
 apiV1.post('/notifications/test', c => {
   return c.get('container').notificationController.sendTestNotification(c);
 });
 
-apiV1.post('/notifications/schedule/run', async c => {
-  try {
-    const body = await c.req.json().catch(() => ({}));
-    const now =
-      body && typeof body.now === 'string' ? new Date(body.now) : new Date();
-
-    if (Number.isNaN(now.getTime())) {
-      return c.json({ error: 'Invalid now value' }, 400);
-    }
-
-    const result = await c
-      .get('container')
-      .scheduledNotificationService.sendScheduledEventNotifications(now);
-    return c.json(result);
-  } catch (error) {
-    return c.json(
-      {
-        error: 'Failed to run scheduled notifications',
-        details: error instanceof Error ? error.message : String(error),
-      },
-      500
-    );
-  }
-});
+// Auth routes
+apiV1.route('/auth', authRouter);
 
 // Mount API v1
 app.route('/api/v1', apiV1);
@@ -149,10 +302,25 @@ export { app };
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    if (!isValidEventDate(env.EVENT_DATE)) {
+      if (!eventDateWarnLogged) {
+        console.error(
+          '[CRON] EVENT_DATE must be configured in YYYY-MM-DD format; notification delivery is disabled'
+        );
+        eventDateWarnLogged = true;
+      }
+      return;
+    }
+
+    const scheduledAt = new Date(event.scheduledTime);
+    if (!isEventDate(env.EVENT_DATE, scheduledAt)) return;
+
     const container = createDIContainer(env);
     ctx.waitUntil(
-      container.scheduledNotificationService.sendScheduledEventNotifications()
+      container.scheduledNotificationService.sendScheduledEventNotifications(
+        scheduledAt
+      )
     );
   },
 };

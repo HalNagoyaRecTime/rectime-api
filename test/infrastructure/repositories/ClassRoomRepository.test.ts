@@ -1,0 +1,146 @@
+import { drizzle } from 'drizzle-orm/d1';
+import { env } from 'cloudflare:workers';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { createClassRoomRepository } from '../../../src/infrastructure/repositories/ClassRoomRepository';
+import type { IClassRoomRepository } from '../../../src/domain/interfaces/repositories/IClassRoomRepository';
+import * as schema from '../../../src/infrastructure/database/schema';
+import {
+  class_rooms,
+  students,
+  teachers,
+  users,
+} from '../../../src/infrastructure/database/schema';
+
+describe('ClassRoomRepository', () => {
+  let repo: IClassRoomRepository;
+
+  beforeAll(async () => {
+    const orm = drizzle(env.DB, { schema });
+    // class_rooms は students から、students は users から参照されるため、
+    // 参照される側を残したまま削除するとFK制約に違反する。子テーブルから順に削除する
+    // （テストはストレージを他ファイルと共有するため、他ファイルが投入した行が残っている場合がある）
+    await env.DB.prepare('DELETE FROM gathering_group_members').run();
+    await env.DB.prepare('DELETE FROM notification_schedules').run();
+    await env.DB.prepare('DELETE FROM gatherings').run();
+    await env.DB.prepare('DELETE FROM events').run();
+    await orm.delete(students);
+    await orm.delete(teachers);
+    await orm.delete(users);
+    await orm.delete(class_rooms);
+    const [teacherUser] = await orm
+      .insert(users)
+      .values({ userName: '担任教員' })
+      .returning();
+    const [teacher] = await orm
+      .insert(teachers)
+      .values({ userId: teacherUser.id })
+      .returning();
+    const classrooms = await orm
+      .insert(class_rooms)
+      .values([
+        { classCode: '12B', name: '2年Bクラス', teacherId: teacher.id },
+        { classCode: 'IA14A', name: '高度情報学科AI開発先行コース' },
+      ])
+      .returning();
+    const [studentUser] = await orm
+      .insert(users)
+      .values({ userName: '所属学生' })
+      .returning();
+    await orm.insert(students).values({
+      userId: studentUser.id,
+      classRoomId: classrooms[0].id,
+      attendanceNumber: 1,
+      studentIdNumber: 'CLASS-TEST-001',
+    });
+
+    repo = createClassRoomRepository(env.DB);
+  });
+
+  describe('findAll', () => {
+    it('class_rooms を class_room_id 昇順で返し、limitとoffsetを適用する', async () => {
+      const result = await repo.findAll(1, 1);
+
+      expect(result.classrooms).toHaveLength(1);
+      expect(result).toMatchObject({ total: 2, limit: 1, offset: 1 });
+      expect(result.classrooms[0].class_code).toBe('IA14A');
+      const ids = result.classrooms.map(c => c.class_room_id);
+      expect(ids).toEqual([...ids].sort((a, b) => a - b));
+    });
+
+    it('学生数と担任をClassEntityへマッピングする', async () => {
+      const result = await repo.findAll(20, 0);
+
+      expect(result.classrooms[0]).toMatchObject({
+        class_code: '12B',
+        class_name: '2年Bクラス',
+        student_count: 1,
+        teacher: { display_name: '担任教員' },
+      });
+      expect(result.classrooms[1]).toMatchObject({
+        class_code: 'IA14A',
+        class_name: '高度情報学科AI開発先行コース',
+        student_count: 0,
+        teacher: null,
+      });
+    });
+  });
+
+  it('詳細を取得できる', async () => {
+    const classroom = (await repo.findAll(1, 0)).classrooms[0];
+
+    await expect(repo.findById(classroom.class_room_id)).resolves.toMatchObject(
+      {
+        class_code: '12B',
+        student_count: 1,
+      }
+    );
+    await expect(repo.findById(999999)).resolves.toBeNull();
+  });
+
+  it('担任未設定のクラスを作成・更新・削除できる', async () => {
+    const created = await repo.create({
+      class_code: '13A',
+      class_name: '3年Aクラス',
+      teacher_id: null,
+    });
+    expect(created).toMatchObject({
+      class_code: '13A',
+      class_name: '3年Aクラス',
+      student_count: 0,
+      teacher: null,
+    });
+
+    const updated = await repo.update(created.class_room_id, {
+      class_code: '13B',
+      class_name: '3年Bクラス',
+      teacher_id: null,
+    });
+    expect(updated).toMatchObject({
+      class_code: '13B',
+      class_name: '3年Bクラス',
+    });
+    await expect(repo.delete(created.class_room_id)).resolves.toBe(true);
+    await expect(repo.findById(created.class_room_id)).resolves.toBeNull();
+  });
+
+  it('class_codeの一意制約を適用する', async () => {
+    await expect(
+      repo.create({
+        class_code: 'IA14A',
+        class_name: '重複クラス',
+        teacher_id: null,
+      })
+    ).rejects.toThrow(/UNIQUE/);
+  });
+
+  it('学生の所属有無を返す', async () => {
+    const classrooms = (await repo.findAll(20, 0)).classrooms;
+    const assigned = classrooms.find(c => c.class_code === '12B');
+    const unassigned = classrooms.find(c => c.class_code === 'IA14A');
+
+    await expect(repo.hasStudents(assigned!.class_room_id)).resolves.toBe(true);
+    await expect(repo.hasStudents(unassigned!.class_room_id)).resolves.toBe(
+      false
+    );
+  });
+});

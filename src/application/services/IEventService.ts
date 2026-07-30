@@ -1,11 +1,15 @@
-import { EventEntity } from '../../domain/entities/Event';
+import type {
+  CreateEventRequestDTO,
+  EventDTO,
+  EventListResponseDTO,
+  GetEventsRequestDTO,
+  UpdateEventRequestDTO,
+} from '../dto/EventDTO';
 
 export interface IEventService {
-  getAllEvents: (options: {
-    eventCode?: string;
-    time?: string;
-    limit?: number;
-    offset?: number;
-  }) => Promise<{ events: EventEntity[]; total: number }>;
-  getEventById: (id: number) => Promise<EventEntity>;
+  getAllEvents: (options: GetEventsRequestDTO) => Promise<EventListResponseDTO>;
+  getEventById: (id: number) => Promise<EventDTO>;
+  createEvent: (event: CreateEventRequestDTO) => Promise<EventDTO>;
+  updateEvent: (id: number, event: UpdateEventRequestDTO) => Promise<EventDTO>;
+  deleteEvent: (id: number) => Promise<void>;
 }

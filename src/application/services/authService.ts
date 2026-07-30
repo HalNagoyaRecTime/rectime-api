@@ -3,13 +3,6 @@ import type { Session } from '../../domain/auth/types';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAuthService, MicrosoftClaims } from './IAuthService';
 
-export function buildMicrosoftUid(claims: {
-  tid: string;
-  oid: string;
-}): string {
-  return `${claims.tid}:${claims.oid}`;
-}
-
 export function getSessionTtlSeconds(sessionExpiresAt: string): number {
   const expiresAt = new Date(sessionExpiresAt).getTime();
   const ttl = Math.floor((expiresAt - Date.now()) / 1000);
@@ -31,7 +24,6 @@ export function createAuthService(
     async upsertUser(claims: MicrosoftClaims) {
       const email = claims.preferred_username ?? claims.email ?? '';
       const displayName = claims.name ?? email;
-      const uid = buildMicrosoftUid(claims);
 
       const existingUserId = await userRepository.findUserIdByMicrosoftAccount(
         claims.oid,
@@ -46,7 +38,6 @@ export function createAuthService(
           sub: claims.sub,
           email,
           displayName,
-          uid,
         });
         if (!updated) throw new Error('USER_NOT_FOUND');
         return updated;
@@ -59,8 +50,6 @@ export function createAuthService(
           sub: claims.sub,
           email,
           displayName,
-          uid,
-          studentNumber: `ms:${uid}`,
         });
       } catch (err) {
         if (
@@ -84,7 +73,6 @@ export function createAuthService(
           sub: claims.sub,
           email,
           displayName,
-          uid,
         });
         if (!raced) throw new Error('CREATE_USER_FAILED');
         return raced;
@@ -96,6 +84,16 @@ export function createAuthService(
       await kv.put(`session:${sessionId}`, JSON.stringify(session), {
         expirationTtl: ttl,
       });
+    },
+
+    async getSession(sessionId: string) {
+      const raw = await kv.get(`session:${sessionId}`);
+      if (!raw) return null;
+
+      const session = JSON.parse(raw) as Session;
+      if (new Date(session.expires_at) < new Date()) return null;
+
+      return session;
     },
   };
 }
