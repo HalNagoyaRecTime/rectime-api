@@ -80,9 +80,9 @@ describe('ScheduleService', () => {
       send_at: '2026-07-23T09:00:00.000Z',
     };
     const created = { ...input, firebase_token_id: 9 };
-    (
-      repository.createSchedule as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(created);
+    (repository.createSchedule as ReturnType<typeof vi.fn>).mockResolvedValue(
+      created
+    );
 
     await expect(service.createSchedule(input)).resolves.toEqual(created);
     expect(repository.createSchedule).toHaveBeenCalledWith(input);
@@ -97,9 +97,9 @@ describe('ScheduleService', () => {
       send_at: '2026-07-23T09:00:00.000Z',
       gathering_id: 3,
     };
-    (
-      repository.updateSchedule as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(update);
+    (repository.updateSchedule as ReturnType<typeof vi.fn>).mockResolvedValue(
+      update
+    );
 
     await expect(service.updateSchedule(4, update)).resolves.toEqual(update);
     expect(repository.updateSchedule).toHaveBeenCalledWith(4, update);

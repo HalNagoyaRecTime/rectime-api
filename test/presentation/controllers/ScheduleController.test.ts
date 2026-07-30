@@ -65,11 +65,7 @@ describe('ScheduleController', () => {
       scheduleEntity
     );
 
-    const response = await app.request(
-      '/notification/schedules',
-      {},
-      bindings
-    );
+    const response = await app.request('/notification/schedules', {}, bindings);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(scheduleEntity);
@@ -81,11 +77,7 @@ describe('ScheduleController', () => {
       new Error('failure')
     );
 
-    const response = await app.request(
-      '/notification/schedules',
-      {},
-      bindings
-    );
+    const response = await app.request('/notification/schedules', {}, bindings);
 
     expect(response.status).toBe(500);
   });
