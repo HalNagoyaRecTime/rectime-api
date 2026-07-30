@@ -141,6 +141,44 @@ describe('FcmService', () => {
       ).rejects.toThrow('FCM request failed:');
     });
 
+    it('同じService内の並行送信ではGoogle OAuth tokenを1回だけ取得する', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: 'token-a' }), {
+            status: 200,
+          })
+        )
+        .mockImplementation(
+          () =>
+            new Response(JSON.stringify({ name: 'projects/x/messages/1' }), {
+              status: 200,
+            })
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const service = createFcmService(buildConfig());
+      await Promise.all([
+        service.sendNotificationToToken({
+          token: 'device-token-1',
+          title: 'タイトル',
+          body: '本文',
+        }),
+        service.sendNotificationToToken({
+          token: 'device-token-2',
+          title: 'タイトル',
+          body: '本文',
+        }),
+      ]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(
+        fetchMock.mock.calls.filter(
+          ([url]) => url === 'https://oauth2.googleapis.com/token'
+        )
+      ).toHaveLength(1);
+    });
+
     it('Google OAuth トークン取得が失敗した場合は Google OAuth token request failed エラーを投げる', async () => {
       const fetchMock = vi.fn().mockResolvedValueOnce(
         new Response(JSON.stringify({ error: 'invalid_grant' }), {

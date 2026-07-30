@@ -31,7 +31,10 @@ function buildSchedule(
 }
 
 describe('ScheduledNotificationService', () => {
-  function setup(schedules: DueNotificationSchedule[] = []) {
+  function setup(
+    schedules: DueNotificationSchedule[] = [],
+    getCurrentTime?: () => number
+  ) {
     const notificationScheduleRepository: INotificationScheduleRepository = {
       create: vi.fn(),
       findAll: vi.fn(),
@@ -61,6 +64,7 @@ describe('ScheduledNotificationService', () => {
         notificationScheduleRepository,
         firebaseTokenRepository,
         fcmService,
+        getCurrentTime,
       }),
       notificationScheduleRepository,
       firebaseTokenRepository,
@@ -143,7 +147,7 @@ describe('ScheduledNotificationService', () => {
     expect(result).toEqual({ checkedEvents: 1, sent: 0, failed: 1 });
   });
 
-  it('2000件を100件ずつ処理して重複なく送信する', async () => {
+  it('1回の実行で2000件を100件ずつ重複なく送信する', async () => {
     const pending = Array.from({ length: 2000 }, (_, index) =>
       buildSchedule({
         notification_schedule_id: index + 1,
@@ -158,18 +162,14 @@ describe('ScheduledNotificationService', () => {
       pending.splice(0, limit)
     );
 
-    const results = [];
-    for (let batch = 0; batch < 20; batch += 1) {
-      results.push(await service.sendScheduledEventNotifications());
-    }
+    const result = await service.sendScheduledEventNotifications();
 
-    expect(results).toEqual(
-      Array.from({ length: 20 }, () => ({
-        checkedEvents: 100,
-        sent: 100,
-        failed: 0,
-      }))
-    );
+    expect(result).toEqual({
+      checkedEvents: 2000,
+      sent: 2000,
+      failed: 0,
+    });
+    expect(notificationScheduleRepository.claimDue).toHaveBeenCalledTimes(21);
     expect(fcmService.sendNotificationToToken).toHaveBeenCalledTimes(2000);
     expect(notificationScheduleRepository.markSent).toHaveBeenCalledTimes(2000);
     expect(
@@ -180,5 +180,33 @@ describe('ScheduledNotificationService', () => {
       ).size
     ).toBe(2000);
     expect(pending).toHaveLength(0);
+  });
+
+  it('処理時間の上限に達した場合は次のbatchをclaimしない', async () => {
+    const schedules = Array.from({ length: 100 }, (_, index) =>
+      buildSchedule({
+        notification_schedule_id: index + 1,
+        firebase_token_id: index + 1,
+        fcm_token: `token-${index + 1}`,
+      })
+    );
+    const getCurrentTime = vi
+      .fn()
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValue(13 * 60 * 1000);
+    const { service, notificationScheduleRepository } = setup(
+      schedules,
+      getCurrentTime
+    );
+
+    const result = await service.sendScheduledEventNotifications();
+
+    expect(result).toEqual({
+      checkedEvents: 100,
+      sent: 100,
+      failed: 0,
+    });
+    expect(notificationScheduleRepository.claimDue).toHaveBeenCalledTimes(1);
   });
 });

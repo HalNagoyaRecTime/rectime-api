@@ -16,12 +16,24 @@ type FirebaseConfig = {
 };
 
 export function createFcmService(config: FirebaseConfig): IFcmService {
+  let accessTokenPromise: Promise<string> | null = null;
+
+  const getAccessToken = async (): Promise<string> => {
+    if (!accessTokenPromise) {
+      accessTokenPromise = createAccessToken(config).catch(error => {
+        accessTokenPromise = null;
+        throw error;
+      });
+    }
+    return accessTokenPromise;
+  };
+
   const sendNotificationToToken = async (
     input: FcmNotificationInput
   ): Promise<FcmNotificationResult> => {
     validateConfig(config);
 
-    const accessToken = await createAccessToken(config);
+    const accessToken = await getAccessToken();
     const response = await fetch(
       `https://fcm.googleapis.com/v1/projects/${config.projectId}/messages:send`,
       {
