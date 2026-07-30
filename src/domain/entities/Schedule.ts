@@ -33,23 +33,11 @@ export interface ScheduleEntity {
   notification_schedules: NotificationSchedule[];
 }
 
-export interface historyEvent {
-  event_id: number;
-  event_name: string;
-}
-
-export interface historyNotificationSchedule {
+export interface ScheduleWriteEntity {
+  user_id: number;
   notification_id: number;
-  notification_type: string;
-  title: string;
-  body: string;
-  send_time: string;
-  event: historyEvent;
-}
-export interface ScheduleHistoryEntity {
-  notifications: historyNotificationSchedule[];
-}
-
-export interface ScheduleDeleteResponse {
-  message: string;
+  firebase_token_id?: number;
+  event_id: number;
+  importance: number;
+  send_at: string; // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00.000Z
 }

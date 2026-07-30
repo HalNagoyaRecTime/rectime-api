@@ -1,7 +1,7 @@
-import type { ScheduleDTO, ScheduleHistoryDTO } from '../dto/ScheduleDTO';
+import type { ScheduleDTO, ScheduleWriteDTO } from '../dto/ScheduleDTO';
 import type {
   ScheduleEntity,
-  ScheduleHistoryEntity,
+  ScheduleWriteEntity,
 } from '../../domain/entities/Schedule';
 import { IScheduleRepository } from '../../domain/interfaces/repositories/IScheduleRepository';
 import type { IScheduleService } from './IScheduleService';
@@ -12,10 +12,8 @@ export function createScheduleService(
   const toDTO = (schedule: ScheduleEntity): ScheduleDTO => ({
     ...schedule,
   });
-  const toHistoryDTO = (
-    HistorySchedule: ScheduleHistoryEntity
-  ): ScheduleHistoryDTO => ({
-    ...HistorySchedule,
+  const toWriteDTO = (schedule: ScheduleWriteEntity): ScheduleWriteDTO => ({
+    ...schedule,
   });
 
   return {
@@ -27,9 +25,9 @@ export function createScheduleService(
       const schedule = await scheduleRepository.findById(id);
       return schedule ? toDTO(schedule) : null;
     },
-    getHistorySchedules: async (user_id: number) => {
-      const schedule = await scheduleRepository.findByUserId(user_id);
-      return schedule ? toHistoryDTO(schedule) : null;
+    createSchedule: async schedule => {
+      const createdSchedule = await scheduleRepository.createSchedule(schedule);
+      return toWriteDTO(createdSchedule);
     },
   };
 }

@@ -3,15 +3,14 @@ import { z } from 'zod';
 import type { IScheduleService } from '../../application/services/IScheduleService';
 
 const scheduleIdSchema = z.coerce.number().int().positive();
-const userIdSchema = z.coerce.number().int().positive();
 
 const createScheduleSchema = z.object({
-  eventId: z.number().int().positive().nullable().optional(),
-  notificationId: z.number().int().positive(),
-  firebaseTokenId: z.number().int().positive(),
-  importance: z.literal(2).optional(),
+  user_id: z.number().int().positive(),
+  event_id: z.number().int().positive(),
+  notification_id: z.number().int().positive(),
+  importance: z.literal(2).default(2),
   // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00.000Z
-  sendAt: z.string().datetime({ offset: true }),
+  send_at: z.string().datetime({ offset: true }),
 });
 
 export function createScheduleController(scheduleService: IScheduleService) {
@@ -41,41 +40,25 @@ export function createScheduleController(scheduleService: IScheduleService) {
     }
   };
 
-  // const createSchedule = async (c: Context) => {
-  //   const parsedBody = createScheduleSchema.safeParse(await c.req.json());
-  //   if (!parsedBody.success) {
-  //     return c.json({ error: 'Invalid schedule data' }, 400);
-  //   }
-
-  //   try {
-  //     const schedule = await scheduleService.createSchedule(parsedBody.data);
-  //     return c.json(schedule, 201);
-  //   } catch {
-  //     return c.json({ error: 'Failed to create schedule' }, 500);
-  //   }
-  // };
-
-  const getHistorySchedules = async (c: Context) => {
-    const userId = userIdSchema.safeParse(c.req.param('user_id'));
-    if (!userId.success) {
-      return c.json({ error: 'Missing user_id parameter' }, 400);
+  const createSchedule = async (c: Context) => {
+    const parsedBody = createScheduleSchema.safeParse(await c.req.json());
+    if (!parsedBody.success) {
+      return c.json({ error: 'Invalid schedule data' }, 400);
     }
 
     try {
-      const schedules = await scheduleService.getHistorySchedules(userId.data);
-      if (!schedules) {
-        return c.json({ error: 'History schedules not found' }, 404);
-      }
-      return c.json(schedules);
+      const createdSchedule = await scheduleService.createSchedule(
+        parsedBody.data
+      );
+      return c.json(createdSchedule, 201);
     } catch {
-      return c.json({ error: 'Failed to fetch history schedules' }, 500);
+      return c.json({ error: 'Failed to create schedule' }, 500);
     }
   };
 
   return {
     getAllSchedules,
     getScheduleById,
-    getHistorySchedules,
-    // createSchedule,
+    createSchedule,
   };
 }

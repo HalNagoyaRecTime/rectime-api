@@ -1,21 +1,22 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
+import { ScheduleWriteDTO } from '../../application/dto/ScheduleDTO';
 import {
   notification_schedules,
   users,
   events,
   notifications,
   firebase_tokens,
+  gatherings,
+  gathering_group_members,
 } from '../database/schema';
-import { sql, eq, and } from 'drizzle-orm';
+import { sql, eq, inArray } from 'drizzle-orm';
 
 import type { D1Database } from '@cloudflare/workers-types';
 import type {
   ScheduleEntity,
-  ScheduleHistoryEntity,
   NotificationSchedule,
-  // ScheduleDeleteResponse,
-  historyNotificationSchedule,
+  ScheduleWriteEntity,
 } from '../../domain/entities/Schedule';
 import type { IScheduleRepository } from '../../domain/interfaces/repositories/IScheduleRepository';
 
@@ -36,16 +37,6 @@ type ScheduleRow = {
   sending_deliveries: number;
   sent_deliveries: number;
   failed_deliveries: number;
-};
-
-type HistoryScheduleRow = {
-  notification_id: number;
-  notification_type: string | null;
-  title: string | null;
-  body: string | null;
-  send_time: string;
-  event_id: number | null;
-  event_name: string | null;
 };
 
 function toNotificationSchedule(row: ScheduleRow): NotificationSchedule {
@@ -71,22 +62,6 @@ function toNotificationSchedule(row: ScheduleRow): NotificationSchedule {
       sending: row.sending_deliveries,
       sent: row.sent_deliveries,
       failed: row.failed_deliveries,
-    },
-  };
-}
-
-function toHistoryNotificationSchedule(
-  row: HistoryScheduleRow
-): historyNotificationSchedule {
-  return {
-    notification_id: row.notification_id,
-    notification_type: row.notification_type ?? '',
-    title: row.title ?? '',
-    body: row.body ?? '',
-    send_time: row.send_time,
-    event: {
-      event_id: row.event_id ?? 0,
-      event_name: row.event_name ?? '',
     },
   };
 }
@@ -237,68 +212,66 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
         : null;
     },
 
-    // async deleteById(id: number): Promise<void> {
-    //   const result = await orm
-    //     .delete(notification_schedules)
-    //     .where(
-    //       and(
-    //         eq(notification_schedules.notificationId, id),
-    //         eq(notification_schedules.sendStatus, 'draft')
-    //       )
-    //     )
-    //     .returning({});
-    // },
+    async createSchedule(
+      schedule: ScheduleWriteDTO
+    ): Promise<ScheduleWriteEntity> {
+      const targetEventId = schedule.event_id ?? null;
 
-    async findByUserId(user_id: number): Promise<ScheduleHistoryEntity | null> {
-      const firebaseTokenExists = await orm
-        .select({ id: firebase_tokens.firebaseTokenId })
-        .from(firebase_tokens)
-        .where(eq(firebase_tokens.userId, user_id))
-        .get();
-
-      if (!firebaseTokenExists) {
-        return null;
+      if (!targetEventId) {
+        throw new Error('Event ID is required to create a schedule.');
       }
 
-      const result = await orm
-        .select({
-          notification_id: notification_schedules.notificationId,
-          notification_type: notifications.notificationType,
-          title: notifications.title,
-          body: notifications.body,
-          send_time: notification_schedules.sendAt,
-          event_id: events.id,
-          event_name: events.name,
-        })
-        .from(notification_schedules)
-        .leftJoin(users, eq(notification_schedules.createdUserId, users.id))
-        .leftJoin(events, eq(notification_schedules.eventId, events.id))
+      const eventIdExists = await orm
+        .select({ user_id: users.id })
+        .from(gatherings)
         .leftJoin(
-          notifications,
-          eq(
-            notification_schedules.notificationId,
-            notifications.notificationId
-          )
+          gathering_group_members,
+          eq(gatherings.id, gathering_group_members.gatheringId)
         )
-        .leftJoin(
-          firebase_tokens,
-          eq(
-            notification_schedules.firebaseTokenId,
-            firebase_tokens.firebaseTokenId
-          )
-        )
-        .where(
-          and(
-            eq(notification_schedules.firebaseTokenId, firebaseTokenExists?.id),
-            eq(notification_schedules.sendStatus, 'sent')
-          )
-        )
-        .orderBy(sql`datetime(${notification_schedules.sendAt}) DESC`)
+        .leftJoin(events, eq(gatherings.eventId, events.id))
+        .leftJoin(users, eq(gathering_group_members.userId, users.id))
+        .where(eq(events.id, targetEventId))
         .all();
 
-      return result
-        ? { notifications: result.map(toHistoryNotificationSchedule) }
-        : null;
+      const userIds = eventIdExists
+        .map(row => row.user_id)
+        .filter((id): id is number => id !== null);
+
+      const tokenRows = await orm
+        .select({ firebase_token_id: firebase_tokens.firebaseTokenId })
+        .from(firebase_tokens)
+        .where(inArray(firebase_tokens.userId, userIds))
+        .all();
+
+      const firebaseTokenIds = tokenRows
+        .map(row => row.firebase_token_id)
+        .filter((token): token is number => typeof token !== 'string');
+
+      const insertPayloads = tokenRows.map(row => ({
+        createdUserId: schedule.user_id,
+        eventId: schedule.event_id,
+        notificationId: schedule.notification_id,
+        firebaseTokenId: row.firebase_token_id,
+        sendStatus: 'draft',
+        fcmMessageId: null,
+        importance: schedule.importance,
+        sendAt: schedule.send_at,
+      }));
+
+      await orm
+        .insert(notification_schedules)
+        .values(insertPayloads)
+        .returning({ id: notification_schedules.id })
+        .all();
+
+      return {
+        user_id: schedule.user_id,
+        event_id: targetEventId,
+        notification_id: schedule.notification_id,
+        firebase_token_id: firebaseTokenIds[0] ?? 0,
+        importance: schedule.importance,
+        send_at: schedule.send_at,
+      };
     },
   };
 }

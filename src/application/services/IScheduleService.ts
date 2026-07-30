@@ -1,12 +1,7 @@
-import {
-  ScheduleDTO,
-  ScheduleWriteDTO,
-  ScheduleHistoryDTO,
-} from '../dto/ScheduleDTO';
+import { ScheduleDTO, ScheduleWriteDTO } from '../dto/ScheduleDTO';
 
 export interface IScheduleService {
   getAllSchedules: () => Promise<ScheduleDTO>;
   getScheduleById: (id: number) => Promise<ScheduleDTO | null>;
-  createSchedule: (schedule: ScheduleWriteDTO) => Promise<ScheduleDTO>;
-  getHistorySchedules: (user_id: number) => Promise<ScheduleHistoryDTO | null>;
+  createSchedule: (schedule: ScheduleWriteDTO) => Promise<ScheduleWriteDTO>;
 }
