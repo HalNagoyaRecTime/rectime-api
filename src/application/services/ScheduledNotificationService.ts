@@ -1,105 +1,148 @@
 import { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 import { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
+import type { INotificationDeliveryQueue } from '../../domain/interfaces/queues/INotificationDeliveryQueue';
 import { IFcmService } from './IFcmService';
 import { IScheduledNotificationService } from './IScheduledNotificationService';
 
-const NOTIFICATION_DELIVERY_BATCH_SIZE = 100;
-const NOTIFICATION_DELIVERY_TIME_BUDGET_MS = 13 * 60 * 1000;
+const DELIVERY_MESSAGE_SIZE = 15;
+const DELIVERY_CANDIDATE_LIMIT = 5000;
+const DELIVERY_LEASE_TIMEOUT_MS = 4 * 60 * 1000;
+const MAX_CONCURRENT_FCM_REQUESTS = 5;
 
 export function createScheduledNotificationService(deps: {
   firebaseTokenRepository: IFirebaseTokenRepository;
   notificationScheduleRepository: INotificationScheduleRepository;
+  notificationDeliveryQueue: INotificationDeliveryQueue;
   fcmService: IFcmService;
-  getCurrentTime?: () => number;
 }): IScheduledNotificationService {
   const {
     firebaseTokenRepository,
     notificationScheduleRepository,
+    notificationDeliveryQueue,
     fcmService,
   } = deps;
-  const getCurrentTime = deps.getCurrentTime ?? Date.now;
 
   return {
-    async sendScheduledEventNotifications(now = new Date()) {
-      const startedAt = getCurrentTime();
+    async enqueueDueNotifications(now = new Date()) {
       const dueAt = now.toISOString();
-      let checkedEvents = 0;
-      let sent = 0;
-      let failed = 0;
-
-      while (
-        getCurrentTime() - startedAt <
-        NOTIFICATION_DELIVERY_TIME_BUDGET_MS
-      ) {
-        const schedules = await notificationScheduleRepository.claimDue(
+      const staleBefore = new Date(
+        now.getTime() - DELIVERY_LEASE_TIMEOUT_MS
+      ).toISOString();
+      const candidateIds =
+        await notificationScheduleRepository.findDeliveryCandidateIds(
           dueAt,
-          NOTIFICATION_DELIVERY_BATCH_SIZE
+          staleBefore,
+          DELIVERY_CANDIDATE_LIMIT
         );
-        if (schedules.length === 0) break;
+      const messages = chunk(candidateIds, DELIVERY_MESSAGE_SIZE).map(
+        notificationScheduleIds => ({ notificationScheduleIds })
+      );
 
-        checkedEvents += schedules.length;
-        const results = await Promise.all(
-          schedules.map(async schedule => {
-            if (schedule.is_firebase_active !== 1) {
-              await notificationScheduleRepository.markFailed(
-                schedule.notification_schedule_id,
-                'Firebase token is inactive'
-              );
-              return 'failed';
-            }
-
-            try {
-              const result = await fcmService.sendNotificationToToken({
-                token: schedule.fcm_token,
-                title: schedule.title,
-                body: schedule.body,
-                data: {
-                  type: schedule.notification_type,
-                  ...(schedule.event_id == null
-                    ? {}
-                    : { eventId: String(schedule.event_id) }),
-                },
-              });
-              await notificationScheduleRepository.markSent(
-                schedule.notification_schedule_id,
-                result.messageId
-              );
-              return 'sent';
-            } catch (error) {
-              if (shouldDeactivateToken(error)) {
-                await firebaseTokenRepository.deactivate(
-                  schedule.firebase_token_id
-                );
-              }
-              await notificationScheduleRepository.markFailed(
-                schedule.notification_schedule_id,
-                error instanceof Error ? error.message : String(error)
-              );
-              return 'failed';
-            }
-          })
-        );
-
-        for (const result of results) {
-          if (result === 'sent') {
-            sent += 1;
-          } else {
-            failed += 1;
-          }
-        }
-
-        if (schedules.length < NOTIFICATION_DELIVERY_BATCH_SIZE) {
-          break;
-        }
+      if (messages.length > 0) {
+        await notificationDeliveryQueue.enqueueMany(messages);
       }
 
       return {
-        checkedEvents,
-        sent,
-        failed,
+        queuedSchedules: candidateIds.length,
+        queuedMessages: messages.length,
+      };
+    },
+
+    async sendQueuedNotifications(notificationScheduleIds, now = new Date()) {
+      const uniqueScheduleIds = [...new Set(notificationScheduleIds)].slice(
+        0,
+        DELIVERY_MESSAGE_SIZE
+      );
+      const staleBefore = new Date(
+        now.getTime() - DELIVERY_LEASE_TIMEOUT_MS
+      ).toISOString();
+      const schedules = await notificationScheduleRepository.claimForDelivery(
+        uniqueScheduleIds,
+        now.toISOString(),
+        staleBefore
+      );
+      const results = await mapWithConcurrency(
+        schedules,
+        MAX_CONCURRENT_FCM_REQUESTS,
+        async schedule => {
+          if (schedule.is_firebase_active !== 1) {
+            await notificationScheduleRepository.markFailed(
+              schedule.notification_schedule_id,
+              'Firebase token is inactive'
+            );
+            return 'failed' as const;
+          }
+
+          let result;
+          try {
+            result = await fcmService.sendNotificationToToken({
+              token: schedule.fcm_token,
+              title: schedule.title,
+              body: schedule.body,
+              data: {
+                type: schedule.notification_type,
+                ...(schedule.event_id == null
+                  ? {}
+                  : { eventId: String(schedule.event_id) }),
+              },
+            });
+          } catch (error) {
+            if (shouldDeactivateToken(error)) {
+              await firebaseTokenRepository.deactivate(
+                schedule.firebase_token_id
+              );
+            }
+            await notificationScheduleRepository.markFailed(
+              schedule.notification_schedule_id,
+              error instanceof Error ? error.message : String(error)
+            );
+            return 'failed' as const;
+          }
+          await notificationScheduleRepository.markSent(
+            schedule.notification_schedule_id,
+            result.messageId
+          );
+          return 'sent' as const;
+        }
+      );
+
+      return {
+        checkedEvents: schedules.length,
+        sent: results.filter(result => result === 'sent').length,
+        failed: results.filter(result => result === 'failed').length,
       };
     },
   };
+}
+
+function chunk<T>(values: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let offset = 0; offset < values.length; offset += size) {
+    chunks.push(values.slice(offset, offset + size));
+  }
+  return chunks;
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  mapper: (value: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, values.length) },
+    async () => {
+      while (nextIndex < values.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(values[currentIndex]);
+      }
+    }
+  );
+  await Promise.all(workers);
+  return results;
 }
 
 function shouldDeactivateToken(error: unknown): boolean {

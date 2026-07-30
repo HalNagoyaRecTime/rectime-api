@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createScheduledNotificationService } from '../../../src/application/services/ScheduledNotificationService';
 import type { IFcmService } from '../../../src/application/services/IFcmService';
-import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
 import type { DueNotificationSchedule } from '../../../src/domain/entities/NotificationSchedule';
+import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
 import type { INotificationScheduleRepository } from '../../../src/domain/interfaces/repositories/INotificationScheduleRepository';
+import type { INotificationDeliveryQueue } from '../../../src/domain/interfaces/queues/INotificationDeliveryQueue';
 
 function buildSchedule(
   overrides: Partial<DueNotificationSchedule> = {}
@@ -31,10 +32,10 @@ function buildSchedule(
 }
 
 describe('ScheduledNotificationService', () => {
-  function setup(
-    schedules: DueNotificationSchedule[] = [],
-    getCurrentTime?: () => number
-  ) {
+  function setup(options?: {
+    candidateIds?: number[];
+    schedules?: DueNotificationSchedule[];
+  }) {
     const notificationScheduleRepository: INotificationScheduleRepository = {
       create: vi.fn(),
       findAll: vi.fn(),
@@ -44,7 +45,10 @@ describe('ScheduledNotificationService', () => {
       existsFirebaseToken: vi.fn(),
       existsEvent: vi.fn(),
       existsNotification: vi.fn(),
-      claimDue: vi.fn().mockResolvedValue(schedules),
+      findDeliveryCandidateIds: vi
+        .fn()
+        .mockResolvedValue(options?.candidateIds ?? []),
+      claimForDelivery: vi.fn().mockResolvedValue(options?.schedules ?? []),
       markSent: vi.fn(),
       markFailed: vi.fn(),
     };
@@ -52,6 +56,9 @@ describe('ScheduledNotificationService', () => {
       register: vi.fn(),
       findActiveTokens: vi.fn(),
       deactivate: vi.fn(),
+    };
+    const notificationDeliveryQueue: INotificationDeliveryQueue = {
+      enqueueMany: vi.fn(),
     };
     const fcmService: IFcmService = {
       sendTestNotification: vi.fn(),
@@ -63,40 +70,98 @@ describe('ScheduledNotificationService', () => {
       service: createScheduledNotificationService({
         notificationScheduleRepository,
         firebaseTokenRepository,
+        notificationDeliveryQueue,
         fcmService,
-        getCurrentTime,
       }),
       notificationScheduleRepository,
       firebaseTokenRepository,
+      notificationDeliveryQueue,
       fcmService,
     };
   }
 
-  it('token単位の予定を対応する端末へ送信してsentにする', async () => {
-    const { service, notificationScheduleRepository, fcmService } = setup([
-      buildSchedule(),
-    ]);
-    const result = await service.sendScheduledEventNotifications(
+  it('2200件を15件以下のQueue messageへ分割する', async () => {
+    const candidateIds = Array.from({ length: 2200 }, (_, index) => index + 1);
+    const {
+      service,
+      notificationScheduleRepository,
+      notificationDeliveryQueue,
+    } = setup({ candidateIds });
+
+    const result = await service.enqueueDueNotifications(
+      new Date('2026-07-23T09:00:00.000Z')
+    );
+
+    expect(result).toEqual({
+      queuedSchedules: 2200,
+      queuedMessages: 147,
+    });
+    expect(
+      notificationScheduleRepository.findDeliveryCandidateIds
+    ).toHaveBeenCalledWith(
+      '2026-07-23T09:00:00.000Z',
+      '2026-07-23T08:56:00.000Z',
+      5000
+    );
+    const messages = vi.mocked(notificationDeliveryQueue.enqueueMany).mock
+      .calls[0][0];
+    expect(messages).toHaveLength(147);
+    expect(
+      messages.every(
+        message =>
+          message.notificationScheduleIds.length > 0 &&
+          message.notificationScheduleIds.length <= 15
+      )
+    ).toBe(true);
+    expect(
+      messages.flatMap(message => message.notificationScheduleIds)
+    ).toEqual(candidateIds);
+  });
+
+  it('対象がない場合はQueueへ書き込まない', async () => {
+    const { service, notificationDeliveryQueue } = setup();
+
+    await expect(service.enqueueDueNotifications()).resolves.toEqual({
+      queuedSchedules: 0,
+      queuedMessages: 0,
+    });
+    expect(notificationDeliveryQueue.enqueueMany).not.toHaveBeenCalled();
+  });
+
+  it('Queueで確保した予定を対応する端末へ送信してsentにする', async () => {
+    const { service, notificationScheduleRepository, fcmService } = setup({
+      schedules: [buildSchedule()],
+    });
+
+    const result = await service.sendQueuedNotifications(
+      [1],
       new Date('2026-01-01T09:00:00.000Z')
+    );
+
+    expect(
+      notificationScheduleRepository.claimForDelivery
+    ).toHaveBeenCalledWith(
+      [1],
+      '2026-01-01T09:00:00.000Z',
+      '2026-01-01T08:56:00.000Z'
     );
     expect(fcmService.sendNotificationToToken).toHaveBeenCalledWith({
       token: 'token-a',
       title: '集合のお知らせ',
       body: '集合時刻です。',
-      data: { type: 'event_reminder', eventId: '2' },
+      data: {
+        type: 'event_reminder',
+        eventId: '2',
+      },
     });
     expect(notificationScheduleRepository.markSent).toHaveBeenCalledWith(
       1,
       'message-1'
     );
     expect(result).toEqual({ checkedEvents: 1, sent: 1, failed: 0 });
-    expect(notificationScheduleRepository.claimDue).toHaveBeenCalledWith(
-      '2026-01-01T09:00:00.000Z',
-      100
-    );
   });
 
-  it('1件が失敗しても別tokenの予定を続けて送信する', async () => {
+  it('1件が失敗しても同じmessageの残りを続けて送信する', async () => {
     const schedules = [
       buildSchedule({
         notification_schedule_id: 1,
@@ -119,12 +184,14 @@ describe('ScheduledNotificationService', () => {
       notificationScheduleRepository,
       firebaseTokenRepository,
       fcmService,
-    } = setup(schedules);
-    (fcmService.sendNotificationToToken as ReturnType<typeof vi.fn>)
+    } = setup({ schedules });
+    vi.mocked(fcmService.sendNotificationToToken)
       .mockResolvedValueOnce({ success: true, messageId: 'message-1' })
       .mockRejectedValueOnce(new Error('UNREGISTERED'))
       .mockResolvedValueOnce({ success: true, messageId: 'message-3' });
-    const result = await service.sendScheduledEventNotifications();
+
+    const result = await service.sendQueuedNotifications([1, 2, 3]);
+
     expect(fcmService.sendNotificationToToken).toHaveBeenCalledTimes(3);
     expect(firebaseTokenRepository.deactivate).toHaveBeenCalledWith(10);
     expect(notificationScheduleRepository.markFailed).toHaveBeenCalledWith(
@@ -135,10 +202,12 @@ describe('ScheduledNotificationService', () => {
   });
 
   it('無効化済みtokenは送らず予定をfailedにする', async () => {
-    const { service, notificationScheduleRepository, fcmService } = setup([
-      buildSchedule({ is_firebase_active: 0 }),
-    ]);
-    const result = await service.sendScheduledEventNotifications();
+    const { service, notificationScheduleRepository, fcmService } = setup({
+      schedules: [buildSchedule({ is_firebase_active: 0 })],
+    });
+
+    const result = await service.sendQueuedNotifications([1]);
+
     expect(fcmService.sendNotificationToToken).not.toHaveBeenCalled();
     expect(notificationScheduleRepository.markFailed).toHaveBeenCalledWith(
       1,
@@ -147,66 +216,26 @@ describe('ScheduledNotificationService', () => {
     expect(result).toEqual({ checkedEvents: 1, sent: 0, failed: 1 });
   });
 
-  it('1回の実行で2000件を100件ずつ重複なく送信する', async () => {
-    const pending = Array.from({ length: 2000 }, (_, index) =>
-      buildSchedule({
-        notification_schedule_id: index + 1,
-        firebase_token_id: index + 1,
-        fcm_token: `token-${index + 1}`,
-      })
-    );
-    const { service, notificationScheduleRepository, fcmService } = setup();
-    (
-      notificationScheduleRepository.claimDue as ReturnType<typeof vi.fn>
-    ).mockImplementation(async (_now: string, limit: number) =>
-      pending.splice(0, limit)
-    );
+  it('重複した予定IDは1回だけclaimする', async () => {
+    const { service, notificationScheduleRepository } = setup();
 
-    const result = await service.sendScheduledEventNotifications();
+    await service.sendQueuedNotifications([1, 1, 2]);
 
-    expect(result).toEqual({
-      checkedEvents: 2000,
-      sent: 2000,
-      failed: 0,
-    });
-    expect(notificationScheduleRepository.claimDue).toHaveBeenCalledTimes(21);
-    expect(fcmService.sendNotificationToToken).toHaveBeenCalledTimes(2000);
-    expect(notificationScheduleRepository.markSent).toHaveBeenCalledTimes(2000);
     expect(
-      new Set(
-        (
-          notificationScheduleRepository.markSent as ReturnType<typeof vi.fn>
-        ).mock.calls.map(([scheduleId]) => scheduleId)
-      ).size
-    ).toBe(2000);
-    expect(pending).toHaveLength(0);
+      notificationScheduleRepository.claimForDelivery
+    ).toHaveBeenCalledWith([1, 2], expect.any(String), expect.any(String));
   });
 
-  it('処理時間の上限に達した場合は次のbatchをclaimしない', async () => {
-    const schedules = Array.from({ length: 100 }, (_, index) =>
-      buildSchedule({
-        notification_schedule_id: index + 1,
-        firebase_token_id: index + 1,
-        fcm_token: `token-${index + 1}`,
-      })
-    );
-    const getCurrentTime = vi
-      .fn()
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(0)
-      .mockReturnValue(13 * 60 * 1000);
-    const { service, notificationScheduleRepository } = setup(
-      schedules,
-      getCurrentTime
-    );
-
-    const result = await service.sendScheduledEventNotifications();
-
-    expect(result).toEqual({
-      checkedEvents: 100,
-      sent: 100,
-      failed: 0,
+  it('状態保存に失敗した場合はQueue再試行のためrejectする', async () => {
+    const { service, notificationScheduleRepository } = setup({
+      schedules: [buildSchedule()],
     });
-    expect(notificationScheduleRepository.claimDue).toHaveBeenCalledTimes(1);
+    vi.mocked(notificationScheduleRepository.markSent).mockRejectedValueOnce(
+      new Error('D1 unavailable')
+    );
+
+    await expect(service.sendQueuedNotifications([1])).rejects.toThrow(
+      'D1 unavailable'
+    );
   });
 });

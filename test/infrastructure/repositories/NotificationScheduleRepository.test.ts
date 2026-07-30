@@ -86,10 +86,33 @@ describe('NotificationScheduleRepository', () => {
     ).resolves.toBe('not_found');
   });
 
-  it('期限到来したdraftをtoken情報付きで一度だけ確保する', async () => {
+  it('期限到来したdraftをQueue登録候補として取得する', async () => {
     const { schedule } = await createFixture();
-    const first = await repository.claimDue('2026-07-23T09:05:00.000Z', 100);
-    const second = await repository.claimDue('2026-07-23T09:05:00.000Z', 100);
+    await expect(
+      repository.findDeliveryCandidateIds(
+        '2026-07-23T09:05:00.000Z',
+        '2026-07-23T09:01:00.000Z',
+        5000
+      )
+    ).resolves.toEqual([schedule.notification_schedule_id]);
+    await expect(
+      repository.findById(schedule.notification_schedule_id)
+    ).resolves.toMatchObject({ send_status: 'draft' });
+  });
+
+  it('指定されたdraftをtoken情報付きで一度だけ確保する', async () => {
+    const { schedule } = await createFixture();
+    const first = await repository.claimForDelivery(
+      [schedule.notification_schedule_id],
+      '2026-07-23T09:05:00.000Z',
+      '2026-07-23T09:01:00.000Z'
+    );
+    const second = await repository.claimForDelivery(
+      [schedule.notification_schedule_id],
+      '2026-07-23T09:05:00.000Z',
+      '2026-07-23T09:01:00.000Z'
+    );
+
     expect(first).toEqual([
       expect.objectContaining({
         notification_schedule_id: schedule.notification_schedule_id,
@@ -101,58 +124,83 @@ describe('NotificationScheduleRepository', () => {
     expect(second).toEqual([]);
   });
 
-  it('期限到来した2000件を指定件数ごとに重複なく確保する', async () => {
-    const fixture = await createFixture();
-    const statements: D1PreparedStatement[] = [];
-    for (let index = 1; index < 2000; index += 1) {
-      statements.push(
-        env.DB.prepare(
-          `INSERT INTO notification_schedules (
-            created_user_id,
-            event_id,
-            notification_id,
-            firebase_token_id,
-            importance,
-            send_at
-          ) VALUES (?, ?, ?, ?, 2, ?)`
-        ).bind(
-          fixture.user!.user_id,
-          fixture.event!.event_id,
-          fixture.notification!.notification_id,
-          fixture.token!.firebase_token_id,
-          '2026-07-23T09:00:00.000Z'
-        )
-      );
-    }
-    for (let offset = 0; offset < statements.length; offset += 100) {
-      await env.DB.batch(statements.slice(offset, offset + 100));
-    }
-
-    const claimedIds: number[] = [];
-    const concurrentClaims = await Promise.all([
-      repository.claimDue('2026-07-23T09:05:00.000Z', 100),
-      repository.claimDue('2026-07-23T09:05:00.000Z', 100),
-    ]);
-    for (const claimed of concurrentClaims) {
-      expect(claimed).toHaveLength(100);
-      claimedIds.push(
-        ...claimed.map(schedule => schedule.notification_schedule_id)
-      );
-    }
-    for (let batch = 2; batch < 20; batch += 1) {
-      const claimed = await repository.claimDue(
+  it('並行するQueue messageでも同じ予定を重複確保しない', async () => {
+    const { schedule } = await createFixture();
+    const claims = await Promise.all([
+      repository.claimForDelivery(
+        [schedule.notification_schedule_id],
         '2026-07-23T09:05:00.000Z',
-        100
-      );
-      expect(claimed).toHaveLength(100);
-      claimedIds.push(
-        ...claimed.map(schedule => schedule.notification_schedule_id)
-      );
-    }
+        '2026-07-23T09:01:00.000Z'
+      ),
+      repository.claimForDelivery(
+        [schedule.notification_schedule_id],
+        '2026-07-23T09:05:00.000Z',
+        '2026-07-23T09:01:00.000Z'
+      ),
+    ]);
 
-    expect(new Set(claimedIds).size).toBe(2000);
+    expect(claims.flat()).toHaveLength(1);
+  });
+
+  it('Queue登録後に未来へ変更された予定は確保しない', async () => {
+    const { schedule } = await createFixture('2026-07-23T10:00:00.000Z');
+
     await expect(
-      repository.claimDue('2026-07-23T09:05:00.000Z', 100)
+      repository.claimForDelivery(
+        [schedule.notification_schedule_id],
+        '2026-07-23T09:05:00.000Z',
+        '2026-07-23T09:01:00.000Z'
+      )
     ).resolves.toEqual([]);
-  }, 30_000);
+  });
+
+  it('lease期限を過ぎたsendingを再取得して復旧する', async () => {
+    const { schedule } = await createFixture();
+    await env.DB.prepare(
+      `UPDATE notification_schedules
+       SET send_status = 'sending', updated_at = '2026-07-23 08:50:00'
+       WHERE notification_schedule_id = ?`
+    )
+      .bind(schedule.notification_schedule_id)
+      .run();
+
+    await expect(
+      repository.findDeliveryCandidateIds(
+        '2026-07-23T09:05:00.000Z',
+        '2026-07-23T09:01:00.000Z',
+        5000
+      )
+    ).resolves.toEqual([schedule.notification_schedule_id]);
+    await expect(
+      repository.claimForDelivery(
+        [schedule.notification_schedule_id],
+        '2026-07-23T09:05:00.000Z',
+        '2026-07-23T09:01:00.000Z'
+      )
+    ).resolves.toEqual([
+      expect.objectContaining({
+        notification_schedule_id: schedule.notification_schedule_id,
+        send_status: 'sending',
+      }),
+    ]);
+  });
+
+  it('lease期間内のsendingはQueue登録候補にしない', async () => {
+    const { schedule } = await createFixture();
+    await env.DB.prepare(
+      `UPDATE notification_schedules
+       SET send_status = 'sending', updated_at = '2026-07-23 09:04:00'
+       WHERE notification_schedule_id = ?`
+    )
+      .bind(schedule.notification_schedule_id)
+      .run();
+
+    await expect(
+      repository.findDeliveryCandidateIds(
+        '2026-07-23T09:05:00.000Z',
+        '2026-07-23T09:01:00.000Z',
+        5000
+      )
+    ).resolves.toEqual([]);
+  });
 });

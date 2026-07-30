@@ -10,6 +10,7 @@ function buildEnv(): Env {
   return {
     DB: {} as Env['DB'],
     AUTH_KV: {} as Env['AUTH_KV'],
+    NOTIFICATION_DELIVERY_QUEUE: {} as Env['NOTIFICATION_DELIVERY_QUEUE'],
     ALLOWED_ORIGINS: '',
     FIREBASE_PROJECT_ID: 'project',
     FIREBASE_CLIENT_EMAIL: 'sa@example.iam.gserviceaccount.com',
