@@ -68,9 +68,12 @@ describe('TeacherService', () => {
         buildTeacher({ teacher_id: 2, user_name: '中村先生' }),
       ];
       const repository = buildRepository({
-        findAll: vi
-          .fn()
-          .mockResolvedValue({ items: teachers, total: 2, limit: 20, offset: 0 }),
+        findAll: vi.fn().mockResolvedValue({
+          items: teachers,
+          total: 2,
+          limit: 20,
+          offset: 0,
+        }),
       });
       const service = createTeacherService(repository);
 
