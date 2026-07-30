@@ -226,6 +226,26 @@ apiV1.post('/admin/notifications', c => {
     .get('container')
     .adminNotificationController.createManualNotification(c);
 });
+apiV1.get('/admin/notifications', c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.getAdminNotifications(c);
+});
+apiV1.get('/admin/notifications/:notificationId', c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.getAdminNotificationById(c);
+});
+apiV1.put('/admin/notifications/:notificationId', c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.updateAdminNotification(c);
+});
+apiV1.delete('/admin/notifications/:notificationId', c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.deleteAdminNotification(c);
+});
 
 apiV1.post('/notifications', c => {
   return c.get('container').notificationController.createNotification(c);
