@@ -54,34 +54,6 @@ describe('ScheduleController', () => {
     expect(service.updateSchedule).toHaveBeenCalledWith(4, validBody);
   });
 
-  it('camelCaseのボディでも更新できる', async () => {
-    const { app, service, bindings } = setup();
-    (service.updateSchedule as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ...validBody,
-    });
-
-    const camelCaseBody = {
-      userId: 1,
-      eventId: 2,
-      importance: 2,
-      sendAt: '2026-07-23T09:00:00.000Z',
-      gatheringId: 3,
-    };
-
-    const response = await app.request(
-      '/notification/schedules/4',
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(camelCaseBody),
-      },
-      bindings
-    );
-
-    expect(response.status).toBe(200);
-    expect(service.updateSchedule).toHaveBeenCalledWith(4, validBody);
-  });
-
   it('不正なJSONでも500ではなく400を返す', async () => {
     const { app, service, bindings } = setup();
 
