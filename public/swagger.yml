@@ -830,6 +830,153 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /notification/schedules:
+    get:
+      tags: [Notification schedules]
+      summary: 通知予定一覧を取得する
+      parameters:
+        - name: sendStatus
+          in: query
+          schema:
+            type: string
+            enum: [draft, sending, sent, failed]
+        - name: eventId
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: createdUserId
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: firebaseTokenId
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: 通知予定一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Notification schedules]
+      summary: 通知予定を作成する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateScheduleRequest'
+      responses:
+        '201':
+          description: 作成した通知予定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateScheduleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /notification/schedules/{notificationId}:
+    parameters:
+      - name: notificationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [Notification schedules]
+      summary: 通知予定詳細を取得する
+      responses:
+        '200':
+          description: 通知予定詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSchedule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [Notification schedules]
+      summary: 通知予定を更新する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateScheduleRequest'
+      responses:
+        '200':
+          description: 更新後の通知予定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateScheduleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /notification-schedules/{id}:
     parameters:
       - name: id
@@ -1992,6 +2139,167 @@ components:
         limit:
           type: integer
         offset:
+          type: integer
+
+    ScheduleCreatedUser:
+      type: object
+      required: [user_id, user_name]
+      properties:
+        user_id:
+          type: integer
+        user_name:
+          type: string
+
+    ScheduleEvent:
+      type: object
+      required: [event_id, event_name, start_time, end_time]
+      properties:
+        event_id:
+          type: integer
+        event_name:
+          type: string
+        start_time:
+          type: string
+          description: JSTの時刻（HHMM形式）
+          example: '1030'
+        end_time:
+          type: string
+          description: JSTの時刻（HHMM形式）
+          example: '1100'
+
+    ScheduleDeliverySummary:
+      type: object
+      required: [total, draft, sending, sent, failed]
+      properties:
+        total:
+          type: integer
+        draft:
+          type: integer
+        sending:
+          type: integer
+        sent:
+          type: integer
+        failed:
+          type: integer
+
+    ScheduleNotification:
+      type: object
+      required:
+        [notification_id, notification_type, title, body, created_user, event, send_time, delivery_summary]
+      properties:
+        notification_id:
+          type: integer
+        notification_type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        created_user:
+          $ref: '#/components/schemas/ScheduleCreatedUser'
+        event:
+          $ref: '#/components/schemas/ScheduleEvent'
+        send_time:
+          type: string
+          format: date-time
+        delivery_summary:
+          $ref: '#/components/schemas/ScheduleDeliverySummary'
+
+    ScheduleListResponse:
+      type: object
+      required: [notification_schedules, total, limit, offset]
+      properties:
+        notification_schedules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleNotification'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    CreateScheduleRequest:
+      type: object
+      required: [userId, eventId, notificationId, sendAt]
+      properties:
+        userId:
+          type: integer
+          minimum: 1
+        eventId:
+          type: integer
+          minimum: 1
+        notificationId:
+          type: integer
+          minimum: 1
+        importance:
+          type: integer
+          enum: [2]
+          default: 2
+        sendAt:
+          type: string
+          format: date-time
+          description: UTCオフセットを含むISO 8601形式
+          example: '2026-07-16T09:00:00.000Z'
+
+    CreateScheduleResponse:
+      type: object
+      required: [user_id, event_id, notification_id, firebase_token_id, importance, send_at]
+      properties:
+        user_id:
+          type: integer
+        event_id:
+          type: integer
+        notification_id:
+          type: integer
+        firebase_token_id:
+          type: integer
+        importance:
+          type: integer
+          enum: [2]
+        send_at:
+          type: string
+          format: date-time
+
+    UpdateScheduleRequest:
+      type: object
+      required: [userId, eventId, gatheringId, sendAt]
+      properties:
+        userId:
+          type: integer
+          minimum: 1
+        eventId:
+          type: integer
+          minimum: 1
+        gatheringId:
+          type: integer
+          minimum: 1
+        importance:
+          type: integer
+          enum: [2]
+          default: 2
+        sendAt:
+          type: string
+          format: date-time
+          description: UTCオフセットを含むISO 8601形式
+          example: '2026-07-16T09:00:00.000Z'
+
+    UpdateScheduleResponse:
+      type: object
+      required: [user_id, event_id, importance, send_at, gathering_id]
+      properties:
+        user_id:
+          type: integer
+        event_id:
+          type: integer
+        importance:
+          type: integer
+          enum: [2]
+        send_at:
+          type: string
+          format: date-time
+        gathering_id:
           type: integer
 
     Notification:
