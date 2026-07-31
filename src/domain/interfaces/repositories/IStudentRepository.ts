@@ -20,6 +20,9 @@ export interface IStudentRepository {
     offset: number;
   }) => Promise<{ students: StudentEntity[]; total: number }>;
   findByStudentNum: (studentNum: string) => Promise<StudentEntity | null>;
+  findExistingStudentNumbers: (
+    studentNumbers: string[]
+  ) => Promise<Set<string>>;
   classRoomExists: (classRoomId: number) => Promise<boolean>;
   create: (student: StudentWriteDTO) => Promise<StudentEntity>;
   update: (

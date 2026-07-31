@@ -18,29 +18,46 @@ async function findImportErrors(
   classRoomRepository: IClassRoomRepository
 ): Promise<ClassRoomImportRowError[]> {
   const seenInFile = new Set<string>();
+  const fileDuplicateRowIndexes = new Set<number>();
   const errors: ClassRoomImportRowError[] = [];
+  const codesToCheck: string[] = [];
+
+  const pushError = (
+    rowIndex: number,
+    row: ClassRoomImportRow,
+    reason: ClassRoomImportErrorReason
+  ) => {
+    errors.push({
+      row_index: rowIndex,
+      class_code: row.class_code,
+      class_name: row.class_name,
+      reason,
+    });
+  };
 
   for (const [rowIndex, row] of rows.entries()) {
-    const pushError = (reason: ClassRoomImportErrorReason) => {
-      errors.push({
-        row_index: rowIndex,
-        class_code: row.class_code,
-        class_name: row.class_name,
-        reason,
-      });
-    };
-
     if (seenInFile.has(row.class_code)) {
-      pushError('class_code_duplicate_in_file');
+      fileDuplicateRowIndexes.add(rowIndex);
+      pushError(rowIndex, row, 'class_code_duplicate_in_file');
       continue;
     }
     seenInFile.add(row.class_code);
+    codesToCheck.push(row.class_code);
+  }
 
-    if (await classRoomRepository.findByCode(row.class_code)) {
-      pushError('class_code_duplicate_in_db');
+  const existingCodes =
+    await classRoomRepository.findExistingClassCodes(codesToCheck);
+
+  for (const [rowIndex, row] of rows.entries()) {
+    if (fileDuplicateRowIndexes.has(rowIndex)) {
+      continue;
+    }
+    if (existingCodes.has(row.class_code)) {
+      pushError(rowIndex, row, 'class_code_duplicate_in_db');
     }
   }
 
+  errors.sort((a, b) => a.row_index - b.row_index);
   return errors;
 }
 

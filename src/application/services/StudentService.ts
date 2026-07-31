@@ -31,35 +31,48 @@ async function findImportErrors(
   studentRepository: IStudentRepository
 ): Promise<StudentImportRowError[]> {
   const seenInFile = new Set<string>();
+  const fileDuplicateRowIndexes = new Set<number>();
   const errors: StudentImportRowError[] = [];
+  const numbersToCheck: string[] = [];
+
+  const pushError = (
+    rowIndex: number,
+    row: StudentImportRow,
+    reason: StudentImportErrorReason
+  ) => {
+    errors.push({
+      row_index: rowIndex,
+      class_code: row.class_code,
+      attendance_number: row.attendance_number,
+      student_id_number: row.student_id_number,
+      display_name: `${row.last_name}${row.first_name}`,
+      reason,
+    });
+  };
 
   for (const [rowIndex, row] of rows.entries()) {
-    const displayName = `${row.last_name}${row.first_name}`;
-    const pushError = (reason: StudentImportErrorReason) => {
-      errors.push({
-        row_index: rowIndex,
-        class_code: row.class_code,
-        attendance_number: row.attendance_number,
-        student_id_number: row.student_id_number,
-        display_name: displayName,
-        reason,
-      });
-    };
-
     if (seenInFile.has(row.student_id_number)) {
-      pushError('student_id_number_duplicate_in_file');
+      fileDuplicateRowIndexes.add(rowIndex);
+      pushError(rowIndex, row, 'student_id_number_duplicate_in_file');
       continue;
     }
     seenInFile.add(row.student_id_number);
+    numbersToCheck.push(row.student_id_number);
+  }
 
-    const existing = await studentRepository.findByStudentNum(
-      row.student_id_number
-    );
-    if (existing) {
-      pushError('student_id_number_duplicate_in_db');
+  const existingNumbers =
+    await studentRepository.findExistingStudentNumbers(numbersToCheck);
+
+  for (const [rowIndex, row] of rows.entries()) {
+    if (fileDuplicateRowIndexes.has(rowIndex)) {
+      continue;
+    }
+    if (existingNumbers.has(row.student_id_number)) {
+      pushError(rowIndex, row, 'student_id_number_duplicate_in_db');
     }
   }
 
+  errors.sort((a, b) => a.row_index - b.row_index);
   return errors;
 }
 
@@ -147,20 +160,14 @@ export function createStudentService(
         };
       }
 
-      const newClassRooms: { classCode: string; className: string }[] = [];
-      const seenCodes = new Set<string>();
-      for (const row of input.rows) {
-        if (seenCodes.has(row.class_code)) {
-          continue;
-        }
-        seenCodes.add(row.class_code);
-        if (!(await classRoomRepository.findByCode(row.class_code))) {
-          newClassRooms.push({
-            classCode: row.class_code,
-            className: row.class_code,
-          });
-        }
-      }
+      const uniqueClassCodes = Array.from(
+        new Set(input.rows.map(row => row.class_code))
+      );
+      const existingClassCodes =
+        await classRoomRepository.findExistingClassCodes(uniqueClassCodes);
+      const newClassRooms = uniqueClassCodes
+        .filter(classCode => !existingClassCodes.has(classCode))
+        .map(classCode => ({ classCode, className: classCode }));
 
       await studentRepository.createMany({
         newClassRooms,

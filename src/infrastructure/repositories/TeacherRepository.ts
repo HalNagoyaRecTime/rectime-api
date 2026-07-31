@@ -14,6 +14,9 @@ import {
   ITeacherRepository,
   NewTeacherInput,
 } from '../../domain/interfaces/repositories/ITeacherRepository';
+import { chunkArray } from './chunk';
+
+const D1_MAX_BOUND_PARAMETERS = 100;
 
 type ReturnedUserRow = {
   user_id: number;
@@ -223,21 +226,59 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         return;
       }
 
+      const [maxUser, maxTeacher] = await Promise.all([
+        db
+          .prepare('SELECT COALESCE(MAX(user_id), 0) AS max_id FROM users')
+          .first<{ max_id: number }>(),
+        db
+          .prepare(
+            'SELECT COALESCE(MAX(teacher_id), 0) AS max_id FROM teachers'
+          )
+          .first<{ max_id: number }>(),
+      ]);
+      const startUserId = (maxUser?.max_id ?? 0) + 1;
+      const startTeacherId = (maxTeacher?.max_id ?? 0) + 1;
+
       const statements: D1PreparedStatement[] = [];
-      for (const input of inputs) {
+      const idChunkSize = Math.floor(D1_MAX_BOUND_PARAMETERS / 2);
+
+      for (const chunk of chunkArray(
+        inputs.map((input, index) => ({
+          userId: startUserId + index,
+          displayName: input.displayName,
+        })),
+        idChunkSize
+      )) {
+        const placeholders = chunk
+          .map(() => '(?, ?, CURRENT_TIMESTAMP)')
+          .join(', ');
+        const values = chunk.flatMap(item => [item.userId, item.displayName]);
         statements.push(
           db
             .prepare(
-              `INSERT INTO users (user_name, updated_at)
-               VALUES (?, CURRENT_TIMESTAMP)`
+              `INSERT INTO users (user_id, user_name, updated_at) VALUES ${placeholders}`
             )
-            .bind(input.displayName)
+            .bind(...values)
         );
+      }
+
+      for (const chunk of chunkArray(
+        inputs.map((_, index) => ({
+          teacherId: startTeacherId + index,
+          userId: startUserId + index,
+        })),
+        idChunkSize
+      )) {
+        const placeholders = chunk
+          .map(() => '(?, ?, CURRENT_TIMESTAMP)')
+          .join(', ');
+        const values = chunk.flatMap(item => [item.teacherId, item.userId]);
         statements.push(
-          db.prepare(
-            `INSERT INTO teachers (user_id, updated_at)
-             VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)`
-          )
+          db
+            .prepare(
+              `INSERT INTO teachers (teacher_id, user_id, updated_at) VALUES ${placeholders}`
+            )
+            .bind(...values)
         );
       }
 

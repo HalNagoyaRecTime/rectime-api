@@ -308,5 +308,16 @@ describe('TeacherRepository', () => {
       const after = (await repo.findAll()).total;
       expect(after).toBe(before);
     });
+
+    it('2,000件の教官をまとめて作成できる', async () => {
+      const inputs = Array.from({ length: 2000 }, (_, i) => ({
+        displayName: `一括教官BULK2K${i}`,
+      }));
+
+      await repo.createMany(inputs);
+
+      const result = await repo.findAll({ userName: '一括教官BULK2K' });
+      expect(result.total).toBe(2000);
+    });
   });
 });

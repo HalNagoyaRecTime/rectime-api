@@ -7,6 +7,7 @@ function repository(): IClassRoomRepository {
     findAll: vi.fn(),
     findById: vi.fn(),
     findByCode: vi.fn().mockResolvedValue(null),
+    findExistingClassCodes: vi.fn().mockResolvedValue(new Set()),
     create: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),
@@ -159,13 +160,9 @@ describe('ClassRoomService', () => {
 
     it('既存DBとクラス記号が重複する行はエラーとして報告する', async () => {
       const repo = repository();
-      (repo.findByCode as ReturnType<typeof vi.fn>).mockResolvedValue({
-        class_room_id: 1,
-        class_code: '13C',
-        class_name: '3年Cクラス',
-        student_count: 0,
-        teacher: null,
-      });
+      (
+        repo.findExistingClassCodes as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(new Set(['13C']));
       const service = createClassRoomService(repo);
 
       const result = await service.validateClassRoomImport({
@@ -204,6 +201,29 @@ describe('ClassRoomService', () => {
         }),
       ]);
     });
+
+    it('2,000件の検査でも、既存クラスコードの問い合わせは1回にまとめる(D1のクエリ数上限対策)', async () => {
+      const repo = repository();
+      const service = createClassRoomService(repo);
+
+      const rows = Array.from({ length: 2000 }, (_, i) => ({
+        class_code: `C${i}`,
+        class_name: `クラス${i}`,
+      }));
+
+      const result = await service.validateClassRoomImport({ rows });
+
+      expect(result).toEqual({
+        total: 2000,
+        success_count: 2000,
+        error_count: 0,
+        errors: [],
+      });
+      const findExistingClassCodes =
+        repo.findExistingClassCodes as ReturnType<typeof vi.fn>;
+      expect(findExistingClassCodes).toHaveBeenCalledTimes(1);
+      expect(findExistingClassCodes.mock.calls[0][0]).toHaveLength(2000);
+    });
   });
 
   describe('commitClassRoomImport', () => {
@@ -233,13 +253,9 @@ describe('ClassRoomService', () => {
 
     it('クラス記号が重複する行がある場合は1件も登録しない', async () => {
       const repo = repository();
-      (repo.findByCode as ReturnType<typeof vi.fn>).mockResolvedValue({
-        class_room_id: 1,
-        class_code: '13C',
-        class_name: '3年Cクラス',
-        student_count: 0,
-        teacher: null,
-      });
+      (
+        repo.findExistingClassCodes as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(new Set(['13C']));
       const service = createClassRoomService(repo);
 
       const result = await service.commitClassRoomImport({
