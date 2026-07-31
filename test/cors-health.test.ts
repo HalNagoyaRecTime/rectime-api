@@ -29,6 +29,47 @@ describe('通知配信の実行経路', () => {
   });
 });
 
+describe('集合APIの実ルーティング', () => {
+  it.each([
+    ['GET', '/api/v1/gathering-groups'],
+    ['POST', '/api/v1/gathering-groups'],
+    ['GET', '/api/v1/gathering-groups/1/members'],
+    ['POST', '/api/v1/gathering-groups/1/members'],
+    ['DELETE', '/api/v1/gathering-groups/1/members/1'],
+  ])('旧gathering-groups APIを公開しない（%s %s）', async (method, path) => {
+    const res = await app.fetch(
+      new Request(`http://example.com${path}`, { method }),
+      env
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it('集合ID配下のメンバーAPIは公開されているが認証が必要', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/api/v1/gatherings/999999/members'),
+      env
+    );
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
+  });
+
+  it('競技ID配下の集合一覧APIは公開されているが認証が必要', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/api/v1/events/999999/gatherings'),
+      env
+    );
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
+  });
+});
+
 describe('CORS middleware', () => {
   it('ALLOWED_ORIGINS に含まれるオリジンには Access-Control-Allow-Origin を付与する', async () => {
     const res = await app.fetch(

@@ -8,9 +8,10 @@ import { createClassRoomRepository } from '../infrastructure/repositories/ClassR
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
 import { createNotificationRepository } from '../infrastructure/repositories/NotificationRepository';
+import { createAdminNotificationRepository } from '../infrastructure/repositories/AdminNotificationRepository';
+import { createAdminNotificationManagementRepository } from '../infrastructure/repositories/AdminNotificationManagementRepository';
 import { createMobileNotificationRepository } from '../infrastructure/repositories/MobileNotificationRepository';
 import { createGatheringSpotRepository } from '../infrastructure/repositories/GatheringSpotRepository';
-import { createGatheringGroupRepository } from '../infrastructure/repositories/GatheringGroupRepository';
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
 import { createStudentService } from '../application/services/StudentService';
@@ -24,9 +25,10 @@ import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
 import { createNotificationScheduleService } from '../application/services/NotificationScheduleService';
 import { createNotificationService } from '../application/services/NotificationService';
+import { createAdminNotificationService } from '../application/services/AdminNotificationService';
+import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
 import { createGatheringSpotService } from '../application/services/GatheringSpotService';
-import { createGatheringGroupService } from '../application/services/GatheringGroupService';
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createGatheringService } from '../application/services/GatheringService';
 import { createStudentController } from '../presentation/controllers/StudentController';
@@ -37,10 +39,11 @@ import { createEventScheduleController } from '../presentation/controllers/Event
 import { createClassRoomController } from '../presentation/controllers/ClassRoomController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
+import { createAdminNotificationController } from '../presentation/controllers/AdminNotificationController';
+import { createAdminNotificationManagementController } from '../presentation/controllers/AdminNotificationManagementController';
 import { createNotificationScheduleController } from '../presentation/controllers/NotificationScheduleController';
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
-import { createGatheringGroupController } from '../presentation/controllers/GatheringGroupController';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createGatheringController } from '../presentation/controllers/GatheringController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
@@ -62,9 +65,11 @@ export function createDIContainer(env: Env) {
   const notificationScheduleRepository =
     createNotificationScheduleRepository(db);
   const notificationRepository = createNotificationRepository(db);
+  const adminNotificationRepository = createAdminNotificationRepository(db);
+  const adminNotificationManagementRepository =
+    createAdminNotificationManagementRepository(db);
   const mobileNotificationRepository = createMobileNotificationRepository(db);
   const gatheringSpotRepository = createGatheringSpotRepository(db);
-  const gatheringGroupRepository = createGatheringGroupRepository(db);
   const gatheringGroupMemberRepository =
     createGatheringGroupMemberRepository(db);
   const gatheringRepository = createGatheringRepository(db);
@@ -101,14 +106,21 @@ export function createDIContainer(env: Env) {
     userRepository
   );
   const notificationService = createNotificationService(notificationRepository);
+  const adminNotificationService = createAdminNotificationService(
+    adminNotificationRepository,
+    userRepository
+  );
+  const adminNotificationManagementService =
+    createAdminNotificationManagementService(
+      adminNotificationManagementRepository,
+      adminNotificationRepository,
+      userRepository
+    );
   const mobileNotificationService = createMobileNotificationService(
     mobileNotificationRepository
   );
   const gatheringSpotService = createGatheringSpotService(
     gatheringSpotRepository
-  );
-  const gatheringGroupService = createGatheringGroupService(
-    gatheringGroupRepository
   );
   const gatheringGroupMemberService = createGatheringGroupMemberService(
     gatheringGroupMemberRepository
@@ -129,6 +141,13 @@ export function createDIContainer(env: Env) {
     fcmService,
     notificationService
   );
+  const adminNotificationController = createAdminNotificationController(
+    adminNotificationService
+  );
+  const adminNotificationManagementController =
+    createAdminNotificationManagementController(
+      adminNotificationManagementService
+    );
   const notificationScheduleController = createNotificationScheduleController(
     notificationScheduleService
   );
@@ -137,9 +156,6 @@ export function createDIContainer(env: Env) {
   );
   const gatheringSpotController =
     createGatheringSpotController(gatheringSpotService);
-  const gatheringGroupController = createGatheringGroupController(
-    gatheringGroupService
-  );
   const gatheringGroupMemberController = createGatheringGroupMemberController(
     gatheringGroupMemberService
   );
@@ -155,11 +171,12 @@ export function createDIContainer(env: Env) {
     classRoomController,
     firebaseTokenController,
     notificationController,
+    adminNotificationController,
+    adminNotificationManagementController,
     notificationScheduleController,
     mobileNotificationController,
     scheduledNotificationService,
     gatheringSpotController,
-    gatheringGroupController,
     gatheringGroupMemberController,
     gatheringController,
   };

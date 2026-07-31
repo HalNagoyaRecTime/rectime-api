@@ -241,6 +241,21 @@ describe('NotificationController', () => {
       expect(res.status).toBe(400);
     });
 
+    it('不正なJSONでは400を返す', async () => {
+      const { app, fcmService } = setup();
+
+      const res = await app.request('/notifications/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{',
+      });
+
+      expect(res.status).toBe(400);
+      const responseBody = (await res.json()) as { error: string };
+      expect(responseBody.error).toBe('Invalid notification request body');
+      expect(fcmService.sendTestNotification).not.toHaveBeenCalled();
+    });
+
     it('サービスが例外を投げた場合は 500 と details を返す', async () => {
       const { app, fcmService } = setup();
       (

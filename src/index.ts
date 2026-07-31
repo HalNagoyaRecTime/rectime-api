@@ -81,10 +81,11 @@ app.get('/', c => {
       events: '/api/v1/events',
       classRooms: '/api/v1/classrooms',
       gatheringSpots: '/api/v1/gathering-spots',
-      gatheringGroups: '/api/v1/gathering-groups',
       gatherings: '/api/v1/gatherings',
+      gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
       firebaseTokens: '/api/v1/firebase-tokens',
       notifications: '/api/v1/notifications',
+      adminNotifications: '/api/v1/admin/notifications',
       myNotifications: '/api/v1/me/notifications',
       testNotification: '/api/v1/notifications/test',
       notificationSchedules: '/api/v1/notification-schedules',
@@ -146,6 +147,9 @@ apiV1.get('/events', requireAuth, c => {
 apiV1.get('/events/:eventId', requireAuth, c => {
   return c.get('container').eventController.getEventById(c);
 });
+apiV1.get('/events/:eventId/gatherings', requireAuth, c => {
+  return c.get('container').gatheringController.getGatheringsByEventId(c);
+});
 apiV1.post('/events', requireAuth, c => {
   return c.get('container').eventController.createEvent(c);
 });
@@ -187,35 +191,22 @@ apiV1.put('/gathering-spots/:gatheringSpotId', requireAuth, c => {
   return c.get('container').gatheringSpotController.updateGatheringSpot(c);
 });
 
-// Gathering group routes
-apiV1.get('/gathering-groups', requireAuth, c => {
-  return c.get('container').gatheringGroupController.getAllGatheringGroups(c);
-});
-apiV1.post('/gathering-groups', requireAuth, c => {
-  return c.get('container').gatheringGroupController.createGatheringGroup(c);
-});
-apiV1.delete('/gathering-groups/:gatheringGroupId', requireAuth, c => {
-  return c.get('container').gatheringGroupController.deleteGatheringGroup(c);
-});
-apiV1.get('/gathering-groups/:gatheringGroupId/members', requireAuth, c => {
+// Gathering member routes
+apiV1.get('/gatherings/:gatheringId/members', requireAuth, c => {
   return c
     .get('container')
-    .gatheringGroupMemberController.getGatheringGroupMembers(c);
+    .gatheringGroupMemberController.getGatheringMembers(c);
 });
-apiV1.post('/gathering-groups/:gatheringGroupId/members', requireAuth, c => {
+apiV1.post('/gatherings/:gatheringId/members', requireAuth, c => {
   return c
     .get('container')
-    .gatheringGroupMemberController.addGatheringGroupMember(c);
+    .gatheringGroupMemberController.addGatheringMember(c);
 });
-apiV1.delete(
-  '/gathering-groups/:gatheringGroupId/members/:userId',
-  requireAuth,
-  c => {
-    return c
-      .get('container')
-      .gatheringGroupMemberController.removeGatheringGroupMember(c);
-  }
-);
+apiV1.delete('/gatherings/:gatheringId/members/:userId', requireAuth, c => {
+  return c
+    .get('container')
+    .gatheringGroupMemberController.removeGatheringMember(c);
+});
 
 // Gathering routes
 apiV1.get('/gatherings', requireAuth, c => {
@@ -234,6 +225,32 @@ apiV1.post('/firebase-tokens', requireAuth, c => {
 });
 
 // Notification routes
+apiV1.post('/admin/notifications', requireAuth, c => {
+  return c
+    .get('container')
+    .adminNotificationController.createManualNotification(c);
+});
+apiV1.get('/admin/notifications', requireAuth, c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.getAdminNotifications(c);
+});
+apiV1.get('/admin/notifications/:notificationId', requireAuth, c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.getAdminNotificationById(c);
+});
+apiV1.put('/admin/notifications/:notificationId', requireAuth, c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.updateAdminNotification(c);
+});
+apiV1.delete('/admin/notifications/:notificationId', requireAuth, c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.deleteAdminNotification(c);
+});
+
 apiV1.post('/notifications', requireAuth, c => {
   return c.get('container').notificationController.createNotification(c);
 });

@@ -68,9 +68,12 @@ describe('TeacherService', () => {
         buildTeacher({ teacher_id: 2, user_name: '中村先生' }),
       ];
       const repository = buildRepository({
-        findAll: vi
-          .fn()
-          .mockResolvedValue({ items: teachers, total: 2, page: 1, limit: 20 }),
+        findAll: vi.fn().mockResolvedValue({
+          items: teachers,
+          total: 2,
+          limit: 20,
+          offset: 0,
+        }),
       });
       const service = createTeacherService(repository);
 
@@ -82,16 +85,15 @@ describe('TeacherService', () => {
         '中村先生',
       ]);
       expect(result.total).toBe(2);
-      expect(result.page).toBe(1);
       expect(result.limit).toBe(20);
-      expect(result.total_pages).toBe(1);
+      expect(result.offset).toBe(0);
     });
 
     it('検索条件をリポジトリに渡す', async () => {
       const repository = buildRepository({
         findAll: vi
           .fn()
-          .mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 }),
+          .mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       });
       const service = createTeacherService(repository);
 
@@ -100,29 +102,16 @@ describe('TeacherService', () => {
       expect(repository.findAll).toHaveBeenCalledWith({ userName: '山田' });
     });
 
-    it('リポジトリが空件数を返す場合は空配列と total_pages=0 を返す', async () => {
+    it('リポジトリが空件数を返す場合は空配列を返す', async () => {
       const repository = buildRepository({
         findAll: vi
           .fn()
-          .mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 }),
+          .mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       });
       const service = createTeacherService(repository);
 
       const result = await service.getAllTeachers();
       expect(result.items).toEqual([]);
-      expect(result.total_pages).toBe(0);
-    });
-
-    it('total と limit から total_pages を切り上げで計算する', async () => {
-      const repository = buildRepository({
-        findAll: vi
-          .fn()
-          .mockResolvedValue({ items: [], total: 21, page: 1, limit: 20 }),
-      });
-      const service = createTeacherService(repository);
-
-      const result = await service.getAllTeachers();
-      expect(result.total_pages).toBe(2);
     });
   });
 
