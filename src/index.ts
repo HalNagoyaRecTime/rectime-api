@@ -264,10 +264,10 @@ apiV1.put('/notifications/:id', requireAuth, c => {
   return c.get('container').notificationController.updateNotification(c);
 });
 
-apiV1.get('/me/notifications', c => {
+apiV1.get('/me/notifications', requireAuth, c => {
   return c.get('container').mobileNotificationController.getNotifications(c);
 });
-apiV1.get('/me/notifications/:notificationId', c => {
+apiV1.get('/me/notifications/:notificationId', requireAuth, c => {
   return c.get('container').mobileNotificationController.getNotificationById(c);
 });
 
