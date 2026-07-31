@@ -30,7 +30,10 @@ import {
 } from '../../../domain/auth/types';
 import type { ContainerVariables } from '../../middleware/diContainer';
 
-const microsoft = new Hono<{ Bindings: Bindings; Variables: ContainerVariables }>();
+const microsoft = new Hono<{
+  Bindings: Bindings;
+  Variables: ContainerVariables;
+}>();
 
 // GET /auth/microsoft/login
 microsoft.get('/login', async c => {

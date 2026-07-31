@@ -19,7 +19,10 @@ import {
   getSessionTtlSeconds,
 } from '../../application/services/authService';
 
-export type AppContext = Context<{ Bindings: Bindings; Variables: ContainerVariables }>;
+export type AppContext = Context<{
+  Bindings: Bindings;
+  Variables: ContainerVariables;
+}>;
 
 export function errorResponse(
   c: AppContext,
@@ -72,7 +75,6 @@ export function hasMinimumDecodedBytes(
     return false;
   }
 }
-
 
 export function userResponse(
   user: {

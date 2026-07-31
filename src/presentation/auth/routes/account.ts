@@ -31,7 +31,10 @@ import {
 } from '../../../domain/auth/types';
 import { GRAPH_ME_PHOTO_URL } from '../../../infrastructure/auth/microsoftClient';
 
-const account = new Hono<{ Bindings: Bindings; Variables: ContainerVariables }>();
+const account = new Hono<{
+  Bindings: Bindings;
+  Variables: ContainerVariables;
+}>();
 
 // GET /auth/me
 account.get('/me', async c => {
@@ -97,7 +100,6 @@ account.get('/me', async c => {
       'セッションの有効期限が切れました。'
     );
   }
-
 
   const student = await studentService.getByUserId(Number(session.user_id));
   const categories = await getUserCategories(c, session.user_id);
