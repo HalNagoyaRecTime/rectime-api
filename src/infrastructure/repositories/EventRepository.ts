@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/d1';
-import { and, asc, count, eq, sql, SQL } from 'drizzle-orm';
+import { and, asc, count, eq, SQL } from 'drizzle-orm';
 import * as schema from '../database/schema';
 import { events, gatherings, notification_schedules } from '../database/schema';
 
@@ -86,26 +86,6 @@ export function createEventRepository(db: D1Database): IEventRepository {
         .get();
       if (!created) throw new Error('Failed to create event');
       return toEntity(created);
-    },
-
-    async update(
-      id: number,
-      event: EventWriteInput
-    ): Promise<EventEntity | null> {
-      const updated = await orm
-        .update(events)
-        .set({
-          name: event.name,
-          ruleText: event.ruleText,
-          venue: event.venue,
-          startTime: event.startTime,
-          endTime: event.endTime,
-          updatedAt: sql`CURRENT_TIMESTAMP`,
-        })
-        .where(eq(events.id, id))
-        .returning()
-        .get();
-      return updated ? toEntity(updated) : null;
     },
 
     async delete(id: number): Promise<boolean> {
