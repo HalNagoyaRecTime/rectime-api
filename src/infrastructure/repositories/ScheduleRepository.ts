@@ -10,7 +10,7 @@ import {
   gatherings,
   gathering_group_members,
 } from '../database/schema';
-import { sql, eq, inArray } from 'drizzle-orm';
+import { sql, eq, inArray, and } from 'drizzle-orm';
 
 import type { D1Database } from '@cloudflare/workers-types';
 import type {
@@ -20,7 +20,6 @@ import type {
   ScheduleUpdateEntity,
 } from '../../domain/entities/Schedule';
 import type { IScheduleRepository } from '../../domain/interfaces/repositories/IScheduleRepository';
-import { HttpError } from '../../domain/entities/Schedule';
 
 type ScheduleRow = {
   notification_id: number;
@@ -280,17 +279,14 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
       notificationId: number,
       scheduleUpdate: ScheduleUpdateEntity
     ): Promise<ScheduleUpdateEntity> {
-      const checkSchedule = await orm
+      const checkSchedules = await orm
         .select({ send_status: notification_schedules.sendStatus })
         .from(notification_schedules)
         .where(eq(notification_schedules.notificationId, notificationId))
-        .get();
+        .all();
 
-      if (checkSchedule?.send_status !== 'draft') {
-        throw new HttpError(
-          409,
-          'Only schedules with "draft" status can be updated.'
-        );
+      if (checkSchedules.some(s => s.send_status !== 'draft')) {
+        throw new Error('Only schedules with "draft" status can be updated.');
       }
 
       const userIdsRow = await orm
@@ -302,7 +298,12 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
         )
         .leftJoin(events, eq(gatherings.eventId, events.id))
         .leftJoin(users, eq(gathering_group_members.userId, users.id))
-        .where(eq(events.id, scheduleUpdate.event_id))
+        .where(
+          eq(
+            gathering_group_members.gatheringId,
+            scheduleUpdate.new_gathering_id
+          )
+        )
         .all();
 
       const userIds = userIdsRow
@@ -312,7 +313,14 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
       const tokenRows = await orm
         .select({ firebase_token_id: firebase_tokens.firebaseTokenId })
         .from(firebase_tokens)
-        .where(inArray(firebase_tokens.userId, userIds))
+        .innerJoin(users, eq(firebase_tokens.userId, users.id))
+        .where(
+          and(
+            inArray(firebase_tokens.userId, userIds),
+            eq(firebase_tokens.isFirebaseActive, 1),
+            eq(users.isLiveActive, 1)
+          )
+        )
         .all();
 
       const firebaseTokenIds = tokenRows
@@ -324,7 +332,7 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
       const statements = [
         db
           .prepare(
-            'DELETE FROM notification_schedules WHERE notification_id = ?'
+            'DELETE FROM notification_schedules WHERE notification_id = ? and send_status = "draft"'
           )
           .bind(notificationId),
       ];
@@ -346,12 +354,12 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
                  ) VALUES (?, ?, ?, ?, 'draft', NULL, ?, ?)`
               )
               .bind(
-                scheduleUpdate.user_id,
-                scheduleUpdate.event_id,
+                scheduleUpdate.create_user_id,
+                scheduleUpdate.new_event_id,
                 notificationId,
                 tokenId,
-                scheduleUpdate.importance,
-                scheduleUpdate.send_at
+                scheduleUpdate.new_importance,
+                scheduleUpdate.new_send_at
               )
           );
         }
