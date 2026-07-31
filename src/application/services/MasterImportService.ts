@@ -236,18 +236,17 @@ export function createMasterImportService(
 
       if (commitResult.error_count > 0) {
         await lockStub.releaseLock();
-        const sessionWithNewErrors: MasterImportSession = {
+        const sessionForResponse: MasterImportSession = {
           ...session,
           error_count: commitResult.error_count,
           errors: commitResult.errors,
         };
-        await saveMasterImportSession(kv, sessionWithNewErrors);
         return {
           status: 'has_errors',
           session: toDTO(
-            sessionWithNewErrors,
+            sessionForResponse,
             0,
-            sessionWithNewErrors.rows.length || 1
+            sessionForResponse.rows.length || 1
           ),
         };
       }
