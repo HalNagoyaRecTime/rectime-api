@@ -14,6 +14,7 @@ import { createMobileNotificationRepository } from '../infrastructure/repositori
 import { createGatheringSpotRepository } from '../infrastructure/repositories/GatheringSpotRepository';
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
+import { createScheduleRepository } from '../infrastructure/repositories/ScheduleRepository';
 import { createStudentService } from '../application/services/StudentService';
 import { createStaffService } from '../application/services/StaffService';
 import { createTeacherService } from '../application/services/TeacherService';
@@ -31,6 +32,7 @@ import { createMobileNotificationService } from '../application/services/MobileN
 import { createGatheringSpotService } from '../application/services/GatheringSpotService';
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createGatheringService } from '../application/services/GatheringService';
+import { createScheduleService } from '../application/services/ScheduleService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createStaffController } from '../presentation/controllers/StaffController';
 import { createTeacherController } from '../presentation/controllers/TeacherController';
@@ -46,14 +48,10 @@ import { createMobileNotificationController } from '../presentation/controllers/
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createGatheringController } from '../presentation/controllers/GatheringController';
+import { createScheduleController } from '../presentation/controllers/ScheduleController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createAuthService } from '../application/services/authService';
 import type { Env } from '../lib/env';
-
-// いったんわかりやすいようにここに配置後で入れる
-import { createScheduleRepository } from '../infrastructure/repositories/ScheduleRepository';
-import { createScheduleService } from '../application/services/ScheduleService';
-import { createScheduleController } from '../presentation/controllers/ScheduleController';
 
 export function createDIContainer(env: Env) {
   const db = getDb(env);
@@ -78,7 +76,7 @@ export function createDIContainer(env: Env) {
   const gatheringGroupMemberRepository =
     createGatheringGroupMemberRepository(db);
   const gatheringRepository = createGatheringRepository(db);
-  const scheduleRepository = createScheduleRepository(db); // いったんわかりやすいようにここに配置後で入れる
+  const scheduleRepository = createScheduleRepository(db);
 
   // Services
   const authService = createAuthService(userRepository, env.AUTH_KV);
@@ -167,7 +165,7 @@ export function createDIContainer(env: Env) {
     gatheringGroupMemberService
   );
   const gatheringController = createGatheringController(gatheringService);
-  const scheduleController = createScheduleController(scheduleService); // いったんわかりやすいようにここに配置後で入れる
+  const scheduleController = createScheduleController(scheduleService);
 
   return {
     authService,
@@ -187,7 +185,7 @@ export function createDIContainer(env: Env) {
     gatheringSpotController,
     gatheringGroupMemberController,
     gatheringController,
-    scheduleController, // いったんわかりやすいようにここに配置後で入れる
+    scheduleController,
   };
 }
 
