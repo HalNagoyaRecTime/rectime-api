@@ -7,6 +7,8 @@ import {
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
+const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 3600;
+const ACCESS_TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
 type FirebaseConfig = {
   projectId: string;
@@ -15,17 +17,32 @@ type FirebaseConfig = {
   testFcmToken: string;
 };
 
+type CachedAccessToken = {
+  value: string;
+  refreshAt: number;
+};
+
 export function createFcmService(config: FirebaseConfig): IFcmService {
-  let accessTokenPromise: Promise<string> | null = null;
+  let cachedAccessToken: CachedAccessToken | null = null;
+  let accessTokenPromise: Promise<CachedAccessToken> | null = null;
 
   const getAccessToken = async (): Promise<string> => {
-    if (!accessTokenPromise) {
-      accessTokenPromise = createAccessToken(config).catch(error => {
-        accessTokenPromise = null;
-        throw error;
-      });
+    if (cachedAccessToken && Date.now() < cachedAccessToken.refreshAt) {
+      return cachedAccessToken.value;
     }
-    return accessTokenPromise;
+
+    if (!accessTokenPromise) {
+      accessTokenPromise = createAccessToken(config)
+        .then(accessToken => {
+          cachedAccessToken = accessToken;
+          return accessToken;
+        })
+        .finally(() => {
+          accessTokenPromise = null;
+        });
+    }
+
+    return (await accessTokenPromise).value;
   };
 
   const sendNotificationToToken = async (
@@ -111,8 +128,11 @@ function validateConfig(config: FirebaseConfig) {
   }
 }
 
-async function createAccessToken(config: FirebaseConfig): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
+async function createAccessToken(
+  config: FirebaseConfig
+): Promise<CachedAccessToken> {
+  const issuedAt = Date.now();
+  const now = Math.floor(issuedAt / 1000);
   const jwt = await createSignedJwt({
     clientEmail: config.clientEmail,
     privateKey: config.privateKey,
@@ -148,7 +168,20 @@ async function createAccessToken(config: FirebaseConfig): Promise<string> {
     throw new Error('Google OAuth token response did not include access_token');
   }
 
-  return tokenBody.access_token;
+  const expiresInSeconds =
+    'expires_in' in tokenBody &&
+    typeof tokenBody.expires_in === 'number' &&
+    Number.isFinite(tokenBody.expires_in) &&
+    tokenBody.expires_in > 0
+      ? tokenBody.expires_in
+      : DEFAULT_ACCESS_TOKEN_TTL_SECONDS;
+
+  return {
+    value: tokenBody.access_token,
+    refreshAt:
+      issuedAt +
+      Math.max(0, expiresInSeconds * 1000 - ACCESS_TOKEN_REFRESH_MARGIN_MS),
+  };
 }
 
 async function createSignedJwt(options: {
