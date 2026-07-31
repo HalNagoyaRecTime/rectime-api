@@ -22,6 +22,7 @@ function createRepository(
 ): IStudentRepository {
   return {
     findById: vi.fn(),
+    findByUserId: vi.fn(),
     findAll: vi.fn(),
     findByStudentNum: vi.fn(),
     classRoomExists: vi.fn(),

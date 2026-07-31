@@ -23,6 +23,7 @@ function setup() {
     getAllStudents: vi.fn(),
     createStudent: vi.fn(),
     updateStudent: vi.fn(),
+    getByUserId: vi.fn(),
   };
   const controller = createStudentController(studentService);
   const app = new Hono();
