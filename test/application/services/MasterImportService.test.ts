@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { KVNamespace } from '@cloudflare/workers-types';
+import type {
+  DurableObjectNamespace,
+  KVNamespace,
+} from '@cloudflare/workers-types';
 import { createMasterImportService } from '../../../src/application/services/MasterImportService';
+import type { MasterImportCommitLock } from '../../../src/infrastructure/masterImports/MasterImportCommitLock';
 import type { IStudentService } from '../../../src/application/services/IStudentService';
 import type { IClassRoomService } from '../../../src/application/services/IClassRoomService';
 import type { ITeacherService } from '../../../src/application/services/ITeacherService';
@@ -20,6 +24,25 @@ function createFakeKv(): KVNamespace {
       store.delete(key);
     }),
   } as unknown as KVNamespace;
+}
+
+function createFakeCommitLock(): DurableObjectNamespace<MasterImportCommitLock> {
+  const committing = new Set<string>();
+  return {
+    idFromName: (name: string) => name as never,
+    get: (id: never) => {
+      const name = String(id);
+      return {
+        tryBeginCommit: vi.fn(async () => {
+          if (committing.has(name)) {
+            return false;
+          }
+          committing.add(name);
+          return true;
+        }),
+      };
+    },
+  } as unknown as DurableObjectNamespace<MasterImportCommitLock>;
 }
 
 function buildStudentService(
@@ -78,6 +101,7 @@ describe('MasterImportService', () => {
       const studentService = buildStudentService({ validateStudentImport });
       const service = createMasterImportService(
         kv,
+        createFakeCommitLock(),
         studentService,
         buildClassRoomService(),
         buildTeacherService()
@@ -116,6 +140,7 @@ describe('MasterImportService', () => {
       const kv = createFakeKv();
       const service = createMasterImportService(
         kv,
+        createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
         buildTeacherService()
@@ -135,6 +160,7 @@ describe('MasterImportService', () => {
       const kv = createFakeKv();
       const service = createMasterImportService(
         kv,
+        createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
         buildTeacherService()
@@ -158,6 +184,7 @@ describe('MasterImportService', () => {
       });
       const service = createMasterImportService(
         kv,
+        createFakeCommitLock(),
         buildStudentService(),
         classRoomService,
         buildTeacherService()
@@ -188,6 +215,7 @@ describe('MasterImportService', () => {
       const kv = createFakeKv();
       const service = createMasterImportService(
         kv,
+        createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
         buildTeacherService()
@@ -213,6 +241,7 @@ describe('MasterImportService', () => {
       });
       const service = createMasterImportService(
         kv,
+        createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
         teacherService
@@ -260,6 +289,7 @@ describe('MasterImportService', () => {
       });
       const service = createMasterImportService(
         kv,
+        createFakeCommitLock(),
         studentService,
         buildClassRoomService(),
         buildTeacherService()
@@ -290,6 +320,64 @@ describe('MasterImportService', () => {
       );
       // 二度目はDBへの書き込みを再実行しない
       expect(commitStudentImport).toHaveBeenCalledTimes(1);
+    });
+
+    it('ほぼ同時に確定リクエストが2回来ても、確定処理は1回しか実行されない', async () => {
+      const kv = createFakeKv();
+      const commitLock = createFakeCommitLock();
+      const validateStudentImport = vi.fn().mockResolvedValue({
+        total: 1,
+        success_count: 1,
+        error_count: 0,
+        errors: [],
+      });
+      const commitStudentImport = vi.fn().mockImplementation(
+        () =>
+          new Promise(resolve =>
+            setTimeout(
+              () =>
+                resolve({
+                  total: 1,
+                  imported: 1,
+                  error_count: 0,
+                  errors: [],
+                }),
+              10
+            )
+          )
+      );
+      const studentService = buildStudentService({
+        validateStudentImport,
+        commitStudentImport,
+      });
+      const service = createMasterImportService(
+        kv,
+        commitLock,
+        studentService,
+        buildClassRoomService(),
+        buildTeacherService()
+      );
+
+      const file = csvFile(
+        'class_code,attendance_number,student_id_number,last_name,first_name\n11A,1,10001,山田,太郎\n',
+        's.csv'
+      );
+      const created = await service.createImport({
+        type: 'students',
+        file,
+        fileName: 's.csv',
+      });
+
+      const [first, second] = await Promise.all([
+        service.commitImport(created.import_id),
+        service.commitImport(created.import_id),
+      ]);
+
+      expect(commitStudentImport).toHaveBeenCalledTimes(1);
+      const alreadyCommittedFlags = [first, second].map(
+        outcome => outcome.status === 'committed' && outcome.alreadyCommitted
+      );
+      expect(alreadyCommittedFlags.sort()).toEqual([false, true]);
     });
   });
 });

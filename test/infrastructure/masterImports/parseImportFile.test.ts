@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseImportFile } from '../../../src/infrastructure/masterImports/parseImportFile';
+import {
+  parseImportFile,
+  MAX_IMPORT_FILE_SIZE_BYTES,
+} from '../../../src/infrastructure/masterImports/parseImportFile';
 
 function csvFile(content: string, name = 'data.csv'): File {
   return new File([content], name, { type: 'text/csv' });
@@ -91,5 +94,24 @@ describe('parseImportFile', () => {
     await expect(parseImportFile(file, 'data.txt')).rejects.toThrow(
       'Unsupported file type'
     );
+  });
+
+  it('上限サイズを超えるファイルはエラーを投げ、読み込みを行わない', async () => {
+    const file = new File(
+      [new Uint8Array(MAX_IMPORT_FILE_SIZE_BYTES + 1)],
+      'huge.csv',
+      { type: 'text/csv' }
+    );
+
+    await expect(parseImportFile(file, 'huge.csv')).rejects.toThrow(
+      'File is too large'
+    );
+  });
+
+  it('上限サイズちょうどのファイルは許可する', async () => {
+    const content = 'a,b\n' + '1,2\n'.repeat(100);
+    const file = csvFile(content);
+
+    await expect(parseImportFile(file, 'ok.csv')).resolves.not.toBeNull();
   });
 });

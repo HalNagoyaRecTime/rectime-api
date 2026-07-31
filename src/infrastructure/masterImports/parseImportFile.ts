@@ -2,6 +2,8 @@ import readXlsxFile from 'read-excel-file/universal';
 
 export type ParsedRow = Record<string, unknown>;
 
+export const MAX_IMPORT_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+
 function parseCsvText(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -88,6 +90,12 @@ export async function parseImportFile(
   file: Blob,
   filename: string
 ): Promise<ParsedRow[]> {
+  if (file.size > MAX_IMPORT_FILE_SIZE_BYTES) {
+    throw new Error(
+      `File is too large: ${file.size} bytes (max ${MAX_IMPORT_FILE_SIZE_BYTES} bytes)`
+    );
+  }
+
   const lowerName = filename.toLowerCase();
 
   if (lowerName.endsWith('.csv')) {

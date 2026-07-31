@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
+export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
 import type { Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
 import {

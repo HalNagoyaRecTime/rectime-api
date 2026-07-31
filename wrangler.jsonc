@@ -20,6 +20,25 @@
       "id": "70197622340f44df8e24365695b5f1d0",
       "preview_id": "4c0dddfe16d94166841579765390f697",
     },
+    {
+      "binding": "MASTER_IMPORT_KV",
+      "id": "REPLACE_WITH_REAL_NAMESPACE_ID",
+      "preview_id": "REPLACE_WITH_REAL_PREVIEW_NAMESPACE_ID",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MASTER_IMPORT_COMMIT_LOCK",
+        "class_name": "MasterImportCommitLock",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MasterImportCommitLock"],
+    },
   ],
   "env": {
     "default": {
@@ -35,6 +54,11 @@
           "id": "local-auth-kv",
           "preview_id": "local-auth-kv",
         },
+        {
+          "binding": "MASTER_IMPORT_KV",
+          "id": "local-master-import-kv",
+          "preview_id": "local-master-import-kv",
+        },
       ],
       "d1_databases": [
         {
@@ -43,6 +67,14 @@
           "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
         },
       ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "MASTER_IMPORT_COMMIT_LOCK",
+            "class_name": "MasterImportCommitLock",
+          },
+        ],
+      },
     },
     "development": {
       "vars": {
@@ -57,6 +89,11 @@
           "id": "local-auth-kv",
           "preview_id": "local-auth-kv",
         },
+        {
+          "binding": "MASTER_IMPORT_KV",
+          "id": "local-master-import-kv",
+          "preview_id": "local-master-import-kv",
+        },
       ],
       "d1_databases": [
         {
@@ -65,6 +102,14 @@
           "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
         },
       ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "MASTER_IMPORT_COMMIT_LOCK",
+            "class_name": "MasterImportCommitLock",
+          },
+        ],
+      },
     },
   },
   "d1_databases": [

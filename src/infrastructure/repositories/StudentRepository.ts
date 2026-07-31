@@ -252,64 +252,22 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       }
 
       const statements: D1PreparedStatement[] = [];
-      const classRoomIdByCode = new Map<string, number>();
 
-      if (input.newClassRooms.length > 0) {
-        const maxClassRoom = await db
-          .prepare(
-            'SELECT COALESCE(MAX(class_room_id), 0) AS max_id FROM class_rooms'
-          )
-          .first<{ max_id: number }>();
-        let nextClassRoomId = (maxClassRoom?.max_id ?? 0) + 1;
-
-        for (const newClassRoom of input.newClassRooms) {
-          classRoomIdByCode.set(newClassRoom.classCode, nextClassRoomId);
-          nextClassRoomId++;
-        }
-
-        for (const chunk of chunkArray(
-          input.newClassRooms,
-          Math.floor(D1_MAX_BOUND_PARAMETERS / 3)
-        )) {
-          const placeholders = chunk
-            .map(() => '(?, ?, ?, NULL, CURRENT_TIMESTAMP)')
-            .join(', ');
-          const values = chunk.flatMap(room => [
-            classRoomIdByCode.get(room.classCode),
-            room.classCode,
-            room.className,
-          ]);
-          statements.push(
-            db
-              .prepare(
-                `INSERT INTO class_rooms (class_room_id, class_code, class_name, teacher_id, updated_at) VALUES ${placeholders}`
-              )
-              .bind(...values)
-          );
-        }
-      }
-
-      const codesNeedingLookup = Array.from(
-        new Set(
-          input.students
-            .map(student => student.classCode)
-            .filter(classCode => !classRoomIdByCode.has(classCode))
-        )
-      );
       for (const chunk of chunkArray(
-        codesNeedingLookup,
-        D1_MAX_BOUND_PARAMETERS
+        input.newClassRooms,
+        Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
       )) {
-        const placeholders = chunk.map(() => '?').join(', ');
-        const rows = await db
-          .prepare(
-            `SELECT class_room_id, class_code FROM class_rooms WHERE class_code IN (${placeholders})`
-          )
-          .bind(...chunk)
-          .all<{ class_room_id: number; class_code: string }>();
-        for (const row of rows.results) {
-          classRoomIdByCode.set(row.class_code, row.class_room_id);
-        }
+        const placeholders = chunk
+          .map(() => '(?, ?, NULL, CURRENT_TIMESTAMP)')
+          .join(', ');
+        const values = chunk.flatMap(room => [room.classCode, room.className]);
+        statements.push(
+          db
+            .prepare(
+              `INSERT INTO class_rooms (class_code, class_name, teacher_id, updated_at) VALUES ${placeholders}`
+            )
+            .bind(...values)
+        );
       }
 
       const maxUser = await db
@@ -341,18 +299,21 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       for (const chunk of chunkArray(
         input.students.map((student, index) => ({
           userId: userIds[index],
-          classRoomId: classRoomIdByCode.get(student.classCode) ?? null,
+          classCode: student.classCode,
           attendanceNumber: student.attendanceNumber,
           studentIdNumber: student.studentIdNumber,
         })),
         Math.floor(D1_MAX_BOUND_PARAMETERS / 4)
       )) {
         const placeholders = chunk
-          .map(() => '(?, ?, ?, ?, CURRENT_TIMESTAMP)')
+          .map(
+            () =>
+              '(?, (SELECT class_room_id FROM class_rooms WHERE class_code = ?), ?, ?, CURRENT_TIMESTAMP)'
+          )
           .join(', ');
         const values = chunk.flatMap(item => [
           item.userId,
-          item.classRoomId,
+          item.classCode,
           item.attendanceNumber,
           item.studentIdNumber,
         ]);

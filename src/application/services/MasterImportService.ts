@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import type { KVNamespace } from '@cloudflare/workers-types';
+import type {
+  DurableObjectNamespace,
+  KVNamespace,
+} from '@cloudflare/workers-types';
+import type { MasterImportCommitLock } from '../../infrastructure/masterImports/MasterImportCommitLock';
 import type {
   MasterImportSession,
   MasterImportType,
@@ -95,8 +99,16 @@ function shapeRow(type: MasterImportType, rowIndex: number, raw: ParsedRow) {
   return parsed.data;
 }
 
+const COMMIT_WAIT_POLL_INTERVAL_MS = 150;
+const COMMIT_WAIT_MAX_ATTEMPTS = 20;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export function createMasterImportService(
   kv: KVNamespace,
+  commitLock: DurableObjectNamespace<MasterImportCommitLock>,
   studentService: IStudentService,
   classRoomService: IClassRoomService,
   teacherService: ITeacherService
@@ -192,6 +204,26 @@ export function createMasterImportService(
           status: 'has_errors',
           session: toDTO(session, 0, session.rows.length || 1),
         };
+      }
+
+      const lockStub = commitLock.get(commitLock.idFromName(importId));
+      const acquired = await lockStub.tryBeginCommit();
+
+      if (!acquired) {
+        for (let attempt = 0; attempt < COMMIT_WAIT_MAX_ATTEMPTS; attempt++) {
+          await sleep(COMMIT_WAIT_POLL_INTERVAL_MS);
+          const latest = await getMasterImportSession(kv, importId);
+          if (latest?.status === 'committed') {
+            return {
+              status: 'committed',
+              session: toDTO(latest, 0, latest.rows.length || 1),
+              alreadyCommitted: true,
+            };
+          }
+        }
+        throw new Error(
+          'Timed out waiting for a concurrent commit of the same import to finish'
+        );
       }
 
       const commitResult = await commitByType(session.type, session.rows);
