@@ -152,11 +152,19 @@ apiV1.post('/events', c => {
 apiV1.put('/events/:eventId', c => {
   return c.get('container').eventController.updateEvent(c);
 });
+apiV1.patch('/events/:eventId', c => {
+  return c.get('container').eventController.patchEvent(c);
+});
 apiV1.delete('/events/:eventId', c => {
   return c.get('container').eventController.deleteEvent(c);
 });
 apiV1.put('/events/:eventId/schedule', c => {
   return c.get('container').eventScheduleController.updateEventSchedule(c);
+});
+apiV1.get('/events/:eventId/notification-summary', c => {
+  return c
+    .get('container')
+    .eventScheduleController.getEventNotificationSummary(c);
 });
 
 // Classroom routes
