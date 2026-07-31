@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parseImportFile,
   MAX_IMPORT_FILE_SIZE_BYTES,
+  MAX_IMPORT_ROW_COUNT,
 } from '../../../src/infrastructure/masterImports/parseImportFile';
 
 function csvFile(content: string, name = 'data.csv'): File {
@@ -113,5 +114,26 @@ describe('parseImportFile', () => {
     const file = csvFile(content);
 
     await expect(parseImportFile(file, 'ok.csv')).resolves.not.toBeNull();
+  });
+
+  it('行数が上限を超える場合はエラーを投げる', async () => {
+    const content =
+      'class_code,class_name\n' +
+      '13C,3年Cクラス\n'.repeat(MAX_IMPORT_ROW_COUNT + 1);
+    const file = csvFile(content);
+
+    await expect(parseImportFile(file, 'over.csv')).rejects.toThrow(
+      'Too many rows'
+    );
+  });
+
+  it('行数が上限ちょうどの場合は許可する', async () => {
+    const content =
+      'class_code,class_name\n' +
+      '13C,3年Cクラス\n'.repeat(MAX_IMPORT_ROW_COUNT);
+    const file = csvFile(content);
+
+    const rows = await parseImportFile(file, 'exact.csv');
+    expect(rows).toHaveLength(MAX_IMPORT_ROW_COUNT);
   });
 });

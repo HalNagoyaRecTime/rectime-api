@@ -2,7 +2,8 @@ import readXlsxFile from 'read-excel-file/universal';
 
 export type ParsedRow = Record<string, unknown>;
 
-export const MAX_IMPORT_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+export const MAX_IMPORT_FILE_SIZE_BYTES = 2 * 1024 * 1024;
+export const MAX_IMPORT_ROW_COUNT = 2500;
 
 function parseCsvText(text: string): string[][] {
   const rows: string[][] = [];
@@ -98,18 +99,24 @@ export async function parseImportFile(
 
   const lowerName = filename.toLowerCase();
 
+  let rows: ParsedRow[];
   if (lowerName.endsWith('.csv')) {
     const text = await file.text();
-    return rowsToObjects(parseCsvText(text));
-  }
-
-  if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
+    rows = rowsToObjects(parseCsvText(text));
+  } else if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
     const sheets = await readXlsxFile(file);
-    const rows = sheets[0]?.data ?? [];
-    return rowsToObjects(rows);
+    rows = rowsToObjects(sheets[0]?.data ?? []);
+  } else {
+    throw new Error(
+      'Unsupported file type: only .csv, .xlsx and .xls are supported'
+    );
   }
 
-  throw new Error(
-    'Unsupported file type: only .csv, .xlsx and .xls are supported'
-  );
+  if (rows.length > MAX_IMPORT_ROW_COUNT) {
+    throw new Error(
+      `Too many rows: ${rows.length} (max ${MAX_IMPORT_ROW_COUNT})`
+    );
+  }
+
+  return rows;
 }
