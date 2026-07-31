@@ -1,7 +1,6 @@
 import { Context } from 'hono';
 import { z } from 'zod';
 import type { IScheduleService } from '../../application/services/IScheduleService';
-import { HttpError } from '../../domain/entities/Schedule';
 
 const notificationIdSchema = z.coerce.number().int().positive();
 
@@ -15,12 +14,12 @@ const createScheduleSchema = z.object({
 });
 
 const updateScheduleSchema = z.object({
-  user_id: z.number().int().positive(),
-  event_id: z.number().int().positive(),
-  importance: z.literal(2).default(2),
+  create_user_id: z.number().int().positive(),
+  new_event_id: z.number().int().positive(),
+  new_importance: z.literal(2).default(2),
   // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00Z
-  send_at: z.string().datetime({ offset: true }),
-  gathering_id: z.number().int().positive(),
+  new_send_at: z.string().datetime({ offset: true }),
+  new_gathering_id: z.number().int().positive(),
 });
 
 export function createScheduleController(scheduleService: IScheduleService) {
@@ -91,8 +90,11 @@ export function createScheduleController(scheduleService: IScheduleService) {
       if (error instanceof SyntaxError) {
         return c.json({ error: 'Invalid schedule data' }, 400);
       }
-      if (error instanceof HttpError) {
-        return c.json({ error: error.message }, error.statusCode);
+      if (
+        error instanceof Error &&
+        error.message === 'Only schedules with "draft" status can be updated.'
+      ) {
+        return c.json({ error: error.message }, 409);
       }
       return c.json({ error: 'Failed to update schedule' }, 500);
     }
