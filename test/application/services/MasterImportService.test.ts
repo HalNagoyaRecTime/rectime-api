@@ -447,9 +447,9 @@ describe('MasterImportService', () => {
       // committedとして固定されていないので、修正後にもう一度確定できる
       const retried = await service.commitImport(created.import_id);
       expect(retried.status).toBe('committed');
-      expect(
-        retried.status === 'committed' && retried.alreadyCommitted
-      ).toBe(false);
+      expect(retried.status === 'committed' && retried.alreadyCommitted).toBe(
+        false
+      );
       expect(commitStudentImport).toHaveBeenCalledTimes(2);
     });
   });
