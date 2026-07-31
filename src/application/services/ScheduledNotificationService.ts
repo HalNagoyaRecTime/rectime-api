@@ -81,6 +81,9 @@ export function createScheduledNotificationService(deps: {
               body: schedule.body,
               data: {
                 type: schedule.notification_type,
+                ...(schedule.notification_type === 'manual'
+                  ? { notificationId: String(schedule.notification_id) }
+                  : {}),
                 ...(schedule.event_id == null
                   ? {}
                   : { eventId: String(schedule.event_id) }),

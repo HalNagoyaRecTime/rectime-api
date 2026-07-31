@@ -161,6 +161,30 @@ describe('ScheduledNotificationService', () => {
     expect(result).toEqual({ checkedEvents: 1, sent: 1, failed: 0 });
   });
 
+  it('手動通知のpayloadに通知詳細遷移用のnotificationIdを含める', async () => {
+    const { service, fcmService } = setup({
+      schedules: [
+        buildSchedule({
+          event_id: null,
+          notification_id: 12,
+          notification_type: 'manual',
+        }),
+      ],
+    });
+
+    await service.sendQueuedNotifications([1]);
+
+    expect(fcmService.sendNotificationToToken).toHaveBeenCalledWith({
+      token: 'token-a',
+      title: '集合のお知らせ',
+      body: '集合時刻です。',
+      data: {
+        type: 'manual',
+        notificationId: '12',
+      },
+    });
+  });
+
   it('1件が失敗しても同じmessageの残りを続けて送信する', async () => {
     const schedules = [
       buildSchedule({
