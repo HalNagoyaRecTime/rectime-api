@@ -9,4 +9,8 @@ export class MasterImportCommitLock extends DurableObject {
     await this.ctx.storage.put('committing', true);
     return true;
   }
+
+  async releaseLock(): Promise<void> {
+    await this.ctx.storage.delete('committing');
+  }
 }

@@ -40,6 +40,9 @@ function createFakeCommitLock(): DurableObjectNamespace<MasterImportCommitLock> 
           committing.add(name);
           return true;
         }),
+        releaseLock: vi.fn(async () => {
+          committing.delete(name);
+        }),
       };
     },
   } as unknown as DurableObjectNamespace<MasterImportCommitLock>;
@@ -378,6 +381,76 @@ describe('MasterImportService', () => {
         outcome => outcome.status === 'committed' && outcome.alreadyCommitted
       );
       expect(alreadyCommittedFlags.sort()).toEqual([false, true]);
+    });
+
+    it('確定処理の実行時点で新たにエラーが見つかった場合はcommittedにせず、再試行できる状態にする', async () => {
+      const kv = createFakeKv();
+      const commitLock = createFakeCommitLock();
+      const validateStudentImport = vi.fn().mockResolvedValue({
+        total: 1,
+        success_count: 1,
+        error_count: 0,
+        errors: [],
+      });
+      const commitStudentImport = vi
+        .fn()
+        .mockResolvedValueOnce({
+          total: 1,
+          imported: 0,
+          error_count: 1,
+          errors: [
+            {
+              row_index: 0,
+              reason: 'student_id_number_duplicate_in_db',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          total: 1,
+          imported: 1,
+          error_count: 0,
+          errors: [],
+        });
+      const studentService = buildStudentService({
+        validateStudentImport,
+        commitStudentImport,
+      });
+      const service = createMasterImportService(
+        kv,
+        commitLock,
+        studentService,
+        buildClassRoomService(),
+        buildTeacherService()
+      );
+
+      const file = csvFile(
+        'class_code,attendance_number,student_id_number,last_name,first_name\n11A,1,10001,山田,太郎\n',
+        's.csv'
+      );
+      const created = await service.createImport({
+        type: 'students',
+        file,
+        fileName: 's.csv',
+      });
+
+      const outcome = await service.commitImport(created.import_id);
+      expect(outcome.status).toBe('has_errors');
+      if (outcome.status === 'has_errors') {
+        expect(outcome.session.error_count).toBe(1);
+        expect(outcome.session.errors).toEqual([
+          expect.objectContaining({
+            reason: 'student_id_number_duplicate_in_db',
+          }),
+        ]);
+      }
+
+      // committedとして固定されていないので、修正後にもう一度確定できる
+      const retried = await service.commitImport(created.import_id);
+      expect(retried.status).toBe('committed');
+      expect(
+        retried.status === 'committed' && retried.alreadyCommitted
+      ).toBe(false);
+      expect(commitStudentImport).toHaveBeenCalledTimes(2);
     });
   });
 });

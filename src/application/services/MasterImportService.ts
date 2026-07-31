@@ -226,7 +226,31 @@ export function createMasterImportService(
         );
       }
 
-      const commitResult = await commitByType(session.type, session.rows);
+      let commitResult;
+      try {
+        commitResult = await commitByType(session.type, session.rows);
+      } catch (error) {
+        await lockStub.releaseLock();
+        throw error;
+      }
+
+      if (commitResult.error_count > 0) {
+        await lockStub.releaseLock();
+        const sessionWithNewErrors: MasterImportSession = {
+          ...session,
+          error_count: commitResult.error_count,
+          errors: commitResult.errors,
+        };
+        await saveMasterImportSession(kv, sessionWithNewErrors);
+        return {
+          status: 'has_errors',
+          session: toDTO(
+            sessionWithNewErrors,
+            0,
+            sessionWithNewErrors.rows.length || 1
+          ),
+        };
+      }
 
       const updatedSession: MasterImportSession = {
         ...session,
