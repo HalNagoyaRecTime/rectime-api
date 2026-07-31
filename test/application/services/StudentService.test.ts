@@ -469,12 +469,12 @@ describe('StudentService', () => {
         { classCode: '99Z', className: '99Z' },
       ]);
       expect(call.students).toHaveLength(2);
-      expect(classRoomRepository.findExistingClassCodes).toHaveBeenCalledWith(
-        ['99Z']
+      expect(classRoomRepository.findExistingClassCodes).toHaveBeenCalledWith([
+        '99Z',
+      ]);
+      expect(classRoomRepository.findExistingClassCodes).toHaveBeenCalledTimes(
+        1
       );
-      expect(
-        classRoomRepository.findExistingClassCodes
-      ).toHaveBeenCalledTimes(1);
     });
 
     it('ファイル内で学籍番号が重複する行がある場合は1件も登録しない', async () => {

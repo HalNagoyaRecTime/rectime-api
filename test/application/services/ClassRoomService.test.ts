@@ -219,8 +219,9 @@ describe('ClassRoomService', () => {
         error_count: 0,
         errors: [],
       });
-      const findExistingClassCodes =
-        repo.findExistingClassCodes as ReturnType<typeof vi.fn>;
+      const findExistingClassCodes = repo.findExistingClassCodes as ReturnType<
+        typeof vi.fn
+      >;
       expect(findExistingClassCodes).toHaveBeenCalledTimes(1);
       expect(findExistingClassCodes.mock.calls[0][0]).toHaveLength(2000);
     });
