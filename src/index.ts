@@ -4,6 +4,8 @@ import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
+import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
+import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
 import {
   diContainerMiddleware,
   type ContainerVariables,
@@ -153,11 +155,19 @@ apiV1.post('/events', c => {
 apiV1.put('/events/:eventId', c => {
   return c.get('container').eventController.updateEvent(c);
 });
+apiV1.patch('/events/:eventId', c => {
+  return c.get('container').eventController.patchEvent(c);
+});
 apiV1.delete('/events/:eventId', c => {
   return c.get('container').eventController.deleteEvent(c);
 });
 apiV1.put('/events/:eventId/schedule', c => {
   return c.get('container').eventScheduleController.updateEventSchedule(c);
+});
+apiV1.get('/events/:eventId/notification-summary', c => {
+  return c
+    .get('container')
+    .eventScheduleController.getEventNotificationSummary(c);
 });
 
 // Classroom routes
@@ -333,9 +343,19 @@ export default {
 
     const container = createDIContainer(env);
     ctx.waitUntil(
-      container.scheduledNotificationService.sendScheduledEventNotifications(
+      container.scheduledNotificationService.enqueueDueNotifications(
         scheduledAt
       )
+    );
+  },
+  async queue(
+    batch: MessageBatch<NotificationDeliveryMessage>,
+    env: Env
+  ): Promise<void> {
+    const container = createDIContainer(env);
+    await consumeNotificationDeliveryQueue(
+      batch,
+      container.scheduledNotificationService
     );
   },
 };

@@ -80,8 +80,8 @@ describe('Gathering master services', () => {
     await expect(service.getGatheringMembers(1)).resolves.toEqual([member]);
     await expect(service.removeGatheringMember(1, 2)).resolves.toBe(true);
 
-    expect(repository.existsGathering).toHaveBeenCalledTimes(3);
-    expect(repository.existsUser).toHaveBeenCalledTimes(2);
+    expect(repository.existsGathering).toHaveBeenCalledTimes(2);
+    expect(repository.existsUser).toHaveBeenCalledTimes(1);
     expect(repository.create).toHaveBeenCalledWith(1, 2);
     expect(repository.findByGatheringId).toHaveBeenCalledWith(1);
     expect(repository.remove).toHaveBeenCalledWith(1, 2);
@@ -138,5 +138,15 @@ describe('Gathering master services', () => {
     await expect(
       createGatheringGroupMemberService(repository).removeGatheringMember(1, 2)
     ).rejects.toThrow('Gathering member not found');
+  });
+
+  it('所属解除でRepositoryの例外をそのまま送出する', async () => {
+    const repository: IGatheringGroupMemberRepository = {
+      remove: vi.fn().mockRejectedValue(new Error('database error')),
+    } as unknown as IGatheringGroupMemberRepository;
+
+    await expect(
+      createGatheringGroupMemberService(repository).removeGatheringMember(1, 2)
+    ).rejects.toThrow('database error');
   });
 });

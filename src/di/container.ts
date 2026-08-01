@@ -15,6 +15,7 @@ import { createGatheringSpotRepository } from '../infrastructure/repositories/Ga
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
 import { createScheduleRepository } from '../infrastructure/repositories/ScheduleRepository';
+import { createNotificationDeliveryQueue } from '../infrastructure/queues/NotificationDeliveryQueue';
 import { createStudentService } from '../application/services/StudentService';
 import { createStaffService } from '../application/services/StaffService';
 import { createTeacherService } from '../application/services/TeacherService';
@@ -77,6 +78,9 @@ export function createDIContainer(env: Env) {
     createGatheringGroupMemberRepository(db);
   const gatheringRepository = createGatheringRepository(db);
   const scheduleRepository = createScheduleRepository(db);
+  const notificationDeliveryQueue = createNotificationDeliveryQueue(
+    env.NOTIFICATION_DELIVERY_QUEUE
+  );
 
   // Services
   const authService = createAuthService(userRepository, env.AUTH_KV);
@@ -103,6 +107,7 @@ export function createDIContainer(env: Env) {
   const scheduledNotificationService = createScheduledNotificationService({
     firebaseTokenRepository,
     notificationScheduleRepository,
+    notificationDeliveryQueue,
     fcmService,
   });
   const notificationScheduleService = createNotificationScheduleService(
@@ -136,7 +141,10 @@ export function createDIContainer(env: Env) {
   const studentController = createStudentController(studentService);
   const staffController = createStaffController(staffService);
   const teacherController = createTeacherController(teacherService);
-  const eventController = createEventController(eventService);
+  const eventController = createEventController(
+    eventService,
+    eventScheduleService
+  );
   const eventScheduleController =
     createEventScheduleController(eventScheduleService);
   const classRoomController = createClassRoomController(classRoomService);

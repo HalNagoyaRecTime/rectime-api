@@ -1,7 +1,15 @@
 import { Context } from 'hono';
 import { z } from 'zod';
-import type { CreateEventRequestDTO } from '../../application/dto/EventDTO';
+import type {
+  CreateEventRequestDTO,
+  PatchEventRequestDTO,
+  UpdateEventRequestDTO,
+} from '../../application/dto/EventDTO';
+import type { IEventScheduleService } from '../../application/services/IEventScheduleService';
 import type { IEventService } from '../../application/services/IEventService';
+import type { Env } from '../../lib/env';
+import type { ContainerVariables } from '../middleware/diContainer';
+import type { AuthenticationVariables } from '../middleware/sessionAuthentication';
 
 const eventIdSchema = z.coerce.number().int().positive();
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
@@ -18,7 +26,41 @@ const eventWriteSchema = z
     path: ['end_time'],
   });
 
-export function createEventController(eventService: IEventService) {
+const eventUpdateSchema = eventWriteSchema.and(
+  z.object({ notification_enabled: z.boolean().optional() })
+);
+const eventPatchSchema = z
+  .object({
+    event_name: z.string().trim().min(1).max(100).optional(),
+    rule_text: z.string().trim().max(1000).nullable().optional(),
+    venue: z.string().trim().min(1).max(100).optional(),
+    start_time: hhmmSchema.optional(),
+    end_time: hhmmSchema.optional(),
+    notification_enabled: z.boolean().optional(),
+  })
+  .refine(data => Object.values(data).some(value => value !== undefined), {
+    message: 'At least one field is required',
+  })
+  .refine(
+    data =>
+      data.start_time === undefined ||
+      data.end_time === undefined ||
+      data.start_time < data.end_time,
+    {
+      message: 'end_time must be after start_time',
+      path: ['end_time'],
+    }
+  );
+
+type EventContext = Context<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthenticationVariables;
+}>;
+
+export function createEventController(
+  eventService: IEventService,
+  eventScheduleService: IEventScheduleService
+) {
   const getAllEvents = async (c: Context) => {
     try {
       const startTime = c.req.query('start_time');
@@ -98,10 +140,74 @@ export function createEventController(eventService: IEventService) {
   const updateEvent = async (c: Context) => {
     const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
     if (!parsedId.success) return c.json({ error: 'Invalid event ID' }, 400);
-    const parsed = await parseEventBody(c);
-    if (!parsed.success) return parsed.response;
+    const body = await c.req.json().catch(() => undefined);
+    const parsed = eventUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: 'Invalid event request body',
+          details: parsed.error.flatten(),
+        },
+        400
+      );
+    }
+    const request = {
+      ...parsed.data,
+      rule_text: parsed.data.rule_text ?? null,
+    } satisfies UpdateEventRequestDTO;
+    const eventContext = c as EventContext;
+    const userId = eventContext.get('authenticatedUserId');
+    if (userId === null) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
     try {
-      return c.json(await eventService.updateEvent(parsedId.data, parsed.data));
+      return c.json(
+        await eventScheduleService.updateEventSchedule({
+          event_id: parsedId.data,
+          user_id: userId,
+          event_name: request.event_name,
+          rule_text: request.rule_text,
+          venue: request.venue,
+          start_time: request.start_time,
+          end_time: request.end_time,
+          notification_enabled: request.notification_enabled,
+          event_date: eventContext.env?.EVENT_DATE,
+        })
+      );
+    } catch (error) {
+      return eventError(c, error, 'Failed to update event');
+    }
+  };
+
+  const patchEvent = async (c: Context) => {
+    const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
+    if (!parsedId.success) return c.json({ error: 'Invalid event ID' }, 400);
+    const body = await c.req.json().catch(() => undefined);
+    const parsed = eventPatchSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: 'Invalid event request body',
+          details: parsed.error.flatten(),
+        },
+        400
+      );
+    }
+    const request = parsed.data satisfies PatchEventRequestDTO;
+    const eventContext = c as EventContext;
+    const userId = eventContext.get('authenticatedUserId');
+    if (userId === null) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+    try {
+      return c.json(
+        await eventScheduleService.updateEventSchedule({
+          event_id: parsedId.data,
+          user_id: userId,
+          ...request,
+          event_date: eventContext.env?.EVENT_DATE,
+        })
+      );
     } catch (error) {
       return eventError(c, error, 'Failed to update event');
     }
@@ -123,6 +229,7 @@ export function createEventController(eventService: IEventService) {
     getEventById,
     createEvent,
     updateEvent,
+    patchEvent,
     deleteEvent,
   };
 }
@@ -152,11 +259,29 @@ async function parseEventBody(c: Context) {
 }
 
 function eventError(c: Context, error: unknown, fallback: string) {
+  if (
+    error instanceof Error &&
+    error.message === 'end_time must be after start_time'
+  ) {
+    return c.json({ error: error.message }, 400);
+  }
   if (error instanceof Error && error.message === 'Event not found') {
     return c.json({ error: 'Event not found', code: 'EVENT_NOT_FOUND' }, 404);
   }
   if (error instanceof Error && error.message === 'Event is in use') {
     return c.json({ error: 'Event is in use' }, 409);
+  }
+  if (error instanceof Error && error.message === 'Schedule update forbidden') {
+    return c.json({ error: error.message }, 403);
+  }
+  if (error instanceof Error && error.message === 'Event update conflict') {
+    return c.json({ error: error.message, code: 'EVENT_UPDATE_CONFLICT' }, 409);
+  }
+  if (
+    error instanceof Error &&
+    error.message === 'EVENT_DATE is not configured correctly'
+  ) {
+    return c.json({ error: error.message }, 500);
   }
   return c.json(
     {
