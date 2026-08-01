@@ -7,8 +7,6 @@ describe('ScheduleService', () => {
   function setup() {
     const repository: IScheduleRepository = {
       findAll: vi.fn(),
-      findById: vi.fn(),
-      createSchedule: vi.fn(),
       updateSchedule: vi.fn(),
     };
     return {
@@ -53,49 +51,14 @@ describe('ScheduleService', () => {
     expect(repository.findAll).toHaveBeenCalled();
   });
 
-  it('IDでスケジュールを取得する', async () => {
-    const { repository, service } = setup();
-    (repository.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
-      scheduleEntity
-    );
-
-    await expect(service.getScheduleById(1)).resolves.toEqual(scheduleEntity);
-    expect(repository.findById).toHaveBeenCalledWith(1);
-  });
-
-  it('存在しないIDの場合はnullを返す', async () => {
-    const { repository, service } = setup();
-    (repository.findById as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-
-    await expect(service.getScheduleById(999)).resolves.toBeNull();
-  });
-
-  it('スケジュールを作成する', async () => {
-    const { repository, service } = setup();
-    const input = {
-      user_id: 1,
-      event_id: 2,
-      notification_id: 3,
-      importance: 2,
-      send_at: '2026-07-23T09:00:00.000Z',
-    };
-    const created = { ...input, firebase_token_id: 9 };
-    (repository.createSchedule as ReturnType<typeof vi.fn>).mockResolvedValue(
-      created
-    );
-
-    await expect(service.createSchedule(input)).resolves.toEqual(created);
-    expect(repository.createSchedule).toHaveBeenCalledWith(input);
-  });
-
   it('スケジュールを更新する', async () => {
     const { repository, service } = setup();
     const update = {
-      user_id: 1,
-      event_id: 2,
-      importance: 2 as const,
-      send_at: '2026-07-23T09:00:00.000Z',
-      gathering_id: 3,
+      CreateUserId: 1,
+      NewEventId: 2,
+      NewImportance: 2,
+      NewSendAt: '2026-07-23T09:00:00.000Z',
+      NewGatheringId: 3,
     };
     (repository.updateSchedule as ReturnType<typeof vi.fn>).mockResolvedValue(
       update

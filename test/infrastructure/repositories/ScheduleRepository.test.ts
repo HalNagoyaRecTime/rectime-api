@@ -59,6 +59,41 @@ describe('ScheduleRepository', () => {
     };
   }
 
+  it('スケジュール一覧を取得する', async () => {
+    const fixture = await createFixture();
+    await env.DB.prepare(
+      `INSERT INTO notification_schedules (
+         created_user_id,
+         event_id,
+         notification_id,
+         firebase_token_id,
+         send_status,
+         importance,
+         send_at
+       ) VALUES (?, ?, ?, ?, 'draft', 2, ?)`
+    )
+      .bind(
+        fixture.userId,
+        fixture.eventId,
+        fixture.notificationId,
+        fixture.tokenId,
+        '2026-07-23T09:00:00.000Z'
+      )
+      .run();
+
+    const all = await repository.findAll();
+
+    expect(all.notification_schedules).toHaveLength(1);
+    expect(all.notification_schedules[0]).toMatchObject({
+      notification_id: fixture.notificationId,
+      title: '件名',
+      body: '本文',
+      created_user: { user_id: fixture.userId },
+      event: { event_id: fixture.eventId },
+      delivery_summary: { total: 1, draft: 1 },
+    });
+  });
+
   it('draft通知を新しい送信時刻と対象tokenで再生成する', async () => {
     const fixture = await createFixture();
     await env.DB.prepare(
@@ -82,11 +117,11 @@ describe('ScheduleRepository', () => {
       .run();
 
     const result = await repository.updateSchedule(fixture.notificationId, {
-      user_id: fixture.userId,
-      event_id: fixture.eventId,
-      importance: 3,
-      send_at: '2026-07-23T10:00:00.000Z',
-      gathering_id: fixture.gatheringId,
+      CreateUserId: fixture.userId,
+      NewEventId: fixture.eventId,
+      NewImportance: 3,
+      NewSendAt: '2026-07-23T10:00:00.000Z',
+      NewGatheringId: fixture.gatheringId,
     });
 
     const schedule = await env.DB.prepare(
@@ -106,11 +141,11 @@ describe('ScheduleRepository', () => {
       }>();
 
     expect(result).toEqual({
-      user_id: fixture.userId,
-      event_id: fixture.eventId,
-      importance: 3,
-      send_at: '2026-07-23T10:00:00.000Z',
-      gathering_id: fixture.gatheringId,
+      CreateUserId: fixture.userId,
+      NewEventId: fixture.eventId,
+      NewImportance: 3,
+      NewSendAt: '2026-07-23T10:00:00.000Z',
+      NewGatheringId: fixture.gatheringId,
     });
     expect(schedule).toMatchObject({
       created_user_id: fixture.userId,
@@ -121,48 +156,6 @@ describe('ScheduleRepository', () => {
       send_status: 'draft',
       send_at: '2026-07-23T10:00:00.000Z',
     });
-  });
-
-  it('スケジュールを作成し一覧・詳細に反映する', async () => {
-    const fixture = await createFixture();
-
-    const created = await repository.createSchedule({
-      user_id: fixture.userId,
-      event_id: fixture.eventId,
-      notification_id: fixture.notificationId,
-      importance: 2,
-      send_at: '2026-07-23T09:00:00.000Z',
-    });
-
-    expect(created).toMatchObject({
-      user_id: fixture.userId,
-      event_id: fixture.eventId,
-      notification_id: fixture.notificationId,
-      importance: 2,
-      send_at: '2026-07-23T09:00:00.000Z',
-    });
-    expect(created.firebase_token_id).toBe(fixture.tokenId);
-
-    const all = await repository.findAll();
-    expect(all.notification_schedules).toHaveLength(1);
-    expect(all.notification_schedules[0]).toMatchObject({
-      notification_id: fixture.notificationId,
-      title: '件名',
-      body: '本文',
-      created_user: { user_id: fixture.userId },
-      event: { event_id: fixture.eventId },
-      delivery_summary: { total: 1, draft: 1 },
-    });
-
-    const byId = await repository.findById(fixture.notificationId);
-    expect(byId?.notification_schedules).toHaveLength(1);
-    expect(byId?.notification_schedules[0].notification_id).toBe(
-      fixture.notificationId
-    );
-  });
-
-  it('存在しないIDの詳細取得はnullを返す', async () => {
-    await expect(repository.findById(9999)).resolves.toBeNull();
   });
 
   it('draft以外の通知は更新できない', async () => {
@@ -189,12 +182,12 @@ describe('ScheduleRepository', () => {
 
     await expect(
       repository.updateSchedule(fixture.notificationId, {
-        user_id: fixture.userId,
-        event_id: fixture.eventId,
-        importance: 3,
-        send_at: '2026-07-23T10:00:00.000Z',
-        gathering_id: fixture.gatheringId,
+        CreateUserId: fixture.userId,
+        NewEventId: fixture.eventId,
+        NewImportance: 3,
+        NewSendAt: '2026-07-23T10:00:00.000Z',
+        NewGatheringId: fixture.gatheringId,
       })
-    ).rejects.toMatchObject({ statusCode: 409, name: 'HttpError' });
+    ).rejects.toThrow('Only schedules with "draft" status can be updated.');
   });
 });

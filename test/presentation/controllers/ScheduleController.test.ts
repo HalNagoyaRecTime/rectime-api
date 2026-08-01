@@ -8,9 +8,8 @@ import type { AuthenticationVariables } from '../../../src/presentation/middlewa
 
 function setup() {
   const service: IScheduleService = {
+    // TODO: mainマージ時（GET /notification/schedules 削除時）に getAllSchedules を削除する
     getAllSchedules: vi.fn(),
-    getScheduleById: vi.fn(),
-    createSchedule: vi.fn(),
     updateSchedule: vi.fn(),
   };
   const controller = createScheduleController(service);
@@ -18,11 +17,8 @@ function setup() {
     Bindings: Env;
     Variables: ContainerVariables & AuthenticationVariables;
   }>();
+  // TODO: mainマージ時（PUTのみになる予定）にこのGETルートを削除する
   app.get('/notification/schedules', c => controller.getAllSchedules(c));
-  app.get('/notification/schedules/:notificationId', c =>
-    controller.getScheduleById(c)
-  );
-  app.post('/notification/schedules', c => controller.createSchedule(c));
   app.put('/notification/schedules/:notificationId', c =>
     controller.updateSchedule(c)
   );
@@ -31,11 +27,11 @@ function setup() {
 }
 
 const validBody = {
-  user_id: 1,
-  event_id: 2,
-  importance: 2,
-  send_at: '2026-07-23T09:00:00.000Z',
-  gathering_id: 3,
+  CreateUserId: 1,
+  NewEventId: 2,
+  NewImportance: 2,
+  NewSendAt: '2026-07-23T09:00:00.000Z',
+  NewGatheringId: 3,
 };
 
 const scheduleEntity = {
@@ -59,154 +55,156 @@ const scheduleEntity = {
 };
 
 describe('ScheduleController', () => {
-  it('スケジュール一覧を返す', async () => {
-    const { app, service, bindings } = setup();
-    (service.getAllSchedules as ReturnType<typeof vi.fn>).mockResolvedValue(
-      scheduleEntity
-    );
+  // ------------------------------------------------------------------
+  // GET /notification/schedules
+  // TODO: mainブランチへのマージ時にこのdescribeブロックごと削除する
+  // （最終的にはPUTエンドポイントのみが残る予定）
+  // ------------------------------------------------------------------
+  describe('GET /notification/schedules（廃止予定）', () => {
+    it('スケジュール一覧を返す', async () => {
+      const { app, service, bindings } = setup();
+      (service.getAllSchedules as ReturnType<typeof vi.fn>).mockResolvedValue(
+        scheduleEntity
+      );
 
-    const response = await app.request('/notification/schedules', {}, bindings);
+      const response = await app.request(
+        '/notification/schedules',
+        {},
+        bindings
+      );
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(scheduleEntity);
-  });
-
-  it('サービスが失敗した場合は500を返す', async () => {
-    const { app, service, bindings } = setup();
-    (service.getAllSchedules as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error('failure')
-    );
-
-    const response = await app.request('/notification/schedules', {}, bindings);
-
-    expect(response.status).toBe(500);
-  });
-
-  it('通知IDに対応するスケジュールを返す', async () => {
-    const { app, service, bindings } = setup();
-    (service.getScheduleById as ReturnType<typeof vi.fn>).mockResolvedValue(
-      scheduleEntity
-    );
-
-    const response = await app.request(
-      '/notification/schedules/4',
-      {},
-      bindings
-    );
-
-    expect(response.status).toBe(200);
-    expect(service.getScheduleById).toHaveBeenCalledWith(4);
-    expect(await response.json()).toEqual(scheduleEntity);
-  });
-
-  it('不正な通知IDでは400を返す', async () => {
-    const { app, service, bindings } = setup();
-
-    const response = await app.request(
-      '/notification/schedules/abc',
-      {},
-      bindings
-    );
-
-    expect(response.status).toBe(400);
-    expect(service.getScheduleById).not.toHaveBeenCalled();
-  });
-
-  it('存在しない通知IDでは404を返す', async () => {
-    const { app, service, bindings } = setup();
-    (service.getScheduleById as ReturnType<typeof vi.fn>).mockResolvedValue(
-      null
-    );
-
-    const response = await app.request(
-      '/notification/schedules/999',
-      {},
-      bindings
-    );
-
-    expect(response.status).toBe(404);
-  });
-
-  it('スケジュールを作成する', async () => {
-    const { app, service, bindings } = setup();
-    const createBody = {
-      user_id: 1,
-      event_id: 2,
-      notification_id: 3,
-      importance: 2,
-      send_at: '2026-07-23T09:00:00.000Z',
-    };
-    const created = { ...createBody, firebase_token_id: 9 };
-    (service.createSchedule as ReturnType<typeof vi.fn>).mockResolvedValue(
-      created
-    );
-
-    const response = await app.request(
-      '/notification/schedules',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(createBody),
-      },
-      bindings
-    );
-
-    expect(response.status).toBe(201);
-    expect(service.createSchedule).toHaveBeenCalledWith(createBody);
-    expect(await response.json()).toEqual(created);
-  });
-
-  it('不正なスケジュールデータでは400を返す', async () => {
-    const { app, service, bindings } = setup();
-
-    const response = await app.request(
-      '/notification/schedules',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: 1 }),
-      },
-      bindings
-    );
-
-    expect(response.status).toBe(400);
-    expect(service.createSchedule).not.toHaveBeenCalled();
-  });
-
-  it('通知IDと更新内容を受けて更新する', async () => {
-    const { app, service, bindings } = setup();
-    (service.updateSchedule as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ...validBody,
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(scheduleEntity);
     });
 
-    const response = await app.request(
-      '/notification/schedules/4',
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(validBody),
-      },
-      bindings
-    );
+    it('サービスが失敗した場合は500を返す', async () => {
+      const { app, service, bindings } = setup();
+      (service.getAllSchedules as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('failure')
+      );
 
-    expect(response.status).toBe(200);
-    expect(service.updateSchedule).toHaveBeenCalledWith(4, validBody);
+      const response = await app.request(
+        '/notification/schedules',
+        {},
+        bindings
+      );
+
+      expect(response.status).toBe(500);
+    });
   });
 
-  it('不正なJSONでも500ではなく400を返す', async () => {
-    const { app, service, bindings } = setup();
+  // ------------------------------------------------------------------
+  // PUT /notification/schedules/:notificationId
+  // mainマージ後もこのブロックは残す
+  // ------------------------------------------------------------------
+  describe('PUT /notification/schedules/:notificationId', () => {
+    it('通知IDと更新内容を受けて更新する', async () => {
+      const { app, service, bindings } = setup();
+      (service.updateSchedule as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...validBody,
+      });
 
-    const response = await app.request(
-      '/notification/schedules/4',
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{',
-      },
-      bindings
-    );
+      const response = await app.request(
+        '/notification/schedules/4',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validBody),
+        },
+        bindings
+      );
 
-    expect(response.status).toBe(400);
-    expect(service.updateSchedule).not.toHaveBeenCalled();
+      expect(response.status).toBe(200);
+      expect(service.updateSchedule).toHaveBeenCalledWith(4, validBody);
+    });
+
+    it('不正な通知IDでは400を返す', async () => {
+      const { app, service, bindings } = setup();
+
+      const response = await app.request(
+        '/notification/schedules/abc',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validBody),
+        },
+        bindings
+      );
+
+      expect(response.status).toBe(400);
+      expect(service.updateSchedule).not.toHaveBeenCalled();
+    });
+
+    it('不正なスケジュールデータでは400を返す', async () => {
+      const { app, service, bindings } = setup();
+
+      const response = await app.request(
+        '/notification/schedules/4',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ CreateUserId: 1 }),
+        },
+        bindings
+      );
+
+      expect(response.status).toBe(400);
+      expect(service.updateSchedule).not.toHaveBeenCalled();
+    });
+
+    it('不正なJSONでも500ではなく400を返す', async () => {
+      const { app, service, bindings } = setup();
+
+      const response = await app.request(
+        '/notification/schedules/4',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{',
+        },
+        bindings
+      );
+
+      expect(response.status).toBe(400);
+      expect(service.updateSchedule).not.toHaveBeenCalled();
+    });
+
+    it('draft以外のステータスでは409を返す', async () => {
+      const { app, service, bindings } = setup();
+      (service.updateSchedule as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Only schedules with "draft" status can be updated.')
+      );
+
+      const response = await app.request(
+        '/notification/schedules/4',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validBody),
+        },
+        bindings
+      );
+
+      expect(response.status).toBe(409);
+    });
+
+    it('サービスが失敗した場合は500を返す', async () => {
+      const { app, service, bindings } = setup();
+      (service.updateSchedule as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('failure')
+      );
+
+      const response = await app.request(
+        '/notification/schedules/4',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validBody),
+        },
+        bindings
+      );
+
+      expect(response.status).toBe(500);
+    });
   });
 });
