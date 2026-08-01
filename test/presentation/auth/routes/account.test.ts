@@ -61,6 +61,7 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
   return {
     DB: workerEnv.DB,
     AUTH_KV: createMockKv(),
+    NOTIFICATION_DELIVERY_QUEUE: {} as Env['NOTIFICATION_DELIVERY_QUEUE'],
     ALLOWED_ORIGINS: '',
     FIREBASE_PROJECT_ID: 'project',
     FIREBASE_CLIENT_EMAIL: 'sa@example.iam.gserviceaccount.com',
