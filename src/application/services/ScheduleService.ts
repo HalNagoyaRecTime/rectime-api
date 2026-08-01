@@ -21,11 +21,11 @@ export function createScheduleService(
     ...schedule,
   });
   const toUpdateDTO = (schedule: ScheduleUpdateEntity): ScheduleUpdateDTO => ({
-    create_user_id: schedule.create_user_id,
-    new_event_id: schedule.new_event_id,
-    new_importance: schedule.new_importance,
-    new_send_at: schedule.new_send_at,
-    new_gathering_id: schedule.new_gathering_id,
+    CreateUserId: schedule.CreateUserId,
+    NewEventId: schedule.NewEventId,
+    NewImportance: schedule.NewImportance,
+    NewSendAt: schedule.NewSendAt,
+    NewGatheringId: schedule.NewGatheringId,
   });
 
   return {

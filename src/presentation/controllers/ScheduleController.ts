@@ -14,12 +14,12 @@ const createScheduleSchema = z.object({
 });
 
 const updateScheduleSchema = z.object({
-  create_user_id: z.number().int().positive(),
-  new_event_id: z.number().int().positive(),
-  new_importance: z.literal(2).default(2),
+  CreateUserId: z.number().int().positive(),
+  NewEventId: z.number().int().positive(),
+  NewImportance: z.literal(2).default(2),
   // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00Z
-  new_send_at: z.string().datetime({ offset: true }),
-  new_gathering_id: z.number().int().positive(),
+  NewSendAt: z.string().datetime({ offset: true }),
+  NewGatheringId: z.number().int().positive(),
 });
 
 export function createScheduleController(scheduleService: IScheduleService) {
