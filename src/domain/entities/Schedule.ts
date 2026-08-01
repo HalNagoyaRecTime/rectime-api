@@ -33,15 +33,6 @@ export interface ScheduleEntity {
   notification_schedules: NotificationSchedule[];
 }
 
-export interface ScheduleWriteEntity {
-  user_id: number;
-  notification_id: number;
-  firebase_token_id?: number;
-  event_id: number;
-  importance: number;
-  send_at: string; // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00.000Z
-}
-
 export interface ScheduleUpdateEntity {
   CreateUserId: number;
   NewEventId: number;

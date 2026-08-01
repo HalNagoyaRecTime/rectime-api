@@ -4,15 +4,6 @@ import type { IScheduleService } from '../../application/services/IScheduleServi
 
 const notificationIdSchema = z.coerce.number().int().positive();
 
-const createScheduleSchema = z.object({
-  user_id: z.number().int().positive(),
-  event_id: z.number().int().positive(),
-  notification_id: z.number().int().positive(),
-  importance: z.literal(2).default(2),
-  // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00Z
-  send_at: z.string().datetime({ offset: true }),
-});
-
 const updateScheduleSchema = z.object({
   CreateUserId: z.number().int().positive(),
   NewEventId: z.number().int().positive(),
@@ -29,41 +20,6 @@ export function createScheduleController(scheduleService: IScheduleService) {
       return c.json(schedules);
     } catch {
       return c.json({ error: 'Failed to fetch schedules' }, 500);
-    }
-  };
-
-  const getScheduleById = async (c: Context) => {
-    const parsedId = notificationIdSchema.safeParse(
-      c.req.param('notificationId')
-    );
-    if (!parsedId.success) {
-      return c.json({ error: 'Invalid notification ID' }, 400);
-    }
-
-    try {
-      const schedule = await scheduleService.getScheduleById(parsedId.data);
-      if (!schedule) {
-        return c.json({ error: 'Schedule not found' }, 404);
-      }
-      return c.json(schedule);
-    } catch {
-      return c.json({ error: 'Failed to fetch schedule' }, 500);
-    }
-  };
-
-  const createSchedule = async (c: Context) => {
-    const parsedBody = createScheduleSchema.safeParse(await c.req.json());
-    if (!parsedBody.success) {
-      return c.json({ error: 'Invalid schedule data' }, 400);
-    }
-
-    try {
-      const createdSchedule = await scheduleService.createSchedule(
-        parsedBody.data
-      );
-      return c.json(createdSchedule, 201);
-    } catch {
-      return c.json({ error: 'Failed to create schedule' }, 500);
     }
   };
 
@@ -102,8 +58,6 @@ export function createScheduleController(scheduleService: IScheduleService) {
 
   return {
     getAllSchedules,
-    getScheduleById,
-    createSchedule,
     updateSchedule,
   };
 }
