@@ -27,6 +27,7 @@
         "max_batch_size": 1,
         "max_batch_timeout": 1,
         "max_retries": 5,
+        // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
         "retry_delay": 300,
         "max_concurrency": 10,
       },
@@ -74,6 +75,7 @@
             "max_batch_size": 1,
             "max_batch_timeout": 1,
             "max_retries": 5,
+            // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
             "retry_delay": 300,
             "max_concurrency": 10,
           },
@@ -114,6 +116,7 @@
             "max_batch_size": 1,
             "max_batch_timeout": 1,
             "max_retries": 5,
+            // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
             "retry_delay": 300,
             "max_concurrency": 10,
           },

@@ -1,8 +1,10 @@
 import type { MessageBatch } from '@cloudflare/workers-types';
 import type { IScheduledNotificationService } from '../../application/services/IScheduledNotificationService';
-import type { NotificationDeliveryMessage } from '../../domain/entities/NotificationDelivery';
-
-const QUEUE_RETRY_DELAY_SECONDS = 5 * 60;
+import {
+  NOTIFICATION_DELIVERY_MESSAGE_SIZE,
+  NOTIFICATION_DELIVERY_RETRY_DELAY_SECONDS,
+  type NotificationDeliveryMessage,
+} from '../../domain/entities/NotificationDelivery';
 
 export async function consumeNotificationDeliveryQueue(
   batch: MessageBatch<NotificationDeliveryMessage>,
@@ -28,7 +30,9 @@ export async function consumeNotificationDeliveryQueue(
         attempts: message.attempts,
         error: error instanceof Error ? error.message : String(error),
       });
-      message.retry({ delaySeconds: QUEUE_RETRY_DELAY_SECONDS });
+      message.retry({
+        delaySeconds: NOTIFICATION_DELIVERY_RETRY_DELAY_SECONDS,
+      });
     }
   }
 }
@@ -43,7 +47,7 @@ function isNotificationDeliveryMessage(
   return (
     Array.isArray(ids) &&
     ids.length > 0 &&
-    ids.length <= 15 &&
+    ids.length <= NOTIFICATION_DELIVERY_MESSAGE_SIZE &&
     ids.every(id => Number.isSafeInteger(id) && id > 0)
   );
 }

@@ -1,12 +1,14 @@
 import { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 import { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
 import type { INotificationDeliveryQueue } from '../../domain/interfaces/queues/INotificationDeliveryQueue';
+import {
+  NOTIFICATION_DELIVERY_CANDIDATE_LIMIT,
+  NOTIFICATION_DELIVERY_LEASE_TIMEOUT_MS,
+  NOTIFICATION_DELIVERY_MESSAGE_SIZE,
+} from '../../domain/entities/NotificationDelivery';
 import { IFcmService } from './IFcmService';
 import { IScheduledNotificationService } from './IScheduledNotificationService';
 
-const DELIVERY_MESSAGE_SIZE = 15;
-const DELIVERY_CANDIDATE_LIMIT = 5000;
-const DELIVERY_LEASE_TIMEOUT_MS = 4 * 60 * 1000;
 const MAX_CONCURRENT_FCM_REQUESTS = 5;
 
 export function createScheduledNotificationService(deps: {
@@ -26,17 +28,18 @@ export function createScheduledNotificationService(deps: {
     async enqueueDueNotifications(now = new Date()) {
       const dueAt = now.toISOString();
       const staleBefore = new Date(
-        now.getTime() - DELIVERY_LEASE_TIMEOUT_MS
+        now.getTime() - NOTIFICATION_DELIVERY_LEASE_TIMEOUT_MS
       ).toISOString();
       const candidateIds =
         await notificationScheduleRepository.findDeliveryCandidateIds(
           dueAt,
           staleBefore,
-          DELIVERY_CANDIDATE_LIMIT
+          NOTIFICATION_DELIVERY_CANDIDATE_LIMIT
         );
-      const messages = chunk(candidateIds, DELIVERY_MESSAGE_SIZE).map(
-        notificationScheduleIds => ({ notificationScheduleIds })
-      );
+      const messages = chunk(
+        candidateIds,
+        NOTIFICATION_DELIVERY_MESSAGE_SIZE
+      ).map(notificationScheduleIds => ({ notificationScheduleIds }));
 
       if (messages.length > 0) {
         await notificationDeliveryQueue.enqueueMany(messages);
@@ -51,10 +54,10 @@ export function createScheduledNotificationService(deps: {
     async sendQueuedNotifications(notificationScheduleIds, now = new Date()) {
       const uniqueScheduleIds = [...new Set(notificationScheduleIds)].slice(
         0,
-        DELIVERY_MESSAGE_SIZE
+        NOTIFICATION_DELIVERY_MESSAGE_SIZE
       );
       const staleBefore = new Date(
-        now.getTime() - DELIVERY_LEASE_TIMEOUT_MS
+        now.getTime() - NOTIFICATION_DELIVERY_LEASE_TIMEOUT_MS
       ).toISOString();
       const schedules = await notificationScheduleRepository.claimForDelivery(
         uniqueScheduleIds,
@@ -132,6 +135,7 @@ async function mapWithConcurrency<T, R>(
   mapper: (value: T) => Promise<R>
 ): Promise<R[]> {
   const results = new Array<R>(values.length);
+  const errors: unknown[] = [];
   let nextIndex = 0;
 
   const workers = Array.from(
@@ -140,11 +144,20 @@ async function mapWithConcurrency<T, R>(
       while (nextIndex < values.length) {
         const currentIndex = nextIndex;
         nextIndex += 1;
-        results[currentIndex] = await mapper(values[currentIndex]);
+        try {
+          results[currentIndex] = await mapper(values[currentIndex]);
+        } catch (error) {
+          errors.push(error);
+        }
       }
     }
   );
   await Promise.all(workers);
+
+  if (errors.length > 0) {
+    throw errors[0];
+  }
+
   return results;
 }
 

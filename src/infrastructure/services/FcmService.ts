@@ -22,27 +22,35 @@ type CachedAccessToken = {
   refreshAt: number;
 };
 
+type AccessTokenCacheEntry = {
+  token: CachedAccessToken | null;
+  request: Promise<CachedAccessToken> | null;
+};
+
+const accessTokenCache = new Map<string, AccessTokenCacheEntry>();
+
 export function createFcmService(config: FirebaseConfig): IFcmService {
-  let cachedAccessToken: CachedAccessToken | null = null;
-  let accessTokenPromise: Promise<CachedAccessToken> | null = null;
+  const cacheKey = `${config.projectId}:${config.clientEmail}`;
 
   const getAccessToken = async (): Promise<string> => {
-    if (cachedAccessToken && Date.now() < cachedAccessToken.refreshAt) {
-      return cachedAccessToken.value;
+    const cacheEntry = getAccessTokenCacheEntry(cacheKey);
+
+    if (cacheEntry.token && Date.now() < cacheEntry.token.refreshAt) {
+      return cacheEntry.token.value;
     }
 
-    if (!accessTokenPromise) {
-      accessTokenPromise = createAccessToken(config)
+    if (!cacheEntry.request) {
+      cacheEntry.request = createAccessToken(config)
         .then(accessToken => {
-          cachedAccessToken = accessToken;
+          cacheEntry.token = accessToken;
           return accessToken;
         })
         .finally(() => {
-          accessTokenPromise = null;
+          cacheEntry.request = null;
         });
     }
 
-    return (await accessTokenPromise).value;
+    return (await cacheEntry.request).value;
   };
 
   const sendNotificationToToken = async (
@@ -111,6 +119,15 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
     sendTestNotification,
     sendNotificationToToken,
   };
+}
+
+function getAccessTokenCacheEntry(cacheKey: string): AccessTokenCacheEntry {
+  const existing = accessTokenCache.get(cacheKey);
+  if (existing) return existing;
+
+  const created = { token: null, request: null };
+  accessTokenCache.set(cacheKey, created);
+  return created;
 }
 
 function validateConfig(config: FirebaseConfig) {

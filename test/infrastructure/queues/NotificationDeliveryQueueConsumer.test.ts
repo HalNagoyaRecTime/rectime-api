@@ -1,7 +1,11 @@
 import type { MessageBatch } from '@cloudflare/workers-types';
 import { describe, expect, it, vi } from 'vitest';
 import type { IScheduledNotificationService } from '../../../src/application/services/IScheduledNotificationService';
-import type { NotificationDeliveryMessage } from '../../../src/domain/entities/NotificationDelivery';
+import {
+  NOTIFICATION_DELIVERY_MESSAGE_SIZE,
+  NOTIFICATION_DELIVERY_RETRY_DELAY_SECONDS,
+  type NotificationDeliveryMessage,
+} from '../../../src/domain/entities/NotificationDelivery';
 import { consumeNotificationDeliveryQueue } from '../../../src/infrastructure/queues/NotificationDeliveryQueueConsumer';
 
 function createMessage(body: unknown) {
@@ -50,7 +54,9 @@ describe('NotificationDeliveryQueueConsumer', () => {
 
     await consumeNotificationDeliveryQueue(createBatch(message), service);
 
-    expect(message.retry).toHaveBeenCalledWith({ delaySeconds: 300 });
+    expect(message.retry).toHaveBeenCalledWith({
+      delaySeconds: NOTIFICATION_DELIVERY_RETRY_DELAY_SECONDS,
+    });
     expect(message.ack).not.toHaveBeenCalled();
   });
 
@@ -62,5 +68,21 @@ describe('NotificationDeliveryQueueConsumer', () => {
 
     expect(service.sendQueuedNotifications).not.toHaveBeenCalled();
     expect(message.ack).toHaveBeenCalledOnce();
+  });
+
+  it('共通上限を超えるmessageは再試行せずackする', async () => {
+    const message = createMessage({
+      notificationScheduleIds: Array.from(
+        { length: NOTIFICATION_DELIVERY_MESSAGE_SIZE + 1 },
+        (_, index) => index + 1
+      ),
+    });
+    const service = createService();
+
+    await consumeNotificationDeliveryQueue(createBatch(message), service);
+
+    expect(service.sendQueuedNotifications).not.toHaveBeenCalled();
+    expect(message.ack).toHaveBeenCalledOnce();
+    expect(message.retry).not.toHaveBeenCalled();
   });
 });

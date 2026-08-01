@@ -11,6 +11,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 let privateKeyPem: string;
+let configSequence = 0;
 
 beforeAll(async () => {
   const keyPair = (await crypto.subtle.generateKey(
@@ -31,9 +32,10 @@ beforeAll(async () => {
 });
 
 function buildConfig(overrides: Partial<Record<string, string>> = {}) {
+  configSequence += 1;
   return {
     projectId: 'project-1',
-    clientEmail: 'sa@project-1.iam.gserviceaccount.com',
+    clientEmail: `sa-${configSequence}@project-1.iam.gserviceaccount.com`,
     privateKey: privateKeyPem,
     testFcmToken: 'test-fcm-token',
     ...overrides,
@@ -166,6 +168,48 @@ describe('FcmService', () => {
           body: '本文',
         }),
         service.sendNotificationToToken({
+          token: 'device-token-2',
+          title: 'タイトル',
+          body: '本文',
+        }),
+      ]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(
+        fetchMock.mock.calls.filter(
+          ([url]) => url === 'https://oauth2.googleapis.com/token'
+        )
+      ).toHaveLength(1);
+    });
+
+    it('異なるService instanceでも同じ設定のGoogle OAuth tokenを共有する', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ access_token: 'token-a', expires_in: 3600 }),
+            { status: 200 }
+          )
+        )
+        .mockImplementation(
+          () =>
+            new Response(JSON.stringify({ name: 'projects/x/messages/1' }), {
+              status: 200,
+            })
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const config = buildConfig();
+      const firstService = createFcmService(config);
+      const secondService = createFcmService(config);
+
+      await Promise.all([
+        firstService.sendNotificationToToken({
+          token: 'device-token-1',
+          title: 'タイトル',
+          body: '本文',
+        }),
+        secondService.sendNotificationToToken({
           token: 'device-token-2',
           title: 'タイトル',
           body: '本文',
