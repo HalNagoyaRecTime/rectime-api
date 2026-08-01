@@ -4,6 +4,8 @@ import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
+import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
+import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
 import {
   diContainerMiddleware,
   type ContainerVariables,
@@ -326,9 +328,19 @@ export default {
 
     const container = createDIContainer(env);
     ctx.waitUntil(
-      container.scheduledNotificationService.sendScheduledEventNotifications(
+      container.scheduledNotificationService.enqueueDueNotifications(
         scheduledAt
       )
+    );
+  },
+  async queue(
+    batch: MessageBatch<NotificationDeliveryMessage>,
+    env: Env
+  ): Promise<void> {
+    const container = createDIContainer(env);
+    await consumeNotificationDeliveryQueue(
+      batch,
+      container.scheduledNotificationService
     );
   },
 };

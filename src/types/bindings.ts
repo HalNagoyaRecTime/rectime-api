@@ -1,8 +1,10 @@
-import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, Queue } from '@cloudflare/workers-types';
+import type { NotificationDeliveryMessage } from '../domain/entities/NotificationDelivery';
 
 export type Bindings = {
   DB: D1Database;
   AUTH_KV: KVNamespace;
+  NOTIFICATION_DELIVERY_QUEUE: Queue<NotificationDeliveryMessage>;
   ALLOWED_ORIGINS?: string;
   EVENT_DATE?: string;
   FIREBASE_PROJECT_ID: string;
