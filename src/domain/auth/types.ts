@@ -1,5 +1,13 @@
 export type ClientType = 'web' | 'mobile';
 
+// リクエストの認証コンテキスト（bearerAuthenticationMiddleware/requireAuth間で共有）。
+// AppUser（DB上のアカウントレコード）とは別に、JWTクレームから直接導出する値。
+export interface AuthUser {
+  id: string;
+  email: string;
+  display_name: string;
+}
+
 export interface AppUser {
   id: string;
   oid: string;

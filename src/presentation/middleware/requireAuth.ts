@@ -1,18 +1,10 @@
 import { createMiddleware } from 'hono/factory';
 import type { Env } from '../../lib/env';
-import {
-  errorResponse,
-  getBearerToken,
-  getClientType,
-  type AppContext,
-} from '../auth/helpers';
-import { verifyAccessToken } from '../../infrastructure/auth/jwt';
+import { errorResponse, type AppContext } from '../auth/helpers';
+import type { AuthUser } from '../../domain/auth/types';
+import type { AuthenticationVariables } from './bearerAuthentication';
 
-export type AuthUser = {
-  id: string;
-  email: string;
-  display_name: string;
-};
+export type { AuthUser };
 
 export type AuthVariables = {
   authUser: AuthUser;
@@ -21,33 +13,21 @@ export type AuthVariables = {
 // apiV1.use('*', ...) にはしていない: 将来 /auth ルート（ログイン自体）が
 // このHonoインスタンスにマウントされた際、ログイン前のリクエストまで
 // ブロックしてしまわないよう、認証が必要なルートにのみ個別に付与する。
+//
+// トークン検証自体は bearerAuthenticationMiddleware（apiV1.use('*', ...)）が
+// 既に1回行っている。ここでは二重に検証せず、その結果（verifiedAuthUser）を
+// 読んで未認証なら401を返すだけのゲートとする。
 export const requireAuth = createMiddleware<{
   Bindings: Env;
-  Variables: AuthVariables;
+  Variables: AuthenticationVariables & AuthVariables;
 }>(async (c, next) => {
   const appContext = c as unknown as AppContext;
-  const clientType = getClientType(appContext);
+  const authUser = c.get('verifiedAuthUser');
 
-  if (clientType !== 'mobile' && clientType !== 'web') {
+  if (!authUser) {
     return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
   }
 
-  const token = getBearerToken(appContext);
-  if (!token) {
-    return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
-  }
-
-  let claims;
-  try {
-    claims = await verifyAccessToken(token, c.env.JWT_SECRET, clientType);
-  } catch {
-    return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
-  }
-
-  c.set('authUser', {
-    id: claims.sub,
-    email: claims.email,
-    display_name: claims.display_name,
-  });
+  c.set('authUser', authUser);
   await next();
 });

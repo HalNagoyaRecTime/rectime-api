@@ -216,11 +216,14 @@ microsoft.post('/token', async c => {
       ? (body.code_verifier as string)
       : pkce.code_verifier;
   if (!codeVerifier) {
+    // state 自体は見つかっているが code_verifier だけが欠けているケース
+    // （webでpkceエントリにcode_verifierが保存されていない等）。
+    // stateの不一致・期限切れ（STATE_MISMATCH）とは原因が異なるため区別する。
     return errorResponse(
       c,
       401,
-      'STATE_MISMATCH',
-      'state が一致しないか期限切れです。'
+      'CODE_VERIFIER_MISSING',
+      'code_verifier が見つかりません。もう一度ログインをやり直してください。'
     );
   }
 

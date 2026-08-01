@@ -396,6 +396,32 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.error?.code).toBe('INVALID_STATE_CLIENT_TYPE');
   });
 
+  it('webでpkceエントリにcode_verifierが保存されていない場合は401 CODE_VERIFIER_MISSINGを返す', async () => {
+    const env = buildEnv();
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        nonce: 'n',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'c', state: 'state-1' }),
+      },
+      env
+    );
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('CODE_VERIFIER_MISSING');
+  });
+
   it('webは成功時、ボディにcode_verifierが無くてもサーバー保存済みのものを使って交換しaccess_token/refresh_token_idを返す', async () => {
     const env = buildEnv();
     const now = Math.floor(Date.now() / 1000);

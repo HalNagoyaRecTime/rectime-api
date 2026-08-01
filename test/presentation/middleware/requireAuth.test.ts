@@ -5,8 +5,14 @@ import {
   requireAuth,
   type AuthVariables,
 } from '../../../src/presentation/middleware/requireAuth';
+import {
+  bearerAuthenticationMiddleware,
+  type AuthenticationVariables,
+} from '../../../src/presentation/middleware/bearerAuthentication';
 import { signAccessToken } from '../../../src/infrastructure/auth/jwt';
 import type { Env } from '../../../src/lib/env';
+
+type Variables = AuthenticationVariables & AuthVariables;
 
 const JWT_SECRET = 'a'.repeat(32);
 
@@ -47,7 +53,8 @@ function createMockKv(): KVNamespace {
 }
 
 function buildApp() {
-  const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
+  const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+  app.use('*', bearerAuthenticationMiddleware);
   app.get('/protected', requireAuth, c => {
     return c.json({ authUser: c.get('authUser') });
   });
@@ -105,7 +112,8 @@ describe('requireAuth', () => {
         JWT_SECRET,
         3600
       );
-      const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
+      const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+      app.use('*', bearerAuthenticationMiddleware);
       app.get('/protected', requireAuth, () => {
         throw new Error('downstream failure');
       });
@@ -272,7 +280,8 @@ describe('requireAuth', () => {
         JWT_SECRET,
         3600
       );
-      const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
+      const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+      app.use('*', bearerAuthenticationMiddleware);
       app.get('/protected', requireAuth, () => {
         throw new Error('downstream failure');
       });
