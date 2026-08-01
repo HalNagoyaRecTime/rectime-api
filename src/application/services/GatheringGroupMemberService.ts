@@ -50,8 +50,6 @@ export function createGatheringGroupMemberService(
       gatheringId: number,
       userId: number
     ): Promise<boolean> {
-      await ensureGatheringExists(gatheringId);
-      await ensureUserExists(userId);
       const removed = await gatheringGroupMemberRepository.remove(
         gatheringId,
         userId
