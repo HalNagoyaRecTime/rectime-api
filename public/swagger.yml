@@ -11,6 +11,188 @@ servers:
     description: APIのベースパス
 
 paths:
+  /admin/notifications:
+    get:
+      tags: [Notifications]
+      summary: 管理画面向け通知一覧を通知単位で取得する
+      description: Token単位の通知予定をnotification_id単位で集約して返します。
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      parameters:
+        - name: sendStatus
+          in: query
+          schema:
+            type: string
+            enum: [draft, sending, sent, failed]
+        - name: eventId
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: 通知単位の集約一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminNotificationListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Notifications]
+      summary: 管理画面から手動通知を一括予約する
+      description: |
+        ログイン中のstaffまたはteacherが、配信対象を指定して手動通知を予約します。
+        Backendが対象利用者の有効なFirebase Tokenを解決し、Token単位の通知予定を作成します。
+        `userId` と `firebaseTokenId` はRequestで受け取りません。
+        `scheduledAt`はJST基準で環境変数`EVENT_DATE`と同じ開催日だけを受け付けます。
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAdminNotificationRequest'
+      responses:
+        '201':
+          description: 作成した手動通知と通知予定件数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminNotificationCreationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /admin/notifications/{notificationId}:
+    parameters:
+      - name: notificationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [Notifications]
+      summary: 管理画面向け通知詳細を通知単位で取得する
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 通知単位の集約詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminNotificationSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [Notifications]
+      summary: 未送信の管理画面向け通知を更新する
+      description: |
+        関連する通知予定がすべてdraftの場合のみ更新できます。
+        配信対象を指定した場合は、有効なFirebase Tokenを再解決して通知予定を再作成します。
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAdminNotificationRequest'
+      responses:
+        '200':
+          description: 更新した通知
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminNotificationSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Notifications]
+      summary: 未送信の管理画面向け通知を物理削除する
+      description: 関連する通知予定がすべてdraftの場合のみ、通知予定と通知本文を削除します。
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 削除成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /students:
     get:
       tags: [Students]
@@ -174,18 +356,19 @@ paths:
           description: 有効状態で絞り込む
           schema:
             type: boolean
-        - name: page
-          in: query
-          description: ページ番号（1始まり、デフォルト1）
-          schema:
-            type: integer
-            minimum: 1
         - name: limit
           in: query
-          description: 1ページあたりの件数（デフォルト20）
+          description: 取得件数（デフォルト20、最大100）
           schema:
             type: integer
             minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: 取得開始位置（0始まり、デフォルト0）
+          schema:
+            type: integer
+            minimum: 0
       responses:
         '200':
           description: 教員一覧（ページ分け済み）
@@ -425,7 +608,12 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     put:
       tags: [Events]
-      summary: イベントを更新する
+      summary: イベントと自動通知設定を更新する
+      description: |
+        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        競技基本情報と、開始15分前の自動通知予定を1つの処理で更新します。
+        notification_enabledがfalseの場合は、未送信のevent_reminderのみ削除します。
+        同じイベントが先に更新された場合は409 Conflictを返します。
       parameters:
         - $ref: '#/components/parameters/EventId'
       requestBody:
@@ -433,18 +621,60 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EventWriteRequest'
+              $ref: '#/components/schemas/UpdateEventWithNotificationRequest'
       responses:
         '200':
-          description: 更新後のイベント
+          description: 更新後のイベントと通知予定
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Event'
+                $ref: '#/components/schemas/EventScheduleResult'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      tags: [Events]
+      summary: イベントと自動通知設定を部分更新する
+      description: |
+        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        指定された競技情報だけを更新し、未指定の項目は変更しません。
+        競技名、開始時刻、notification_enabledのいずれかを変更した場合は、
+        未送信のevent_reminderを更新後の内容で再生成します。
+        同じイベントが先に更新された場合は409 Conflictを返します。
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchEventWithNotificationRequest'
+      responses:
+        '200':
+          description: 更新後のイベントと通知予定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventScheduleResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
     delete:
@@ -462,13 +692,38 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /events/{eventId}/gatherings:
+    get:
+      tags: [Events]
+      summary: 競技の集合予定一覧を取得する
+      description: 同じ競技に複数の集合予定がある場合は、集合ID順ですべて返します。
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: 集合予定一覧。未登録の場合は空配列
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Gathering'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /events/{eventId}/schedule:
     put:
       tags: [Events]
       summary: イベント時刻と通知予定を更新する
+      deprecated: true
       description: |
         staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
         通知ありの場合は、開催日の競技開始15分前に送信するdraft通知予定を作成または更新します。
+        新規実装ではPUT /events/{eventId}を使用してください。
       parameters:
         - $ref: '#/components/parameters/EventId'
       requestBody:
@@ -484,6 +739,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EventScheduleResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /events/{eventId}/notification-summary:
+    get:
+      tags: [Events]
+      summary: 競技単位の自動通知配信状況を取得する
+      description: |
+        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        Token単位のevent_reminderを競技単位で集約し、手動通知は含めません。
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: 競技単位の自動通知配信状況
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventNotificationSummary'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -544,7 +826,7 @@ paths:
     get:
       tags: [Classrooms]
       summary: クラス詳細を取得する
-      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      parameters: [{ $ref: '#/components/parameters/ClassId' }]
       responses:
         '200':
           description: クラス詳細
@@ -557,7 +839,7 @@ paths:
     put:
       tags: [Classrooms]
       summary: クラスを更新する
-      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      parameters: [{ $ref: '#/components/parameters/ClassId' }]
       requestBody:
         required: true
         content:
@@ -580,7 +862,7 @@ paths:
     delete:
       tags: [Classrooms]
       summary: クラスを削除する
-      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      parameters: [{ $ref: '#/components/parameters/ClassId' }]
       responses:
         '204': { description: 削除成功 }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -650,68 +932,21 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gathering-groups:
+  /gatherings/{gatheringId}/members:
     get:
-      tags: [Gathering groups]
-      summary: 対象グループ一覧を取得する
+      tags: [Gathering members]
+      summary: 集合の対象者一覧を取得する
+      parameters:
+        - $ref: '#/components/parameters/GatheringId'
       responses:
         '200':
-          description: 対象グループ一覧
+          description: 集合対象者一覧
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/GatheringGroup'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    post:
-      tags: [Gathering groups]
-      summary: 対象グループを作成する
-      responses:
-        '201':
-          description: 作成した対象グループ
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GatheringGroup'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /gathering-groups/{gatheringGroupId}:
-    delete:
-      tags: [Gathering groups]
-      summary: 集合グループを削除する
-      description: 所属メンバーも削除します。集合予定に割り当てられている場合は削除できません。
-      parameters:
-        - $ref: '#/components/parameters/GatheringGroupId'
-      responses:
-        '204':
-          description: 削除成功
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /gathering-groups/{gatheringGroupId}/members:
-    get:
-      tags: [Gathering group members]
-      summary: 対象グループの所属者一覧を取得する
-      parameters:
-        - $ref: '#/components/parameters/GatheringGroupId'
-      responses:
-        '200':
-          description: 所属者一覧
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/GatheringGroupMember'
+                  $ref: '#/components/schemas/GatheringMember'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -719,29 +954,29 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
     post:
-      tags: [Gathering group members]
-      summary: 対象グループへ所属者を追加する
+      tags: [Gathering members]
+      summary: 集合へ対象者を追加する
       parameters:
-        - $ref: '#/components/parameters/GatheringGroupId'
+        - $ref: '#/components/parameters/GatheringId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AddGatheringGroupMemberRequest'
+              $ref: '#/components/schemas/AddGatheringMemberRequest'
       responses:
         '201':
-          description: 追加した所属情報
+          description: 追加した集合対象者
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GatheringGroupMember'
+                $ref: '#/components/schemas/GatheringMember'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: すでに対象グループへ所属している
+          description: すでに同じ集合へ登録されている
           content:
             application/json:
               schema:
@@ -749,12 +984,12 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gathering-groups/{gatheringGroupId}/members/{userId}:
+  /gatherings/{gatheringId}/members/{userId}:
     delete:
-      tags: [Gathering group members]
-      summary: 対象グループから所属者を削除する
+      tags: [Gathering members]
+      summary: 集合から対象者を削除する
       parameters:
-        - $ref: '#/components/parameters/GatheringGroupId'
+        - $ref: '#/components/parameters/GatheringId'
         - $ref: '#/components/parameters/UserId'
       responses:
         '204':
@@ -801,12 +1036,6 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
-        '409':
-          description: 対象グループにはすでに集合予定が登録されている
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -814,7 +1043,7 @@ paths:
     delete:
       tags: [Gatherings]
       summary: 集合予定を削除する
-      description: 参加者グループと所属メンバーは保持します。
+      description: 紐づく集合対象者も同じ処理で削除します。
       parameters:
         - $ref: '#/components/parameters/GatheringId'
       responses:
@@ -831,11 +1060,7 @@ paths:
     post:
       tags: [Firebase tokens]
       summary: Firebaseトークンを登録または更新する
-      description: |
-        Mobile Bearer Tokenからログイン中の利用者を特定し、AndroidのFirebase Registration Tokenを登録または更新します。
-        userIdや学籍番号をリクエストで指定することはできません。
-      security:
-        - bearerAuth: []
+      description: 学籍番号で学生を特定し、Firebaseトークンを登録または更新します。
       requestBody:
         required: true
         content:
@@ -851,16 +1076,8 @@ paths:
                 $ref: '#/components/schemas/RegisterFirebaseTokenResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-        '409':
-          description: Firebaseトークンが別の利用者に登録済み
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -998,6 +1215,75 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /me/notifications:
+    get:
+      tags: [Mobile notifications]
+      summary: ログイン中の利用者に配信された通知一覧を取得する
+      description: |
+        Bearer Tokenから利用者を特定し、本人のFirebase Tokenに送信済みの通知だけを新しい順で返します。
+        MVPでは未読・既読状態を管理しません。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: 本人宛ての通知一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileNotificationListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /me/notifications/{notificationId}:
+    get:
+      tags: [Mobile notifications]
+      summary: ログイン中の利用者に配信された通知詳細を取得する
+      description: |
+        本人のFirebase Tokenに送信済みの通知だけを返します。
+        他人宛てまたは未送信の通知は404として扱います。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: 本人宛ての通知詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileNotification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1398,13 +1684,6 @@ components:
       schema:
         type: integer
         minimum: 1
-    GatheringGroupId:
-      name: gatheringGroupId
-      in: path
-      required: true
-      schema:
-        type: integer
-        minimum: 1
     GatheringSpotId:
       name: gatheringSpotId
       in: path
@@ -1491,7 +1770,15 @@ components:
     Student:
       type: object
       required:
-        [student_id, display_name, class_room_id, class_room_name, attendance_number, student_id_number, is_live_active]
+        [
+          student_id,
+          display_name,
+          class_room_id,
+          class_room_name,
+          attendance_number,
+          student_id_number,
+          is_live_active,
+        ]
       properties:
         student_id:
           type: integer
@@ -1510,7 +1797,8 @@ components:
 
     StudentWriteRequest:
       type: object
-      required: [display_name, class_room_id, attendance_number, student_id_number]
+      required:
+        [display_name, class_room_id, attendance_number, student_id_number]
       properties:
         display_name:
           type: string
@@ -1600,7 +1888,7 @@ components:
 
     TeacherPage:
       type: object
-      required: [items, total, page, limit, total_pages]
+      required: [items, total, limit, offset]
       properties:
         items:
           type: array
@@ -1608,16 +1896,23 @@ components:
             $ref: '#/components/schemas/Teacher'
         total:
           type: integer
-        page:
-          type: integer
         limit:
           type: integer
-        total_pages:
+        offset:
           type: integer
 
     Event:
       type: object
-      required: [event_id, event_name, venue, start_time, end_time, created_at, updated_at]
+      required:
+        [
+          event_id,
+          event_name,
+          venue,
+          start_time,
+          end_time,
+          created_at,
+          updated_at,
+        ]
       properties:
         event_id:
           type: integer
@@ -1672,6 +1967,65 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/NotificationSchedule'
+
+    EventNotificationSummary:
+      type: object
+      required: [event_id, scheduled_at, total, draft, sending, sent, failed]
+      properties:
+        event_id:
+          type: integer
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 自動通知の配信予定時刻。通知予定がない場合はnullです。
+        total:
+          type: integer
+          minimum: 0
+        draft:
+          type: integer
+          minimum: 0
+        sending:
+          type: integer
+          minimum: 0
+        sent:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+
+    UpdateEventWithNotificationRequest:
+      allOf:
+        - $ref: '#/components/schemas/EventWriteRequest'
+        - type: object
+          properties:
+            notification_enabled:
+              type: boolean
+              description: 省略時は既存の未送信event_reminderの有無を維持します。
+
+    PatchEventWithNotificationRequest:
+      type: object
+      minProperties: 1
+      properties:
+        event_name:
+          type: string
+        rule_text:
+          type: string
+          nullable: true
+        venue:
+          type: string
+        start_time:
+          type: string
+          pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
+        end_time:
+          type: string
+          pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
+        notification_enabled:
+          type: boolean
+          description: |
+            trueの場合は更新後の競技開始15分前にevent_reminderを再生成し、
+            falseの場合は未送信のevent_reminderを削除します。
 
     EventWriteRequest:
       type: object
@@ -1864,26 +2218,20 @@ components:
           type: string
           minLength: 1
 
-    GatheringGroup:
+    GatheringMember:
       type: object
-      required: [gathering_group_id, created_at, updated_at]
-      properties:
-        gathering_group_id:
-          type: integer
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-
-    GatheringGroupMember:
-      type: object
-      required: [gathering_group_member_id, gathering_group_id, user_id, created_at, updated_at]
+      required:
+        [
+          gathering_group_member_id,
+          gathering_id,
+          user_id,
+          created_at,
+          updated_at,
+        ]
       properties:
         gathering_group_member_id:
           type: integer
-        gathering_group_id:
+        gathering_id:
           type: integer
         user_id:
           type: integer
@@ -1894,7 +2242,7 @@ components:
           type: string
           format: date-time
 
-    AddGatheringGroupMemberRequest:
+    AddGatheringMemberRequest:
       type: object
       required: [userId]
       properties:
@@ -1905,11 +2253,19 @@ components:
     Gathering:
       type: object
       required:
-        [gathering_id, gathering_group_id, event_id, gathering_spot_id, gathering_time, round, created_at, updated_at, event_name, gathering_spot_name]
+        [
+          gathering_id,
+          event_id,
+          gathering_spot_id,
+          gathering_time,
+          round,
+          created_at,
+          updated_at,
+          event_name,
+          gathering_spot_name,
+        ]
       properties:
         gathering_id:
-          type: integer
-        gathering_group_id:
           type: integer
         event_id:
           type: integer
@@ -1935,11 +2291,8 @@ components:
 
     CreateGatheringRequest:
       type: object
-      required: [gatheringGroupId, eventId, gatheringSpotId]
+      required: [eventId, gatheringSpotId]
       properties:
-        gatheringGroupId:
-          type: integer
-          minimum: 1
         eventId:
           type: integer
           minimum: 1
@@ -1957,38 +2310,67 @@ components:
 
     RegisterFirebaseTokenRequest:
       type: object
-      additionalProperties: false
-      required: [fcmToken, platform]
+      required: [studentNumber, platform]
       properties:
-        platform:
+        studentNumber:
           type: string
-          enum: [android]
+          minLength: 1
+        platform:
+          type: integer
+          enum: [1, 2]
+          description: '`1`: iOS、`2`: Android'
         fcmToken:
           type: string
           minLength: 1
+        token:
+          type: string
+          minLength: 1
+          deprecated: true
+          description: '`fcmToken` の後方互換用の別名'
+      anyOf:
+        - required: [fcmToken]
+        - required: [token]
 
     RegisterFirebaseTokenResponse:
       type: object
-      required:
-        [firebase_token_id, user_id, platform, is_firebase_active, last_seen_at]
+      required: [user, firebaseToken]
       properties:
-        firebase_token_id:
-          type: integer
+        user:
+          $ref: '#/components/schemas/NotificationTargetUser'
+        firebaseToken:
+          $ref: '#/components/schemas/FirebaseToken'
+
+    NotificationTargetUser:
+      type: object
+      required: [user_id, user_name, is_live_active, created_at, updated_at]
+      properties:
         user_id:
           type: integer
-        platform:
+        user_name:
           type: string
-          enum: [android]
-        is_firebase_active:
-          type: boolean
-        last_seen_at:
+        is_live_active:
+          type: integer
+          enum: [0, 1]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
 
     FirebaseToken:
       type: object
       required:
-        [firebase_token_id, user_id, platform, fcm_token, is_firebase_active, last_seen_at, created_at, updated_at]
+        [
+          firebase_token_id,
+          user_id,
+          platform,
+          fcm_token,
+          is_firebase_active,
+          last_seen_at,
+          created_at,
+          updated_at,
+        ]
       properties:
         firebase_token_id:
           type: integer
@@ -2015,7 +2397,19 @@ components:
     NotificationSchedule:
       type: object
       required:
-        [notification_schedule_id, notification_id, firebase_token_id, importance, notification_type, title, body, send_status, send_at, created_at, updated_at]
+        [
+          notification_schedule_id,
+          notification_id,
+          firebase_token_id,
+          importance,
+          notification_type,
+          title,
+          body,
+          send_status,
+          send_at,
+          created_at,
+          updated_at,
+        ]
       properties:
         notification_schedule_id:
           type: integer
@@ -2099,9 +2493,252 @@ components:
         offset:
           type: integer
 
+    AdminNotificationAudience:
+      oneOf:
+        - type: object
+          required: [type]
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [all]
+        - type: object
+          required: [type, classRoomId]
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [class_room]
+            classRoomId:
+              type: integer
+              minimum: 1
+        - type: object
+          required: [type, gatheringId]
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [gathering]
+            gatheringId:
+              type: integer
+              minimum: 1
+        - type: object
+          required: [type, eventId]
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum: [event_participants]
+            eventId:
+              type: integer
+              minimum: 1
+      discriminator:
+        propertyName: type
+
+    CreateAdminNotificationRequest:
+      type: object
+      required: [title, body, audience, scheduledAt]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        body:
+          type: string
+          minLength: 1
+        audience:
+          $ref: '#/components/schemas/AdminNotificationAudience'
+        scheduledAt:
+          type: string
+          format: date-time
+          description: UTCオフセットを含むISO 8601形式。JST換算の日付がEVENT_DATEと一致する必要があります。
+          example: '2026-07-23T09:00:00+09:00'
+
+    AdminNotificationCreationResult:
+      type: object
+      required:
+        - notification_id
+        - notification_type
+        - title
+        - body
+        - audience
+        - scheduled_at
+        - schedule_count
+        - send_status
+        - importance
+        - created_user_id
+      properties:
+        notification_id:
+          type: integer
+        notification_type:
+          type: string
+          enum: [manual]
+        title:
+          type: string
+        body:
+          type: string
+        audience:
+          type: object
+          description: Requestの配信対象をsnake_caseへ変換した値
+          additionalProperties: true
+        scheduled_at:
+          type: string
+          format: date-time
+        schedule_count:
+          type: integer
+          minimum: 1
+        send_status:
+          type: string
+          enum: [draft]
+        importance:
+          type: integer
+          enum: [2]
+        created_user_id:
+          type: integer
+
+    AdminNotificationDeliverySummary:
+      type: object
+      required: [total, draft, sending, sent, failed]
+      properties:
+        total:
+          type: integer
+          minimum: 1
+        draft:
+          type: integer
+          minimum: 0
+        sending:
+          type: integer
+          minimum: 0
+        sent:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+
+    AdminNotificationSummary:
+      type: object
+      required:
+        - notification_id
+        - notification_type
+        - title
+        - body
+        - scheduled_at
+        - related_event_id
+        - related_event_name
+        - created_user_id
+        - creator_name
+        - recipient_count
+        - audience
+        - delivery_summary
+        - created_at
+        - updated_at
+      properties:
+        notification_id:
+          type: integer
+        notification_type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        scheduled_at:
+          type: string
+          format: date-time
+          description: notification_schedules.send_atに保存された通知予定日時
+        related_event_id:
+          type: integer
+          nullable: true
+        related_event_name:
+          type: string
+          nullable: true
+        created_user_id:
+          type: integer
+          nullable: true
+        creator_name:
+          type: string
+          nullable: true
+        recipient_count:
+          type: integer
+          minimum: 1
+        audience:
+          oneOf:
+            - type: object
+              required: [type, event_id, recipient_count]
+              properties:
+                type:
+                  type: string
+                  enum: [event_participants]
+                event_id:
+                  type: integer
+                recipient_count:
+                  type: integer
+                  minimum: 1
+            - type: object
+              required: [type, recipient_count]
+              properties:
+                type:
+                  type: string
+                  enum: [resolved_recipients]
+                recipient_count:
+                  type: integer
+                  minimum: 1
+          description: |
+            event_idが保存されている場合は競技参加者を返します。
+            all・class_room・gatheringは元の対象種別をDBに保持しないため、
+            Token単位で確定済みの対象者として返します。
+        delivery_summary:
+          $ref: '#/components/schemas/AdminNotificationDeliverySummary'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AdminNotificationListResponse:
+      type: object
+      required: [notifications, total, limit, offset]
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminNotificationSummary'
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    UpdateAdminNotificationRequest:
+      type: object
+      description: title、body、scheduledAt、audienceのうち少なくとも1項目を指定する
+      properties:
+        title:
+          type: string
+          minLength: 1
+        body:
+          type: string
+          minLength: 1
+        scheduledAt:
+          type: string
+          format: date-time
+          description: UTCオフセットを含むISO 8601形式
+        audience:
+          $ref: '#/components/schemas/AdminNotificationAudience'
+
     Notification:
       type: object
-      required: [notification_id, notification_type, title, body, created_at, updated_at]
+      required:
+        [
+          notification_id,
+          notification_type,
+          title,
+          body,
+          created_at,
+          updated_at,
+        ]
       properties:
         notification_id:
           type: integer
@@ -2118,6 +2755,62 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    MobileNotificationEvent:
+      type: object
+      required: [event_id, event_name, venue, start_time, end_time]
+      properties:
+        event_id:
+          type: integer
+        event_name:
+          type: string
+        venue:
+          type: string
+        start_time:
+          type: string
+          pattern: '^\d{4}$'
+          example: '1030'
+        end_time:
+          type: string
+          pattern: '^\d{4}$'
+          example: '1100'
+
+    MobileNotification:
+      type: object
+      required:
+        [notification_id, notification_type, title, body, scheduled_at, related_event]
+      properties:
+        notification_id:
+          type: integer
+        notification_type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        scheduled_at:
+          type: string
+          format: date-time
+          description: notification_schedules.send_atに記録された通知予定日時
+        related_event:
+          allOf:
+            - $ref: '#/components/schemas/MobileNotificationEvent'
+          nullable: true
+
+    MobileNotificationListResponse:
+      type: object
+      required: [notifications, total, limit, offset]
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/MobileNotification'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
 
     CreateNotificationRequest:
       type: object
@@ -2309,10 +3002,8 @@ tags:
     description: 学生・クラス・教官のCSV/Excel一括取込
   - name: Gathering spots
     description: 集合場所
-  - name: Gathering groups
-    description: 対象グループ
-  - name: Gathering group members
-    description: 対象グループの所属者
+  - name: Gathering members
+    description: 集合ごとの対象者
   - name: Gatherings
     description: 集合予定
   - name: Firebase tokens
@@ -2321,5 +3012,7 @@ tags:
     description: 通知予定
   - name: Notifications
     description: Firebase通知
+  - name: Mobile notifications
+    description: ログイン利用者本人の通知履歴
   - name: Auth
     description: 認証

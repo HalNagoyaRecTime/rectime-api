@@ -14,6 +14,25 @@
   "triggers": {
     "crons": ["* * * * *"],
   },
+  "queues": {
+    "producers": [
+      {
+        "binding": "NOTIFICATION_DELIVERY_QUEUE",
+        "queue": "rectime-notification-delivery",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "rectime-notification-delivery",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 5,
+        // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
+        "retry_delay": 300,
+        "max_concurrency": 10,
+      },
+    ],
+  },
   "kv_namespaces": [
     {
       "binding": "AUTH_KV",
@@ -75,6 +94,25 @@
           },
         ],
       },
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFICATION_DELIVERY_QUEUE",
+            "queue": "rectime-notification-delivery-dev",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "rectime-notification-delivery-dev",
+            "max_batch_size": 1,
+            "max_batch_timeout": 1,
+            "max_retries": 5,
+            // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
+            "retry_delay": 300,
+            "max_concurrency": 10,
+          },
+        ],
+      },
     },
     "development": {
       "vars": {
@@ -107,6 +145,25 @@
           {
             "name": "MASTER_IMPORT_COMMIT_LOCK",
             "class_name": "MasterImportCommitLock",
+          },
+        ],
+      },
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFICATION_DELIVERY_QUEUE",
+            "queue": "rectime-notification-delivery-dev",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "rectime-notification-delivery-dev",
+            "max_batch_size": 1,
+            "max_batch_timeout": 1,
+            "max_retries": 5,
+            // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
+            "retry_delay": 300,
+            "max_concurrency": 10,
           },
         ],
       },

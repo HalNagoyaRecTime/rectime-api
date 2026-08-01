@@ -5,6 +5,8 @@ import { createDIContainer } from './di/container';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
 import type { Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
+import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
+import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
 import {
   diContainerMiddleware,
   type ContainerVariables,
@@ -78,10 +80,12 @@ app.get('/', c => {
       events: '/api/v1/events',
       classRooms: '/api/v1/classrooms',
       gatheringSpots: '/api/v1/gathering-spots',
-      gatheringGroups: '/api/v1/gathering-groups',
       gatherings: '/api/v1/gatherings',
+      gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
       firebaseTokens: '/api/v1/firebase-tokens',
       notifications: '/api/v1/notifications',
+      adminNotifications: '/api/v1/admin/notifications',
+      myNotifications: '/api/v1/me/notifications',
       testNotification: '/api/v1/notifications/test',
       notificationSchedules: '/api/v1/notification-schedules',
     },
@@ -142,17 +146,28 @@ apiV1.get('/events', c => {
 apiV1.get('/events/:eventId', c => {
   return c.get('container').eventController.getEventById(c);
 });
+apiV1.get('/events/:eventId/gatherings', c => {
+  return c.get('container').gatheringController.getGatheringsByEventId(c);
+});
 apiV1.post('/events', c => {
   return c.get('container').eventController.createEvent(c);
 });
 apiV1.put('/events/:eventId', c => {
   return c.get('container').eventController.updateEvent(c);
 });
+apiV1.patch('/events/:eventId', c => {
+  return c.get('container').eventController.patchEvent(c);
+});
 apiV1.delete('/events/:eventId', c => {
   return c.get('container').eventController.deleteEvent(c);
 });
 apiV1.put('/events/:eventId/schedule', c => {
   return c.get('container').eventScheduleController.updateEventSchedule(c);
+});
+apiV1.get('/events/:eventId/notification-summary', c => {
+  return c
+    .get('container')
+    .eventScheduleController.getEventNotificationSummary(c);
 });
 
 // Classroom routes
@@ -194,30 +209,21 @@ apiV1.put('/gathering-spots/:gatheringSpotId', c => {
   return c.get('container').gatheringSpotController.updateGatheringSpot(c);
 });
 
-// Gathering group routes
-apiV1.get('/gathering-groups', c => {
-  return c.get('container').gatheringGroupController.getAllGatheringGroups(c);
-});
-apiV1.post('/gathering-groups', c => {
-  return c.get('container').gatheringGroupController.createGatheringGroup(c);
-});
-apiV1.delete('/gathering-groups/:gatheringGroupId', c => {
-  return c.get('container').gatheringGroupController.deleteGatheringGroup(c);
-});
-apiV1.get('/gathering-groups/:gatheringGroupId/members', c => {
+// Gathering member routes
+apiV1.get('/gatherings/:gatheringId/members', c => {
   return c
     .get('container')
-    .gatheringGroupMemberController.getGatheringGroupMembers(c);
+    .gatheringGroupMemberController.getGatheringMembers(c);
 });
-apiV1.post('/gathering-groups/:gatheringGroupId/members', c => {
+apiV1.post('/gatherings/:gatheringId/members', c => {
   return c
     .get('container')
-    .gatheringGroupMemberController.addGatheringGroupMember(c);
+    .gatheringGroupMemberController.addGatheringMember(c);
 });
-apiV1.delete('/gathering-groups/:gatheringGroupId/members/:userId', c => {
+apiV1.delete('/gatherings/:gatheringId/members/:userId', c => {
   return c
     .get('container')
-    .gatheringGroupMemberController.removeGatheringGroupMember(c);
+    .gatheringGroupMemberController.removeGatheringMember(c);
 });
 
 // Gathering routes
@@ -237,6 +243,32 @@ apiV1.post('/firebase-tokens', c => {
 });
 
 // Notification routes
+apiV1.post('/admin/notifications', c => {
+  return c
+    .get('container')
+    .adminNotificationController.createManualNotification(c);
+});
+apiV1.get('/admin/notifications', c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.getAdminNotifications(c);
+});
+apiV1.get('/admin/notifications/:notificationId', c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.getAdminNotificationById(c);
+});
+apiV1.put('/admin/notifications/:notificationId', c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.updateAdminNotification(c);
+});
+apiV1.delete('/admin/notifications/:notificationId', c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.deleteAdminNotification(c);
+});
+
 apiV1.post('/notifications', c => {
   return c.get('container').notificationController.createNotification(c);
 });
@@ -248,6 +280,13 @@ apiV1.get('/notifications/:id', c => {
 });
 apiV1.put('/notifications/:id', c => {
   return c.get('container').notificationController.updateNotification(c);
+});
+
+apiV1.get('/me/notifications', c => {
+  return c.get('container').mobileNotificationController.getNotifications(c);
+});
+apiV1.get('/me/notifications/:notificationId', c => {
+  return c.get('container').mobileNotificationController.getNotificationById(c);
 });
 
 apiV1.get('/notification-schedules', c => {
@@ -301,9 +340,19 @@ export default {
 
     const container = createDIContainer(env);
     ctx.waitUntil(
-      container.scheduledNotificationService.sendScheduledEventNotifications(
+      container.scheduledNotificationService.enqueueDueNotifications(
         scheduledAt
       )
+    );
+  },
+  async queue(
+    batch: MessageBatch<NotificationDeliveryMessage>,
+    env: Env
+  ): Promise<void> {
+    const container = createDIContainer(env);
+    await consumeNotificationDeliveryQueue(
+      batch,
+      container.scheduledNotificationService
     );
   },
 };

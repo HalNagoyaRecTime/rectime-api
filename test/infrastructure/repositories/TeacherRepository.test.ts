@@ -101,15 +101,15 @@ describe('TeacherRepository', () => {
       expect(result.items).toHaveLength(seeded.teachers.length);
     });
 
-    it('デフォルトは page=1, limit=20 で返す', async () => {
+    it('デフォルトは offset=0, limit=20 で返す', async () => {
       const result = await repo.findAll();
-      expect(result.page).toBe(1);
+      expect(result.offset).toBe(0);
       expect(result.limit).toBe(20);
     });
 
-    it('page/limit でページ分けできる', async () => {
-      const page1 = await repo.findAll({ page: 1, limit: 1 });
-      const page2 = await repo.findAll({ page: 2, limit: 1 });
+    it('limit/offset でページ分けできる', async () => {
+      const page1 = await repo.findAll({ offset: 0, limit: 1 });
+      const page2 = await repo.findAll({ offset: 1, limit: 1 });
 
       expect(page1.items).toHaveLength(1);
       expect(page2.items).toHaveLength(1);
@@ -119,8 +119,8 @@ describe('TeacherRepository', () => {
       expect(page1.items[0].teacher_id).not.toBe(page2.items[0].teacher_id);
     });
 
-    it('存在しないページ番号の場合は空配列を返すが total は維持する', async () => {
-      const result = await repo.findAll({ page: 999, limit: 20 });
+    it('存在しないoffsetの場合は空配列を返すが total は維持する', async () => {
+      const result = await repo.findAll({ offset: 999, limit: 20 });
       expect(result.items).toEqual([]);
       expect(result.total).toBe(seeded.teachers.length);
     });

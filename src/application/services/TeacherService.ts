@@ -41,9 +41,8 @@ export function createTeacherService(
       return {
         items: page.items.map(toDTO),
         total: page.total,
-        page: page.page,
         limit: page.limit,
-        total_pages: page.limit > 0 ? Math.ceil(page.total / page.limit) : 0,
+        offset: page.offset,
       };
     },
 

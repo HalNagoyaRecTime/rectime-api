@@ -1,18 +1,15 @@
-import type {
-  AddGatheringGroupMemberRequestDTO,
-  GatheringGroupMemberDTO,
-} from '../dto/GatheringGroupMemberDTO';
+import { GatheringGroupMemberEntity } from '../../domain/entities/GatheringGroupMember';
 
 export interface IGatheringGroupMemberService {
-  getGatheringGroupMembers: (
-    gatheringGroupId: number
-  ) => Promise<GatheringGroupMemberDTO[]>;
-  addGatheringGroupMember: (
-    gatheringGroupId: number,
-    input: AddGatheringGroupMemberRequestDTO
-  ) => Promise<GatheringGroupMemberDTO>;
-  removeGatheringGroupMember: (
-    gatheringGroupId: number,
+  getGatheringMembers: (
+    gatheringId: number
+  ) => Promise<GatheringGroupMemberEntity[]>;
+  addGatheringMember: (
+    gatheringId: number,
+    userId: number
+  ) => Promise<GatheringGroupMemberEntity>;
+  removeGatheringMember: (
+    gatheringId: number,
     userId: number
   ) => Promise<boolean>;
 }
