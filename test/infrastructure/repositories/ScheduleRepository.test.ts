@@ -117,11 +117,11 @@ describe('ScheduleRepository', () => {
       .run();
 
     const result = await repository.updateSchedule(fixture.notificationId, {
-      CreateUserId: fixture.userId,
-      NewEventId: fixture.eventId,
-      NewImportance: 3,
-      NewSendAt: '2026-07-23T10:00:00.000Z',
-      NewGatheringId: fixture.gatheringId,
+      create_user_id: fixture.userId,
+      new_event_id: fixture.eventId,
+      new_importance: 3,
+      new_send_at: '2026-07-23T10:00:00.000Z',
+      new_gathering_id: fixture.gatheringId,
     });
 
     const schedule = await env.DB.prepare(
@@ -141,11 +141,11 @@ describe('ScheduleRepository', () => {
       }>();
 
     expect(result).toEqual({
-      CreateUserId: fixture.userId,
-      NewEventId: fixture.eventId,
-      NewImportance: 3,
-      NewSendAt: '2026-07-23T10:00:00.000Z',
-      NewGatheringId: fixture.gatheringId,
+      create_user_id: fixture.userId,
+      new_event_id: fixture.eventId,
+      new_importance: 3,
+      new_send_at: '2026-07-23T10:00:00.000Z',
+      new_gathering_id: fixture.gatheringId,
     });
     expect(schedule).toMatchObject({
       created_user_id: fixture.userId,
@@ -182,11 +182,11 @@ describe('ScheduleRepository', () => {
 
     await expect(
       repository.updateSchedule(fixture.notificationId, {
-        CreateUserId: fixture.userId,
-        NewEventId: fixture.eventId,
-        NewImportance: 3,
-        NewSendAt: '2026-07-23T10:00:00.000Z',
-        NewGatheringId: fixture.gatheringId,
+        create_user_id: fixture.userId,
+        new_event_id: fixture.eventId,
+        new_importance: 3,
+        new_send_at: '2026-07-23T10:00:00.000Z',
+        new_gathering_id: fixture.gatheringId,
       })
     ).rejects.toThrow('Only schedules with "draft" status can be updated.');
   });

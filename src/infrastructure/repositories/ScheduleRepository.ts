@@ -163,7 +163,10 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
         .leftJoin(events, eq(gatherings.eventId, events.id))
         .leftJoin(users, eq(gathering_group_members.userId, users.id))
         .where(
-          eq(gathering_group_members.gatheringId, scheduleUpdate.NewGatheringId)
+          eq(
+            gathering_group_members.gatheringId,
+            scheduleUpdate.new_gathering_id
+          )
         )
         .all();
 
@@ -215,12 +218,12 @@ export function createScheduleRepository(db: D1Database): IScheduleRepository {
                  ) VALUES (?, ?, ?, ?, 'draft', NULL, ?, ?)`
               )
               .bind(
-                scheduleUpdate.CreateUserId,
-                scheduleUpdate.NewEventId,
+                scheduleUpdate.create_user_id,
+                scheduleUpdate.new_event_id,
                 notificationId,
                 tokenId,
-                scheduleUpdate.NewImportance,
-                scheduleUpdate.NewSendAt
+                scheduleUpdate.new_importance,
+                scheduleUpdate.new_send_at
               )
           );
         }

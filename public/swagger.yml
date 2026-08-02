@@ -1089,96 +1089,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /notification/schedules:
-    get:
-      tags: [Notification schedules]
-      summary: 通知予定一覧を取得する
-      parameters:
-        - name: sendStatus
-          in: query
-          schema:
-            type: string
-            enum: [draft, sending, sent, failed]
-        - name: eventId
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-        - name: createdUserId
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-        - name: firebaseTokenId
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-        - name: from
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: to
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 50
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-      responses:
-        '200':
-          description: 通知予定一覧
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ScheduleListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    post:
-      tags: [Notification schedules]
-      summary: 通知予定を作成する
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateScheduleRequest'
-      responses:
-        '201':
-          description: 作成した通知予定
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreateScheduleResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /notification/schedules/{notificationId}:
     parameters:
       - name: notificationId
@@ -1187,26 +1097,6 @@ paths:
         schema:
           type: integer
           minimum: 1
-    get:
-      tags: [Notification schedules]
-      summary: 通知予定詳細を取得する
-      responses:
-        '200':
-          description: 通知予定詳細
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotificationSchedule'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
     put:
       tags: [Notification schedules]
       summary: 通知予定を更新する
@@ -2815,22 +2705,22 @@ components:
 
     UpdateScheduleRequest:
       type: object
-      required: [userId, eventId, gatheringId, sendAt]
+      required: [create_user_id, new_event_id, new_gathering_id, new_send_at]
       properties:
-        userId:
+        create_user_id:
           type: integer
           minimum: 1
-        eventId:
+        new_event_id:
           type: integer
           minimum: 1
-        gatheringId:
+        new_gathering_id:
           type: integer
           minimum: 1
-        importance:
+        new_importance:
           type: integer
           enum: [2]
           default: 2
-        sendAt:
+        new_send_at:
           type: string
           format: date-time
           description: UTCオフセットを含むISO 8601形式
@@ -2838,19 +2728,19 @@ components:
 
     UpdateScheduleResponse:
       type: object
-      required: [user_id, event_id, importance, send_at, gathering_id]
+      required: [create_user_id, new_event_id, new_importance, new_send_at, new_gathering_id]
       properties:
-        user_id:
+        create_user_id:
           type: integer
-        event_id:
+        new_event_id:
           type: integer
-        importance:
+        new_importance:
           type: integer
           enum: [2]
-        send_at:
+        new_send_at:
           type: string
           format: date-time
-        gathering_id:
+        new_gathering_id:
           type: integer
 
     Notification:

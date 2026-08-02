@@ -54,11 +54,11 @@ describe('ScheduleService', () => {
   it('スケジュールを更新する', async () => {
     const { repository, service } = setup();
     const update = {
-      CreateUserId: 1,
-      NewEventId: 2,
-      NewImportance: 2,
-      NewSendAt: '2026-07-23T09:00:00.000Z',
-      NewGatheringId: 3,
+      create_user_id: 1,
+      new_event_id: 2,
+      new_importance: 2,
+      new_send_at: '2026-07-23T09:00:00.000Z',
+      new_gathering_id: 3,
     };
     (repository.updateSchedule as ReturnType<typeof vi.fn>).mockResolvedValue(
       update

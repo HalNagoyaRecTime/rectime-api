@@ -27,11 +27,11 @@ function setup() {
 }
 
 const validBody = {
-  CreateUserId: 1,
-  NewEventId: 2,
-  NewImportance: 2,
-  NewSendAt: '2026-07-23T09:00:00.000Z',
-  NewGatheringId: 3,
+  create_user_id: 1,
+  new_event_id: 2,
+  new_importance: 2,
+  new_send_at: '2026-07-23T09:00:00.000Z',
+  new_gathering_id: 3,
 };
 
 const scheduleEntity = {
@@ -143,7 +143,7 @@ describe('ScheduleController', () => {
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ CreateUserId: 1 }),
+          body: JSON.stringify({ create_user_id: 1 }),
         },
         bindings
       );
