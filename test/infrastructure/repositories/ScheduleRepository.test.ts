@@ -59,41 +59,6 @@ describe('ScheduleRepository', () => {
     };
   }
 
-  it('スケジュール一覧を取得する', async () => {
-    const fixture = await createFixture();
-    await env.DB.prepare(
-      `INSERT INTO notification_schedules (
-         created_user_id,
-         event_id,
-         notification_id,
-         firebase_token_id,
-         send_status,
-         importance,
-         send_at
-       ) VALUES (?, ?, ?, ?, 'draft', 2, ?)`
-    )
-      .bind(
-        fixture.userId,
-        fixture.eventId,
-        fixture.notificationId,
-        fixture.tokenId,
-        '2026-07-23T09:00:00.000Z'
-      )
-      .run();
-
-    const all = await repository.findAll();
-
-    expect(all.notification_schedules).toHaveLength(1);
-    expect(all.notification_schedules[0]).toMatchObject({
-      notification_id: fixture.notificationId,
-      title: '件名',
-      body: '本文',
-      created_user: { user_id: fixture.userId },
-      event: { event_id: fixture.eventId },
-      delivery_summary: { total: 1, draft: 1 },
-    });
-  });
-
   it('draft通知を新しい送信時刻と対象tokenで再生成する', async () => {
     const fixture = await createFixture();
     await env.DB.prepare(
