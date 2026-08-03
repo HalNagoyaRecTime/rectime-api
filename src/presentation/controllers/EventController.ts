@@ -9,7 +9,7 @@ import type { IEventScheduleService } from '../../application/services/IEventSch
 import type { IEventService } from '../../application/services/IEventService';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
-import type { AuthenticationVariables } from '../middleware/sessionAuthentication';
+import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 
 const eventIdSchema = z.coerce.number().int().positive();
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);

@@ -11,9 +11,13 @@ import {
   type ContainerVariables,
 } from './presentation/middleware/diContainer';
 import {
-  sessionAuthenticationMiddleware,
+  requireAuth,
+  type AuthVariables,
+} from './presentation/middleware/requireAuth';
+import {
+  bearerAuthenticationMiddleware,
   type AuthenticationVariables,
-} from './presentation/middleware/sessionAuthentication';
+} from './presentation/middleware/bearerAuthentication';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -96,215 +100,215 @@ app.get('/', c => {
 // API v1 routes
 const apiV1 = new Hono<{
   Bindings: Env;
-  Variables: ContainerVariables & AuthenticationVariables;
+  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>();
 
 apiV1.use('*', diContainerMiddleware);
-apiV1.use('*', sessionAuthenticationMiddleware);
+apiV1.use('*', bearerAuthenticationMiddleware);
 
 // Student routes
-apiV1.get('/students', c => {
+apiV1.get('/students', requireAuth, c => {
   return c.get('container').studentController.getAllStudent(c);
 });
-apiV1.get('/students/:studentId', c => {
+apiV1.get('/students/:studentId', requireAuth, c => {
   return c.get('container').studentController.getStudentById(c);
 });
-apiV1.post('/students', c => {
+apiV1.post('/students', requireAuth, c => {
   return c.get('container').studentController.createStudent(c);
 });
-apiV1.put('/students/:studentId', c => {
+apiV1.put('/students/:studentId', requireAuth, c => {
   return c.get('container').studentController.updateStudent(c);
 });
 
 // Staff routes
-apiV1.get('/staffs', c => {
+apiV1.get('/staffs', requireAuth, c => {
   return c.get('container').staffController.getAllStaffs(c);
 });
-apiV1.get('/staffs/:staffId', c => {
+apiV1.get('/staffs/:staffId', requireAuth, c => {
   return c.get('container').staffController.getStaffById(c);
 });
 
 // Teacher routes
-apiV1.get('/teachers', c => {
+apiV1.get('/teachers', requireAuth, c => {
   return c.get('container').teacherController.getAllTeachers(c);
 });
-apiV1.get('/teachers/:teacherId', c => {
+apiV1.get('/teachers/:teacherId', requireAuth, c => {
   return c.get('container').teacherController.getTeacherById(c);
 });
-apiV1.put('/teachers/:teacherId', c => {
+apiV1.put('/teachers/:teacherId', requireAuth, c => {
   return c.get('container').teacherController.updateTeacher(c);
 });
-apiV1.delete('/teachers/:teacherId', c => {
+apiV1.delete('/teachers/:teacherId', requireAuth, c => {
   return c.get('container').teacherController.deleteTeacher(c);
 });
 
 // Event routes
-apiV1.get('/events', c => {
+apiV1.get('/events', requireAuth, c => {
   return c.get('container').eventController.getAllEvents(c);
 });
 
-apiV1.get('/events/:eventId', c => {
+apiV1.get('/events/:eventId', requireAuth, c => {
   return c.get('container').eventController.getEventById(c);
 });
-apiV1.get('/events/:eventId/gatherings', c => {
+apiV1.get('/events/:eventId/gatherings', requireAuth, c => {
   return c.get('container').gatheringController.getGatheringsByEventId(c);
 });
-apiV1.post('/events', c => {
+apiV1.post('/events', requireAuth, c => {
   return c.get('container').eventController.createEvent(c);
 });
-apiV1.put('/events/:eventId', c => {
+apiV1.put('/events/:eventId', requireAuth, c => {
   return c.get('container').eventController.updateEvent(c);
 });
-apiV1.patch('/events/:eventId', c => {
+apiV1.patch('/events/:eventId', requireAuth, c => {
   return c.get('container').eventController.patchEvent(c);
 });
-apiV1.delete('/events/:eventId', c => {
+apiV1.delete('/events/:eventId', requireAuth, c => {
   return c.get('container').eventController.deleteEvent(c);
 });
-apiV1.put('/events/:eventId/schedule', c => {
+apiV1.put('/events/:eventId/schedule', requireAuth, c => {
   return c.get('container').eventScheduleController.updateEventSchedule(c);
 });
-apiV1.get('/events/:eventId/notification-summary', c => {
+apiV1.get('/events/:eventId/notification-summary', requireAuth, c => {
   return c
     .get('container')
     .eventScheduleController.getEventNotificationSummary(c);
 });
 
 // Classroom routes
-apiV1.get('/classrooms', c => {
+apiV1.get('/classrooms', requireAuth, c => {
   return c.get('container').classRoomController.getAllClassrooms(c);
 });
-apiV1.get('/classrooms/:classId', c => {
+apiV1.get('/classrooms/:classId', requireAuth, c => {
   return c.get('container').classRoomController.getClassroomById(c);
 });
-apiV1.post('/classrooms', c => {
+apiV1.post('/classrooms', requireAuth, c => {
   return c.get('container').classRoomController.createClassroom(c);
 });
-apiV1.put('/classrooms/:classId', c => {
+apiV1.put('/classrooms/:classId', requireAuth, c => {
   return c.get('container').classRoomController.updateClassroom(c);
 });
-apiV1.delete('/classrooms/:classId', c => {
+apiV1.delete('/classrooms/:classId', requireAuth, c => {
   return c.get('container').classRoomController.deleteClassroom(c);
 });
 
 // Gathering spot routes
-apiV1.get('/gathering-spots', c => {
+apiV1.get('/gathering-spots', requireAuth, c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
 });
-apiV1.post('/gathering-spots', c => {
+apiV1.post('/gathering-spots', requireAuth, c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
-apiV1.put('/gathering-spots/:gatheringSpotId', c => {
+apiV1.put('/gathering-spots/:gatheringSpotId', requireAuth, c => {
   return c.get('container').gatheringSpotController.updateGatheringSpot(c);
 });
 
 // Gathering member routes
-apiV1.get('/gatherings/:gatheringId/members', c => {
+apiV1.get('/gatherings/:gatheringId/members', requireAuth, c => {
   return c
     .get('container')
     .gatheringGroupMemberController.getGatheringMembers(c);
 });
-apiV1.post('/gatherings/:gatheringId/members', c => {
+apiV1.post('/gatherings/:gatheringId/members', requireAuth, c => {
   return c
     .get('container')
     .gatheringGroupMemberController.addGatheringMember(c);
 });
-apiV1.delete('/gatherings/:gatheringId/members/:userId', c => {
+apiV1.delete('/gatherings/:gatheringId/members/:userId', requireAuth, c => {
   return c
     .get('container')
     .gatheringGroupMemberController.removeGatheringMember(c);
 });
 
 // Gathering routes
-apiV1.get('/gatherings', c => {
+apiV1.get('/gatherings', requireAuth, c => {
   return c.get('container').gatheringController.getAllGatherings(c);
 });
-apiV1.post('/gatherings', c => {
+apiV1.post('/gatherings', requireAuth, c => {
   return c.get('container').gatheringController.createGathering(c);
 });
-apiV1.delete('/gatherings/:gatheringId', c => {
+apiV1.delete('/gatherings/:gatheringId', requireAuth, c => {
   return c.get('container').gatheringController.deleteGathering(c);
 });
 
 // Firebase token routes
-apiV1.post('/firebase-tokens', c => {
+apiV1.post('/firebase-tokens', requireAuth, c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
 });
 
 // Notification schedule routes
-apiV1.put('/notification/schedules/:notificationId', c => {
+apiV1.put('/notification/schedules/:notificationId', requireAuth, c => {
   return c.get('container').scheduleController.updateSchedule(c);
 });
 
 // Notification routes
-apiV1.post('/admin/notifications', c => {
+apiV1.post('/admin/notifications', requireAuth, c => {
   return c
     .get('container')
     .adminNotificationController.createManualNotification(c);
 });
-apiV1.get('/admin/notifications', c => {
+apiV1.get('/admin/notifications', requireAuth, c => {
   return c
     .get('container')
     .adminNotificationManagementController.getAdminNotifications(c);
 });
-apiV1.get('/admin/notifications/:notificationId', c => {
+apiV1.get('/admin/notifications/:notificationId', requireAuth, c => {
   return c
     .get('container')
     .adminNotificationManagementController.getAdminNotificationById(c);
 });
-apiV1.put('/admin/notifications/:notificationId', c => {
+apiV1.put('/admin/notifications/:notificationId', requireAuth, c => {
   return c
     .get('container')
     .adminNotificationManagementController.updateAdminNotification(c);
 });
-apiV1.delete('/admin/notifications/:notificationId', c => {
+apiV1.delete('/admin/notifications/:notificationId', requireAuth, c => {
   return c
     .get('container')
     .adminNotificationManagementController.deleteAdminNotification(c);
 });
 
-apiV1.post('/notifications', c => {
+apiV1.post('/notifications', requireAuth, c => {
   return c.get('container').notificationController.createNotification(c);
 });
-apiV1.get('/notifications', c => {
+apiV1.get('/notifications', requireAuth, c => {
   return c.get('container').notificationController.getNotifications(c);
 });
-apiV1.get('/notifications/:id', c => {
+apiV1.get('/notifications/:id', requireAuth, c => {
   return c.get('container').notificationController.getNotificationById(c);
 });
-apiV1.put('/notifications/:id', c => {
+apiV1.put('/notifications/:id', requireAuth, c => {
   return c.get('container').notificationController.updateNotification(c);
 });
 
-apiV1.get('/me/notifications', c => {
+apiV1.get('/me/notifications', requireAuth, c => {
   return c.get('container').mobileNotificationController.getNotifications(c);
 });
-apiV1.get('/me/notifications/:notificationId', c => {
+apiV1.get('/me/notifications/:notificationId', requireAuth, c => {
   return c.get('container').mobileNotificationController.getNotificationById(c);
 });
 
-apiV1.get('/notification-schedules', c => {
+apiV1.get('/notification-schedules', requireAuth, c => {
   return c
     .get('container')
     .notificationScheduleController.getAllNotificationSchedules(c);
 });
-apiV1.post('/notification-schedules', c => {
+apiV1.post('/notification-schedules', requireAuth, c => {
   return c
     .get('container')
     .notificationScheduleController.createNotificationSchedule(c);
 });
-apiV1.get('/notification-schedules/:id', c => {
+apiV1.get('/notification-schedules/:id', requireAuth, c => {
   return c
     .get('container')
     .notificationScheduleController.getNotificationScheduleById(c);
 });
-apiV1.delete('/notification-schedules/:id', c => {
+apiV1.delete('/notification-schedules/:id', requireAuth, c => {
   return c
     .get('container')
     .notificationScheduleController.deleteNotificationSchedule(c);
 });
 
-apiV1.post('/notifications/test', c => {
+apiV1.post('/notifications/test', requireAuth, c => {
   return c.get('container').notificationController.sendTestNotification(c);
 });
 

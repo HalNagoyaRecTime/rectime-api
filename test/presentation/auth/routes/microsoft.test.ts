@@ -1,0 +1,606 @@
+import { env as workerEnv } from 'cloudflare:workers';
+import { Hono } from 'hono';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import type { KVNamespace } from '@cloudflare/workers-types';
+import { microsoft } from '../../../../src/presentation/auth/routes/microsoft';
+import { verifyAccessToken } from '../../../../src/infrastructure/auth/jwt';
+import { generateRandom } from '../../../../src/infrastructure/auth/pkce';
+import { toBase64URL } from '../../../../src/infrastructure/auth/base64url';
+import type { Env } from '../../../../src/lib/env';
+import type {
+  PkceEntry,
+  MobileRefreshEntry,
+} from '../../../../src/domain/auth/types';
+
+const JWT_SECRET = 'a'.repeat(32);
+const KID = 'test-kid';
+const CLIENT_ID = 'client-1';
+const TENANT = 'common';
+
+let clientPrivateKeyPem: string;
+let idTokenKeyPair: CryptoKeyPair;
+let idTokenJwk: JsonWebKey & { kid: string };
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  bytes.forEach(byte => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+beforeAll(async () => {
+  const clientKeyPair = (await crypto.subtle.generateKey(
+    {
+      name: 'RSASSA-PKCS1-v1_5',
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: 'SHA-256',
+    },
+    true,
+    ['sign', 'verify']
+  )) as CryptoKeyPair;
+  const pkcs8 = (await crypto.subtle.exportKey(
+    'pkcs8',
+    clientKeyPair.privateKey
+  )) as ArrayBuffer;
+  clientPrivateKeyPem = `-----BEGIN PRIVATE KEY-----\n${arrayBufferToBase64(pkcs8)}\n-----END PRIVATE KEY-----`;
+
+  idTokenKeyPair = (await crypto.subtle.generateKey(
+    {
+      name: 'RSASSA-PKCS1-v1_5',
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: 'SHA-256',
+    },
+    true,
+    ['sign', 'verify']
+  )) as CryptoKeyPair;
+  const exportedJwk = (await crypto.subtle.exportKey(
+    'jwk',
+    idTokenKeyPair.publicKey
+  )) as JsonWebKey;
+  idTokenJwk = { ...exportedJwk, kid: KID };
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+beforeEach(async () => {
+  await workerEnv.DB.prepare('DELETE FROM gathering_group_members').run();
+  await workerEnv.DB.prepare('DELETE FROM notification_schedules').run();
+  await workerEnv.DB.prepare('DELETE FROM gatherings').run();
+  await workerEnv.DB.prepare('DELETE FROM events').run();
+  await workerEnv.DB.prepare('DELETE FROM microsoft_account_links').run();
+  await workerEnv.DB.prepare('DELETE FROM staffs').run();
+  await workerEnv.DB.prepare('DELETE FROM teachers').run();
+  await workerEnv.DB.prepare('DELETE FROM students').run();
+  await workerEnv.DB.prepare('DELETE FROM users').run();
+});
+
+function buildEnv(overrides: Partial<Env> = {}): Env {
+  return {
+    DB: workerEnv.DB,
+    AUTH_KV: createMockKv(),
+    NOTIFICATION_DELIVERY_QUEUE: {} as Env['NOTIFICATION_DELIVERY_QUEUE'],
+    ALLOWED_ORIGINS: '',
+    FIREBASE_PROJECT_ID: 'project',
+    FIREBASE_CLIENT_EMAIL: 'sa@example.iam.gserviceaccount.com',
+    FIREBASE_PRIVATE_KEY: 'dummy-key',
+    TEST_FCM_TOKEN: 'test-token',
+    MICROSOFT_CLIENT_ID: CLIENT_ID,
+    MICROSOFT_CLIENT_PRIVATE_KEY: clientPrivateKeyPem,
+    MICROSOFT_CERT_THUMBPRINT: 'thumbprint',
+    MICROSOFT_TENANT: TENANT,
+    ALLOWED_MICROSOFT_TENANTS: 'tid-1',
+    MICROSOFT_MOBILE_REDIRECT_URI: 'com.example.app://auth/callback',
+    FRONTEND_URL: 'https://app.example.com',
+    JWT_SECRET,
+    JWT_EXPIRES_SEC: '3600',
+    MOBILE_REFRESH_EXPIRES_SEC: '2592000',
+    ...overrides,
+  };
+}
+
+function createMockKv(): KVNamespace {
+  const store = new Map<string, string>();
+  return {
+    put: vi.fn(async (key: string, value: string) => {
+      store.set(key, value);
+    }),
+    get: vi.fn(async (key: string) => store.get(key) ?? null),
+    delete: vi.fn(async (key: string) => {
+      store.delete(key);
+    }),
+  } as unknown as KVNamespace;
+}
+
+function buildApp() {
+  const app = new Hono<{ Bindings: Env }>();
+  app.route('/', microsoft);
+  return app;
+}
+
+async function signIdToken(claims: Record<string, unknown>): Promise<string> {
+  const header = { alg: 'RS256', typ: 'JWT', kid: KID };
+  const headerB64 = toBase64URL(
+    new TextEncoder().encode(JSON.stringify(header))
+  );
+  const payloadB64 = toBase64URL(
+    new TextEncoder().encode(JSON.stringify(claims))
+  );
+  const data = `${headerB64}.${payloadB64}`;
+  const signature = await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5',
+    idTokenKeyPair.privateKey,
+    new TextEncoder().encode(data)
+  );
+  return `${data}.${toBase64URL(new Uint8Array(signature))}`;
+}
+
+function stubMicrosoftFetch(idToken: string) {
+  const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('/discovery/v2.0/keys')) {
+      return new Response(JSON.stringify({ keys: [idTokenJwk] }), {
+        status: 200,
+      });
+    }
+    if (url.includes('/oauth2/v2.0/token')) {
+      return new Response(
+        JSON.stringify({
+          id_token: idToken,
+          access_token: 'ms-access-token',
+          refresh_token: 'ms-refresh-token',
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response('not found', { status: 404 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+describe('GET /auth/microsoft/login', () => {
+  it('不正なclient_typeの場合は400を返す', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      '/login',
+      { headers: { 'X-Client-Type': 'bogus' } },
+      buildEnv()
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('mobileはX-State/X-PKCE-Code-Challengeが無いと400を返す', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      '/login',
+      { headers: { 'X-Client-Type': 'mobile' } },
+      buildEnv()
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('mobileは同じstateで開始済みの場合は400を返す', async () => {
+    const env = buildEnv();
+    const state = generateRandom(32);
+    await env.AUTH_KV.put(`pkce:${state}`, JSON.stringify({ nonce: 'n' }));
+    const app = buildApp();
+
+    const res = await app.request(
+      '/login',
+      {
+        headers: {
+          'X-Client-Type': 'mobile',
+          'X-State': state,
+          'X-PKCE-Code-Challenge': generateRandom(32),
+        },
+      },
+      env
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('mobileは有効なパラメータでauth_urlを返しKVにclient_type: mobileで保存する', async () => {
+    const env = buildEnv();
+    const state = generateRandom(32);
+    const codeChallenge = generateRandom(32);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/login',
+      {
+        headers: {
+          'X-Client-Type': 'mobile',
+          'X-State': state,
+          'X-PKCE-Code-Challenge': codeChallenge,
+        },
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { auth_url: string };
+    expect(body.auth_url).toContain('login.microsoftonline.com');
+    expect(body.auth_url).toContain(
+      encodeURIComponent(env.MICROSOFT_MOBILE_REDIRECT_URI)
+    );
+
+    const stored = JSON.parse(
+      (await env.AUTH_KV.get(`pkce:${state}`)) as string
+    ) as PkceEntry;
+    expect(stored.client_type).toBe('mobile');
+    expect(stored.code_verifier).toBeUndefined();
+  });
+
+  it('webはMicrosoftへ302リダイレクトし、KVにcode_verifier付きでclient_type: webを保存する', async () => {
+    const env = buildEnv();
+    const app = buildApp();
+
+    const res = await app.request('/login', {}, env);
+
+    expect(res.status).toBe(302);
+    const location = res.headers.get('Location') ?? '';
+    expect(location).toContain('login.microsoftonline.com');
+    // redirect_uriは固定secretではなく、リクエスト自身のオリジンから動的に
+    // 組み立てられる(webはMICROSOFT_REDIRECT_URIを持たない)。
+    expect(new URL(location).searchParams.get('redirect_uri')).toBe(
+      'http://localhost/api/v1/auth/microsoft/callback'
+    );
+
+    const state = new URL(location).searchParams.get('state') as string;
+    const stored = JSON.parse(
+      (await env.AUTH_KV.get(`pkce:${state}`)) as string
+    ) as PkceEntry;
+    expect(stored.client_type).toBe('web');
+    expect(stored.code_verifier).toBeTruthy();
+  });
+});
+
+describe('GET /auth/microsoft/callback', () => {
+  it('errorクエリがある場合はログイン画面へリダイレクトする', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      '/callback?error=access_denied',
+      {},
+      buildEnv()
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      'https://app.example.com/login?error=auth_failed'
+    );
+  });
+
+  it('code/stateが無い場合はログイン画面へリダイレクトする', async () => {
+    const app = buildApp();
+    const res = await app.request('/callback', {}, buildEnv());
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      'https://app.example.com/login?error=auth_failed'
+    );
+  });
+
+  it('code/stateがある場合はトークン交換をせずフロントエンドのcallbackへ中継する', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      '/callback?code=abc%2B123&state=xyz789',
+      {},
+      buildEnv()
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      'https://app.example.com/auth/callback?code=abc%2B123&state=xyz789'
+    );
+  });
+});
+
+describe('POST /auth/microsoft/token', () => {
+  it('不正なclient_typeの場合は400を返す', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'bogus',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      },
+      buildEnv()
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('code/stateが無い場合は400を返す', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+      buildEnv()
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('mobileはcode_verifierが無い場合は400を返す', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'mobile',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code: 'c', state: 's' }),
+      },
+      buildEnv()
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('存在しないstateの場合は401 STATE_MISMATCHを返す', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'c', state: 'unknown-state' }),
+      },
+      buildEnv()
+    );
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('STATE_MISMATCH');
+  });
+
+  it('stateのclient_typeとリクエストのclient_typeが異なる場合は400を返す', async () => {
+    const env = buildEnv();
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        nonce: 'n',
+        client_type: 'mobile',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'c', state: 'state-1' }),
+      },
+      env
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_STATE_CLIENT_TYPE');
+  });
+
+  it('webでpkceエントリにcode_verifierが保存されていない場合は401 CODE_VERIFIER_MISSINGを返す', async () => {
+    const env = buildEnv();
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        nonce: 'n',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'c', state: 'state-1' }),
+      },
+      env
+    );
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('CODE_VERIFIER_MISSING');
+  });
+
+  it('webは成功時、ボディにcode_verifierが無くてもサーバー保存済みのものを使って交換しaccess_token/refresh_token_idを返す', async () => {
+    const env = buildEnv();
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-1',
+      oid: 'oid-1',
+      tid: 'tid-1',
+      name: '田中太郎',
+      preferred_username: 'tanaka@example.com',
+      nonce: 'nonce-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-1',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const fetchMock = stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'auth-code-1', state: 'state-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      access_token: string;
+      refresh_token_id: string;
+      token_type: string;
+      user: { id: string; email: string };
+    };
+    expect(body.token_type).toBe('Bearer');
+    expect(body.user.email).toBe('tanaka@example.com');
+
+    // Microsoftとのトークン交換でも、/loginと同じ動的なredirect_uriが
+    // 送信されていること(固定secretではなくリクエスト自身のオリジンから
+    // 組み立てられる)を確認する。
+    const tokenExchangeCall = fetchMock.mock.calls.find(([input]) =>
+      (typeof input === 'string' ? input : input.toString()).includes(
+        '/oauth2/v2.0/token'
+      )
+    );
+    const sentBody = new URLSearchParams(
+      tokenExchangeCall?.[1]?.body as string
+    );
+    expect(sentBody.get('redirect_uri')).toBe(
+      'http://localhost/api/v1/auth/microsoft/callback'
+    );
+
+    const claims = await verifyAccessToken(
+      body.access_token,
+      JWT_SECRET,
+      'web'
+    );
+    expect(claims.client_type).toBe('web');
+    expect(claims.sub).toBe(body.user.id);
+
+    const refreshRaw = await env.AUTH_KV.get(
+      `mobile_refresh:${body.refresh_token_id}`
+    );
+    expect(refreshRaw).toBeTruthy();
+    const refreshEntry = JSON.parse(refreshRaw as string) as MobileRefreshEntry;
+    expect(refreshEntry.ms_refresh_token).toBe('ms-refresh-token');
+    expect(refreshEntry.client_type).toBe('web');
+
+    // stateは使い切りで再利用できない
+    expect(await env.AUTH_KV.get('pkce:state-1')).toBeNull();
+  });
+
+  it('mobileは成功時、ボディのcode_verifierを使って交換しaccess_token/refresh_token_idを返す', async () => {
+    const env = buildEnv();
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-2',
+      oid: 'oid-2',
+      tid: 'tid-1',
+      name: '山田花子',
+      preferred_username: 'yamada@example.com',
+      nonce: 'nonce-2',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-2',
+      JSON.stringify({
+        nonce: 'nonce-2',
+        client_type: 'mobile',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'mobile',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code: 'auth-code-2',
+          state: 'state-2',
+          code_verifier: generateRandom(32),
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      access_token: string;
+      refresh_token_id: string;
+    };
+
+    const claims = await verifyAccessToken(
+      body.access_token,
+      JWT_SECRET,
+      'mobile'
+    );
+    expect(claims.client_type).toBe('mobile');
+
+    const refreshRaw = await env.AUTH_KV.get(
+      `mobile_refresh:${body.refresh_token_id}`
+    );
+    const refreshEntry = JSON.parse(refreshRaw as string) as MobileRefreshEntry;
+    expect(refreshEntry.client_type).toBe('mobile');
+  });
+
+  it('Microsoftとのトークン交換に失敗した場合は401を返す', async () => {
+    const env = buildEnv();
+    await env.AUTH_KV.put(
+      'pkce:state-3',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-3',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'invalid_grant' }), {
+          status: 400,
+        })
+      )
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'bad-code', state: 'state-3' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('TOKEN_EXCHANGE_FAILED');
+  });
+});
