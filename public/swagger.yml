@@ -1089,6 +1089,43 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /notification/schedules/{notificationId}:
+    parameters:
+      - name: notificationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    put:
+      tags: [Notification schedules]
+      summary: 通知予定を更新する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateScheduleRequest'
+      responses:
+        '200':
+          description: 更新後の通知予定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateScheduleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /notification-schedules/{id}:
     parameters:
       - name: id
@@ -2531,6 +2568,167 @@ components:
           description: UTCオフセットを含むISO 8601形式
         audience:
           $ref: '#/components/schemas/AdminNotificationAudience'
+
+    ScheduleCreatedUser:
+      type: object
+      required: [user_id, user_name]
+      properties:
+        user_id:
+          type: integer
+        user_name:
+          type: string
+
+    ScheduleEvent:
+      type: object
+      required: [event_id, event_name, start_time, end_time]
+      properties:
+        event_id:
+          type: integer
+        event_name:
+          type: string
+        start_time:
+          type: string
+          description: JSTの時刻（HHMM形式）
+          example: '1030'
+        end_time:
+          type: string
+          description: JSTの時刻（HHMM形式）
+          example: '1100'
+
+    ScheduleDeliverySummary:
+      type: object
+      required: [total, draft, sending, sent, failed]
+      properties:
+        total:
+          type: integer
+        draft:
+          type: integer
+        sending:
+          type: integer
+        sent:
+          type: integer
+        failed:
+          type: integer
+
+    ScheduleNotification:
+      type: object
+      required:
+        [notification_id, notification_type, title, body, created_user, event, send_time, delivery_summary]
+      properties:
+        notification_id:
+          type: integer
+        notification_type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        created_user:
+          $ref: '#/components/schemas/ScheduleCreatedUser'
+        event:
+          $ref: '#/components/schemas/ScheduleEvent'
+        send_time:
+          type: string
+          format: date-time
+        delivery_summary:
+          $ref: '#/components/schemas/ScheduleDeliverySummary'
+
+    ScheduleListResponse:
+      type: object
+      required: [notification_schedules, total, limit, offset]
+      properties:
+        notification_schedules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleNotification'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    CreateScheduleRequest:
+      type: object
+      required: [userId, eventId, notificationId, sendAt]
+      properties:
+        userId:
+          type: integer
+          minimum: 1
+        eventId:
+          type: integer
+          minimum: 1
+        notificationId:
+          type: integer
+          minimum: 1
+        importance:
+          type: integer
+          enum: [2]
+          default: 2
+        sendAt:
+          type: string
+          format: date-time
+          description: UTCオフセットを含むISO 8601形式
+          example: '2026-07-16T09:00:00.000Z'
+
+    CreateScheduleResponse:
+      type: object
+      required: [user_id, event_id, notification_id, firebase_token_id, importance, send_at]
+      properties:
+        user_id:
+          type: integer
+        event_id:
+          type: integer
+        notification_id:
+          type: integer
+        firebase_token_id:
+          type: integer
+        importance:
+          type: integer
+          enum: [2]
+        send_at:
+          type: string
+          format: date-time
+
+    UpdateScheduleRequest:
+      type: object
+      required: [create_user_id, new_event_id, new_gathering_id, new_send_at]
+      properties:
+        create_user_id:
+          type: integer
+          minimum: 1
+        new_event_id:
+          type: integer
+          minimum: 1
+        new_gathering_id:
+          type: integer
+          minimum: 1
+        new_importance:
+          type: integer
+          enum: [2]
+          default: 2
+        new_send_at:
+          type: string
+          format: date-time
+          description: UTCオフセットを含むISO 8601形式
+          example: '2026-07-16T09:00:00.000Z'
+
+    UpdateScheduleResponse:
+      type: object
+      required: [create_user_id, new_event_id, new_importance, new_send_at, new_gathering_id]
+      properties:
+        create_user_id:
+          type: integer
+        new_event_id:
+          type: integer
+        new_importance:
+          type: integer
+          enum: [2]
+        new_send_at:
+          type: string
+          format: date-time
+        new_gathering_id:
+          type: integer
 
     Notification:
       type: object
