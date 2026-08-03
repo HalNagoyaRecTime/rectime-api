@@ -236,7 +236,7 @@ apiV1.post('/firebase-tokens', requireAuth, c => {
 });
 
 // Notification schedule routes
-apiV1.put('/notification/schedules/:notificationId', c => {
+apiV1.put('/notification/schedules/:notificationId', requireAuth, c => {
   return c.get('container').scheduleController.updateSchedule(c);
 });
 

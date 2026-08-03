@@ -4,7 +4,7 @@ import type { IScheduleService } from '../../../src/application/services/ISchedu
 import { createScheduleController } from '../../../src/presentation/controllers/ScheduleController';
 import type { Env } from '../../../src/lib/env';
 import type { ContainerVariables } from '../../../src/presentation/middleware/diContainer';
-import type { AuthenticationVariables } from '../../../src/presentation/middleware/sessionAuthentication';
+import type { AuthenticationVariables } from '../../../src/presentation/middleware/bearerAuthentication';
 
 function setup() {
   const service: IScheduleService = {
