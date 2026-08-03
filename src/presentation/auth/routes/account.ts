@@ -289,6 +289,18 @@ account.post('/refresh', async c => {
   }
 
   const refresh = JSON.parse(refreshRaw) as MobileRefreshEntry;
+  if (refresh.client_type !== clientType) {
+    // refresh_token_id は発行時のクライアント種別に紐づく。異なる
+    // X-Client-Type で再発行しようとした場合は拒否し、なりすましで
+    // 別種別のアクセストークンを取得できないようにする。
+    return errorResponse(
+      c,
+      400,
+      'INVALID_REFRESH_CLIENT_TYPE',
+      'refresh_token_id のクライアント種別が不正です。'
+    );
+  }
+
   const tokens = await refreshMicrosoftAccessToken(
     c,
     refresh.ms_refresh_token,

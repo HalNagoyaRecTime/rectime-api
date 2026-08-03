@@ -285,6 +285,7 @@ microsoft.post('/token', async c => {
       display_name: user.display_name,
       avatar_url: ACCOUNT_PHOTO_PATH,
       avatar_updated_at: null,
+      client_type: clientType,
       ms_refresh_token: tokens.refresh_token,
       created_at: new Date().toISOString(),
     } satisfies MobileRefreshEntry),

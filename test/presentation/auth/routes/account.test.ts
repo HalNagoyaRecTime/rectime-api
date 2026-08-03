@@ -218,6 +218,7 @@ describe('POST /auth/logout', () => {
         sub: 'sub-1',
         email: 'tanaka@example.com',
         display_name: '田中太郎',
+        client_type: 'web',
         ms_refresh_token: 'ms-refresh-1',
         created_at: new Date().toISOString(),
       } satisfies MobileRefreshEntry)
@@ -254,6 +255,7 @@ describe('POST /auth/logout', () => {
       sub: 'sub-other',
       email: 'other@example.com',
       display_name: '他ユーザー',
+      client_type: 'web',
       ms_refresh_token: 'ms-refresh-other',
       created_at: new Date().toISOString(),
     } satisfies MobileRefreshEntry);
@@ -316,6 +318,46 @@ describe('POST /auth/refresh', () => {
     expect(res.status).toBe(401);
   });
 
+  it('mobile向けに発行されたrefresh_token_idをwebから使おうとすると400を返す', async () => {
+    const env = buildEnv();
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-mobile-1',
+      JSON.stringify({
+        user_id: 'user-1',
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'mobile',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-mobile-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_REFRESH_CLIENT_TYPE');
+    // クライアント種別不一致時はKVのエントリを消費(ローテーション)しない
+    expect(
+      await env.AUTH_KV.get('mobile_refresh:refresh-mobile-1')
+    ).not.toBeNull();
+  });
+
   it('webは有効なrefresh_token_idを指定すると新しいアクセストークンを発行しIDをローテーションする', async () => {
     const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
     await env.AUTH_KV.put(
@@ -327,6 +369,7 @@ describe('POST /auth/refresh', () => {
         sub: 'sub-1',
         email: 'tanaka@example.com',
         display_name: '田中太郎',
+        client_type: 'web',
         ms_refresh_token: 'ms-refresh-1',
         created_at: new Date().toISOString(),
       } satisfies MobileRefreshEntry)
@@ -383,6 +426,7 @@ describe('POST /auth/refresh', () => {
         sub: 'sub-1',
         email: 'tanaka@example.com',
         display_name: '田中太郎',
+        client_type: 'web',
         ms_refresh_token: 'ms-refresh-1',
         created_at: new Date().toISOString(),
       } satisfies MobileRefreshEntry)

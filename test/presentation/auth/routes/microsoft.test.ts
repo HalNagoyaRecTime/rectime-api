@@ -499,6 +499,7 @@ describe('POST /auth/microsoft/token', () => {
     expect(refreshRaw).toBeTruthy();
     const refreshEntry = JSON.parse(refreshRaw as string) as MobileRefreshEntry;
     expect(refreshEntry.ms_refresh_token).toBe('ms-refresh-token');
+    expect(refreshEntry.client_type).toBe('web');
 
     // stateは使い切りで再利用できない
     expect(await env.AUTH_KV.get('pkce:state-1')).toBeNull();
@@ -559,6 +560,12 @@ describe('POST /auth/microsoft/token', () => {
       'mobile'
     );
     expect(claims.client_type).toBe('mobile');
+
+    const refreshRaw = await env.AUTH_KV.get(
+      `mobile_refresh:${body.refresh_token_id}`
+    );
+    const refreshEntry = JSON.parse(refreshRaw as string) as MobileRefreshEntry;
+    expect(refreshEntry.client_type).toBe('mobile');
   });
 
   it('Microsoftとのトークン交換に失敗した場合は401を返す', async () => {

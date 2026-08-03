@@ -49,6 +49,9 @@ export interface MobileRefreshEntry {
   display_name: string;
   avatar_url?: string | null;
   avatar_updated_at?: string | null;
+  // 発行時のクライアント種別。/auth/refresh でリクエストヘッダーの
+  // X-Client-Type と一致するか検証するために保持する（なりすまし防止）。
+  client_type: ClientType;
   ms_refresh_token: string;
   created_at: string;
   updated_at?: string;
