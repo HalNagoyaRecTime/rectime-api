@@ -4,7 +4,6 @@ import type { IGatheringRepository } from '../../../src/domain/interfaces/reposi
 
 const gathering = {
   gathering_id: 1,
-  gathering_group_id: 2,
   event_id: 3,
   gathering_spot_id: 4,
   gathering_time: '08:50',
@@ -18,10 +17,11 @@ const gathering = {
 function setup() {
   const repository: IGatheringRepository = {
     findAll: vi.fn(),
-    existsGatheringGroup: vi.fn().mockResolvedValue(true),
+    findByEventId: vi.fn(),
     existsEvent: vi.fn().mockResolvedValue(true),
     existsGatheringSpot: vi.fn().mockResolvedValue(true),
     create: vi.fn(),
+    remove: vi.fn().mockResolvedValue(true),
   };
   return { repository, service: createGatheringService(repository) };
 }
@@ -38,10 +38,34 @@ describe('GatheringService', () => {
     expect(repository.findAll).toHaveBeenCalledOnce();
   });
 
-  it('すべての参照先を確認後、入力をそのまま作成処理へ渡す', async () => {
+  it('競技の存在を確認して、その競技の集合予定一覧を取得する', async () => {
+    const { repository, service } = setup();
+    (repository.findByEventId as ReturnType<typeof vi.fn>).mockResolvedValue([
+      gathering,
+    ]);
+
+    await expect(service.getGatheringsByEventId(3)).resolves.toEqual([
+      gathering,
+    ]);
+    expect(repository.existsEvent).toHaveBeenCalledWith(3);
+    expect(repository.findByEventId).toHaveBeenCalledWith(3);
+  });
+
+  it('存在しない競技では集合予定を取得しない', async () => {
+    const { repository, service } = setup();
+    (repository.existsEvent as ReturnType<typeof vi.fn>).mockResolvedValue(
+      false
+    );
+
+    await expect(service.getGatheringsByEventId(999999)).rejects.toThrow(
+      'Event not found'
+    );
+    expect(repository.findByEventId).not.toHaveBeenCalled();
+  });
+
+  it('競技と集合場所を確認後、入力を作成処理へ渡す', async () => {
     const { repository, service } = setup();
     const input = {
-      gathering_group_id: 2,
       event_id: 3,
       gathering_spot_id: 4,
       gathering_time: '08:50',
@@ -52,31 +76,12 @@ describe('GatheringService', () => {
     );
 
     await expect(service.createGathering(input)).resolves.toBe(gathering);
-    expect(repository.existsGatheringGroup).toHaveBeenCalledWith(2);
     expect(repository.existsEvent).toHaveBeenCalledWith(3);
     expect(repository.existsGatheringSpot).toHaveBeenCalledWith(4);
     expect(repository.create).toHaveBeenCalledWith(input);
   });
 
-  it('存在しないグループでは以降の確認と作成を行わない', async () => {
-    const { repository, service } = setup();
-    (
-      repository.existsGatheringGroup as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(false);
-
-    await expect(
-      service.createGathering({
-        gathering_group_id: 2,
-        event_id: 3,
-        gathering_spot_id: 4,
-      })
-    ).rejects.toThrow('Gathering group not found');
-    expect(repository.existsEvent).not.toHaveBeenCalled();
-    expect(repository.existsGatheringSpot).not.toHaveBeenCalled();
-    expect(repository.create).not.toHaveBeenCalled();
-  });
-
-  it('存在しないイベントでは集合場所の確認と作成を行わない', async () => {
+  it('存在しない競技では集合場所の確認と作成を行わない', async () => {
     const { repository, service } = setup();
     (repository.existsEvent as ReturnType<typeof vi.fn>).mockResolvedValue(
       false
@@ -84,7 +89,6 @@ describe('GatheringService', () => {
 
     await expect(
       service.createGathering({
-        gathering_group_id: 2,
         event_id: 3,
         gathering_spot_id: 4,
       })
@@ -101,7 +105,6 @@ describe('GatheringService', () => {
 
     await expect(
       service.createGathering({
-        gathering_group_id: 2,
         event_id: 3,
         gathering_spot_id: 4,
       })
@@ -109,18 +112,19 @@ describe('GatheringService', () => {
     expect(repository.create).not.toHaveBeenCalled();
   });
 
-  it('作成処理の例外をそのまま送出する', async () => {
+  it('集合予定を削除する', async () => {
     const { repository, service } = setup();
-    (repository.create as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error('database error')
-    );
 
-    await expect(
-      service.createGathering({
-        gathering_group_id: 2,
-        event_id: 3,
-        gathering_spot_id: 4,
-      })
-    ).rejects.toThrow('database error');
+    await expect(service.deleteGathering(1)).resolves.toBeUndefined();
+    expect(repository.remove).toHaveBeenCalledWith(1);
+  });
+
+  it('存在しない集合予定の削除はエラーにする', async () => {
+    const { repository, service } = setup();
+    (repository.remove as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+    await expect(service.deleteGathering(999999)).rejects.toThrow(
+      'Gathering not found'
+    );
   });
 });

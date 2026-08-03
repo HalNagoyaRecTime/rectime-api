@@ -12,6 +12,7 @@ import {
   getBearerToken,
   refreshMicrosoftAccessToken,
   userResponse,
+  getUserCategories,
 } from '../helpers';
 import {
   type MobileRefreshEntry,
@@ -53,14 +54,18 @@ account.get('/me', async c => {
     return errorResponse(c, 401, code, message);
   }
 
+  const categories = await getUserCategories(c, claims.sub);
   return c.json({
-    user: userResponse({
-      id: claims.sub,
-      email: claims.email,
-      display_name: claims.display_name,
-      avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
-      avatar_updated_at: claims.avatar_updated_at ?? null,
-    }),
+    user: userResponse(
+      {
+        id: claims.sub,
+        email: claims.email,
+        display_name: claims.display_name,
+        avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
+        avatar_updated_at: claims.avatar_updated_at ?? null,
+      },
+      categories
+    ),
   });
 });
 
@@ -284,6 +289,18 @@ account.post('/refresh', async c => {
   }
 
   const refresh = JSON.parse(refreshRaw) as MobileRefreshEntry;
+  if (refresh.client_type !== clientType) {
+    // refresh_token_id は発行時のクライアント種別に紐づく。異なる
+    // X-Client-Type で再発行しようとした場合は拒否し、なりすましで
+    // 別種別のアクセストークンを取得できないようにする。
+    return errorResponse(
+      c,
+      400,
+      'INVALID_REFRESH_CLIENT_TYPE',
+      'refresh_token_id のクライアント種別が不正です。'
+    );
+  }
+
   const tokens = await refreshMicrosoftAccessToken(
     c,
     refresh.ms_refresh_token,

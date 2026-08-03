@@ -4,6 +4,8 @@ import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 import type { Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
+import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
+import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
 import {
   diContainerMiddleware,
   type ContainerVariables,
@@ -81,10 +83,13 @@ app.get('/', c => {
       events: '/api/v1/events',
       classRooms: '/api/v1/classrooms',
       gatheringSpots: '/api/v1/gathering-spots',
-      gatheringGroups: '/api/v1/gathering-groups',
       gatherings: '/api/v1/gatherings',
+      gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
+      schedules: '/api/v1/notification/schedules',
       firebaseTokens: '/api/v1/firebase-tokens',
       notifications: '/api/v1/notifications',
+      adminNotifications: '/api/v1/admin/notifications',
+      myNotifications: '/api/v1/me/notifications',
       testNotification: '/api/v1/notifications/test',
       notificationSchedules: '/api/v1/notification-schedules',
     },
@@ -145,17 +150,28 @@ apiV1.get('/events', requireAuth, c => {
 apiV1.get('/events/:eventId', requireAuth, c => {
   return c.get('container').eventController.getEventById(c);
 });
+apiV1.get('/events/:eventId/gatherings', requireAuth, c => {
+  return c.get('container').gatheringController.getGatheringsByEventId(c);
+});
 apiV1.post('/events', requireAuth, c => {
   return c.get('container').eventController.createEvent(c);
 });
 apiV1.put('/events/:eventId', requireAuth, c => {
   return c.get('container').eventController.updateEvent(c);
 });
+apiV1.patch('/events/:eventId', requireAuth, c => {
+  return c.get('container').eventController.patchEvent(c);
+});
 apiV1.delete('/events/:eventId', requireAuth, c => {
   return c.get('container').eventController.deleteEvent(c);
 });
 apiV1.put('/events/:eventId/schedule', requireAuth, c => {
   return c.get('container').eventScheduleController.updateEventSchedule(c);
+});
+apiV1.get('/events/:eventId/notification-summary', requireAuth, c => {
+  return c
+    .get('container')
+    .eventScheduleController.getEventNotificationSummary(c);
 });
 
 // Classroom routes
@@ -182,33 +198,26 @@ apiV1.get('/gathering-spots', requireAuth, c => {
 apiV1.post('/gathering-spots', requireAuth, c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
+apiV1.put('/gathering-spots/:gatheringSpotId', requireAuth, c => {
+  return c.get('container').gatheringSpotController.updateGatheringSpot(c);
+});
 
-// Gathering group routes
-apiV1.get('/gathering-groups', requireAuth, c => {
-  return c.get('container').gatheringGroupController.getAllGatheringGroups(c);
-});
-apiV1.post('/gathering-groups', requireAuth, c => {
-  return c.get('container').gatheringGroupController.createGatheringGroup(c);
-});
-apiV1.get('/gathering-groups/:gatheringGroupId/members', requireAuth, c => {
+// Gathering member routes
+apiV1.get('/gatherings/:gatheringId/members', requireAuth, c => {
   return c
     .get('container')
-    .gatheringGroupMemberController.getGatheringGroupMembers(c);
+    .gatheringGroupMemberController.getGatheringMembers(c);
 });
-apiV1.post('/gathering-groups/:gatheringGroupId/members', requireAuth, c => {
+apiV1.post('/gatherings/:gatheringId/members', requireAuth, c => {
   return c
     .get('container')
-    .gatheringGroupMemberController.addGatheringGroupMember(c);
+    .gatheringGroupMemberController.addGatheringMember(c);
 });
-apiV1.delete(
-  '/gathering-groups/:gatheringGroupId/members/:userId',
-  requireAuth,
-  c => {
-    return c
-      .get('container')
-      .gatheringGroupMemberController.removeGatheringGroupMember(c);
-  }
-);
+apiV1.delete('/gatherings/:gatheringId/members/:userId', requireAuth, c => {
+  return c
+    .get('container')
+    .gatheringGroupMemberController.removeGatheringMember(c);
+});
 
 // Gathering routes
 apiV1.get('/gatherings', requireAuth, c => {
@@ -217,13 +226,47 @@ apiV1.get('/gatherings', requireAuth, c => {
 apiV1.post('/gatherings', requireAuth, c => {
   return c.get('container').gatheringController.createGathering(c);
 });
+apiV1.delete('/gatherings/:gatheringId', requireAuth, c => {
+  return c.get('container').gatheringController.deleteGathering(c);
+});
 
 // Firebase token routes
 apiV1.post('/firebase-tokens', requireAuth, c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
 });
 
+// Notification schedule routes
+apiV1.put('/notification/schedules/:notificationId', requireAuth, c => {
+  return c.get('container').scheduleController.updateSchedule(c);
+});
+
 // Notification routes
+apiV1.post('/admin/notifications', requireAuth, c => {
+  return c
+    .get('container')
+    .adminNotificationController.createManualNotification(c);
+});
+apiV1.get('/admin/notifications', requireAuth, c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.getAdminNotifications(c);
+});
+apiV1.get('/admin/notifications/:notificationId', requireAuth, c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.getAdminNotificationById(c);
+});
+apiV1.put('/admin/notifications/:notificationId', requireAuth, c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.updateAdminNotification(c);
+});
+apiV1.delete('/admin/notifications/:notificationId', requireAuth, c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.deleteAdminNotification(c);
+});
+
 apiV1.post('/notifications', requireAuth, c => {
   return c.get('container').notificationController.createNotification(c);
 });
@@ -235,6 +278,13 @@ apiV1.get('/notifications/:id', requireAuth, c => {
 });
 apiV1.put('/notifications/:id', requireAuth, c => {
   return c.get('container').notificationController.updateNotification(c);
+});
+
+apiV1.get('/me/notifications', requireAuth, c => {
+  return c.get('container').mobileNotificationController.getNotifications(c);
+});
+apiV1.get('/me/notifications/:notificationId', requireAuth, c => {
+  return c.get('container').mobileNotificationController.getNotificationById(c);
 });
 
 apiV1.get('/notification-schedules', requireAuth, c => {
@@ -288,9 +338,19 @@ export default {
 
     const container = createDIContainer(env);
     ctx.waitUntil(
-      container.scheduledNotificationService.sendScheduledEventNotifications(
+      container.scheduledNotificationService.enqueueDueNotifications(
         scheduledAt
       )
+    );
+  },
+  async queue(
+    batch: MessageBatch<NotificationDeliveryMessage>,
+    env: Env
+  ): Promise<void> {
+    const container = createDIContainer(env);
+    await consumeNotificationDeliveryQueue(
+      batch,
+      container.scheduledNotificationService
     );
   },
 };

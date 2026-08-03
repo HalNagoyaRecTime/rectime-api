@@ -1,5 +1,14 @@
+import { env as workerEnv } from 'cloudflare:workers';
 import { Hono } from 'hono';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type { KVNamespace } from '@cloudflare/workers-types';
 import { account } from '../../../../src/presentation/auth/routes/account';
 import { signAccessToken } from '../../../../src/infrastructure/auth/jwt';
@@ -41,10 +50,18 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+beforeEach(async () => {
+  await workerEnv.DB.prepare('DELETE FROM staffs').run();
+  await workerEnv.DB.prepare('DELETE FROM teachers').run();
+  await workerEnv.DB.prepare('DELETE FROM students').run();
+  await workerEnv.DB.prepare('DELETE FROM users').run();
+});
+
 function buildEnv(overrides: Partial<Env> = {}): Env {
   return {
-    DB: {} as Env['DB'],
+    DB: workerEnv.DB,
     AUTH_KV: createMockKv(),
+    NOTIFICATION_DELIVERY_QUEUE: {} as Env['NOTIFICATION_DELIVERY_QUEUE'],
     ALLOWED_ORIGINS: '',
     FIREBASE_PROJECT_ID: 'project',
     FIREBASE_CLIENT_EMAIL: 'sa@example.iam.gserviceaccount.com',
@@ -100,7 +117,21 @@ async function buildWebToken(): Promise<string> {
 describe('GET /auth/me', () => {
   it('webは有効なBearerトークンがあればユーザー情報のみを返す', async () => {
     const env = buildEnv();
-    const token = await buildWebToken();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const userId = String(user!.user_id);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
     const app = buildApp();
 
     const res = await app.request(
@@ -112,14 +143,24 @@ describe('GET /auth/me', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       access_token?: string;
-      user?: { id: string; email: string; display_name: string };
+      user?: {
+        id: string;
+        email: string;
+        display_name: string;
+        is_student: boolean;
+        is_staff: boolean;
+        is_teacher: boolean;
+      };
     };
 
     expect(body.access_token).toBeUndefined();
     expect(body.user).toMatchObject({
-      id: 'user-1',
+      id: userId,
       email: 'tanaka@example.com',
       display_name: '田中太郎',
+      is_student: false,
+      is_staff: false,
+      is_teacher: false,
     });
   });
 
@@ -177,6 +218,7 @@ describe('POST /auth/logout', () => {
         sub: 'sub-1',
         email: 'tanaka@example.com',
         display_name: '田中太郎',
+        client_type: 'web',
         ms_refresh_token: 'ms-refresh-1',
         created_at: new Date().toISOString(),
       } satisfies MobileRefreshEntry)
@@ -213,6 +255,7 @@ describe('POST /auth/logout', () => {
       sub: 'sub-other',
       email: 'other@example.com',
       display_name: '他ユーザー',
+      client_type: 'web',
       ms_refresh_token: 'ms-refresh-other',
       created_at: new Date().toISOString(),
     } satisfies MobileRefreshEntry);
@@ -275,6 +318,46 @@ describe('POST /auth/refresh', () => {
     expect(res.status).toBe(401);
   });
 
+  it('mobile向けに発行されたrefresh_token_idをwebから使おうとすると400を返す', async () => {
+    const env = buildEnv();
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-mobile-1',
+      JSON.stringify({
+        user_id: 'user-1',
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'mobile',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-mobile-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_REFRESH_CLIENT_TYPE');
+    // クライアント種別不一致時はKVのエントリを消費(ローテーション)しない
+    expect(
+      await env.AUTH_KV.get('mobile_refresh:refresh-mobile-1')
+    ).not.toBeNull();
+  });
+
   it('webは有効なrefresh_token_idを指定すると新しいアクセストークンを発行しIDをローテーションする', async () => {
     const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
     await env.AUTH_KV.put(
@@ -286,6 +369,7 @@ describe('POST /auth/refresh', () => {
         sub: 'sub-1',
         email: 'tanaka@example.com',
         display_name: '田中太郎',
+        client_type: 'web',
         ms_refresh_token: 'ms-refresh-1',
         created_at: new Date().toISOString(),
       } satisfies MobileRefreshEntry)
@@ -342,6 +426,7 @@ describe('POST /auth/refresh', () => {
         sub: 'sub-1',
         email: 'tanaka@example.com',
         display_name: '田中太郎',
+        client_type: 'web',
         ms_refresh_token: 'ms-refresh-1',
         created_at: new Date().toISOString(),
       } satisfies MobileRefreshEntry)

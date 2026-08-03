@@ -33,6 +33,7 @@ describe('createAuthService', () => {
   function setup() {
     const userRepository: IUserRepository = {
       isStaffOrTeacher: vi.fn(),
+      getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
       createUserWithMicrosoftLink: vi.fn(),
       updateUser: vi.fn(),

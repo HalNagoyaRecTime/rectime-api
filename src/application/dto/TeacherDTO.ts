@@ -15,7 +15,6 @@ export interface TeacherDTO {
 export interface TeacherPageDTO {
   items: TeacherDTO[];
   total: number;
-  page: number;
   limit: number;
-  total_pages: number;
+  offset: number;
 }

@@ -92,6 +92,7 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
   return {
     DB: workerEnv.DB,
     AUTH_KV: createMockKv(),
+    NOTIFICATION_DELIVERY_QUEUE: {} as Env['NOTIFICATION_DELIVERY_QUEUE'],
     ALLOWED_ORIGINS: '',
     FIREBASE_PROJECT_ID: 'project',
     FIREBASE_CLIENT_EMAIL: 'sa@example.iam.gserviceaccount.com',
@@ -396,6 +397,32 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.error?.code).toBe('INVALID_STATE_CLIENT_TYPE');
   });
 
+  it('webでpkceエントリにcode_verifierが保存されていない場合は401 CODE_VERIFIER_MISSINGを返す', async () => {
+    const env = buildEnv();
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        nonce: 'n',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'c', state: 'state-1' }),
+      },
+      env
+    );
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('CODE_VERIFIER_MISSING');
+  });
+
   it('webは成功時、ボディにcode_verifierが無くてもサーバー保存済みのものを使って交換しaccess_token/refresh_token_idを返す', async () => {
     const env = buildEnv();
     const now = Math.floor(Date.now() / 1000);
@@ -472,6 +499,7 @@ describe('POST /auth/microsoft/token', () => {
     expect(refreshRaw).toBeTruthy();
     const refreshEntry = JSON.parse(refreshRaw as string) as MobileRefreshEntry;
     expect(refreshEntry.ms_refresh_token).toBe('ms-refresh-token');
+    expect(refreshEntry.client_type).toBe('web');
 
     // stateは使い切りで再利用できない
     expect(await env.AUTH_KV.get('pkce:state-1')).toBeNull();
@@ -532,6 +560,12 @@ describe('POST /auth/microsoft/token', () => {
       'mobile'
     );
     expect(claims.client_type).toBe('mobile');
+
+    const refreshRaw = await env.AUTH_KV.get(
+      `mobile_refresh:${body.refresh_token_id}`
+    );
+    const refreshEntry = JSON.parse(refreshRaw as string) as MobileRefreshEntry;
+    expect(refreshEntry.client_type).toBe('mobile');
   });
 
   it('Microsoftとのトークン交換に失敗した場合は401を返す', async () => {

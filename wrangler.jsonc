@@ -37,6 +37,25 @@
   "triggers": {
     "crons": ["* * * * *"],
   },
+  "queues": {
+    "producers": [
+      {
+        "binding": "NOTIFICATION_DELIVERY_QUEUE",
+        "queue": "rectime-notification-delivery",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "rectime-notification-delivery",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 5,
+        // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
+        "retry_delay": 300,
+        "max_concurrency": 10,
+      },
+    ],
+  },
   "kv_namespaces": [
     {
       "binding": "AUTH_KV",
@@ -83,6 +102,25 @@
           "migrations_dir": "migrations",
         },
       ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFICATION_DELIVERY_QUEUE",
+            "queue": "rectime-notification-delivery-dev",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "rectime-notification-delivery-dev",
+            "max_batch_size": 1,
+            "max_batch_timeout": 1,
+            "max_retries": 5,
+            // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
+            "retry_delay": 300,
+            "max_concurrency": 10,
+          },
+        ],
+      },
     },
     // Cloudflare上のPreview環境。`rectime-api-preview` という別Workerとして
     // 作成される。KV/D1のIDは実リソースに差し替え済み。
@@ -156,6 +194,27 @@
           "migrations_dir": "migrations",
         },
       ],
+      // キューもD1/KVと同様、env.developmentと同じものを共用する
+      // (Preview専用キューは作成していない)。
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFICATION_DELIVERY_QUEUE",
+            "queue": "rectime-notification-delivery-dev",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "rectime-notification-delivery-dev",
+            "max_batch_size": 1,
+            "max_batch_timeout": 1,
+            "max_retries": 5,
+            // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
+            "retry_delay": 300,
+            "max_concurrency": 10,
+          },
+        ],
+      },
     },
   },
 }

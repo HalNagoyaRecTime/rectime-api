@@ -17,6 +17,7 @@ import {
   exchangeMicrosoftToken,
   upsertUser,
   userResponse,
+  getUserCategories,
 } from '../helpers';
 import {
   type PkceEntry,
@@ -215,11 +216,14 @@ microsoft.post('/token', async c => {
       ? (body.code_verifier as string)
       : pkce.code_verifier;
   if (!codeVerifier) {
+    // state 自体は見つかっているが code_verifier だけが欠けているケース
+    // （webでpkceエントリにcode_verifierが保存されていない等）。
+    // stateの不一致・期限切れ（STATE_MISMATCH）とは原因が異なるため区別する。
     return errorResponse(
       c,
       401,
-      'STATE_MISMATCH',
-      'state が一致しないか期限切れです。'
+      'CODE_VERIFIER_MISSING',
+      'code_verifier が見つかりません。もう一度ログインをやり直してください。'
     );
   }
 
@@ -281,6 +285,7 @@ microsoft.post('/token', async c => {
       display_name: user.display_name,
       avatar_url: ACCOUNT_PHOTO_PATH,
       avatar_updated_at: null,
+      client_type: clientType,
       ms_refresh_token: tokens.refresh_token,
       created_at: new Date().toISOString(),
     } satisfies MobileRefreshEntry),
@@ -305,12 +310,14 @@ microsoft.post('/token', async c => {
     jwtTtl
   );
 
+  const categories = await getUserCategories(c, user.id);
+
   return c.json({
     access_token: accessToken,
     refresh_token_id: refreshTokenId,
     token_type: 'Bearer',
     expires_in: jwtTtl,
-    user: userResponse(user),
+    user: userResponse(user, categories),
   });
 });
 
