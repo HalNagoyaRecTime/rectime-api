@@ -81,6 +81,7 @@ app.get('/', c => {
       gatheringSpots: '/api/v1/gathering-spots',
       gatherings: '/api/v1/gatherings',
       gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
+      schedules: '/api/v1/notification/schedules',
       firebaseTokens: '/api/v1/firebase-tokens',
       notifications: '/api/v1/notifications',
       adminNotifications: '/api/v1/admin/notifications',
@@ -228,6 +229,11 @@ apiV1.delete('/gatherings/:gatheringId', c => {
 // Firebase token routes
 apiV1.post('/firebase-tokens', c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
+});
+
+// Notification schedule routes
+apiV1.put('/notification/schedules/:notificationId', c => {
+  return c.get('container').scheduleController.updateSchedule(c);
 });
 
 // Notification routes
