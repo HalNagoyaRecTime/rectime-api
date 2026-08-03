@@ -41,11 +41,11 @@ jobs:
 
       - name: Set deploy target
         id: target
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          EVENT: ${{ github.event.workflow_run.event || 'workflow_dispatch' }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
         run: |
-          BRANCH="${{ github.event.workflow_run.head_branch || github.ref_name }}"
-          EVENT="${{ github.event.workflow_run.event || 'workflow_dispatch' }}"
-          PR_NUMBER="${{ github.event.workflow_run.pull_requests[0].number }}"
-
           if [ "$EVENT" = "pull_request" ]; then
             if [ -z "$PR_NUMBER" ]; then
               echo "::error::workflow_runイベントからPR番号を取得できませんでした(フォークからのPRの可能性があります)"
