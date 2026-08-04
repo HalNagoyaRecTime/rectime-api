@@ -270,63 +270,93 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         );
       }
 
-      const maxUser = await db
-        .prepare('SELECT COALESCE(MAX(user_id), 0) AS max_id FROM users')
-        .first<{ max_id: number }>();
-      const startUserId = (maxUser?.max_id ?? 0) + 1;
-      const userIds = input.students.map((_, index) => startUserId + index);
-
+      const userStatementStartIndex = statements.length;
       for (const chunk of chunkArray(
-        input.students.map((student, index) => ({
-          userId: userIds[index],
-          displayName: student.displayName,
-        })),
-        Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
+        input.students,
+        D1_MAX_BOUND_PARAMETERS
       )) {
         const placeholders = chunk
-          .map(() => '(?, ?, CURRENT_TIMESTAMP)')
+          .map(() => '(?, CURRENT_TIMESTAMP)')
           .join(', ');
-        const values = chunk.flatMap(item => [item.userId, item.displayName]);
+        const values = chunk.map(student => student.displayName);
         statements.push(
           db
             .prepare(
-              `INSERT INTO users (user_id, user_name, updated_at) VALUES ${placeholders}`
+              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id`
             )
             .bind(...values)
         );
       }
 
-      for (const chunk of chunkArray(
-        input.students.map((student, index) => ({
-          userId: userIds[index],
-          classCode: student.classCode,
-          attendanceNumber: student.attendanceNumber,
-          studentIdNumber: student.studentIdNumber,
-        })),
-        Math.floor(D1_MAX_BOUND_PARAMETERS / 4)
-      )) {
-        const placeholders = chunk
-          .map(
-            () =>
-              '(?, (SELECT class_room_id FROM class_rooms WHERE class_code = ?), ?, ?, CURRENT_TIMESTAMP)'
-          )
-          .join(', ');
-        const values = chunk.flatMap(item => [
-          item.userId,
-          item.classCode,
-          item.attendanceNumber,
-          item.studentIdNumber,
-        ]);
-        statements.push(
-          db
-            .prepare(
-              `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number, updated_at) VALUES ${placeholders}`
-            )
-            .bind(...values)
-        );
+      const results = await db.batch<{ user_id: number }>(statements);
+
+      const userIds: number[] = [];
+      for (let i = userStatementStartIndex; i < results.length; i++) {
+        for (const row of results[i].results) {
+          userIds.push(row.user_id);
+        }
       }
 
-      await db.batch(statements);
+      try {
+        const studentStatements: D1PreparedStatement[] = [];
+        for (const chunk of chunkArray(
+          input.students.map((student, index) => ({
+            userId: userIds[index],
+            classCode: student.classCode,
+            attendanceNumber: student.attendanceNumber,
+            studentIdNumber: student.studentIdNumber,
+          })),
+          Math.floor(D1_MAX_BOUND_PARAMETERS / 4)
+        )) {
+          const placeholders = chunk
+            .map(
+              () =>
+                '(?, (SELECT class_room_id FROM class_rooms WHERE class_code = ?), ?, ?, CURRENT_TIMESTAMP)'
+            )
+            .join(', ');
+          const values = chunk.flatMap(item => [
+            item.userId,
+            item.classCode,
+            item.attendanceNumber,
+            item.studentIdNumber,
+          ]);
+          studentStatements.push(
+            db
+              .prepare(
+                `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number, updated_at) VALUES ${placeholders}`
+              )
+              .bind(...values)
+          );
+        }
+        await db.batch(studentStatements);
+      } catch (error) {
+        await deleteUsersByIds(db, userIds);
+        await deleteClassRoomsByCodes(
+          db,
+          input.newClassRooms.map(room => room.classCode)
+        );
+        throw error;
+      }
     },
   };
+}
+
+async function deleteUsersByIds(db: D1Database, userIds: number[]) {
+  for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM users WHERE user_id IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+  }
+}
+
+async function deleteClassRoomsByCodes(db: D1Database, classCodes: string[]) {
+  for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM class_rooms WHERE class_code IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+  }
 }

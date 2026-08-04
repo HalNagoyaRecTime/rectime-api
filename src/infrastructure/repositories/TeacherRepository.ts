@@ -226,63 +226,48 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         return;
       }
 
-      const [maxUser, maxTeacher] = await Promise.all([
-        db
-          .prepare('SELECT COALESCE(MAX(user_id), 0) AS max_id FROM users')
-          .first<{ max_id: number }>(),
-        db
-          .prepare(
-            'SELECT COALESCE(MAX(teacher_id), 0) AS max_id FROM teachers'
-          )
-          .first<{ max_id: number }>(),
-      ]);
-      const startUserId = (maxUser?.max_id ?? 0) + 1;
-      const startTeacherId = (maxTeacher?.max_id ?? 0) + 1;
-
-      const statements: D1PreparedStatement[] = [];
-      const idChunkSize = Math.floor(D1_MAX_BOUND_PARAMETERS / 2);
-
-      for (const chunk of chunkArray(
-        inputs.map((input, index) => ({
-          userId: startUserId + index,
-          displayName: input.displayName,
-        })),
-        idChunkSize
-      )) {
+      const userStatements: D1PreparedStatement[] = [];
+      for (const chunk of chunkArray(inputs, D1_MAX_BOUND_PARAMETERS)) {
         const placeholders = chunk
-          .map(() => '(?, ?, CURRENT_TIMESTAMP)')
+          .map(() => '(?, CURRENT_TIMESTAMP)')
           .join(', ');
-        const values = chunk.flatMap(item => [item.userId, item.displayName]);
-        statements.push(
+        const values = chunk.map(input => input.displayName);
+        userStatements.push(
           db
             .prepare(
-              `INSERT INTO users (user_id, user_name, updated_at) VALUES ${placeholders}`
+              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id`
             )
             .bind(...values)
         );
       }
 
-      for (const chunk of chunkArray(
-        inputs.map((_, index) => ({
-          teacherId: startTeacherId + index,
-          userId: startUserId + index,
-        })),
-        idChunkSize
-      )) {
-        const placeholders = chunk
-          .map(() => '(?, ?, CURRENT_TIMESTAMP)')
-          .join(', ');
-        const values = chunk.flatMap(item => [item.teacherId, item.userId]);
-        statements.push(
-          db
-            .prepare(
-              `INSERT INTO teachers (teacher_id, user_id, updated_at) VALUES ${placeholders}`
-            )
-            .bind(...values)
-        );
+      const userResults = await db.batch<{ user_id: number }>(userStatements);
+      const userIds: number[] = [];
+      for (const result of userResults) {
+        for (const row of result.results) {
+          userIds.push(row.user_id);
+        }
       }
 
-      await db.batch(statements);
+      try {
+        const teacherStatements: D1PreparedStatement[] = [];
+        for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
+          const placeholders = chunk
+            .map(() => '(?, CURRENT_TIMESTAMP)')
+            .join(', ');
+          teacherStatements.push(
+            db
+              .prepare(
+                `INSERT INTO teachers (user_id, updated_at) VALUES ${placeholders}`
+              )
+              .bind(...chunk)
+          );
+        }
+        await db.batch(teacherStatements);
+      } catch (error) {
+        await deleteUsersByIds(db, userIds);
+        throw error;
+      }
     },
 
     async update(
@@ -398,4 +383,14 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       }
     },
   };
+}
+
+async function deleteUsersByIds(db: D1Database, userIds: number[]) {
+  for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM users WHERE user_id IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+  }
 }

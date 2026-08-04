@@ -208,6 +208,45 @@ describe('StudentRepository', () => {
       ).rejects.toThrow();
 
       expect(await repo.findByStudentNum('20099')).toBeNull();
+
+      const orphanedUsers = await env.DB.prepare(
+        'SELECT user_id FROM users WHERE user_name IN (?, ?)'
+      )
+        .bind('登録されないはずの生徒', '既存と重複する生徒')
+        .all();
+      expect(orphanedUsers.results).toHaveLength(0);
+    });
+
+    it('studentsへの登録に失敗した場合、直前に作成したuserとnewClassRoomsも後片付けされる', async () => {
+      await expect(
+        repo.createMany({
+          newClassRooms: [
+            { classCode: 'CLEANUP-NEW', className: 'CLEANUP-NEW' },
+          ],
+          students: [
+            {
+              displayName: '後片付け対象の生徒',
+              classCode: 'CLEANUP-MISSING',
+              attendanceNumber: 1,
+              studentIdNumber: '20098',
+            },
+          ],
+        })
+      ).rejects.toThrow();
+
+      const orphanedUser = await env.DB.prepare(
+        'SELECT user_id FROM users WHERE user_name = ?'
+      )
+        .bind('後片付け対象の生徒')
+        .first();
+      expect(orphanedUser).toBeNull();
+
+      const orphanedClassRoom = await env.DB.prepare(
+        'SELECT class_room_id FROM class_rooms WHERE class_code = ?'
+      )
+        .bind('CLEANUP-NEW')
+        .first();
+      expect(orphanedClassRoom).toBeNull();
     });
 
     it('2,000件の学生を、新規クラス40件とあわせてまとめて作成できる', async () => {
