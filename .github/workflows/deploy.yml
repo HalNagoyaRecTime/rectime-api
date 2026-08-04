@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-cloudflare-workers-${{ github.event_name == 'workflow_dispatch' && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
+  group: deploy-cloudflare-workers-${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
   cancel-in-progress: true
 
 permissions:
@@ -22,7 +22,7 @@ jobs:
        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'pull_request'))
     name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'workflow_dispatch' && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
+    environment: ${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
 
     steps:
       - name: Checkout code
