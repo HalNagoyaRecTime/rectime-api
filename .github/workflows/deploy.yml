@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-cloudflare-workers-${{ github.event.workflow_run.head_branch || github.ref_name }}
+  group: deploy-cloudflare-workers-${{ github.event_name == 'workflow_dispatch' && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
   cancel-in-progress: true
 
 permissions:
@@ -47,7 +47,13 @@ jobs:
           PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
         run: |
           if [ "$EVENT" = "workflow_dispatch" ]; then
-            # 本番デプロイは手動実行(workflow_dispatch)のみで行う。
+            # 本番デプロイは手動実行(workflow_dispatch)のみで行うが、
+            # 誤って main 以外のブランチから実行され本番に反映されることを防ぐため、
+            # ブランチも合わせて検証する。
+            if [ "$BRANCH" != "main" ]; then
+              echo "::error::本番デプロイはmainブランチからのworkflow_dispatchのみ許可されています(現在のブランチ: $BRANCH)"
+              exit 1
+            fi
             echo "mode=deploy" >> "$GITHUB_OUTPUT"
             echo "env_flag=" >> "$GITHUB_OUTPUT"
             echo "d1_database=rectime-api" >> "$GITHUB_OUTPUT"
