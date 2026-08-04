@@ -71,19 +71,50 @@
     },
   ],
   "env": {
-    // ローカル開発用(wrangler dev --env development)。env.default は
-    // development と重複していたため削除した。
+    // `rectime-api-development` という別Workerとして作成される。
+    // ローカル開発(wrangler dev --env development)と、mainブランチ以外へのpush先/
+    // PRごとのpreviewデプロイ先(旧env.preview)の両方を兼ねる(env.previewは廃止し統合した)。
+    // env.default は development と重複していたため削除した。
+    //
+    // web向けMicrosoft OAuthのredirect_uriは(#151により)リクエストURLから動的に
+    // 組み立てられるため、wrangler側での設定は不要。ただしMicrosoft Entra側の
+    // アプリ登録には、実際にデプロイされるWorkerのコールバックURL
+    // (`wrangler versions upload --env development --preview-alias <固定名>` で得られる
+    // `https://<固定名>-rectime-api-development.<subdomain>.workers.dev/api/v1/auth/microsoft/callback`)
+    // を事前に追加登録しておく必要がある(preview-aliasを固定名で使い続けないとURLが変わり登録と食い違う)。
     "development": {
+      "name": "rectime-api-development",
+      "preview_urls": true,
       "vars": {
         "NODE_ENV": "development",
         "PORT": "8787",
         "HOST": "0.0.0.0",
-        "ALLOWED_ORIGINS": "http://localhost:5173,https://*.recwatch.pages.dev",
+        "ALLOWED_ORIGINS": "http://localhost:5173,https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+        // Entraアプリの「アプリケーション(クライアント)ID」。非公開の資格情報ではないためvarsで直接設定する。
+        "MICROSOFT_CLIENT_ID": "be597fc9-7946-43a2-9ba8-6a96c96fd3b7",
+        // Entraのマルチテナント共通エンドポイント値。環境によらず同一。
+        "MICROSOFT_TENANT": "organizations",
+        // 許可するEntraテナントID。
+        "ALLOWED_MICROSOFT_TENANTS": "8d41d6d7-36ce-4e0c-8c6d-cf2c54c39039",
+        // モバイルアプリのカスタムスキーム。バックエンドの環境によらず同一。
+        "MICROSOFT_MOBILE_REDIRECT_URI": "com.rectime.mobile://auth/callback",
+        // このdevelop backendに実際に接続するフロントエンド。
+        // TODO: recwatchのPRごとのPreview URLに応じた動的化を別途検討する
+        // (Refererヘッダーから取得しALLOWED_ORIGINSで検証する方式を予定)。
+        // それまでは固定値。
+        "FRONTEND_URL": "https://recwatch.pages.dev",
+        "SESSION_EXPIRES_SEC": "86400",
+        "JWT_EXPIRES_SEC": "3600",
+        "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
       },
       // secrets.required はここでは宣言しない: vitest-pool-workers
       // (test/apply-migrations.ts) がこの環境で62ファイル分のWorkerを並列起動する際、
       // 各起動ごとの追加検証コストでD1マイグレーションのbeforeAllフックが
       // 10秒タイムアウトし、テストスイートが不安定になることを確認したため。
+      // ただし実デプロイ先としても使う以上、以下は実際には必須(`wrangler secret put <NAME> --env development`
+      // で登録すること): MICROSOFT_CLIENT_PRIVATE_KEY / MICROSOFT_CERT_THUMBPRINT / JWT_SECRET /
+      // FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY / TEST_FCM_TOKEN
+      // (secrets.requiredを宣言しない代償として、デプロイ時の事前検証は効かない)。
       "kv_namespaces": [
         {
           "binding": "AUTH_KV",
@@ -118,92 +149,6 @@
             // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
             "retry_delay": 300,
             "max_concurrency": 10,
-          },
-        ],
-      },
-    },
-    // Cloudflare上のPreview環境。`rectime-api-preview` という別Workerとして
-    // 作成される。KV/D1のIDは実リソースに差し替え済み。
-    //
-    // web向けMicrosoft OAuthのredirect_uriは(#151により)リクエストURLから動的に
-    // 組み立てられるため、wrangler側での設定は不要。ただしMicrosoft Entra側の
-    // アプリ登録には、実際にデプロイされるpreview WorkerのコールバックURL
-    // (`wrangler versions upload --env preview --preview-alias <固定名>` で得られる
-    // `https://<固定名>-rectime-api-preview.<subdomain>.workers.dev/api/v1/auth/microsoft/callback`)
-    // を事前に追加登録しておく必要がある(preview-aliasを固定名で使い続けないとURLが変わり登録と食い違う)。
-    //
-    // secrets.required に残っているのは実際に機密なJWT_SECRET/クライアント証明書/Firebase系のみ。
-    // それ以外(テナントID・モバイルredirect URI・TTL秒数)はvarsとして直接設定する
-    // (値は本番の実値と異なっていて構わないもの、または環境によらず同一のもの)。
-    // workers_dev はtrueのままにする(既定値どおり)。developブランチへのpushは
-    // `wrangler versions upload --preview-alias` ではなく通常の `wrangler deploy` で
-    // env.previewへデプロイされるため、workers_devをfalseにするとその「常設Preview Worker」に
-    // rectime-api-preview.<subdomain>.workers.dev から一切アクセスできなくなってしまう
-    // (PRごとのpreview-alias URLはpreview_urls側の機能でworkers_devとは独立に動作するため影響しない)。
-    "preview": {
-      "name": "rectime-api-preview",
-      "preview_urls": true,
-      "vars": {
-        "NODE_ENV": "preview",
-        "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
-        // Entraのマルチテナント共通エンドポイント値。環境によらず同一。
-        "MICROSOFT_TENANT": "organizations",
-        // 許可するEntraテナントID。
-        "ALLOWED_MICROSOFT_TENANTS": "8d41d6d7-36ce-4e0c-8c6d-cf2c54c39039",
-        // モバイルアプリのカスタムスキーム。バックエンドの環境によらず同一。
-        "MICROSOFT_MOBILE_REDIRECT_URI": "com.rectime.mobile://auth/callback",
-        // このpreview backendに実際に接続するフロントエンド。
-        // TODO: recwatchのPRごとのPreview URLに応じた動的化を別途検討する
-        // (Refererヘッダーから取得しALLOWED_ORIGINSで検証する方式を予定)。
-        // それまでは固定値。
-        "FRONTEND_URL": "https://recwatch.pages.dev",
-        "SESSION_EXPIRES_SEC": "86400",
-        "JWT_EXPIRES_SEC": "3600",
-        "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
-      },
-      "secrets": {
-        "required": [
-          "MICROSOFT_CLIENT_ID",
-          "MICROSOFT_CLIENT_PRIVATE_KEY",
-          "MICROSOFT_CERT_THUMBPRINT",
-          "JWT_SECRET",
-          "FIREBASE_PROJECT_ID",
-          "FIREBASE_CLIENT_EMAIL",
-          "FIREBASE_PRIVATE_KEY",
-          "TEST_FCM_TOKEN",
-        ],
-      },
-      // Preview環境で本番同様のcronが毎分走らないようにする
-      "triggers": {
-        "crons": [],
-      },
-      "kv_namespaces": [
-        {
-          "binding": "AUTH_KV",
-          "id": "b5a0d8dfae2b4d9288a9ff443d034938",
-        },
-      ],
-      // D1は意図的にenv.developmentと同じrectime-api-devを共用する
-      // (Preview専用D1は作成していない)。マイグレーション状態・データは
-      // development/previewで完全に共有される。
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "rectime-api-dev",
-          "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
-          "migrations_dir": "migrations",
-        },
-      ],
-      // キューはD1/KVと同様、env.developmentと同じものを共用する
-      // (Preview専用キューは作成していない)。producerは複数Workerから登録できるが、
-      // consumerは1キューにつき1Workerまでという制約があり、既に
-      // rectime-api-development がconsumerとして登録済みのため、ここではproducerのみ宣言する
-      // (consumerを重複登録しようとするとデプロイが失敗する)。
-      "queues": {
-        "producers": [
-          {
-            "binding": "NOTIFICATION_DELIVERY_QUEUE",
-            "queue": "rectime-notification-delivery-dev",
           },
         ],
       },
