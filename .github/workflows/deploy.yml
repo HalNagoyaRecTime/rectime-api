@@ -22,7 +22,7 @@ jobs:
        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'pull_request'))
     name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
     runs-on: ubuntu-latest
-    environment: ${{ ((github.event.workflow_run.event != 'pull_request') && ((github.event.workflow_run.head_branch || github.ref_name) == 'main')) && 'production' || 'preview' }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'preview' }}
 
     steps:
       - name: Checkout code
@@ -46,7 +46,12 @@ jobs:
           EVENT: ${{ github.event.workflow_run.event || 'workflow_dispatch' }}
           PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
         run: |
-          if [ "$EVENT" = "pull_request" ]; then
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            # 本番デプロイは手動実行(workflow_dispatch)のみで行う。
+            echo "mode=deploy" >> "$GITHUB_OUTPUT"
+            echo "env_flag=" >> "$GITHUB_OUTPUT"
+            echo "d1_database=rectime-api" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = "pull_request" ]; then
             if [ -z "$PR_NUMBER" ]; then
               echo "::error::workflow_runイベントからPR番号を取得できませんでした(フォークからのPRの可能性があります)"
               exit 1
@@ -59,9 +64,10 @@ jobs:
             echo "preview_alias=pr-${PR_NUMBER}" >> "$GITHUB_OUTPUT"
             echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
           elif [ "$BRANCH" = "main" ]; then
+            # mainへのpushはstagingへ自動デプロイする(本番はworkflow_dispatchのみ)。
             echo "mode=deploy" >> "$GITHUB_OUTPUT"
-            echo "env_flag=" >> "$GITHUB_OUTPUT"
-            echo "d1_database=rectime-api" >> "$GITHUB_OUTPUT"
+            echo "env_flag=--env staging" >> "$GITHUB_OUTPUT"
+            echo "d1_database=rectime-api-staging" >> "$GITHUB_OUTPUT"
           else
             echo "mode=deploy" >> "$GITHUB_OUTPUT"
             echo "env_flag=--env preview" >> "$GITHUB_OUTPUT"

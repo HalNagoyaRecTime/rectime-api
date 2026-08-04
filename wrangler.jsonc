@@ -208,5 +208,79 @@
         ],
       },
     },
+    // Cloudflare上のStaging環境。`rectime-api-staging` という別Workerとして作成される。
+    // mainへのpushで自動デプロイされる(本番はworkflow_dispatchでの手動デプロイのみ)。
+    // development/previewとは異なり、D1/KV/Queueは共有せず専用リソースを持つ
+    // (本番相当の検証を行うための独立環境のため)。
+    //
+    // TODO: 以下の3つのIDはプレースホルダー。マージ前に実リソースへ差し替えること:
+    //   - npx wrangler d1 create rectime-api-staging
+    //   - npx wrangler kv namespace create rectime_api_staging_auth_kv
+    //   - npx wrangler queues create rectime-notification-delivery-staging
+    "staging": {
+      "name": "rectime-api-staging",
+      "vars": {
+        "NODE_ENV": "staging",
+        "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+        "MICROSOFT_TENANT": "organizations",
+        "ALLOWED_MICROSOFT_TENANTS": "8d41d6d7-36ce-4e0c-8c6d-cf2c54c39039",
+        "MICROSOFT_MOBILE_REDIRECT_URI": "com.rectime.mobile://auth/callback",
+        "FRONTEND_URL": "https://recwatch.pages.dev",
+        "SESSION_EXPIRES_SEC": "86400",
+        "JWT_EXPIRES_SEC": "3600",
+        "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
+      },
+      "secrets": {
+        "required": [
+          "MICROSOFT_CLIENT_ID",
+          "MICROSOFT_CLIENT_PRIVATE_KEY",
+          "MICROSOFT_CERT_THUMBPRINT",
+          "JWT_SECRET",
+          "FIREBASE_PROJECT_ID",
+          "FIREBASE_CLIENT_EMAIL",
+          "FIREBASE_PRIVATE_KEY",
+          "TEST_FCM_TOKEN",
+        ],
+      },
+      // 本番相当のcronを検証したくなった時点で有効化を検討する。まずは無効で始める。
+      "triggers": {
+        "crons": [],
+      },
+      "kv_namespaces": [
+        {
+          "binding": "AUTH_KV",
+          "id": "TODO_REPLACE_WITH_REAL_KV_ID",
+        },
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "rectime-api-staging",
+          "database_id": "TODO_REPLACE_WITH_REAL_D1_ID",
+          "migrations_dir": "migrations",
+        },
+      ],
+      // staging専用のキュー。development/previewと共有しないため、producer/consumerとも
+      // このWorkerだけで完結する(1キュー1consumerの制約に抵触しない)。
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFICATION_DELIVERY_QUEUE",
+            "queue": "rectime-notification-delivery-staging",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "rectime-notification-delivery-staging",
+            "max_batch_size": 1,
+            "max_batch_timeout": 1,
+            "max_retries": 5,
+            // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
+            "retry_delay": 300,
+            "max_concurrency": 10,
+          },
+        ],
+      },
+    },
   },
 }
