@@ -5,7 +5,8 @@ import type { ManualNotificationAudience } from '../../domain/entities/AdminNoti
 import type { Env } from '../../lib/env';
 import { isEventDate, isValidEventDate } from '../../lib/eventDate';
 import type { ContainerVariables } from '../middleware/diContainer';
-import type { AuthenticationVariables } from '../middleware/sessionAuthentication';
+import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
+import type { AuthVariables } from '../middleware/requireAuth';
 
 const audienceSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('all') }).strict(),
@@ -38,7 +39,7 @@ const createManualNotificationSchema = z.object({
 
 type AdminNotificationContext = Context<{
   Bindings: Env;
-  Variables: ContainerVariables & AuthenticationVariables;
+  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>;
 
 export function createAdminNotificationController(
