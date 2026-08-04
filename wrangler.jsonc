@@ -39,11 +39,6 @@
       "id": "70197622340f44df8e24365695b5f1d0",
       "preview_id": "4c0dddfe16d94166841579765390f697",
     },
-    {
-      "binding": "MASTER_IMPORT_KV",
-      "id": "REPLACE_WITH_REAL_NAMESPACE_ID",
-      "preview_id": "REPLACE_WITH_REAL_PREVIEW_NAMESPACE_ID",
-    },
   ],
   "durable_objects": {
     "bindings": [
@@ -72,11 +67,6 @@
           "binding": "AUTH_KV",
           "id": "local-auth-kv",
           "preview_id": "local-auth-kv",
-        },
-        {
-          "binding": "MASTER_IMPORT_KV",
-          "id": "local-master-import-kv",
-          "preview_id": "local-master-import-kv",
         },
       ],
       "d1_databases": [
@@ -126,11 +116,6 @@
           "binding": "AUTH_KV",
           "id": "local-auth-kv",
           "preview_id": "local-auth-kv",
-        },
-        {
-          "binding": "MASTER_IMPORT_KV",
-          "id": "local-master-import-kv",
-          "preview_id": "local-master-import-kv",
         },
       ],
       "d1_databases": [

@@ -10,7 +10,6 @@ import type { NotificationDeliveryMessage } from '../domain/entities/Notificatio
 export type Env = {
   DB: D1Database;
   AUTH_KV: KVNamespace;
-  MASTER_IMPORT_KV: KVNamespace;
   MASTER_IMPORT_COMMIT_LOCK: DurableObjectNamespace<MasterImportCommitLock>;
   NOTIFICATION_DELIVERY_QUEUE: Queue<NotificationDeliveryMessage>;
   ALLOWED_ORIGINS?: string;

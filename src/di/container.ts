@@ -97,7 +97,7 @@ export function createDIContainer(env: Env) {
   });
   const classRoomService = createClassRoomService(classRoomRepository);
   const masterImportService = createMasterImportService(
-    env.MASTER_IMPORT_KV,
+    env.AUTH_KV,
     env.MASTER_IMPORT_COMMIT_LOCK,
     studentService,
     classRoomService,
