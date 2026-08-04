@@ -212,11 +212,6 @@
     // mainへのpushで自動デプロイされる(本番はworkflow_dispatchでの手動デプロイのみ)。
     // development/previewとは異なり、D1/KV/Queueは共有せず専用リソースを持つ
     // (本番相当の検証を行うための独立環境のため)。
-    //
-    // TODO: 以下の3つのIDはプレースホルダー。マージ前に実リソースへ差し替えること:
-    //   - npx wrangler d1 create rectime-api-staging
-    //   - npx wrangler kv namespace create rectime_api_staging_auth_kv
-    //   - npx wrangler queues create rectime-notification-delivery-staging
     "staging": {
       "name": "rectime-api-staging",
       "vars": {
@@ -249,14 +244,14 @@
       "kv_namespaces": [
         {
           "binding": "AUTH_KV",
-          "id": "TODO_REPLACE_WITH_REAL_KV_ID",
+          "id": "c91a0c7ab23943aa9c6135ad7ebfb583",
         },
       ],
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "rectime-api-staging",
-          "database_id": "TODO_REPLACE_WITH_REAL_D1_ID",
+          "database_id": "f069ce58-7d88-4bd9-aab0-ab6c62eb2349",
           "migrations_dir": "migrations",
         },
       ],
