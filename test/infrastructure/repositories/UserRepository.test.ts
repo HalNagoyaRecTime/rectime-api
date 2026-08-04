@@ -26,6 +26,20 @@ describe('UserRepository', () => {
     await env.DB.prepare('DELETE FROM users').run();
   });
 
+  describe('exists', () => {
+    it('存在するuserIdの場合はtrueを返す', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('存在確認テスト') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(repo.exists(user!.user_id)).resolves.toBe(true);
+    });
+
+    it('存在しないuserIdの場合はfalseを返す', async () => {
+      await expect(repo.exists(999999)).resolves.toBe(false);
+    });
+  });
+
   describe('findUserIdByMicrosoftAccount', () => {
     it('未登録の oid/tid の場合は null を返す', async () => {
       await expect(

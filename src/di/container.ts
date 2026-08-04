@@ -74,8 +74,10 @@ export function createDIContainer(env: Env) {
     createAdminNotificationManagementRepository(db);
   const mobileNotificationRepository = createMobileNotificationRepository(db);
   const gatheringSpotRepository = createGatheringSpotRepository(db);
-  const gatheringGroupMemberRepository =
-    createGatheringGroupMemberRepository(db);
+  const gatheringGroupMemberRepository = createGatheringGroupMemberRepository(
+    db,
+    userRepository
+  );
   const gatheringRepository = createGatheringRepository(db);
   const scheduleRepository = createScheduleRepository(db);
   const notificationDeliveryQueue = createNotificationDeliveryQueue(
