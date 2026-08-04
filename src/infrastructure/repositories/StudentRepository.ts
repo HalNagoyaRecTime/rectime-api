@@ -271,10 +271,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       }
 
       const userStatementStartIndex = statements.length;
-      for (const chunk of chunkArray(
-        input.students,
-        D1_MAX_BOUND_PARAMETERS
-      )) {
+      for (const chunk of chunkArray(input.students, D1_MAX_BOUND_PARAMETERS)) {
         const placeholders = chunk
           .map(() => '(?, CURRENT_TIMESTAMP)')
           .join(', ');
