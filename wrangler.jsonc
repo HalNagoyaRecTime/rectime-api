@@ -217,6 +217,8 @@
       "vars": {
         "NODE_ENV": "staging",
         "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+        // Entraアプリの「アプリケーション(クライアント)ID」。非公開の資格情報ではないためvarsで直接設定する。
+        "MICROSOFT_CLIENT_ID": "be597fc9-7946-43a2-9ba8-6a96c96fd3b7",
         "MICROSOFT_TENANT": "organizations",
         "ALLOWED_MICROSOFT_TENANTS": "8d41d6d7-36ce-4e0c-8c6d-cf2c54c39039",
         "MICROSOFT_MOBILE_REDIRECT_URI": "com.rectime.mobile://auth/callback",
@@ -227,7 +229,6 @@
       },
       "secrets": {
         "required": [
-          "MICROSOFT_CLIENT_ID",
           "MICROSOFT_CLIENT_PRIVATE_KEY",
           "MICROSOFT_CERT_THUMBPRINT",
           "JWT_SECRET",
