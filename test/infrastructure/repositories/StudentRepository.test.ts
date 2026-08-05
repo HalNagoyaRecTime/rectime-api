@@ -49,6 +49,28 @@ describe('StudentRepository', () => {
     });
   });
 
+    describe('findByUserId', () => {
+    it('users の id で学生を取得し、users を join して返す', async () => {
+      const target = seeded.students[0];
+      const student = await repo.findByUserId(target.userId);
+ 
+      expect(student).toMatchObject({
+        student_id: target.studentId,
+        user_id: target.userId,
+        user_name: target.displayName,
+        attendance_number: target.attendanceNumber,
+        student_id_number: target.studentIdNumber,
+        class_room_id: target.classRoomId,
+        class_room_name: 'テスト教室',
+        is_live_active: true,
+      });
+    });
+ 
+    it('存在しない userId の場合は null を返す', async () => {
+      expect(await repo.findByUserId(999999)).toBeNull();
+    });
+  });
+
   describe('findByStudentNum', () => {
     it('学籍番号で学生を取得できる', async () => {
       const target = seeded.students[2];
