@@ -59,7 +59,9 @@ account.get('/me', async c => {
     return errorResponse(c, 401, code, message);
   }
 
-  const student = await studentService.getByUserId(Number(claims.sub));
+  const student = await studentService
+  .getByUserId(Number(claims.sub))
+  .catch(() => null);
   const categories = await getUserCategories(c, claims.sub);
   return c.json({
     user: userResponse(
