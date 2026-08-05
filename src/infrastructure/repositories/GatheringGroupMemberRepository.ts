@@ -3,8 +3,9 @@ import { and, asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringGroupMemberEntity } from '../../domain/entities/GatheringGroupMember';
 import { IGatheringGroupMemberRepository } from '../../domain/interfaces/repositories/IGatheringGroupMemberRepository';
+import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import * as schema from '../database/schema';
-import { gathering_group_members, gatherings, users } from '../database/schema';
+import { gathering_group_members, gatherings } from '../database/schema';
 
 function toEntity(
   row: typeof gathering_group_members.$inferSelect
@@ -19,7 +20,8 @@ function toEntity(
 }
 
 export function createGatheringGroupMemberRepository(
-  db: D1Database
+  db: D1Database,
+  userRepository: IUserRepository
 ): IGatheringGroupMemberRepository {
   const orm = drizzle(db, { schema });
 
@@ -33,14 +35,8 @@ export function createGatheringGroupMemberRepository(
       return Boolean(row);
     },
 
-    async existsUser(userId: number): Promise<boolean> {
-      const row = await orm
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.id, userId))
-        .get();
-      return Boolean(row);
-    },
+    // ユーザーの存在確認自体はUserRepositoryの責務のため、重複させず委譲する。
+    existsUser: userId => userRepository.exists(userId),
 
     async findByGatheringId(
       gatheringId: number

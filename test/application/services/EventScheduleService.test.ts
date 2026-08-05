@@ -67,6 +67,7 @@ function setup() {
     markFailed: vi.fn(),
   };
   const userRepository: IUserRepository = {
+    exists: vi.fn(),
     isStaffOrTeacher: vi.fn().mockResolvedValue(true),
     getUserCategories: vi.fn(),
     findUserIdByMicrosoftAccount: vi.fn(),
