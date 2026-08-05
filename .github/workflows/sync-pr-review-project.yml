@@ -188,7 +188,7 @@ jobs:
 
               for (const review of reviews) {
                 const login = review.user?.login;
-                if (!login) continue;
+                if (!login || review.user?.type === 'Bot') continue;
 
                 if (
                   review.state === 'APPROVED' ||
@@ -253,26 +253,29 @@ jobs:
                   },
                 );
                 const [issueComments, reviewComments] = await Promise.all([
-                  github.rest.issues.listComments({
+                  github.paginate(github.rest.issues.listComments, {
                     owner,
                     repo,
                     issue_number: pull.number,
-                    per_page: 1,
+                    per_page: 100,
                   }),
-                  github.rest.pulls.listReviewComments({
+                  github.paginate(github.rest.pulls.listReviewComments, {
                     owner,
                     repo,
                     pull_number: pull.number,
-                    per_page: 1,
+                    per_page: 100,
                   }),
                 ]);
                 const hasReviewActivity = reviews.some(
-                  (review) => review.state !== 'PENDING',
+                  (review) =>
+                    review.user?.type !== 'Bot' && review.state !== 'PENDING',
                 );
                 const hasComments =
                   hasReviewActivity ||
-                  issueComments.data.length > 0 ||
-                  reviewComments.data.length > 0;
+                  issueComments.some((comment) => comment.user?.type !== 'Bot') ||
+                  reviewComments.some(
+                    (comment) => comment.user?.type !== 'Bot',
+                  );
                 const { approvers, status } = summarizeReviewState(
                   pull,
                   reviews,
