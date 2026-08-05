@@ -60,8 +60,8 @@ account.get('/me', async c => {
   }
 
   const student = await studentService
-  .getByUserId(Number(claims.sub))
-  .catch(() => null);
+    .getByUserId(Number(claims.sub))
+    .catch(() => null);
   const categories = await getUserCategories(c, claims.sub);
   return c.json({
     user: userResponse(

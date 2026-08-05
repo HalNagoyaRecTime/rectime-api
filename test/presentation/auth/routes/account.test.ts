@@ -97,7 +97,7 @@ function createMockKv(): KVNamespace {
 
 function buildApp() {
   const app = new Hono<{ Bindings: Env }>();
-  app.use('*', diContainerMiddleware); 
+  app.use('*', diContainerMiddleware);
   app.route('/', account);
   return app;
 }
