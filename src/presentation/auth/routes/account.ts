@@ -61,7 +61,12 @@ account.get('/me', async c => {
 
   const student = await studentService
     .getByUserId(Number(claims.sub))
-    .catch(() => null);
+    .catch(err => {
+      if (err instanceof Error && err.message === 'Student not found') {
+        return null;
+      }
+      throw err;
+    });
   const categories = await getUserCategories(c, claims.sub);
   return c.json({
     user: userResponse(
