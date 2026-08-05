@@ -19,6 +19,7 @@ import type {
   PkceEntry,
   MobileRefreshEntry,
 } from '../../../../src/domain/auth/types';
+import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
 
 const JWT_SECRET = 'a'.repeat(32);
 const KID = 'test-kid';
@@ -127,6 +128,7 @@ function createMockKv(): KVNamespace {
 
 function buildApp() {
   const app = new Hono<{ Bindings: Env }>();
+  app.use('*', diContainerMiddleware);
   app.route('/', microsoft);
   return app;
 }
