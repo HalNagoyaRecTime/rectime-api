@@ -67,6 +67,40 @@ describe('StudentService', () => {
     });
   });
 
+    describe('getByUserId', () => {
+    it('指定した userId に紐づく学生が見つかる場合は StudentDTO に変換して返す', async () => {
+      const student = buildStudent();
+      const repository = createRepository({
+        findByUserId: vi.fn().mockResolvedValue(student),
+      });
+      const service = createStudentService(repository);
+ 
+      const dto = await service.getByUserId(10);
+ 
+      expect(dto).toEqual({
+        student_id: student.student_id,
+        display_name: student.user_name,
+        class_room_id: student.class_room_id,
+        class_room_name: student.class_room_name,
+        attendance_number: student.attendance_number,
+        student_id_number: student.student_id_number,
+        is_live_active: true,
+      });
+      expect(repository.findByUserId).toHaveBeenCalledWith(10);
+    });
+ 
+    it('指定した userId に紐づく学生が見つからない場合はエラーを投げる', async () => {
+      const repository = createRepository({
+        findByUserId: vi.fn().mockResolvedValue(null),
+      });
+      const service = createStudentService(repository);
+ 
+      await expect(service.getByUserId(999)).rejects.toThrow(
+        'Student not found'
+      );
+    });
+  });
+
   describe('getAllStudents', () => {
     it('全件を StudentDTO の配列にマッピングして返す', async () => {
       const students = [
