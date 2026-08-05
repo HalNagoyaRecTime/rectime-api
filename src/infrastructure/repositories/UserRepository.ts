@@ -15,6 +15,15 @@ export function createUserRepository(db: D1Database): IUserRepository {
   const orm = drizzle(db, { schema });
 
   return {
+    async exists(userId) {
+      return Boolean(
+        await orm
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, userId))
+          .get()
+      );
+    },
     async isStaffOrTeacher(userId) {
       const row = await orm
         .select({ userId: users.id })

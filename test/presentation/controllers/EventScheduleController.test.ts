@@ -4,16 +4,18 @@ import type { IEventScheduleService } from '../../../src/application/services/IE
 import { createEventScheduleController } from '../../../src/presentation/controllers/EventScheduleController';
 import type { Env } from '../../../src/lib/env';
 import type { ContainerVariables } from '../../../src/presentation/middleware/diContainer';
-import type { AuthenticationVariables } from '../../../src/presentation/middleware/sessionAuthentication';
+import type { AuthenticationVariables } from '../../../src/presentation/middleware/bearerAuthentication';
+import type { AuthVariables } from '../../../src/presentation/middleware/requireAuth';
 
 function setup() {
   const service: IEventScheduleService = {
     updateEventSchedule: vi.fn().mockResolvedValue({ ok: true }),
+    getEventNotificationSummary: vi.fn(),
   };
   const controller = createEventScheduleController(service);
   const app = new Hono<{
     Bindings: Env;
-    Variables: ContainerVariables & AuthenticationVariables;
+    Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
   }>();
   app.use('*', async (c, next) => {
     c.set(
@@ -23,6 +25,9 @@ function setup() {
     await next();
   });
   app.put('/events/:eventId/schedule', c => controller.updateEventSchedule(c));
+  app.get('/events/:eventId/notification-summary', c =>
+    controller.getEventNotificationSummary(c)
+  );
   const bindings = {
     EVENT_DATE: '2026-11-07',
   } as Env;
@@ -140,5 +145,42 @@ describe('EventScheduleController', () => {
     );
 
     expect(response.status).toBe(403);
+  });
+
+  it('競技単位の通知集約を取得する', async () => {
+    const { app, service, bindings } = setup();
+    (
+      service.getEventNotificationSummary as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      event_id: 1,
+      scheduled_at: '2026-11-07T01:15:00.000Z',
+      total: 2,
+      draft: 1,
+      sending: 0,
+      sent: 1,
+      failed: 0,
+    });
+
+    const response = await app.request(
+      '/events/1/notification-summary',
+      { headers: { Cookie: 'session=session-id' } },
+      bindings
+    );
+
+    expect(response.status).toBe(200);
+    expect(service.getEventNotificationSummary).toHaveBeenCalledWith(1, 7);
+    expect(await response.json()).toMatchObject({ total: 2, sent: 1 });
+  });
+
+  it('未認証では通知集約を取得できない', async () => {
+    const { app, service, bindings } = setup();
+    const response = await app.request(
+      '/events/1/notification-summary',
+      undefined,
+      bindings
+    );
+
+    expect(response.status).toBe(401);
+    expect(service.getEventNotificationSummary).not.toHaveBeenCalled();
   });
 });

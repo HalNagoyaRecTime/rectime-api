@@ -23,26 +23,26 @@ async function importHmacKey(
   );
 }
 
-export interface MobileJwtClaims {
+export interface AccessTokenClaims {
   sub: string;
   oid: string;
   email: string;
   display_name: string;
   avatar_url?: string | null;
   avatar_updated_at?: string | null;
-  client_type: 'mobile';
+  client_type: 'mobile' | 'web';
   iat: number;
   exp: number;
 }
 
-export async function signMobileJwt(
-  payload: Omit<MobileJwtClaims, 'iat' | 'exp'>,
+export async function signAccessToken(
+  payload: Omit<AccessTokenClaims, 'iat' | 'exp'>,
   secret: string,
   expiresInSeconds: number
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: 'HS256', typ: 'JWT' };
-  const claims: MobileJwtClaims = {
+  const claims: AccessTokenClaims = {
     ...payload,
     iat: now,
     exp: now + expiresInSeconds,
@@ -107,10 +107,11 @@ export async function createClientAssertion(
   return `${data}.${toBase64URL(new Uint8Array(signature))}`;
 }
 
-export async function verifyMobileJwt(
+export async function verifyAccessToken(
   token: string,
-  secret: string
-): Promise<MobileJwtClaims> {
+  secret: string,
+  expectedClientType: AccessTokenClaims['client_type']
+): Promise<AccessTokenClaims> {
   const parts = token.split('.');
   if (parts.length !== 3) throw new Error('INVALID_TOKEN');
 
@@ -131,9 +132,10 @@ export async function verifyMobileJwt(
   );
   if (!valid) throw new Error('INVALID_TOKEN');
 
-  const claims = JSON.parse(base64URLtoString(payloadB64)) as MobileJwtClaims;
+  const claims = JSON.parse(base64URLtoString(payloadB64)) as AccessTokenClaims;
   const now = Math.floor(Date.now() / 1000);
-  if (claims.client_type !== 'mobile') throw new Error('INVALID_TOKEN');
+  if (claims.client_type !== expectedClientType)
+    throw new Error('INVALID_TOKEN');
   if (claims.exp <= now) throw new Error('SESSION_EXPIRED');
 
   return claims;
