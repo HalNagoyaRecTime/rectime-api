@@ -67,16 +67,16 @@ describe('StudentService', () => {
     });
   });
 
-    describe('getByUserId', () => {
+  describe('getByUserId', () => {
     it('指定した userId に紐づく学生が見つかる場合は StudentDTO に変換して返す', async () => {
       const student = buildStudent();
       const repository = createRepository({
         findByUserId: vi.fn().mockResolvedValue(student),
       });
       const service = createStudentService(repository);
- 
+
       const dto = await service.getByUserId(10);
- 
+
       expect(dto).toEqual({
         student_id: student.student_id,
         display_name: student.user_name,
@@ -88,13 +88,13 @@ describe('StudentService', () => {
       });
       expect(repository.findByUserId).toHaveBeenCalledWith(10);
     });
- 
+
     it('指定した userId に紐づく学生が見つからない場合はエラーを投げる', async () => {
       const repository = createRepository({
         findByUserId: vi.fn().mockResolvedValue(null),
       });
       const service = createStudentService(repository);
- 
+
       await expect(service.getByUserId(999)).rejects.toThrow(
         'Student not found'
       );

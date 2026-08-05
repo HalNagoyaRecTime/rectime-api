@@ -49,11 +49,11 @@ describe('StudentRepository', () => {
     });
   });
 
-    describe('findByUserId', () => {
+  describe('findByUserId', () => {
     it('users の id で学生を取得し、users を join して返す', async () => {
       const target = seeded.students[0];
       const student = await repo.findByUserId(target.userId);
- 
+
       expect(student).toMatchObject({
         student_id: target.studentId,
         user_id: target.userId,
@@ -65,7 +65,7 @@ describe('StudentRepository', () => {
         is_live_active: true,
       });
     });
- 
+
     it('存在しない userId の場合は null を返す', async () => {
       expect(await repo.findByUserId(999999)).toBeNull();
     });

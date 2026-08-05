@@ -39,7 +39,6 @@ account.get('/me', async c => {
     );
   }
 
-
   const token = getBearerToken(c);
   if (!token) {
     return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
@@ -59,7 +58,7 @@ account.get('/me', async c => {
         : 'トークンが不正です。';
     return errorResponse(c, 401, code, message);
   }
-  
+
   const student = await studentService.getByUserId(Number(claims.sub));
   const categories = await getUserCategories(c, claims.sub);
   return c.json({
