@@ -274,7 +274,9 @@ microsoft.post('/token', async c => {
 
   const user = await upsertUser(c, claims);
   const { studentService } = c.get('container');
-  const student = await studentService.getByUserId(Number(user.id));
+  const student = await studentService
+    .getByUserId(Number(user.id))
+    .catch(() => null);
   const refreshTokenId = crypto.randomUUID();
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
 
