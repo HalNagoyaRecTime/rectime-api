@@ -226,47 +226,44 @@ export function createMasterImportService(
         );
       }
 
-      let commitResult;
       try {
-        commitResult = await commitByType(session.type, session.rows);
-      } catch (error) {
-        await lockStub.releaseLock();
-        throw error;
-      }
+        const commitResult = await commitByType(session.type, session.rows);
 
-      if (commitResult.error_count > 0) {
-        await lockStub.releaseLock();
-        const sessionForResponse: MasterImportSession = {
+        if (commitResult.error_count > 0) {
+          const sessionForResponse: MasterImportSession = {
+            ...session,
+            error_count: commitResult.error_count,
+            errors: commitResult.errors,
+          };
+          return {
+            status: 'has_errors',
+            session: toDTO(
+              sessionForResponse,
+              0,
+              sessionForResponse.rows.length || 1
+            ),
+          };
+        }
+
+        const updatedSession: MasterImportSession = {
           ...session,
-          error_count: commitResult.error_count,
-          errors: commitResult.errors,
+          status: 'committed',
+          committed_result: {
+            imported: commitResult.imported,
+            error_count: commitResult.error_count,
+            errors: commitResult.errors,
+          },
         };
+        await saveMasterImportSession(kv, updatedSession);
+
         return {
-          status: 'has_errors',
-          session: toDTO(
-            sessionForResponse,
-            0,
-            sessionForResponse.rows.length || 1
-          ),
+          status: 'committed',
+          session: toDTO(updatedSession, 0, updatedSession.rows.length || 1),
+          alreadyCommitted: false,
         };
+      } finally {
+        await lockStub.releaseLock();
       }
-
-      const updatedSession: MasterImportSession = {
-        ...session,
-        status: 'committed',
-        committed_result: {
-          imported: commitResult.imported,
-          error_count: commitResult.error_count,
-          errors: commitResult.errors,
-        },
-      };
-      await saveMasterImportSession(kv, updatedSession);
-
-      return {
-        status: 'committed',
-        session: toDTO(updatedSession, 0, updatedSession.rows.length || 1),
-        alreadyCommitted: false,
-      };
     },
   };
 }
