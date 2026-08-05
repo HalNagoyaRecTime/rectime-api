@@ -14,6 +14,7 @@ import { account } from '../../../../src/presentation/auth/routes/account';
 import { signAccessToken } from '../../../../src/infrastructure/auth/jwt';
 import type { MobileRefreshEntry } from '../../../../src/domain/auth/types';
 import type { Env } from '../../../../src/lib/env';
+import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
 
 const JWT_SECRET = 'a'.repeat(32);
 
@@ -96,6 +97,7 @@ function createMockKv(): KVNamespace {
 
 function buildApp() {
   const app = new Hono<{ Bindings: Env }>();
+  app.use('*', diContainerMiddleware); 
   app.route('/', account);
   return app;
 }
