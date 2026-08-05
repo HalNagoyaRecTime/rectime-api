@@ -14,7 +14,8 @@ export type CommitMasterImportOutcome =
       status: 'committed';
       session: MasterImportSessionDTO;
       alreadyCommitted: boolean;
-    };
+    }
+  | { status: 'timeout' };
 
 export interface IMasterImportService {
   createImport: (

@@ -100,6 +100,16 @@ export function createMasterImportController(
       if (outcome.status === 'has_errors') {
         return c.json(outcome.session, 422);
       }
+      if (outcome.status === 'timeout') {
+        c.header('Retry-After', '3');
+        return c.json(
+          {
+            error: 'Commit is still in progress, please retry',
+            error_code: 'COMMIT_IN_PROGRESS',
+          },
+          503
+        );
+      }
       return c.json(outcome.session, outcome.alreadyCommitted ? 200 : 201);
     } catch {
       return c.json({ error: 'Failed to commit import' }, 500);

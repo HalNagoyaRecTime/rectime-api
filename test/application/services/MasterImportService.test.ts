@@ -452,5 +452,44 @@ describe('MasterImportService', () => {
       );
       expect(commitStudentImport).toHaveBeenCalledTimes(2);
     });
+
+    it('先行する確定処理がいつまでも終わらない場合は、例外を投げずtimeoutを返す', async () => {
+      const kv = createFakeKv();
+      const commitLock = createFakeCommitLock();
+      const studentService = buildStudentService({
+        validateStudentImport: vi.fn().mockResolvedValue({
+          total: 1,
+          success_count: 1,
+          error_count: 0,
+          errors: [],
+        }),
+      });
+      const service = createMasterImportService(
+        kv,
+        commitLock,
+        studentService,
+        buildClassRoomService(),
+        buildTeacherService()
+      );
+
+      const file = csvFile(
+        'class_code,attendance_number,student_id_number,last_name,first_name\n11A,1,10001,山田,太郎\n',
+        's.csv'
+      );
+      const created = await service.createImport({
+        type: 'students',
+        file,
+        fileName: 's.csv',
+      });
+
+      // 先にロックを取得し、意図的に解放しないことで「先行する確定処理が
+      // 終わらない」状況を再現する。
+      await commitLock
+        .get(commitLock.idFromName(created.import_id))
+        .tryBeginCommit();
+
+      const outcome = await service.commitImport(created.import_id);
+      expect(outcome).toEqual({ status: 'timeout' });
+    }, 10000);
   });
 });

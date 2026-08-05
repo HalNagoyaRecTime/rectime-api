@@ -221,9 +221,7 @@ export function createMasterImportService(
             };
           }
         }
-        throw new Error(
-          'Timed out waiting for a concurrent commit of the same import to finish'
-        );
+        return { status: 'timeout' };
       }
 
       try {

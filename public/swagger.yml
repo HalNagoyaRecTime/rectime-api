@@ -518,6 +518,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MasterImportSession'
+        '503':
+          description: |
+            同じimportIdに対する確定処理が既に進行中のため、一定時間待っても
+            完了を確認できなかった。Retry-Afterヘッダーの秒数待ってから再試行すること。
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: 再試行までの推奨待機秒数
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  error_code:
+                    type: string
+                    example: COMMIT_IN_PROGRESS
         '500':
           $ref: '#/components/responses/InternalServerError'
 

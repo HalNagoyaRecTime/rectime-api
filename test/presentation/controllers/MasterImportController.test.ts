@@ -229,5 +229,23 @@ describe('MasterImportController', () => {
 
       expect(res.status).toBe(404);
     });
+
+    it('同時実行中の確定処理の完了を待ちきれなかった場合は503を返し、Retry-Afterを含む', async () => {
+      const { app, masterImportService } = setup();
+      (
+        masterImportService.commitImport as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ status: 'timeout' });
+
+      const res = await app.request('/master-imports/abc-123/commit', {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(503);
+      expect(res.headers.get('Retry-After')).toBe('3');
+      expect(await res.json()).toEqual({
+        error: 'Commit is still in progress, please retry',
+        error_code: 'COMMIT_IN_PROGRESS',
+      });
+    });
   });
 });
