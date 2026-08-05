@@ -175,7 +175,7 @@ describe('ClassRoomService', () => {
         error_count: 1,
         errors: [
           expect.objectContaining({
-            row_index: 0,
+            row_index: 1,
             reason: 'class_code_duplicate_in_db',
           }),
         ],
@@ -196,7 +196,7 @@ describe('ClassRoomService', () => {
       expect(result.success_count).toBe(1);
       expect(result.errors).toEqual([
         expect.objectContaining({
-          row_index: 1,
+          row_index: 2,
           reason: 'class_code_duplicate_in_file',
         }),
       ]);
@@ -269,7 +269,7 @@ describe('ClassRoomService', () => {
         error_count: 1,
         errors: [
           expect.objectContaining({
-            row_index: 0,
+            row_index: 1,
             reason: 'class_code_duplicate_in_db',
           }),
         ],

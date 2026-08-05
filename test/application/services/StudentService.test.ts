@@ -267,7 +267,7 @@ describe('StudentService', () => {
       expect(result.success_count).toBe(1);
       expect(result.errors).toEqual([
         expect.objectContaining({
-          row_index: 1,
+          row_index: 2,
           reason: 'student_id_number_duplicate_in_file',
         }),
       ]);
@@ -302,7 +302,7 @@ describe('StudentService', () => {
         error_count: 1,
         errors: [
           expect.objectContaining({
-            row_index: 0,
+            row_index: 1,
             reason: 'student_id_number_duplicate_in_db',
           }),
         ],
@@ -504,7 +504,7 @@ describe('StudentService', () => {
         error_count: 1,
         errors: [
           expect.objectContaining({
-            row_index: 1,
+            row_index: 2,
             reason: 'student_id_number_duplicate_in_file',
           }),
         ],
@@ -541,7 +541,7 @@ describe('StudentService', () => {
         error_count: 1,
         errors: [
           expect.objectContaining({
-            row_index: 0,
+            row_index: 1,
             reason: 'student_id_number_duplicate_in_db',
           }),
         ],

@@ -41,7 +41,7 @@ async function findImportErrors(
     reason: StudentImportErrorReason
   ) => {
     errors.push({
-      row_index: rowIndex,
+      row_index: rowIndex + 1,
       class_code: row.class_code,
       attendance_number: row.attendance_number,
       student_id_number: row.student_id_number,

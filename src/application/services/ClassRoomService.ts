@@ -28,7 +28,7 @@ async function findImportErrors(
     reason: ClassRoomImportErrorReason
   ) => {
     errors.push({
-      row_index: rowIndex,
+      row_index: rowIndex + 1,
       class_code: row.class_code,
       class_name: row.class_name,
       reason,
