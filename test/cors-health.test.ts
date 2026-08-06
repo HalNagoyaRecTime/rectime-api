@@ -45,24 +45,28 @@ describe('集合APIの実ルーティング', () => {
     expect(res.status).toBe(404);
   });
 
-  it('集合ID配下のメンバーAPIを公開する', async () => {
+  it('集合ID配下のメンバーAPIは公開されているが認証が必要', async () => {
     const res = await app.fetch(
       new Request('http://example.com/api/v1/gatherings/999999/members'),
       env
     );
 
-    expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({ error: 'Gathering not found' });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
   });
 
-  it('競技ID配下の集合一覧APIを公開する', async () => {
+  it('競技ID配下の集合一覧APIは公開されているが認証が必要', async () => {
     const res = await app.fetch(
       new Request('http://example.com/api/v1/events/999999/gatherings'),
       env
     );
 
-    expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({ error: 'Event not found' });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
   });
 });
 

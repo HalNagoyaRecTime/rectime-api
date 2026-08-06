@@ -7,6 +7,8 @@ import {
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
+const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 3600;
+const ACCESS_TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
 type FirebaseConfig = {
   projectId: string;
@@ -15,13 +17,48 @@ type FirebaseConfig = {
   testFcmToken: string;
 };
 
+type CachedAccessToken = {
+  value: string;
+  refreshAt: number;
+};
+
+type AccessTokenCacheEntry = {
+  token: CachedAccessToken | null;
+  request: Promise<CachedAccessToken> | null;
+};
+
+const accessTokenCache = new Map<string, AccessTokenCacheEntry>();
+
 export function createFcmService(config: FirebaseConfig): IFcmService {
+  const cacheKey = `${config.projectId}:${config.clientEmail}`;
+
+  const getAccessToken = async (): Promise<string> => {
+    const cacheEntry = getAccessTokenCacheEntry(cacheKey);
+
+    if (cacheEntry.token && Date.now() < cacheEntry.token.refreshAt) {
+      return cacheEntry.token.value;
+    }
+
+    if (!cacheEntry.request) {
+      cacheEntry.request = createAccessToken(config)
+        .then(accessToken => {
+          cacheEntry.token = accessToken;
+          return accessToken;
+        })
+        .finally(() => {
+          cacheEntry.request = null;
+        });
+    }
+
+    return (await cacheEntry.request).value;
+  };
+
   const sendNotificationToToken = async (
     input: FcmNotificationInput
   ): Promise<FcmNotificationResult> => {
     validateConfig(config);
 
-    const accessToken = await createAccessToken(config);
+    const accessToken = await getAccessToken();
     const response = await fetch(
       `https://fcm.googleapis.com/v1/projects/${config.projectId}/messages:send`,
       {
@@ -84,6 +121,15 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
   };
 }
 
+function getAccessTokenCacheEntry(cacheKey: string): AccessTokenCacheEntry {
+  const existing = accessTokenCache.get(cacheKey);
+  if (existing) return existing;
+
+  const created = { token: null, request: null };
+  accessTokenCache.set(cacheKey, created);
+  return created;
+}
+
 function validateConfig(config: FirebaseConfig) {
   const missingKeys = [
     ['FIREBASE_PROJECT_ID', config.projectId],
@@ -99,8 +145,11 @@ function validateConfig(config: FirebaseConfig) {
   }
 }
 
-async function createAccessToken(config: FirebaseConfig): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
+async function createAccessToken(
+  config: FirebaseConfig
+): Promise<CachedAccessToken> {
+  const issuedAt = Date.now();
+  const now = Math.floor(issuedAt / 1000);
   const jwt = await createSignedJwt({
     clientEmail: config.clientEmail,
     privateKey: config.privateKey,
@@ -136,7 +185,20 @@ async function createAccessToken(config: FirebaseConfig): Promise<string> {
     throw new Error('Google OAuth token response did not include access_token');
   }
 
-  return tokenBody.access_token;
+  const expiresInSeconds =
+    'expires_in' in tokenBody &&
+    typeof tokenBody.expires_in === 'number' &&
+    Number.isFinite(tokenBody.expires_in) &&
+    tokenBody.expires_in > 0
+      ? tokenBody.expires_in
+      : DEFAULT_ACCESS_TOKEN_TTL_SECONDS;
+
+  return {
+    value: tokenBody.access_token,
+    refreshAt:
+      issuedAt +
+      Math.max(0, expiresInSeconds * 1000 - ACCESS_TOKEN_REFRESH_MARGIN_MS),
+  };
 }
 
 async function createSignedJwt(options: {

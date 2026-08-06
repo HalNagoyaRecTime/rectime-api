@@ -11,6 +11,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 let privateKeyPem: string;
+let configSequence = 0;
 
 beforeAll(async () => {
   const keyPair = (await crypto.subtle.generateKey(
@@ -31,9 +32,10 @@ beforeAll(async () => {
 });
 
 function buildConfig(overrides: Partial<Record<string, string>> = {}) {
+  configSequence += 1;
   return {
     projectId: 'project-1',
-    clientEmail: 'sa@project-1.iam.gserviceaccount.com',
+    clientEmail: `sa-${configSequence}@project-1.iam.gserviceaccount.com`,
     privateKey: privateKeyPem,
     testFcmToken: 'test-fcm-token',
     ...overrides,
@@ -42,6 +44,7 @@ function buildConfig(overrides: Partial<Record<string, string>> = {}) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('FcmService', () => {
@@ -139,6 +142,145 @@ describe('FcmService', () => {
           body: '本文',
         })
       ).rejects.toThrow('FCM request failed:');
+    });
+
+    it('同じService内の並行送信ではGoogle OAuth tokenを1回だけ取得する', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: 'token-a' }), {
+            status: 200,
+          })
+        )
+        .mockImplementation(
+          () =>
+            new Response(JSON.stringify({ name: 'projects/x/messages/1' }), {
+              status: 200,
+            })
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const service = createFcmService(buildConfig());
+      await Promise.all([
+        service.sendNotificationToToken({
+          token: 'device-token-1',
+          title: 'タイトル',
+          body: '本文',
+        }),
+        service.sendNotificationToToken({
+          token: 'device-token-2',
+          title: 'タイトル',
+          body: '本文',
+        }),
+      ]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(
+        fetchMock.mock.calls.filter(
+          ([url]) => url === 'https://oauth2.googleapis.com/token'
+        )
+      ).toHaveLength(1);
+    });
+
+    it('異なるService instanceでも同じ設定のGoogle OAuth tokenを共有する', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ access_token: 'token-a', expires_in: 3600 }),
+            { status: 200 }
+          )
+        )
+        .mockImplementation(
+          () =>
+            new Response(JSON.stringify({ name: 'projects/x/messages/1' }), {
+              status: 200,
+            })
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const config = buildConfig();
+      const firstService = createFcmService(config);
+      const secondService = createFcmService(config);
+
+      await Promise.all([
+        firstService.sendNotificationToToken({
+          token: 'device-token-1',
+          title: 'タイトル',
+          body: '本文',
+        }),
+        secondService.sendNotificationToToken({
+          token: 'device-token-2',
+          title: 'タイトル',
+          body: '本文',
+        }),
+      ]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(
+        fetchMock.mock.calls.filter(
+          ([url]) => url === 'https://oauth2.googleapis.com/token'
+        )
+      ).toHaveLength(1);
+    });
+
+    it('Google OAuth tokenの有効期限5分前に新しいtokenを取得する', async () => {
+      let currentTime = Date.parse('2026-07-31T00:00:00.000Z');
+      vi.spyOn(Date, 'now').mockImplementation(() => currentTime);
+
+      let tokenRequestCount = 0;
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url === 'https://oauth2.googleapis.com/token') {
+          tokenRequestCount += 1;
+          return new Response(
+            JSON.stringify({
+              access_token: `token-${tokenRequestCount}`,
+              expires_in: 3600,
+            }),
+            { status: 200 }
+          );
+        }
+
+        return new Response(JSON.stringify({ name: 'projects/x/messages/1' }), {
+          status: 200,
+        });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const service = createFcmService(buildConfig());
+      await service.sendNotificationToToken({
+        token: 'device-token-1',
+        title: 'タイトル',
+        body: '本文',
+      });
+
+      currentTime += 54 * 60 * 1000;
+      await service.sendNotificationToToken({
+        token: 'device-token-2',
+        title: 'タイトル',
+        body: '本文',
+      });
+
+      currentTime += 2 * 60 * 1000;
+      await service.sendNotificationToToken({
+        token: 'device-token-3',
+        title: 'タイトル',
+        body: '本文',
+      });
+
+      const oauthRequests = fetchMock.mock.calls.filter(
+        ([url]) => url === 'https://oauth2.googleapis.com/token'
+      );
+      expect(oauthRequests).toHaveLength(2);
+
+      const fcmRequests = fetchMock.mock.calls.filter(
+        ([url]) =>
+          url ===
+          'https://fcm.googleapis.com/v1/projects/project-1/messages:send'
+      );
+      expect(fcmRequests[0][1].headers.Authorization).toBe('Bearer token-1');
+      expect(fcmRequests[1][1].headers.Authorization).toBe('Bearer token-1');
+      expect(fcmRequests[2][1].headers.Authorization).toBe('Bearer token-2');
     });
 
     it('Google OAuth トークン取得が失敗した場合は Google OAuth token request failed エラーを投げる', async () => {

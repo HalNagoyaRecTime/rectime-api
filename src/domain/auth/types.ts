@@ -1,5 +1,13 @@
 export type ClientType = 'web' | 'mobile';
 
+// リクエストの認証コンテキスト（bearerAuthenticationMiddleware/requireAuth間で共有）。
+// AppUser（DB上のアカウントレコード）とは別に、JWTクレームから直接導出する値。
+export interface AuthUser {
+  id: string;
+  email: string;
+  display_name: string;
+}
+
 export interface AppUser {
   id: string;
   oid: string;
@@ -32,19 +40,6 @@ export interface MicrosoftTokenResponse {
   error_description?: string;
 }
 
-export interface Session {
-  user_id: string;
-  oid: string;
-  tid: string;
-  sub: string;
-  email: string;
-  display_name: string;
-  avatar_url?: string | null;
-  avatar_updated_at?: string | null;
-  ms_refresh_token?: string;
-  expires_at: string;
-}
-
 export interface MobileRefreshEntry {
   user_id: string;
   oid: string;
@@ -54,6 +49,9 @@ export interface MobileRefreshEntry {
   display_name: string;
   avatar_url?: string | null;
   avatar_updated_at?: string | null;
+  // 発行時のクライアント種別。/auth/refresh でリクエストヘッダーの
+  // X-Client-Type と一致するか検証するために保持する（なりすまし防止）。
+  client_type: ClientType;
   ms_refresh_token: string;
   created_at: string;
   updated_at?: string;

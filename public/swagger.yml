@@ -1089,6 +1089,43 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /notification/schedules/{notificationId}:
+    parameters:
+      - name: notificationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    put:
+      tags: [Notification schedules]
+      summary: 通知予定を更新する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateScheduleRequest'
+      responses:
+        '200':
+          description: 更新後の通知予定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateScheduleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /notification-schedules/{id}:
     parameters:
       - name: id
@@ -1370,8 +1407,10 @@ paths:
       tags: [Auth]
       summary: Microsoftからの認可コールバックを処理する
       description: |
-        Webクライアントの認可コードフロー専用エンドポイントです。Microsoftからのリダイレクトで
-        呼び出され、認証成功時はセッションCookieを発行してフロントエンドへリダイレクトします。
+        Microsoftからのリダイレクトで呼び出され、トークン交換は行わずに
+        `code` / `state` をそのまま `FRONTEND_URL/auth/callback` へ中継します。
+        フロントエンドはそこから `POST /auth/microsoft/token`（`client_type: web`）を
+        呼び出して自らトークン交換を行います。
         失敗時は `FRONTEND_URL/login?error=auth_failed` へリダイレクトします。
       parameters:
         - name: code
@@ -1388,18 +1427,17 @@ paths:
             type: string
       responses:
         '302':
-          description: 認証成功時はフロントエンドへ、失敗時はログイン画面へリダイレクト
-          headers:
-            Set-Cookie:
-              description: 認証成功時のみ、セッションCookie（`session`）を発行
-              schema:
-                type: string
+          description: 成功時は `FRONTEND_URL/auth/callback?code=...&state=...` へ、失敗時はログイン画面へリダイレクト
 
   /auth/microsoft/token:
     post:
       tags: [Auth]
-      summary: Mobileクライアントの認可コードをアクセストークンと交換する
-      description: 'Mobileクライアント専用（`X-Client-Type: mobile` が必須）です。'
+      summary: 認可コードをrectime-apiのアクセストークンと交換する
+      description: |
+        Mobile/Web共通のエンドポイントです（`X-Client-Type` で切り替え）。
+        - mobile: `code_verifier` はクライアントが生成し、ボディで送信します。
+        - web: `code_verifier` は `/auth/microsoft/login` 時にサーバー側で生成・
+          保存済みのものを使うため、ボディでは `code` / `state` のみを送信します。
       parameters:
         - $ref: '#/components/parameters/ClientType'
       requestBody:
@@ -1410,11 +1448,11 @@ paths:
               $ref: '#/components/schemas/TokenExchangeRequest'
       responses:
         '200':
-          description: モバイル用アクセストークン・リフレッシュトークン
+          description: アクセストークン(refresh_token_idも併せて返却)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MobileTokenResponse'
+                $ref: '#/components/schemas/TokenResponse'
         '400':
           $ref: '#/components/responses/AuthBadRequest'
         '401':
@@ -1424,11 +1462,10 @@ paths:
     get:
       tags: [Auth]
       summary: ログイン中のユーザー情報を取得する
-      description: 'Webクライアントはセッション Cookie、Mobileクライアントは `Authorization: Bearer` で認証します。'
+      description: 'Mobile/Webいずれも `Authorization: Bearer` で認証します。Cookieは使用しません。'
       parameters:
         - $ref: '#/components/parameters/ClientType'
       security:
-        - sessionCookie: []
         - bearerAuth: []
       responses:
         '200':
@@ -1454,7 +1491,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ClientType'
       security:
-        - sessionCookie: []
         - bearerAuth: []
       responses:
         '200':
@@ -1479,14 +1515,16 @@ paths:
     post:
       tags: [Auth]
       summary: ログアウトする
+      description: >-
+        Mobile/Web共通。Bearerトークンで認証したうえで、`refresh_token_id`が
+        保持するMicrosoftリフレッシュトークンのKVエントリを破棄します。
       parameters:
         - $ref: '#/components/parameters/ClientType'
       security:
-        - sessionCookie: []
         - bearerAuth: []
       requestBody:
         required: false
-        description: Mobileクライアントの場合のみ、`refresh_token_id` を指定可能
+        description: '`refresh_token_id` を指定可能'
         content:
           application/json:
             schema:
@@ -1497,11 +1535,6 @@ paths:
       responses:
         '200':
           description: ログアウト成功
-          headers:
-            Set-Cookie:
-              description: Webクライアントの場合、セッションCookieを削除
-              schema:
-                type: string
           content:
             application/json:
               schema:
@@ -1512,41 +1545,36 @@ paths:
                     type: string
         '400':
           $ref: '#/components/responses/AuthBadRequest'
+        '401':
+          $ref: '#/components/responses/AuthUnauthorized'
 
   /auth/refresh:
     post:
       tags: [Auth]
-      summary: セッション・トークンを更新する
-      description: Webクライアントはセッション Cookie を、Mobileクライアントは `refresh_token_id` を用いて更新します。
+      summary: アクセストークンを更新する
+      description: >-
+        Mobile/Web共通。`refresh_token_id` を用いてrectime-apiのアクセス
+        トークンを再発行します。`refresh_token_id` は使用の都度ローテーション
+        されます。
       parameters:
         - $ref: '#/components/parameters/ClientType'
-      security:
-        - sessionCookie: []
-        - bearerAuth: []
       requestBody:
-        required: false
-        description: Mobileクライアントの場合のみ必須
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [refresh_token_id]
               properties:
                 refresh_token_id:
                   type: string
       responses:
         '200':
-          description: 更新結果（Webはセッション更新のみ、Mobileは新しいトークンを返却）
+          description: 新しいアクセストークン・refresh_token_id
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/RefreshWebResponse'
-                  - $ref: '#/components/schemas/MobileTokenResponse'
-          headers:
-            Set-Cookie:
-              description: Webクライアントの場合のみ、更新後のセッションCookieを発行
-              schema:
-                type: string
+                $ref: '#/components/schemas/TokenResponse'
         '400':
           $ref: '#/components/responses/AuthBadRequest'
         '401':
@@ -1669,10 +1697,6 @@ components:
             $ref: '#/components/schemas/AuthError'
 
   securitySchemes:
-    sessionCookie:
-      type: apiKey
-      in: cookie
-      name: session
     bearerAuth:
       type: http
       scheme: bearer
@@ -2545,6 +2569,167 @@ components:
         audience:
           $ref: '#/components/schemas/AdminNotificationAudience'
 
+    ScheduleCreatedUser:
+      type: object
+      required: [user_id, user_name]
+      properties:
+        user_id:
+          type: integer
+        user_name:
+          type: string
+
+    ScheduleEvent:
+      type: object
+      required: [event_id, event_name, start_time, end_time]
+      properties:
+        event_id:
+          type: integer
+        event_name:
+          type: string
+        start_time:
+          type: string
+          description: JSTの時刻（HHMM形式）
+          example: '1030'
+        end_time:
+          type: string
+          description: JSTの時刻（HHMM形式）
+          example: '1100'
+
+    ScheduleDeliverySummary:
+      type: object
+      required: [total, draft, sending, sent, failed]
+      properties:
+        total:
+          type: integer
+        draft:
+          type: integer
+        sending:
+          type: integer
+        sent:
+          type: integer
+        failed:
+          type: integer
+
+    ScheduleNotification:
+      type: object
+      required:
+        [notification_id, notification_type, title, body, created_user, event, send_time, delivery_summary]
+      properties:
+        notification_id:
+          type: integer
+        notification_type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        created_user:
+          $ref: '#/components/schemas/ScheduleCreatedUser'
+        event:
+          $ref: '#/components/schemas/ScheduleEvent'
+        send_time:
+          type: string
+          format: date-time
+        delivery_summary:
+          $ref: '#/components/schemas/ScheduleDeliverySummary'
+
+    ScheduleListResponse:
+      type: object
+      required: [notification_schedules, total, limit, offset]
+      properties:
+        notification_schedules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleNotification'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    CreateScheduleRequest:
+      type: object
+      required: [userId, eventId, notificationId, sendAt]
+      properties:
+        userId:
+          type: integer
+          minimum: 1
+        eventId:
+          type: integer
+          minimum: 1
+        notificationId:
+          type: integer
+          minimum: 1
+        importance:
+          type: integer
+          enum: [2]
+          default: 2
+        sendAt:
+          type: string
+          format: date-time
+          description: UTCオフセットを含むISO 8601形式
+          example: '2026-07-16T09:00:00.000Z'
+
+    CreateScheduleResponse:
+      type: object
+      required: [user_id, event_id, notification_id, firebase_token_id, importance, send_at]
+      properties:
+        user_id:
+          type: integer
+        event_id:
+          type: integer
+        notification_id:
+          type: integer
+        firebase_token_id:
+          type: integer
+        importance:
+          type: integer
+          enum: [2]
+        send_at:
+          type: string
+          format: date-time
+
+    UpdateScheduleRequest:
+      type: object
+      required: [create_user_id, new_event_id, new_gathering_id, new_send_at]
+      properties:
+        create_user_id:
+          type: integer
+          minimum: 1
+        new_event_id:
+          type: integer
+          minimum: 1
+        new_gathering_id:
+          type: integer
+          minimum: 1
+        new_importance:
+          type: integer
+          enum: [2]
+          default: 2
+        new_send_at:
+          type: string
+          format: date-time
+          description: UTCオフセットを含むISO 8601形式
+          example: '2026-07-16T09:00:00.000Z'
+
+    UpdateScheduleResponse:
+      type: object
+      required: [create_user_id, new_event_id, new_importance, new_send_at, new_gathering_id]
+      properties:
+        create_user_id:
+          type: integer
+        new_event_id:
+          type: integer
+        new_importance:
+          type: integer
+          enum: [2]
+        new_send_at:
+          type: string
+          format: date-time
+        new_gathering_id:
+          type: integer
+
     Notification:
       type: object
       required:
@@ -2755,7 +2940,7 @@ components:
 
     TokenExchangeRequest:
       type: object
-      required: [code, state, code_verifier]
+      required: [code, state]
       properties:
         code:
           type: string
@@ -2765,8 +2950,9 @@ components:
           type: string
           minLength: 43
           maxLength: 128
+          description: mobileクライアントのみ必須。webはサーバー側で保存済みのものを使うため不要。
 
-    MobileTokenResponse:
+    TokenResponse:
       type: object
       required: [access_token, refresh_token_id, token_type, expires_in]
       properties:
@@ -2774,6 +2960,8 @@ components:
           type: string
         refresh_token_id:
           type: string
+          description: >-
+            POST /auth/refresh で使うトークンID。使用の都度ローテーションされる。
         token_type:
           type: string
           example: Bearer
@@ -2781,13 +2969,6 @@ components:
           type: integer
         user:
           $ref: '#/components/schemas/AuthUser'
-
-    RefreshWebResponse:
-      type: object
-      required: [message]
-      properties:
-        message:
-          type: string
 
     AuthError:
       type: object

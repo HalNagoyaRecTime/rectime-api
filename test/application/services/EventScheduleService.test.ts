@@ -62,11 +62,13 @@ function setup() {
     existsFirebaseToken: vi.fn(),
     existsEvent: vi.fn(),
     existsNotification: vi.fn(),
-    claimDue: vi.fn(),
+    findDeliveryCandidateIds: vi.fn(),
+    claimForDelivery: vi.fn(),
     markSent: vi.fn(),
     markFailed: vi.fn(),
   };
   const userRepository: IUserRepository = {
+    exists: vi.fn(),
     isStaffOrTeacher: vi.fn().mockResolvedValue(true),
     getUserCategories: vi.fn(),
     findUserIdByMicrosoftAccount: vi.fn(),

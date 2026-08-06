@@ -16,11 +16,13 @@ describe('NotificationScheduleService', () => {
       existsFirebaseToken: vi.fn().mockResolvedValue(true),
       existsEvent: vi.fn().mockResolvedValue(true),
       existsNotification: vi.fn().mockResolvedValue(true),
-      claimDue: vi.fn(),
+      findDeliveryCandidateIds: vi.fn(),
+      claimForDelivery: vi.fn(),
       markSent: vi.fn(),
       markFailed: vi.fn(),
     };
     const userRepository: IUserRepository = {
+      exists: vi.fn(),
       isStaffOrTeacher: vi.fn().mockResolvedValue(true),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),

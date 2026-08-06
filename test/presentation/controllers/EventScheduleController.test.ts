@@ -4,7 +4,8 @@ import type { IEventScheduleService } from '../../../src/application/services/IE
 import { createEventScheduleController } from '../../../src/presentation/controllers/EventScheduleController';
 import type { Env } from '../../../src/lib/env';
 import type { ContainerVariables } from '../../../src/presentation/middleware/diContainer';
-import type { AuthenticationVariables } from '../../../src/presentation/middleware/sessionAuthentication';
+import type { AuthenticationVariables } from '../../../src/presentation/middleware/bearerAuthentication';
+import type { AuthVariables } from '../../../src/presentation/middleware/requireAuth';
 
 function setup() {
   const service: IEventScheduleService = {
@@ -14,7 +15,7 @@ function setup() {
   const controller = createEventScheduleController(service);
   const app = new Hono<{
     Bindings: Env;
-    Variables: ContainerVariables & AuthenticationVariables;
+    Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
   }>();
   app.use('*', async (c, next) => {
     c.set(

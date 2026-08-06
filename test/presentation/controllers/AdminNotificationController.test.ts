@@ -4,7 +4,8 @@ import type { IAdminNotificationService } from '../../../src/application/service
 import type { Env } from '../../../src/lib/env';
 import { createAdminNotificationController } from '../../../src/presentation/controllers/AdminNotificationController';
 import type { ContainerVariables } from '../../../src/presentation/middleware/diContainer';
-import type { AuthenticationVariables } from '../../../src/presentation/middleware/sessionAuthentication';
+import type { AuthenticationVariables } from '../../../src/presentation/middleware/bearerAuthentication';
+import type { AuthVariables } from '../../../src/presentation/middleware/requireAuth';
 
 function setup() {
   const service: IAdminNotificationService = {
@@ -25,7 +26,7 @@ function setup() {
   const controller = createAdminNotificationController(service);
   const app = new Hono<{
     Bindings: Env;
-    Variables: ContainerVariables & AuthenticationVariables;
+    Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
   }>();
   app.use('*', async (c, next) => {
     c.set(
