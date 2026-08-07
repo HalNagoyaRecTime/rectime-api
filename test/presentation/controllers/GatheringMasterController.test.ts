@@ -8,6 +8,7 @@ import { createGatheringSpotController } from '../../../src/presentation/control
 function setup() {
   const spotService: IGatheringSpotService = {
     getAllGatheringSpots: vi.fn(),
+    getGatheringSpotPage: vi.fn(),
     getGatheringSpotById: vi.fn(),
     createGatheringSpot: vi.fn(),
     updateGatheringSpot: vi.fn(),
@@ -59,6 +60,36 @@ describe('Gathering master controllers', () => {
 
     expect(response.status).toBe(201);
     expect(spotService.createGatheringSpot).toHaveBeenCalledWith('体育館前');
+  });
+
+  it('クエリ付きの集合場所一覧は検索・ページネーションを委譲する', async () => {
+    const { app, spotService } = setup();
+    (
+      spotService.getGatheringSpotPage as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      gathering_spots: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+    });
+
+    const response = await app.request('/gathering-spots?name=体育&limit=20');
+
+    expect(response.status).toBe(200);
+    expect(spotService.getGatheringSpotPage).toHaveBeenCalledWith({
+      name: '体育',
+      limit: 20,
+      offset: 0,
+    });
+  });
+
+  it('不正な集合場所一覧クエリは400で拒否する', async () => {
+    const { app, spotService } = setup();
+
+    const response = await app.request('/gathering-spots?limit=0');
+
+    expect(response.status).toBe(400);
+    expect(spotService.getGatheringSpotPage).not.toHaveBeenCalled();
   });
 
   it('集合場所をIDで取得し、存在しない場合は404を返す', async () => {

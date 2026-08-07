@@ -7,11 +7,48 @@ const createGatheringSpotSchema = z.object({
   gatheringSpotName: z.string().trim().min(1),
 });
 const gatheringSpotIdSchema = z.coerce.number().int().positive();
+const gatheringSpotListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+  name: z.string().trim().max(100).optional(),
+});
 
 export function createGatheringSpotController(
   gatheringSpotService: IGatheringSpotService
 ) {
   const getAllGatheringSpots = async (c: Context) => {
+    const hasQuery = ['limit', 'offset', 'name'].some(
+      key => c.req.query(key) !== undefined
+    );
+    if (hasQuery) {
+      const parsedQuery = gatheringSpotListQuerySchema.safeParse({
+        limit: c.req.query('limit'),
+        offset: c.req.query('offset'),
+        name: c.req.query('name'),
+      });
+      if (!parsedQuery.success) {
+        return c.json(
+          {
+            error: 'Invalid gathering spot list query',
+            details: parsedQuery.error.flatten(),
+          },
+          400
+        );
+      }
+      try {
+        return c.json(
+          await gatheringSpotService.getGatheringSpotPage(parsedQuery.data)
+        );
+      } catch (error) {
+        return c.json(
+          {
+            error: 'Failed to fetch gathering spots',
+            details: error instanceof Error ? error.message : String(error),
+          },
+          500
+        );
+      }
+    }
     try {
       return c.json(await gatheringSpotService.getAllGatheringSpots());
     } catch (error) {

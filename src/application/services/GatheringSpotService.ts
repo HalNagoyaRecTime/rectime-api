@@ -10,6 +10,10 @@ export function createGatheringSpotService(
       return gatheringSpotRepository.findAll();
     },
 
+    getGatheringSpotPage(options) {
+      return gatheringSpotRepository.findPage(options);
+    },
+
     async getGatheringSpotById(
       gatheringSpotId: number
     ): Promise<GatheringSpotEntity> {
