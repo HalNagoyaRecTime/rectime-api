@@ -83,6 +83,30 @@ describe('Gathering master controllers', () => {
     });
   });
 
+  it('ソート付きの集合場所一覧はソート条件を委譲する', async () => {
+    const { app, spotService } = setup();
+    (
+      spotService.getGatheringSpotPage as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      gathering_spots: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+    });
+
+    const response = await app.request(
+      '/gathering-spots?sortBy=name&sortOrder=desc'
+    );
+
+    expect(response.status).toBe(200);
+    expect(spotService.getGatheringSpotPage).toHaveBeenCalledWith({
+      limit: 20,
+      offset: 0,
+      sortBy: 'name',
+      sortOrder: 'desc',
+    });
+  });
+
   it('不正な集合場所一覧クエリは400で拒否する', async () => {
     const { app, spotService } = setup();
 

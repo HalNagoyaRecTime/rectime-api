@@ -11,13 +11,15 @@ const gatheringSpotListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
   name: z.string().trim().max(100).optional(),
+  sortBy: z.enum(['id', 'name', 'createdAt', 'updatedAt']).optional(),
+  sortOrder: z.enum(['asc', 'desc']).optional(),
 });
 
 export function createGatheringSpotController(
   gatheringSpotService: IGatheringSpotService
 ) {
   const getAllGatheringSpots = async (c: Context) => {
-    const hasQuery = ['limit', 'offset', 'name'].some(
+    const hasQuery = ['limit', 'offset', 'name', 'sortBy', 'sortOrder'].some(
       key => c.req.query(key) !== undefined
     );
     if (hasQuery) {
@@ -25,6 +27,8 @@ export function createGatheringSpotController(
         limit: c.req.query('limit'),
         offset: c.req.query('offset'),
         name: c.req.query('name'),
+        sortBy: c.req.query('sortBy'),
+        sortOrder: c.req.query('sortOrder'),
       });
       if (!parsedQuery.success) {
         return c.json(

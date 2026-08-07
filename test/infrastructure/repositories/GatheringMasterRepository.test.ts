@@ -162,6 +162,32 @@ describe('Gathering master repositories', () => {
     });
   });
 
+  it('集合場所一覧を指定した列と方向でソートできる', async () => {
+    const first = await gatheringSpotRepository.create('体育館前');
+    const second = await gatheringSpotRepository.create('正門前');
+    const third = await gatheringSpotRepository.create('校庭');
+    gatheringSpotIds.push(
+      first.gathering_spot_id,
+      second.gathering_spot_id,
+      third.gathering_spot_id
+    );
+
+    await expect(
+      gatheringSpotRepository.findPage({
+        limit: 20,
+        offset: 0,
+        sortBy: 'name',
+        sortOrder: 'desc',
+      })
+    ).resolves.toMatchObject({
+      gathering_spots: [
+        expect.objectContaining({ gathering_spot_name: '正門前' }),
+        expect.objectContaining({ gathering_spot_name: '校庭' }),
+        expect.objectContaining({ gathering_spot_name: '体育館前' }),
+      ],
+    });
+  });
+
   it('集合対象者を追加・一覧取得・解除でき、重複追加を防止する', async () => {
     const gatheringId = await createGathering('基本');
     const userId = await createUser('集合対象者1');
