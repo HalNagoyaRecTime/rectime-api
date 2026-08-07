@@ -5,6 +5,7 @@ import {
 } from '../../entities/Event';
 
 export interface IEventRepository {
+  exists: (id: number) => Promise<boolean>;
   findAll: (
     options: EventListOptions
   ) => Promise<{ events: EventEntity[]; total: number }>;
