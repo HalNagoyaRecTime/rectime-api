@@ -378,6 +378,26 @@ paths:
                 $ref: '#/components/schemas/TeacherPage'
         '500':
           $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Teachers]
+      summary: 教員を新規登録する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeacherCreateRequest'
+      responses:
+        '201':
+          description: 作成した教員
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Teacher'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /teachers/{teacherId}:
     get:
@@ -1806,6 +1826,23 @@ components:
             $ref: '#/components/schemas/TeacherClassRoom'
 
     TeacherUpdateRequest:
+      type: object
+      required: [userName, isLiveActive, classRoomIds]
+      properties:
+        userName:
+          type: string
+          minLength: 1
+        isLiveActive:
+          type: boolean
+        classRoomIds:
+          type: array
+          uniqueItems: true
+          description: 重複したIDを指定した場合は400を返す
+          items:
+            type: integer
+            minimum: 1
+
+    TeacherCreateRequest:
       type: object
       required: [userName, isLiveActive, classRoomIds]
       properties:

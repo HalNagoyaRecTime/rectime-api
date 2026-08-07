@@ -9,6 +9,7 @@ export interface ITeacherRepository {
   findById: (id: number) => Promise<TeacherEntity | null>;
   findAll: (filter?: TeacherSearchFilter) => Promise<TeacherPage>;
   existsClassRooms: (classRoomIds: number[]) => Promise<boolean>;
+  create: (input: TeacherUpdateInput) => Promise<TeacherEntity>;
   update: (
     id: number,
     input: TeacherUpdateInput

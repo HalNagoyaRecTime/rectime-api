@@ -40,6 +40,19 @@ export function createTeacherService(
       };
     },
 
+    async createTeacher(input: TeacherUpdateRequest): Promise<TeacherDTO> {
+      if (input.classRoomIds.length > 0) {
+        const classRoomsExist = await teacherRepository.existsClassRooms(
+          input.classRoomIds
+        );
+        if (!classRoomsExist) {
+          throw new Error('Class room not found');
+        }
+      }
+
+      return toDTO(await teacherRepository.create(input));
+    },
+
     async updateTeacher(
       id: number,
       input: TeacherUpdateRequest

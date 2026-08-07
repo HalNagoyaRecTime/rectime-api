@@ -72,20 +72,22 @@ function toEntity(
 
 export function createTeacherRepository(db: D1Database): ITeacherRepository {
   const orm = drizzle(db, { schema });
+  const findTeacherById = async (id: number): Promise<TeacherEntity | null> => {
+    const result = await orm
+      .select()
+      .from(teachers)
+      .innerJoin(users, eq(teachers.userId, users.id))
+      .where(eq(teachers.id, id))
+      .get();
+
+    if (!result) return null;
+
+    const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [id]);
+    return toEntity(result, classRoomsByTeacher.get(id) ?? []);
+  };
+
   return {
-    async findById(id: number): Promise<TeacherEntity | null> {
-      const result = await orm
-        .select()
-        .from(teachers)
-        .innerJoin(users, eq(teachers.userId, users.id))
-        .where(eq(teachers.id, id))
-        .get();
-
-      if (!result) return null;
-
-      const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [id]);
-      return toEntity(result, classRoomsByTeacher.get(id) ?? []);
-    },
+    findById: findTeacherById,
 
     async findAll(filter: TeacherSearchFilter = {}): Promise<TeacherPage> {
       const offset =
@@ -167,6 +169,49 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .where(inArray(class_rooms.id, classRoomIds))
         .all();
       return rows.length === classRoomIds.length;
+    },
+
+    async create(input: TeacherUpdateInput): Promise<TeacherEntity> {
+      const userInsert = db
+        .prepare(
+          `INSERT INTO users (user_name, is_live_active, updated_at)
+           VALUES (?, ?, CURRENT_TIMESTAMP)
+           RETURNING user_id`
+        )
+        .bind(input.userName, input.isLiveActive ? 1 : 0);
+      const teacherInsert = db.prepare(
+        `INSERT INTO teachers (user_id, updated_at)
+           VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
+           RETURNING teacher_id`
+      );
+
+      const statements = [userInsert, teacherInsert];
+      if (input.classRoomIds.length > 0) {
+        const placeholders = input.classRoomIds.map(() => '?').join(', ');
+        statements.push(
+          db
+            .prepare(
+              `UPDATE class_rooms
+               SET teacher_id = last_insert_rowid(), updated_at = CURRENT_TIMESTAMP
+               WHERE class_room_id IN (${placeholders})`
+            )
+            .bind(...input.classRoomIds)
+        );
+      }
+
+      const results = await db.batch(statements);
+      const teacherId = (
+        results[1].results[0] as { teacher_id?: number } | undefined
+      )?.teacher_id;
+      if (!teacherId) {
+        throw new Error('Failed to create teacher');
+      }
+
+      const created = await findTeacherById(teacherId);
+      if (!created) {
+        throw new Error('Failed to create teacher');
+      }
+      return created;
     },
 
     async update(

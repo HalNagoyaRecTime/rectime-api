@@ -166,6 +166,42 @@ describe('TeacherRepository', () => {
     });
   });
 
+  describe('create', () => {
+    it('users と teachers を作成し、担当クラスも紐付ける', async () => {
+      const created = await repo.create({
+        userName: '新規先生',
+        isLiveActive: false,
+        classRoomIds: [seeded.classRooms[1].classRoomId],
+      });
+
+      expect(created).toMatchObject({
+        user_name: '新規先生',
+        is_live_active: false,
+      });
+      expect(created.teacher_id).toBeGreaterThan(0);
+      expect(created.class_rooms).toEqual([
+        {
+          class_room_id: seeded.classRooms[1].classRoomId,
+          class_code: seeded.classRooms[1].classCode,
+          class_name: seeded.classRooms[1].className,
+        },
+      ]);
+      expect(await repo.findById(created.teacher_id)).toMatchObject({
+        user_name: '新規先生',
+      });
+    });
+
+    it('担当クラスなしでも作成できる', async () => {
+      const created = await repo.create({
+        userName: '担当なし先生',
+        isLiveActive: true,
+        classRoomIds: [],
+      });
+
+      expect(created.class_rooms).toEqual([]);
+    });
+  });
+
   describe('update', () => {
     it('氏名・有効状態・担当クラスを更新する', async () => {
       const target = seeded.teachers[1];

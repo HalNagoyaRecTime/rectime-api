@@ -21,6 +21,7 @@ function buildRepository(
     findById: vi.fn(),
     findAll: vi.fn(),
     existsClassRooms: vi.fn(),
+    create: vi.fn(),
     update: vi.fn(),
     hasClassAssignments: vi.fn(),
     delete: vi.fn(),
@@ -112,6 +113,53 @@ describe('TeacherService', () => {
 
       const result = await service.getAllTeachers();
       expect(result.items).toEqual([]);
+    });
+  });
+
+  describe('createTeacher', () => {
+    it('担当クラスが存在すれば作成して TeacherDTO を返す', async () => {
+      const created = buildTeacher({
+        teacher_id: 3,
+        user_id: 30,
+        user_name: '新規先生',
+        is_live_active: false,
+      });
+      const repository = buildRepository({
+        existsClassRooms: vi.fn().mockResolvedValue(true),
+        create: vi.fn().mockResolvedValue(created),
+      });
+      const service = createTeacherService(repository);
+
+      const dto = await service.createTeacher({
+        userName: '新規先生',
+        isLiveActive: false,
+        classRoomIds: [1],
+      });
+
+      expect(repository.existsClassRooms).toHaveBeenCalledWith([1]);
+      expect(repository.create).toHaveBeenCalledWith({
+        userName: '新規先生',
+        isLiveActive: false,
+        classRoomIds: [1],
+      });
+      expect(dto.teacher_id).toBe(3);
+      expect(dto.display_name).toBe('新規先生');
+    });
+
+    it('存在しないクラスIDが含まれる場合は作成しない', async () => {
+      const repository = buildRepository({
+        existsClassRooms: vi.fn().mockResolvedValue(false),
+      });
+      const service = createTeacherService(repository);
+
+      await expect(
+        service.createTeacher({
+          userName: '新規先生',
+          isLiveActive: true,
+          classRoomIds: [999],
+        })
+      ).rejects.toThrow('Class room not found');
+      expect(repository.create).not.toHaveBeenCalled();
     });
   });
 

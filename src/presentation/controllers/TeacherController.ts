@@ -88,6 +88,36 @@ export function createTeacherController(teacherService: ITeacherService) {
     }
   };
 
+  const createTeacher = async (c: Context) => {
+    const body = await c.req.json().catch(() => undefined);
+    const parsedBody = updateTeacherSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return c.json(
+        {
+          error: 'Invalid teacher create request body',
+          details: parsedBody.error.flatten(),
+        },
+        400
+      );
+    }
+
+    try {
+      const teacher = await teacherService.createTeacher(parsedBody.data);
+      return c.json(teacher, 201);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Class room not found') {
+        return c.json({ error: error.message }, 400);
+      }
+      return c.json(
+        {
+          error: 'Failed to create teacher',
+          details: error instanceof Error ? error.message : String(error),
+        },
+        500
+      );
+    }
+  };
+
   const updateTeacher = async (c: Context) => {
     const teacherId = getTeacherId(c);
     if (teacherId === null) {
@@ -161,6 +191,7 @@ export function createTeacherController(teacherService: ITeacherService) {
   return {
     getTeacherById,
     getAllTeachers,
+    createTeacher,
     updateTeacher,
     deleteTeacher,
   };

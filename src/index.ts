@@ -135,6 +135,9 @@ apiV1.get('/teachers', requireAuth, c => {
 apiV1.get('/teachers/:teacherId', requireAuth, c => {
   return c.get('container').teacherController.getTeacherById(c);
 });
+apiV1.post('/teachers', requireAuth, c => {
+  return c.get('container').teacherController.createTeacher(c);
+});
 apiV1.put('/teachers/:teacherId', requireAuth, c => {
   return c.get('container').teacherController.updateTeacher(c);
 });

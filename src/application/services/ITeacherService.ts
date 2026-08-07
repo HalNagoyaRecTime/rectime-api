@@ -10,6 +10,7 @@ export interface TeacherUpdateRequest {
 export interface ITeacherService {
   getTeacherById: (id: number) => Promise<TeacherDTO>;
   getAllTeachers: (filter?: TeacherSearchFilter) => Promise<TeacherPageDTO>;
+  createTeacher: (input: TeacherUpdateRequest) => Promise<TeacherDTO>;
   updateTeacher: (
     id: number,
     input: TeacherUpdateRequest

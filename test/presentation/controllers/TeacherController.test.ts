@@ -19,6 +19,7 @@ function setup() {
   const teacherService: ITeacherService = {
     getTeacherById: vi.fn(),
     getAllTeachers: vi.fn(),
+    createTeacher: vi.fn(),
     updateTeacher: vi.fn(),
     deleteTeacher: vi.fn(),
   };
@@ -26,6 +27,7 @@ function setup() {
   const app = new Hono();
   app.get('/teachers', c => controller.getAllTeachers(c));
   app.get('/teachers/:teacherId', c => controller.getTeacherById(c));
+  app.post('/teachers', c => controller.createTeacher(c));
   app.put('/teachers/:teacherId', c => controller.updateTeacher(c));
   app.delete('/teachers/:teacherId', c => controller.deleteTeacher(c));
   return { app, teacherService };
@@ -148,6 +150,64 @@ describe('TeacherController', () => {
 
       expect(res.status).toBe(500);
       expect(await res.json()).toEqual({ error: 'Failed to fetch teachers' });
+    });
+  });
+
+  describe('createTeacher', () => {
+    const validBody = {
+      userName: '新規先生',
+      isLiveActive: true,
+      classRoomIds: [1, 2],
+    };
+
+    it('作成した教員を 201 で返す', async () => {
+      const { app, teacherService } = setup();
+      const created = buildTeacher({ teacher_id: 3, display_name: '新規先生' });
+      (
+        teacherService.createTeacher as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(created);
+
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validBody),
+      });
+
+      expect(teacherService.createTeacher).toHaveBeenCalledWith(validBody);
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual(created);
+    });
+
+    it('不正なリクエストボディの場合は 400 を返す', async () => {
+      const { app, teacherService } = setup();
+
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName: '' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { error: string }).error).toBe(
+        'Invalid teacher create request body'
+      );
+      expect(teacherService.createTeacher).not.toHaveBeenCalled();
+    });
+
+    it('存在しないクラスIDの場合は 400 を返す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.createTeacher as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Class room not found'));
+
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validBody),
+      });
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'Class room not found' });
     });
   });
 
