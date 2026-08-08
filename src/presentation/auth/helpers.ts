@@ -13,6 +13,7 @@ import {
   refreshMicrosoftAccessToken as infraRefreshToken,
 } from '../../infrastructure/auth/microsoftClient';
 import { createUserRepository } from '../../infrastructure/repositories/UserRepository';
+import { createStudentRepository } from '../../infrastructure/repositories/StudentRepository';
 import { createAuthService } from '../../application/services/authService';
 
 export type AppContext = Context<{ Bindings: Bindings }>;
@@ -145,7 +146,8 @@ export async function upsertUser(
   claims: IdTokenClaims
 ): Promise<AppUser> {
   const userRepository = createUserRepository(c.env.DB);
-  const authService = createAuthService(userRepository);
+  const studentRepository = createStudentRepository(c.env.DB);
+  const authService = createAuthService(userRepository, studentRepository);
   return authService.upsertUser(claims);
 }
 
