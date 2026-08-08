@@ -127,6 +127,16 @@ describe('Gathering master repositories', () => {
     ).resolves.toBeNull();
   });
 
+  it('集合場所の存在を確認できる', async () => {
+    const spot = await gatheringSpotRepository.create('体育館前');
+    gatheringSpotIds.push(spot.gathering_spot_id);
+
+    await expect(
+      gatheringSpotRepository.exists(spot.gathering_spot_id)
+    ).resolves.toBe(true);
+    await expect(gatheringSpotRepository.exists(999999)).resolves.toBe(false);
+  });
+
   it('集合対象者を追加・一覧取得・解除でき、重複追加を防止する', async () => {
     const gatheringId = await createGathering('基本');
     const userId = await createUser('集合対象者1');
