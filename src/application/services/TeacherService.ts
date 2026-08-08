@@ -1,5 +1,6 @@
 import { TeacherDTO, TeacherPageDTO } from '../dto/TeacherDTO';
 import type {
+  TeacherCreateInput,
   TeacherEntity,
   TeacherSearchFilter,
 } from '../../domain/entities/Teacher';
@@ -40,7 +41,7 @@ export function createTeacherService(
       };
     },
 
-    async createTeacher(input: TeacherUpdateRequest): Promise<TeacherDTO> {
+    async createTeacher(input: TeacherCreateInput): Promise<TeacherDTO> {
       if (input.classRoomIds.length > 0) {
         const classRoomsExist = await teacherRepository.existsClassRooms(
           input.classRoomIds

@@ -5,6 +5,7 @@ import { class_rooms, teachers, users } from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
 import {
+  TeacherCreateInput,
   TeacherEntity,
   TeacherPage,
   TeacherSearchFilter,
@@ -171,14 +172,14 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       return rows.length === classRoomIds.length;
     },
 
-    async create(input: TeacherUpdateInput): Promise<TeacherEntity> {
+    async create(input: TeacherCreateInput): Promise<TeacherEntity> {
       const userInsert = db
         .prepare(
           `INSERT INTO users (user_name, is_live_active, updated_at)
            VALUES (?, ?, CURRENT_TIMESTAMP)
            RETURNING user_id`
         )
-        .bind(input.userName, input.isLiveActive ? 1 : 0);
+        .bind(input.userName, 1);
       const teacherInsert = db.prepare(
         `INSERT INTO teachers (user_id, updated_at)
            VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
@@ -232,7 +233,6 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .update(users)
         .set({
           userName: input.userName,
-          isLiveActive: input.isLiveActive ? 1 : 0,
           updatedAt: now,
         })
         .where(eq(users.id, existing.users.id));
@@ -283,7 +283,6 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           users: {
             ...existing.users,
             userName: input.userName,
-            isLiveActive: input.isLiveActive ? 1 : 0,
             updatedAt: now,
           },
         },

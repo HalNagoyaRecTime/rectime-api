@@ -1827,13 +1827,11 @@ components:
 
     TeacherUpdateRequest:
       type: object
-      required: [userName, isLiveActive, classRoomIds]
+      required: [userName, classRoomIds]
       properties:
         userName:
           type: string
           minLength: 1
-        isLiveActive:
-          type: boolean
         classRoomIds:
           type: array
           uniqueItems: true
@@ -1844,13 +1842,11 @@ components:
 
     TeacherCreateRequest:
       type: object
-      required: [userName, isLiveActive, classRoomIds]
+      required: [userName, classRoomIds]
       properties:
         userName:
           type: string
           minLength: 1
-        isLiveActive:
-          type: boolean
         classRoomIds:
           type: array
           uniqueItems: true

@@ -1,5 +1,6 @@
 import {
   TeacherEntity,
+  TeacherCreateInput,
   TeacherPage,
   TeacherSearchFilter,
   TeacherUpdateInput,
@@ -9,7 +10,7 @@ export interface ITeacherRepository {
   findById: (id: number) => Promise<TeacherEntity | null>;
   findAll: (filter?: TeacherSearchFilter) => Promise<TeacherPage>;
   existsClassRooms: (classRoomIds: number[]) => Promise<boolean>;
-  create: (input: TeacherUpdateInput) => Promise<TeacherEntity>;
+  create: (input: TeacherCreateInput) => Promise<TeacherEntity>;
   update: (
     id: number,
     input: TeacherUpdateInput

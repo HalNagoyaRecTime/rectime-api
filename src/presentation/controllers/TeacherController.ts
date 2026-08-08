@@ -7,7 +7,15 @@ const MAX_LIMIT = 100;
 
 const updateTeacherSchema = z.object({
   userName: z.string().min(1),
-  isLiveActive: z.boolean(),
+  classRoomIds: z
+    .array(z.number().int().positive())
+    .refine(ids => new Set(ids).size === ids.length, {
+      message: 'classRoomIds must not contain duplicate values',
+    }),
+});
+
+const createTeacherSchema = z.object({
+  userName: z.string().min(1),
   classRoomIds: z
     .array(z.number().int().positive())
     .refine(ids => new Set(ids).size === ids.length, {
@@ -90,7 +98,7 @@ export function createTeacherController(teacherService: ITeacherService) {
 
   const createTeacher = async (c: Context) => {
     const body = await c.req.json().catch(() => undefined);
-    const parsedBody = updateTeacherSchema.safeParse(body);
+    const parsedBody = createTeacherSchema.safeParse(body);
     if (!parsedBody.success) {
       return c.json(
         {

@@ -156,7 +156,6 @@ describe('TeacherController', () => {
   describe('createTeacher', () => {
     const validBody = {
       userName: '新規先生',
-      isLiveActive: true,
       classRoomIds: [1, 2],
     };
 
@@ -214,7 +213,6 @@ describe('TeacherController', () => {
   describe('updateTeacher', () => {
     const validBody = {
       userName: '更新済み先生',
-      isLiveActive: false,
       classRoomIds: [1, 2],
     };
 
@@ -271,7 +269,6 @@ describe('TeacherController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userName: '更新済み先生',
-          isLiveActive: false,
           classRoomIds: [1, 1, 2],
         }),
       });

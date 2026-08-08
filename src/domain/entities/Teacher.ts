@@ -30,6 +30,10 @@ export interface TeacherPage {
 
 export interface TeacherUpdateInput {
   userName: string;
-  isLiveActive: boolean;
+  classRoomIds: number[];
+}
+
+export interface TeacherCreateInput {
+  userName: string;
   classRoomIds: number[];
 }
