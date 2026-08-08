@@ -38,6 +38,7 @@ describe('createAuthService', () => {
       findUserIdByMicrosoftAccount: vi.fn(),
       createUserWithMicrosoftLink: vi.fn(),
       updateUser: vi.fn(),
+      linkMicrosoftAccount: vi.fn(),
     };
     const service = createAuthService(userRepository);
     return { userRepository, service };
