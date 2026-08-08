@@ -1,6 +1,14 @@
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAuthService, MicrosoftClaims } from './IAuthService';
 
+function extractStudentIdNumber(email: string): string | null {
+  const localPart = email.split('@')[0];
+  if (!localPart) return null;
+
+  const match = localPart.match(/(\d+)$/);
+  return match ? match[1] : null;
+}
+
 export function createAuthService(
   userRepository: IUserRepository
 ): IAuthService {
