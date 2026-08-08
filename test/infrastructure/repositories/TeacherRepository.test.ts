@@ -64,6 +64,38 @@ describe('TeacherRepository', () => {
       expect(result.items.map(t => t.teacher_id)).toContain(target.teacherId);
     });
 
+    it('search で教員名・担当クラスコード・担当クラス名を横断して検索できる', async () => {
+      const byTeacherName = await repo.findAll({ search: '山田先生' });
+      const byClassCode = await repo.findAll({ search: 'TEST-1' });
+      const byClassName = await repo.findAll({ search: 'テスト1組' });
+
+      expect(byTeacherName.items.map(t => t.teacher_id)).toEqual([
+        seeded.teachers[0].teacherId,
+      ]);
+      expect(byClassCode.items.map(t => t.teacher_id)).toEqual([
+        seeded.teachers[0].teacherId,
+      ]);
+      expect(byClassName.items.map(t => t.teacher_id)).toEqual([
+        seeded.teachers[0].teacherId,
+      ]);
+    });
+
+    it('teacherId と displayName のソートを適用してからページングする', async () => {
+      const idDesc = await repo.findAll({
+        sortBy: 'teacherId',
+        sortOrder: 'desc',
+        limit: 1,
+      });
+      const nameAsc = await repo.findAll({
+        sortBy: 'displayName',
+        sortOrder: 'asc',
+        limit: 1,
+      });
+
+      expect(idDesc.items[0].teacher_id).toBe(seeded.teachers[1].teacherId);
+      expect(nameAsc.items[0].user_name).toBe('中村先生');
+    });
+
     it('userName に % や _ が含まれる場合、ワイルドカードとしてではなく文字通り一致で絞り込む', async () => {
       const now = new Date().toISOString();
       const wildcardUser = await env.DB.prepare(

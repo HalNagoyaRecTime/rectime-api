@@ -15,11 +15,17 @@ export interface TeacherEntity {
 export interface TeacherSearchFilter {
   teacherId?: number;
   userName?: string;
+  search?: string;
   classRoomId?: number;
   isLiveActive?: boolean;
+  sortBy?: TeacherSortBy;
+  sortOrder?: TeacherSortOrder;
   limit?: number;
   offset?: number;
 }
+
+export type TeacherSortBy = 'teacherId' | 'displayName';
+export type TeacherSortOrder = 'asc' | 'desc';
 
 export interface TeacherPage {
   items: TeacherEntity[];

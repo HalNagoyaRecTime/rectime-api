@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { class_rooms, teachers, users } from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
@@ -46,6 +46,11 @@ async function loadClassRoomsByTeacherIds(
     .select()
     .from(class_rooms)
     .where(inArray(class_rooms.teacherId, teacherIds))
+    .orderBy(
+      asc(class_rooms.classCode),
+      asc(class_rooms.name),
+      asc(class_rooms.id)
+    )
     .all();
 
   for (const row of rows) {
@@ -110,6 +115,23 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`
         );
       }
+      if (filter.search) {
+        const escapedPattern = `%${escapeLikePattern(filter.search)}%`;
+        conditions.push(
+          or(
+            sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
+            sql`EXISTS (
+              SELECT 1
+              FROM class_rooms AS search_class_rooms
+              WHERE search_class_rooms.teacher_id = ${teachers.id}
+                AND (
+                  search_class_rooms.class_code LIKE ${escapedPattern} ESCAPE ${'\\'}
+                  OR search_class_rooms.class_name LIKE ${escapedPattern} ESCAPE ${'\\'}
+                )
+            )`
+          )!
+        );
+      }
       if (filter.isLiveActive !== undefined) {
         conditions.push(eq(users.isLiveActive, filter.isLiveActive ? 1 : 0));
       }
@@ -142,10 +164,21 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .select()
         .from(teachers)
         .innerJoin(users, eq(teachers.userId, users.id));
+      const filteredRowsQuery = whereClause
+        ? rowsBaseQuery.where(whereClause)
+        : rowsBaseQuery;
       const results = await (
-        whereClause ? rowsBaseQuery.where(whereClause) : rowsBaseQuery
+        filter.sortBy === 'displayName'
+          ? filteredRowsQuery.orderBy(
+              filter.sortOrder === 'desc'
+                ? desc(users.userName)
+                : asc(users.userName),
+              asc(teachers.id)
+            )
+          : filteredRowsQuery.orderBy(
+              filter.sortOrder === 'desc' ? desc(teachers.id) : asc(teachers.id)
+            )
       )
-        .orderBy(asc(teachers.id))
         .limit(limit)
         .offset(offset)
         .all();

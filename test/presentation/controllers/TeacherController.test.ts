@@ -114,12 +114,15 @@ describe('TeacherController', () => {
       });
 
       await app.request(
-        '/teachers?teacherId=1&userName=%E5%B1%B1%E7%94%B0&classRoomId=2&isLiveActive=false&offset=5&limit=5'
+        '/teachers?teacherId=1&userName=%E5%B1%B1%E7%94%B0&search=TEST&sortBy=displayName&sortOrder=desc&classRoomId=2&isLiveActive=false&offset=5&limit=5'
       );
 
       expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
         teacherId: 1,
         userName: '山田',
+        search: 'TEST',
+        sortBy: 'displayName',
+        sortOrder: 'desc',
         classRoomId: 2,
         isLiveActive: false,
         offset: 5,

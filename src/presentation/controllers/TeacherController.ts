@@ -40,6 +40,19 @@ function parseSearchFilter(c: Context): TeacherSearchFilter {
   const userName = c.req.query('userName');
   if (userName) filter.userName = userName;
 
+  const search = c.req.query('search');
+  if (search?.trim()) filter.search = search.trim();
+
+  const sortBy = c.req.query('sortBy');
+  if (sortBy === 'teacherId' || sortBy === 'displayName') {
+    filter.sortBy = sortBy;
+  }
+
+  const sortOrder = c.req.query('sortOrder');
+  if (sortOrder === 'asc' || sortOrder === 'desc') {
+    filter.sortOrder = sortOrder;
+  }
+
   const classRoomId = c.req.query('classRoomId');
   if (classRoomId !== undefined) {
     const parsed = Number(classRoomId);

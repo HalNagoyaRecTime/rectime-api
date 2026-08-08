@@ -345,6 +345,25 @@ paths:
           description: 氏名の部分一致で絞り込む
           schema:
             type: string
+        - name: search
+          in: query
+          description: 教員名・担当クラスコード・担当クラス名の部分一致で絞り込む
+          schema:
+            type: string
+        - name: sortBy
+          in: query
+          description: 並び順の項目（teacherId または displayName）
+          schema:
+            type: string
+            enum: [teacherId, displayName]
+            default: teacherId
+        - name: sortOrder
+          in: query
+          description: 並び順（asc または desc）
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
         - name: classRoomId
           in: query
           description: 担当クラスのIDで絞り込む
