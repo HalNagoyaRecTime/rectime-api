@@ -136,6 +136,21 @@ export function createUserRepository(db: D1Database): IUserRepository {
       };
     },
 
+    async linkMicrosoftAccount({ userId, oid, tid }) {
+      const now = new Date().toISOString();
+
+      await orm
+        .insert(microsoft_account_links)
+        .values({
+          userId: Number(userId),
+          oid,
+          tid,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+    },
+
     async updateUser({ userId, oid, tid, sub, email, displayName }) {
       const now = new Date().toISOString();
 
