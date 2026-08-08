@@ -50,6 +50,14 @@ export function isValidBase64Url(value: string): boolean {
   return BASE64_URL_PATTERN.test(value);
 }
 
+export function extractStudentIdNumber(email: string): string | null {
+  const localPart = email.split('@')[0];
+  if (!localPart) return null;
+
+  const match = localPart.match(/(\d+)$/);
+  return match ? match[1] : null;
+}
+
 export function hasMinimumDecodedBytes(
   value: string,
   byteLength: number
