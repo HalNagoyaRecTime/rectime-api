@@ -8,7 +8,7 @@ export interface MasterImportCommittedResult {
 }
 
 export interface MasterImportSession {
-  import_id: string;
+  validated_file_id: string;
   type: MasterImportType;
   status: MasterImportStatus;
   file_name: string;

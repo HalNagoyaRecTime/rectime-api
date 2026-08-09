@@ -63,7 +63,7 @@ function toDTO(
   limit: number
 ): MasterImportSessionDTO {
   return {
-    import_id: session.import_id,
+    validated_file_id: session.validated_file_id,
     type: session.type,
     status: session.status,
     file_name: session.file_name,
@@ -157,7 +157,7 @@ export function createMasterImportService(
       const validation = await validateByType(input.type, rows);
 
       const session: MasterImportSession = {
-        import_id: crypto.randomUUID(),
+        validated_file_id: crypto.randomUUID(),
         type: input.type,
         status: 'validated',
         file_name: input.fileName,
@@ -175,18 +175,20 @@ export function createMasterImportService(
     },
 
     async getImport(
-      importId: string,
+      validatedFileId: string,
       pagination: { offset: number; limit: number }
     ): Promise<MasterImportSessionDTO | null> {
-      const session = await getMasterImportSession(kv, importId);
+      const session = await getMasterImportSession(kv, validatedFileId);
       if (!session) {
         return null;
       }
       return toDTO(session, pagination.offset, pagination.limit);
     },
 
-    async commitImport(importId: string): Promise<CommitMasterImportOutcome> {
-      const session = await getMasterImportSession(kv, importId);
+    async commitImport(
+      validatedFileId: string
+    ): Promise<CommitMasterImportOutcome> {
+      const session = await getMasterImportSession(kv, validatedFileId);
       if (!session) {
         return { status: 'not_found' };
       }
@@ -206,13 +208,13 @@ export function createMasterImportService(
         };
       }
 
-      const lockStub = commitLock.get(commitLock.idFromName(importId));
+      const lockStub = commitLock.get(commitLock.idFromName(validatedFileId));
       const acquired = await lockStub.tryBeginCommit();
 
       if (!acquired) {
         for (let attempt = 0; attempt < COMMIT_WAIT_MAX_ATTEMPTS; attempt++) {
           await sleep(COMMIT_WAIT_POLL_INTERVAL_MS);
-          const latest = await getMasterImportSession(kv, importId);
+          const latest = await getMasterImportSession(kv, validatedFileId);
           if (latest?.status === 'committed') {
             return {
               status: 'committed',

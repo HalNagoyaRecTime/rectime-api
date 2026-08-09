@@ -53,8 +53,8 @@ export function createMasterImportController(
   };
 
   const getImport = async (c: Context) => {
-    const importId = c.req.param('importId');
-    if (!importId) {
+    const validatedFileId = c.req.param('validatedFileId');
+    if (!validatedFileId) {
       return c.json({ error: 'Invalid import ID' }, 400);
     }
     const parsedPagination = paginationSchema.safeParse({
@@ -73,7 +73,7 @@ export function createMasterImportController(
 
     try {
       const session = await masterImportService.getImport(
-        importId,
+        validatedFileId,
         parsedPagination.data
       );
       if (!session) {
@@ -86,13 +86,13 @@ export function createMasterImportController(
   };
 
   const commitImport = async (c: Context) => {
-    const importId = c.req.param('importId');
-    if (!importId) {
+    const validatedFileId = c.req.param('validatedFileId');
+    if (!validatedFileId) {
       return c.json({ error: 'Invalid import ID' }, 400);
     }
 
     try {
-      const outcome = await masterImportService.commitImport(importId);
+      const outcome = await masterImportService.commitImport(validatedFileId);
 
       if (outcome.status === 'not_found') {
         return c.json({ error: 'Import not found' }, 404);

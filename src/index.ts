@@ -196,10 +196,10 @@ apiV1.delete('/classrooms/:classId', requireAuth, c => {
 apiV1.post('/master-imports', requireAuth, c => {
   return c.get('container').masterImportController.createImport(c);
 });
-apiV1.get('/master-imports/:importId', requireAuth, c => {
+apiV1.get('/master-imports/:validatedFileId', requireAuth, c => {
   return c.get('container').masterImportController.getImport(c);
 });
-apiV1.post('/master-imports/:importId/commit', requireAuth, c => {
+apiV1.post('/master-imports/:validatedFileId/commit', requireAuth, c => {
   return c.get('container').masterImportController.commitImport(c);
 });
 

@@ -22,8 +22,8 @@ export interface IMasterImportService {
     input: CreateMasterImportInput
   ) => Promise<MasterImportSessionDTO>;
   getImport: (
-    importId: string,
+    validatedFileId: string,
     pagination: { offset: number; limit: number }
   ) => Promise<MasterImportSessionDTO | null>;
-  commitImport: (importId: string) => Promise<CommitMasterImportOutcome>;
+  commitImport: (validatedFileId: string) => Promise<CommitMasterImportOutcome>;
 }

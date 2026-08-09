@@ -159,7 +159,7 @@ describe('MasterImportService', () => {
   });
 
   describe('getImport', () => {
-    it('存在しないimportIdはnullを返す', async () => {
+    it('存在しないvalidatedFileIdはnullを返す', async () => {
       const kv = createFakeKv();
       const service = createMasterImportService(
         kv,
@@ -203,7 +203,7 @@ describe('MasterImportService', () => {
         fileName: 'c.csv',
       });
 
-      const page = await service.getImport(created.import_id, {
+      const page = await service.getImport(created.validated_file_id, {
         offset: 1,
         limit: 1,
       });
@@ -214,7 +214,7 @@ describe('MasterImportService', () => {
   });
 
   describe('commitImport', () => {
-    it('存在しないimportIdはnot_foundを返す', async () => {
+    it('存在しないvalidatedFileIdはnot_foundを返す', async () => {
       const kv = createFakeKv();
       const service = createMasterImportService(
         kv,
@@ -266,7 +266,7 @@ describe('MasterImportService', () => {
         fileName: 't.csv',
       });
 
-      const outcome = await service.commitImport(created.import_id);
+      const outcome = await service.commitImport(created.validated_file_id);
 
       expect(outcome.status).toBe('has_errors');
       expect(commitTeacherImport).not.toHaveBeenCalled();
@@ -308,7 +308,7 @@ describe('MasterImportService', () => {
         fileName: 's.csv',
       });
 
-      const outcome = await service.commitImport(created.import_id);
+      const outcome = await service.commitImport(created.validated_file_id);
 
       expect(outcome.status).toBe('committed');
       expect(outcome.status === 'committed' && outcome.alreadyCommitted).toBe(
@@ -316,7 +316,7 @@ describe('MasterImportService', () => {
       );
       expect(commitStudentImport).toHaveBeenCalledTimes(1);
 
-      const second = await service.commitImport(created.import_id);
+      const second = await service.commitImport(created.validated_file_id);
       expect(second.status).toBe('committed');
       expect(second.status === 'committed' && second.alreadyCommitted).toBe(
         true
@@ -372,8 +372,8 @@ describe('MasterImportService', () => {
       });
 
       const [first, second] = await Promise.all([
-        service.commitImport(created.import_id),
-        service.commitImport(created.import_id),
+        service.commitImport(created.validated_file_id),
+        service.commitImport(created.validated_file_id),
       ]);
 
       expect(commitStudentImport).toHaveBeenCalledTimes(1);
@@ -433,7 +433,7 @@ describe('MasterImportService', () => {
         fileName: 's.csv',
       });
 
-      const outcome = await service.commitImport(created.import_id);
+      const outcome = await service.commitImport(created.validated_file_id);
       expect(outcome.status).toBe('has_errors');
       if (outcome.status === 'has_errors') {
         expect(outcome.session.error_count).toBe(1);
@@ -445,7 +445,7 @@ describe('MasterImportService', () => {
       }
 
       // committedとして固定されていないので、修正後にもう一度確定できる
-      const retried = await service.commitImport(created.import_id);
+      const retried = await service.commitImport(created.validated_file_id);
       expect(retried.status).toBe('committed');
       expect(retried.status === 'committed' && retried.alreadyCommitted).toBe(
         false
@@ -485,10 +485,10 @@ describe('MasterImportService', () => {
       // 先にロックを取得し、意図的に解放しないことで「先行する確定処理が
       // 終わらない」状況を再現する。
       await commitLock
-        .get(commitLock.idFromName(created.import_id))
+        .get(commitLock.idFromName(created.validated_file_id))
         .tryBeginCommit();
 
-      const outcome = await service.commitImport(created.import_id);
+      const outcome = await service.commitImport(created.validated_file_id);
       expect(outcome).toEqual({ status: 'timeout' });
     }, 10000);
   });

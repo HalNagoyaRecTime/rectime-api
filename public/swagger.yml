@@ -442,7 +442,7 @@ paths:
   /master-imports:
     post:
       tags: [MasterImports]
-      summary: CSV・Excelファイルを取り込み、検査した上でimportIdを発行する（DBへの書き込みは行わない）
+      summary: CSV・Excelファイルを取り込み、検査した上でvalidatedFileIdを発行する（DBへの書き込みは行わない）
       requestBody:
         required: true
         content:
@@ -451,7 +451,7 @@ paths:
               $ref: '#/components/schemas/MasterImportUploadRequest'
       responses:
         '201':
-          description: 検査結果とimportId
+          description: 検査結果とvalidatedFileId
           content:
             application/json:
               schema:
@@ -461,12 +461,12 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /master-imports/{importId}:
+  /master-imports/{validatedFileId}:
     get:
       tags: [MasterImports]
       summary: 取込内容・検査結果を確認する
       parameters:
-        - $ref: '#/components/parameters/ImportId'
+        - $ref: '#/components/parameters/ValidatedFileId'
         - name: offset
           in: query
           schema: { type: integer, minimum: 0, default: 0 }
@@ -488,15 +488,15 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /master-imports/{importId}/commit:
+  /master-imports/{validatedFileId}/commit:
     post:
       tags: [MasterImports]
       summary: |
         検査済みのデータをそのまま確定登録する。1件でもエラーがあれば1件も登録しない。
-        既に確定済みのimportIdに対して再度呼び出した場合は、DBへ再度書き込むことなく
+        既に確定済みのvalidatedFileIdに対して再度呼び出した場合は、DBへ再度書き込むことなく
         前回と同じ結果を返す（二重登録の防止）。
       parameters:
-        - $ref: '#/components/parameters/ImportId'
+        - $ref: '#/components/parameters/ValidatedFileId'
       responses:
         '200':
           description: 既に確定済みだったため、前回の結果をそのまま返した
@@ -520,7 +520,7 @@ paths:
                 $ref: '#/components/schemas/MasterImportSession'
         '503':
           description: |
-            同じimportIdに対する確定処理が既に進行中のため、一定時間待っても
+            同じvalidatedFileIdに対する確定処理が既に進行中のため、一定時間待っても
             完了を確認できなかった。Retry-Afterヘッダーの秒数待ってから再試行すること。
           headers:
             Retry-After:
@@ -1718,8 +1718,8 @@ components:
       schema:
         type: integer
         minimum: 1
-    ImportId:
-      name: importId
+    ValidatedFileId:
+      name: validatedFileId
       in: path
       required: true
       schema:
@@ -2176,7 +2176,7 @@ components:
       type: object
       required:
         [
-          import_id,
+          validated_file_id,
           type,
           status,
           file_name,
@@ -2192,7 +2192,7 @@ components:
           committed_result,
         ]
       properties:
-        import_id:
+        validated_file_id:
           type: string
         type:
           type: string

@@ -8,7 +8,7 @@ function buildSession(
   overrides: Partial<MasterImportSessionDTO> = {}
 ): MasterImportSessionDTO {
   return {
-    import_id: 'abc-123',
+    validated_file_id: 'abc-123',
     type: 'students',
     status: 'validated',
     file_name: 'students.csv',
@@ -35,8 +35,8 @@ function setup() {
   const controller = createMasterImportController(masterImportService);
   const app = new Hono();
   app.post('/master-imports', c => controller.createImport(c));
-  app.get('/master-imports/:importId', c => controller.getImport(c));
-  app.post('/master-imports/:importId/commit', c => controller.commitImport(c));
+  app.get('/master-imports/:validatedFileId', c => controller.getImport(c));
+  app.post('/master-imports/:validatedFileId/commit', c => controller.commitImport(c));
   return { app, masterImportService };
 }
 
@@ -128,7 +128,7 @@ describe('MasterImportController', () => {
   });
 
   describe('getImport', () => {
-    it('存在するimportIdは200で返す', async () => {
+    it('存在するvalidatedFileIdは200で返す', async () => {
       const { app, masterImportService } = setup();
       const session = buildSession();
       (
@@ -145,7 +145,7 @@ describe('MasterImportController', () => {
       });
     });
 
-    it('存在しないimportIdは404を返す', async () => {
+    it('存在しないvalidatedFileIdは404を返す', async () => {
       const { app, masterImportService } = setup();
       (
         masterImportService.getImport as ReturnType<typeof vi.fn>
@@ -217,7 +217,7 @@ describe('MasterImportController', () => {
       expect(res.status).toBe(422);
     });
 
-    it('存在しないimportIdは404を返す', async () => {
+    it('存在しないvalidatedFileIdは404を返す', async () => {
       const { app, masterImportService } = setup();
       (
         masterImportService.commitImport as ReturnType<typeof vi.fn>

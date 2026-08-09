@@ -5,7 +5,7 @@ import type {
 } from '../../domain/entities/MasterImport';
 
 export interface MasterImportSessionDTO {
-  import_id: string;
+  validated_file_id: string;
   type: MasterImportType;
   status: MasterImportStatus;
   file_name: string;
