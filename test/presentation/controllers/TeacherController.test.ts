@@ -21,6 +21,8 @@ function setup() {
     getAllTeachers: vi.fn(),
     updateTeacher: vi.fn(),
     deleteTeacher: vi.fn(),
+    validateTeacherImport: vi.fn(),
+    commitTeacherImport: vi.fn(),
   };
   const controller = createTeacherController(teacherService);
   const app = new Hono();

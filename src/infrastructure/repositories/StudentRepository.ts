@@ -1,12 +1,18 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
-import { asc, count, eq } from 'drizzle-orm';
+import { asc, count, eq, inArray } from 'drizzle-orm';
 import { class_rooms, students, users } from '../database/schema';
 
-import { D1Database } from '@cloudflare/workers-types';
+import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import { StudentEntity } from '../../domain/entities/Student';
-import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
+import {
+  BulkCreateStudentsInput,
+  IStudentRepository,
+} from '../../domain/interfaces/repositories/IStudentRepository';
 import { StudentWriteDTO } from '../../application/dto/StudentDTO';
+import { chunkArray } from './chunk';
+
+const D1_MAX_BOUND_PARAMETERS = 100;
 
 type StudentJoinRow = {
   students: typeof students.$inferSelect;
@@ -109,6 +115,26 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .get();
 
       return result ? toEntity(result) : null;
+    },
+
+    async findExistingStudentNumbers(
+      studentNumbers: string[]
+    ): Promise<Set<string>> {
+      const unique = Array.from(new Set(studentNumbers));
+      const found = new Set<string>();
+
+      for (const chunk of chunkArray(unique, D1_MAX_BOUND_PARAMETERS)) {
+        const rows = await orm
+          .select({ studentIdNumber: students.studentIdNumber })
+          .from(students)
+          .where(inArray(students.studentIdNumber, chunk))
+          .all();
+        for (const row of rows) {
+          found.add(row.studentIdNumber);
+        }
+      }
+
+      return found;
     },
 
     async classRoomExists(classRoomId: number): Promise<boolean> {
@@ -219,5 +245,115 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         | undefined;
       return user && updated ? toWrittenEntity(user, updated) : null;
     },
+
+    async createMany(input: BulkCreateStudentsInput): Promise<void> {
+      if (input.students.length === 0) {
+        return;
+      }
+
+      const statements: D1PreparedStatement[] = [];
+
+      for (const chunk of chunkArray(
+        input.newClassRooms,
+        Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
+      )) {
+        const placeholders = chunk
+          .map(() => '(?, ?, NULL, CURRENT_TIMESTAMP)')
+          .join(', ');
+        const values = chunk.flatMap(room => [room.classCode, room.className]);
+        statements.push(
+          db
+            .prepare(
+              `INSERT INTO class_rooms (class_code, class_name, teacher_id, updated_at) VALUES ${placeholders}`
+            )
+            .bind(...values)
+        );
+      }
+
+      const userStatementStartIndex = statements.length;
+      for (const chunk of chunkArray(input.students, D1_MAX_BOUND_PARAMETERS)) {
+        const placeholders = chunk
+          .map(() => '(?, CURRENT_TIMESTAMP)')
+          .join(', ');
+        const values = chunk.map(student => student.displayName);
+        statements.push(
+          db
+            .prepare(
+              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id`
+            )
+            .bind(...values)
+        );
+      }
+
+      const results = await db.batch<{ user_id: number }>(statements);
+
+      const userIds: number[] = [];
+      for (let i = userStatementStartIndex; i < results.length; i++) {
+        for (const row of results[i].results) {
+          userIds.push(row.user_id);
+        }
+      }
+
+      try {
+        const studentStatements: D1PreparedStatement[] = [];
+        for (const chunk of chunkArray(
+          input.students.map((student, index) => ({
+            userId: userIds[index],
+            classCode: student.classCode,
+            attendanceNumber: student.attendanceNumber,
+            studentIdNumber: student.studentIdNumber,
+          })),
+          Math.floor(D1_MAX_BOUND_PARAMETERS / 4)
+        )) {
+          const placeholders = chunk
+            .map(
+              () =>
+                '(?, (SELECT class_room_id FROM class_rooms WHERE class_code = ?), ?, ?, CURRENT_TIMESTAMP)'
+            )
+            .join(', ');
+          const values = chunk.flatMap(item => [
+            item.userId,
+            item.classCode,
+            item.attendanceNumber,
+            item.studentIdNumber,
+          ]);
+          studentStatements.push(
+            db
+              .prepare(
+                `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number, updated_at) VALUES ${placeholders}`
+              )
+              .bind(...values)
+          );
+        }
+        await db.batch(studentStatements);
+      } catch (error) {
+        await deleteUsersByIds(db, userIds);
+        await deleteClassRoomsByCodes(
+          db,
+          input.newClassRooms.map(room => room.classCode)
+        );
+        throw error;
+      }
+    },
   };
+}
+
+async function deleteUsersByIds(db: D1Database, userIds: number[]) {
+  for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM users WHERE user_id IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+  }
+}
+
+async function deleteClassRoomsByCodes(db: D1Database, classCodes: string[]) {
+  for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM class_rooms WHERE class_code IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+  }
 }

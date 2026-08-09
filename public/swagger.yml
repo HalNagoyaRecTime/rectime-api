@@ -439,6 +439,107 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /master-imports:
+    post:
+      tags: [MasterImports]
+      summary: CSV・Excelファイルを取り込み、検査した上でvalidatedFileIdを発行する（DBへの書き込みは行わない）
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MasterImportUploadRequest'
+      responses:
+        '201':
+          description: 検査結果とvalidatedFileId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterImportSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /master-imports/{validatedFileId}:
+    get:
+      tags: [MasterImports]
+      summary: 取込内容・検査結果を確認する
+      parameters:
+        - $ref: '#/components/parameters/ValidatedFileId'
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          description: 確認する行の最大件数（最大2000件）
+          schema: { type: integer, minimum: 1, maximum: 2000, default: 100 }
+      responses:
+        '200':
+          description: 取込セッションの内容
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterImportSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /master-imports/{validatedFileId}/commit:
+    post:
+      tags: [MasterImports]
+      summary: |
+        検査済みのデータをそのまま確定登録する。1件でもエラーがあれば1件も登録しない。
+        既に確定済みのvalidatedFileIdに対して再度呼び出した場合は、DBへ再度書き込むことなく
+        前回と同じ結果を返す（二重登録の防止）。
+      parameters:
+        - $ref: '#/components/parameters/ValidatedFileId'
+      responses:
+        '200':
+          description: 既に確定済みだったため、前回の結果をそのまま返した
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterImportSession'
+        '201':
+          description: 今回新たに確定登録した
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterImportSession'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: エラー行が存在するため1件も登録されなかった
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterImportSession'
+        '503':
+          description: |
+            同じvalidatedFileIdに対する確定処理が既に進行中のため、一定時間待っても
+            完了を確認できなかった。Retry-Afterヘッダーの秒数待ってから再試行すること。
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: 再試行までの推奨待機秒数
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  error_code:
+                    type: string
+                    example: COMMIT_IN_PROGRESS
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /events:
     get:
       tags: [Events]
@@ -1617,6 +1718,12 @@ components:
       schema:
         type: integer
         minimum: 1
+    ValidatedFileId:
+      name: validatedFileId
+      in: path
+      required: true
+      schema:
+        type: string
     GatheringId:
       name: gatheringId
       in: path
@@ -2027,6 +2134,101 @@ components:
         total: { type: integer }
         limit: { type: integer }
         offset: { type: integer }
+
+    MasterImportUploadRequest:
+      type: object
+      required: [type, file]
+      properties:
+        type:
+          type: string
+          enum: [students, classrooms, teachers]
+          description: 取り込むデータの種別
+        file:
+          type: string
+          format: binary
+          description: CSV(.csv)またはExcel(.xlsx/.xls)ファイル
+
+    MasterImportRowError:
+      type: object
+      required: [row_index, reason]
+      description: 実体は学生・クラス・教官それぞれの検査結果のエラー形式（reasonの内容が種別ごとに異なる）
+      properties:
+        row_index:
+          type: integer
+        reason:
+          type: string
+      additionalProperties: true
+
+    MasterImportCommittedResult:
+      type: object
+      required: [imported, error_count, errors]
+      properties:
+        imported:
+          type: integer
+        error_count:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/MasterImportRowError'
+
+    MasterImportSession:
+      type: object
+      required:
+        [
+          validated_file_id,
+          type,
+          status,
+          file_name,
+          total,
+          success_count,
+          error_count,
+          errors,
+          rows,
+          rows_total,
+          rows_limit,
+          rows_offset,
+          created_at,
+          committed_result,
+        ]
+      properties:
+        validated_file_id:
+          type: string
+        type:
+          type: string
+          enum: [students, classrooms, teachers]
+        status:
+          type: string
+          enum: [validated, committed]
+        file_name:
+          type: string
+        total:
+          type: integer
+        success_count:
+          type: integer
+        error_count:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/MasterImportRowError'
+        rows:
+          type: array
+          description: 検査済みの行データ（offset/limitでページ分けされる）。実体はtypeに応じた学生・クラス・教官の行形式
+          items: {}
+        rows_total:
+          type: integer
+        rows_limit:
+          type: integer
+        rows_offset:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        committed_result:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/MasterImportCommittedResult'
 
     GatheringSpot:
       type: object
@@ -2994,6 +3196,10 @@ tags:
     description: イベント
   - name: Classrooms
     description: クラス
+  - name: Teachers
+    description: 教官
+  - name: MasterImports
+    description: 学生・クラス・教官のCSV/Excel一括取込
   - name: Gathering spots
     description: 集合場所
   - name: Gathering members

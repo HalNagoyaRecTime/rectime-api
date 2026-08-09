@@ -143,4 +143,86 @@ describe('ClassRoomRepository', () => {
       false
     );
   });
+
+  describe('findByCode', () => {
+    it('class_codeでクラスを取得できる', async () => {
+      await expect(repo.findByCode('IA14A')).resolves.toMatchObject({
+        class_code: 'IA14A',
+      });
+    });
+
+    it('存在しないclass_codeの場合はnullを返す', async () => {
+      await expect(repo.findByCode('NOPE')).resolves.toBeNull();
+    });
+  });
+
+  describe('findExistingClassCodes', () => {
+    it('2,000件の候補から、DBに実在するクラスコードだけをチャンク境界をまたいでもまとめて返す', async () => {
+      const candidates = Array.from(
+        { length: 2000 },
+        (_, i) => `Z${String(i).padStart(4, '0')}`
+      );
+      candidates[0] = '12B';
+      candidates[150] = 'IA14A';
+
+      const existing = await repo.findExistingClassCodes(candidates);
+
+      expect(existing).toEqual(new Set(['12B', 'IA14A']));
+    });
+
+    it('候補が空配列の場合は空集合を返す', async () => {
+      expect(await repo.findExistingClassCodes([])).toEqual(new Set());
+    });
+  });
+
+  describe('createMany', () => {
+    it('複数のクラスをまとめて作成する', async () => {
+      await repo.createMany([
+        { class_code: '14D', class_name: '4年Dクラス', teacher_id: null },
+        { class_code: '14E', class_name: '4年Eクラス', teacher_id: null },
+      ]);
+
+      await expect(repo.findByCode('14D')).resolves.toMatchObject({
+        class_name: '4年Dクラス',
+      });
+      await expect(repo.findByCode('14E')).resolves.toMatchObject({
+        class_name: '4年Eクラス',
+      });
+    });
+
+    it('空配列の場合は何も作成しない', async () => {
+      const before = (await repo.findAll(100, 0)).total;
+      await repo.createMany([]);
+      const after = (await repo.findAll(100, 0)).total;
+      expect(after).toBe(before);
+    });
+
+    it('class_codeが重複する行がある場合は1件も登録しない', async () => {
+      await expect(
+        repo.createMany([
+          { class_code: '15A', class_name: '5年Aクラス', teacher_id: null },
+          { class_code: 'IA14A', class_name: '重複クラス', teacher_id: null },
+        ])
+      ).rejects.toThrow();
+
+      await expect(repo.findByCode('15A')).resolves.toBeNull();
+    });
+
+    it('2,000件のクラスをまとめて作成できる', async () => {
+      const inputs = Array.from({ length: 2000 }, (_, i) => ({
+        class_code: `BULK2K-${i}`,
+        class_name: `一括クラス${i}`,
+        teacher_id: null,
+      }));
+
+      await repo.createMany(inputs);
+
+      await expect(repo.findByCode('BULK2K-0')).resolves.toMatchObject({
+        class_name: '一括クラス0',
+      });
+      await expect(repo.findByCode('BULK2K-1999')).resolves.toMatchObject({
+        class_name: '一括クラス1999',
+      });
+    });
+  });
 });
