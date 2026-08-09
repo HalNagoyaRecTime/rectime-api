@@ -36,7 +36,9 @@ function setup() {
   const app = new Hono();
   app.post('/master-imports', c => controller.createImport(c));
   app.get('/master-imports/:validatedFileId', c => controller.getImport(c));
-  app.post('/master-imports/:validatedFileId/commit', c => controller.commitImport(c));
+  app.post('/master-imports/:validatedFileId/commit', c =>
+    controller.commitImport(c)
+  );
   return { app, masterImportService };
 }
 
