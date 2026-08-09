@@ -43,10 +43,13 @@ export function createGatheringSpotService(
           throw new Error('Gathering spot not found');
         }
       } catch (error) {
-        if (
-          error instanceof Error &&
-          error.message.includes('FOREIGN KEY constraint failed')
-        ) {
+        const message =
+          error instanceof Error && error.cause instanceof Error
+            ? error.cause.message
+            : error instanceof Error
+              ? error.message
+              : String(error);
+        if (message.includes('FOREIGN KEY constraint failed')) {
           throw new Error('Gathering spot is in use');
         }
         throw error;

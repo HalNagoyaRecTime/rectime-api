@@ -106,6 +106,20 @@ describe('Gathering master controllers', () => {
     expect(response.status).toBe(409);
   });
 
+  it('存在しない集合場所の削除は404を返す', async () => {
+    const { app, spotService } = setup();
+    (
+      spotService.deleteGatheringSpot as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(new Error('Gathering spot not found'));
+
+    const response = await app.request('/gathering-spots/999', {
+      method: 'DELETE',
+    });
+
+    expect(response.status).toBe(404);
+    expect(spotService.deleteGatheringSpot).toHaveBeenCalledWith(999);
+  });
+
   it('集合場所の名称を更新して200を返す', async () => {
     const { app, spotService } = setup();
     (

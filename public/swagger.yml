@@ -926,6 +926,24 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
   /gathering-spots/{gatheringSpotId}:
+    get:
+      tags: [Gathering spots]
+      summary: 集合場所の詳細を取得する
+      parameters:
+        - $ref: '#/components/parameters/GatheringSpotId'
+      responses:
+        '200':
+          description: 集合場所の詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatheringSpot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
     put:
       tags: [Gathering spots]
       summary: 集合場所を更新する
@@ -948,6 +966,22 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Gathering spots]
+      summary: 集合場所を削除する
+      parameters:
+        - $ref: '#/components/parameters/GatheringSpotId'
+      responses:
+        '204':
+          description: 削除成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
