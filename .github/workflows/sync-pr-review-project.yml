@@ -23,7 +23,12 @@ jobs:
           script: |
             const owner = 'HalNagoyaRecTime';
             const projectNumber = 1;
-            const repositories = ['recwatch', 'rectime-mobile', 'rectime-api'];
+            const repositories = [
+              'recwatch',
+              'rectime-mobile',
+              'rectime-api',
+              'rectime-2026-docs',
+            ];
             const fieldNames = {
               count: 'Approve数',
               approvers: 'Approveした人',
