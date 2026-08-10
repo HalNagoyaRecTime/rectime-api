@@ -1,5 +1,8 @@
 import {
   ClassRoomDTO,
+  ClassRoomImportCommitResult,
+  ClassRoomImportInput,
+  ClassRoomImportValidationResult,
   ClassRoomPageDTO,
   ClassRoomRequestDTO,
 } from '../dto/ClassRoomDTO';
@@ -16,4 +19,10 @@ export interface IClassRoomService {
     input: ClassRoomRequestDTO
   ) => Promise<ClassRoomDTO>;
   deleteClassroom: (id: number) => Promise<void>;
+  validateClassRoomImport: (
+    input: ClassRoomImportInput
+  ) => Promise<ClassRoomImportValidationResult>;
+  commitClassRoomImport: (
+    input: ClassRoomImportInput
+  ) => Promise<ClassRoomImportCommitResult>;
 }

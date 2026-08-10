@@ -23,6 +23,16 @@ export function createGatheringSpotRepository(
   const orm = drizzle(db, { schema });
 
   return {
+    async exists(gatheringSpotId: number): Promise<boolean> {
+      return Boolean(
+        await orm
+          .select({ id: gathering_spots.id })
+          .from(gathering_spots)
+          .where(eq(gathering_spots.id, gatheringSpotId))
+          .get()
+      );
+    },
+
     async findAll(): Promise<GatheringSpotEntity[]> {
       const rows = await orm
         .select()

@@ -2,10 +2,15 @@ import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createGatheringGroupMemberRepository } from '../../../src/infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringSpotRepository } from '../../../src/infrastructure/repositories/GatheringSpotRepository';
+import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 
 describe('Gathering master repositories', () => {
   const gatheringSpotRepository = createGatheringSpotRepository(env.DB);
-  const memberRepository = createGatheringGroupMemberRepository(env.DB);
+  const userRepository = createUserRepository(env.DB);
+  const memberRepository = createGatheringGroupMemberRepository(
+    env.DB,
+    userRepository
+  );
   let gatheringIds: number[] = [];
   let gatheringSpotIds: number[] = [];
   let eventIds: number[] = [];
@@ -120,6 +125,16 @@ describe('Gathering master repositories', () => {
         gathering_spot_name: '存在しない場所',
       })
     ).resolves.toBeNull();
+  });
+
+  it('集合場所の存在を確認できる', async () => {
+    const spot = await gatheringSpotRepository.create('体育館前');
+    gatheringSpotIds.push(spot.gathering_spot_id);
+
+    await expect(
+      gatheringSpotRepository.exists(spot.gathering_spot_id)
+    ).resolves.toBe(true);
+    await expect(gatheringSpotRepository.exists(999999)).resolves.toBe(false);
   });
 
   it('集合対象者を追加・一覧取得・解除でき、重複追加を防止する', async () => {

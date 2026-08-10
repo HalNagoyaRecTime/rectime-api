@@ -35,6 +35,7 @@ const schedule = {
 
 function setup() {
   const eventRepository: IEventRepository = {
+    exists: vi.fn(),
     findAll: vi.fn(),
     findById: vi.fn().mockResolvedValue(event),
     create: vi.fn(),
@@ -67,6 +68,7 @@ function setup() {
     markFailed: vi.fn(),
   };
   const userRepository: IUserRepository = {
+    exists: vi.fn(),
     isStaffOrTeacher: vi.fn().mockResolvedValue(true),
     getUserCategories: vi.fn(),
     findUserIdByMicrosoftAccount: vi.fn(),

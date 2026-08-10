@@ -70,6 +70,20 @@
       "migrations_dir": "migrations",
     },
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MASTER_IMPORT_COMMIT_LOCK",
+        "class_name": "MasterImportCommitLock",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MasterImportCommitLock"],
+    },
+  ],
   "env": {
     // `rectime-api-development` という別Workerとして作成される。
     // ローカル開発(wrangler dev --env development)と、mainブランチ以外へのpush先/
@@ -133,6 +147,14 @@
           "migrations_dir": "migrations",
         },
       ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "MASTER_IMPORT_COMMIT_LOCK",
+            "class_name": "MasterImportCommitLock",
+          },
+        ],
+      },
       "queues": {
         "producers": [
           {
@@ -206,6 +228,14 @@
           "migrations_dir": "migrations",
         },
       ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "MASTER_IMPORT_COMMIT_LOCK",
+            "class_name": "MasterImportCommitLock",
+          },
+        ],
+      },
       // staging専用のキュー。development/previewと共有しないため、producer/consumerとも
       // このWorkerだけで完結する(1キュー1consumerの制約に抵触しない)。
       "queues": {
