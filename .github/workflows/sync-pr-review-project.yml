@@ -33,6 +33,8 @@ jobs:
               count: 'Approve数',
               approvers: 'Approveした人',
               status: 'レビュー状況',
+              lastActivity: '最終コミット・コメント日',
+              createdAge: 'PR作成日',
             };
 
             const projectQuery = `
@@ -119,10 +121,25 @@ jobs:
                 field.name === fieldNames.status &&
                 field.__typename === 'ProjectV2SingleSelectField',
             );
+            const lastActivityField = projectFields.find(
+              (field) =>
+                field.name === fieldNames.lastActivity &&
+                field.dataType === 'DATE',
+            );
+            const createdAgeField = projectFields.find(
+              (field) =>
+                field.name === fieldNames.createdAge && field.dataType === 'TEXT',
+            );
 
-            if (!countField || !approversField || !statusField) {
+            if (
+              !countField ||
+              !approversField ||
+              !statusField ||
+              !lastActivityField ||
+              !createdAgeField
+            ) {
               throw new Error(
-                'Approve数、Approveした人、レビュー状況のフィールドを確認してください。',
+                'Approve数、Approveした人、レビュー状況、最終コミット・コメント日、PR作成日のフィールドを確認してください。',
               );
             }
 
@@ -237,6 +254,85 @@ jobs:
               return { approvers, status };
             }
 
+            function getDatePartsInJapan(value) {
+              const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'Asia/Tokyo',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+              }).formatToParts(value);
+              const dateParts = Object.fromEntries(
+                parts.map((part) => [part.type, part.value]),
+              );
+
+              return dateParts;
+            }
+
+            function formatDateInJapan(value) {
+              const dateParts = getDatePartsInJapan(value);
+
+              return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+            }
+
+            function getDaysSinceCreated(createdAt, currentDate) {
+              const created = getDatePartsInJapan(new Date(createdAt));
+              const current = getDatePartsInJapan(currentDate);
+              const createdDay = Date.UTC(
+                Number(created.year),
+                Number(created.month) - 1,
+                Number(created.day),
+              );
+              const currentDay = Date.UTC(
+                Number(current.year),
+                Number(current.month) - 1,
+                Number(current.day),
+              );
+
+              return Math.max(
+                0,
+                Math.floor((currentDay - createdDay) / (24 * 60 * 60 * 1000)),
+              );
+            }
+
+            function getLastActivityDate(
+              pull,
+              commits,
+              reviews,
+              issueComments,
+              reviewComments,
+            ) {
+              const activityDates = [
+                ...commits.map(
+                  (commit) =>
+                    commit.commit.committer?.date ?? commit.commit.author?.date,
+                ),
+                ...reviews
+                  .filter(
+                    (review) =>
+                      review.user?.type !== 'Bot' && review.state !== 'PENDING',
+                  )
+                  .map((review) => review.submitted_at),
+                ...issueComments
+                  .filter((comment) => comment.user?.type !== 'Bot')
+                  .map((comment) => comment.updated_at ?? comment.created_at),
+                ...reviewComments
+                  .filter((comment) => comment.user?.type !== 'Bot')
+                  .map((comment) => comment.updated_at ?? comment.created_at),
+              ];
+              const timestamps = activityDates
+                .filter(Boolean)
+                .map((value) => Date.parse(value))
+                .filter(Number.isFinite);
+              const fallbackTimestamp = Date.parse(pull.created_at);
+              const latestTimestamp =
+                timestamps.length > 0
+                  ? Math.max(...timestamps)
+                  : fallbackTimestamp;
+
+              return formatDateInJapan(new Date(latestTimestamp));
+            }
+
+            const syncStartedAt = new Date();
             let updatedCount = 0;
 
             for (const repo of repositories) {
@@ -248,29 +344,33 @@ jobs:
               });
 
               for (const pull of pulls) {
-                const reviews = await github.paginate(
-                  github.rest.pulls.listReviews,
-                  {
-                    owner,
-                    repo,
-                    pull_number: pull.number,
-                    per_page: 100,
-                  },
-                );
-                const [issueComments, reviewComments] = await Promise.all([
-                  github.paginate(github.rest.issues.listComments, {
-                    owner,
-                    repo,
-                    issue_number: pull.number,
-                    per_page: 100,
-                  }),
-                  github.paginate(github.rest.pulls.listReviewComments, {
-                    owner,
-                    repo,
-                    pull_number: pull.number,
-                    per_page: 100,
-                  }),
-                ]);
+                const [commits, reviews, issueComments, reviewComments] =
+                  await Promise.all([
+                    github.paginate(github.rest.pulls.listCommits, {
+                      owner,
+                      repo,
+                      pull_number: pull.number,
+                      per_page: 100,
+                    }),
+                    github.paginate(github.rest.pulls.listReviews, {
+                      owner,
+                      repo,
+                      pull_number: pull.number,
+                      per_page: 100,
+                    }),
+                    github.paginate(github.rest.issues.listComments, {
+                      owner,
+                      repo,
+                      issue_number: pull.number,
+                      per_page: 100,
+                    }),
+                    github.paginate(github.rest.pulls.listReviewComments, {
+                      owner,
+                      repo,
+                      pull_number: pull.number,
+                      per_page: 100,
+                    }),
+                  ]);
                 const hasReviewActivity = reviews.some(
                   (review) =>
                     review.user?.type !== 'Bot' && review.state !== 'PENDING',
@@ -286,6 +386,19 @@ jobs:
                   reviews,
                   hasComments,
                 );
+                const lastActivityDate = getLastActivityDate(
+                  pull,
+                  commits,
+                  reviews,
+                  issueComments,
+                  reviewComments,
+                );
+                const createdAgeText = pull.draft
+                  ? null
+                  : `${getDaysSinceCreated(
+                      pull.created_at,
+                      syncStartedAt,
+                    )}日前に作成`;
 
                 let itemId = itemIdsByPullRequestId.get(pull.node_id);
                 if (!itemId) {
@@ -306,10 +419,20 @@ jobs:
                 await updateField(itemId, statusField.id, {
                   singleSelectOptionId: statusOptions.get(status),
                 });
+                await updateField(itemId, lastActivityField.id, {
+                  date: lastActivityDate,
+                });
+                if (createdAgeText) {
+                  await updateField(itemId, createdAgeField.id, {
+                    text: createdAgeText,
+                  });
+                } else {
+                  await clearField(itemId, createdAgeField.id);
+                }
 
                 updatedCount += 1;
                 core.info(
-                  `${repo}#${pull.number}: ${approvers.length} approvals, ${status}`,
+                  `${repo}#${pull.number}: ${approvers.length} approvals, ${status}, ${lastActivityDate}, ${createdAgeText ?? 'draft'}`,
                 );
               }
             }
