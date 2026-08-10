@@ -6,6 +6,11 @@ on:
     types: [completed]
   workflow_dispatch:
 
+# concurrency.group と jobs.deploy.environment は同じデプロイ先判定式を重複して持つ。
+# どちらもジョブのステップが実行される前に評価されるフィールドのため、
+# ステップのoutputsを介して1箇所に共通化することができない(needsで依存する別jobに
+# 判定を切り出せば可能だが、そこまでの構成変更はしていない)。
+# この式を変更する場合は、jobs.deploy.environment の同じ式も必ず合わせて変更すること。
 concurrency:
   group: deploy-cloudflare-workers-${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
   cancel-in-progress: true
@@ -22,6 +27,7 @@ jobs:
        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'pull_request'))
     name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
     runs-on: ubuntu-latest
+    # concurrency.group と同じ式(上部のコメント参照)。変更する場合は両方揃えること。
     environment: ${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
 
     steps:

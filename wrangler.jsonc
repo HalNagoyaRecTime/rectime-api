@@ -100,7 +100,6 @@
       "name": "rectime-api-development",
       "preview_urls": true,
       "vars": {
-        "NODE_ENV": "development",
         "PORT": "8787",
         "HOST": "0.0.0.0",
         "ALLOWED_ORIGINS": "http://localhost:5173,https://recwatch.pages.dev,https://*.recwatch.pages.dev",
@@ -187,7 +186,6 @@
     "staging": {
       "name": "rectime-api-staging",
       "vars": {
-        "NODE_ENV": "staging",
         "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
         // Entraアプリの「アプリケーション(クライアント)ID」。非公開の資格情報ではないためvarsで直接設定する。
         "MICROSOFT_CLIENT_ID": "be597fc9-7946-43a2-9ba8-6a96c96fd3b7",
