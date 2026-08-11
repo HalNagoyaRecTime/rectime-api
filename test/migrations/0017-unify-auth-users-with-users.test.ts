@@ -187,8 +187,8 @@ describe('0017_unify_auth_users_with_users.sql のデータ変換', () => {
       'INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, ?, ?)'
     ).bind(user!.user_id, classRoom!.class_room_id, 1, studentNumber).run();
     const event = await env.DB.prepare(
-      'INSERT INTO events (user_id, event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?, ?) RETURNING event_id'
-    ).bind(user!.user_id, eventName, 'テスト会場', '0900', '1000').first<{ event_id: number }>();
+      'INSERT INTO events (event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?) RETURNING event_id'
+    ).bind(eventName, 'テスト会場', '0900', '1000').first<{ event_id: number }>();
 
     await preparePre0017Schema();
     const authUser = await env.DB.prepare(

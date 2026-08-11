@@ -1,16 +1,19 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { and, asc, count, eq, SQL } from 'drizzle-orm';
 import * as schema from '../database/schema';
-import { events } from '../database/schema';
+import { events, gatherings, notification_schedules } from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
-import { EventEntity } from '../../domain/entities/Event';
-import { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
+import type {
+  EventEntity,
+  EventListOptions,
+  EventWriteInput,
+} from '../../domain/entities/Event';
+import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 
 function toEntity(row: typeof events.$inferSelect): EventEntity {
   return {
     event_id: row.id,
-    user_id: row.userId,
     event_name: row.name,
     rule_text: row.ruleText,
     venue: row.venue,
@@ -25,11 +28,19 @@ export function createEventRepository(db: D1Database): IEventRepository {
   const orm = drizzle(db, { schema });
 
   return {
-    async findAll(options: {
-      startTime?: string;
-      limit?: number;
-      offset?: number;
-    }): Promise<{ events: EventEntity[]; total: number }> {
+    async exists(id: number): Promise<boolean> {
+      return Boolean(
+        await orm
+          .select({ id: events.id })
+          .from(events)
+          .where(eq(events.id, id))
+          .get()
+      );
+    },
+
+    async findAll(
+      options: EventListOptions
+    ): Promise<{ events: EventEntity[]; total: number }> {
       const conditions: SQL[] = [];
       if (options.startTime) {
         conditions.push(eq(events.startTime, options.startTime));
@@ -69,6 +80,47 @@ export function createEventRepository(db: D1Database): IEventRepository {
         .get();
 
       return result ? toEntity(result) : null;
+    },
+
+    async create(event: EventWriteInput): Promise<EventEntity> {
+      const created = await orm
+        .insert(events)
+        .values({
+          name: event.name,
+          ruleText: event.ruleText,
+          venue: event.venue,
+          startTime: event.startTime,
+          endTime: event.endTime,
+        })
+        .returning()
+        .get();
+      if (!created) throw new Error('Failed to create event');
+      return toEntity(created);
+    },
+
+    async delete(id: number): Promise<boolean> {
+      const deleted = await orm
+        .delete(events)
+        .where(eq(events.id, id))
+        .returning({ id: events.id })
+        .get();
+      return Boolean(deleted);
+    },
+
+    async hasReferences(id: number): Promise<boolean> {
+      const [gathering, schedule] = await Promise.all([
+        orm
+          .select({ id: gatherings.id })
+          .from(gatherings)
+          .where(eq(gatherings.eventId, id))
+          .get(),
+        orm
+          .select({ id: notification_schedules.id })
+          .from(notification_schedules)
+          .where(eq(notification_schedules.eventId, id))
+          .get(),
+      ]);
+      return Boolean(gathering || schedule);
     },
   };
 }

@@ -1,8 +1,8 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 
-describe('0015_create_gatherings.sql', () => {
-  it('集会情報テーブルのカラム、外部キー、一意制約、検索用indexを作成する', async () => {
+describe('集合予定の最終スキーマ', () => {
+  it('gathering_group_idを持たず、競技と集合場所を参照する', async () => {
     const columns = await env.DB.prepare('PRAGMA table_info(gatherings)').all<{
       name: string;
       notnull: number;
@@ -12,7 +12,6 @@ describe('0015_create_gatherings.sql', () => {
     expect(columns.results).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'gathering_id', pk: 1 }),
-        expect.objectContaining({ name: 'gathering_group_id', notnull: 1 }),
         expect.objectContaining({ name: 'event_id', notnull: 1 }),
         expect.objectContaining({ name: 'gathering_spot_id', notnull: 1 }),
         expect.objectContaining({
@@ -33,17 +32,15 @@ describe('0015_create_gatherings.sql', () => {
         }),
       ])
     );
+    expect(columns.results.map(column => column.name)).not.toContain(
+      'gathering_group_id'
+    );
 
     const foreignKeys = await env.DB.prepare(
       'PRAGMA foreign_key_list(gatherings)'
     ).all<{ table: string; from: string; to: string }>();
     expect(foreignKeys.results).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          table: 'gathering_groups',
-          from: 'gathering_group_id',
-          to: 'gathering_group_id',
-        }),
         expect.objectContaining({
           table: 'events',
           from: 'event_id',
@@ -63,18 +60,17 @@ describe('0015_create_gatherings.sql', () => {
     }>();
     expect(indexes.results).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: 'idx_gatherings_event_id', unique: 0 }),
-        expect.objectContaining({ name: 'idx_gatherings_spot_id', unique: 0 }),
+        expect.objectContaining({
+          name: 'idx_gatherings_event_id',
+          unique: 0,
+        }),
+        expect.objectContaining({
+          name: 'idx_gatherings_spot_id',
+          unique: 0,
+        }),
       ])
     );
-    const uniqueIndex = indexes.results.find(index => index.unique === 1);
-    expect(uniqueIndex).toBeDefined();
-    const uniqueIndexColumns = await env.DB.prepare(
-      `PRAGMA index_info(${uniqueIndex!.name})`
-    ).all<{ name: string }>();
-    expect(uniqueIndexColumns.results.map(column => column.name)).toEqual([
-      'gathering_group_id',
-    ]);
+    expect(indexes.results.some(index => index.unique === 1)).toBe(false);
 
     const foreignKeyErrors = await env.DB.prepare(
       'PRAGMA foreign_key_check'
@@ -82,91 +78,59 @@ describe('0015_create_gatherings.sql', () => {
     expect(foreignKeyErrors.results).toEqual([]);
   });
 
-  it('同一グループの重複作成と存在しない参照先を拒否する', async () => {
-    let gatheringId: number | undefined;
-    let groupId: number | undefined;
-    let eventId: number | undefined;
-    let spotId: number | undefined;
+  it('同じ競技に複数の集合を作成でき、存在しない参照先は拒否する', async () => {
+    const event = await env.DB.prepare(
+      "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('migration集合イベント', '体育館', '0900', '1000') RETURNING event_id"
+    ).first<{ event_id: number }>();
+    const spot = await env.DB.prepare(
+      "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('migration集合場所') RETURNING gathering_spot_id"
+    ).first<{ gathering_spot_id: number }>();
 
     try {
-      const group = await env.DB.prepare(
-        'INSERT INTO gathering_groups (gathering_group_name) VALUES (?) RETURNING gathering_group_id'
+      const first = await env.DB.prepare(
+        'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id, gathering_time, round'
       )
-        .bind('migration集会グループ')
-        .first<{ gathering_group_id: number }>();
-      groupId = group!.gathering_group_id;
-      const event = await env.DB.prepare(
-        'INSERT INTO events (user_id, event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?, ?) RETURNING event_id'
+        .bind(event!.event_id, spot!.gathering_spot_id)
+        .first<{
+          gathering_id: number;
+          gathering_time: string;
+          round: number;
+        }>();
+      const second = await env.DB.prepare(
+        'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id'
       )
-        .bind(-1, 'migration集会イベント', '体育館', '0900', '1000')
-        .first<{ event_id: number }>();
-      eventId = event!.event_id;
-      const spot = await env.DB.prepare(
-        'INSERT INTO gathering_spots (gathering_spot_name) VALUES (?) RETURNING gathering_spot_id'
-      )
-        .bind('migration集合場所')
-        .first<{ gathering_spot_id: number }>();
-      spotId = spot!.gathering_spot_id;
-      const gathering = await env.DB.prepare(
-        'INSERT INTO gatherings (gathering_group_id, event_id, gathering_spot_id) VALUES (?, ?, ?) RETURNING gathering_id'
-      )
-        .bind(groupId, eventId, spotId)
+        .bind(event!.event_id, spot!.gathering_spot_id)
         .first<{ gathering_id: number }>();
-      gatheringId = gathering!.gathering_id;
+
+      expect(first).toMatchObject({ gathering_time: '99:59', round: 99 });
+      expect(second!.gathering_id).not.toBe(first!.gathering_id);
 
       await expect(
         env.DB.prepare(
-          'INSERT INTO gatherings (gathering_group_id, event_id, gathering_spot_id) VALUES (?, ?, ?)'
+          'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?)'
         )
-          .bind(groupId, eventId, spotId)
+          .bind(999999, spot!.gathering_spot_id)
           .run()
       ).rejects.toThrow();
       await expect(
         env.DB.prepare(
-          'INSERT INTO gatherings (gathering_group_id, event_id, gathering_spot_id) VALUES (?, ?, ?)'
+          'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?)'
         )
-          .bind(999999, eventId, spotId)
-          .run()
-      ).rejects.toThrow();
-      await expect(
-        env.DB.prepare(
-          'INSERT INTO gatherings (gathering_group_id, event_id, gathering_spot_id) VALUES (?, ?, ?)'
-        )
-          .bind(groupId, 999999, spotId)
-          .run()
-      ).rejects.toThrow();
-      await expect(
-        env.DB.prepare(
-          'INSERT INTO gatherings (gathering_group_id, event_id, gathering_spot_id) VALUES (?, ?, ?)'
-        )
-          .bind(groupId, eventId, 999999)
+          .bind(event!.event_id, 999999)
           .run()
       ).rejects.toThrow();
     } finally {
-      if (gatheringId) {
-        await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
-          .bind(gatheringId)
-          .run();
-      }
-      if (groupId) {
-        await env.DB.prepare(
-          'DELETE FROM gathering_groups WHERE gathering_group_id = ?'
-        )
-          .bind(groupId)
-          .run();
-      }
-      if (eventId) {
-        await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
-          .bind(eventId)
-          .run();
-      }
-      if (spotId) {
-        await env.DB.prepare(
-          'DELETE FROM gathering_spots WHERE gathering_spot_id = ?'
-        )
-          .bind(spotId)
-          .run();
-      }
+      await env.DB.prepare('DELETE FROM gatherings WHERE event_id = ?')
+        .bind(event!.event_id)
+        .run();
+      await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
+        .bind(event!.event_id)
+        .run();
+      await env.DB.prepare(
+        'DELETE FROM gathering_spots WHERE gathering_spot_id = ?'
+      )
+        .bind(spot!.gathering_spot_id)
+        .run();
     }
   });
 });

@@ -93,10 +93,17 @@ cp .dev.vars.example .dev.vars
 | `MICROSOFT_CERT_THUMBPRINT` | 手順 4 で取得した Base64URL サムプリント |
 | `MICROSOFT_TENANT` | `organizations`（組織アカウント全般）または特定テナント ID |
 | `ALLOWED_MICROSOFT_TENANTS` | 受け付けるテナント ID（カンマ区切り複数可） |
-| `MICROSOFT_REDIRECT_URI` | `http://localhost:8787/api/v1/auth/microsoft/callback` |
 | `MICROSOFT_MOBILE_REDIRECT_URI` | `com.rectime.mobile://auth/callback` |
 | `FRONTEND_URL` | `http://localhost:5173` |
+| `ALLOWED_ORIGINS` | CORS で許可するフロントエンドの origin（カンマ区切り複数可） |
+| `EVENT_DATE` | 通知配信を許可する開催日（JST、`YYYY-MM-DD`）。未設定・不正な値の場合は配信しない |
 | `JWT_SECRET` | 32 文字以上のランダム文字列 |
+
+Web向けのMicrosoft OAuth redirect_uriは環境ごとの固定値をsecretとして持たず、
+実際のリクエストURL(`https://<worker実際のオリジン>/api/v1/auth/microsoft/callback`)
+から動的に組み立てる。Microsoft Entraアプリ登録側には、本番・development・
+preview等、実際に使う各オリジンのcallback URLをリダイレクトURIとして
+事前に登録しておくこと。
 
 `MICROSOFT_CLIENT_PRIVATE_KEY` の設定例:
 
@@ -133,6 +140,26 @@ npm run deploy
 ```
 
 本番環境のシークレットは Cloudflare ダッシュボード または `wrangler secret put <KEY>` で設定する。
+
+### CORS 設定
+
+`ALLOWED_ORIGINS` には API の URL ではなく、API を呼び出すフロントエンドの origin を設定する。
+
+例:
+
+```text
+ALLOWED_ORIGINS=https://recwatch.pages.dev,https://*.recwatch.pages.dev
+```
+
+`https://recwatch.pages.dev` は Cloudflare Pages の本番 URL 用、`https://*.recwatch.pages.dev` は branch/preview URL 用の設定。
+
+フロントエンド側の `VITE_BACKEND_BASE_URL` には、バックエンド API の URL を設定する。
+
+例:
+
+```text
+VITE_BACKEND_BASE_URL=https://rectime-api.rectime-project.workers.dev
+```
 
 ---
 

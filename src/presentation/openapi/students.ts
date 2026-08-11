@@ -1,10 +1,15 @@
 import { createRoute } from '@hono/zod-openapi';
 import {
+  badRequestResponse,
+  bearerAuth,
+  conflictResponse,
   internalServerErrorResponse,
   jsonResponse,
   notFoundResponse,
+  paginationFields,
+  paginationQuery,
   positivePathParam,
-  badRequestResponse,
+  unauthorizedResponse,
   z,
 } from './schemas';
 
@@ -13,48 +18,50 @@ export const studentResponseSchema = z
     student_id: z.number().int(),
     display_name: z.string(),
     class_room_id: z.number().int(),
+    class_room_name: z.string(),
     attendance_number: z.number().int(),
     student_id_number: z.string(),
+    is_live_active: z.boolean(),
   })
   .openapi('Student');
 
 export type StudentResponseDTO = z.infer<typeof studentResponseSchema>;
 
-export const studentListResponseSchema = z
-  .array(studentResponseSchema)
-  .openapi('StudentList');
-
-export type StudentListResponseDTO = z.infer<typeof studentListResponseSchema>;
-
-export const classRoomResponseSchema = z
+export const studentPageResponseSchema = z
   .object({
-    class_room_id: z.number().int(),
-    class_code: z.string(),
-    name: z.string(),
+    students: z.array(studentResponseSchema),
+    ...paginationFields,
   })
-  .openapi('ClassRoom');
+  .openapi('StudentPage');
 
-export type ClassRoomResponseDTO = z.infer<typeof classRoomResponseSchema>;
-
-export const classRoomListResponseSchema = z
-  .array(classRoomResponseSchema)
-  .openapi('ClassRoomList');
-
-export type ClassRoomListResponseDTO = z.infer<
-  typeof classRoomListResponseSchema
->;
+export type StudentPageResponseDTO = z.infer<typeof studentPageResponseSchema>;
 
 export const studentIdParams = z.object({
   studentId: positivePathParam('studentId', '学生ID'),
 });
+
+export const studentListQuery = paginationQuery(100, 50);
+
+export const studentWriteSchema = z
+  .object({
+    display_name: z.string().trim().min(1).max(100),
+    class_room_id: z.number().int().positive(),
+    attendance_number: z.number().int().positive(),
+    student_id_number: z.string().trim().min(1).max(100),
+  })
+  .openapi('StudentWriteRequest');
 
 export const studentListRoute = createRoute({
   method: 'get',
   path: '/students',
   tags: ['Students'],
   summary: '学生一覧を取得する',
+  security: bearerAuth,
+  request: { query: studentListQuery },
   responses: {
-    200: jsonResponse(studentListResponseSchema, '学生一覧'),
+    200: jsonResponse(studentPageResponseSchema, '学生一覧'),
+    400: badRequestResponse,
+    401: unauthorizedResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -64,22 +71,58 @@ export const studentDetailRoute = createRoute({
   path: '/students/{studentId}',
   tags: ['Students'],
   summary: '学生を取得する',
+  security: bearerAuth,
   request: { params: studentIdParams },
   responses: {
     200: jsonResponse(studentResponseSchema, '学生'),
     400: badRequestResponse,
+    401: unauthorizedResponse,
     404: notFoundResponse,
     500: internalServerErrorResponse,
   },
 });
 
-export const classListRoute = createRoute({
-  method: 'get',
-  path: '/classes',
-  tags: ['Classes'],
-  summary: 'クラス一覧を取得する',
+export const studentCreateRoute = createRoute({
+  method: 'post',
+  path: '/students',
+  tags: ['Students'],
+  summary: '学生を登録する',
+  security: bearerAuth,
+  request: {
+    body: {
+      content: { 'application/json': { schema: studentWriteSchema } },
+      required: true,
+    },
+  },
   responses: {
-    200: jsonResponse(classRoomListResponseSchema, 'クラス一覧'),
+    201: jsonResponse(studentResponseSchema, '登録した学生'),
+    400: badRequestResponse,
+    401: unauthorizedResponse,
+    404: notFoundResponse,
+    409: conflictResponse,
+    500: internalServerErrorResponse,
+  },
+});
+
+export const studentUpdateRoute = createRoute({
+  method: 'put',
+  path: '/students/{studentId}',
+  tags: ['Students'],
+  summary: '学生を更新する',
+  security: bearerAuth,
+  request: {
+    params: studentIdParams,
+    body: {
+      content: { 'application/json': { schema: studentWriteSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: jsonResponse(studentResponseSchema, '更新した学生'),
+    400: badRequestResponse,
+    401: unauthorizedResponse,
+    404: notFoundResponse,
+    409: conflictResponse,
     500: internalServerErrorResponse,
   },
 });

@@ -7,7 +7,6 @@ import {
   getNumberEnv,
   hasMinimumDecodedBytes,
   isValidBase64Url,
-  shouldUseSecureCookie,
   userResponse,
   type AppContext,
 } from '../../../src/presentation/auth/helpers';
@@ -92,41 +91,6 @@ describe('presentation/auth/helpers', () => {
     });
   });
 
-  describe('shouldUseSecureCookie', () => {
-    it('MICROSOFT_REDIRECT_URI が https の場合は true を返す', async () => {
-      const { app, env } = buildApp(
-        c => c.json({ value: shouldUseSecureCookie(c) }),
-        { MICROSOFT_REDIRECT_URI: 'https://example.com/callback' }
-      );
-
-      const res = await app.request('/', {}, env);
-
-      expect(await res.json()).toEqual({ value: true });
-    });
-
-    it('MICROSOFT_REDIRECT_URI が http の場合は false を返す', async () => {
-      const { app, env } = buildApp(
-        c => c.json({ value: shouldUseSecureCookie(c) }),
-        { MICROSOFT_REDIRECT_URI: 'http://localhost:8787/callback' }
-      );
-
-      const res = await app.request('/', {}, env);
-
-      expect(await res.json()).toEqual({ value: false });
-    });
-
-    it('MICROSOFT_REDIRECT_URI が不正なURLの場合は true (安全側) を返す', async () => {
-      const { app, env } = buildApp(
-        c => c.json({ value: shouldUseSecureCookie(c) }),
-        { MICROSOFT_REDIRECT_URI: 'not-a-valid-url' }
-      );
-
-      const res = await app.request('/', {}, env);
-
-      expect(await res.json()).toEqual({ value: true });
-    });
-  });
-
   describe('getBearerToken', () => {
     it('Authorization: Bearer <token> からトークンを取り出す', async () => {
       const { app, env } = buildApp(c => c.json({ value: getBearerToken(c) }));
@@ -192,11 +156,14 @@ describe('presentation/auth/helpers', () => {
 
   describe('userResponse', () => {
     it('avatar_url / avatar_updated_at が無い場合はデフォルト値を補完する', () => {
-      const result = userResponse({
-        id: 'user-1',
-        email: 'tanaka@example.com',
-        display_name: '田中太郎',
-      });
+      const result = userResponse(
+        {
+          id: 'user-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+        },
+        { is_student: false, is_staff: false, is_teacher: false }
+      );
 
       expect(result).toEqual({
         id: 'user-1',
@@ -204,17 +171,23 @@ describe('presentation/auth/helpers', () => {
         display_name: '田中太郎',
         avatar_url: ACCOUNT_PHOTO_PATH,
         avatar_updated_at: null,
+        is_student: false,
+        is_staff: false,
+        is_teacher: false,
       });
     });
 
     it('avatar_url / avatar_updated_at が指定されている場合はそのまま使う', () => {
-      const result = userResponse({
-        id: 'user-1',
-        email: 'tanaka@example.com',
-        display_name: '田中太郎',
-        avatar_url: 'https://example.com/avatar.png',
-        avatar_updated_at: '2026-01-01T00:00:00.000Z',
-      });
+      const result = userResponse(
+        {
+          id: 'user-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+          avatar_url: 'https://example.com/avatar.png',
+          avatar_updated_at: '2026-01-01T00:00:00.000Z',
+        },
+        { is_student: true, is_staff: false, is_teacher: false }
+      );
 
       expect(result).toEqual({
         id: 'user-1',
@@ -222,6 +195,9 @@ describe('presentation/auth/helpers', () => {
         display_name: '田中太郎',
         avatar_url: 'https://example.com/avatar.png',
         avatar_updated_at: '2026-01-01T00:00:00.000Z',
+        is_student: true,
+        is_staff: false,
+        is_teacher: false,
       });
     });
   });

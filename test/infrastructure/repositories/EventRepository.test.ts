@@ -68,4 +68,13 @@ describe('EventRepository', () => {
       await expect(repo.findById(999999)).resolves.toBeNull();
     });
   });
+
+  describe('exists', () => {
+    it('存在するidはtrue、存在しないidはfalseを返す', async () => {
+      const target = seeded.events[0];
+
+      await expect(repo.exists(target.eventId)).resolves.toBe(true);
+      await expect(repo.exists(999999)).resolves.toBe(false);
+    });
+  });
 });

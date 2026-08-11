@@ -1,4 +1,5 @@
 {
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "rectime-api",
   "account_id": "539494518db0c8b96ec2f6fdd30fb990",
   "compatibility_date": "2024-09-23",
@@ -6,48 +7,241 @@
   "main": "src/index.ts",
   "vars": {
     "NODE_ENV": "production",
-    "ALLOWED_ORIGINS": "",
+    "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+  },
+  // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
+  // 公開されている(README.md参照)。カスタムドメイン/routesは未設定のため、
+  // workers_dev/preview_urls はここでは変更しない(falseにすると本番アクセス不能になる)。
+  "secrets": {
+    "required": [
+      "MICROSOFT_CLIENT_ID",
+      "MICROSOFT_CLIENT_PRIVATE_KEY",
+      "MICROSOFT_CERT_THUMBPRINT",
+      "MICROSOFT_TENANT",
+      "ALLOWED_MICROSOFT_TENANTS",
+      "MICROSOFT_MOBILE_REDIRECT_URI",
+      "FRONTEND_URL",
+      "SESSION_EXPIRES_SEC",
+      "JWT_SECRET",
+      "JWT_EXPIRES_SEC",
+      "MOBILE_REFRESH_EXPIRES_SEC",
+      "FIREBASE_PROJECT_ID",
+      "FIREBASE_CLIENT_EMAIL",
+      "FIREBASE_PRIVATE_KEY",
+      "TEST_FCM_TOKEN",
+    ],
   },
   "triggers": {
     "crons": ["* * * * *"],
   },
-  "env": {
-    "default": {
-      "vars": {
-        "NODE_ENV": "development",
-        "PORT": "8787",
-        "HOST": "0.0.0.0",
-        "ALLOWED_ORIGINS": "http://localhost:5173",
+  "queues": {
+    "producers": [
+      {
+        "binding": "NOTIFICATION_DELIVERY_QUEUE",
+        "queue": "rectime-notification-delivery",
       },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "rectime-api-dev",
-          "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
-        },
-      ],
-    },
-    "development": {
-      "vars": {
-        "NODE_ENV": "development",
-        "PORT": "8787",
-        "HOST": "0.0.0.0",
-        "ALLOWED_ORIGINS": "http://localhost:5173",
+    ],
+    "consumers": [
+      {
+        "queue": "rectime-notification-delivery",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 5,
+        // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
+        "retry_delay": 300,
+        "max_concurrency": 10,
       },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "rectime-api-dev",
-          "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
-        },
-      ],
-    },
+    ],
   },
+  "kv_namespaces": [
+    {
+      "binding": "AUTH_KV",
+      "id": "70197622340f44df8e24365695b5f1d0",
+    },
+  ],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "rectime-api",
       "database_id": "f031b887-a3a2-41f1-8c54-5ccdd323fcbb",
+      "migrations_dir": "migrations",
     },
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MASTER_IMPORT_COMMIT_LOCK",
+        "class_name": "MasterImportCommitLock",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MasterImportCommitLock"],
+    },
+  ],
+  "env": {
+    // ローカル開発用(wrangler dev --env development)。env.default は
+    // development と重複していたため削除した。
+    "development": {
+      "vars": {
+        "NODE_ENV": "development",
+        "PORT": "8787",
+        "HOST": "0.0.0.0",
+        "ALLOWED_ORIGINS": "http://localhost:5173,https://*.recwatch.pages.dev",
+      },
+      // secrets.required はここでは宣言しない: vitest-pool-workers
+      // (test/apply-migrations.ts) がこの環境で62ファイル分のWorkerを並列起動する際、
+      // 各起動ごとの追加検証コストでD1マイグレーションのbeforeAllフックが
+      // 10秒タイムアウトし、テストスイートが不安定になることを確認したため。
+      "kv_namespaces": [
+        {
+          "binding": "AUTH_KV",
+          "id": "7bdb66e8753148b09d88626e563193aa",
+          // preview_id は `wrangler dev --remote` 専用。このリポジトリの
+          // `npm run dev` はローカルシミュレーションのみで使わないが、
+          // 既にdry-runで動作確認済みの値のため維持する。
+          "preview_id": "7bdb66e8753148b09d88626e563193aa",
+        },
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "rectime-api-dev",
+          "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
+          "migrations_dir": "migrations",
+        },
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "MASTER_IMPORT_COMMIT_LOCK",
+            "class_name": "MasterImportCommitLock",
+          },
+        ],
+      },
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFICATION_DELIVERY_QUEUE",
+            "queue": "rectime-notification-delivery-dev",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "rectime-notification-delivery-dev",
+            "max_batch_size": 1,
+            "max_batch_timeout": 1,
+            "max_retries": 5,
+            // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
+            "retry_delay": 300,
+            "max_concurrency": 10,
+          },
+        ],
+      },
+    },
+    // Cloudflare上のPreview環境。`rectime-api-preview` という別Workerとして
+    // 作成される。KV/D1のIDは実リソースに差し替え済み。
+    //
+    // web向けMicrosoft OAuthのredirect_uriは(#151により)リクエストURLから動的に
+    // 組み立てられるため、wrangler側での設定は不要。ただしMicrosoft Entra側の
+    // アプリ登録には、実際にデプロイされるpreview WorkerのコールバックURL
+    // (`wrangler versions upload --env preview --preview-alias <固定名>` で得られる
+    // `https://<固定名>-rectime-api-preview.<subdomain>.workers.dev/api/v1/auth/microsoft/callback`)
+    // を事前に追加登録しておく必要がある(preview-aliasを固定名で使い続けないとURLが変わり登録と食い違う)。
+    //
+    // secrets.required に残っているのは実際に機密なJWT_SECRET/クライアント証明書/Firebase系のみ。
+    // それ以外(テナントID・モバイルredirect URI・TTL秒数)はvarsとして直接設定する
+    // (値は本番の実値と異なっていて構わないもの、または環境によらず同一のもの)。
+    // workers_dev はtrueのままにする(既定値どおり)。developブランチへのpushは
+    // `wrangler versions upload --preview-alias` ではなく通常の `wrangler deploy` で
+    // env.previewへデプロイされるため、workers_devをfalseにするとその「常設Preview Worker」に
+    // rectime-api-preview.<subdomain>.workers.dev から一切アクセスできなくなってしまう
+    // (PRごとのpreview-alias URLはpreview_urls側の機能でworkers_devとは独立に動作するため影響しない)。
+    "preview": {
+      "name": "rectime-api-preview",
+      "preview_urls": true,
+      "vars": {
+        "NODE_ENV": "preview",
+        "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+        // Entraのマルチテナント共通エンドポイント値。環境によらず同一。
+        "MICROSOFT_TENANT": "organizations",
+        // 許可するEntraテナントID。
+        "ALLOWED_MICROSOFT_TENANTS": "8d41d6d7-36ce-4e0c-8c6d-cf2c54c39039",
+        // モバイルアプリのカスタムスキーム。バックエンドの環境によらず同一。
+        "MICROSOFT_MOBILE_REDIRECT_URI": "com.rectime.mobile://auth/callback",
+        // このpreview backendに実際に接続するフロントエンド。
+        // TODO: recwatchのPRごとのPreview URLに応じた動的化を別途検討する
+        // (Refererヘッダーから取得しALLOWED_ORIGINSで検証する方式を予定)。
+        // それまでは固定値。
+        "FRONTEND_URL": "https://recwatch.pages.dev",
+        "SESSION_EXPIRES_SEC": "86400",
+        "JWT_EXPIRES_SEC": "3600",
+        "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
+      },
+      "secrets": {
+        "required": [
+          "MICROSOFT_CLIENT_ID",
+          "MICROSOFT_CLIENT_PRIVATE_KEY",
+          "MICROSOFT_CERT_THUMBPRINT",
+          "JWT_SECRET",
+          "FIREBASE_PROJECT_ID",
+          "FIREBASE_CLIENT_EMAIL",
+          "FIREBASE_PRIVATE_KEY",
+          "TEST_FCM_TOKEN",
+        ],
+      },
+      // Preview環境で本番同様のcronが毎分走らないようにする
+      "triggers": {
+        "crons": [],
+      },
+      "kv_namespaces": [
+        {
+          "binding": "AUTH_KV",
+          "id": "b5a0d8dfae2b4d9288a9ff443d034938",
+        },
+      ],
+      // D1は意図的にenv.developmentと同じrectime-api-devを共用する
+      // (Preview専用D1は作成していない)。マイグレーション状態・データは
+      // development/previewで完全に共有される。
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "rectime-api-dev",
+          "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
+          "migrations_dir": "migrations",
+        },
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "MASTER_IMPORT_COMMIT_LOCK",
+            "class_name": "MasterImportCommitLock",
+          },
+        ],
+      },
+      // キューもD1/KVと同様、env.developmentと同じものを共用する
+      // (Preview専用キューは作成していない)。
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFICATION_DELIVERY_QUEUE",
+            "queue": "rectime-notification-delivery-dev",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "rectime-notification-delivery-dev",
+            "max_batch_size": 1,
+            "max_batch_timeout": 1,
+            "max_retries": 5,
+            // Must stay below the 6-minute delivery lease in NotificationDelivery.ts.
+            "retry_delay": 300,
+            "max_concurrency": 10,
+          },
+        ],
+      },
+    },
+  },
 }

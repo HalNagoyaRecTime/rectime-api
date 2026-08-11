@@ -7,17 +7,28 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 
-export const class_rooms = sqliteTable('class_rooms', {
-  id: integer('class_room_id').primaryKey({ autoIncrement: true }),
-  classCode: text('class_code').notNull(),
-  name: text('class_name').notNull(),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const class_rooms = sqliteTable(
+  'class_rooms',
+  {
+    id: integer('class_room_id').primaryKey({ autoIncrement: true }),
+    classCode: text('class_code').notNull(),
+    name: text('class_name').notNull(),
+    // 1クラスの担当教員は最大1人という運用前提のカラム。クラス作成時点では
+    // 未定のこともあるためNULLを許容する。逆方向（1人の教員が複数クラスを
+    // 担当すること）は許容するため、UNIQUE制約は付けない。
+    teacherId: integer('teacher_id').references(() => teachers.id),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    uniqueIndex('uq_class_rooms_class_code').on(table.classCode),
+    index('idx_class_rooms_teacher_id').on(table.teacherId),
+  ]
+);
 
 export const users = sqliteTable('users', {
   id: integer('user_id').primaryKey({ autoIncrement: true }),
@@ -84,9 +95,6 @@ export const teachers = sqliteTable('teachers', {
 
 export const events = sqliteTable('events', {
   id: integer('event_id').primaryKey({ autoIncrement: true }),
-  userId: integer('user_id')
-    .notNull()
-    .references(() => users.id),
   name: text('event_name').notNull(),
   ruleText: text('rule_text'),
   venue: text('venue').notNull(),
@@ -104,10 +112,6 @@ export const gatherings = sqliteTable(
   'gatherings',
   {
     id: integer('gathering_id').primaryKey({ autoIncrement: true }),
-    gatheringGroupId: integer('gathering_group_id')
-      .notNull()
-      .unique()
-      .references(() => gathering_groups.id),
     eventId: integer('event_id')
       .notNull()
       .references(() => events.id),
@@ -140,26 +144,15 @@ export const gathering_spots = sqliteTable('gathering_spots', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const gathering_groups = sqliteTable('gathering_groups', {
-  id: integer('gathering_group_id').primaryKey({ autoIncrement: true }),
-  name: text('gathering_group_name').notNull(),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
-
 export const gathering_group_members = sqliteTable(
   'gathering_group_members',
   {
     id: integer('gathering_group_member_id').primaryKey({
       autoIncrement: true,
     }),
-    gatheringGroupId: integer('gathering_group_id')
+    gatheringId: integer('gathering_id')
       .notNull()
-      .references(() => gathering_groups.id),
+      .references(() => gatherings.id),
     userId: integer('user_id')
       .notNull()
       .references(() => users.id),
@@ -171,8 +164,8 @@ export const gathering_group_members = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`),
   },
   table => [
-    uniqueIndex('uq_gathering_group_members_group_user').on(
-      table.gatheringGroupId,
+    uniqueIndex('uq_gathering_group_members_gathering_user').on(
+      table.gatheringId,
       table.userId
     ),
     index('idx_gathering_group_members_user_id').on(table.userId),
@@ -182,14 +175,6 @@ export const gathering_group_members = sqliteTable(
 export const usersRelations = relations(users, ({ many }) => ({
   gatheringGroupMembers: many(gathering_group_members),
 }));
-
-export const gatheringGroupsRelations = relations(
-  gathering_groups,
-  ({ many }) => ({
-    members: many(gathering_group_members),
-    gatherings: many(gatherings),
-  })
-);
 
 export const gatheringSpotsRelations = relations(
   gathering_spots,
@@ -202,11 +187,8 @@ export const eventsRelations = relations(events, ({ many }) => ({
   gatherings: many(gatherings),
 }));
 
-export const gatheringsRelations = relations(gatherings, ({ one }) => ({
-  gatheringGroup: one(gathering_groups, {
-    fields: [gatherings.gatheringGroupId],
-    references: [gathering_groups.id],
-  }),
+export const gatheringsRelations = relations(gatherings, ({ one, many }) => ({
+  members: many(gathering_group_members),
   event: one(events, {
     fields: [gatherings.eventId],
     references: [events.id],
@@ -220,9 +202,9 @@ export const gatheringsRelations = relations(gatherings, ({ one }) => ({
 export const gatheringGroupMembersRelations = relations(
   gathering_group_members,
   ({ one }) => ({
-    gatheringGroup: one(gathering_groups, {
-      fields: [gathering_group_members.gatheringGroupId],
-      references: [gathering_groups.id],
+    gathering: one(gatherings, {
+      fields: [gathering_group_members.gatheringId],
+      references: [gatherings.id],
     }),
     user: one(users, {
       fields: [gathering_group_members.userId],
@@ -237,7 +219,8 @@ export const firebase_tokens = sqliteTable('firebase_tokens', {
   }),
   userId: integer('user_id')
     .notNull()
-    .references(() => users.id),
+    .references(() => users.id)
+    .unique(),
   platform: integer('platform').notNull(),
   fcmToken: text('fcm_token').notNull().unique(),
   isFirebaseActive: integer('is_firebase_active').notNull().default(1),
@@ -255,24 +238,20 @@ export const firebase_tokens = sqliteTable('firebase_tokens', {
 export const notification_schedules = sqliteTable(
   'notification_schedules',
   {
-    id: integer('notification_send_schedule_id').primaryKey({
+    id: integer('notification_schedule_id').primaryKey({
       autoIncrement: true,
     }),
-    userId: integer('user_id')
-      .notNull()
-      .references(() => users.id),
-    eventId: integer('event_id')
-      .notNull()
-      .references(() => events.id),
-    gatheringGroupId: integer('gathering_group_id')
-      .notNull()
-      .references(() => gathering_groups.id),
+    createdUserId: integer('created_user_id').references(() => users.id),
+    eventId: integer('event_id').references(() => events.id),
     notificationId: integer('notification_id')
       .notNull()
       .references(() => notifications.notificationId),
+    firebaseTokenId: integer('firebase_token_id')
+      .notNull()
+      .references(() => firebase_tokens.firebaseTokenId),
     importance: integer('importance').notNull().default(2),
     sendStatus: text('send_status').notNull().default('draft'),
-    fcmMessageId: text('fcm_message_id').unique(),
+    fcmMessageId: text('fcm_message_id'),
     failedReason: text('failed_reason'),
     sendAt: text('send_at').notNull(),
     createdAt: text('created_at')
@@ -285,8 +264,11 @@ export const notification_schedules = sqliteTable(
   table => [
     index('idx_notification_schedules_due').on(table.sendStatus, table.sendAt),
     index('idx_notification_schedules_event_id').on(table.eventId),
-    index('idx_notification_schedules_gathering_group_id').on(
-      table.gatheringGroupId
+    index('idx_notification_schedules_notification_id').on(
+      table.notificationId
+    ),
+    index('idx_notification_schedules_firebase_token_id').on(
+      table.firebaseTokenId
     ),
   ]
 );

@@ -1,24 +1,8 @@
-import type { KVNamespace } from '@cloudflare/workers-types';
-import type { Session } from '../../domain/auth/types';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAuthService, MicrosoftClaims } from './IAuthService';
 
-export function getSessionTtlSeconds(sessionExpiresAt: string): number {
-  const expiresAt = new Date(sessionExpiresAt).getTime();
-  const ttl = Math.floor((expiresAt - Date.now()) / 1000);
-  if (!Number.isFinite(ttl) || ttl <= 0) {
-    throw new Error('SESSION_ALREADY_EXPIRED');
-  }
-  if (ttl < 60) {
-    // Cloudflare KV は expirationTtl >= 60 を要求する。SESSION_EXPIRES_SEC は 120 以上に設定すること。
-    throw new Error('SESSION_TTL_TOO_SHORT');
-  }
-  return ttl;
-}
-
 export function createAuthService(
-  userRepository: IUserRepository,
-  kv: KVNamespace
+  userRepository: IUserRepository
 ): IAuthService {
   return {
     async upsertUser(claims: MicrosoftClaims) {
@@ -77,13 +61,6 @@ export function createAuthService(
         if (!raced) throw new Error('CREATE_USER_FAILED');
         return raced;
       }
-    },
-
-    async saveSession(sessionId: string, session: Session) {
-      const ttl = getSessionTtlSeconds(session.expires_at);
-      await kv.put(`session:${sessionId}`, JSON.stringify(session), {
-        expirationTtl: ttl,
-      });
     },
   };
 }

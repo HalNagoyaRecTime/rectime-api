@@ -1,190 +1,230 @@
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
-import { createFirebaseTokenController } from '../../../src/presentation/controllers/FirebaseTokenController';
 import type { IFirebaseTokenService } from '../../../src/application/services/IFirebaseTokenService';
-import type {
-  RegisterFirebaseTokenResult,
-  UserEntity,
-  FirebaseTokenEntity,
-} from '../../../src/domain/entities/FirebaseToken';
+import type { RegisterFirebaseTokenResult } from '../../../src/domain/entities/FirebaseToken';
+import type { Env } from '../../../src/lib/env';
+import { createFirebaseTokenController } from '../../../src/presentation/controllers/FirebaseTokenController';
+import type { ContainerVariables } from '../../../src/presentation/middleware/diContainer';
+import type { AuthenticationVariables } from '../../../src/presentation/middleware/bearerAuthentication';
+import type { AuthVariables } from '../../../src/presentation/middleware/requireAuth';
 
-function buildUser(overrides: Partial<UserEntity> = {}): UserEntity {
-  return {
-    user_id: 1,
-    user_name: 'テスト生徒',
-    is_live_active: 1,
-    created_at: '2026-01-01',
-    updated_at: '2026-01-01',
-    ...overrides,
-  };
-}
-
-function buildFirebaseToken(
-  overrides: Partial<FirebaseTokenEntity> = {}
-): FirebaseTokenEntity {
-  return {
-    firebase_token_id: 1,
-    user_id: 1,
-    platform: 2,
-    fcm_token: 'token-a',
-    is_firebase_active: 1,
-    last_seen_at: '2026-01-01',
-    created_at: '2026-01-01',
-    updated_at: '2026-01-01',
-    ...overrides,
-  };
-}
-
-function buildResult(
-  overrides: Partial<RegisterFirebaseTokenResult> = {}
-): RegisterFirebaseTokenResult {
-  return {
-    user: buildUser(),
-    firebaseToken: buildFirebaseToken(),
-    ...overrides,
-  };
-}
-
-function setup() {
+function setup(authenticatedUserId: number | null = 7) {
   const firebaseTokenService: IFirebaseTokenService = {
     registerFirebaseToken: vi.fn(),
   };
   const controller = createFirebaseTokenController(firebaseTokenService);
-  const app = new Hono();
+  const app = new Hono<{
+    Bindings: Env;
+    Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
+  }>();
+  app.use('*', async (c, next) => {
+    c.set('authenticatedUserId', authenticatedUserId);
+    await next();
+  });
   app.post('/firebase-tokens', c => controller.registerFirebaseToken(c));
   return { app, firebaseTokenService };
 }
 
+const result: RegisterFirebaseTokenResult = {
+  firebase_token_id: 1,
+  user_id: 7,
+  platform: 'android',
+  is_firebase_active: true,
+  last_seen_at: '2026-07-24 00:00:00',
+};
+
 describe('FirebaseTokenController', () => {
-  describe('registerFirebaseToken', () => {
-    it('fcmToken フィールドを使った有効なボディでサービスを呼び出し 200 を返す', async () => {
-      const { app, firebaseTokenService } = setup();
-      const result = buildResult();
-      (
-        firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(result);
+  it('認証済みuserIdとAndroid TokenをServiceへ渡す', async () => {
+    const { app, firebaseTokenService } = setup();
+    (
+      firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(result);
 
-      const res = await app.request('/firebase-tokens', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentNumber: 'S001',
-          platform: 2,
-          fcmToken: 'fcm-abc',
-        }),
-      });
-
-      expect(firebaseTokenService.registerFirebaseToken).toHaveBeenCalledWith({
-        studentNumber: 'S001',
-        platform: 2,
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         fcmToken: 'fcm-abc',
-      });
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual(result);
+        platform: 'android',
+      }),
     });
 
-    it('token フィールドを使った有効なボディでも fcmToken として渡す', async () => {
-      const { app, firebaseTokenService } = setup();
-      const result = buildResult();
-      (
-        firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(result);
+    expect(firebaseTokenService.registerFirebaseToken).toHaveBeenCalledWith({
+      userId: 7,
+      platform: 'android',
+      fcmToken: 'fcm-abc',
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(result);
+  });
 
-      const res = await app.request('/firebase-tokens', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentNumber: 'S001',
-          platform: 1,
-          token: 'legacy-token',
-        }),
-      });
+  it('未認証の場合は401を返す', async () => {
+    const { app, firebaseTokenService } = setup(null);
 
-      expect(firebaseTokenService.registerFirebaseToken).toHaveBeenCalledWith({
-        studentNumber: 'S001',
-        platform: 1,
-        fcmToken: 'legacy-token',
-      });
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual(result);
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fcmToken: 'fcm-abc',
+        platform: 'android',
+      }),
     });
 
-    it('fcmToken も token も無い場合は 400 を返す', async () => {
-      const { app, firebaseTokenService } = setup();
+    expect(response.status).toBe(401);
+    expect(firebaseTokenService.registerFirebaseToken).not.toHaveBeenCalled();
+  });
 
-      const res = await app.request('/firebase-tokens', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentNumber: 'S001',
-          platform: 2,
-        }),
-      });
+  it.each([
+    {},
+    { fcmToken: '', platform: 'android' },
+    { fcmToken: 'fcm-abc', platform: 'ios' },
+    { fcmToken: 'fcm-abc', platform: 2 },
+    { fcmToken: 'fcm-abc', platform: 'android', userId: 999 },
+    {
+      fcmToken: 'fcm-abc',
+      platform: 'android',
+      studentNumber: 'S001',
+    },
+  ])('不正または余分な入力では400を返す: %o', async body => {
+    const { app, firebaseTokenService } = setup();
 
-      expect(res.status).toBe(400);
-      const body = (await res.json()) as { error: string; details: unknown };
-      expect(body.error).toBe('Invalid Firebase token request body');
-      expect(body.details).toBeDefined();
-      expect(firebaseTokenService.registerFirebaseToken).not.toHaveBeenCalled();
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
 
-    it('platform が不正な値の場合は 400 を返す', async () => {
-      const { app } = setup();
+    expect(response.status).toBe(400);
+    expect(firebaseTokenService.registerFirebaseToken).not.toHaveBeenCalled();
+  });
 
-      const res = await app.request('/firebase-tokens', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentNumber: 'S001',
-          platform: 3,
-          fcmToken: 'fcm-abc',
-        }),
-      });
+  it('不正なJSONでは400を返す', async () => {
+    const { app, firebaseTokenService } = setup();
 
-      expect(res.status).toBe(400);
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{',
     });
 
-    it('サービスが Student not found を投げた場合は 404 を返す', async () => {
-      const { app, firebaseTokenService } = setup();
-      (
-        firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('Student not found'));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invalid Firebase token request body',
+    });
+    expect(firebaseTokenService.registerFirebaseToken).not.toHaveBeenCalled();
+  });
 
-      const res = await app.request('/firebase-tokens', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentNumber: 'S001',
-          platform: 2,
-          fcmToken: 'fcm-abc',
-        }),
-      });
+  it('存在しない認証ユーザーには404を返す', async () => {
+    const { app, firebaseTokenService } = setup();
+    (
+      firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(new Error('User not found'));
 
-      expect(res.status).toBe(404);
-      expect(await res.json()).toEqual({ error: 'Student not found' });
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fcmToken: 'fcm-abc',
+        platform: 'android',
+      }),
     });
 
-    it('サービスが例外を投げた場合は 500 と details を返す', async () => {
-      const { app, firebaseTokenService } = setup();
-      (
-        firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('db error'));
+    expect(response.status).toBe(404);
+  });
 
-      const res = await app.request('/firebase-tokens', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentNumber: 'S001',
-          platform: 2,
-          fcmToken: 'fcm-abc',
-        }),
-      });
+  it('別ユーザーに登録済みのTokenには409を返す', async () => {
+    const { app, firebaseTokenService } = setup();
+    (
+      firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(
+      new Error('UNIQUE constraint failed: firebase_tokens.fcm_token')
+    );
 
-      expect(res.status).toBe(500);
-      expect(await res.json()).toEqual({
-        error: 'Failed to register Firebase token',
-        details: 'db error',
-      });
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fcmToken: 'registered-token',
+        platform: 'android',
+      }),
     });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: 'Firebase token is already registered to another user',
+    });
+  });
+
+  it('D1でラップされたToken重複エラーにも409を返す', async () => {
+    const { app, firebaseTokenService } = setup();
+    const sqliteError = new Error(
+      'UNIQUE constraint failed: firebase_tokens.fcm_token'
+    );
+    const d1Error = new Error('D1_ERROR: constraint failed', {
+      cause: sqliteError,
+    });
+    (
+      firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(
+      new Error('Failed query: update firebase_tokens', {
+        cause: d1Error,
+      })
+    );
+
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fcmToken: 'registered-token',
+        platform: 'android',
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: 'Firebase token is already registered to another user',
+    });
+  });
+
+  it('別のUNIQUE制約違反には500を返す', async () => {
+    const { app, firebaseTokenService } = setup();
+    (
+      firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(
+      new Error('UNIQUE constraint failed: firebase_tokens.user_id')
+    );
+
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fcmToken: 'fcm-abc',
+        platform: 'android',
+      }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: 'Failed to register Firebase token',
+    });
+  });
+
+  it('想定外エラーでは機密値を含まない500を返す', async () => {
+    const { app, firebaseTokenService } = setup();
+    (
+      firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(new Error('token=fcm-secret'));
+
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fcmToken: 'fcm-secret',
+        platform: 'android',
+      }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(await response.json())).not.toContain('fcm-secret');
   });
 });

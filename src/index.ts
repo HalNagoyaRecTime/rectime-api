@@ -1,91 +1,124 @@
 import { cors } from 'hono/cors';
 import { swaggerUI } from '@hono/swagger-ui';
-import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
+import { OpenAPIHono, type RouteConfig } from '@hono/zod-openapi';
+import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
+export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
 import type { Env } from './lib/env';
-import {
-  classListRoute,
-  studentDetailRoute,
-  studentListRoute,
-} from './presentation/openapi/students';
-import {
-  eventDetailRoute,
-  eventListRoute,
-} from './presentation/openapi/events';
-import {
-  gatheringCreateRoute,
-  gatheringGroupCreateRoute,
-  gatheringGroupListRoute,
-  gatheringGroupMemberCreateRoute,
-  gatheringGroupMemberDeleteRoute,
-  gatheringGroupMemberListRoute,
-  gatheringListRoute,
-  gatheringSpotCreateRoute,
-  gatheringSpotListRoute,
-} from './presentation/openapi/gatherings';
-import {
-  firebaseTokenCreateRoute,
-  notificationScheduleCreateRoute,
-  notificationScheduleListRoute,
-  runScheduledNotificationsRoute,
-  runScheduledNotificationsSchema,
-  testNotificationRoute,
-} from './presentation/openapi/notifications';
-import { jsonResponse, z } from './presentation/openapi/schemas';
+import { isEventDate, isValidEventDate } from './lib/eventDate';
+import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
+import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
 import {
   diContainerMiddleware,
   type ContainerVariables,
 } from './presentation/middleware/diContainer';
+import {
+  requireAuth,
+  type AuthVariables,
+} from './presentation/middleware/requireAuth';
+import {
+  bearerAuthenticationMiddleware,
+  type AuthenticationVariables,
+} from './presentation/middleware/bearerAuthentication';
+import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
+import {
+  studentCreateRoute,
+  studentDetailRoute,
+  studentListRoute,
+  studentUpdateRoute,
+} from './presentation/openapi/students';
+import {
+  staffDetailRoute,
+  staffListRoute,
+} from './presentation/openapi/staffs';
+import {
+  teacherDeleteRoute,
+  teacherDetailRoute,
+  teacherListRoute,
+  teacherUpdateRoute,
+} from './presentation/openapi/teachers';
+import {
+  eventCreateRoute,
+  eventDeleteRoute,
+  eventDetailRoute,
+  eventGatheringListRoute,
+  eventListRoute,
+  eventNotificationSummaryRoute,
+  eventPatchRoute,
+  eventScheduleUpdateRoute,
+  eventUpdateRoute,
+} from './presentation/openapi/events';
+import {
+  classRoomCreateRoute,
+  classRoomDeleteRoute,
+  classRoomDetailRoute,
+  classRoomListRoute,
+  classRoomUpdateRoute,
+} from './presentation/openapi/classrooms';
+import {
+  masterImportCommitRoute,
+  masterImportCreateRoute,
+  masterImportDetailRoute,
+} from './presentation/openapi/masterImports';
+import {
+  gatheringCreateRoute,
+  gatheringDeleteRoute,
+  gatheringListRoute,
+  gatheringMemberCreateRoute,
+  gatheringMemberDeleteRoute,
+  gatheringMemberListRoute,
+  gatheringSpotCreateRoute,
+  gatheringSpotListRoute,
+  gatheringSpotUpdateRoute,
+} from './presentation/openapi/gatherings';
+import {
+  adminNotificationCreateRoute,
+  adminNotificationDeleteRoute,
+  adminNotificationDetailRoute,
+  adminNotificationListRoute,
+  adminNotificationUpdateRoute,
+  firebaseTokenCreateRoute,
+  myNotificationDetailRoute,
+  myNotificationListRoute,
+  notificationCreateRoute,
+  notificationDetailRoute,
+  notificationListRoute,
+  notificationScheduleCreateRoute,
+  notificationScheduleDeleteRoute,
+  notificationScheduleDetailRoute,
+  notificationScheduleListRoute,
+  notificationUpdateRoute,
+  scheduleUpdateRoute,
+  testNotificationRoute,
+} from './presentation/openapi/notifications';
 
 const app = new OpenAPIHono<{ Bindings: Env }>();
 
-const healthRoute = createRoute({
-  method: 'get',
-  path: '/health',
-  tags: ['System'],
-  summary: 'ヘルスチェック',
-  responses: {
-    200: jsonResponse(z.object({ status: z.literal('ok') }), '正常'),
-  },
-});
-
-const rootRoute = createRoute({
-  method: 'get',
-  path: '/',
-  tags: ['System'],
-  summary: 'APIの概要を取得する',
-  responses: {
-    200: jsonResponse(
-      z.object({
-        message: z.string(),
-        version: z.string(),
-        endpoints: z.record(z.string()),
-        openapi: z.string(),
-        docs: z.string(),
-      }),
-      'APIの概要'
-    ),
-  },
-});
-
 let corsWarnLogged = false;
+const allowedOriginRulesCache = new Map<string, AllowedOriginRule[]>();
 let tenantWarnLogged = false;
+let eventDateWarnLogged = false;
 
 app.use('*', (c, next) => {
-  const origins = (c.env.ALLOWED_ORIGINS ?? '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-  if (origins.length === 0 && !corsWarnLogged) {
+  const allowedOrigins = c.env.ALLOWED_ORIGINS ?? '';
+  const allowedOriginRules = getAllowedOriginRules(allowedOrigins);
+  if (allowedOriginRules.length === 0 && !corsWarnLogged) {
     console.warn(
       '[CORS] ALLOWED_ORIGINS is not set — all cross-origin requests will be blocked'
     );
     corsWarnLogged = true;
   }
   return cors({
-    origin: origin => (origins.includes(origin) ? origin : null),
+    origin: origin =>
+      isAllowedOrigin(origin, allowedOriginRules) ? origin : null,
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Client-Type',
+      'X-PKCE-Code-Challenge',
+      'X-State',
+    ],
     credentials: true,
     maxAge: 600,
   })(c, next);
@@ -110,24 +143,29 @@ app.use('*', (c, next) => {
   return next();
 });
 
-app.openapi(healthRoute, c => c.json({ status: 'ok' }, 200));
+app.openapi(healthRoute, c => c.json({ status: 'ok' } as const, 200));
 
-app.openapi(rootRoute, c => {
+app.openapi(apiOverviewRoute, c => {
   return c.json(
     {
       message: 'rectime_be',
       version: '1.0.0',
       endpoints: {
         students: '/api/v1/students/{studentId}',
+        staffs: '/api/v1/staffs/{staffId}',
+        teachers: '/api/v1/teachers/{teacherId}',
         events: '/api/v1/events',
-        classes: '/api/v1/classes',
+        classRooms: '/api/v1/classrooms',
         gatheringSpots: '/api/v1/gathering-spots',
-        gatheringGroups: '/api/v1/gathering-groups',
         gatherings: '/api/v1/gatherings',
+        gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
+        schedules: '/api/v1/notification/schedules',
         firebaseTokens: '/api/v1/firebase-tokens',
+        notifications: '/api/v1/notifications',
+        adminNotifications: '/api/v1/admin/notifications',
+        myNotifications: '/api/v1/me/notifications',
         testNotification: '/api/v1/notifications/test',
         notificationSchedules: '/api/v1/notification-schedules',
-        runScheduledNotifications: '/api/v1/notifications/schedule/run',
       },
       openapi: '/openapi.json',
       docs: '/docs',
@@ -139,121 +177,255 @@ app.openapi(rootRoute, c => {
 // API v1 routes
 const apiV1 = new OpenAPIHono<{
   Bindings: Env;
-  Variables: ContainerVariables;
+  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>();
 
 apiV1.use('*', diContainerMiddleware);
+apiV1.use('*', bearerAuthenticationMiddleware);
+
+/**
+ * apiV1.use('*', requireAuth) にはしていない: /auth ルート（ログイン自体）まで
+ * ブロックしてしまわないよう、認証が必要なルートにのみ個別に付与する。
+ * OpenAPIHono ではミドルウェアをルート定義側で受け取るため、ここで包む。
+ */
+const authed = <R extends RouteConfig>(route: R) => ({
+  ...route,
+  middleware: requireAuth,
+});
 
 // Student routes
-apiV1.openapi(studentListRoute, c =>
-  c.get('container').studentController.getAllStudent(c)
-);
-apiV1.openapi(studentDetailRoute, c =>
-  c.get('container').studentController.getStudentById(c)
-);
+apiV1.openapi(authed(studentListRoute), c => {
+  return c.get('container').studentController.getAllStudent(c);
+});
+apiV1.openapi(authed(studentDetailRoute), c => {
+  return c.get('container').studentController.getStudentById(c);
+});
+apiV1.openapi(authed(studentCreateRoute), c => {
+  return c.get('container').studentController.createStudent(c);
+});
+apiV1.openapi(authed(studentUpdateRoute), c => {
+  return c.get('container').studentController.updateStudent(c);
+});
+
+// Staff routes
+apiV1.openapi(authed(staffListRoute), c => {
+  return c.get('container').staffController.getAllStaffs(c);
+});
+apiV1.openapi(authed(staffDetailRoute), c => {
+  return c.get('container').staffController.getStaffById(c);
+});
+
+// Teacher routes
+apiV1.openapi(authed(teacherListRoute), c => {
+  return c.get('container').teacherController.getAllTeachers(c);
+});
+apiV1.openapi(authed(teacherDetailRoute), c => {
+  return c.get('container').teacherController.getTeacherById(c);
+});
+apiV1.openapi(authed(teacherUpdateRoute), c => {
+  return c.get('container').teacherController.updateTeacher(c);
+});
+apiV1.openapi(authed(teacherDeleteRoute), c => {
+  return c.get('container').teacherController.deleteTeacher(c);
+});
 
 // Event routes
-apiV1.openapi(eventListRoute, c =>
-  c.get('container').eventController.getAllEvents(c)
-);
-apiV1.openapi(eventDetailRoute, c =>
-  c.get('container').eventController.getEventById(c)
-);
+apiV1.openapi(authed(eventListRoute), c => {
+  return c.get('container').eventController.getAllEvents(c);
+});
+apiV1.openapi(authed(eventDetailRoute), c => {
+  return c.get('container').eventController.getEventById(c);
+});
+apiV1.openapi(authed(eventGatheringListRoute), c => {
+  return c.get('container').gatheringController.getGatheringsByEventId(c);
+});
+apiV1.openapi(authed(eventCreateRoute), c => {
+  return c.get('container').eventController.createEvent(c);
+});
+apiV1.openapi(authed(eventUpdateRoute), c => {
+  return c.get('container').eventController.updateEvent(c);
+});
+apiV1.openapi(authed(eventPatchRoute), c => {
+  return c.get('container').eventController.patchEvent(c);
+});
+apiV1.openapi(authed(eventDeleteRoute), c => {
+  return c.get('container').eventController.deleteEvent(c);
+});
+apiV1.openapi(authed(eventScheduleUpdateRoute), c => {
+  return c.get('container').eventScheduleController.updateEventSchedule(c);
+});
+apiV1.openapi(authed(eventNotificationSummaryRoute), c => {
+  return c
+    .get('container')
+    .eventScheduleController.getEventNotificationSummary(c);
+});
 
-// Class routes
-apiV1.openapi(classListRoute, c =>
-  c.get('container').classController.getAllClasses(c)
-);
+// Classroom routes
+apiV1.openapi(authed(classRoomListRoute), c => {
+  return c.get('container').classRoomController.getAllClassrooms(c);
+});
+apiV1.openapi(authed(classRoomDetailRoute), c => {
+  return c.get('container').classRoomController.getClassroomById(c);
+});
+apiV1.openapi(authed(classRoomCreateRoute), c => {
+  return c.get('container').classRoomController.createClassroom(c);
+});
+apiV1.openapi(authed(classRoomUpdateRoute), c => {
+  return c.get('container').classRoomController.updateClassroom(c);
+});
+apiV1.openapi(authed(classRoomDeleteRoute), c => {
+  return c.get('container').classRoomController.deleteClassroom(c);
+});
+
+// Master import routes
+apiV1.openapi(authed(masterImportCreateRoute), c => {
+  return c.get('container').masterImportController.createImport(c);
+});
+apiV1.openapi(authed(masterImportDetailRoute), c => {
+  return c.get('container').masterImportController.getImport(c);
+});
+apiV1.openapi(authed(masterImportCommitRoute), c => {
+  return c.get('container').masterImportController.commitImport(c);
+});
 
 // Gathering spot routes
-apiV1.openapi(gatheringSpotListRoute, c =>
-  c.get('container').gatheringSpotController.getAllGatheringSpots(c)
-);
-apiV1.openapi(gatheringSpotCreateRoute, c =>
-  c.get('container').gatheringSpotController.createGatheringSpot(c)
-);
+apiV1.openapi(authed(gatheringSpotListRoute), c => {
+  return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
+});
+apiV1.openapi(authed(gatheringSpotCreateRoute), c => {
+  return c.get('container').gatheringSpotController.createGatheringSpot(c);
+});
+apiV1.openapi(authed(gatheringSpotUpdateRoute), c => {
+  return c.get('container').gatheringSpotController.updateGatheringSpot(c);
+});
 
-// Gathering group routes
-apiV1.openapi(gatheringGroupListRoute, c =>
-  c.get('container').gatheringGroupController.getAllGatheringGroups(c)
-);
-apiV1.openapi(gatheringGroupCreateRoute, c =>
-  c.get('container').gatheringGroupController.createGatheringGroup(c)
-);
-apiV1.openapi(gatheringGroupMemberListRoute, c =>
-  c.get('container').gatheringGroupMemberController.getGatheringGroupMembers(c)
-);
-apiV1.openapi(gatheringGroupMemberCreateRoute, c =>
-  c.get('container').gatheringGroupMemberController.addGatheringGroupMember(c)
-);
-apiV1.openapi(gatheringGroupMemberDeleteRoute, c =>
-  c
+// Gathering member routes
+apiV1.openapi(authed(gatheringMemberListRoute), c => {
+  return c
     .get('container')
-    .gatheringGroupMemberController.removeGatheringGroupMember(c)
-);
+    .gatheringGroupMemberController.getGatheringMembers(c);
+});
+apiV1.openapi(authed(gatheringMemberCreateRoute), c => {
+  return c
+    .get('container')
+    .gatheringGroupMemberController.addGatheringMember(c);
+});
+apiV1.openapi(authed(gatheringMemberDeleteRoute), c => {
+  return c
+    .get('container')
+    .gatheringGroupMemberController.removeGatheringMember(c);
+});
 
 // Gathering routes
-apiV1.openapi(gatheringListRoute, c =>
-  c.get('container').gatheringController.getAllGatherings(c)
-);
-apiV1.openapi(gatheringCreateRoute, c =>
-  c.get('container').gatheringController.createGathering(c)
-);
+apiV1.openapi(authed(gatheringListRoute), c => {
+  return c.get('container').gatheringController.getAllGatherings(c);
+});
+apiV1.openapi(authed(gatheringCreateRoute), c => {
+  return c.get('container').gatheringController.createGathering(c);
+});
+apiV1.openapi(authed(gatheringDeleteRoute), c => {
+  return c.get('container').gatheringController.deleteGathering(c);
+});
 
 // Firebase token routes
-apiV1.openapi(firebaseTokenCreateRoute, c =>
-  c.get('container').firebaseTokenController.registerFirebaseToken(c)
-);
+apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
+  return c.get('container').firebaseTokenController.registerFirebaseToken(c);
+});
+
+// Notification schedule routes
+apiV1.openapi(authed(scheduleUpdateRoute), c => {
+  return c.get('container').scheduleController.updateSchedule(c);
+});
 
 // Notification routes
-apiV1.openapi(notificationScheduleListRoute, c =>
-  c
+apiV1.openapi(authed(adminNotificationCreateRoute), c => {
+  return c
     .get('container')
-    .notificationScheduleController.getAllNotificationSchedules(c)
-);
-apiV1.openapi(notificationScheduleCreateRoute, c =>
-  c
-    .get('container')
-    .notificationScheduleController.createNotificationSchedule(c)
-);
-
-apiV1.openapi(testNotificationRoute, c =>
-  c.get('container').notificationController.sendTestNotification(c)
-);
-
-apiV1.openapi(runScheduledNotificationsRoute, async c => {
-  try {
-    const body = await c.req.json().catch(() => ({}));
-    const parsedBody = runScheduledNotificationsSchema.safeParse(body);
-    if (!parsedBody.success) {
-      return c.json({ error: 'Invalid now value' }, 400);
-    }
-    const now = parsedBody.data.now
-      ? new Date(parsedBody.data.now)
-      : new Date();
-
-    const result = await c
-      .get('container')
-      .scheduledNotificationService.sendScheduledEventNotifications(now);
-    return c.json(result, 200);
-  } catch (error) {
-    return c.json(
-      {
-        error: 'Failed to run scheduled notifications',
-        details: error instanceof Error ? error.message : String(error),
-      },
-      500
-    );
-  }
+    .adminNotificationController.createManualNotification(c);
 });
+apiV1.openapi(authed(adminNotificationListRoute), c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.getAdminNotifications(c);
+});
+apiV1.openapi(authed(adminNotificationDetailRoute), c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.getAdminNotificationById(c);
+});
+apiV1.openapi(authed(adminNotificationUpdateRoute), c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.updateAdminNotification(c);
+});
+apiV1.openapi(authed(adminNotificationDeleteRoute), c => {
+  return c
+    .get('container')
+    .adminNotificationManagementController.deleteAdminNotification(c);
+});
+
+apiV1.openapi(authed(notificationCreateRoute), c => {
+  return c.get('container').notificationController.createNotification(c);
+});
+apiV1.openapi(authed(notificationListRoute), c => {
+  return c.get('container').notificationController.getNotifications(c);
+});
+apiV1.openapi(authed(notificationDetailRoute), c => {
+  return c.get('container').notificationController.getNotificationById(c);
+});
+apiV1.openapi(authed(notificationUpdateRoute), c => {
+  return c.get('container').notificationController.updateNotification(c);
+});
+
+apiV1.openapi(authed(myNotificationListRoute), c => {
+  return c.get('container').mobileNotificationController.getNotifications(c);
+});
+apiV1.openapi(authed(myNotificationDetailRoute), c => {
+  return c.get('container').mobileNotificationController.getNotificationById(c);
+});
+
+apiV1.openapi(authed(notificationScheduleListRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleController.getAllNotificationSchedules(c);
+});
+apiV1.openapi(authed(notificationScheduleCreateRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleController.createNotificationSchedule(c);
+});
+apiV1.openapi(authed(notificationScheduleDetailRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleController.getNotificationScheduleById(c);
+});
+apiV1.openapi(authed(notificationScheduleDeleteRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleController.deleteNotificationSchedule(c);
+});
+
+apiV1.openapi(authed(testNotificationRoute), c => {
+  return c.get('container').notificationController.sendTestNotification(c);
+});
+
+// Auth routes
+apiV1.route('/auth', authRouter);
 
 // Mount API v1
 app.route('/api/v1', apiV1);
+
+app.openAPIRegistry.registerComponent('securitySchemes', 'Bearer', {
+  type: 'http',
+  scheme: 'bearer',
+  bearerFormat: 'JWT',
+});
 
 app.doc('/openapi.json', {
   openapi: '3.0.3',
   info: { title: 'RecTime API', version: '1.0.0' },
 });
+
 app.get(
   '/docs',
   swaggerUI({ url: '/openapi.json', title: 'RecTime API Docs' })
@@ -263,10 +435,95 @@ export { app };
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    if (!isValidEventDate(env.EVENT_DATE)) {
+      if (!eventDateWarnLogged) {
+        console.error(
+          '[CRON] EVENT_DATE must be configured in YYYY-MM-DD format; notification delivery is disabled'
+        );
+        eventDateWarnLogged = true;
+      }
+      return;
+    }
+
+    const scheduledAt = new Date(event.scheduledTime);
+    if (!isEventDate(env.EVENT_DATE, scheduledAt)) return;
+
     const container = createDIContainer(env);
     ctx.waitUntil(
-      container.scheduledNotificationService.sendScheduledEventNotifications()
+      container.scheduledNotificationService.enqueueDueNotifications(
+        scheduledAt
+      )
+    );
+  },
+  async queue(
+    batch: MessageBatch<NotificationDeliveryMessage>,
+    env: Env
+  ): Promise<void> {
+    const container = createDIContainer(env);
+    await consumeNotificationDeliveryQueue(
+      batch,
+      container.scheduledNotificationService
     );
   },
 };
+
+type AllowedOriginRule =
+  | {
+      type: 'exact';
+      origin: string;
+    }
+  | {
+      type: 'pattern';
+      pattern: RegExp;
+    };
+
+function getAllowedOriginRules(allowedOrigins: string): AllowedOriginRule[] {
+  const cachedRules = allowedOriginRulesCache.get(allowedOrigins);
+  if (cachedRules) {
+    return cachedRules;
+  }
+
+  const rules = allowedOrigins
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(createAllowedOriginRule);
+
+  allowedOriginRulesCache.set(allowedOrigins, rules);
+  return rules;
+}
+
+function createAllowedOriginRule(allowedOrigin: string): AllowedOriginRule {
+  if (!allowedOrigin.includes('*')) {
+    return {
+      type: 'exact',
+      origin: allowedOrigin,
+    };
+  }
+
+  const allowedOriginPattern = escapeRegExp(allowedOrigin).replace(
+    /\\\*/g,
+    '[^.]+'
+  );
+  return {
+    type: 'pattern',
+    pattern: new RegExp(`^${allowedOriginPattern}$`),
+  };
+}
+
+function isAllowedOrigin(
+  origin: string,
+  allowedOriginRules: AllowedOriginRule[]
+): boolean {
+  return allowedOriginRules.some(rule => {
+    if (rule.type === 'exact') {
+      return origin === rule.origin;
+    }
+    return rule.pattern.test(origin);
+  });
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}

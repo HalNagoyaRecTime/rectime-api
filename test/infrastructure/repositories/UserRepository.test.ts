@@ -26,6 +26,20 @@ describe('UserRepository', () => {
     await env.DB.prepare('DELETE FROM users').run();
   });
 
+  describe('exists', () => {
+    it('存在するuserIdの場合はtrueを返す', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('存在確認テスト') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(repo.exists(user!.user_id)).resolves.toBe(true);
+    });
+
+    it('存在しないuserIdの場合はfalseを返す', async () => {
+      await expect(repo.exists(999999)).resolves.toBe(false);
+    });
+  });
+
   describe('findUserIdByMicrosoftAccount', () => {
     it('未登録の oid/tid の場合は null を返す', async () => {
       await expect(
@@ -45,6 +59,108 @@ describe('UserRepository', () => {
       await expect(
         repo.findUserIdByMicrosoftAccount('oid-2', 'tid-2')
       ).resolves.toBe(created.id);
+    });
+  });
+
+  describe('isStaffOrTeacher', () => {
+    it.each(['staffs', 'teachers'] as const)(
+      '%sに登録されたユーザーには更新権限がある',
+      async table => {
+        const user = await env.DB.prepare(
+          "INSERT INTO users (user_name) VALUES ('管理者') RETURNING user_id"
+        ).first<{ user_id: number }>();
+        await env.DB.prepare(`INSERT INTO ${table} (user_id) VALUES (?)`)
+          .bind(user!.user_id)
+          .run();
+
+        await expect(repo.isStaffOrTeacher(user!.user_id)).resolves.toBe(true);
+      }
+    );
+
+    it('studentsにのみ登録されたユーザーには更新権限がない', async () => {
+      const classRoom = await env.DB.prepare(
+        "INSERT INTO class_rooms (class_code, class_name) VALUES ('AUTHZ', '権限確認') RETURNING class_room_id"
+      ).first<{ class_room_id: number }>();
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('学生') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await env.DB.prepare(
+        "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, 'AUTHZ-001')"
+      )
+        .bind(user!.user_id, classRoom!.class_room_id)
+        .run();
+
+      await expect(repo.isStaffOrTeacher(user!.user_id)).resolves.toBe(false);
+    });
+  });
+
+  describe('getUserCategories', () => {
+    it('studentsにのみ登録されたユーザーはis_studentのみtrue', async () => {
+      const classRoom = await env.DB.prepare(
+        "INSERT INTO class_rooms (class_code, class_name) VALUES ('CAT', 'カテゴリ確認') RETURNING class_room_id"
+      ).first<{ class_room_id: number }>();
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('学生') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await env.DB.prepare(
+        "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, 'CAT-001')"
+      )
+        .bind(user!.user_id, classRoom!.class_room_id)
+        .run();
+
+      await expect(repo.getUserCategories(user!.user_id)).resolves.toEqual({
+        is_student: true,
+        is_staff: false,
+        is_teacher: false,
+      });
+    });
+
+    it.each(['staffs', 'teachers'] as const)(
+      '%sにのみ登録されたユーザーはis_studentがfalseで該当カテゴリのみtrue',
+      async table => {
+        const user = await env.DB.prepare(
+          "INSERT INTO users (user_name) VALUES ('職員') RETURNING user_id"
+        ).first<{ user_id: number }>();
+        await env.DB.prepare(`INSERT INTO ${table} (user_id) VALUES (?)`)
+          .bind(user!.user_id)
+          .run();
+
+        await expect(repo.getUserCategories(user!.user_id)).resolves.toEqual({
+          is_student: false,
+          is_staff: table === 'staffs',
+          is_teacher: table === 'teachers',
+        });
+      }
+    );
+
+    it('staffsとteachersの両方に登録されたユーザーは両方trueになる', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('兼任') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await env.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+        .bind(user!.user_id)
+        .run();
+      await env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+        .bind(user!.user_id)
+        .run();
+
+      await expect(repo.getUserCategories(user!.user_id)).resolves.toEqual({
+        is_student: false,
+        is_staff: true,
+        is_teacher: true,
+      });
+    });
+
+    it('どのテーブルにも登録されていないユーザーはすべてfalse', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('未分類') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(repo.getUserCategories(user!.user_id)).resolves.toEqual({
+        is_student: false,
+        is_staff: false,
+        is_teacher: false,
+      });
     });
   });
 
