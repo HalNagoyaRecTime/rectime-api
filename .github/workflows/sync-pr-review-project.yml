@@ -393,6 +393,7 @@ jobs:
                   issueComments,
                   reviewComments,
                 );
+                // Draft PRは空欄にし、レビュー対象になったPRだけ作成経過日を表示する。
                 const createdAgeText = pull.draft
                   ? null
                   : `${getDaysSinceCreated(
