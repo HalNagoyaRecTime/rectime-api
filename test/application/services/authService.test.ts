@@ -49,7 +49,7 @@ describe('createAuthService', () => {
       classRoomExists: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-  };
+    };
     const service = createAuthService(userRepository, studentRepository);
     return { userRepository, studentRepository, service };
   }
@@ -211,7 +211,7 @@ describe('createAuthService', () => {
     });
 
     it('oid/tidで見つからないが学籍番号で既存の学生が見つかる場合、linkMicrosoftAccountを呼び学生情報を返す', async () => {
-      const {userRepository, studentRepository, service} = setup();
+      const { userRepository, studentRepository, service } = setup();
       const claims = buildClaims({
         preferred_username: 'nhs50000@nhs.hal.ac.jp',
       });
@@ -233,17 +233,13 @@ describe('createAuthService', () => {
 
       const result = await service.upsertUser(claims);
 
-      expect(studentRepository.findByStudentNum).toHaveBeenCalledWith(
-        '50000'
-      );
+      expect(studentRepository.findByStudentNum).toHaveBeenCalledWith('50000');
       expect(userRepository.linkMicrosoftAccount).toHaveBeenCalledWith({
         userId: '100',
         oid: 'oid-1',
         tid: 'tid-1',
       });
-      expect(
-        userRepository.createUserWithMicrosoftLink
-      ).not.toHaveBeenCalled();
+      expect(userRepository.createUserWithMicrosoftLink).not.toHaveBeenCalled();
       expect(result).toEqual({
         id: '100',
         oid: 'oid-1',

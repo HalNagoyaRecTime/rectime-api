@@ -28,7 +28,8 @@ export function createAuthService(
       if (!existingUserId) {
         const studentIdNumber = extractStudentIdNumber(email);
         if (studentIdNumber) {
-          const student = await studentRepository.findByStudentNum(studentIdNumber);
+          const student =
+            await studentRepository.findByStudentNum(studentIdNumber);
           if (student) {
             await userRepository.linkMicrosoftAccount({
               userId: String(student.user_id),
