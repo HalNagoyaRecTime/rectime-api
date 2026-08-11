@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createAuthService } from '../../../src/application/services/authService';
 import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
+import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import type { AppUser } from '../../../src/domain/auth/types';
 import type { MicrosoftClaims } from '../../../src/application/services/IAuthService';
+import { except } from 'drizzle-orm/gel-core';
 
 function buildClaims(
   overrides: Partial<MicrosoftClaims> = {}
@@ -40,8 +42,16 @@ describe('createAuthService', () => {
       updateUser: vi.fn(),
       linkMicrosoftAccount: vi.fn(),
     };
-    const service = createAuthService(userRepository);
-    return { userRepository, service };
+    const studentRepository: IStudentRepository = {
+      findById: vi.fn(),
+      findAll: vi.fn(),
+      findByStudentNum: vi.fn(),
+      classRoomExists: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+  };
+    const service = createAuthService(userRepository, studentRepository);
+    return { userRepository, studentRepository, service };
   }
 
   describe('upsertUser', () => {
@@ -198,6 +208,50 @@ describe('createAuthService', () => {
       await expect(service.upsertUser(buildClaims())).rejects.toThrow(
         'CREATE_USER_FAILED'
       );
+    });
+
+    it('oid/tidで見つからないが学籍番号で既存の学生が見つかる場合、linkMicrosoftAccountを呼び学生情報を返す', async () => {
+      const {userRepository, studentRepository, service} = setup();
+      const claims = buildClaims({
+        preferred_username: 'nhs50000@nhs.hal.ac.jp',
+      });
+      (
+        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(null);
+      (
+        studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        student_id: 1,
+        user_id: 100,
+        user_name: '田中太郎',
+        class_room_id: 1,
+        class_room_name: '3年A組',
+        attendance_number: 5,
+        student_id_number: '50000',
+        is_live_active: true,
+      });
+
+      const result = await service.upsertUser(claims);
+
+      expect(studentRepository.findByStudentNum).toHaveBeenCalledWith(
+        '50000'
+      );
+      expect(userRepository.linkMicrosoftAccount).toHaveBeenCalledWith({
+        userId: '100',
+        oid: 'oid-1',
+        tid: 'tid-1',
+      });
+      expect(
+        userRepository.createUserWithMicrosoftLink
+      ).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        id: '100',
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'nhs50000@nhs.hal.ac.jp',
+        display_name: '田中太郎',
+      });
     });
   });
 });
