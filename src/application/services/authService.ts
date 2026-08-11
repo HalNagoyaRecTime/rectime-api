@@ -1,7 +1,6 @@
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAuthService, MicrosoftClaims } from './IAuthService';
 import type { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
-import { students } from '../../infrastructure/database/schema';
 
 function extractStudentIdNumber(email: string): string | null {
   const localPart = email.split('@')[0];

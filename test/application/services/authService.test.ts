@@ -4,7 +4,6 @@ import type { IUserRepository } from '../../../src/domain/interfaces/repositorie
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import type { AppUser } from '../../../src/domain/auth/types';
 import type { MicrosoftClaims } from '../../../src/application/services/IAuthService';
-import { except } from 'drizzle-orm/gel-core';
 
 function buildClaims(
   overrides: Partial<MicrosoftClaims> = {}
@@ -49,6 +48,8 @@ describe('createAuthService', () => {
       classRoomExists: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      findExistingStudentNumbers: vi.fn(),
+      createMany: vi.fn(),
     };
     const service = createAuthService(userRepository, studentRepository);
     return { userRepository, studentRepository, service };
