@@ -89,7 +89,7 @@ export function createDIContainer(env: Env) {
   );
 
   // Services
-  const authService = createAuthService(userRepository);
+  const authService = createAuthService(userRepository, studentRepository);
   const studentService = createStudentService(studentRepository);
   const staffService = createStaffService(staffRepository);
   const teacherService = createTeacherService(teacherRepository);
