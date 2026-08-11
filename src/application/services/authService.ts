@@ -1,5 +1,7 @@
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAuthService, MicrosoftClaims } from './IAuthService';
+import type { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
+import { students } from '../../infrastructure/database/schema';
 
 function extractStudentIdNumber(email: string): string | null {
   const localPart = email.split('@')[0];
@@ -10,7 +12,8 @@ function extractStudentIdNumber(email: string): string | null {
 }
 
 export function createAuthService(
-  userRepository: IUserRepository
+  userRepository: IUserRepository,
+  studentRepository: IStudentRepository
 ): IAuthService {
   return {
     async upsertUser(claims: MicrosoftClaims) {
@@ -21,6 +24,28 @@ export function createAuthService(
         claims.oid,
         claims.tid
       );
+
+      if (!existingUserId) {
+        const studentIdNumber = extractStudentIdNumber(email);
+        if (studentIdNumber) {
+          const student = await studentRepository.findByStudentNum(studentIdNumber);
+          if (student) {
+            await userRepository.linkMicrosoftAccount({
+              userId: String(student.user_id),
+              oid: claims.oid,
+              tid: claims.tid,
+            });
+            return {
+              id: String(student.user_id),
+              oid: claims.oid,
+              tid: claims.tid,
+              sub: claims.sub,
+              email,
+              display_name: student.user_name,
+            };
+          }
+        }
+      }
 
       if (existingUserId) {
         const updated = await userRepository.updateUser({
