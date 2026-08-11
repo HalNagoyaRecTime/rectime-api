@@ -23,6 +23,8 @@ function setup() {
     getAllStudents: vi.fn(),
     createStudent: vi.fn(),
     updateStudent: vi.fn(),
+    validateStudentImport: vi.fn(),
+    commitStudentImport: vi.fn(),
   };
   const controller = createStudentController(studentService);
   const app = new Hono();

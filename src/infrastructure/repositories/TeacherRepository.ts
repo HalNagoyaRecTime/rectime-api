@@ -3,14 +3,31 @@ import * as schema from '../database/schema';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { class_rooms, teachers, users } from '../database/schema';
 
-import { D1Database } from '@cloudflare/workers-types';
+import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import {
   TeacherEntity,
   TeacherPage,
   TeacherSearchFilter,
   TeacherUpdateInput,
 } from '../../domain/entities/Teacher';
-import { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
+import {
+  ITeacherRepository,
+  NewTeacherInput,
+} from '../../domain/interfaces/repositories/ITeacherRepository';
+import { chunkArray } from './chunk';
+
+const D1_MAX_BOUND_PARAMETERS = 100;
+
+type ReturnedUserRow = {
+  user_id: number;
+  user_name: string;
+  is_live_active: number;
+};
+
+type ReturnedTeacherRow = {
+  teacher_id: number;
+  user_id: number;
+};
 
 const DEFAULT_OFFSET = 0;
 const DEFAULT_LIMIT = 20;
@@ -169,6 +186,90 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       return rows.length === classRoomIds.length;
     },
 
+    async create(input: NewTeacherInput): Promise<TeacherEntity> {
+      const [userResult, teacherResult] = await db.batch<
+        ReturnedUserRow | ReturnedTeacherRow
+      >([
+        db
+          .prepare(
+            `INSERT INTO users (user_name, updated_at)
+             VALUES (?, CURRENT_TIMESTAMP)
+             RETURNING user_id, user_name, is_live_active`
+          )
+          .bind(input.displayName),
+        db.prepare(
+          `INSERT INTO teachers (user_id, updated_at)
+           VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
+           RETURNING teacher_id, user_id`
+        ),
+      ]);
+
+      const user = userResult.results[0] as ReturnedUserRow | undefined;
+      const created = teacherResult.results[0] as
+        | ReturnedTeacherRow
+        | undefined;
+      if (!user || !created) {
+        throw new Error('Failed to create teacher');
+      }
+
+      return {
+        teacher_id: created.teacher_id,
+        user_id: user.user_id,
+        user_name: user.user_name,
+        is_live_active: user.is_live_active === 1,
+        class_rooms: [],
+      };
+    },
+
+    async createMany(inputs: NewTeacherInput[]): Promise<void> {
+      if (inputs.length === 0) {
+        return;
+      }
+
+      const userStatements: D1PreparedStatement[] = [];
+      for (const chunk of chunkArray(inputs, D1_MAX_BOUND_PARAMETERS)) {
+        const placeholders = chunk
+          .map(() => '(?, CURRENT_TIMESTAMP)')
+          .join(', ');
+        const values = chunk.map(input => input.displayName);
+        userStatements.push(
+          db
+            .prepare(
+              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id`
+            )
+            .bind(...values)
+        );
+      }
+
+      const userResults = await db.batch<{ user_id: number }>(userStatements);
+      const userIds: number[] = [];
+      for (const result of userResults) {
+        for (const row of result.results) {
+          userIds.push(row.user_id);
+        }
+      }
+
+      try {
+        const teacherStatements: D1PreparedStatement[] = [];
+        for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
+          const placeholders = chunk
+            .map(() => '(?, CURRENT_TIMESTAMP)')
+            .join(', ');
+          teacherStatements.push(
+            db
+              .prepare(
+                `INSERT INTO teachers (user_id, updated_at) VALUES ${placeholders}`
+              )
+              .bind(...chunk)
+          );
+        }
+        await db.batch(teacherStatements);
+      } catch (error) {
+        await deleteUsersByIds(db, userIds);
+        throw error;
+      }
+    },
+
     async update(
       id: number,
       input: TeacherUpdateInput
@@ -282,4 +383,14 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       }
     },
   };
+}
+
+async function deleteUsersByIds(db: D1Database, userIds: number[]) {
+  for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM users WHERE user_id IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+  }
 }

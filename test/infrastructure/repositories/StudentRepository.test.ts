@@ -106,4 +106,179 @@ describe('StudentRepository', () => {
       ).resolves.toBeNull();
     });
   });
+
+  describe('findExistingStudentNumbers', () => {
+    it('2,000件の候補から、DBに実在する学籍番号だけをチャンク境界をまたいでもまとめて返す', async () => {
+      const candidates = Array.from(
+        { length: 2000 },
+        (_, i) => `9${String(i).padStart(4, '0')}`
+      );
+      candidates[0] = seeded.students[0].studentIdNumber;
+      candidates[150] = seeded.students[1].studentIdNumber;
+      candidates[1999] = seeded.students[2].studentIdNumber;
+
+      const existing = await repo.findExistingStudentNumbers(candidates);
+
+      expect(existing).toEqual(
+        new Set([
+          seeded.students[0].studentIdNumber,
+          seeded.students[1].studentIdNumber,
+          seeded.students[2].studentIdNumber,
+        ])
+      );
+    });
+
+    it('候補が空配列の場合は空集合を返す', async () => {
+      expect(await repo.findExistingStudentNumbers([])).toEqual(new Set());
+    });
+  });
+
+  describe('createMany', () => {
+    it('既存クラスに複数の学生をまとめて作成する', async () => {
+      await repo.createMany({
+        newClassRooms: [],
+        students: [
+          {
+            displayName: '一括生徒A',
+            classCode: 'TEST-1',
+            attendanceNumber: 20,
+            studentIdNumber: '20000',
+          },
+          {
+            displayName: '一括生徒B',
+            classCode: 'TEST-1',
+            attendanceNumber: 21,
+            studentIdNumber: '20001',
+          },
+        ],
+      });
+
+      const a = await repo.findByStudentNum('20000');
+      const b = await repo.findByStudentNum('20001');
+      expect(a).toMatchObject({
+        user_name: '一括生徒A',
+        class_room_name: 'テスト教室',
+      });
+      expect(b).toMatchObject({
+        user_name: '一括生徒B',
+        class_room_name: 'テスト教室',
+      });
+    });
+
+    it('新規クラスの作成と学生の作成を同じbatchでまとめて行う', async () => {
+      await repo.createMany({
+        newClassRooms: [{ classCode: 'BULK-NEW', className: 'BULK-NEW' }],
+        students: [
+          {
+            displayName: '一括生徒C',
+            classCode: 'BULK-NEW',
+            attendanceNumber: 1,
+            studentIdNumber: '20002',
+          },
+        ],
+      });
+
+      const created = await repo.findByStudentNum('20002');
+      expect(created).toMatchObject({
+        user_name: '一括生徒C',
+        class_room_name: 'BULK-NEW',
+      });
+    });
+
+    it('一部の行が学籍番号のUNIQUE制約に違反する場合、他の行も含めて何も登録されない', async () => {
+      await expect(
+        repo.createMany({
+          newClassRooms: [],
+          students: [
+            {
+              displayName: '登録されないはずの生徒',
+              classCode: 'TEST-1',
+              attendanceNumber: 30,
+              studentIdNumber: '20099',
+            },
+            {
+              displayName: '既存と重複する生徒',
+              classCode: 'TEST-1',
+              attendanceNumber: 31,
+              // seedStudents で既に使われている学籍番号
+              studentIdNumber: seeded.students[0].studentIdNumber,
+            },
+          ],
+        })
+      ).rejects.toThrow();
+
+      expect(await repo.findByStudentNum('20099')).toBeNull();
+
+      const orphanedUsers = await env.DB.prepare(
+        'SELECT user_id FROM users WHERE user_name IN (?, ?)'
+      )
+        .bind('登録されないはずの生徒', '既存と重複する生徒')
+        .all();
+      expect(orphanedUsers.results).toHaveLength(0);
+    });
+
+    it('studentsへの登録に失敗した場合、直前に作成したuserとnewClassRoomsも後片付けされる', async () => {
+      await expect(
+        repo.createMany({
+          newClassRooms: [
+            { classCode: 'CLEANUP-NEW', className: 'CLEANUP-NEW' },
+          ],
+          students: [
+            {
+              displayName: '後片付け対象の生徒',
+              classCode: 'CLEANUP-MISSING',
+              attendanceNumber: 1,
+              studentIdNumber: '20098',
+            },
+          ],
+        })
+      ).rejects.toThrow();
+
+      const orphanedUser = await env.DB.prepare(
+        'SELECT user_id FROM users WHERE user_name = ?'
+      )
+        .bind('後片付け対象の生徒')
+        .first();
+      expect(orphanedUser).toBeNull();
+
+      const orphanedClassRoom = await env.DB.prepare(
+        'SELECT class_room_id FROM class_rooms WHERE class_code = ?'
+      )
+        .bind('CLEANUP-NEW')
+        .first();
+      expect(orphanedClassRoom).toBeNull();
+    });
+
+    it('2,000件の学生を、新規クラス40件とあわせてまとめて作成できる', async () => {
+      const newClassRooms = Array.from({ length: 40 }, (_, i) => ({
+        classCode: `BULK2K-${i}`,
+        className: `BULK2K-${i}`,
+      }));
+      const students = Array.from({ length: 2000 }, (_, i) => ({
+        displayName: `一括生徒${i}`,
+        classCode: `BULK2K-${i % 40}`,
+        attendanceNumber: Math.floor(i / 40) + 1,
+        studentIdNumber: `BULK2K${String(i).padStart(5, '0')}`,
+      }));
+
+      await repo.createMany({ newClassRooms, students });
+
+      const first = await repo.findByStudentNum('BULK2K00000');
+      const middle = await repo.findByStudentNum('BULK2K01000');
+      const last = await repo.findByStudentNum('BULK2K01999');
+      expect(first).toMatchObject({
+        user_name: '一括生徒0',
+        class_room_name: 'BULK2K-0',
+        attendance_number: 1,
+      });
+      expect(middle).toMatchObject({
+        user_name: '一括生徒1000',
+        class_room_name: 'BULK2K-0',
+      });
+      expect(last).toMatchObject({
+        user_name: '一括生徒1999',
+        class_room_name: 'BULK2K-39',
+      });
+    });
+  });
 });
