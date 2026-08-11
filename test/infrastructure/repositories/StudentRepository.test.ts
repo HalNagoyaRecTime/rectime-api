@@ -249,6 +249,57 @@ describe('StudentRepository', () => {
       expect(orphanedClassRoom).toBeNull();
     });
 
+    it('[REPRO #215] 後片付け(deleteUsersByIds)自体が失敗すると元のエラーが握りつぶされる', async () => {
+      const originalPrepare = env.DB.prepare.bind(env.DB);
+      const prepareSpy = vi
+        .spyOn(env.DB, 'prepare')
+        .mockImplementation((sql: string) => {
+          if (sql.startsWith('DELETE FROM users')) {
+            throw new Error('DELETE_USERS_FAILED');
+          }
+          return originalPrepare(sql);
+        });
+
+      let thrown: unknown;
+      try {
+        await repo.createMany({
+          newClassRooms: [{ classCode: 'REPRO-NEW', className: 'REPRO-NEW' }],
+          students: [
+            {
+              displayName: '再現用生徒',
+              classCode: 'REPRO-MISSING',
+              attendanceNumber: 1,
+              studentIdNumber: 'REPRO-1',
+            },
+          ],
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      prepareSpy.mockRestore();
+
+      // 期待する挙動: deleteUsersByIds が失敗しても、元の students INSERT
+      // 失敗のエラーが握りつぶされずに伝播すること
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).not.toBe('DELETE_USERS_FAILED');
+
+      // 期待する挙動: deleteUsersByIds が失敗しても deleteClassRoomsByCodes
+      // は独立して実行され、newClassRooms の孤児レコードが残らないこと
+      const orphanedClassRoom = await env.DB.prepare(
+        'SELECT class_room_id FROM class_rooms WHERE class_code = ?'
+      )
+        .bind('REPRO-NEW')
+        .first();
+      expect(orphanedClassRoom).toBeNull();
+
+      // 後片付け: 修正前の実行(孤児が残るケース)でも次のテストに
+      // 影響しないよう掃除しておく
+      await env.DB.prepare('DELETE FROM class_rooms WHERE class_code = ?')
+        .bind('REPRO-NEW')
+        .run();
+    });
+
     it('2,000件の学生を、新規クラス40件とあわせてまとめて作成できる', async () => {
       const newClassRooms = Array.from({ length: 40 }, (_, i) => ({
         classCode: `BULK2K-${i}`,
