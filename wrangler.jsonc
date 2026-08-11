@@ -9,7 +9,6 @@
     "directory": "./public",
   },
   "vars": {
-    "NODE_ENV": "production",
     "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
@@ -119,6 +118,12 @@
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
+      },
+      // triggersはトップレベルから継承されるため、明示しないと本番同様の毎分cronが
+      // development(旧env.previewが明示的に無効化していた分)でも有効になってしまう。
+      // stagingと同様、まずは無効で始める。
+      "triggers": {
+        "crons": [],
       },
       // secrets.required はここでは宣言しない: vitest-pool-workers
       // (test/apply-migrations.ts) がこの環境で62ファイル分のWorkerを並列起動する際、

@@ -17,8 +17,14 @@ on:
 # 無関係な別PRのCI完了で自分のPRのpreviewデプロイが途中キャンセルされてしまう
 # (developへの通常デプロイも同様に別PRから止められ得る)。PRごとに一意なグループに
 # 分離し、同一PRへの連続pushだけが直列化されるようにする。
+#
+# fork由来のPRではセキュリティ上の理由からworkflow_run.pull_requestsが空になり、
+# pull_requests[0].numberがnullになる。この場合は全fork PRがgroup名"pr-"に
+# 集約されてしまうため、フォールバックとしてworkflow_run.id(実行ごとに一意)を使う。
+# fork PRの連続pushはこのフォールバックにより直列化されない(実行ごとに別グループになる)が、
+# "Set deploy target"のPR_NUMBER空チェックでいずれのpushも即座に失敗するため実害は小さい。
 concurrency:
-  group: deploy-cloudflare-workers-${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || (github.event.workflow_run.event == 'pull_request') && format('pr-{0}', github.event.workflow_run.pull_requests[0].number) || 'development' }}
+  group: deploy-cloudflare-workers-${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || (github.event.workflow_run.event == 'pull_request') && format('pr-{0}', github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id) || 'development' }}
   cancel-in-progress: true
 
 permissions:
@@ -27,8 +33,12 @@ permissions:
 
 jobs:
   deploy:
+    # workflow_dispatchがmain以外のブランチから実行された場合、ここでジョブ自体を
+    # skipする(以前は"Set deploy target"ステップのシェル側ガードのみで、そこに至る
+    # 前にconcurrency.groupの'development'フォールバックに入って進行中のdevelop
+    # デプロイを巻き添えキャンセルしてしまっていた)。シェル側のガードは冗長化として残す。
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') ||
       (github.event.workflow_run.conclusion == 'success' &&
        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'pull_request'))
     name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
