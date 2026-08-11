@@ -10,13 +10,18 @@
   },
   "vars": {
     "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+    // Entraアプリの「アプリケーション(クライアント)ID」。非公開の資格情報ではないため
+    // vars で直接設定する(development/staging と同じ値。#204レビュー指摘対応)。
+    // 移行前にCloudflare側の本番secret `MICROSOFT_CLIENT_ID` を削除しておくこと
+    // (`wrangler secret delete MICROSOFT_CLIENT_ID`)。secretとvarで同名の
+    // bindingが両方存在するとdeployが失敗する。
+    "MICROSOFT_CLIENT_ID": "be597fc9-7946-43a2-9ba8-6a96c96fd3b7",
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
   // 公開されている(README.md参照)。カスタムドメイン/routesは未設定のため、
   // workers_dev/preview_urls はここでは変更しない(falseにすると本番アクセス不能になる)。
   "secrets": {
     "required": [
-      "MICROSOFT_CLIENT_ID",
       "MICROSOFT_CLIENT_PRIVATE_KEY",
       "MICROSOFT_CERT_THUMBPRINT",
       "MICROSOFT_TENANT",
