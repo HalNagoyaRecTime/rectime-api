@@ -327,11 +327,25 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         }
         await db.batch(studentStatements);
       } catch (error) {
-        await deleteUsersByIds(db, userIds);
-        await deleteClassRoomsByCodes(
-          db,
-          input.newClassRooms.map(room => room.classCode)
-        );
+        try {
+          await deleteUsersByIds(db, userIds);
+        } catch (userDeletionError) {
+          console.error(
+            'Error deleting users after student creation failure:',
+            userDeletionError
+          );
+        }
+        try {
+          await deleteClassRoomsByCodes(
+            db,
+            input.newClassRooms.map(room => room.classCode)
+          );
+        } catch (classRoomDeletionError) {
+          console.error(
+            'Error deleting class rooms after student creation failure:',
+            classRoomDeletionError
+          );
+        }
         throw error;
       }
     },
