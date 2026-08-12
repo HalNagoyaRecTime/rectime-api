@@ -238,7 +238,6 @@ jobs:
                   });
                 } else if (review.state === 'DISMISSED') {
                   latestDecisionByUser.delete(login);
-                  reviewerLogins.delete(login);
                 }
               }
 
