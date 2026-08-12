@@ -1,5 +1,6 @@
 import { z } from '@hono/zod-openapi';
-import type { ZodSchema } from 'zod';
+import type { Context } from 'hono';
+import type { ZodError, ZodSchema } from 'zod';
 
 export { z };
 
@@ -39,6 +40,30 @@ export const errorResponseSchema = z
   .openapi('Error');
 
 export type ErrorResponseDTO = z.infer<typeof errorResponseSchema>;
+
+type ValidationHookResult =
+  | { success: true }
+  | { success: false; error: ZodError };
+
+/**
+ * OpenAPI側のZodスキーマがリクエストを弾いたときの400応答。
+ *
+ * OpenAPIHonoに渡さないと @hono/zod-openapi の組み込みフックが発火し、
+ * 各ルートが400として文書化している errorResponseSchema とは異なる
+ * `{ success: false, error: <ZodError> }` を返してしまう。
+ */
+export const validationDefaultHook = (
+  result: ValidationHookResult,
+  c: Context
+): Response | undefined => {
+  if (result.success) return;
+  const body: ErrorResponseDTO = {
+    error: 'Invalid request',
+    code: 'VALIDATION_ERROR',
+    details: result.error.flatten(),
+  };
+  return c.json(body, 400);
+};
 
 export const badRequestResponse = jsonResponse(
   errorResponseSchema,

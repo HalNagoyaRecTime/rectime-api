@@ -20,6 +20,7 @@ import {
   bearerAuthenticationMiddleware,
   type AuthenticationVariables,
 } from './presentation/middleware/bearerAuthentication';
+import { validationDefaultHook } from './presentation/openapi/schemas';
 import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
 import {
   studentCreateRoute,
@@ -92,7 +93,9 @@ import {
   testNotificationRoute,
 } from './presentation/openapi/notifications';
 
-const app = new OpenAPIHono<{ Bindings: Env }>();
+const app = new OpenAPIHono<{ Bindings: Env }>({
+  defaultHook: validationDefaultHook,
+});
 
 let corsWarnLogged = false;
 const allowedOriginRulesCache = new Map<string, AllowedOriginRule[]>();
@@ -178,7 +181,7 @@ app.openapi(apiOverviewRoute, c => {
 const apiV1 = new OpenAPIHono<{
   Bindings: Env;
   Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
-}>();
+}>({ defaultHook: validationDefaultHook });
 
 apiV1.use('*', diContainerMiddleware);
 apiV1.use('*', bearerAuthenticationMiddleware);
