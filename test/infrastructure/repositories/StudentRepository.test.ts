@@ -1,8 +1,25 @@
 import { env } from 'cloudflare:workers';
+import type {
+  D1Database,
+  D1PreparedStatement,
+} from '@cloudflare/workers-types';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createStudentRepository } from '../../../src/infrastructure/repositories/StudentRepository';
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import { seedStudents, type SeededData } from '../../fixtures/students';
+
+function reverseBatchResultRows(db: D1Database): D1Database {
+  return {
+    prepare: query => db.prepare(query),
+    batch: async <T = unknown>(statements: D1PreparedStatement[]) => {
+      const results = await db.batch<T>(statements);
+      return results.map(result => ({
+        ...result,
+        results: [...result.results].reverse(),
+      }));
+    },
+  } as D1Database;
+}
 
 describe('StudentRepository', () => {
   let repo: IStudentRepository;
@@ -156,6 +173,71 @@ describe('StudentRepository', () => {
   });
 
   describe('createMany', () => {
+    it('usersのRETURNING行が入力と逆順でも学生情報を正しく対応付ける', async () => {
+      const reorderedRepo = createStudentRepository(
+        reverseBatchResultRows(env.DB)
+      );
+
+      await reorderedRepo.createMany({
+        newClassRooms: [],
+        students: [
+          {
+            displayName: '逆順生徒A',
+            classCode: 'TEST-1',
+            attendanceNumber: 18,
+            studentIdNumber: 'ORDER-20000',
+          },
+          {
+            displayName: '逆順生徒B',
+            classCode: 'TEST-1',
+            attendanceNumber: 19,
+            studentIdNumber: 'ORDER-20001',
+          },
+        ],
+      });
+
+      expect(await repo.findByStudentNum('ORDER-20000')).toMatchObject({
+        user_name: '逆順生徒A',
+        attendance_number: 18,
+      });
+      expect(await repo.findByStudentNum('ORDER-20001')).toMatchObject({
+        user_name: '逆順生徒B',
+        attendance_number: 19,
+      });
+    });
+
+    it('同姓同名の学生にも異なるuser_idを対応付ける', async () => {
+      await repo.createMany({
+        newClassRooms: [],
+        students: [
+          {
+            displayName: '同姓同名生徒',
+            classCode: 'TEST-1',
+            attendanceNumber: 22,
+            studentIdNumber: 'SAME-NAME-20000',
+          },
+          {
+            displayName: '同姓同名生徒',
+            classCode: 'TEST-1',
+            attendanceNumber: 23,
+            studentIdNumber: 'SAME-NAME-20001',
+          },
+        ],
+      });
+
+      const first = await repo.findByStudentNum('SAME-NAME-20000');
+      const second = await repo.findByStudentNum('SAME-NAME-20001');
+      expect(first).toMatchObject({
+        user_name: '同姓同名生徒',
+        attendance_number: 22,
+      });
+      expect(second).toMatchObject({
+        user_name: '同姓同名生徒',
+        attendance_number: 23,
+      });
+      expect(first?.user_id).not.toBe(second?.user_id);
+    });
+
     it('既存クラスに複数の学生をまとめて作成する', async () => {
       await repo.createMany({
         newClassRooms: [],
