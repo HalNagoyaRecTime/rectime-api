@@ -1,12 +1,35 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { app } from '../src/index';
+import { signAccessToken } from '../src/infrastructure/auth/jwt';
+import { errorResponseSchema } from '../src/presentation/openapi/schemas';
+import { eventListResponseSchema } from '../src/presentation/openapi/events';
 
 const corsTestEnv = {
   ...env,
   ALLOWED_ORIGINS:
     'http://localhost:5173,https://recwatch.pages.dev,https://*.recwatch.pages.dev',
 };
+
+// signAccessToken は32バイト以上のシークレットを要求する。
+const JWT_SECRET = 'a'.repeat(32);
+const authEnv = { ...env, JWT_SECRET };
+
+/** apiV1配下は全ルートが認証必須のため、契約検証にもトークンが要る。 */
+async function bearerHeaders(): Promise<Record<string, string>> {
+  const token = await signAccessToken(
+    {
+      sub: '1',
+      oid: 'oid-1',
+      email: 'contract@example.com',
+      display_name: '契約テスト',
+      client_type: 'web',
+    },
+    JWT_SECRET,
+    3600
+  );
+  return { Authorization: `Bearer ${token}` };
+}
 
 describe('GET /health', () => {
   it('200 と { status: "ok" } を返す', async () => {
@@ -107,6 +130,74 @@ describe('OpenAPI documentation', () => {
 
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("url: '/openapi.json'");
+  });
+
+  it.each(['/openapi.json', '/docs'])(
+    'DOCS_ENABLED が未設定なら %s を公開しない',
+    async path => {
+      const res = await app.fetch(new Request(`http://example.com${path}`), {
+        ...env,
+        DOCS_ENABLED: undefined,
+      });
+
+      expect(res.status).toBe(404);
+    }
+  );
+
+  it('DOCS_ENABLED が未設定なら / から仕様エンドポイントを案内しない', async () => {
+    const res = await app.fetch(new Request('http://example.com/'), {
+      ...env,
+      DOCS_ENABLED: undefined,
+    });
+    const body = (await res.json()) as Record<string, unknown>;
+
+    expect(res.status).toBe(200);
+    expect(body).not.toHaveProperty('openapi');
+    expect(body).not.toHaveProperty('docs');
+  });
+
+  it('DOCS_ENABLED が有効なら / から仕様エンドポイントを案内する', async () => {
+    const res = await app.fetch(new Request('http://example.com/'), env);
+
+    expect(await res.json()).toMatchObject({
+      openapi: '/openapi.json',
+      docs: '/docs',
+    });
+  });
+});
+
+describe('OpenAPIスキーマと実レスポンスの一致', () => {
+  it('スキーマがリクエストを弾いた場合も文書化された400形式で返す', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/api/v1/events/not-a-number', {
+        headers: await bearerHeaders(),
+      }),
+      authEnv
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    // 組み込みフックの `{ success: false, error: <ZodError> }` ではなく、
+    // 各ルートが400として文書化しているスキーマに一致すること。
+    expect(errorResponseSchema.safeParse(body).success).toBe(true);
+    expect(body).toMatchObject({
+      error: 'Invalid request',
+      code: 'VALIDATION_ERROR',
+    });
+  });
+
+  it('成功レスポンスの本文が文書化されたスキーマに一致する', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/api/v1/events', {
+        headers: await bearerHeaders(),
+      }),
+      authEnv
+    );
+
+    expect(res.status).toBe(200);
+    const parsed = eventListResponseSchema.safeParse(await res.json());
+    expect(parsed.error?.issues ?? []).toEqual([]);
+    expect(parsed.success).toBe(true);
   });
 });
 
