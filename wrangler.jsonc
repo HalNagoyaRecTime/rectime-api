@@ -8,6 +8,9 @@
   "vars": {
     "NODE_ENV": "production",
     "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+    // DOCS_ENABLED は本番では意図的に設定しない。設定しない限り
+    // /openapi.json と /docs は404になる(src/index.ts の requireDocsEnabled)。
+    // API仕様・内部エラーコード・DB形状のヒントを無認証で公開しないため。
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
   // 公開されている(README.md参照)。カスタムドメイン/routesは未設定のため、
@@ -90,6 +93,7 @@
         "PORT": "8787",
         "HOST": "0.0.0.0",
         "ALLOWED_ORIGINS": "http://localhost:5173,https://*.recwatch.pages.dev",
+        "DOCS_ENABLED": "true",
       },
       // secrets.required はここでは宣言しない: vitest-pool-workers
       // (test/apply-migrations.ts) がこの環境で62ファイル分のWorkerを並列起動する際、
@@ -165,6 +169,8 @@
       "vars": {
         "NODE_ENV": "preview",
         "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+        // Preview環境はレビュー時にSwagger UIで仕様を確認するため公開する。
+        "DOCS_ENABLED": "true",
         // Entraのマルチテナント共通エンドポイント値。環境によらず同一。
         "MICROSOFT_TENANT": "organizations",
         // 許可するEntraテナントID。

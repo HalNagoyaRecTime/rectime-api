@@ -1,10 +1,11 @@
+import type { MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
 import { swaggerUI } from '@hono/swagger-ui';
 import { OpenAPIHono, type RouteConfig } from '@hono/zod-openapi';
 import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
-import type { Env } from './lib/env';
+import { isDocsEnabled, type Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
 import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
 import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
@@ -170,8 +171,11 @@ app.openapi(apiOverviewRoute, c => {
         testNotification: '/api/v1/notifications/test',
         notificationSchedules: '/api/v1/notification-schedules',
       },
-      openapi: '/openapi.json',
-      docs: '/docs',
+      // 非公開の環境で存在しないエンドポイントを案内しないよう、
+      // DOCS_ENABLED が有効なときだけ含める。
+      ...(isDocsEnabled(c.env)
+        ? { openapi: '/openapi.json', docs: '/docs' }
+        : {}),
     },
     200
   );
@@ -423,6 +427,21 @@ app.openAPIRegistry.registerComponent('securitySchemes', 'Bearer', {
   scheme: 'bearer',
   bearerFormat: 'JWT',
 });
+
+/**
+ * API仕様は認証を通さずに読めてしまうため、DOCS_ENABLED="true" の環境
+ * (development/preview)でのみ公開する。未設定の本番では404を返す。
+ */
+const requireDocsEnabled: MiddlewareHandler<{ Bindings: Env }> = async (
+  c,
+  next
+) => {
+  if (!isDocsEnabled(c.env)) return c.notFound();
+  await next();
+};
+
+app.use('/openapi.json', requireDocsEnabled);
+app.use('/docs', requireDocsEnabled);
 
 app.doc('/openapi.json', {
   openapi: '3.0.3',

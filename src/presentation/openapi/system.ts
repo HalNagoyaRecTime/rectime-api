@@ -10,8 +10,9 @@ export const apiOverviewResponseSchema = z
     message: z.string(),
     version: z.string(),
     endpoints: z.record(z.string()),
-    openapi: z.string(),
-    docs: z.string(),
+    // DOCS_ENABLED が有効な環境でのみ返る（無効な環境では実体が404のため省く）。
+    openapi: z.string().optional(),
+    docs: z.string().optional(),
   })
   .openapi('ApiOverview');
 

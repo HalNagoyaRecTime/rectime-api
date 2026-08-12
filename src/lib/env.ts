@@ -14,6 +14,12 @@ export type Env = {
   NOTIFICATION_DELIVERY_QUEUE: Queue<NotificationDeliveryMessage>;
   ALLOWED_ORIGINS?: string;
   EVENT_DATE?: string;
+  /**
+   * "true" のときだけ /openapi.json と /docs を公開する。
+   * 未設定なら非公開。API仕様・内部エラーコード・DB形状のヒントが
+   * 無認証で読めてしまうため、本番では意図的に設定しない。
+   */
+  DOCS_ENABLED?: string;
   FIREBASE_PROJECT_ID: string;
   FIREBASE_CLIENT_EMAIL: string;
   FIREBASE_PRIVATE_KEY: string;
@@ -29,3 +35,8 @@ export type Env = {
   JWT_EXPIRES_SEC: string;
   MOBILE_REFRESH_EXPIRES_SEC: string;
 };
+
+/** OpenAPI仕様（/openapi.json・/docs）を公開してよい環境か。 */
+export function isDocsEnabled(env: Env): boolean {
+  return (env.DOCS_ENABLED ?? '').trim().toLowerCase() === 'true';
+}
