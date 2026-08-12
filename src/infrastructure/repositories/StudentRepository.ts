@@ -35,6 +35,11 @@ type ReturnedStudentRow = {
   student_id_number: string;
 };
 
+type ReturnedBulkUserRow = {
+  user_id: number;
+  user_name: string;
+};
+
 function toEntity(row: StudentJoinRow): StudentEntity {
   return {
     student_id: row.students.id,
@@ -291,30 +296,30 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         statements.push(
           db
             .prepare(
-              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id`
+              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id, user_name`
             )
             .bind(...values)
         );
       }
 
-      const results = await db.batch<{ user_id: number }>(statements);
+      const results = await db.batch<ReturnedBulkUserRow>(statements);
 
-      const userIds: number[] = [];
+      const returnedUsers: ReturnedBulkUserRow[] = [];
       for (let i = userStatementStartIndex; i < results.length; i++) {
         for (const row of results[i].results) {
-          userIds.push(row.user_id);
+          returnedUsers.push(row);
         }
       }
+      const userIds = returnedUsers.map(row => row.user_id);
 
       try {
+        const studentsWithUserIds = pairStudentsWithCreatedUsers(
+          input.students,
+          returnedUsers
+        );
         const studentStatements: D1PreparedStatement[] = [];
         for (const chunk of chunkArray(
-          input.students.map((student, index) => ({
-            userId: userIds[index],
-            classCode: student.classCode,
-            attendanceNumber: student.attendanceNumber,
-            studentIdNumber: student.studentIdNumber,
-          })),
+          studentsWithUserIds,
           Math.floor(D1_MAX_BOUND_PARAMETERS / 4)
         )) {
           const placeholders = chunk
@@ -362,6 +367,47 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       }
     },
   };
+}
+
+function pairStudentsWithCreatedUsers(
+  studentInputs: BulkCreateStudentsInput['students'],
+  returnedUsers: ReturnedBulkUserRow[]
+) {
+  if (returnedUsers.length !== studentInputs.length) {
+    throw new Error('Failed to correlate created users with students');
+  }
+
+  // SQLite does not guarantee the row order of a multi-row RETURNING result.
+  // Group IDs by the inserted name instead of pairing rows by array index.
+  // Duplicate names use an ID stack because those user rows are otherwise
+  // indistinguishable at this stage.
+  // https://sqlite.org/lang_returning.html
+  const userIdsByName = new Map<string, number[]>();
+  for (const user of returnedUsers) {
+    const ids = userIdsByName.get(user.user_name) ?? [];
+    ids.push(user.user_id);
+    userIdsByName.set(user.user_name, ids);
+  }
+
+  const paired = studentInputs.map(student => {
+    const userIds = userIdsByName.get(student.displayName);
+    const userId = userIds?.pop();
+    if (userId === undefined) {
+      throw new Error('Failed to correlate created users with students');
+    }
+    return {
+      userId,
+      classCode: student.classCode,
+      attendanceNumber: student.attendanceNumber,
+      studentIdNumber: student.studentIdNumber,
+    };
+  });
+
+  if (Array.from(userIdsByName.values()).some(ids => ids.length > 0)) {
+    throw new Error('Failed to correlate created users with students');
+  }
+
+  return paired;
 }
 
 async function deleteUsersByIds(db: D1Database, userIds: number[]) {
