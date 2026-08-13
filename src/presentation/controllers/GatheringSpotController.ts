@@ -25,6 +25,34 @@ export function createGatheringSpotController(
     }
   };
 
+  const getGatheringSpotById = async (c: Context) => {
+    const parsedId = gatheringSpotIdSchema.safeParse(
+      c.req.param('gatheringSpotId')
+    );
+    if (!parsedId.success) {
+      return c.json({ error: 'Invalid gathering spot ID' }, 400);
+    }
+    try {
+      return c.json(
+        await gatheringSpotService.getGatheringSpotById(parsedId.data)
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'Gathering spot not found'
+      ) {
+        return c.json({ error: error.message }, 404);
+      }
+      return c.json(
+        {
+          error: 'Failed to fetch gathering spot',
+          details: error instanceof Error ? error.message : String(error),
+        },
+        500
+      );
+    }
+  };
+
   const createGatheringSpot = async (c: Context) => {
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createGatheringSpotSchema.safeParse(body);
@@ -98,5 +126,44 @@ export function createGatheringSpotController(
     }
   };
 
-  return { getAllGatheringSpots, createGatheringSpot, updateGatheringSpot };
+  const deleteGatheringSpot = async (c: Context) => {
+    const parsedId = gatheringSpotIdSchema.safeParse(
+      c.req.param('gatheringSpotId')
+    );
+    if (!parsedId.success) {
+      return c.json({ error: 'Invalid gathering spot ID' }, 400);
+    }
+    try {
+      await gatheringSpotService.deleteGatheringSpot(parsedId.data);
+      return c.body(null, 204);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'Gathering spot not found'
+      ) {
+        return c.json({ error: error.message }, 404);
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'Gathering spot is in use'
+      ) {
+        return c.json({ error: error.message }, 409);
+      }
+      return c.json(
+        {
+          error: 'Failed to delete gathering spot',
+          details: error instanceof Error ? error.message : String(error),
+        },
+        500
+      );
+    }
+  };
+
+  return {
+    getAllGatheringSpots,
+    getGatheringSpotById,
+    createGatheringSpot,
+    updateGatheringSpot,
+    deleteGatheringSpot,
+  };
 }

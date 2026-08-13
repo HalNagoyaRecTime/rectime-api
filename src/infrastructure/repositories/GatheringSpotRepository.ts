@@ -42,6 +42,17 @@ export function createGatheringSpotRepository(
       return rows.map(toEntity);
     },
 
+    async findById(
+      gatheringSpotId: number
+    ): Promise<GatheringSpotEntity | null> {
+      const row = await orm
+        .select()
+        .from(gathering_spots)
+        .where(eq(gathering_spots.id, gatheringSpotId))
+        .get();
+      return row ? toEntity(row) : null;
+    },
+
     async create(gatheringSpotName: string): Promise<GatheringSpotEntity> {
       const row = await orm
         .insert(gathering_spots)
@@ -63,6 +74,24 @@ export function createGatheringSpotRepository(
         .returning()
         .get();
       return row ? toEntity(row) : null;
+    },
+
+    async delete(gatheringSpotId: number): Promise<boolean> {
+      const result = await orm
+        .delete(gathering_spots)
+        .where(eq(gathering_spots.id, gatheringSpotId))
+        .run();
+      return result.meta.changes > 0;
+    },
+
+    async hasGatherings(gatheringSpotId: number): Promise<boolean> {
+      return Boolean(
+        await orm
+          .select({ id: schema.gatherings.id })
+          .from(schema.gatherings)
+          .where(eq(schema.gatherings.gatheringSpotId, gatheringSpotId))
+          .get()
+      );
     },
   };
 }

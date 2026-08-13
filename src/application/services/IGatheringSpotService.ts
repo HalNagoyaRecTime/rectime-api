@@ -5,6 +5,9 @@ import {
 
 export interface IGatheringSpotService {
   getAllGatheringSpots: () => Promise<GatheringSpotEntity[]>;
+  getGatheringSpotById: (
+    gatheringSpotId: number
+  ) => Promise<GatheringSpotEntity>;
   createGatheringSpot: (
     gatheringSpotName: string
   ) => Promise<GatheringSpotEntity>;
@@ -12,4 +15,5 @@ export interface IGatheringSpotService {
     gatheringSpotId: number,
     input: UpdateGatheringSpotInput
   ) => Promise<GatheringSpotEntity>;
+  deleteGatheringSpot: (gatheringSpotId: number) => Promise<void>;
 }
