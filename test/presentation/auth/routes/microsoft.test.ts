@@ -92,6 +92,7 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
   return {
     DB: workerEnv.DB,
     AUTH_KV: createMockKv(),
+    MASTER_IMPORT_COMMIT_LOCK: {} as Env['MASTER_IMPORT_COMMIT_LOCK'],
     NOTIFICATION_DELIVERY_QUEUE: {} as Env['NOTIFICATION_DELIVERY_QUEUE'],
     ALLOWED_ORIGINS: '',
     FIREBASE_PROJECT_ID: 'project',

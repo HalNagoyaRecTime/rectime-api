@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
+export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
 import type { Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
 import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
@@ -194,15 +195,32 @@ apiV1.delete('/classrooms/:classId', requireAuth, c => {
   return c.get('container').classRoomController.deleteClassroom(c);
 });
 
+// Master import routes
+apiV1.post('/master-imports', requireAuth, c => {
+  return c.get('container').masterImportController.createImport(c);
+});
+apiV1.get('/master-imports/:validatedFileId', requireAuth, c => {
+  return c.get('container').masterImportController.getImport(c);
+});
+apiV1.post('/master-imports/:validatedFileId/commit', requireAuth, c => {
+  return c.get('container').masterImportController.commitImport(c);
+});
+
 // Gathering spot routes
 apiV1.get('/gathering-spots', requireAuth, c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
+});
+apiV1.get('/gathering-spots/:gatheringSpotId', requireAuth, c => {
+  return c.get('container').gatheringSpotController.getGatheringSpotById(c);
 });
 apiV1.post('/gathering-spots', requireAuth, c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
 apiV1.put('/gathering-spots/:gatheringSpotId', requireAuth, c => {
   return c.get('container').gatheringSpotController.updateGatheringSpot(c);
+});
+apiV1.delete('/gathering-spots/:gatheringSpotId', requireAuth, c => {
+  return c.get('container').gatheringSpotController.deleteGatheringSpot(c);
 });
 
 // Gathering member routes

@@ -70,6 +70,20 @@
       "migrations_dir": "migrations",
     },
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MASTER_IMPORT_COMMIT_LOCK",
+        "class_name": "MasterImportCommitLock",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MasterImportCommitLock"],
+    },
+  ],
   "env": {
     // ローカル開発用(wrangler dev --env development)。env.default は
     // development と重複していたため削除した。
@@ -102,6 +116,14 @@
           "migrations_dir": "migrations",
         },
       ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "MASTER_IMPORT_COMMIT_LOCK",
+            "class_name": "MasterImportCommitLock",
+          },
+        ],
+      },
       "queues": {
         "producers": [
           {
@@ -194,6 +216,14 @@
           "migrations_dir": "migrations",
         },
       ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "MASTER_IMPORT_COMMIT_LOCK",
+            "class_name": "MasterImportCommitLock",
+          },
+        ],
+      },
       // キューもD1/KVと同様、env.developmentと同じものを共用する
       // (Preview専用キューは作成していない)。
       "queues": {

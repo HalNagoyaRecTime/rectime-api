@@ -3,7 +3,7 @@ import * as schema from '../database/schema';
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { class_rooms, teachers, users } from '../database/schema';
 
-import { D1Database } from '@cloudflare/workers-types';
+import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import {
   TeacherCreateInput,
   TeacherEntity,
@@ -11,7 +11,13 @@ import {
   TeacherSearchFilter,
   TeacherUpdateInput,
 } from '../../domain/entities/Teacher';
-import { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
+import {
+  ITeacherRepository,
+  NewTeacherInput,
+} from '../../domain/interfaces/repositories/ITeacherRepository';
+import { chunkArray } from './chunk';
+
+const D1_MAX_BOUND_PARAMETERS = 100;
 
 const DEFAULT_OFFSET = 0;
 const DEFAULT_LIMIT = 20;
@@ -205,23 +211,28 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       return rows.length === classRoomIds.length;
     },
 
-    async create(input: TeacherCreateInput): Promise<TeacherEntity> {
+    async create(
+      input: TeacherCreateInput | NewTeacherInput
+    ): Promise<TeacherEntity> {
+      const isTeacherCreateInput = 'classRoomIds' in input;
+      const userName = isTeacherCreateInput ? input.userName : input.displayName;
+      const classRoomIds = isTeacherCreateInput ? input.classRoomIds : [];
       const userInsert = db
         .prepare(
           `INSERT INTO users (user_name, is_live_active, updated_at)
            VALUES (?, ?, CURRENT_TIMESTAMP)
            RETURNING user_id`
         )
-        .bind(input.userName, 1);
+        .bind(userName, 1);
       const teacherInsert = db.prepare(
         `INSERT INTO teachers (user_id, updated_at)
            VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
            RETURNING teacher_id`
       );
 
-      const statements = [userInsert, teacherInsert];
-      if (input.classRoomIds.length > 0) {
-        const placeholders = input.classRoomIds.map(() => '?').join(', ');
+      const statements: D1PreparedStatement[] = [userInsert, teacherInsert];
+      if (classRoomIds.length > 0) {
+        const placeholders = classRoomIds.map(() => '?').join(', ');
         statements.push(
           db
             .prepare(
@@ -229,7 +240,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
                SET teacher_id = last_insert_rowid(), updated_at = CURRENT_TIMESTAMP
                WHERE class_room_id IN (${placeholders})`
             )
-            .bind(...input.classRoomIds)
+            .bind(...classRoomIds)
         );
       }
 
@@ -246,6 +257,62 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         throw new Error('Failed to create teacher');
       }
       return created;
+    },
+
+    async createMany(inputs: NewTeacherInput[]): Promise<void> {
+      if (inputs.length === 0) {
+        return;
+      }
+
+      const userStatements: D1PreparedStatement[] = [];
+      for (const chunk of chunkArray(inputs, D1_MAX_BOUND_PARAMETERS)) {
+        const placeholders = chunk
+          .map(() => '(?, CURRENT_TIMESTAMP)')
+          .join(', ');
+        const values = chunk.map(input => input.displayName);
+        userStatements.push(
+          db
+            .prepare(
+              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id`
+            )
+            .bind(...values)
+        );
+      }
+
+      const userResults = await db.batch<{ user_id: number }>(userStatements);
+      const userIds: number[] = [];
+      for (const result of userResults) {
+        for (const row of result.results) {
+          userIds.push(row.user_id);
+        }
+      }
+
+      try {
+        const teacherStatements: D1PreparedStatement[] = [];
+        for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
+          const placeholders = chunk
+            .map(() => '(?, CURRENT_TIMESTAMP)')
+            .join(', ');
+          teacherStatements.push(
+            db
+              .prepare(
+                `INSERT INTO teachers (user_id, updated_at) VALUES ${placeholders}`
+              )
+              .bind(...chunk)
+          );
+        }
+        await db.batch(teacherStatements);
+      } catch (error) {
+        try {
+          await deleteUsersByIds(db, userIds);
+        } catch (userDeletionError) {
+          console.error(
+            'Error deleting users after teacher creation failure:',
+            userDeletionError
+          );
+        }
+        throw error;
+      }
     },
 
     async update(
@@ -359,4 +426,14 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       }
     },
   };
+}
+
+async function deleteUsersByIds(db: D1Database, userIds: number[]) {
+  for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM users WHERE user_id IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+  }
 }

@@ -1,4 +1,10 @@
-import { TeacherDTO, TeacherPageDTO } from '../dto/TeacherDTO';
+import {
+  TeacherDTO,
+  TeacherImportCommitResult,
+  TeacherImportInput,
+  TeacherImportValidationResult,
+  TeacherPageDTO,
+} from '../dto/TeacherDTO';
 import type {
   TeacherCreateInput,
   TeacherEntity,
@@ -99,6 +105,34 @@ export function createTeacherService(
       if (!deleted) {
         throw new Error('Teacher not found');
       }
+    },
+
+    async validateTeacherImport(
+      input: TeacherImportInput
+    ): Promise<TeacherImportValidationResult> {
+      return {
+        total: input.rows.length,
+        success_count: input.rows.length,
+        error_count: 0,
+        errors: [],
+      };
+    },
+
+    async commitTeacherImport(
+      input: TeacherImportInput
+    ): Promise<TeacherImportCommitResult> {
+      await teacherRepository.createMany(
+        input.rows.map(row => ({
+          displayName: `${row.last_name}${row.first_name}`,
+        }))
+      );
+
+      return {
+        total: input.rows.length,
+        imported: input.rows.length,
+        error_count: 0,
+        errors: [],
+      };
     },
   };
 }

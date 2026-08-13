@@ -1,4 +1,10 @@
-import { TeacherDTO, TeacherPageDTO } from '../dto/TeacherDTO';
+import {
+  TeacherDTO,
+  TeacherImportCommitResult,
+  TeacherImportInput,
+  TeacherImportValidationResult,
+  TeacherPageDTO,
+} from '../dto/TeacherDTO';
 import {
   TeacherCreateInput,
   TeacherSearchFilter,
@@ -17,4 +23,10 @@ export interface ITeacherService {
     input: TeacherUpdateRequest
   ) => Promise<TeacherDTO>;
   deleteTeacher: (id: number) => Promise<void>;
+  validateTeacherImport: (
+    input: TeacherImportInput
+  ) => Promise<TeacherImportValidationResult>;
+  commitTeacherImport: (
+    input: TeacherImportInput
+  ) => Promise<TeacherImportCommitResult>;
 }

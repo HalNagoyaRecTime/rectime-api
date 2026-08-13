@@ -1,10 +1,16 @@
-import type { D1Database } from '@cloudflare/workers-types';
+import type {
+  D1Database,
+  D1PreparedStatement,
+} from '@cloudflare/workers-types';
 import type {
   ClassRoomEntity,
   ClassRoomInput,
   ClassRoomPage,
 } from '../../domain/entities/ClassRoom';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
+import { chunkArray } from './chunk';
+
+const D1_MAX_BOUND_PARAMETERS = 100;
 
 type ClassRoomRow = {
   class_room_id: number;
@@ -86,6 +92,36 @@ export function createClassRoomRepository(
 
     findById,
 
+    async findByCode(classCode: string): Promise<ClassRoomEntity | null> {
+      const row = await db
+        .prepare(
+          `${classRoomSelect} WHERE c.class_code = ? GROUP BY c.class_room_id`
+        )
+        .bind(classCode)
+        .first<ClassRoomRow>();
+      return row ? toEntity(row) : null;
+    },
+
+    async findExistingClassCodes(classCodes: string[]): Promise<Set<string>> {
+      const unique = Array.from(new Set(classCodes));
+      const found = new Set<string>();
+
+      for (const chunk of chunkArray(unique, D1_MAX_BOUND_PARAMETERS)) {
+        const placeholders = chunk.map(() => '?').join(', ');
+        const result = await db
+          .prepare(
+            `SELECT class_code FROM class_rooms WHERE class_code IN (${placeholders})`
+          )
+          .bind(...chunk)
+          .all<{ class_code: string }>();
+        for (const row of result.results) {
+          found.add(row.class_code);
+        }
+      }
+
+      return found;
+    },
+
     async create(input: ClassRoomInput): Promise<ClassRoomEntity> {
       const row = await db
         .prepare(
@@ -97,6 +133,33 @@ export function createClassRoomRepository(
       const classroom = await findById(row.class_room_id);
       if (!classroom) throw new Error('Failed to fetch created class');
       return classroom;
+    },
+
+    async createMany(inputs: ClassRoomInput[]): Promise<void> {
+      if (inputs.length === 0) {
+        return;
+      }
+
+      const statements: D1PreparedStatement[] = [];
+      for (const chunk of chunkArray(
+        inputs,
+        Math.floor(D1_MAX_BOUND_PARAMETERS / 3)
+      )) {
+        const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');
+        const values = chunk.flatMap(input => [
+          input.class_code,
+          input.class_name,
+          input.teacher_id,
+        ]);
+        statements.push(
+          db
+            .prepare(
+              `INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ${placeholders}`
+            )
+            .bind(...values)
+        );
+      }
+      await db.batch(statements);
     },
 
     async update(
