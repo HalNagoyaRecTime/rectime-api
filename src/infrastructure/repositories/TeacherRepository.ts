@@ -265,7 +265,14 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         }
         await db.batch(teacherStatements);
       } catch (error) {
-        await deleteUsersByIds(db, userIds);
+        try {
+          await deleteUsersByIds(db, userIds);
+        } catch (userDeletionError) {
+          console.error(
+            'Error deleting users after teacher creation failure:',
+            userDeletionError
+          );
+        }
         throw error;
       }
     },
