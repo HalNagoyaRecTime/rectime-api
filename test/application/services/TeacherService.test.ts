@@ -159,6 +159,30 @@ describe('TeacherService', () => {
       ).rejects.toThrow('Class room not found');
       expect(repository.create).not.toHaveBeenCalled();
     });
+
+    it('classRoomIds が空の場合は存在チェックをスキップして作成する', async () => {
+      const created = buildTeacher({
+        user_name: '担当なし先生',
+        class_rooms: [],
+      });
+      const repository = buildRepository({
+        existsClassRooms: vi.fn(),
+        create: vi.fn().mockResolvedValue(created),
+      });
+      const service = createTeacherService(repository);
+
+      const dto = await service.createTeacher({
+        userName: '担当なし先生',
+        classRoomIds: [],
+      });
+
+      expect(repository.existsClassRooms).not.toHaveBeenCalled();
+      expect(repository.create).toHaveBeenCalledWith({
+        userName: '担当なし先生',
+        classRoomIds: [],
+      });
+      expect(dto.class_rooms).toEqual([]);
+    });
   });
 
   describe('updateTeacher', () => {

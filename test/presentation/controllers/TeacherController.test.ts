@@ -198,6 +198,24 @@ describe('TeacherController', () => {
       expect(teacherService.createTeacher).not.toHaveBeenCalled();
     });
 
+    it('classRoomIds に重複がある場合は 400 を返す', async () => {
+      const { app, teacherService } = setup();
+
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userName: '新規先生',
+          classRoomIds: [1, 1, 2],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe('Invalid teacher create request body');
+      expect(teacherService.createTeacher).not.toHaveBeenCalled();
+    });
+
     it('存在しないクラスIDの場合は 400 を返す', async () => {
       const { app, teacherService } = setup();
       (
