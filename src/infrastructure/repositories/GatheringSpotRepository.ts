@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, count, eq, like, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringSpotEntity } from '../../domain/entities/GatheringSpot';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
@@ -40,6 +40,38 @@ export function createGatheringSpotRepository(
         .orderBy(asc(gathering_spots.id))
         .all();
       return rows.map(toEntity);
+    },
+
+    async findPage(options): Promise<{
+      gathering_spots: GatheringSpotEntity[];
+      total: number;
+      limit: number;
+      offset: number;
+    }> {
+      const nameFilter = options.name
+        ? like(gathering_spots.name, `%${options.name}%`)
+        : undefined;
+      const [rows, totalRow] = await Promise.all([
+        orm
+          .select()
+          .from(gathering_spots)
+          .where(nameFilter)
+          .orderBy(asc(gathering_spots.id))
+          .limit(options.limit)
+          .offset(options.offset)
+          .all(),
+        orm
+          .select({ total: count() })
+          .from(gathering_spots)
+          .where(nameFilter)
+          .get(),
+      ]);
+      return {
+        gathering_spots: rows.map(toEntity),
+        total: totalRow?.total ?? 0,
+        limit: options.limit,
+        offset: options.offset,
+      };
     },
 
     async findById(

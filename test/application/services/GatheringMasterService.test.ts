@@ -15,6 +15,7 @@ describe('Gathering master services', () => {
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
       findAll: vi.fn().mockResolvedValue([spot]),
+      findPage: vi.fn(),
       findById: vi.fn(),
       create: vi.fn().mockResolvedValue(spot),
       update: vi.fn(),
@@ -37,6 +38,7 @@ describe('Gathering master services', () => {
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
       findAll: vi.fn(),
+      findPage: vi.fn(),
       findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn().mockResolvedValue(updatedSpot),
@@ -56,6 +58,7 @@ describe('Gathering master services', () => {
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
       findAll: vi.fn(),
+      findPage: vi.fn(),
       findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn().mockResolvedValue(null),
@@ -75,6 +78,7 @@ describe('Gathering master services', () => {
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
       findAll: vi.fn(),
+      findPage: vi.fn(),
       findById: vi.fn().mockResolvedValue(null),
       create: vi.fn(),
       update: vi.fn(),
@@ -92,6 +96,7 @@ describe('Gathering master services', () => {
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
       findAll: vi.fn(),
+      findPage: vi.fn(),
       findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -108,6 +113,7 @@ describe('Gathering master services', () => {
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
       findAll: vi.fn(),
+      findPage: vi.fn(),
       findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
