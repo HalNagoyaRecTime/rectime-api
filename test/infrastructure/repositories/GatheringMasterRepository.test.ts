@@ -188,6 +188,81 @@ describe('Gathering master repositories', () => {
     });
   });
 
+  it('名称検索とcreatedAt・updatedAtソートを組み合わせられる', async () => {
+    const first = await gatheringSpotRepository.create('体育館前');
+    const second = await gatheringSpotRepository.create('体育館裏');
+    const third = await gatheringSpotRepository.create('正門前');
+    gatheringSpotIds.push(
+      first.gathering_spot_id,
+      second.gathering_spot_id,
+      third.gathering_spot_id
+    );
+
+    await env.DB.batch([
+      env.DB.prepare(
+        'UPDATE gathering_spots SET created_at = ?, updated_at = ? WHERE gathering_spot_id = ?'
+      ).bind(
+        '2026-01-02 00:00:00',
+        '2026-01-01 00:00:00',
+        first.gathering_spot_id
+      ),
+      env.DB.prepare(
+        'UPDATE gathering_spots SET created_at = ?, updated_at = ? WHERE gathering_spot_id = ?'
+      ).bind(
+        '2026-01-03 00:00:00',
+        '2026-01-03 00:00:00',
+        second.gathering_spot_id
+      ),
+      env.DB.prepare(
+        'UPDATE gathering_spots SET created_at = ?, updated_at = ? WHERE gathering_spot_id = ?'
+      ).bind(
+        '2026-01-01 00:00:00',
+        '2026-01-04 00:00:00',
+        third.gathering_spot_id
+      ),
+    ]);
+
+    await expect(
+      gatheringSpotRepository.findPage({
+        name: '体育館',
+        limit: 20,
+        offset: 0,
+        sortBy: 'updatedAt',
+        sortOrder: 'desc',
+      })
+    ).resolves.toMatchObject({
+      total: 2,
+      gathering_spots: [
+        expect.objectContaining({
+          gathering_spot_id: second.gathering_spot_id,
+        }),
+        expect.objectContaining({
+          gathering_spot_id: first.gathering_spot_id,
+        }),
+      ],
+    });
+
+    await expect(
+      gatheringSpotRepository.findPage({
+        name: '体育館',
+        limit: 20,
+        offset: 0,
+        sortBy: 'createdAt',
+        sortOrder: 'asc',
+      })
+    ).resolves.toMatchObject({
+      total: 2,
+      gathering_spots: [
+        expect.objectContaining({
+          gathering_spot_id: first.gathering_spot_id,
+        }),
+        expect.objectContaining({
+          gathering_spot_id: second.gathering_spot_id,
+        }),
+      ],
+    });
+  });
+
   it('集合対象者を追加・一覧取得・解除でき、重複追加を防止する', async () => {
     const gatheringId = await createGathering('基本');
     const userId = await createUser('集合対象者1');
