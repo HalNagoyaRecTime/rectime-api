@@ -215,7 +215,9 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       input: TeacherCreateInput | NewTeacherInput
     ): Promise<TeacherEntity> {
       const isTeacherCreateInput = 'classRoomIds' in input;
-      const userName = isTeacherCreateInput ? input.userName : input.displayName;
+      const userName = isTeacherCreateInput
+        ? input.userName
+        : input.displayName;
       const classRoomIds = isTeacherCreateInput ? input.classRoomIds : [];
       const userInsert = db
         .prepare(
