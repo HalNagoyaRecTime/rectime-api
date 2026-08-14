@@ -187,12 +187,6 @@ export function createTeacherController(teacherService: ITeacherService) {
       if (error instanceof Error && error.message === 'Teacher not found') {
         return c.json({ error: error.message }, 404);
       }
-      if (
-        error instanceof Error &&
-        error.message === 'Teacher is referenced by other data'
-      ) {
-        return c.json({ error: error.message }, 409);
-      }
       return c.json(
         {
           error: 'Failed to delete teacher',

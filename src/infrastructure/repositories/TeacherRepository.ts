@@ -143,6 +143,8 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       }
       if (filter.isLiveActive !== undefined) {
         conditions.push(eq(users.isLiveActive, filter.isLiveActive ? 1 : 0));
+      } else {
+        conditions.push(eq(users.isLiveActive, 1));
       }
 
       if (filter.classRoomId !== undefined) {
@@ -377,7 +379,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .innerJoin(users, eq(teachers.userId, users.id))
         .where(eq(teachers.id, id))
         .get();
-      if (!existing) return null;
+      if (!existing || existing.users.isLiveActive !== 1) return null;
 
       const now = new Date().toISOString();
 
@@ -451,31 +453,26 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       return Boolean(row);
     },
 
-    async delete(id: number): Promise<boolean> {
-      // class_rooms.teacher_id は ON DELETE の挙動を明示していない外部キーのため、
-      // 割り当てが残ったまま削除しようとするとFK制約違反になる。
-      // hasClassAssignments によるチェックと実際の delete の間に、別リクエストが
-      // 担当クラスを新規に割り当てる競合が起きても、このエラーを検知して
-      // 呼び出し元（Service層）が既存の参照エラーと同じ扱いをできるようにする。
-      try {
-        const row = await orm
-          .delete(teachers)
-          .where(eq(teachers.id, id))
-          .returning()
-          .get();
-        return Boolean(row);
-      } catch (err) {
-        const message =
-          err instanceof Error && err.cause instanceof Error
-            ? err.cause.message
-            : err instanceof Error
-              ? err.message
-              : String(err);
-        if (message.includes('FOREIGN KEY constraint failed')) {
-          throw new Error('Teacher is referenced by other data');
-        }
-        throw err;
-      }
+    async deactivate(id: number): Promise<boolean> {
+      const existing = await orm
+        .select({ userId: teachers.userId })
+        .from(teachers)
+        .where(eq(teachers.id, id))
+        .get();
+      if (!existing) return false;
+
+      const now = new Date().toISOString();
+      await orm.batch([
+        orm
+          .update(users)
+          .set({ isLiveActive: 0, updatedAt: now })
+          .where(eq(users.id, existing.userId)),
+        orm
+          .update(class_rooms)
+          .set({ teacherId: null, updatedAt: now })
+          .where(eq(class_rooms.teacherId, id)),
+      ]);
+      return true;
     },
   };
 }
