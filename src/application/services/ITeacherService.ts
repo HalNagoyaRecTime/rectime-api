@@ -7,6 +7,11 @@ import {
 } from '../dto/TeacherDTO';
 import { TeacherSearchFilter } from '../../domain/entities/Teacher';
 
+export interface TeacherCreateRequest {
+  userName: string;
+  classRoomIds: number[];
+}
+
 export interface TeacherUpdateRequest {
   userName: string;
   isLiveActive: boolean;
@@ -14,6 +19,7 @@ export interface TeacherUpdateRequest {
 }
 
 export interface ITeacherService {
+  createTeacher: (input: TeacherCreateRequest) => Promise<TeacherDTO>;
   getTeacherById: (id: number) => Promise<TeacherDTO>;
   getAllTeachers: (filter?: TeacherSearchFilter) => Promise<TeacherPageDTO>;
   updateTeacher: (

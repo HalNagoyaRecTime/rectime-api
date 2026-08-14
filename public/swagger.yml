@@ -330,6 +330,26 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
   /teachers:
+    post:
+      tags: [Teachers]
+      summary: 教員を新規登録する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeacherCreateRequest'
+      responses:
+        '201':
+          description: 登録された教員
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Teacher'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
     get:
       tags: [Teachers]
       summary: 教員一覧を検索する
@@ -1959,6 +1979,21 @@ components:
           type: array
           uniqueItems: true
           description: 重複したIDを指定した場合は400を返す
+          items:
+            type: integer
+            minimum: 1
+
+    TeacherCreateRequest:
+      type: object
+      required: [userName, classRoomIds]
+      additionalProperties: false
+      properties:
+        userName:
+          type: string
+          minLength: 1
+        classRoomIds:
+          type: array
+          uniqueItems: true
           items:
             type: integer
             minimum: 1

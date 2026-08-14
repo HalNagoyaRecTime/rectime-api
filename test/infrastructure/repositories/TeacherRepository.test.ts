@@ -286,6 +286,21 @@ describe('TeacherRepository', () => {
       expect(created.teacher_id).toEqual(expect.any(Number));
       expect(created.user_id).toEqual(expect.any(Number));
     });
+
+    it('指定したクラスを担当として作成する', async () => {
+      const classRoomId = seeded.classRooms[1].classRoomId;
+      const created = await repo.create({
+        userName: 'クラス担当教官',
+        classRoomIds: [classRoomId],
+      });
+
+      expect(created.class_rooms).toEqual([
+        expect.objectContaining({ class_room_id: classRoomId }),
+      ]);
+      expect((await repo.findById(created.teacher_id))?.class_rooms).toEqual(
+        created.class_rooms
+      );
+    });
   });
 
   describe('createMany', () => {

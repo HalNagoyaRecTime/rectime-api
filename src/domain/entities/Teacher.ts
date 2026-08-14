@@ -33,3 +33,8 @@ export interface TeacherUpdateInput {
   isLiveActive: boolean;
   classRoomIds: number[];
 }
+
+export interface TeacherCreateInput {
+  userName: string;
+  classRoomIds: number[];
+}

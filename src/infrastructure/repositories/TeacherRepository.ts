@@ -9,6 +9,7 @@ import {
   TeacherPage,
   TeacherSearchFilter,
   TeacherUpdateInput,
+  TeacherCreateInput,
 } from '../../domain/entities/Teacher';
 import {
   ITeacherRepository,
@@ -186,7 +187,11 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       return rows.length === classRoomIds.length;
     },
 
-    async create(input: NewTeacherInput): Promise<TeacherEntity> {
+    async create(
+      input: NewTeacherInput | TeacherCreateInput
+    ): Promise<TeacherEntity> {
+      const displayName =
+        'userName' in input ? input.userName : input.displayName;
       const [userResult, teacherResult] = await db.batch<
         ReturnedUserRow | ReturnedTeacherRow
       >([
@@ -196,7 +201,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
              VALUES (?, CURRENT_TIMESTAMP)
              RETURNING user_id, user_name, is_live_active`
           )
-          .bind(input.displayName),
+          .bind(displayName),
         db.prepare(
           `INSERT INTO teachers (user_id, updated_at)
            VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
@@ -212,13 +217,32 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         throw new Error('Failed to create teacher');
       }
 
-      return {
-        teacher_id: created.teacher_id,
-        user_id: user.user_id,
-        user_name: user.user_name,
-        is_live_active: user.is_live_active === 1,
-        class_rooms: [],
-      };
+      if ('userName' in input && input.classRoomIds.length > 0) {
+        await db.batch(
+          input.classRoomIds.map(classRoomId =>
+            db
+              .prepare(
+                'UPDATE class_rooms SET teacher_id = ?, updated_at = CURRENT_TIMESTAMP WHERE class_room_id = ?'
+              )
+              .bind(created.teacher_id, classRoomId)
+          )
+        );
+      }
+
+      const result = await orm
+        .select()
+        .from(teachers)
+        .innerJoin(users, eq(teachers.userId, users.id))
+        .where(eq(teachers.id, created.teacher_id))
+        .get();
+      if (!result) throw new Error('Failed to create teacher');
+      const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [
+        created.teacher_id,
+      ]);
+      return toEntity(
+        result,
+        classRoomsByTeacher.get(created.teacher_id) ?? []
+      );
     },
 
     async createMany(inputs: NewTeacherInput[]): Promise<void> {

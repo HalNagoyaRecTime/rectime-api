@@ -130,6 +130,9 @@ apiV1.get('/staffs/:staffId', requireAuth, c => {
 });
 
 // Teacher routes
+apiV1.post('/teachers', requireAuth, c => {
+  return c.get('container').teacherController.createTeacher(c);
+});
 apiV1.get('/teachers', requireAuth, c => {
   return c.get('container').teacherController.getAllTeachers(c);
 });
