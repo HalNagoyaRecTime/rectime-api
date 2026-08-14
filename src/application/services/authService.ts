@@ -7,12 +7,19 @@ function extractStudentIdNumber(
   studentEmailDomain: string
 ): string | null {
   const [localPart, domain] = email.split('@');
+  // emailが空文字の場合(claims.preferred_username/emailが
+  // どちらも無い場合)、localPartも空文字になるためガードする。
+  // (@が無い場合のガードではない)
   if (!localPart || !domain) return null;
 
   //ドメインが学生用のものと一致しない場合、対象外とする
   if (domain !== studentEmailDomain) return null;
 
   //"nhs"+ 数値 の形式に当てはまらない場合、学籍番号とみなさない
+  // 抽出した数字列は、students.student_id_number(text型)の値と
+  // 完全一致で照合される前提のため、先頭ゼロの有無を含め、
+  // メールアドレスとDBの登録値の表記が揃っている必要がある
+  // (例: メールが nhs00123 なら、DB側も "00123" である必要がある)。
   const match = localPart.match(/^nhs(\d)$/);
   return match ? match[1] : null;
 }
