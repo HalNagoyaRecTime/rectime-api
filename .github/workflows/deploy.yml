@@ -63,8 +63,10 @@ jobs:
             echo "env_flag=" >> "$GITHUB_OUTPUT"
             echo "d1_database=rectime-api" >> "$GITHUB_OUTPUT"
           else
+            # develop等、main以外のブランチへの直接pushはenv.development(rectime-api-development)
+            # へデプロイする。env.previewはPRごとのpreview-alias専用として切り離す。
             echo "mode=deploy" >> "$GITHUB_OUTPUT"
-            echo "env_flag=--env preview" >> "$GITHUB_OUTPUT"
+            echo "env_flag=--env development" >> "$GITHUB_OUTPUT"
             echo "d1_database=rectime-api-dev" >> "$GITHUB_OUTPUT"
           fi
 
