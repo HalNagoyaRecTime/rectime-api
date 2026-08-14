@@ -17,6 +17,9 @@ export interface TeacherSearchFilter {
   userName?: string;
   classRoomId?: number;
   isLiveActive?: boolean;
+  search?: string;
+  sortBy?: 'teacherId' | 'displayName';
+  sortOrder?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
 }

@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { class_rooms, teachers, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
@@ -31,7 +31,7 @@ type ReturnedTeacherRow = {
 };
 
 const DEFAULT_OFFSET = 0;
-const DEFAULT_LIMIT = 20;
+const DEFAULT_LIMIT = 50;
 
 // LIKE検索の対象文字列に % や _ そのものが含まれていても、ワイルドカードとして
 // 展開されず文字通りに一致するよう、SQLiteの ESCAPE 句と組み合わせて使う。
@@ -125,6 +125,22 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`
         );
       }
+      if (filter.search) {
+        const escapedPattern = `%${escapeLikePattern(filter.search)}%`;
+        conditions.push(
+          or(
+            sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
+            sql`EXISTS (
+              SELECT 1 FROM class_rooms search_class_rooms
+              WHERE search_class_rooms.teacher_id = teachers.teacher_id
+                AND (
+                  search_class_rooms.class_code LIKE ${escapedPattern} ESCAPE ${'\\'}
+                  OR search_class_rooms.class_name LIKE ${escapedPattern} ESCAPE ${'\\'}
+                )
+            )`
+          )!
+        );
+      }
       if (filter.isLiveActive !== undefined) {
         conditions.push(eq(users.isLiveActive, filter.isLiveActive ? 1 : 0));
       }
@@ -157,10 +173,13 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .select()
         .from(teachers)
         .innerJoin(users, eq(teachers.userId, users.id));
+      const sortOrder = filter.sortOrder === 'desc' ? desc : asc;
+      const sortColumn =
+        filter.sortBy === 'displayName' ? users.userName : teachers.id;
       const results = await (
         whereClause ? rowsBaseQuery.where(whereClause) : rowsBaseQuery
       )
-        .orderBy(asc(teachers.id))
+        .orderBy(sortOrder(sortColumn), asc(teachers.id))
         .limit(limit)
         .offset(offset)
         .all();

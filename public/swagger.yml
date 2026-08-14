@@ -376,9 +376,26 @@ paths:
           description: 有効状態で絞り込む
           schema:
             type: boolean
+        - name: search
+          in: query
+          description: 教員名・クラスコード・クラス名の部分一致
+          schema:
+            type: string
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [teacherId, displayName]
+            default: teacherId
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
         - name: limit
           in: query
-          description: 取得件数（デフォルト20、最大100）
+          description: 取得件数（デフォルト50、最大100）
           schema:
             type: integer
             minimum: 1
@@ -396,6 +413,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TeacherPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
