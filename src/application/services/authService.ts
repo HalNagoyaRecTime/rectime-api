@@ -12,7 +12,7 @@ function extractStudentIdNumber(
   //ドメインが学生用のものと一致しない場合、対象外とする
   if (domain !== studentEmailDomain) return null;
 
-  //"nhs"+数値の形式に当てはまらない場合、学籍番号とみなさない
+  //"nhs"+ 数値 の形式に当てはまらない場合、学籍番号とみなさない
   const match = localPart.match(/^nhs(\d)$/);
   return match ? match[1] : null;
 }
@@ -50,19 +50,53 @@ export function createAuthService(
         const student =
           await studentRepository.findByStudentNum(studentIdNumber);
         if (student) {
-          await userRepository.linkMicrosoftAccount({
-            userId: String(student.user_id),
-            oid: claims.oid,
-            tid: claims.tid,
-          });
-          return {
-            id: String(student.user_id),
-            oid: claims.oid,
-            tid: claims.tid,
-            sub: claims.sub,
-            email,
-            display_name: student.user_name,
-          };
+          try{
+            await userRepository.linkMicrosoftAccount({
+              userId: String(student.user_id),
+              oid: claims.oid,
+              tid: claims.tid,
+            });
+            return {
+              id: String(student.user_id),
+              oid: claims.oid,
+              tid: claims.tid,
+              sub: claims.sub,
+              email,
+              display_name: student.user_name,
+            };
+          } catch (err) {
+            if (!(err instanceof Error)) throw err;
+
+            //user_idが既に別のMicrosoftアカウントと結びついている場合
+            if (
+              err.message.includes('UNIQUE constraint failed') &&
+              err.message.includes('microsoft_account_links.user_id')
+            ){
+              throw new Error('STUDENT_ALREADY_LINKED')
+            }
+
+            // 同時初回ログインによる UNIQUE 制約違反: 先勝ちしたレコードを正とする
+            // この場合、既に存在するusers.user_idを活用し、microsoft_account_linksに挿入完了した結果
+            // に対しての(oid,tid)のUNIQUE制約違反になるので、usersは更新しない
+            if (
+              err.message.includes('UNIQUE constraint failed') &&
+              err.message.includes('microsoft_account_links.oid')
+            ){
+              const racedUserId = await userRepository.findUserIdByMicrosoftAccount(
+                claims.oid,
+                claims.tid
+              );
+              if (!racedUserId) throw new Error('LINK_STUDENT_FAILED');
+              return {
+                id: racedUserId,
+                oid: claims.oid,
+                tid: claims.tid,
+                sub: claims.sub,
+                email,
+                display_name: student.user_name,
+              };
+            }
+          }
         }
       }
 

@@ -135,22 +135,30 @@ export function createUserRepository(db: D1Database): IUserRepository {
         display_name: displayName,
       };
     },
-
+    //すでに学生登録時にusersにuser_idが存在している場合、microsoft_account_linksをそのuser_idに合わせてinsertする
     async linkMicrosoftAccount({ userId, oid, tid }) {
       const now = new Date().toISOString();
 
-      await orm
-        .insert(microsoft_account_links)
-        .values({
-          userId: Number(userId),
-          oid,
-          tid,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .run();
+      try {
+        await orm
+          .insert(microsoft_account_links)
+          .values({
+            userId: Number(userId),
+            oid,
+            tid,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run();
+      } catch (err) {
+        // DrizzleはD1の制約違反を「Failed query」エラーでラップする。
+        // 既存の生SQL実装と同じエラーを呼び出し元へ返せるよう、原因を再送出する。
+        if (err instanceof Error && err.cause instanceof Error) {
+          throw err.cause;
+        }
+      }
     },
-
+    
     async updateUser({ userId, oid, tid, sub, email, displayName }) {
       const now = new Date().toISOString();
 
