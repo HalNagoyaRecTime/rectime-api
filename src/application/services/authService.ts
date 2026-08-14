@@ -57,7 +57,7 @@ export function createAuthService(
         const student =
           await studentRepository.findByStudentNum(studentIdNumber);
         if (student) {
-          try{
+          try {
             await userRepository.linkMicrosoftAccount({
               userId: String(student.user_id),
               oid: claims.oid,
@@ -78,8 +78,8 @@ export function createAuthService(
             if (
               err.message.includes('UNIQUE constraint failed') &&
               err.message.includes('microsoft_account_links.user_id')
-            ){
-              throw new Error('STUDENT_ALREADY_LINKED')
+            ) {
+              throw new Error('STUDENT_ALREADY_LINKED');
             }
 
             // 同時初回ログインによる UNIQUE 制約違反: 先勝ちしたレコードを正とする
@@ -88,11 +88,12 @@ export function createAuthService(
             if (
               err.message.includes('UNIQUE constraint failed') &&
               err.message.includes('microsoft_account_links.oid')
-            ){
-              const racedUserId = await userRepository.findUserIdByMicrosoftAccount(
-                claims.oid,
-                claims.tid
-              );
+            ) {
+              const racedUserId =
+                await userRepository.findUserIdByMicrosoftAccount(
+                  claims.oid,
+                  claims.tid
+                );
               if (!racedUserId) throw new Error('LINK_STUDENT_FAILED');
               return {
                 id: racedUserId,

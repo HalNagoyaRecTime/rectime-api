@@ -158,7 +158,7 @@ export function createUserRepository(db: D1Database): IUserRepository {
         }
       }
     },
-    
+
     async updateUser({ userId, oid, tid, sub, email, displayName }) {
       const now = new Date().toISOString();
 

@@ -52,7 +52,11 @@ describe('createAuthService', () => {
       createMany: vi.fn(),
     };
     const studentEmailDomain = 'nhs.hal.ac.jp';
-    const service = createAuthService(userRepository, studentRepository, studentEmailDomain);
+    const service = createAuthService(
+      userRepository,
+      studentRepository,
+      studentEmailDomain
+    );
     return { userRepository, studentRepository, service };
   }
 
