@@ -20,7 +20,7 @@ function extractStudentIdNumber(
   // 完全一致で照合される前提のため、先頭ゼロの有無を含め、
   // メールアドレスとDBの登録値の表記が揃っている必要がある
   // (例: メールが nhs00123 なら、DB側も "00123" である必要がある)。
-  const match = localPart.match(/^nhs(\d)$/);
+  const match = localPart.match(/^nhs(\d+)$/);
   return match ? match[1] : null;
 }
 
