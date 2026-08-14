@@ -2,17 +2,25 @@ import type { IUserRepository } from '../../domain/interfaces/repositories/IUser
 import type { IAuthService, MicrosoftClaims } from './IAuthService';
 import type { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 
-function extractStudentIdNumber(email: string): string | null {
-  const localPart = email.split('@')[0];
-  if (!localPart) return null;
+function extractStudentIdNumber(
+  email: string,
+  studentEmailDomain: string
+): string | null {
+  const [localPart, domain] = email.split('@');
+  if (!localPart || !domain) return null;
 
-  const match = localPart.match(/(\d+)$/);
+  //ドメインが学生用のものと一致しない場合、対象外とする
+  if (domain !== studentEmailDomain) return null;
+
+  //"nhs"+数値の形式に当てはまらない場合、学籍番号とみなさない
+  const match = localPart.match(/^nhs(\d)$/);
   return match ? match[1] : null;
 }
 
 export function createAuthService(
   userRepository: IUserRepository,
-  studentRepository: IStudentRepository
+  studentRepository: IStudentRepository,
+  studentEmailDomain: string
 ): IAuthService {
   return {
     async upsertUser(claims: MicrosoftClaims) {
@@ -23,29 +31,6 @@ export function createAuthService(
         claims.oid,
         claims.tid
       );
-
-      if (!existingUserId) {
-        const studentIdNumber = extractStudentIdNumber(email);
-        if (studentIdNumber) {
-          const student =
-            await studentRepository.findByStudentNum(studentIdNumber);
-          if (student) {
-            await userRepository.linkMicrosoftAccount({
-              userId: String(student.user_id),
-              oid: claims.oid,
-              tid: claims.tid,
-            });
-            return {
-              id: String(student.user_id),
-              oid: claims.oid,
-              tid: claims.tid,
-              sub: claims.sub,
-              email,
-              display_name: student.user_name,
-            };
-          }
-        }
-      }
 
       if (existingUserId) {
         const updated = await userRepository.updateUser({
@@ -58,6 +43,27 @@ export function createAuthService(
         });
         if (!updated) throw new Error('USER_NOT_FOUND');
         return updated;
+      }
+
+      const studentIdNumber = extractStudentIdNumber(email, studentEmailDomain);
+      if (studentIdNumber) {
+        const student =
+          await studentRepository.findByStudentNum(studentIdNumber);
+        if (student) {
+          await userRepository.linkMicrosoftAccount({
+            userId: String(student.user_id),
+            oid: claims.oid,
+            tid: claims.tid,
+          });
+          return {
+            id: String(student.user_id),
+            oid: claims.oid,
+            tid: claims.tid,
+            sub: claims.sub,
+            email,
+            display_name: student.user_name,
+          };
+        }
       }
 
       try {

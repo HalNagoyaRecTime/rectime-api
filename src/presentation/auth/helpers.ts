@@ -147,7 +147,11 @@ export async function upsertUser(
 ): Promise<AppUser> {
   const userRepository = createUserRepository(c.env.DB);
   const studentRepository = createStudentRepository(c.env.DB);
-  const authService = createAuthService(userRepository, studentRepository);
+  const authService = createAuthService(
+    userRepository,
+    studentRepository,
+    c.env.STUDENT_EMAIL_DOMAIN
+  );
   return authService.upsertUser(claims);
 }
 

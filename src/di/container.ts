@@ -91,7 +91,11 @@ export function createDIContainer(env: Env) {
   );
 
   // Services
-  const authService = createAuthService(userRepository, studentRepository);
+  const authService = createAuthService(
+    userRepository,
+    studentRepository,
+    env.STUDENT_EMAIL_DOMAIN
+  );
   const studentService = createStudentService(
     studentRepository,
     classRoomRepository

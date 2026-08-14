@@ -28,4 +28,5 @@ export type Env = {
   JWT_SECRET: string;
   JWT_EXPIRES_SEC: string;
   MOBILE_REFRESH_EXPIRES_SEC: string;
+  STUDENT_EMAIL_DOMAIN: string;
 };
