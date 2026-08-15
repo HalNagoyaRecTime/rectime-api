@@ -33,7 +33,6 @@
       "FIREBASE_CLIENT_EMAIL",
       "FIREBASE_PRIVATE_KEY",
       "TEST_FCM_TOKEN",
-      "STUDENT_EMAIL_DOMAIN",
     ],
   },
   "triggers": {
