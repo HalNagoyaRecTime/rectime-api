@@ -207,11 +207,17 @@ apiV1.post('/master-imports/:validatedFileId/commit', requireAuth, c => {
 apiV1.get('/gathering-spots', requireAuth, c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
 });
+apiV1.get('/gathering-spots/:gatheringSpotId', requireAuth, c => {
+  return c.get('container').gatheringSpotController.getGatheringSpotById(c);
+});
 apiV1.post('/gathering-spots', requireAuth, c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
 apiV1.put('/gathering-spots/:gatheringSpotId', requireAuth, c => {
   return c.get('container').gatheringSpotController.updateGatheringSpot(c);
+});
+apiV1.delete('/gathering-spots/:gatheringSpotId', requireAuth, c => {
+  return c.get('container').gatheringSpotController.deleteGatheringSpot(c);
 });
 
 // Gathering member routes

@@ -10,6 +10,7 @@
   },
   "vars": {
     "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+    "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
   // 公開されている(README.md参照)。カスタムドメイン/routesは未設定のため、
@@ -109,6 +110,7 @@
         "PORT": "8787",
         "HOST": "0.0.0.0",
         "ALLOWED_ORIGINS": "http://localhost:5173,https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+        "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
         // Entraアプリの「アプリケーション(クライアント)ID」。非公開の資格情報ではないためvarsで直接設定する。
         "MICROSOFT_CLIENT_ID": "be597fc9-7946-43a2-9ba8-6a96c96fd3b7",
         // Entraのマルチテナント共通エンドポイント値。環境によらず同一。
@@ -212,6 +214,7 @@
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
+        "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
         // 通知配信を許可する開催日(YYYY-MM-DD)。未設定だと更新系エンドポイントが
         // 500になる(#204レビュー指摘)。本番相当の検証環境だが、実イベント日付に
         // 追随させる必要はないため固定のダミー値を使う。

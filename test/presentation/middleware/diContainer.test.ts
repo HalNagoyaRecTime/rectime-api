@@ -27,6 +27,7 @@ function buildEnv(): Env {
     JWT_SECRET: 'a'.repeat(32),
     JWT_EXPIRES_SEC: '3600',
     MOBILE_REFRESH_EXPIRES_SEC: '2592000',
+    STUDENT_EMAIL_DOMAIN: 'nhs.hal.ac.jp',
   };
 }
 

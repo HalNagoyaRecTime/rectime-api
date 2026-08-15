@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTeacherRepository } from '../../../src/infrastructure/repositories/TeacherRepository';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
 import {
@@ -318,6 +318,41 @@ describe('TeacherRepository', () => {
 
       const result = await repo.findAll({ userName: '一括教官BULK2K' });
       expect(result.total).toBe(2000);
+    });
+
+    it('[REPRO #215] 後片付け(deleteUsersByIds)自体が失敗すると元のエラーが握りつぶされる', async () => {
+      const originalPrepare = env.DB.prepare.bind(env.DB);
+      const prepareSpy = vi
+        .spyOn(env.DB, 'prepare')
+        .mockImplementation((sql: string) => {
+          if (sql.startsWith('INSERT INTO teachers')) {
+            throw new Error('TEACHERS_INSERT_FAILED');
+          }
+          if (sql.startsWith('DELETE FROM users')) {
+            throw new Error('DELETE_USERS_FAILED');
+          }
+          return originalPrepare(sql);
+        });
+
+      let thrown: unknown;
+      try {
+        await repo.createMany([{ displayName: '再現用教官' }]);
+      } catch (error) {
+        thrown = error;
+      }
+
+      prepareSpy.mockRestore();
+
+      // 期待する挙動: deleteUsersByIds が失敗しても、元の teachers INSERT
+      // 失敗のエラーが握りつぶされずに伝播すること
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).not.toBe('DELETE_USERS_FAILED');
+      expect((thrown as Error).message).toBe('TEACHERS_INSERT_FAILED');
+
+      // 後片付け: 次のテストに影響しないよう掃除しておく
+      await env.DB.prepare('DELETE FROM users WHERE user_name = ?')
+        .bind('再現用教官')
+        .run();
     });
   });
 });
