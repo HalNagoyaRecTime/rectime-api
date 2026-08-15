@@ -101,10 +101,51 @@ describe('TeacherRepository', () => {
       expect(result.items).toHaveLength(seeded.teachers.length);
     });
 
-    it('デフォルトは offset=0, limit=20 で返す', async () => {
+    it('デフォルトは offset=0, limit=50 で返す', async () => {
       const result = await repo.findAll();
       expect(result.offset).toBe(0);
-      expect(result.limit).toBe(20);
+      expect(result.limit).toBe(50);
+    });
+
+    it('教員名・クラスコード・クラス名で検索できる', async () => {
+      const byName = await repo.findAll({
+        search: seeded.teachers[0].displayName,
+      });
+      const byCode = await repo.findAll({
+        search: seeded.classRooms[0].classCode,
+      });
+      const byClassName = await repo.findAll({
+        search: seeded.classRooms[0].className,
+      });
+
+      expect(
+        byName.items.some(
+          item => item.teacher_id === seeded.teachers[0].teacherId
+        )
+      ).toBe(true);
+      expect(
+        byCode.items.some(
+          item => item.teacher_id === seeded.teachers[0].teacherId
+        )
+      ).toBe(true);
+      expect(
+        byClassName.items.some(
+          item => item.teacher_id === seeded.teachers[0].teacherId
+        )
+      ).toBe(true);
+    });
+
+    it('displayName と teacherId で安定ソートできる', async () => {
+      const descending = await repo.findAll({
+        sortBy: 'displayName',
+        sortOrder: 'desc',
+      });
+      expect(descending.items.map(item => item.user_name)).toEqual(
+        [...descending.items]
+          .map(item => item.user_name)
+          .sort()
+          .reverse()
+      );
     });
 
     it('limit/offset でページ分けできる', async () => {

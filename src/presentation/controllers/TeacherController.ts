@@ -5,6 +5,34 @@ import { TeacherSearchFilter } from '../../domain/entities/Teacher';
 
 const MAX_LIMIT = 100;
 
+const integerQuery = (minimum: number) =>
+  z.preprocess(
+    value =>
+      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
+    z.number().int().min(minimum)
+  );
+
+const teacherListQuerySchema = z
+  .object({
+    teacherId: integerQuery(1).optional(),
+    userName: z.string().trim().min(1).optional(),
+    classRoomId: integerQuery(1).optional(),
+    isLiveActive: z
+      .enum(['true', 'false'])
+      .transform(value => value === 'true')
+      .optional(),
+    search: z.string().trim().min(1).optional(),
+    sortBy: z.enum(['teacherId', 'displayName']).default('teacherId'),
+    sortOrder: z.enum(['asc', 'desc']).default('asc'),
+    limit: integerQuery(1)
+      .refine(value => value <= MAX_LIMIT, {
+        message: 'limit must be between 1 and 100',
+      })
+      .default(50),
+    offset: integerQuery(0).default(0),
+  })
+  .strict();
+
 const createTeacherSchema = z
   .object({
     userName: z.string().min(1),
@@ -34,42 +62,11 @@ function getTeacherId(c: Context): number | null {
 }
 
 function parseSearchFilter(c: Context): TeacherSearchFilter {
-  const filter: TeacherSearchFilter = {};
-
-  const teacherId = c.req.query('teacherId');
-  if (teacherId !== undefined) {
-    const parsed = Number(teacherId);
-    if (Number.isInteger(parsed) && parsed > 0) filter.teacherId = parsed;
+  const parsed = teacherListQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) {
+    throw new Error('Invalid teacher list query');
   }
-
-  const userName = c.req.query('userName');
-  if (userName) filter.userName = userName;
-
-  const classRoomId = c.req.query('classRoomId');
-  if (classRoomId !== undefined) {
-    const parsed = Number(classRoomId);
-    if (Number.isInteger(parsed) && parsed > 0) filter.classRoomId = parsed;
-  }
-
-  const isLiveActive = c.req.query('isLiveActive');
-  if (isLiveActive === 'true') filter.isLiveActive = true;
-  else if (isLiveActive === 'false') filter.isLiveActive = false;
-
-  const offset = c.req.query('offset');
-  if (offset !== undefined) {
-    const parsed = Number(offset);
-    if (Number.isInteger(parsed) && parsed >= 0) filter.offset = parsed;
-  }
-
-  const limit = c.req.query('limit');
-  if (limit !== undefined) {
-    const parsed = Number(limit);
-    if (Number.isInteger(parsed) && parsed > 0) {
-      filter.limit = Math.min(parsed, MAX_LIMIT);
-    }
-  }
-
-  return filter;
+  return parsed.data;
 }
 
 export function createTeacherController(teacherService: ITeacherService) {
@@ -126,7 +123,13 @@ export function createTeacherController(teacherService: ITeacherService) {
       const filter = parseSearchFilter(c);
       const teachers = await teacherService.getAllTeachers(filter);
       return c.json(teachers);
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'Invalid teacher list query'
+      ) {
+        return c.json({ error: 'Invalid teacher list query' }, 400);
+      }
       return c.json({ error: 'Failed to fetch teachers' }, 500);
     }
   };

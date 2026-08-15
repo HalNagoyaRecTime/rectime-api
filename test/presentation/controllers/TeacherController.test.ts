@@ -143,7 +143,7 @@ describe('TeacherController', () => {
       const page = {
         items: [buildTeacher()],
         total: 1,
-        limit: 20,
+        limit: 50,
         offset: 0,
       };
       (
@@ -154,6 +154,12 @@ describe('TeacherController', () => {
 
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual(page);
+      expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
+        limit: 50,
+        offset: 0,
+        sortBy: 'teacherId',
+        sortOrder: 'asc',
+      });
     });
 
     it('クエリパラメータを検索条件としてサービスに渡す', async () => {
@@ -163,7 +169,7 @@ describe('TeacherController', () => {
       ).mockResolvedValue({
         items: [],
         total: 0,
-        limit: 20,
+        limit: 50,
         offset: 0,
       });
 
@@ -178,20 +184,22 @@ describe('TeacherController', () => {
         isLiveActive: false,
         offset: 5,
         limit: 5,
+        sortBy: 'teacherId',
+        sortOrder: 'asc',
       });
     });
 
-    it('limit が上限(100)を超える場合は100に丸める', async () => {
+    it('limit が上限(100)を超える場合は400を返す', async () => {
       const { app, teacherService } = setup();
-      (
-        teacherService.getAllTeachers as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 });
+      const res = await app.request('/teachers?limit=101');
+      expect(res.status).toBe(400);
+      expect(teacherService.getAllTeachers).not.toHaveBeenCalled();
+    });
 
-      await app.request('/teachers?limit=1000000');
-
-      expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
-        limit: 100,
-      });
+    it('未知のクエリパラメータは400を返す', async () => {
+      const { app } = setup();
+      const res = await app.request('/teachers?page=2');
+      expect(res.status).toBe(400);
     });
 
     it('サービスが例外を投げた場合は 500 を返す', async () => {
