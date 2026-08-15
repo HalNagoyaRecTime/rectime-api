@@ -16,6 +16,8 @@ import {
 import { createUserRepository } from '../../infrastructure/repositories/UserRepository';
 import { createStudentRepository } from '../../infrastructure/repositories/StudentRepository';
 import { createAuthService } from '../../application/services/authService';
+import type { IStudentService } from '../../application/services/IStudentService';
+import type { StudentDTO } from '../../application/dto/StudentDTO';
 
 export type AppContext = Context<{
   Bindings: Bindings;
@@ -161,6 +163,18 @@ export async function upsertUser(
     c.env.STUDENT_EMAIL_DOMAIN
   );
   return authService.upsertUser(claims);
+}
+
+export async function getStudentInfoOrNull(
+  studentService: IStudentService,
+  userId: number
+): Promise<StudentDTO | null> {
+  return studentService.getByUserId(userId).catch(err => {
+    if (err instanceof Error && err.message === 'Student not found') {
+        return null;
+      }
+      throw err;
+  });
 }
 
 export async function getUserCategories(

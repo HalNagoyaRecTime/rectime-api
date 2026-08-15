@@ -17,6 +17,7 @@ import {
   exchangeMicrosoftToken,
   upsertUser,
   userResponse,
+  getStudentInfoOrNull,
   getUserCategories,
 } from '../helpers';
 import {
@@ -287,14 +288,7 @@ microsoft.post('/token', async c => {
     throw err;
   }
   const { studentService } = c.get('container');
-  const student = await studentService
-    .getByUserId(Number(user.id))
-    .catch(err => {
-      if (err instanceof Error && err.message === 'Student not found') {
-        return null;
-      }
-      throw err;
-    });
+  const student = await getStudentInfoOrNull(studentService, Number(user.id));
   const refreshTokenId = crypto.randomUUID();
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
 

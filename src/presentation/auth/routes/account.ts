@@ -13,6 +13,7 @@ import {
   getBearerToken,
   refreshMicrosoftAccessToken,
   userResponse,
+  getStudentInfoOrNull,
   getUserCategories,
 } from '../helpers';
 import {
@@ -59,14 +60,8 @@ account.get('/me', async c => {
     return errorResponse(c, 401, code, message);
   }
 
-  const student = await studentService
-    .getByUserId(Number(claims.sub))
-    .catch(err => {
-      if (err instanceof Error && err.message === 'Student not found') {
-        return null;
-      }
-      throw err;
-    });
+  const student = await getStudentInfoOrNull(studentService, Number(claims.sub));
+
   const categories = await getUserCategories(c, claims.sub);
   return c.json({
     user: userResponse(
