@@ -444,15 +444,6 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       );
     },
 
-    async hasClassAssignments(id: number): Promise<boolean> {
-      const row = await orm
-        .select({ id: class_rooms.id })
-        .from(class_rooms)
-        .where(eq(class_rooms.teacherId, id))
-        .get();
-      return Boolean(row);
-    },
-
     async deactivate(id: number): Promise<boolean> {
       const existing = await orm
         .select({ userId: teachers.userId })

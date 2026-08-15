@@ -24,7 +24,6 @@ function buildRepository(
     create: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),
-    hasClassAssignments: vi.fn(),
     deactivate: vi.fn(),
     ...overrides,
   };

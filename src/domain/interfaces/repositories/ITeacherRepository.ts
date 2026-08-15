@@ -22,6 +22,5 @@ export interface ITeacherRepository {
     id: number,
     input: TeacherUpdateInput
   ) => Promise<TeacherEntity | null>;
-  hasClassAssignments: (id: number) => Promise<boolean>;
   deactivate: (id: number) => Promise<boolean>;
 }

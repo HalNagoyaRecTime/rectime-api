@@ -302,20 +302,6 @@ describe('TeacherRepository', () => {
     });
   });
 
-  describe('hasClassAssignments', () => {
-    it('担当クラスがある場合は true を返す', async () => {
-      expect(await repo.hasClassAssignments(seeded.teachers[0].teacherId)).toBe(
-        true
-      );
-    });
-
-    it('担当クラスがない場合は false を返す', async () => {
-      expect(await repo.hasClassAssignments(seeded.teachers[1].teacherId)).toBe(
-        false
-      );
-    });
-  });
-
   describe('deactivate', () => {
     it('教員を論理削除し、担当クラスを解除する', async () => {
       const target = seeded.teachers[0];
