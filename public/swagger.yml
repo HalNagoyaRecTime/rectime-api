@@ -1987,13 +1987,12 @@ components:
 
     TeacherUpdateRequest:
       type: object
-      required: [userName, isLiveActive, classRoomIds]
+      required: [userName, classRoomIds]
+      additionalProperties: false
       properties:
         userName:
           type: string
           minLength: 1
-        isLiveActive:
-          type: boolean
         classRoomIds:
           type: array
           uniqueItems: true

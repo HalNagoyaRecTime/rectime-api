@@ -47,7 +47,6 @@ const createTeacherSchema = z
 const updateTeacherSchema = z
   .object({
     userName: z.string().min(1),
-    isLiveActive: z.boolean(),
     classRoomIds: z
       .array(z.number().int().positive())
       .refine(ids => new Set(ids).size === ids.length, {

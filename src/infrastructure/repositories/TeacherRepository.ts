@@ -385,7 +385,6 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .update(users)
         .set({
           userName: input.userName,
-          isLiveActive: input.isLiveActive ? 1 : 0,
           updatedAt: now,
         })
         .where(eq(users.id, existing.users.id));
@@ -436,7 +435,6 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           users: {
             ...existing.users,
             userName: input.userName,
-            isLiveActive: input.isLiveActive ? 1 : 0,
             updatedAt: now,
           },
         },

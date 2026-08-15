@@ -163,14 +163,12 @@ describe('TeacherService', () => {
 
       const dto = await service.updateTeacher(1, {
         userName: '更新済み先生',
-        isLiveActive: false,
         classRoomIds: [1],
       });
 
       expect(repository.existsClassRooms).toHaveBeenCalledWith([1]);
       expect(repository.update).toHaveBeenCalledWith(1, {
         userName: '更新済み先生',
-        isLiveActive: false,
         classRoomIds: [1],
       });
       expect(dto.display_name).toBe('更新済み先生');
@@ -185,7 +183,6 @@ describe('TeacherService', () => {
       await expect(
         service.updateTeacher(1, {
           userName: 'x',
-          isLiveActive: true,
           classRoomIds: [999],
         })
       ).rejects.toThrow('Class room not found');
@@ -202,7 +199,6 @@ describe('TeacherService', () => {
 
       await service.updateTeacher(1, {
         userName: 'x',
-        isLiveActive: true,
         classRoomIds: [],
       });
 
@@ -219,7 +215,6 @@ describe('TeacherService', () => {
       await expect(
         service.updateTeacher(999, {
           userName: 'x',
-          isLiveActive: true,
           classRoomIds: [1],
         })
       ).rejects.toThrow('Teacher not found');

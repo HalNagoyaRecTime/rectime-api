@@ -208,18 +208,17 @@ describe('TeacherRepository', () => {
   });
 
   describe('update', () => {
-    it('氏名・有効状態・担当クラスを更新する', async () => {
+    it('氏名・担当クラスを更新し、有効状態は維持する', async () => {
       const target = seeded.teachers[1];
       const updated = await repo.update(target.teacherId, {
         userName: '更新済み先生',
-        isLiveActive: false,
         classRoomIds: [seeded.classRooms[1].classRoomId],
       });
 
       expect(updated).toMatchObject({
         teacher_id: target.teacherId,
         user_name: '更新済み先生',
-        is_live_active: false,
+        is_live_active: true,
       });
       expect(updated?.class_rooms).toEqual([
         {
@@ -237,7 +236,6 @@ describe('TeacherRepository', () => {
       const target = seeded.teachers[0];
       const updated = await repo.update(target.teacherId, {
         userName: target.displayName,
-        isLiveActive: true,
         classRoomIds: [],
       });
 
@@ -247,7 +245,6 @@ describe('TeacherRepository', () => {
     it('存在しない教員IDの場合は null を返す', async () => {
       const updated = await repo.update(999999, {
         userName: 'x',
-        isLiveActive: true,
         classRoomIds: [],
       });
       expect(updated).toBeNull();
@@ -267,7 +264,6 @@ describe('TeacherRepository', () => {
       await expect(
         repo.update(target.teacherId, {
           userName: '更新失敗するはずの先生',
-          isLiveActive: false,
           classRoomIds: [999999],
         })
       ).rejects.toThrow();

@@ -14,7 +14,6 @@ export interface TeacherCreateRequest {
 
 export interface TeacherUpdateRequest {
   userName: string;
-  isLiveActive: boolean;
   classRoomIds: number[];
 }
 
