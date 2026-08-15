@@ -21,6 +21,36 @@ function reverseBatchResultRows(db: D1Database): D1Database {
   } as D1Database;
 }
 
+function replaceFirstReturnedUserName(db: D1Database): D1Database {
+  let replaced = false;
+
+  return {
+    prepare: query => db.prepare(query),
+    batch: async <T = unknown>(statements: D1PreparedStatement[]) => {
+      const results = await db.batch<T>(statements);
+      return results.map(result => {
+        if (replaced) return result;
+
+        const firstRow = result.results[0] as
+          | Record<string, unknown>
+          | undefined;
+        if (!firstRow || typeof firstRow.user_name !== 'string') {
+          return result;
+        }
+
+        replaced = true;
+        return {
+          ...result,
+          results: [
+            { ...firstRow, user_name: '対応する入力がない表示名' } as T,
+            ...result.results.slice(1),
+          ],
+        };
+      });
+    },
+  } as D1Database;
+}
+
 describe('StudentRepository', () => {
   let repo: IStudentRepository;
   let seeded: SeededData;
@@ -236,6 +266,45 @@ describe('StudentRepository', () => {
         attendance_number: 23,
       });
       expect(first?.user_id).not.toBe(second?.user_id);
+    });
+
+    it('作成したuserとの対応付けに失敗した場合、userとnewClassRoomsを後片付けする', async () => {
+      const mismatchedRepo = createStudentRepository(
+        replaceFirstReturnedUserName(env.DB)
+      );
+
+      await expect(
+        mismatchedRepo.createMany({
+          newClassRooms: [
+            {
+              classCode: 'PAIR-CLEANUP-NEW',
+              className: 'PAIR-CLEANUP-NEW',
+            },
+          ],
+          students: [
+            {
+              displayName: '対応付け後片付け対象の生徒',
+              classCode: 'PAIR-CLEANUP-NEW',
+              attendanceNumber: 24,
+              studentIdNumber: 'PAIR-CLEANUP-20000',
+            },
+          ],
+        })
+      ).rejects.toThrow('Created user not found for student input at index 0');
+
+      const orphanedUser = await env.DB.prepare(
+        'SELECT user_id FROM users WHERE user_name = ?'
+      )
+        .bind('対応付け後片付け対象の生徒')
+        .first();
+      expect(orphanedUser).toBeNull();
+
+      const orphanedClassRoom = await env.DB.prepare(
+        'SELECT class_room_id FROM class_rooms WHERE class_code = ?'
+      )
+        .bind('PAIR-CLEANUP-NEW')
+        .first();
+      expect(orphanedClassRoom).toBeNull();
     });
 
     it('既存クラスに複数の学生をまとめて作成する', async () => {

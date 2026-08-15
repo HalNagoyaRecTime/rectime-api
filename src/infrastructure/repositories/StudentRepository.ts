@@ -374,13 +374,14 @@ function pairStudentsWithCreatedUsers(
   returnedUsers: ReturnedBulkUserRow[]
 ) {
   if (returnedUsers.length !== studentInputs.length) {
-    throw new Error('Failed to correlate created users with students');
+    throw new Error(
+      `Created user count does not match student input count: expected ${studentInputs.length}, received ${returnedUsers.length}`
+    );
   }
 
-  // SQLite does not guarantee the row order of a multi-row RETURNING result.
-  // Group IDs by the inserted name instead of pairing rows by array index.
-  // Duplicate names use an ID stack because those user rows are otherwise
-  // indistinguishable at this stage.
+  // SQLiteは複数行をRETURNINGした際の行順を保証しないため、
+  // 配列の位置ではなく、登録した表示名ごとにIDをまとめて対応付ける。
+  // 同姓同名のusers行はこの時点では区別できないため、IDをスタックとして消費する。
   // https://sqlite.org/lang_returning.html
   const userIdsByName = new Map<string, number[]>();
   for (const user of returnedUsers) {
@@ -389,11 +390,13 @@ function pairStudentsWithCreatedUsers(
     userIdsByName.set(user.user_name, ids);
   }
 
-  const paired = studentInputs.map(student => {
+  const paired = studentInputs.map((student, index) => {
     const userIds = userIdsByName.get(student.displayName);
     const userId = userIds?.pop();
     if (userId === undefined) {
-      throw new Error('Failed to correlate created users with students');
+      throw new Error(
+        `Created user not found for student input at index ${index}`
+      );
     }
     return {
       userId,
@@ -403,8 +406,14 @@ function pairStudentsWithCreatedUsers(
     };
   });
 
-  if (Array.from(userIdsByName.values()).some(ids => ids.length > 0)) {
-    throw new Error('Failed to correlate created users with students');
+  const unmatchedUserCount = Array.from(userIdsByName.values()).reduce(
+    (total, ids) => total + ids.length,
+    0
+  );
+  if (unmatchedUserCount > 0) {
+    throw new Error(
+      `Unmatched created users remain after pairing: ${unmatchedUserCount}`
+    );
   }
 
   return paired;
