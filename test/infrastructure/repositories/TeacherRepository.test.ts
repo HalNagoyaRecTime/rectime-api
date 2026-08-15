@@ -301,6 +301,37 @@ describe('TeacherRepository', () => {
         created.class_rooms
       );
     });
+
+    it('存在しないクラスを含む場合は教員・クラス紐付けを作成しない', async () => {
+      const userName = '作成されない教官';
+      const targetClassRoomId = seeded.classRooms[1].classRoomId;
+      const beforeUser = await env.DB.prepare(
+        'SELECT COUNT(*) AS count FROM users WHERE user_name = ?'
+      )
+        .bind(userName)
+        .first<{ count: number }>();
+
+      await expect(
+        repo.create({
+          userName,
+          classRoomIds: [targetClassRoomId, 999999],
+        })
+      ).rejects.toThrow('Class room not found');
+
+      const afterUser = await env.DB.prepare(
+        'SELECT COUNT(*) AS count FROM users WHERE user_name = ?'
+      )
+        .bind(userName)
+        .first<{ count: number }>();
+      const classRoom = await env.DB.prepare(
+        'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+      )
+        .bind(targetClassRoomId)
+        .first<{ teacher_id: number | null }>();
+
+      expect(afterUser?.count).toBe(beforeUser?.count);
+      expect(classRoom?.teacher_id).toBeNull();
+    });
   });
 
   describe('createMany', () => {

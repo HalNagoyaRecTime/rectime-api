@@ -71,6 +71,22 @@ describe('TeacherController', () => {
       });
       expect(res.status).toBe(400);
     });
+
+    it('サービスがクラス未存在エラーを返した場合は400を返す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.createTeacher as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Class room not found'));
+
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName: '山田先生', classRoomIds: [999999] }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'Class room not found' });
+    });
   });
   describe('getTeacherById', () => {
     it('存在する教員を 200 で返す', async () => {
