@@ -21,16 +21,6 @@
   // dispatchしていない」空白時間がそのまま本番Microsoftログインの障害時間になる
   // (#204レビュー指摘)。安全な移行手順が確立するまでは、本番のみsecrets.requiredに
   // 残す(development/stagingはこのリスクがないためvars化済み)。
-  //
-  // 【要確認】このPRの前段のコミットでは一時的にvars化しており、その際「マージ前に
-  // `wrangler secret delete MICROSOFT_CLIENT_ID`(本番)を実行しておくこと」という
-  // 手順がPR説明に記載されていた。この指示に従って既に本番secretを削除してしまって
-  // いる場合、この差し戻しだけでは値は復元されない(wrangler.jsonc上の設定を戻しても
-  // Cloudflare側の実secretの値までは戻らないため)。マージ前に
-  // `wrangler secret list`(本番)で`MICROSOFT_CLIENT_ID`が実在するか確認し、
-  // 存在しなければ`wrangler secret put MICROSOFT_CLIENT_ID`で復元すること
-  // (値は非公開情報ではなく、development/stagingのvarsと同じ
-  // `be597fc9-7946-43a2-9ba8-6a96c96fd3b7`)。
   "secrets": {
     "required": [
       "MICROSOFT_CLIENT_ID",
