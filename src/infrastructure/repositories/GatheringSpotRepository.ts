@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc, count, eq, like, sql } from 'drizzle-orm';
+import { asc, count, desc, eq, like, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringSpotEntity } from '../../domain/entities/GatheringSpot';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
@@ -51,12 +51,20 @@ export function createGatheringSpotRepository(
       const nameFilter = options.name
         ? like(gathering_spots.name, `%${options.name}%`)
         : undefined;
+      const sortColumn = {
+        id: gathering_spots.id,
+        name: gathering_spots.name,
+        createdAt: gathering_spots.createdAt,
+        updatedAt: gathering_spots.updatedAt,
+      }[options.sortBy ?? 'id'];
+      const orderBy =
+        options.sortOrder === 'desc' ? desc(sortColumn) : asc(sortColumn);
       const [rows, totalRow] = await Promise.all([
         orm
           .select()
           .from(gathering_spots)
           .where(nameFilter)
-          .orderBy(asc(gathering_spots.id))
+          .orderBy(orderBy)
           .limit(options.limit)
           .offset(options.offset)
           .all(),

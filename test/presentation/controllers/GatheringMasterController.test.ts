@@ -83,10 +83,71 @@ describe('Gathering master controllers', () => {
     });
   });
 
+  it('ソート付きの集合場所一覧はソート条件を委譲する', async () => {
+    const { app, spotService } = setup();
+    (
+      spotService.getGatheringSpotPage as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      gathering_spots: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+    });
+
+    const response = await app.request(
+      '/gathering-spots?sortBy=name&sortOrder=desc'
+    );
+
+    expect(response.status).toBe(200);
+    expect(spotService.getGatheringSpotPage).toHaveBeenCalledWith({
+      limit: 20,
+      offset: 0,
+      sortBy: 'name',
+      sortOrder: 'desc',
+    });
+  });
+
+  it('検索とソート付きの集合場所一覧は全条件を委譲する', async () => {
+    const { app, spotService } = setup();
+    (
+      spotService.getGatheringSpotPage as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      gathering_spots: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+    });
+
+    const response = await app.request(
+      '/gathering-spots?name=体育館&limit=20&offset=0&sortBy=updatedAt&sortOrder=desc'
+    );
+
+    expect(response.status).toBe(200);
+    expect(spotService.getGatheringSpotPage).toHaveBeenCalledWith({
+      name: '体育館',
+      limit: 20,
+      offset: 0,
+      sortBy: 'updatedAt',
+      sortOrder: 'desc',
+    });
+  });
+
   it('不正な集合場所一覧クエリは400で拒否する', async () => {
     const { app, spotService } = setup();
 
     const response = await app.request('/gathering-spots?limit=0');
+
+    expect(response.status).toBe(400);
+    expect(spotService.getGatheringSpotPage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['sortBy', 'invalidColumn'],
+    ['sortOrder', 'invalidOrder'],
+  ])('不正な%sは400で拒否する', async (key, value) => {
+    const { app, spotService } = setup();
+
+    const response = await app.request(`/gathering-spots?${key}=${value}`);
 
     expect(response.status).toBe(400);
     expect(spotService.getGatheringSpotPage).not.toHaveBeenCalled();
