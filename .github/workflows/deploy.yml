@@ -22,7 +22,7 @@ jobs:
        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'pull_request'))
     name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
     runs-on: ubuntu-latest
-    environment: ${{ ((github.event.workflow_run.event != 'pull_request') && ((github.event.workflow_run.head_branch || github.ref_name) == 'main')) && 'production' || 'preview' }}
+    environment: ${{ ((github.event.workflow_run.event != 'pull_request') && ((github.event.workflow_run.head_branch || github.ref_name) == 'main')) && 'production' || 'development' }}
 
     steps:
       - name: Checkout code
@@ -51,10 +51,10 @@ jobs:
               echo "::error::workflow_runイベントからPR番号を取得できませんでした(フォークからのPRの可能性があります)"
               exit 1
             fi
-            # PRごとに独立したpreview URL(pr-<番号>-rectime-api-preview.<subdomain>.workers.dev)を発行する。
-            # D1/KVはenv.previewと共用(バージョンごとに分離できないため)。
+            # PRごとに独立したpreview URL(pr-<番号>-rectime-api-development.<subdomain>.workers.dev)を発行する。
+            # D1/KVはenv.developmentと共用(バージョンごとに分離できないため)。
             echo "mode=pr-preview" >> "$GITHUB_OUTPUT"
-            echo "env_flag=--env preview" >> "$GITHUB_OUTPUT"
+            echo "env_flag=--env development" >> "$GITHUB_OUTPUT"
             echo "d1_database=rectime-api-dev" >> "$GITHUB_OUTPUT"
             echo "preview_alias=pr-${PR_NUMBER}" >> "$GITHUB_OUTPUT"
             echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
@@ -64,7 +64,7 @@ jobs:
             echo "d1_database=rectime-api" >> "$GITHUB_OUTPUT"
           else
             echo "mode=deploy" >> "$GITHUB_OUTPUT"
-            echo "env_flag=--env preview" >> "$GITHUB_OUTPUT"
+            echo "env_flag=--env development" >> "$GITHUB_OUTPUT"
             echo "d1_database=rectime-api-dev" >> "$GITHUB_OUTPUT"
           fi
 
@@ -90,7 +90,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: >-
-            versions upload --minify --env preview
+            versions upload --minify --env development
             --preview-alias ${{ steps.target.outputs.preview_alias }}
             --message "PR #${{ steps.target.outputs.pr_number }}"
 
@@ -103,7 +103,7 @@ jobs:
         with:
           script: |
             const alias = process.env.PREVIEW_ALIAS;
-            const url = `https://${alias}-rectime-api-preview.rectime-project.workers.dev`;
+            const url = `https://${alias}-rectime-api-development.rectime-project.workers.dev`;
             const prNumber = Number(process.env.PR_NUMBER);
             const marker = "<!-- rectime-api-preview-url -->";
             const body = [
