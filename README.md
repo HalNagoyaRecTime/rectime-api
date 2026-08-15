@@ -174,3 +174,14 @@ VITE_BACKEND_BASE_URL=https://rectime-api.rectime-project.workers.dev
 | GET | `/api/v1/auth/me/photo` | プロフィール写真取得 |
 | POST | `/api/v1/auth/logout` | ログアウト |
 | POST | `/api/v1/auth/refresh` | セッション更新 |
+
+---
+
+## Git hooks
+
+`npm install` の `prepare` スクリプトで Husky を初期化する。
+
+- `pre-commit`: `lint-staged` による変更ファイルの ESLint/Prettier
+- `pre-push`: format・lint・型チェック（リモートブランチ削除だけの push はスキップ）
+
+hook を手動で再設定する場合は `npm run prepare` を実行する。

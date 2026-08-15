@@ -11,6 +11,7 @@
   "vars": {
     "NODE_ENV": "production",
     "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+    "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
   // 公開されている(README.md参照)。カスタムドメイン/routesは未設定のため、
@@ -70,6 +71,20 @@
       "migrations_dir": "migrations",
     },
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MASTER_IMPORT_COMMIT_LOCK",
+        "class_name": "MasterImportCommitLock",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MasterImportCommitLock"],
+    },
+  ],
   "env": {
     // ローカル開発用(wrangler dev --env development)。env.default は
     // development と重複していたため削除した。
@@ -79,6 +94,7 @@
         "PORT": "8787",
         "HOST": "0.0.0.0",
         "ALLOWED_ORIGINS": "http://localhost:5173,https://*.recwatch.pages.dev",
+        "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
       },
       // secrets.required はここでは宣言しない: vitest-pool-workers
       // (test/apply-migrations.ts) がこの環境で62ファイル分のWorkerを並列起動する際、
@@ -102,6 +118,14 @@
           "migrations_dir": "migrations",
         },
       ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "MASTER_IMPORT_COMMIT_LOCK",
+            "class_name": "MasterImportCommitLock",
+          },
+        ],
+      },
       "queues": {
         "producers": [
           {
@@ -160,6 +184,7 @@
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
+        "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
       },
       "secrets": {
         "required": [
@@ -194,6 +219,14 @@
           "migrations_dir": "migrations",
         },
       ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "MASTER_IMPORT_COMMIT_LOCK",
+            "class_name": "MasterImportCommitLock",
+          },
+        ],
+      },
       // キューもD1/KVと同様、env.developmentと同じものを共用する
       // (Preview専用キューは作成していない)。
       "queues": {

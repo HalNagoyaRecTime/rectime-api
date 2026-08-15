@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTeacherRepository } from '../../../src/infrastructure/repositories/TeacherRepository';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
 import {
@@ -271,6 +271,88 @@ describe('TeacherRepository', () => {
         'Teacher is referenced by other data'
       );
       expect(await repo.findById(target.teacherId)).not.toBeNull();
+    });
+  });
+
+  describe('create', () => {
+    it('教官を作成し、作成したエンティティを返す', async () => {
+      const created = await repo.create({ displayName: '新規教官' });
+
+      expect(created).toMatchObject({
+        user_name: '新規教官',
+        is_live_active: true,
+        class_rooms: [],
+      });
+      expect(created.teacher_id).toEqual(expect.any(Number));
+      expect(created.user_id).toEqual(expect.any(Number));
+    });
+  });
+
+  describe('createMany', () => {
+    it('複数の教官をまとめて作成する', async () => {
+      await repo.createMany([
+        { displayName: '一括教官A' },
+        { displayName: '一括教官B' },
+      ]);
+
+      const result = await repo.findAll({ userName: '一括教官' });
+      expect(result.items.map(t => t.user_name).sort()).toEqual([
+        '一括教官A',
+        '一括教官B',
+      ]);
+    });
+
+    it('空配列の場合は何も作成しない', async () => {
+      const before = (await repo.findAll()).total;
+      await repo.createMany([]);
+      const after = (await repo.findAll()).total;
+      expect(after).toBe(before);
+    });
+
+    it('2,000件の教官をまとめて作成できる', async () => {
+      const inputs = Array.from({ length: 2000 }, (_, i) => ({
+        displayName: `一括教官BULK2K${i}`,
+      }));
+
+      await repo.createMany(inputs);
+
+      const result = await repo.findAll({ userName: '一括教官BULK2K' });
+      expect(result.total).toBe(2000);
+    });
+
+    it('[REPRO #215] 後片付け(deleteUsersByIds)自体が失敗すると元のエラーが握りつぶされる', async () => {
+      const originalPrepare = env.DB.prepare.bind(env.DB);
+      const prepareSpy = vi
+        .spyOn(env.DB, 'prepare')
+        .mockImplementation((sql: string) => {
+          if (sql.startsWith('INSERT INTO teachers')) {
+            throw new Error('TEACHERS_INSERT_FAILED');
+          }
+          if (sql.startsWith('DELETE FROM users')) {
+            throw new Error('DELETE_USERS_FAILED');
+          }
+          return originalPrepare(sql);
+        });
+
+      let thrown: unknown;
+      try {
+        await repo.createMany([{ displayName: '再現用教官' }]);
+      } catch (error) {
+        thrown = error;
+      }
+
+      prepareSpy.mockRestore();
+
+      // 期待する挙動: deleteUsersByIds が失敗しても、元の teachers INSERT
+      // 失敗のエラーが握りつぶされずに伝播すること
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).not.toBe('DELETE_USERS_FAILED');
+      expect((thrown as Error).message).toBe('TEACHERS_INSERT_FAILED');
+
+      // 後片付け: 次のテストに影響しないよう掃除しておく
+      await env.DB.prepare('DELETE FROM users WHERE user_name = ?')
+        .bind('再現用教官')
+        .run();
     });
   });
 });

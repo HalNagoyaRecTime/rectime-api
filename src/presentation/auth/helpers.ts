@@ -14,6 +14,7 @@ import {
   refreshMicrosoftAccessToken as infraRefreshToken,
 } from '../../infrastructure/auth/microsoftClient';
 import { createUserRepository } from '../../infrastructure/repositories/UserRepository';
+import { createStudentRepository } from '../../infrastructure/repositories/StudentRepository';
 import { createAuthService } from '../../application/services/authService';
 
 export type AppContext = Context<{
@@ -23,7 +24,7 @@ export type AppContext = Context<{
 
 export function errorResponse(
   c: AppContext,
-  status: 400 | 401 | 404 | 500,
+  status: 400 | 401 | 404 | 409 | 500,
   code: string,
   message: string
 ): Response {
@@ -153,7 +154,12 @@ export async function upsertUser(
   claims: IdTokenClaims
 ): Promise<AppUser> {
   const userRepository = createUserRepository(c.env.DB);
-  const authService = createAuthService(userRepository);
+  const studentRepository = createStudentRepository(c.env.DB);
+  const authService = createAuthService(
+    userRepository,
+    studentRepository,
+    c.env.STUDENT_EMAIL_DOMAIN
+  );
   return authService.upsertUser(claims);
 }
 

@@ -6,7 +6,10 @@ function repository(): IClassRoomRepository {
   return {
     findAll: vi.fn(),
     findById: vi.fn(),
+    findByCode: vi.fn().mockResolvedValue(null),
+    findExistingClassCodes: vi.fn().mockResolvedValue(new Set()),
     create: vi.fn(),
+    createMany: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
     teacherExists: vi.fn(),
@@ -132,5 +135,146 @@ describe('ClassRoomService', () => {
     await expect(
       createClassRoomService(repo).deleteClassroom(999)
     ).rejects.toThrow('Class not found');
+  });
+
+  describe('validateClassRoomImport', () => {
+    it('全行が有効な場合はerrorsが空になり、DBへの書き込みは行わない', async () => {
+      const repo = repository();
+      const service = createClassRoomService(repo);
+
+      const result = await service.validateClassRoomImport({
+        rows: [
+          { class_code: '13C', class_name: '3年Cクラス' },
+          { class_code: '13D', class_name: '3年Dクラス' },
+        ],
+      });
+
+      expect(result).toEqual({
+        total: 2,
+        success_count: 2,
+        error_count: 0,
+        errors: [],
+      });
+      expect(repo.createMany).not.toHaveBeenCalled();
+    });
+
+    it('既存DBとクラス記号が重複する行はエラーとして報告する', async () => {
+      const repo = repository();
+      (
+        repo.findExistingClassCodes as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(new Set(['13C']));
+      const service = createClassRoomService(repo);
+
+      const result = await service.validateClassRoomImport({
+        rows: [{ class_code: '13C', class_name: '3年Cクラス(重複)' }],
+      });
+
+      expect(result).toEqual({
+        total: 1,
+        success_count: 0,
+        error_count: 1,
+        errors: [
+          expect.objectContaining({
+            row_index: 1,
+            reason: 'class_code_duplicate_in_db',
+          }),
+        ],
+      });
+    });
+
+    it('ファイル内でクラス記号が重複する行はエラーとして報告する', async () => {
+      const repo = repository();
+      const service = createClassRoomService(repo);
+
+      const result = await service.validateClassRoomImport({
+        rows: [
+          { class_code: '13C', class_name: '3年Cクラス' },
+          { class_code: '13C', class_name: '3年Cクラス(重複)' },
+        ],
+      });
+
+      expect(result.success_count).toBe(1);
+      expect(result.errors).toEqual([
+        expect.objectContaining({
+          row_index: 2,
+          reason: 'class_code_duplicate_in_file',
+        }),
+      ]);
+    });
+
+    it('2,000件の検査でも、既存クラスコードの問い合わせは1回にまとめる(D1のクエリ数上限対策)', async () => {
+      const repo = repository();
+      const service = createClassRoomService(repo);
+
+      const rows = Array.from({ length: 2000 }, (_, i) => ({
+        class_code: `C${i}`,
+        class_name: `クラス${i}`,
+      }));
+
+      const result = await service.validateClassRoomImport({ rows });
+
+      expect(result).toEqual({
+        total: 2000,
+        success_count: 2000,
+        error_count: 0,
+        errors: [],
+      });
+      const findExistingClassCodes = repo.findExistingClassCodes as ReturnType<
+        typeof vi.fn
+      >;
+      expect(findExistingClassCodes).toHaveBeenCalledTimes(1);
+      expect(findExistingClassCodes.mock.calls[0][0]).toHaveLength(2000);
+    });
+  });
+
+  describe('commitClassRoomImport', () => {
+    it('全行が有効な場合は全件分をまとめてcreateManyに渡す', async () => {
+      const repo = repository();
+      const service = createClassRoomService(repo);
+
+      const result = await service.commitClassRoomImport({
+        rows: [
+          { class_code: '13C', class_name: '3年Cクラス' },
+          { class_code: '13D', class_name: '3年Dクラス' },
+        ],
+      });
+
+      expect(result).toEqual({
+        total: 2,
+        imported: 2,
+        error_count: 0,
+        errors: [],
+      });
+      expect(repo.createMany).toHaveBeenCalledTimes(1);
+      expect(repo.createMany).toHaveBeenCalledWith([
+        { class_code: '13C', class_name: '3年Cクラス', teacher_id: null },
+        { class_code: '13D', class_name: '3年Dクラス', teacher_id: null },
+      ]);
+    });
+
+    it('クラス記号が重複する行がある場合は1件も登録しない', async () => {
+      const repo = repository();
+      (
+        repo.findExistingClassCodes as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(new Set(['13C']));
+      const service = createClassRoomService(repo);
+
+      const result = await service.commitClassRoomImport({
+        rows: [{ class_code: '13C', class_name: '3年Cクラス(重複)' }],
+      });
+
+      expect(result).toEqual({
+        total: 1,
+        imported: 0,
+        error_count: 1,
+        errors: [
+          expect.objectContaining({
+            row_index: 1,
+            reason: 'class_code_duplicate_in_db',
+          }),
+        ],
+      });
+      expect(repo.createMany).not.toHaveBeenCalled();
+    });
   });
 });

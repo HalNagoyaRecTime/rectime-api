@@ -20,6 +20,7 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
   return {
     DB: {} as Env['DB'],
     AUTH_KV: createMockKv(),
+    MASTER_IMPORT_COMMIT_LOCK: {} as Env['MASTER_IMPORT_COMMIT_LOCK'],
     NOTIFICATION_DELIVERY_QUEUE: {} as Env['NOTIFICATION_DELIVERY_QUEUE'],
     ALLOWED_ORIGINS: '',
     FIREBASE_PROJECT_ID: 'project',
@@ -36,6 +37,7 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
     JWT_SECRET,
     JWT_EXPIRES_SEC: '3600',
     MOBILE_REFRESH_EXPIRES_SEC: '2592000',
+    STUDENT_EMAIL_DOMAIN: 'nhs.hal.ac.jp',
     ...overrides,
   };
 }
