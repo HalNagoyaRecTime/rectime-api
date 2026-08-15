@@ -17,6 +17,7 @@ function buildTeacher(overrides: Partial<TeacherDTO> = {}): TeacherDTO {
 
 function setup() {
   const teacherService: ITeacherService = {
+    createTeacher: vi.fn(),
     getTeacherById: vi.fn(),
     getAllTeachers: vi.fn(),
     updateTeacher: vi.fn(),
@@ -26,6 +27,7 @@ function setup() {
   };
   const controller = createTeacherController(teacherService);
   const app = new Hono();
+  app.post('/teachers', c => controller.createTeacher(c));
   app.get('/teachers', c => controller.getAllTeachers(c));
   app.get('/teachers/:teacherId', c => controller.getTeacherById(c));
   app.put('/teachers/:teacherId', c => controller.updateTeacher(c));
@@ -34,6 +36,58 @@ function setup() {
 }
 
 describe('TeacherController', () => {
+  describe('createTeacher', () => {
+    it('正常なリクエストを201で返す', async () => {
+      const { app, teacherService } = setup();
+      const teacher = buildTeacher();
+      (
+        teacherService.createTeacher as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(teacher);
+
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName: '山田先生', classRoomIds: [] }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual(teacher);
+      expect(teacherService.createTeacher).toHaveBeenCalledWith({
+        userName: '山田先生',
+        classRoomIds: [],
+      });
+    });
+
+    it('未知フィールドを400で拒否する', async () => {
+      const { app } = setup();
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userName: '山田先生',
+          classRoomIds: [],
+          isLiveActive: false,
+        }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('サービスがクラス未存在エラーを返した場合は400を返す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.createTeacher as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Class room not found'));
+
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName: '山田先生', classRoomIds: [999999] }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'Class room not found' });
+    });
+  });
   describe('getTeacherById', () => {
     it('存在する教員を 200 で返す', async () => {
       const { app, teacherService } = setup();

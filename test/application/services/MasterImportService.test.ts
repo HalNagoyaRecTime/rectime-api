@@ -81,6 +81,7 @@ function buildTeacherService(
   overrides: Partial<ITeacherService> = {}
 ): ITeacherService {
   return {
+    createTeacher: vi.fn(),
     getTeacherById: vi.fn(),
     getAllTeachers: vi.fn(),
     updateTeacher: vi.fn(),

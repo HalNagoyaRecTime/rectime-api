@@ -31,6 +31,37 @@ function buildRepository(
 }
 
 describe('TeacherService', () => {
+  describe('createTeacher', () => {
+    it('クラス指定なしで作成しDTOへ変換する', async () => {
+      const teacher = buildTeacher();
+      const repository = buildRepository({
+        create: vi.fn().mockResolvedValue(teacher),
+      });
+      const service = createTeacherService(repository);
+
+      await expect(
+        service.createTeacher({ userName: '山田先生', classRoomIds: [] })
+      ).resolves.toEqual({
+        teacher_id: 1,
+        user_id: 10,
+        display_name: '山田先生',
+        is_live_active: true,
+        class_rooms: [],
+      });
+      expect(repository.existsClassRooms).not.toHaveBeenCalled();
+    });
+
+    it('存在しないクラスを400相当のエラーとして拒否する', async () => {
+      const repository = buildRepository({
+        existsClassRooms: vi.fn().mockResolvedValue(false),
+      });
+      const service = createTeacherService(repository);
+      await expect(
+        service.createTeacher({ userName: '山田先生', classRoomIds: [999] })
+      ).rejects.toThrow('Class room not found');
+      expect(repository.create).not.toHaveBeenCalled();
+    });
+  });
   describe('getTeacherById', () => {
     it('存在する場合は TeacherEntity を TeacherDTO にマッピングして返す', async () => {
       const teacher = buildTeacher();

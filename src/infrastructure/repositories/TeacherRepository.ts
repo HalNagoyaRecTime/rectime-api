@@ -9,6 +9,7 @@ import {
   TeacherPage,
   TeacherSearchFilter,
   TeacherUpdateInput,
+  TeacherCreateInput,
 } from '../../domain/entities/Teacher';
 import {
   ITeacherRepository,
@@ -186,39 +187,109 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       return rows.length === classRoomIds.length;
     },
 
-    async create(input: NewTeacherInput): Promise<TeacherEntity> {
-      const [userResult, teacherResult] = await db.batch<
-        ReturnedUserRow | ReturnedTeacherRow
-      >([
-        db
-          .prepare(
-            `INSERT INTO users (user_name, updated_at)
-             VALUES (?, CURRENT_TIMESTAMP)
-             RETURNING user_id, user_name, is_live_active`
-          )
-          .bind(input.displayName),
-        db.prepare(
-          `INSERT INTO teachers (user_id, updated_at)
-           VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
-           RETURNING teacher_id, user_id`
-        ),
-      ]);
+    async create(
+      input: NewTeacherInput | TeacherCreateInput
+    ): Promise<TeacherEntity> {
+      const displayName =
+        'userName' in input ? input.userName : input.displayName;
+      const classRoomIds = 'userName' in input ? input.classRoomIds : [];
+      const hasClassRoomAssignments = classRoomIds.length > 0;
+
+      // classRoomIds の存在確認を各文の条件に含めることで、存在確認と
+      // users/teachers の作成・クラス紐付けを同じ batch 内で扱う。
+      // 対象クラスが欠けている場合は全ての書き込みが実行されないため、
+      // 教員だけが作成される状態を防げる。
+      const batchResults = hasClassRoomAssignments
+        ? await db.batch<
+            ReturnedUserRow | ReturnedTeacherRow | { class_room_id: number }
+          >([
+            db
+              .prepare(
+                `INSERT INTO users (user_name, updated_at)
+                 SELECT ?, CURRENT_TIMESTAMP
+                 WHERE (SELECT COUNT(*) FROM class_rooms
+                        WHERE class_room_id IN (${classRoomIds
+                          .map(() => '?')
+                          .join(', ')})) = ?
+                 RETURNING user_id, user_name, is_live_active`
+              )
+              .bind(displayName, ...classRoomIds, classRoomIds.length),
+            db
+              .prepare(
+                `INSERT INTO teachers (user_id, updated_at)
+                 SELECT last_insert_rowid(), CURRENT_TIMESTAMP
+                 WHERE (SELECT COUNT(*) FROM class_rooms
+                        WHERE class_room_id IN (${classRoomIds
+                          .map(() => '?')
+                          .join(', ')})) = ?
+                 RETURNING teacher_id, user_id`
+              )
+              .bind(...classRoomIds, classRoomIds.length),
+            db
+              .prepare(
+                `UPDATE class_rooms
+                 SET teacher_id = last_insert_rowid(),
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE class_room_id IN (${classRoomIds
+                   .map(() => '?')
+                   .join(', ')})
+                   AND (SELECT COUNT(*) FROM class_rooms
+                        WHERE class_room_id IN (${classRoomIds
+                          .map(() => '?')
+                          .join(', ')})) = ?
+                 RETURNING class_room_id`
+              )
+              .bind(...classRoomIds, ...classRoomIds, classRoomIds.length),
+          ])
+        : await db.batch<ReturnedUserRow | ReturnedTeacherRow>([
+            db
+              .prepare(
+                `INSERT INTO users (user_name, updated_at)
+                 VALUES (?, CURRENT_TIMESTAMP)
+                 RETURNING user_id, user_name, is_live_active`
+              )
+              .bind(displayName),
+            db.prepare(
+              `INSERT INTO teachers (user_id, updated_at)
+               VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
+               RETURNING teacher_id, user_id`
+            ),
+          ]);
+
+      const [userResult, teacherResult] = batchResults;
 
       const user = userResult.results[0] as ReturnedUserRow | undefined;
       const created = teacherResult.results[0] as
         | ReturnedTeacherRow
         | undefined;
       if (!user || !created) {
+        if (hasClassRoomAssignments) {
+          throw new Error('Class room not found');
+        }
         throw new Error('Failed to create teacher');
       }
 
-      return {
-        teacher_id: created.teacher_id,
-        user_id: user.user_id,
-        user_name: user.user_name,
-        is_live_active: user.is_live_active === 1,
-        class_rooms: [],
-      };
+      if (hasClassRoomAssignments) {
+        const assignmentResult = batchResults[2];
+        if (assignmentResult.results.length !== classRoomIds.length) {
+          throw new Error('Failed to assign class rooms');
+        }
+      }
+
+      const result = await orm
+        .select()
+        .from(teachers)
+        .innerJoin(users, eq(teachers.userId, users.id))
+        .where(eq(teachers.id, created.teacher_id))
+        .get();
+      if (!result) throw new Error('Failed to create teacher');
+      const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [
+        created.teacher_id,
+      ]);
+      return toEntity(
+        result,
+        classRoomsByTeacher.get(created.teacher_id) ?? []
+      );
     },
 
     async createMany(inputs: NewTeacherInput[]): Promise<void> {

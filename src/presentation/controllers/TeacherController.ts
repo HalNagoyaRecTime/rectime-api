@@ -5,15 +5,28 @@ import { TeacherSearchFilter } from '../../domain/entities/Teacher';
 
 const MAX_LIMIT = 100;
 
-const updateTeacherSchema = z.object({
-  userName: z.string().min(1),
-  isLiveActive: z.boolean(),
-  classRoomIds: z
-    .array(z.number().int().positive())
-    .refine(ids => new Set(ids).size === ids.length, {
-      message: 'classRoomIds must not contain duplicate values',
-    }),
-});
+const createTeacherSchema = z
+  .object({
+    userName: z.string().min(1),
+    classRoomIds: z
+      .array(z.number().int().positive())
+      .refine(ids => new Set(ids).size === ids.length, {
+        message: 'classRoomIds must not contain duplicate values',
+      }),
+  })
+  .strict();
+
+const updateTeacherSchema = z
+  .object({
+    userName: z.string().min(1),
+    isLiveActive: z.boolean(),
+    classRoomIds: z
+      .array(z.number().int().positive())
+      .refine(ids => new Set(ids).size === ids.length, {
+        message: 'classRoomIds must not contain duplicate values',
+      }),
+  })
+  .strict();
 
 function getTeacherId(c: Context): number | null {
   const id = Number(c.req.param('teacherId') || c.req.param('id'));
@@ -60,6 +73,36 @@ function parseSearchFilter(c: Context): TeacherSearchFilter {
 }
 
 export function createTeacherController(teacherService: ITeacherService) {
+  const createTeacher = async (c: Context) => {
+    const body = await c.req.json().catch(() => undefined);
+    const parsedBody = createTeacherSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return c.json(
+        {
+          error: 'Invalid teacher create request body',
+          details: parsedBody.error.flatten(),
+        },
+        400
+      );
+    }
+
+    try {
+      const teacher = await teacherService.createTeacher(parsedBody.data);
+      return c.json(teacher, 201);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Class room not found') {
+        return c.json({ error: error.message }, 400);
+      }
+      return c.json(
+        {
+          error: 'Failed to create teacher',
+          details: error instanceof Error ? error.message : String(error),
+        },
+        500
+      );
+    }
+  };
+
   const getTeacherById = async (c: Context) => {
     try {
       const teacherId = getTeacherId(c);
@@ -159,6 +202,7 @@ export function createTeacherController(teacherService: ITeacherService) {
   };
 
   return {
+    createTeacher,
     getTeacherById,
     getAllTeachers,
     updateTeacher,
