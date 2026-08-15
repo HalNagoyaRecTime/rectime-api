@@ -60,6 +60,32 @@ describe('createAuthService', () => {
     return { userRepository, studentRepository, service };
   }
 
+  it('studentEmailDomainが未設定の場合はエラーを投げる', () => {
+    const userRepository: IUserRepository = {
+      exists: vi.fn(),
+      isStaffOrTeacher: vi.fn(),
+      getUserCategories: vi.fn(),
+      findUserIdByMicrosoftAccount: vi.fn(),
+      createUserWithMicrosoftLink: vi.fn(),
+      updateUser: vi.fn(),
+      linkMicrosoftAccount: vi.fn(),
+    };
+    const studentRepository: IStudentRepository = {
+      findById: vi.fn(),
+      findAll: vi.fn(),
+      findByStudentNum: vi.fn(),
+      classRoomExists: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      findExistingStudentNumbers: vi.fn(),
+      createMany: vi.fn(),
+    };
+
+    expect(() =>
+      createAuthService(userRepository, studentRepository, '')
+    ).toThrow('STUDENT_EMAIL_DOMAIN is not configured');
+  });
+
   describe('upsertUser', () => {
     it('既存ユーザーが見つかる場合は updateUser を呼び出す', async () => {
       const { userRepository, service } = setup();

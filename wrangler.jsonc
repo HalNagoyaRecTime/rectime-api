@@ -11,6 +11,7 @@
   "vars": {
     "NODE_ENV": "production",
     "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+    "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
   // 公開されている(README.md参照)。カスタムドメイン/routesは未設定のため、
@@ -32,6 +33,7 @@
       "FIREBASE_CLIENT_EMAIL",
       "FIREBASE_PRIVATE_KEY",
       "TEST_FCM_TOKEN",
+      "STUDENT_EMAIL_DOMAIN",
     ],
   },
   "triggers": {
@@ -93,6 +95,7 @@
         "PORT": "8787",
         "HOST": "0.0.0.0",
         "ALLOWED_ORIGINS": "http://localhost:5173,https://*.recwatch.pages.dev",
+        "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
       },
       // secrets.required はここでは宣言しない: vitest-pool-workers
       // (test/apply-migrations.ts) がこの環境で62ファイル分のWorkerを並列起動する際、
@@ -182,6 +185,7 @@
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
+        "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
       },
       "secrets": {
         "required": [

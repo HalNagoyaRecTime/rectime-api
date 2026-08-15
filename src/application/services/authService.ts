@@ -29,6 +29,10 @@ export function createAuthService(
   studentRepository: IStudentRepository,
   studentEmailDomain: string
 ): IAuthService {
+  if (!studentEmailDomain) {
+    throw new Error('STUDENT_EMAIL_DOMAIN is not configured');
+  }
+
   return {
     async upsertUser(claims: MicrosoftClaims) {
       const email = claims.preferred_username ?? claims.email ?? '';
