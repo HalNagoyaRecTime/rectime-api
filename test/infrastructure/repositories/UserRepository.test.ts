@@ -257,7 +257,9 @@ describe('UserRepository', () => {
           oid: 'oid-new',
           tid: 'tid-new',
         })
-      ).rejects.toThrow(/UNIQUE constraint failed.*microsoft_account_links\.user_id/);
+      ).rejects.toThrow(
+        /UNIQUE constraint failed.*microsoft_account_links\.user_id/
+      );
     });
 
     it('既に登録済みのoid/tidの組み合わせを、別のuser_idに紐付けようとするとUNIQUE制約違反のエラーを投げる', async () => {
@@ -279,7 +281,9 @@ describe('UserRepository', () => {
           oid: 'oid-dup',
           tid: 'tid-dup',
         })
-      ).rejects.toThrow(/UNIQUE constraint failed.*microsoft_account_links\.oid/);
+      ).rejects.toThrow(
+        /UNIQUE constraint failed.*microsoft_account_links\.oid/
+      );
     });
   });
 
