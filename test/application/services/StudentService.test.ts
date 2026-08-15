@@ -100,7 +100,8 @@ describe('StudentService', () => {
       const repository = createRepository({
         findByUserId: vi.fn().mockResolvedValue(student),
       });
-      const service = createStudentService(repository);
+      const classRoomRepository = createClassRoomRepository();
+      const service = createStudentService(repository, classRoomRepository);
 
       const dto = await service.getByUserId(10);
 
@@ -120,7 +121,8 @@ describe('StudentService', () => {
       const repository = createRepository({
         findByUserId: vi.fn().mockResolvedValue(null),
       });
-      const service = createStudentService(repository);
+      const classRoomRepository = createClassRoomRepository();
+      const service = createStudentService(repository, classRoomRepository);
 
       await expect(service.getByUserId(999)).rejects.toThrow(
         'Student not found'
