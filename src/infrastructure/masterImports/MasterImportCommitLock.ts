@@ -4,9 +4,7 @@ const LOCK_TIMEOUT_MS = 60 * 1000;
 
 export class MasterImportCommitLock extends DurableObject {
   async tryBeginCommit(): Promise<boolean> {
-    const startedAt = await this.ctx.storage.get<number>(
-      'committingStartedAt'
-    );
+    const startedAt = await this.ctx.storage.get<number>('committingStartedAt');
     if (startedAt !== undefined && Date.now() - startedAt < LOCK_TIMEOUT_MS) {
       return false;
     }
