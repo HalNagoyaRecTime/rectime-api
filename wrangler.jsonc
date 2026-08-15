@@ -10,18 +10,20 @@
   },
   "vars": {
     "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
-    // Entraアプリの「アプリケーション(クライアント)ID」。非公開の資格情報ではないため
-    // vars で直接設定する(development/staging と同じ値。#204レビュー指摘対応)。
-    // 移行前にCloudflare側の本番secret `MICROSOFT_CLIENT_ID` を削除しておくこと
-    // (`wrangler secret delete MICROSOFT_CLIENT_ID`)。secretとvarで同名の
-    // bindingが両方存在するとdeployが失敗する。
-    "MICROSOFT_CLIENT_ID": "be597fc9-7946-43a2-9ba8-6a96c96fd3b7",
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
   // 公開されている(README.md参照)。カスタムドメイン/routesは未設定のため、
   // workers_dev/preview_urls はここでは変更しない(falseにすると本番アクセス不能になる)。
+  //
+  // MICROSOFT_CLIENT_IDは非公開の資格情報ではないためvarsへ移行する余地はあるが、
+  // `wrangler secret delete`は実行直後に新バージョンを即座にデプロイするため、本番の
+  // 手動デプロイ化(workflow_dispatch)と組み合わせると「secretを消したがまだ誰も
+  // dispatchしていない」空白時間がそのまま本番Microsoftログインの障害時間になる
+  // (#204レビュー指摘)。安全な移行手順が確立するまでは、本番のみsecrets.requiredに
+  // 残す(development/stagingはこのリスクがないためvars化済み)。
   "secrets": {
     "required": [
+      "MICROSOFT_CLIENT_ID",
       "MICROSOFT_CLIENT_PRIVATE_KEY",
       "MICROSOFT_CERT_THUMBPRINT",
       "MICROSOFT_TENANT",
@@ -123,6 +125,10 @@
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
+        // 通知配信を許可する開催日(YYYY-MM-DD、EventScheduleController等が必須で検証する)。
+        // 未設定だと更新系エンドポイントが500になる(#204レビュー指摘)。実イベントの日付に
+        // 追随させる必要はない検証用環境のため、固定のダミー値を使う。
+        "EVENT_DATE": "2026-01-01",
       },
       // triggersはトップレベルから継承されるため、明示しないと本番同様の毎分cronが
       // development(旧env.previewが明示的に無効化していた分)でも有効になってしまう。
@@ -206,6 +212,10 @@
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
+        // 通知配信を許可する開催日(YYYY-MM-DD)。未設定だと更新系エンドポイントが
+        // 500になる(#204レビュー指摘)。本番相当の検証環境だが、実イベント日付に
+        // 追随させる必要はないため固定のダミー値を使う。
+        "EVENT_DATE": "2026-01-01",
       },
       "secrets": {
         "required": [

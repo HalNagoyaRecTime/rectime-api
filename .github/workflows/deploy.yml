@@ -23,9 +23,20 @@ on:
 # 集約されてしまうため、フォールバックとしてworkflow_run.id(実行ごとに一意)を使う。
 # fork PRの連続pushはこのフォールバックにより直列化されない(実行ごとに別グループになる)が、
 # "Set deploy target"のPR_NUMBER空チェックでいずれのpushも即座に失敗するため実害は小さい。
+#
+# concurrency.groupへの参加とcancel-in-progressの発火は、ワークフロー実行がキューされた
+# 時点(=jobs.deploy.ifが評価される前)で起こる。そのため、workflow_dispatchがmain以外の
+# ブランチから実行された場合にgroup式のどの条件にも一致しないと、最終フォールバックの
+# 'development'に落ちてしまい、jobがskipされる前に進行中のdevelopデプロイを巻き添え
+# キャンセルしてしまう。これを防ぐため、workflow_dispatch(main以外)専用のユニークな
+# group('invalid-dispatch-<ブランチ名>')に分離し、他のgroupと絶対に衝突しないようにする。
+#
+# cancel-in-progressは、PRプレビュー(使い捨てのビルド)のみtrueにする。production/staging/
+# developmentは共有リソースへの`d1 migrations apply --remote`を含むため、途中キャンセルで
+# D1の状態が中途半端になり得る連続デプロイは、キャンセルさせず直列に実行させたい。
 concurrency:
-  group: deploy-cloudflare-workers-${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || (github.event.workflow_run.event == 'pull_request') && format('pr-{0}', github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id) || 'development' }}
-  cancel-in-progress: true
+  group: deploy-cloudflare-workers-${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' && 'production' || format('invalid-dispatch-{0}', github.ref_name)) || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || (github.event.workflow_run.event == 'pull_request') && format('pr-{0}', github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id) || 'development' }}
+  cancel-in-progress: ${{ github.event.workflow_run.event == 'pull_request' }}
 
 permissions:
   contents: read
@@ -36,11 +47,21 @@ jobs:
     # workflow_dispatchがmain以外のブランチから実行された場合、ここでジョブ自体を
     # skipする(以前は"Set deploy target"ステップのシェル側ガードのみで、そこに至る
     # 前にconcurrency.groupの'development'フォールバックに入って進行中のdevelop
-    # デプロイを巻き添えキャンセルしてしまっていた)。シェル側のガードは冗長化として残す。
+    # デプロイを巻き添えキャンセルしてしまっていた。concurrency.group側の対応は上部参照)。
+    # シェル側のガードは冗長化として残す。
+    #
+    # pull_requestはさらに、PRがfork由来でないことも検証する。fork PRはhead_repository
+    # がこのリポジトリと一致しないため、ここでskipすることでcheckout/npm ci自体が
+    # 実行されなくなり、fork側コードのpostinstallなどが(pull-requests: writeを含む)
+    # GITHUB_TOKENへアクセスできる状態でCIランナー上で動くことを防ぐ
+    # (fork PRは従来から"Set deploy target"のPR_NUMBER空チェックで結局失敗していたため、
+    # ここでのskipによる機能低下はない)。
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') ||
       (github.event.workflow_run.conclusion == 'success' &&
-       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'pull_request'))
+       (github.event.workflow_run.event == 'push' ||
+        (github.event.workflow_run.event == 'pull_request' &&
+         github.event.workflow_run.head_repository.full_name == github.repository)))
     name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
     runs-on: ubuntu-latest
     # concurrency.groupのproduction/staging判定と同じ式(上部のコメント参照)。
