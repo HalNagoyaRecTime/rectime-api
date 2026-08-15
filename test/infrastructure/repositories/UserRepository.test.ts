@@ -224,6 +224,69 @@ describe('UserRepository', () => {
     });
   });
 
+  describe('linkMicrosoftAccount', () => {
+    it('指定したuser_idにMicrosoftアカウントを紐付ける', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('学生太郎') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await repo.linkMicrosoftAccount({
+        userId: String(user!.user_id),
+        oid: 'oid-link-1',
+        tid: 'tid-link-1',
+      });
+
+      await expect(
+        repo.findUserIdByMicrosoftAccount('oid-link-1', 'tid-link-1')
+      ).resolves.toBe(String(user!.user_id));
+    });
+
+    it('既に別のMicrosoftアカウントと紐付いているuser_idを指定すると、UNIQUE制約違反のエラーを投げる', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('学生太郎') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await repo.linkMicrosoftAccount({
+        userId: String(user!.user_id),
+        oid: 'oid-existing',
+        tid: 'tid-existing',
+      });
+
+      await expect(
+        repo.linkMicrosoftAccount({
+          userId: String(user!.user_id),
+          oid: 'oid-new',
+          tid: 'tid-new',
+        })
+      ).rejects.toThrow(
+        /UNIQUE constraint failed.*microsoft_account_links\.user_id/
+      );
+    });
+
+    it('既に登録済みのoid/tidの組み合わせを、別のuser_idに紐付けようとするとUNIQUE制約違反のエラーを投げる', async () => {
+      const userA = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('学生A') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const userB = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('学生B') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await repo.linkMicrosoftAccount({
+        userId: String(userA!.user_id),
+        oid: 'oid-dup',
+        tid: 'tid-dup',
+      });
+
+      await expect(
+        repo.linkMicrosoftAccount({
+          userId: String(userB!.user_id),
+          oid: 'oid-dup',
+          tid: 'tid-dup',
+        })
+      ).rejects.toThrow(
+        /UNIQUE constraint failed.*microsoft_account_links\.oid/
+      );
+    });
+  });
+
   describe('updateUser', () => {
     it('既存ユーザーの user_name を更新し、AppUser を返す', async () => {
       const created = await repo.createUserWithMicrosoftLink({

@@ -23,4 +23,9 @@ export interface IUserRepository {
     email: string;
     displayName: string;
   }): Promise<AppUser | null>;
+  linkMicrosoftAccount(params: {
+    userId: string;
+    oid: string;
+    tid: string;
+  }): Promise<void>;
 }

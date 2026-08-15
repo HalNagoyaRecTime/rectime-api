@@ -268,7 +268,20 @@ microsoft.post('/token', async c => {
     );
   }
 
-  const user = await upsertUser(c, claims);
+  let user;
+  try {
+    user = await upsertUser(c, claims);
+  } catch (err) {
+    if (err instanceof Error && err.message === 'STUDENT_ALREADY_LINKED') {
+      return errorResponse(
+        c,
+        409,
+        'STUDENT_ALREADY_LINKED',
+        'この学生は既に別のMicrosoftアカウントと連携されています。'
+      );
+    }
+    throw err;
+  }
   const refreshTokenId = crypto.randomUUID();
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
 

@@ -74,6 +74,7 @@ function setup() {
     findUserIdByMicrosoftAccount: vi.fn(),
     createUserWithMicrosoftLink: vi.fn(),
     updateUser: vi.fn(),
+    linkMicrosoftAccount: vi.fn(),
   };
   return {
     eventRepository,
