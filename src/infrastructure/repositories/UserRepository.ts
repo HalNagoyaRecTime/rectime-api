@@ -156,6 +156,7 @@ export function createUserRepository(db: D1Database): IUserRepository {
         if (err instanceof Error && err.cause instanceof Error) {
           throw err.cause;
         }
+        throw err;
       }
     },
 
