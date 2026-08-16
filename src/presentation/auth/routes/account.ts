@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Env as Bindings } from '../../../lib/env';
+import type { ContainerVariables } from '../../middleware/diContainer';
 import {
   signAccessToken,
   verifyAccessToken,
@@ -12,6 +13,7 @@ import {
   getBearerToken,
   refreshMicrosoftAccessToken,
   userResponse,
+  getStudentInfoOrNull,
   getUserCategories,
 } from '../helpers';
 import {
@@ -20,10 +22,14 @@ import {
 } from '../../../domain/auth/types';
 import { GRAPH_ME_PHOTO_URL } from '../../../infrastructure/auth/microsoftClient';
 
-const account = new Hono<{ Bindings: Bindings }>();
+const account = new Hono<{
+  Bindings: Bindings;
+  Variables: ContainerVariables;
+}>();
 
 // GET /auth/me
 account.get('/me', async c => {
+  const { studentService } = c.get('container');
   const clientType = getClientType(c);
   if (clientType !== 'web' && clientType !== 'mobile') {
     return errorResponse(
@@ -54,6 +60,11 @@ account.get('/me', async c => {
     return errorResponse(c, 401, code, message);
   }
 
+  const student = await getStudentInfoOrNull(
+    studentService,
+    Number(claims.sub)
+  );
+
   const categories = await getUserCategories(c, claims.sub);
   return c.json({
     user: userResponse(
@@ -63,6 +74,8 @@ account.get('/me', async c => {
         display_name: claims.display_name,
         avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
         avatar_updated_at: claims.avatar_updated_at ?? null,
+        student_id_number: student?.student_id_number ?? null,
+        class_room_name: student?.class_room_name ?? null,
       },
       categories
     ),

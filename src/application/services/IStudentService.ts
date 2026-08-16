@@ -9,6 +9,7 @@ import {
 
 export interface IStudentService {
   getStudentById: (id: number) => Promise<StudentDTO>;
+  getByUserId: (userId: number) => Promise<StudentDTO>;
   getAllStudents: (options: {
     limit: number;
     offset: number;

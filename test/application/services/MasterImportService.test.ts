@@ -53,6 +53,7 @@ function buildStudentService(
 ): IStudentService {
   return {
     getStudentById: vi.fn(),
+    getByUserId: vi.fn(),
     getAllStudents: vi.fn(),
     createStudent: vi.fn(),
     updateStudent: vi.fn(),

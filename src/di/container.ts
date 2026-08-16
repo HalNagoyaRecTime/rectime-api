@@ -201,6 +201,7 @@ export function createDIContainer(env: Env) {
 
   return {
     authService,
+    studentService,
     studentController,
     staffController,
     teacherController,

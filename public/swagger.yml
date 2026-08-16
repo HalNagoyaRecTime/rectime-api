@@ -3217,6 +3217,12 @@ components:
         avatar_updated_at:
           type: string
           nullable: true
+        student_id_number:
+          type: string
+          nullable: true
+        class_room_name:
+          type: string
+          nullable: true
         is_student:
           type: boolean
           description: students テーブルに紐づくアカウントかどうか

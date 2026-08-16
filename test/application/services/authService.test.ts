@@ -50,6 +50,7 @@ describe('createAuthService', () => {
       update: vi.fn(),
       findExistingStudentNumbers: vi.fn(),
       createMany: vi.fn(),
+      findByUserId: vi.fn(),
     };
     const studentEmailDomain = 'nhs.hal.ac.jp';
     const service = createAuthService(
@@ -79,6 +80,7 @@ describe('createAuthService', () => {
       update: vi.fn(),
       findExistingStudentNumbers: vi.fn(),
       createMany: vi.fn(),
+      findByUserId: vi.fn(),
     };
 
     expect(() =>

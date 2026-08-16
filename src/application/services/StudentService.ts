@@ -89,6 +89,14 @@ export function createStudentService(
 
       return toDTO(student);
     },
+    async getByUserId(userId: number): Promise<StudentDTO> {
+      const student = await studentRepository.findByUserId(userId);
+      if (!student) {
+        throw new Error('Student not found');
+      }
+
+      return toDTO(student);
+    },
     async getAllStudents({
       limit,
       offset,

@@ -15,6 +15,7 @@ export interface BulkCreateStudentsInput {
 
 export interface IStudentRepository {
   findById: (id: number) => Promise<StudentEntity | null>;
+  findByUserId: (userId: number) => Promise<StudentEntity | null>;
   findAll: (options: {
     limit: number;
     offset: number;

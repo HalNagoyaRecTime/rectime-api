@@ -23,6 +23,7 @@ function setup() {
     getAllStudents: vi.fn(),
     createStudent: vi.fn(),
     updateStudent: vi.fn(),
+    getByUserId: vi.fn(),
     validateStudentImport: vi.fn(),
     commitStudentImport: vi.fn(),
   };
