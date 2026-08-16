@@ -672,4 +672,122 @@ describe('POST /auth/microsoft/token', () => {
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe('STUDENT_ALREADY_LINKED');
   });
+
+  it('学生ユーザーが初回ログイン時、学籍番号から紐付いてstudent_id_number/class_room_nameを返す', async () => {
+    const env = buildEnv();
+
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3B', '3年B組') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('学生次郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 2, '60001')"
+    )
+      .bind(user!.user_id, classRoom!.class_room_id)
+      .run();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-student-1',
+      oid: 'oid-student-1',
+      tid: 'tid-1',
+      name: '学生次郎',
+      preferred_username: 'nhs60001@nhs.hal.ac.jp',
+      nonce: 'nonce-student-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-student-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-student-1',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-student-1',
+          state: 'state-student-1',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      user: {
+        id: string;
+        student_id_number: string | null;
+        class_room_name: string | null;
+      };
+    };
+    expect(body.user.id).toBe(String(user!.user_id));
+    expect(body.user.student_id_number).toBe('60001');
+    expect(body.user.class_room_name).toBe('3年B組');
+  });
+
+  it('学生でないユーザーがログインした場合、エラーにならずstudent_id_number/class_room_nameがnullで返る', async () => {
+    const env = buildEnv();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-teacher-1',
+      oid: 'oid-teacher-1',
+      tid: 'tid-1',
+      name: '教師三郎',
+      preferred_username: 'sensei@example.com',
+      nonce: 'nonce-teacher-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-teacher-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-teacher-1',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-teacher-1',
+          state: 'state-teacher-1',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      user: {
+        student_id_number: string | null;
+        class_room_name: string | null;
+      };
+    };
+    expect(body.user.student_id_number).toBeNull();
+    expect(body.user.class_room_name).toBeNull();
+  });
 });

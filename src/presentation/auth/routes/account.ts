@@ -60,7 +60,10 @@ account.get('/me', async c => {
     return errorResponse(c, 401, code, message);
   }
 
-  const student = await getStudentInfoOrNull(studentService, Number(claims.sub));
+  const student = await getStudentInfoOrNull(
+    studentService,
+    Number(claims.sub)
+  );
 
   const categories = await getUserCategories(c, claims.sub);
   return c.json({

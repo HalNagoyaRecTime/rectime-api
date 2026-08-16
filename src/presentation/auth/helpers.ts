@@ -171,9 +171,9 @@ export async function getStudentInfoOrNull(
 ): Promise<StudentDTO | null> {
   return studentService.getByUserId(userId).catch(err => {
     if (err instanceof Error && err.message === 'Student not found') {
-        return null;
-      }
-      throw err;
+      return null;
+    }
+    throw err;
   });
 }
 
