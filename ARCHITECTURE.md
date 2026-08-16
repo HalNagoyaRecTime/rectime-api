@@ -14,6 +14,17 @@ Infrastructure → Application / Domain
 DI → Application / Infrastructure
 ```
 
+```mermaid
+flowchart LR
+  Presentation --> Application
+  Presentation --> Domain
+  PresentationMiddleware["Presentation Middleware"] --> DI
+  Infrastructure --> Application
+  Infrastructure --> Domain
+  DI --> Application
+  DI --> Infrastructure
+```
+
 - Domainは他の層に依存しない。
 - PresentationはApplicationとDomainを利用できる。
 - PresentationのDI Middlewareだけは、DIコンテナをContextへ注入するためDIを利用できる。
@@ -45,6 +56,18 @@ DI → Application / Infrastructure
 - Application ServiceはDTOとDomain型を変換する。
 - Domain modelとRepositoryの入力、検索条件、戻り値は`src/domain/`に置く。
 - RepositoryはDTOを受け取らない。
+
+```mermaid
+flowchart LR
+  HTTP["HTTP request"] --> Presentation
+  Presentation --> DTO["Application DTO"]
+  DTO --> Application
+  Application --> Domain
+  Application --> Contract["Repository contract"]
+  Infrastructure --> Contract
+  Infrastructure --> DB["D1 / external service"]
+  Infrastructure --> Domain
+```
 
 ## 共通ルール
 
