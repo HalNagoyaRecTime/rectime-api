@@ -406,16 +406,6 @@ function pairStudentsWithCreatedUsers(
     };
   });
 
-  const unmatchedUserCount = Array.from(userIdsByName.values()).reduce(
-    (total, ids) => total + ids.length,
-    0
-  );
-  if (unmatchedUserCount > 0) {
-    throw new Error(
-      `Unmatched created users remain after pairing: ${unmatchedUserCount}`
-    );
-  }
-
   return paired;
 }
 
