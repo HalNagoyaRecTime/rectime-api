@@ -101,6 +101,22 @@ describe('TeacherRepository', () => {
       expect(result.items).toHaveLength(seeded.teachers.length);
     });
 
+    it('デフォルトでは論理削除済み教員を除外する', async () => {
+      const target = seeded.teachers[0];
+      await repo.deactivate(target.teacherId);
+
+      const active = await repo.findAll();
+      const inactive = await repo.findAll({ isLiveActive: false });
+
+      expect(
+        active.items.some(item => item.teacher_id === target.teacherId)
+      ).toBe(false);
+      expect(active.total).toBe(seeded.teachers.length - 1);
+      expect(
+        inactive.items.some(item => item.teacher_id === target.teacherId)
+      ).toBe(true);
+    });
+
     it('デフォルトは offset=0, limit=50 で返す', async () => {
       const result = await repo.findAll();
       expect(result.offset).toBe(0);
@@ -250,6 +266,17 @@ describe('TeacherRepository', () => {
       expect(updated).toBeNull();
     });
 
+    it('論理削除済み教員の場合は null を返す', async () => {
+      const target = seeded.teachers[0];
+      await repo.deactivate(target.teacherId);
+
+      const updated = await repo.update(target.teacherId, {
+        userName: '更新不可先生',
+        classRoomIds: [],
+      });
+      expect(updated).toBeNull();
+    });
+
     it('存在しないクラスIDを含む場合は失敗し、氏名・有効状態・既存の担当クラスが変更前のまま残る（アトミック性）', async () => {
       const target = seeded.teachers[0];
       const beforeUserName = target.displayName;
@@ -275,39 +302,34 @@ describe('TeacherRepository', () => {
     });
   });
 
-  describe('hasClassAssignments', () => {
-    it('担当クラスがある場合は true を返す', async () => {
-      expect(await repo.hasClassAssignments(seeded.teachers[0].teacherId)).toBe(
-        true
-      );
+  describe('deactivate', () => {
+    it('教員を論理削除し、担当クラスを解除する', async () => {
+      const target = seeded.teachers[0];
+      expect(await repo.deactivate(target.teacherId)).toBe(true);
+
+      const teacher = await repo.findById(target.teacherId);
+      expect(teacher).toMatchObject({
+        teacher_id: target.teacherId,
+        is_live_active: false,
+      });
+      expect(teacher?.class_rooms).toEqual([]);
+      const user = await env.DB.prepare(
+        'SELECT is_live_active FROM users WHERE user_id = ?'
+      )
+        .bind(target.userId)
+        .first<{ is_live_active: number }>();
+      expect(user?.is_live_active).toBe(0);
     });
 
-    it('担当クラスがない場合は false を返す', async () => {
-      expect(await repo.hasClassAssignments(seeded.teachers[1].teacherId)).toBe(
-        false
-      );
-    });
-  });
-
-  describe('delete', () => {
-    it('担当クラスがない教員を削除できる', async () => {
+    it('削除済み教員を再度論理削除しても成功する', async () => {
       const target = seeded.teachers[1];
-      expect(await repo.delete(target.teacherId)).toBe(true);
-      expect(await repo.findById(target.teacherId)).toBeNull();
+      expect(await repo.deactivate(target.teacherId)).toBe(true);
+      expect(await repo.deactivate(target.teacherId)).toBe(true);
+      expect(await repo.findById(target.teacherId)).not.toBeNull();
     });
 
     it('存在しない教員IDの場合は false を返す', async () => {
-      expect(await repo.delete(999999)).toBe(false);
-    });
-
-    it('担当クラスが割り当てられている教員を削除しようとするとFK制約違反を検知してエラーを投げる（hasClassAssignmentsチェック後の競合を想定）', async () => {
-      const target = seeded.teachers[0];
-      // hasClassAssignments が false を返した後に、別リクエストがクラスを
-      // 割り当てた状況を想定する。すでに割り当て済みのteachers[0]をそのまま使う。
-      await expect(repo.delete(target.teacherId)).rejects.toThrow(
-        'Teacher is referenced by other data'
-      );
-      expect(await repo.findById(target.teacherId)).not.toBeNull();
+      expect(await repo.deactivate(999999)).toBe(false);
     });
   });
 

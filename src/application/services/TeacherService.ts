@@ -43,7 +43,7 @@ export function createTeacherService(
     },
     async getTeacherById(id: number): Promise<TeacherDTO> {
       const teacher = await teacherRepository.findById(id);
-      if (!teacher) {
+      if (!teacher || !teacher.is_live_active) {
         throw new Error('Teacher not found');
       }
       return toDTO(teacher);
@@ -68,6 +68,10 @@ export function createTeacherService(
       // 存在確認とアトミックな更新（users更新・担当クラスの解除・再設定を
       // batch()でまとめて実行）を行うため、教員情報や既存の担当クラスが
       // 中途半端な状態で残ることはない。
+      const teacher = await teacherRepository.findById(id);
+      if (!teacher || !teacher.is_live_active) {
+        throw new Error('Teacher not found');
+      }
       if (input.classRoomIds.length > 0) {
         const classRoomsExist = await teacherRepository.existsClassRooms(
           input.classRoomIds
@@ -83,22 +87,8 @@ export function createTeacherService(
       return toDTO(updated);
     },
     async deleteTeacher(id: number): Promise<void> {
-      const teacher = await teacherRepository.findById(id);
-      if (!teacher) {
-        throw new Error('Teacher not found');
-      }
-
-      // ここでの参照チェックは早期に分かりやすいエラーを返すためのもの。
-      // このチェックと下の delete() の間に別リクエストが担当クラスを
-      // 新規に割り当てる競合が起きても、delete() 側がFK制約違反を検知して
-      // 同じ 'Teacher is referenced by other data' を投げるため、
-      // 想定外の500にはならずControllerの409マッピングに乗る。
-      const isReferenced = await teacherRepository.hasClassAssignments(id);
-      if (isReferenced) {
-        throw new Error('Teacher is referenced by other data');
-      }
-      const deleted = await teacherRepository.delete(id);
-      if (!deleted) {
+      const deactivated = await teacherRepository.deactivate(id);
+      if (!deactivated) {
         throw new Error('Teacher not found');
       }
     },

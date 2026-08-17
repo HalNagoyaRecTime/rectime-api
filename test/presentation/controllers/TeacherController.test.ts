@@ -377,18 +377,15 @@ describe('TeacherController', () => {
       expect(await res.json()).toEqual({ error: 'Teacher not found' });
     });
 
-    it('サービスが Teacher is referenced by other data を投げた場合は 409 を返す', async () => {
+    it('削除済み教員の再削除も 204 を返す', async () => {
       const { app, teacherService } = setup();
       (
         teacherService.deleteTeacher as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('Teacher is referenced by other data'));
+      ).mockResolvedValue(undefined);
 
       const res = await app.request('/teachers/1', { method: 'DELETE' });
 
-      expect(res.status).toBe(409);
-      expect(await res.json()).toEqual({
-        error: 'Teacher is referenced by other data',
-      });
+      expect(res.status).toBe(204);
     });
 
     it('その他の例外の場合は 500 を返す', async () => {

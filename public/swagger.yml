@@ -373,7 +373,7 @@ paths:
             minimum: 1
         - name: isLiveActive
           in: query
-          description: 有効状態で絞り込む
+          description: 有効状態で絞り込む。未指定時は有効な教員のみ返す
           schema:
             type: boolean
         - name: search
@@ -463,18 +463,16 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     delete:
       tags: [Teachers]
-      summary: 教員を削除する（担当クラスに割り当てられている場合は削除できない）
+      summary: 教員を論理削除する（担当クラスの割り当ては解除される）
       parameters:
         - $ref: '#/components/parameters/TeacherId'
       responses:
         '204':
-          description: 削除成功
+          description: 論理削除成功（users.is_live_activeを0にし、担当クラスを解除）
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
