@@ -158,6 +158,7 @@ export function createMasterImportService(
 
       const session: MasterImportSession = {
         validated_file_id: crypto.randomUUID(),
+        create_user_id: input.createUserId,
         type: input.type,
         status: 'validated',
         file_name: input.fileName,
@@ -176,20 +177,29 @@ export function createMasterImportService(
 
     async getImport(
       validatedFileId: string,
-      pagination: { offset: number; limit: number }
+      pagination: { offset: number; limit: number },
+      createUserId: number
     ): Promise<MasterImportSessionDTO | null> {
       const session = await getMasterImportSession(kv, validatedFileId);
       if (!session) {
+        return null;
+      }
+      if (session.create_user_id !== createUserId) {
         return null;
       }
       return toDTO(session, pagination.offset, pagination.limit);
     },
 
     async commitImport(
-      validatedFileId: string
+      validatedFileId: string,
+      createUserId: number
     ): Promise<CommitMasterImportOutcome> {
       const session = await getMasterImportSession(kv, validatedFileId);
       if (!session) {
+        return { status: 'not_found' };
+      }
+
+      if (session.create_user_id !== createUserId) {
         return { status: 'not_found' };
       }
 

@@ -9,6 +9,7 @@ export interface MasterImportCommittedResult {
 
 export interface MasterImportSession {
   validated_file_id: string;
+  create_user_id: number;
   type: MasterImportType;
   status: MasterImportStatus;
   file_name: string;
