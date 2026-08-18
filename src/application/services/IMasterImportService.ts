@@ -19,6 +19,7 @@ export type CommitMasterImportOutcome =
   | { status: 'timeout' };
 
 export interface IMasterImportService {
+  canManageImports: (userId: number) => Promise<boolean>;
   createImport: (
     input: CreateMasterImportInput
   ) => Promise<MasterImportSessionDTO>;

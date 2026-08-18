@@ -4,6 +4,7 @@ import { IMasterImportService } from '../../application/services/IMasterImportSe
 import type { Env } from '../../lib/env';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import type { ContainerVariables } from '../middleware/diContainer';
+import type { AuthVariables } from '../middleware/requireAuth';
 
 const masterImportTypeSchema = z.enum(['students', 'classrooms', 'teachers']);
 
@@ -14,7 +15,7 @@ const paginationSchema = z.object({
 
 type MasterImportContext = Context<{
   Bindings: Env;
-  Variables: ContainerVariables & AuthenticationVariables;
+  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>;
 
 export function createMasterImportController(
@@ -24,6 +25,9 @@ export function createMasterImportController(
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
+    }
+    if (!(await masterImportService.canManageImports(userId))) {
+      return c.json({ error: 'Master import forbidden' }, 403);
     }
     const body = await c.req.parseBody().catch(() => null);
     if (!body) {
@@ -70,6 +74,9 @@ export function createMasterImportController(
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
     }
+    if (!(await masterImportService.canManageImports(userId))) {
+      return c.json({ error: 'Master import forbidden' }, 403);
+    }
     const validatedFileId = c.req.param('validatedFileId');
     if (!validatedFileId) {
       return c.json({ error: 'Invalid import ID' }, 400);
@@ -107,6 +114,9 @@ export function createMasterImportController(
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
+    }
+    if (!(await masterImportService.canManageImports(userId))) {
+      return c.json({ error: 'Master import forbidden' }, 403);
     }
     const validatedFileId = c.req.param('validatedFileId');
     if (!validatedFileId) {
