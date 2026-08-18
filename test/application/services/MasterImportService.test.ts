@@ -8,6 +8,9 @@ import type { MasterImportCommitLock } from '../../../src/infrastructure/masterI
 import type { IStudentService } from '../../../src/application/services/IStudentService';
 import type { IClassRoomService } from '../../../src/application/services/IClassRoomService';
 import type { ITeacherService } from '../../../src/application/services/ITeacherService';
+import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
+
+const OWNER_USER_ID = 1;
 
 function csvFile(content: string, name: string): File {
   return new File([content], name, { type: 'text/csv' });
@@ -93,6 +96,21 @@ function buildTeacherService(
   };
 }
 
+function buildUserRepository(
+  overrides: Partial<IUserRepository> = {}
+): IUserRepository {
+  return {
+    exists: vi.fn(),
+    isStaffOrTeacher: vi.fn().mockResolvedValue(true),
+    getUserCategories: vi.fn(),
+    findUserIdByMicrosoftAccount: vi.fn(),
+    createUserWithMicrosoftLink: vi.fn(),
+    updateUser: vi.fn(),
+    linkMicrosoftAccount: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe('MasterImportService', () => {
   describe('createImport', () => {
     it('学生のCSVを検査し、KVにvalidatedとして保存する', async () => {
@@ -109,7 +127,8 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         studentService,
         buildClassRoomService(),
-        buildTeacherService()
+        buildTeacherService(),
+        buildUserRepository()
       );
 
       const file = csvFile(
@@ -118,6 +137,7 @@ describe('MasterImportService', () => {
       );
 
       const session = await service.createImport({
+        createUserId: OWNER_USER_ID,
         type: 'students',
         file,
         fileName: 'students.csv',
@@ -148,13 +168,19 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
-        buildTeacherService()
+        buildTeacherService(),
+        buildUserRepository()
       );
 
       const file = csvFile('class_code,class_name\n,3年Cクラス\n', 'x.csv');
 
       await expect(
-        service.createImport({ type: 'classrooms', file, fileName: 'x.csv' })
+        service.createImport({
+          createUserId: OWNER_USER_ID,
+          type: 'classrooms',
+          file,
+          fileName: 'x.csv',
+        })
       ).rejects.toThrow();
       expect(kv.put).not.toHaveBeenCalled();
     });
@@ -168,11 +194,12 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
-        buildTeacherService()
+        buildTeacherService(),
+        buildUserRepository()
       );
 
       await expect(
-        service.getImport('nope', { offset: 0, limit: 10 })
+        service.getImport('nope', { offset: 0, limit: 10 }, OWNER_USER_ID)
       ).resolves.toBeNull();
     });
 
@@ -192,7 +219,8 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         classRoomService,
-        buildTeacherService()
+        buildTeacherService(),
+        buildUserRepository()
       );
 
       const file = csvFile(
@@ -200,6 +228,7 @@ describe('MasterImportService', () => {
         'c.csv'
       );
       const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
         type: 'classrooms',
         file,
         fileName: 'c.csv',
@@ -208,7 +237,7 @@ describe('MasterImportService', () => {
       const page = await service.getImport(created.validated_file_id, {
         offset: 1,
         limit: 1,
-      });
+      }, OWNER_USER_ID);
 
       expect(page?.rows).toEqual([{ class_code: '13B', class_name: 'B' }]);
       expect(page?.rows_total).toBe(3);
@@ -223,10 +252,11 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
-        buildTeacherService()
+        buildTeacherService(),
+        buildUserRepository()
       );
 
-      await expect(service.commitImport('nope')).resolves.toEqual({
+      await expect(service.commitImport('nope', OWNER_USER_ID)).resolves.toEqual({
         status: 'not_found',
       });
     });
@@ -249,7 +279,8 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
-        teacherService
+        teacherService,
+        buildUserRepository()
       );
 
       // わざとバリデーション後にエラーが発生したセッションを模倣するため、
@@ -263,12 +294,13 @@ describe('MasterImportService', () => {
 
       const file = csvFile('last_name,first_name\n田中,太郎\n', 't.csv');
       const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
         type: 'teachers',
         file,
         fileName: 't.csv',
       });
 
-      const outcome = await service.commitImport(created.validated_file_id);
+      const outcome = await service.commitImport(created.validated_file_id, OWNER_USER_ID);
 
       expect(outcome.status).toBe('has_errors');
       expect(commitTeacherImport).not.toHaveBeenCalled();
@@ -297,7 +329,8 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         studentService,
         buildClassRoomService(),
-        buildTeacherService()
+        buildTeacherService(),
+        buildUserRepository()
       );
 
       const file = csvFile(
@@ -305,12 +338,13 @@ describe('MasterImportService', () => {
         's.csv'
       );
       const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
         type: 'students',
         file,
         fileName: 's.csv',
       });
 
-      const outcome = await service.commitImport(created.validated_file_id);
+      const outcome = await service.commitImport(created.validated_file_id, OWNER_USER_ID);
 
       expect(outcome.status).toBe('committed');
       expect(outcome.status === 'committed' && outcome.alreadyCommitted).toBe(
@@ -318,7 +352,7 @@ describe('MasterImportService', () => {
       );
       expect(commitStudentImport).toHaveBeenCalledTimes(1);
 
-      const second = await service.commitImport(created.validated_file_id);
+      const second = await service.commitImport(created.validated_file_id, OWNER_USER_ID);
       expect(second.status).toBe('committed');
       expect(second.status === 'committed' && second.alreadyCommitted).toBe(
         true
@@ -360,7 +394,8 @@ describe('MasterImportService', () => {
         commitLock,
         studentService,
         buildClassRoomService(),
-        buildTeacherService()
+        buildTeacherService(),
+        buildUserRepository()
       );
 
       const file = csvFile(
@@ -368,14 +403,15 @@ describe('MasterImportService', () => {
         's.csv'
       );
       const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
         type: 'students',
         file,
         fileName: 's.csv',
       });
 
       const [first, second] = await Promise.all([
-        service.commitImport(created.validated_file_id),
-        service.commitImport(created.validated_file_id),
+        service.commitImport(created.validated_file_id, OWNER_USER_ID),
+        service.commitImport(created.validated_file_id, OWNER_USER_ID),
       ]);
 
       expect(commitStudentImport).toHaveBeenCalledTimes(1);
@@ -422,7 +458,8 @@ describe('MasterImportService', () => {
         commitLock,
         studentService,
         buildClassRoomService(),
-        buildTeacherService()
+        buildTeacherService(),
+        buildUserRepository()
       );
 
       const file = csvFile(
@@ -430,12 +467,13 @@ describe('MasterImportService', () => {
         's.csv'
       );
       const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
         type: 'students',
         file,
         fileName: 's.csv',
       });
 
-      const outcome = await service.commitImport(created.validated_file_id);
+      const outcome = await service.commitImport(created.validated_file_id, OWNER_USER_ID);
       expect(outcome.status).toBe('has_errors');
       if (outcome.status === 'has_errors') {
         expect(outcome.session.error_count).toBe(1);
@@ -447,7 +485,7 @@ describe('MasterImportService', () => {
       }
 
       // committedとして固定されていないので、修正後にもう一度確定できる
-      const retried = await service.commitImport(created.validated_file_id);
+      const retried = await service.commitImport(created.validated_file_id, OWNER_USER_ID);
       expect(retried.status).toBe('committed');
       expect(retried.status === 'committed' && retried.alreadyCommitted).toBe(
         false
@@ -471,7 +509,8 @@ describe('MasterImportService', () => {
         commitLock,
         studentService,
         buildClassRoomService(),
-        buildTeacherService()
+        buildTeacherService(),
+        buildUserRepository()
       );
 
       const file = csvFile(
@@ -479,6 +518,7 @@ describe('MasterImportService', () => {
         's.csv'
       );
       const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
         type: 'students',
         file,
         fileName: 's.csv',
@@ -490,7 +530,7 @@ describe('MasterImportService', () => {
         .get(commitLock.idFromName(created.validated_file_id))
         .tryBeginCommit();
 
-      const outcome = await service.commitImport(created.validated_file_id);
+      const outcome = await service.commitImport(created.validated_file_id, OWNER_USER_ID);
       expect(outcome).toEqual({ status: 'timeout' });
     }, 10000);
   });
