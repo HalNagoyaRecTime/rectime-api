@@ -581,6 +581,8 @@ paths:
     get:
       tags: [Events]
       summary: イベント一覧を取得する
+      security:
+        - bearerAuth: []
       parameters:
         - name: start_time
           in: query
@@ -620,6 +622,8 @@ paths:
                     type: integer
                   offset:
                     type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
     post:
@@ -673,6 +677,8 @@ paths:
     get:
       tags: [Events]
       summary: イベントを取得する
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/EventId'
       responses:
@@ -684,6 +690,8 @@ paths:
                 $ref: '#/components/schemas/Event'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -779,6 +787,8 @@ paths:
       tags: [Events]
       summary: 競技の集合予定一覧を取得する
       description: 同じ競技に複数の集合予定がある場合は、集合ID順ですべて返します。
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/EventId'
       responses:
@@ -792,6 +802,8 @@ paths:
                   $ref: '#/components/schemas/Gathering'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':

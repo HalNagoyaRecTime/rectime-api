@@ -45,7 +45,8 @@
     "tsx": "^4.4.0",
     "typescript": "^5.9.2",
     "vitest": "^4.1.9",
-    "wrangler": "^4.4.0"
+    "wrangler": "^4.4.0",
+    "yaml": "^2.9.0"
   },
   "packageManager": "npm@10.9.2"
 }
