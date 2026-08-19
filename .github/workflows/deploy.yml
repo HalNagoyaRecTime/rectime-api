@@ -6,11 +6,11 @@ on:
     types: [completed]
   workflow_dispatch:
 
-# concurrency.group と jobs.deploy.environment はproduction/staging判定の式を共有している。
-# どちらもジョブのステップが実行される前に評価されるフィールドのため、
-# ステップのoutputsを介して1箇所に共通化することができない(needsで依存する別jobに
-# 判定を切り出せば可能だが、そこまでの構成変更はしていない)。production/stagingの
-# 判定式を変更する場合は、jobs.deploy.environment の同じ式も必ず合わせて変更すること。
+# concurrency.group と jobs.migrate.environment / jobs.deploy.environment は
+# production/staging判定の式を共有している。どれもジョブのステップが実行される前に
+# 評価されるフィールドのため、ステップのoutputsを介して1箇所に共通化することができない
+# (needsで依存する別jobに判定を切り出せば可能だが、そこまでの構成変更はしていない)。
+# production/stagingの判定式を変更する場合は、この3箇所すべてを必ず合わせて変更すること。
 #
 # ただしPRプレビュー(pull_request)は、developmentと同じグループにしていない:
 # 同じグループにすると全PRが1つのグループに集約され、cancel-in-progress: true により
@@ -25,7 +25,7 @@ on:
 # "Set deploy target"のPR_NUMBER空チェックでいずれのpushも即座に失敗するため実害は小さい。
 #
 # concurrency.groupへの参加とcancel-in-progressの発火は、ワークフロー実行がキューされた
-# 時点(=jobs.deploy.ifが評価される前)で起こる。そのため、workflow_dispatchがmain以外の
+# 時点(=jobs.target.ifが評価される前)で起こる。そのため、workflow_dispatchがmain以外の
 # ブランチから実行された場合にgroup式のどの条件にも一致しないと、最終フォールバックの
 # 'development'に落ちてしまい、jobがskipされる前に進行中のdevelopデプロイを巻き添え
 # キャンセルしてしまう。これを防ぐため、workflow_dispatch(main以外)専用のユニークな
@@ -34,6 +34,13 @@ on:
 # cancel-in-progressは、PRプレビュー(使い捨てのビルド)のみtrueにする。production/staging/
 # developmentは共有リソースへの`d1 migrations apply --remote`を含むため、途中キャンセルで
 # D1の状態が中途半端になり得る連続デプロイは、キャンセルさせず直列に実行させたい。
+#
+# ここでのgroupはPR番号・ブランチ単位(=「同じ対象への連続実行」)の直列化であり、
+# 「同じD1を共有する別々の対象」間の直列化は保証しない。例えばPR #1とPR #2は別groupの
+# ため同時に走り得るが、両方とも最終的に共有のdevelopment用D1(rectime-api-dev)へ
+# migrationを適用する。この競合を防ぐため、migrationの適用だけはjobs.migrateという
+# 別ジョブに分離し、D1データベース名を基準にした専用concurrency.group(下部参照)で
+# 直列化している(レビュー指摘: PR #204 review 4957824497)。
 concurrency:
   group: deploy-cloudflare-workers-${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' && 'production' || format('invalid-dispatch-{0}', github.ref_name)) || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || (github.event.workflow_run.event == 'pull_request') && format('pr-{0}', github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id) || 'development' }}
   cancel-in-progress: ${{ github.event.workflow_run.event == 'pull_request' }}
@@ -43,7 +50,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  deploy:
+  target:
     # workflow_dispatchがmain以外のブランチから実行された場合、ここでジョブ自体を
     # skipする(以前は"Set deploy target"ステップのシェル側ガードのみで、そこに至る
     # 前にconcurrency.groupの'development'フォールバックに入って進行中のdevelop
@@ -56,35 +63,24 @@ jobs:
     # GITHUB_TOKENへアクセスできる状態でCIランナー上で動くことを防ぐ
     # (fork PRは従来から"Set deploy target"のPR_NUMBER空チェックで結局失敗していたため、
     # ここでのskipによる機能低下はない)。
+    #
+    # migrate/deployはこのjobにneeds:で依存しており、このjobがskipされると
+    # デフォルトの挙動でmigrate/deployも自動的にskipされる(GitHub Actionsの仕様)。
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') ||
       (github.event.workflow_run.conclusion == 'success' &&
        (github.event.workflow_run.event == 'push' ||
         (github.event.workflow_run.event == 'pull_request' &&
          github.event.workflow_run.head_repository.full_name == github.repository)))
-    name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
+    name: Determine deploy target (${{ github.event.workflow_run.head_branch || github.ref_name }})
     runs-on: ubuntu-latest
-    # concurrency.groupのproduction/staging判定と同じ式(上部のコメント参照)。
-    # PRプレビューもdevelopmentと同じGitHub Environment(同じsecrets/vars)を使うため、
-    # concurrency.groupのようなPRごとの分離はここでは不要。
-    # production/stagingの判定式を変更する場合は両方揃えること。
-    environment: ${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
-
+    outputs:
+      mode: ${{ steps.target.outputs.mode }}
+      env_flag: ${{ steps.target.outputs.env_flag }}
+      d1_database: ${{ steps.target.outputs.d1_database }}
+      preview_alias: ${{ steps.target.outputs.preview_alias }}
+      pr_number: ${{ steps.target.outputs.pr_number }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
       - name: Set deploy target
         id: target
         env:
@@ -126,38 +122,94 @@ jobs:
             echo "d1_database=rectime-api-dev" >> "$GITHUB_OUTPUT"
           fi
 
+  migrate:
+    needs: target
+    # PRプレビュー(pr-<番号>)とdevelopブランチへのpushは別concurrency.group
+    # (上部参照)のため、同時に走り得る。しかしどちらも同じ共有D1
+    # (rectime-api-dev、env.development)へmigrationを適用するため、
+    # ここだけはD1データベース名を基準にした専用グループで直列化する
+    # (production/staging用D1は他のどのイベント種別とも共有されないため、
+    # このグループでも実質的に競合は起きないが、統一的に扱うためD1名で分岐する)。
+    # cancel-in-progressはfalse固定: 直列待ちにするだけで、進行中のmigrationを
+    # 決してキャンセルしない(D1の状態が中途半端になることを避けるため)。
+    concurrency:
+      group: deploy-cloudflare-workers-migrate-${{ needs.target.outputs.d1_database }}
+      cancel-in-progress: false
+    name: Apply D1 migrations (${{ needs.target.outputs.d1_database }})
+    runs-on: ubuntu-latest
+    # jobs.target(上部)・jobs.deploy(下部)と同じ判定式(先頭コメント参照)。
+    environment: ${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Apply D1 migrations
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 migrations apply ${{ steps.target.outputs.d1_database }} --remote ${{ steps.target.outputs.env_flag }}
+          command: d1 migrations apply ${{ needs.target.outputs.d1_database }} --remote ${{ needs.target.outputs.env_flag }}
+
+  deploy:
+    needs: [target, migrate]
+    name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
+    runs-on: ubuntu-latest
+    # jobs.migrate(上部)と同じ判定式(先頭コメント参照)。
+    # PRプレビューもdevelopmentと同じGitHub Environment(同じsecrets/vars)を使うため、
+    # concurrency.groupのようなPRごとの分離はここでは不要。
+    environment: ${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Deploy to Cloudflare Workers
-        if: steps.target.outputs.mode == 'deploy'
+        if: needs.target.outputs.mode == 'deploy'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --minify ${{ steps.target.outputs.env_flag }}
+          command: deploy --minify ${{ needs.target.outputs.env_flag }}
 
       - name: Upload PR preview version
-        if: steps.target.outputs.mode == 'pr-preview'
+        if: needs.target.outputs.mode == 'pr-preview'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: >-
             versions upload --minify --env development
-            --preview-alias ${{ steps.target.outputs.preview_alias }}
-            --message "PR #${{ steps.target.outputs.pr_number }}"
+            --preview-alias ${{ needs.target.outputs.preview_alias }}
+            --message "PR #${{ needs.target.outputs.pr_number }}"
 
       - name: Comment preview URL on PR
-        if: steps.target.outputs.mode == 'pr-preview'
+        if: needs.target.outputs.mode == 'pr-preview'
         uses: actions/github-script@v7
         env:
-          PREVIEW_ALIAS: ${{ steps.target.outputs.preview_alias }}
-          PR_NUMBER: ${{ steps.target.outputs.pr_number }}
+          PREVIEW_ALIAS: ${{ needs.target.outputs.preview_alias }}
+          PR_NUMBER: ${{ needs.target.outputs.pr_number }}
         with:
           script: |
             const alias = process.env.PREVIEW_ALIAS;
