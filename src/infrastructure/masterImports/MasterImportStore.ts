@@ -1,7 +1,7 @@
 import type { KVNamespace } from '@cloudflare/workers-types';
 import type { MasterImportSession } from '../../domain/entities/MasterImport';
 
-const TTL_SECONDS = 60 * 30;
+export const TTL_SECONDS = 60 * 30;
 
 function key(validatedFileId: string): string {
   return `master-import:${validatedFileId}`;

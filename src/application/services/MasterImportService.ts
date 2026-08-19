@@ -15,6 +15,7 @@ import {
 import {
   getMasterImportSession,
   saveMasterImportSession,
+  TTL_SECONDS,
 } from '../../infrastructure/masterImports/MasterImportStore';
 import type { IStudentService } from './IStudentService';
 import type { IClassRoomService } from './IClassRoomService';
@@ -77,6 +78,9 @@ function toDTO(
     rows_offset: offset,
     created_at: session.created_at,
     committed_result: session.committed_result,
+    expires_at: new Date(
+      new Date(session.created_at).getTime() + TTL_SECONDS * 1000
+    ).toISOString(),
   };
 }
 

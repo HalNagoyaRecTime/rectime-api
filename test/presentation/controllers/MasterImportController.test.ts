@@ -21,6 +21,7 @@ function buildSession(
     rows_limit: 100,
     rows_offset: 0,
     created_at: '2026-01-01T00:00:00.000Z',
+    expires_at: '2026-01-01T00:30:00.000Z',
     committed_result: null,
     ...overrides,
   };

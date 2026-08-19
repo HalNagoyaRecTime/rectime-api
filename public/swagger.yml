@@ -2274,6 +2274,7 @@ components:
           rows_limit,
           rows_offset,
           created_at,
+          expires_at,
           committed_result,
         ]
       properties:
@@ -2310,6 +2311,10 @@ components:
         created_at:
           type: string
           format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          description: セッションの有効期限。この時刻を過ぎると404になる
         committed_result:
           nullable: true
           allOf:

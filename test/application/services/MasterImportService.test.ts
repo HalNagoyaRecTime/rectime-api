@@ -4,6 +4,7 @@ import type {
   KVNamespace,
 } from '@cloudflare/workers-types';
 import { createMasterImportService } from '../../../src/application/services/MasterImportService';
+import { TTL_SECONDS } from '../../../src/infrastructure/masterImports/MasterImportStore';
 import type { MasterImportCommitLock } from '../../../src/infrastructure/masterImports/MasterImportCommitLock';
 import type { IStudentService } from '../../../src/application/services/IStudentService';
 import type { IClassRoomService } from '../../../src/application/services/IClassRoomService';
@@ -139,6 +140,38 @@ describe('MasterImportService', () => {
         ],
       });
       expect(kv.put).toHaveBeenCalledTimes(1);
+      expect(new Date(session.expires_at).getTime()).toBe(
+        new Date(session.created_at).getTime() + TTL_SECONDS * 1000
+      );
+    });
+
+    it('expires_atから、クライアントが残り時間を計算できる', async () => {
+      const kv = createFakeKv();
+      const validateClassRoomImport = vi.fn().mockResolvedValue({
+        total: 1,
+        success_count: 1,
+        error_count: 0,
+        errors: [],
+      });
+      const service = createMasterImportService(
+        kv,
+        createFakeCommitLock(),
+        buildStudentService(),
+        buildClassRoomService({ validateClassRoomImport }),
+        buildTeacherService()
+      );
+
+      const session = await service.createImport({
+        type: 'classrooms',
+        file: csvFile('class_code,class_name\n13A,A\n', 'c.csv'),
+        fileName: 'c.csv',
+      });
+
+      // ISO8601として解釈でき、作成直後の残り時間はTTL以内の正の値になる
+      expect(Number.isNaN(Date.parse(session.expires_at))).toBe(false);
+      const remainingMs = new Date(session.expires_at).getTime() - Date.now();
+      expect(remainingMs).toBeGreaterThan(0);
+      expect(remainingMs).toBeLessThanOrEqual(TTL_SECONDS * 1000);
     });
 
     it('必須項目が欠けている行はエラーを投げ、KVには保存しない', async () => {
@@ -212,6 +245,7 @@ describe('MasterImportService', () => {
 
       expect(page?.rows).toEqual([{ class_code: '13B', class_name: 'B' }]);
       expect(page?.rows_total).toBe(3);
+      expect(page?.expires_at).toBe(created.expires_at);
     });
   });
 
@@ -315,6 +349,9 @@ describe('MasterImportService', () => {
       expect(outcome.status).toBe('committed');
       expect(outcome.status === 'committed' && outcome.alreadyCommitted).toBe(
         false
+      );
+      expect(outcome.status === 'committed' && outcome.session.expires_at).toBe(
+        created.expires_at
       );
       expect(commitStudentImport).toHaveBeenCalledTimes(1);
 
