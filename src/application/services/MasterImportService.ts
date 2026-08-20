@@ -149,7 +149,7 @@ export function createMasterImportService(
 
   return {
     async canManageImports(userId: number): Promise<boolean> {
-      return userRepository.isStaffOrTeacher(userId);
+      return userRepository.isStaff(userId);
     },
 
     async createImport(
