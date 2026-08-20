@@ -1,16 +1,27 @@
 import { DurableObject } from 'cloudflare:workers';
 
+const LOCK_TIMEOUT_MS = 60 * 1000;
+
+type LockState = { token: string; startedAt: number };
+
 export class MasterImportCommitLock extends DurableObject {
-  async tryBeginCommit(): Promise<boolean> {
-    const alreadyStarted = await this.ctx.storage.get<boolean>('committing');
-    if (alreadyStarted) {
-      return false;
+  async tryBeginCommit(): Promise<string | null> {
+    const current = await this.ctx.storage.get<LockState>('lock');
+    if (
+      current !== undefined &&
+      Date.now() - current.startedAt < LOCK_TIMEOUT_MS
+    ) {
+      return null;
     }
-    await this.ctx.storage.put('committing', true);
-    return true;
+    const token = crypto.randomUUID();
+    await this.ctx.storage.put('lock', { token, startedAt: Date.now() });
+    return token;
   }
 
-  async releaseLock(): Promise<void> {
-    await this.ctx.storage.delete('committing');
+  async releaseLock(token: string): Promise<void> {
+    const current = await this.ctx.storage.get<LockState>('lock');
+    if (current?.token === token) {
+      await this.ctx.storage.delete('lock');
+    }
   }
 }
