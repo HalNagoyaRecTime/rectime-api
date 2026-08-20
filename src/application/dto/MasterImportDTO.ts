@@ -19,4 +19,5 @@ export interface MasterImportSessionDTO {
   rows_offset: number;
   created_at: string;
   committed_result: MasterImportCommittedResult | null;
+  expires_at: string;
 }

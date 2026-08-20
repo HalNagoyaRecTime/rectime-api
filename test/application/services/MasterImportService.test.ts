@@ -4,6 +4,7 @@ import type {
   KVNamespace,
 } from '@cloudflare/workers-types';
 import { createMasterImportService } from '../../../src/application/services/MasterImportService';
+import { TTL_SECONDS } from '../../../src/infrastructure/masterImports/MasterImportStore';
 import type { MasterImportCommitLock } from '../../../src/infrastructure/masterImports/MasterImportCommitLock';
 import type { IStudentService } from '../../../src/application/services/IStudentService';
 import type { IClassRoomService } from '../../../src/application/services/IClassRoomService';
@@ -142,6 +143,38 @@ describe('MasterImportService', () => {
         ],
       });
       expect(kv.put).toHaveBeenCalledTimes(1);
+      expect(new Date(session.expires_at).getTime()).toBe(
+        new Date(session.created_at).getTime() + TTL_SECONDS * 1000
+      );
+    });
+
+    it('expires_atから、クライアントが残り時間を計算できる', async () => {
+      const kv = createFakeKv();
+      const validateClassRoomImport = vi.fn().mockResolvedValue({
+        total: 1,
+        success_count: 1,
+        error_count: 0,
+        errors: [],
+      });
+      const service = createMasterImportService(
+        kv,
+        createFakeCommitLock(),
+        buildStudentService(),
+        buildClassRoomService({ validateClassRoomImport }),
+        buildTeacherService()
+      );
+
+      const session = await service.createImport({
+        type: 'classrooms',
+        file: csvFile('class_code,class_name\n13A,A\n', 'c.csv'),
+        fileName: 'c.csv',
+      });
+
+      // ISO8601として解釈でき、作成直後の残り時間はTTL以内の正の値になる
+      expect(Number.isNaN(Date.parse(session.expires_at))).toBe(false);
+      const remainingMs = new Date(session.expires_at).getTime() - Date.now();
+      expect(remainingMs).toBeGreaterThan(0);
+      expect(remainingMs).toBeLessThanOrEqual(TTL_SECONDS * 1000);
     });
 
     it('必須項目が欠けている行はエラーを投げ、KVには保存しない', async () => {
@@ -177,6 +210,41 @@ describe('MasterImportService', () => {
       await expect(
         service.getImport('nope', { offset: 0, limit: 10 })
       ).resolves.toBeNull();
+    });
+
+    // デプロイ直後は、updated_atを持たない旧形式のセッションがKVに残りうる
+    it('updated_atが無い旧形式のセッションはcreated_atを基準に算出する', async () => {
+      const kv = createFakeKv();
+      await kv.put(
+        'master-import:legacy-1',
+        JSON.stringify({
+          validated_file_id: 'legacy-1',
+          type: 'classrooms',
+          status: 'validated',
+          file_name: 'c.csv',
+          total: 0,
+          success_count: 0,
+          error_count: 0,
+          errors: [],
+          rows: [],
+          created_at: '2026-08-20T00:00:00.000Z',
+          committed_result: null,
+        })
+      );
+      const service = createMasterImportService(
+        kv,
+        createFakeCommitLock(),
+        buildStudentService(),
+        buildClassRoomService(),
+        buildTeacherService()
+      );
+
+      const session = await service.getImport('legacy-1', {
+        offset: 0,
+        limit: 10,
+      });
+
+      expect(session?.expires_at).toBe('2026-08-20T00:30:00.000Z');
     });
 
     it('保存済みのセッションをoffset/limitでページ分けして返す', async () => {
@@ -215,6 +283,7 @@ describe('MasterImportService', () => {
 
       expect(page?.rows).toEqual([{ class_code: '13B', class_name: 'B' }]);
       expect(page?.rows_total).toBe(3);
+      expect(page?.expires_at).toBe(created.expires_at);
     });
   });
 
@@ -328,6 +397,63 @@ describe('MasterImportService', () => {
       );
       // 二度目はDBへの書き込みを再実行しない
       expect(commitStudentImport).toHaveBeenCalledTimes(1);
+    });
+
+    // KVのexpirationTtlはputのたびに再カウントされるため、確定時の再保存で
+    // 実際の有効期限は「確定時刻 + TTL」へ延びる。expires_atもそれに追随させる。
+    it('確定後のexpires_atは、確定時刻を基準に再計算される', async () => {
+      vi.useFakeTimers();
+      try {
+        const kv = createFakeKv();
+        const validateStudentImport = vi.fn().mockResolvedValue({
+          total: 1,
+          success_count: 1,
+          error_count: 0,
+          errors: [],
+        });
+        const commitStudentImport = vi.fn().mockResolvedValue({
+          total: 1,
+          imported: 1,
+          error_count: 0,
+          errors: [],
+        });
+        const service = createMasterImportService(
+          kv,
+          createFakeCommitLock(),
+          buildStudentService({ validateStudentImport, commitStudentImport }),
+          buildClassRoomService(),
+          buildTeacherService()
+        );
+
+        vi.setSystemTime(new Date('2026-08-20T00:00:00.000Z'));
+        const created = await service.createImport({
+          type: 'students',
+          file: csvFile(
+            'class_code,attendance_number,student_id_number,last_name,first_name\n11A,1,10001,山田,太郎\n',
+            's.csv'
+          ),
+          fileName: 's.csv',
+        });
+        expect(created.expires_at).toBe('2026-08-20T00:30:00.000Z');
+
+        // 作成から25分後に確定する（残り5分の状態でKVが再保存される）
+        vi.setSystemTime(new Date('2026-08-20T00:25:00.000Z'));
+        const outcome = await service.commitImport(created.validated_file_id);
+
+        expect(
+          outcome.status === 'committed' && outcome.session.expires_at
+        ).toBe('2026-08-20T00:55:00.000Z');
+
+        // 再取得しても、延長後の期限が返る（updated_atがKVに永続化されている）
+        const fetched = await service.getImport(created.validated_file_id, {
+          offset: 0,
+          limit: 10,
+        });
+        expect(fetched?.expires_at).toBe('2026-08-20T00:55:00.000Z');
+        expect(fetched?.created_at).toBe('2026-08-20T00:00:00.000Z');
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('ほぼ同時に確定リクエストが2回来ても、確定処理は1回しか実行されない', async () => {
