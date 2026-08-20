@@ -31,11 +31,11 @@ on:
 # キャンセルしてしまう。これを防ぐため、workflow_dispatch(main以外)専用のユニークな
 # group('invalid-dispatch-<ブランチ名>')に分離し、他のgroupと絶対に衝突しないようにする。
 #
-# cancel-in-progressは全イベント種別でfalse固定にしている。PRプレビューも
-# jobs.migrateで共有development用D1(rectime-api-dev)へ`d1 migrations apply`を
-# 実行するため、同一PRへの短時間の連続pushでキャンセルが発生すると、他PRやdevelop
-# pushとの直列化(下部のjobs.migrate専用concurrency.group参照)を待っている間に
-# migrationが中途半端な状態で止まる可能性がある(レビュー指摘: PR #204
+# cancel-in-progressは全イベント種別でfalse固定にしている。同一PRへ短時間で
+# 連続pushすると、直前のpushのjobs.migrateが`d1 migrations apply`を実行中の
+# ままこのgroup(pr-<番号>)へcancel-in-progress: trueで巻き添えキャンセルされ、
+# D1の状態が中途半端になる可能性があった。これは他PR/developとの直列化待ちが
+# 発生していなくても、同一PR内の連続pushだけで起こり得る(レビュー指摘: PR #204
 # discussion_r3818106363、MayugeStudio)。連続pushはキャンセルされず順番に
 # 直列実行される分、PRプレビューの反映が数分遅れる場合があるが、それよりD1の
 # 整合性を優先する。
