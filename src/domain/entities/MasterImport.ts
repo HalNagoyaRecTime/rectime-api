@@ -18,5 +18,6 @@ export interface MasterImportSession {
   errors: unknown[];
   rows: unknown[];
   created_at: string;
+  updated_at?: string;
   committed_result: MasterImportCommittedResult | null;
 }

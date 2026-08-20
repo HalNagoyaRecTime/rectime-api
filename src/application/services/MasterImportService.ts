@@ -79,7 +79,8 @@ function toDTO(
     created_at: session.created_at,
     committed_result: session.committed_result,
     expires_at: new Date(
-      new Date(session.created_at).getTime() + TTL_SECONDS * 1000
+      new Date(session.updated_at ?? session.created_at).getTime() +
+        TTL_SECONDS * 1000
     ).toISOString(),
   };
 }
@@ -160,6 +161,8 @@ export function createMasterImportService(
 
       const validation = await validateByType(input.type, rows);
 
+      const now = new Date().toISOString();
+
       const session: MasterImportSession = {
         validated_file_id: crypto.randomUUID(),
         type: input.type,
@@ -170,7 +173,8 @@ export function createMasterImportService(
         error_count: validation.error_count,
         errors: validation.errors,
         rows,
-        created_at: new Date().toISOString(),
+        created_at: now,
+        updated_at: now,
         committed_result: null,
       };
 
@@ -252,6 +256,7 @@ export function createMasterImportService(
         const updatedSession: MasterImportSession = {
           ...session,
           status: 'committed',
+          updated_at: new Date().toISOString(),
           committed_result: {
             imported: commitResult.imported,
             error_count: commitResult.error_count,
