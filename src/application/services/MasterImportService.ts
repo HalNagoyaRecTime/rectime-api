@@ -225,9 +225,9 @@ export function createMasterImportService(
       }
 
       const lockStub = commitLock.get(commitLock.idFromName(validatedFileId));
-      const acquired = await lockStub.tryBeginCommit();
+      const lockToken = await lockStub.tryBeginCommit();
 
-      if (!acquired) {
+      if (!lockToken) {
         for (let attempt = 0; attempt < COMMIT_WAIT_MAX_ATTEMPTS; attempt++) {
           await sleep(COMMIT_WAIT_POLL_INTERVAL_MS);
           const latest = await getMasterImportSession(kv, validatedFileId);
@@ -278,7 +278,7 @@ export function createMasterImportService(
           alreadyCommitted: false,
         };
       } finally {
-        await lockStub.releaseLock();
+        await lockStub.releaseLock(lockToken);
       }
     },
   };

@@ -31,21 +31,24 @@ function createFakeKv(): KVNamespace {
 }
 
 function createFakeCommitLock(): DurableObjectNamespace<MasterImportCommitLock> {
-  const committing = new Set<string>();
+  const tokens = new Map<string, string>();
   return {
     idFromName: (name: string) => name as never,
     get: (id: never) => {
       const name = String(id);
       return {
         tryBeginCommit: vi.fn(async () => {
-          if (committing.has(name)) {
-            return false;
+          if (tokens.has(name)) {
+            return null;
           }
-          committing.add(name);
-          return true;
+          const token = crypto.randomUUID();
+          tokens.set(name, token);
+          return token;
         }),
-        releaseLock: vi.fn(async () => {
-          committing.delete(name);
+        releaseLock: vi.fn(async (token: string) => {
+          if (tokens.get(name) === token) {
+            tokens.delete(name);
+          }
         }),
       };
     },
