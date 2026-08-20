@@ -11,6 +11,7 @@ import type { ITeacherService } from '../../../src/application/services/ITeacher
 import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 
 const OWNER_USER_ID = 1;
+const OTHER_USER_ID = 2;
 
 function csvFile(content: string, name: string): File {
   return new File([content], name, { type: 'text/csv' });
@@ -246,6 +247,43 @@ describe('MasterImportService', () => {
 
       expect(page?.rows).toEqual([{ class_code: '13B', class_name: 'B' }]);
       expect(page?.rows_total).toBe(3);
+    });
+
+    it('作成者と異なるuserIdでアクセスした場合はnullを返す', async () => {
+      const kv = createFakeKv();
+      const validateClassRoomImport = vi.fn().mockResolvedValue({
+        total: 1,
+        success_count: 1,
+        error_count: 0,
+        errors: [],
+      });
+      const classRoomService = buildClassRoomService({
+        validateClassRoomImport,
+      });
+      const service = createMasterImportService(
+        kv,
+        createFakeCommitLock(),
+        buildStudentService(),
+        classRoomService,
+        buildTeacherService(),
+        buildUserRepository()
+      );
+
+      const file = csvFile('class_code,class_name\n13A,A\n', 'c.csv');
+      const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
+        type: 'classrooms',
+        file,
+        fileName: 'c.csv',
+      });
+
+      await expect(
+        service.getImport(
+          created.validated_file_id,
+          { offset: 0, limit: 10 },
+          OTHER_USER_ID
+        )
+      ).resolves.toBeNull();
     });
   });
 
@@ -558,5 +596,44 @@ describe('MasterImportService', () => {
       );
       expect(outcome).toEqual({ status: 'timeout' });
     }, 10000);
+
+    it('作成者と異なるuserIdで確定しようとした場合はnot_foundを返す', async () => {
+      const kv = createFakeKv();
+      const validateStudentImport = vi.fn().mockResolvedValue({
+        total: 1,
+        success_count: 1,
+        error_count: 0,
+        errors: [],
+      });
+      const commitStudentImport = vi.fn();
+      const studentService = buildStudentService({
+        validateStudentImport,
+        commitStudentImport,
+      });
+      const service = createMasterImportService(
+        kv,
+        createFakeCommitLock(),
+        studentService,
+        buildClassRoomService(),
+        buildTeacherService(),
+        buildUserRepository()
+      );
+
+      const file = csvFile(
+        'class_code,attendance_number,student_id_number,last_name,first_name\n11A,1,10001,山田,太郎\n',
+        's.csv'
+      );
+      const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
+        type: 'students',
+        file,
+        fileName: 's.csv',
+      });
+
+      await expect(
+        service.commitImport(created.validated_file_id, OTHER_USER_ID)
+      ).resolves.toEqual({ status: 'not_found' });
+      expect(commitStudentImport).not.toHaveBeenCalled();
+    });
   });
 });
