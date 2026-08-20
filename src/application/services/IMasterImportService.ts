@@ -26,4 +26,6 @@ export interface IMasterImportService {
     pagination: { offset: number; limit: number }
   ) => Promise<MasterImportSessionDTO | null>;
   commitImport: (validatedFileId: string) => Promise<CommitMasterImportOutcome>;
+  // セッションが見つからないとき、期限切れか元から存在しないIDかを判定する
+  isExpiredImport: (validatedFileId: string) => Promise<boolean>;
 }

@@ -12,6 +12,13 @@ const paginationSchema = z.object({
 export function createMasterImportController(
   masterImportService: IMasterImportService
 ) {
+  const notFoundBody = async (validatedFileId: string) => ({
+    error: 'Import not found',
+    error_code: (await masterImportService.isExpiredImport(validatedFileId))
+      ? 'IMPORT_EXPIRED'
+      : 'IMPORT_NOT_FOUND',
+  });
+
   const createImport = async (c: Context) => {
     const body = await c.req.parseBody().catch(() => null);
     if (!body) {
@@ -77,7 +84,7 @@ export function createMasterImportController(
         parsedPagination.data
       );
       if (!session) {
-        return c.json({ error: 'Import not found' }, 404);
+        return c.json(await notFoundBody(validatedFileId), 404);
       }
       return c.json(session, 200);
     } catch {
@@ -95,7 +102,7 @@ export function createMasterImportController(
       const outcome = await masterImportService.commitImport(validatedFileId);
 
       if (outcome.status === 'not_found') {
-        return c.json({ error: 'Import not found' }, 404);
+        return c.json(await notFoundBody(validatedFileId), 404);
       }
       if (outcome.status === 'has_errors') {
         return c.json(outcome.session, 422);

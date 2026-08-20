@@ -14,6 +14,7 @@ import {
 } from '../../infrastructure/masterImports/parseImportFile';
 import {
   getMasterImportSession,
+  hasMasterImportTombstone,
   saveMasterImportSession,
   TTL_SECONDS,
 } from '../../infrastructure/masterImports/MasterImportStore';
@@ -191,6 +192,10 @@ export function createMasterImportService(
         return null;
       }
       return toDTO(session, pagination.offset, pagination.limit);
+    },
+
+    async isExpiredImport(validatedFileId: string): Promise<boolean> {
+      return hasMasterImportTombstone(kv, validatedFileId);
     },
 
     async commitImport(

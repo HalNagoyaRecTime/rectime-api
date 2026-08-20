@@ -3,8 +3,15 @@ import type { MasterImportSession } from '../../domain/entities/MasterImport';
 
 export const TTL_SECONDS = 60 * 30;
 
+// 本体が消えた後も「このIDは存在した」と判定するための墓標キーの保持期間（暫定）
+const TOMBSTONE_TTL_SECONDS = 60 * 60 * 24 * 7;
+
 function key(validatedFileId: string): string {
   return `master-import:${validatedFileId}`;
+}
+
+function tombstoneKey(validatedFileId: string): string {
+  return `master-import-meta:${validatedFileId}`;
 }
 
 export async function saveMasterImportSession(
@@ -14,6 +21,11 @@ export async function saveMasterImportSession(
   await kv.put(key(session.validated_file_id), JSON.stringify(session), {
     expirationTtl: TTL_SECONDS,
   });
+  await kv.put(
+    tombstoneKey(session.validated_file_id),
+    JSON.stringify({ created_at: session.created_at }),
+    { expirationTtl: TOMBSTONE_TTL_SECONDS }
+  );
 }
 
 export async function getMasterImportSession(
@@ -25,4 +37,11 @@ export async function getMasterImportSession(
     return null;
   }
   return JSON.parse(raw) as MasterImportSession;
+}
+
+export async function hasMasterImportTombstone(
+  kv: KVNamespace,
+  validatedFileId: string
+): Promise<boolean> {
+  return (await kv.get(tombstoneKey(validatedFileId))) !== null;
 }

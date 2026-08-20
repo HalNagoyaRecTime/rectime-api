@@ -32,6 +32,7 @@ function setup() {
     createImport: vi.fn(),
     getImport: vi.fn(),
     commitImport: vi.fn(),
+    isExpiredImport: vi.fn().mockResolvedValue(false),
   };
   const controller = createMasterImportController(masterImportService);
   const app = new Hono();
@@ -157,6 +158,31 @@ describe('MasterImportController', () => {
       const res = await app.request('/master-imports/nope');
 
       expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({
+        error: 'Import not found',
+        error_code: 'IMPORT_NOT_FOUND',
+      });
+    });
+
+    it('期限切れのvalidatedFileIdは404でIMPORT_EXPIREDを返す', async () => {
+      const { app, masterImportService } = setup();
+      (
+        masterImportService.getImport as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(null);
+      (
+        masterImportService.isExpiredImport as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(true);
+
+      const res = await app.request('/master-imports/expired-1');
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({
+        error: 'Import not found',
+        error_code: 'IMPORT_EXPIRED',
+      });
+      expect(masterImportService.isExpiredImport).toHaveBeenCalledWith(
+        'expired-1'
+      );
     });
 
     it('limitが2000を超える場合は400を返す', async () => {
@@ -231,6 +257,33 @@ describe('MasterImportController', () => {
       });
 
       expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({
+        error: 'Import not found',
+        error_code: 'IMPORT_NOT_FOUND',
+      });
+    });
+
+    it('期限切れのvalidatedFileIdは404でIMPORT_EXPIREDを返す', async () => {
+      const { app, masterImportService } = setup();
+      (
+        masterImportService.commitImport as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ status: 'not_found' });
+      (
+        masterImportService.isExpiredImport as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(true);
+
+      const res = await app.request('/master-imports/expired-1/commit', {
+        method: 'POST',
+      });
+
+      expect(masterImportService.isExpiredImport).toHaveBeenCalledWith(
+        'expired-1'
+      );
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({
+        error: 'Import not found',
+        error_code: 'IMPORT_EXPIRED',
+      });
     });
 
     it('同時実行中の確定処理の完了を待ちきれなかった場合は503を返し、Retry-Afterを含む', async () => {

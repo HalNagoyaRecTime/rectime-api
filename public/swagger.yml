@@ -521,7 +521,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/MasterImportNotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -548,7 +548,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/MasterImportSession'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/MasterImportNotFound'
         '422':
           description: エラー行が存在するため1件も登録されなかった
           content:
@@ -1849,6 +1849,22 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    MasterImportNotFound:
+      description: |
+        取込セッションが存在しない。error_code で、有効期限切れ(IMPORT_EXPIRED)と
+        元から存在しないvalidatedFileId(IMPORT_NOT_FOUND)を区別できる。
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error, error_code]
+            properties:
+              error:
+                type: string
+                example: Import not found
+              error_code:
+                type: string
+                enum: [IMPORT_EXPIRED, IMPORT_NOT_FOUND]
     Conflict:
       description: リソースの現在状態では操作できない
       content:
