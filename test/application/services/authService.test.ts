@@ -35,6 +35,7 @@ describe('createAuthService', () => {
     const userRepository: IUserRepository = {
       exists: vi.fn(),
       isStaffOrTeacher: vi.fn(),
+      isStaff: vi.fn(),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
       createUserWithMicrosoftLink: vi.fn(),
@@ -65,6 +66,7 @@ describe('createAuthService', () => {
     const userRepository: IUserRepository = {
       exists: vi.fn(),
       isStaffOrTeacher: vi.fn(),
+      isStaff: vi.fn(),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
       createUserWithMicrosoftLink: vi.fn(),

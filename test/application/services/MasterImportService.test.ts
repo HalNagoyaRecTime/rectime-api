@@ -102,6 +102,7 @@ function buildUserRepository(
   return {
     exists: vi.fn(),
     isStaffOrTeacher: vi.fn().mockResolvedValue(true),
+    isStaff: vi.fn().mockResolvedValue(true),
     getUserCategories: vi.fn(),
     findUserIdByMicrosoftAccount: vi.fn(),
     createUserWithMicrosoftLink: vi.fn(),
