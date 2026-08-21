@@ -61,6 +61,31 @@ describe('MasterImportStore', () => {
         { expirationTtl: 604800 }
       );
     });
+
+    it('墓標の保存に失敗しても、取込自体は成功させる', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const kv = {
+        put: vi.fn(async (name: string) => {
+          if (name.startsWith('master-import-meta:')) {
+            throw new Error('kv unavailable');
+          }
+        }),
+        get: vi.fn(async () => null),
+      } as unknown as KVNamespace;
+      const session = buildSession();
+
+      await expect(
+        saveMasterImportSession(kv, session)
+      ).resolves.toBeUndefined();
+      expect(kv.put).toHaveBeenCalledWith(
+        `master-import:${session.validated_file_id}`,
+        JSON.stringify(session),
+        { expirationTtl: 1800 }
+      );
+      expect(warn).toHaveBeenCalled();
+
+      warn.mockRestore();
+    });
   });
 
   describe('hasMasterImportTombstone', () => {

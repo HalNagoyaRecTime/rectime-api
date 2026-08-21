@@ -21,11 +21,19 @@ export async function saveMasterImportSession(
   await kv.put(key(session.validated_file_id), JSON.stringify(session), {
     expirationTtl: TTL_SECONDS,
   });
-  await kv.put(
-    tombstoneKey(session.validated_file_id),
-    JSON.stringify({ created_at: session.created_at }),
-    { expirationTtl: TOMBSTONE_TTL_SECONDS }
-  );
+  // 墓標は期限切れ判定の補助情報のため、失敗しても取込自体は成功させる
+  try {
+    await kv.put(
+      tombstoneKey(session.validated_file_id),
+      JSON.stringify({ created_at: session.created_at }),
+      { expirationTtl: TOMBSTONE_TTL_SECONDS }
+    );
+  } catch (error) {
+    console.warn(
+      `[master-import] failed to save tombstone: ${session.validated_file_id}`,
+      error
+    );
+  }
 }
 
 export async function getMasterImportSession(
