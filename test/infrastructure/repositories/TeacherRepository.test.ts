@@ -361,6 +361,30 @@ describe('TeacherRepository', () => {
       );
     });
 
+    it('複数のクラスを担当として作成する', async () => {
+      // 1クラスだけの場合、IN句のプレースホルダーは '?' 一つで済むため
+      // カンマ連結が正しいかを検証できない。複数指定してその経路を通す。
+      const classRoomIds = seeded.classRooms.map(c => c.classRoomId);
+      expect(classRoomIds.length).toBeGreaterThan(1);
+
+      const created = await repo.create({
+        userName: '複数クラス担当教官',
+        classRoomIds,
+      });
+
+      // 担当クラスの取得順は保証されないため、IDを昇順に揃えて比較する
+      const sortIds = (ids: number[]) => [...ids].sort((a, b) => a - b);
+      const assignedIds = sortIds(
+        created.class_rooms.map(c => c.class_room_id)
+      );
+      expect(assignedIds).toEqual(sortIds(classRoomIds));
+
+      const reloaded = await repo.findById(created.teacher_id);
+      expect(
+        sortIds(reloaded?.class_rooms.map(c => c.class_room_id) ?? [])
+      ).toEqual(assignedIds);
+    });
+
     it('存在しないクラスを含む場合は教員・クラス紐付けを作成しない', async () => {
       const userName = '作成されない教官';
       const targetClassRoomId = seeded.classRooms[1].classRoomId;
