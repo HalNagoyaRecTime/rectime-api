@@ -137,9 +137,18 @@ jobs:
     # このグループでも実質的に競合は起きないが、統一的に扱うためD1名で分岐する)。
     # cancel-in-progressはfalse固定: 直列待ちにするだけで、進行中のmigrationを
     # 決してキャンセルしない(D1の状態が中途半端になることを避けるため)。
+    #
+    # queue: maxが必須(レビュー指摘: PR #204 review 4991001083、kaketo113)。
+    # このgroupはPR番号をまたいで共有されるため、デフォルトのqueue: single
+    # (待機は最大1件、後から来たものが待機中の1件を置き換える)のままだと、
+    # 例えばPR A実行中にPR B/Cのmigrateが連続で到着した場合、待機中のBがCに
+    # 置き換えられてしまい、Bのmigrate・deploy(previewのアップロード/コメント含む)
+    # が永久に実行されなくなる。queue: maxで最大100件まで待機できるようにし、
+    # どのPRのmigrateも必ず(いつかは)実行されることを保証する。
     concurrency:
       group: deploy-cloudflare-workers-migrate-${{ needs.target.outputs.d1_database }}
       cancel-in-progress: false
+      queue: max
     name: Apply D1 migrations (${{ needs.target.outputs.d1_database }})
     runs-on: ubuntu-latest
     # jobs.target(上部)・jobs.deploy(下部)と同じ判定式(先頭コメント参照)。
