@@ -18,6 +18,7 @@ DI → Application / Infrastructure
 flowchart LR
   Presentation --> Application
   Presentation --> Domain
+  Application --> Domain
   PresentationMiddleware["Presentation Middleware"] --> DI
   Infrastructure --> Application
   Infrastructure --> Domain
