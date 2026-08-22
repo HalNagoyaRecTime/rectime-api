@@ -39,6 +39,15 @@ export function createUserRepository(db: D1Database): IUserRepository {
         .get();
       return Boolean(row);
     },
+    async isStaff(userId) {
+      const row = await orm
+        .select({ userId: users.id })
+        .from(users)
+        .leftJoin(staffs, eq(staffs.userId, users.id))
+        .where(and(eq(users.id, userId), sql`${staffs.id} IS NOT NULL`))
+        .get();
+      return Boolean(row);
+    },
     async getUserCategories(userId) {
       const row = await orm
         .select({

@@ -24,6 +24,7 @@ describe('NotificationScheduleService', () => {
     const userRepository: IUserRepository = {
       exists: vi.fn(),
       isStaffOrTeacher: vi.fn().mockResolvedValue(true),
+      isStaff: vi.fn().mockResolvedValue(true),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
       createUserWithMicrosoftLink: vi.fn(),
