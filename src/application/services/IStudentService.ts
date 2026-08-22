@@ -15,6 +15,7 @@ export interface IStudentService {
     offset: number;
   }) => Promise<StudentPageDTO>;
   createStudent: (student: StudentWriteDTO) => Promise<StudentDTO>;
+  deleteStudent: (id: number) => Promise<void>;
   updateStudent: (id: number, student: StudentWriteDTO) => Promise<StudentDTO>;
   validateStudentImport: (
     input: StudentImportInput

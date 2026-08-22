@@ -1,5 +1,7 @@
 export interface StudentDTO {
   student_id: number;
+  /** 集合メンバーAPIのuser_idと照合するための後方互換な追加項目。 */
+  user_id?: number;
   display_name: string;
   class_room_id: number;
   class_room_name: string;

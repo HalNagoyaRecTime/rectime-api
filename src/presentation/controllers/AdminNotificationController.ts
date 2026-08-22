@@ -3,7 +3,11 @@ import { z } from 'zod';
 import type { IAdminNotificationService } from '../../application/services/IAdminNotificationService';
 import type { ManualNotificationAudience } from '../../domain/entities/AdminNotification';
 import type { Env } from '../../lib/env';
-import { isEventDate, isValidEventDate } from '../../lib/eventDate';
+import {
+  isEventDate,
+  isValidEventDate,
+  toJstDateString,
+} from '../../lib/eventDate';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import type { AuthVariables } from '../middleware/requireAuth';
@@ -65,11 +69,12 @@ export function createAdminNotificationController(
         400
       );
     }
-    const eventDate = c.env.EVENT_DATE;
+    const scheduledAt = new Date(parsedBody.data.scheduledAt);
+    const eventDate = resolveEventDate(c.env, scheduledAt);
     if (!isValidEventDate(eventDate)) {
       return c.json({ error: 'EVENT_DATE is not configured correctly' }, 500);
     }
-    if (!isEventDate(eventDate, new Date(parsedBody.data.scheduledAt))) {
+    if (!isEventDate(eventDate, scheduledAt)) {
       return c.json(
         {
           error: 'scheduledAt must be on EVENT_DATE',
@@ -114,6 +119,14 @@ export function createAdminNotificationController(
   };
 
   return { createManualNotification };
+}
+
+function resolveEventDate(env: Env, scheduledAt: Date) {
+  if (isValidEventDate(env.EVENT_DATE)) return env.EVENT_DATE;
+  if (env.NODE_ENV === 'development') {
+    return toJstDateString(scheduledAt) ?? undefined;
+  }
+  return env.EVENT_DATE;
 }
 
 function toAudience(

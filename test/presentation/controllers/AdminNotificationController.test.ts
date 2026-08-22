@@ -157,6 +157,19 @@ describe('AdminNotificationController', () => {
     expect(service.createManualNotification).not.toHaveBeenCalled();
   });
 
+  it('developmentではEVENT_DATE未設定時にscheduledAtの日付を利用する', async () => {
+    const { service, request } = setup();
+
+    const response = await request(validBody, true, {
+      NODE_ENV: 'development',
+    } as Env);
+
+    expect(response.status).toBe(201);
+    expect(service.createManualNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ scheduled_at: validBody.scheduledAt })
+    );
+  });
+
   it.each([
     { ...validBody, title: ' ' },
     { ...validBody, scheduledAt: '2026-07-23 09:00' },

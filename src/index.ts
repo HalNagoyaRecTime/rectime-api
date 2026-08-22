@@ -120,6 +120,9 @@ apiV1.post('/students', requireAuth, c => {
 apiV1.put('/students/:studentId', requireAuth, c => {
   return c.get('container').studentController.updateStudent(c);
 });
+apiV1.delete('/students/:studentId', requireAuth, c => {
+  return c.get('container').studentController.deleteStudent(c);
+});
 
 // Staff routes
 apiV1.get('/staffs', requireAuth, c => {

@@ -26,6 +26,11 @@ export interface IStudentRepository {
   ) => Promise<Set<string>>;
   classRoomExists: (classRoomId: number) => Promise<boolean>;
   create: (student: StudentWriteDTO) => Promise<StudentEntity>;
+  deactivate: (id: number) => Promise<boolean>;
+  restore: (
+    id: number,
+    student: StudentWriteDTO
+  ) => Promise<StudentEntity | null>;
   update: (
     id: number,
     student: StudentWriteDTO

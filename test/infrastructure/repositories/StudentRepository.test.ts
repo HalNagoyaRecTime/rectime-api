@@ -174,6 +174,61 @@ describe('StudentRepository', () => {
         })
       ).resolves.toBeNull();
     });
+
+    it('無効化済みの学生情報を更新して復元できる', async () => {
+      const created = await repo.create({
+        display_name: '個別復元前',
+        class_room_id: seeded.classRoomId,
+        attendance_number: 30,
+        student_id_number: 'RESTORE-SINGLE',
+      });
+      await repo.deactivate(created.student_id);
+
+      await expect(
+        repo.restore(created.student_id, {
+          display_name: '個別復元後',
+          class_room_id: seeded.classRoomId,
+          attendance_number: 31,
+          student_id_number: 'RESTORE-SINGLE',
+        })
+      ).resolves.toMatchObject({
+        student_id: created.student_id,
+        user_name: '個別復元後',
+        attendance_number: 31,
+        is_live_active: true,
+      });
+    });
+  });
+
+  describe('deactivate', () => {
+    it('紐づくユーザーを無効化し、学生一覧から除外する', async () => {
+      const created = await repo.create({
+        display_name: '削除対象学生',
+        class_room_id: seeded.classRoomId,
+        attendance_number: 99,
+        student_id_number: 'DEACTIVATE-1',
+      });
+
+      expect(await repo.deactivate(created.student_id)).toBe(true);
+
+      const storedUser = await env.DB.prepare(
+        'SELECT is_live_active FROM users WHERE user_id = ?'
+      )
+        .bind(created.user_id)
+        .first<{ is_live_active: number }>();
+      expect(storedUser?.is_live_active).toBe(0);
+
+      const page = await repo.findAll({ limit: 100, offset: 0 });
+      expect(page.students).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ student_id: created.student_id }),
+        ])
+      );
+    });
+
+    it('存在しない学生では false を返す', async () => {
+      expect(await repo.deactivate(999999)).toBe(false);
+    });
   });
 
   describe('findExistingStudentNumbers', () => {
@@ -200,9 +255,53 @@ describe('StudentRepository', () => {
     it('候補が空配列の場合は空集合を返す', async () => {
       expect(await repo.findExistingStudentNumbers([])).toEqual(new Set());
     });
+
+    it('無効化済みの学生は既存の学籍番号として扱わない', async () => {
+      const created = await repo.create({
+        display_name: '重複判定対象外学生',
+        class_room_id: seeded.classRoomId,
+        attendance_number: 41,
+        student_id_number: 'INACTIVE-20000',
+      });
+      await repo.deactivate(created.student_id);
+
+      expect(await repo.findExistingStudentNumbers(['INACTIVE-20000'])).toEqual(
+        new Set()
+      );
+    });
   });
 
   describe('createMany', () => {
+    it('無効化済みの学籍番号を再取り込みすると既存学生を復元する', async () => {
+      const created = await repo.create({
+        display_name: '復元前学生',
+        class_room_id: seeded.classRoomId,
+        attendance_number: 42,
+        student_id_number: 'RESTORE-20000',
+      });
+      await repo.deactivate(created.student_id);
+
+      await repo.createMany({
+        newClassRooms: [],
+        students: [
+          {
+            displayName: '復元後学生',
+            classCode: 'TEST-1',
+            attendanceNumber: 43,
+            studentIdNumber: 'RESTORE-20000',
+          },
+        ],
+      });
+
+      expect(await repo.findByStudentNum('RESTORE-20000')).toMatchObject({
+        student_id: created.student_id,
+        user_id: created.user_id,
+        user_name: '復元後学生',
+        attendance_number: 43,
+        is_live_active: true,
+      });
+    });
+
     it('usersのRETURNING行が入力と逆順でも学生情報を正しく対応付ける', async () => {
       const reorderedRepo = createStudentRepository(
         reverseBatchResultRows(env.DB)

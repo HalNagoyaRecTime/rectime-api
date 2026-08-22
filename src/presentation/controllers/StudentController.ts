@@ -104,10 +104,28 @@ export function createStudentController(studentService: IStudentService) {
     }
   };
 
+  const deleteStudent = async (c: Context) => {
+    const parsedId = studentIdSchema.safeParse(c.req.param('studentId'));
+    if (!parsedId.success) {
+      return c.json({ error: 'Invalid student ID' }, 400);
+    }
+
+    try {
+      await studentService.deleteStudent(parsedId.data);
+      return c.body(null, 204);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Student not found') {
+        return c.json({ error: error.message }, 404);
+      }
+      return c.json({ error: 'Failed to delete student' }, 500);
+    }
+  };
+
   return {
     getStudentById,
     getAllStudent,
     createStudent,
+    deleteStudent,
     updateStudent,
   };
 }

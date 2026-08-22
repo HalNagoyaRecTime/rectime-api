@@ -292,6 +292,20 @@ paths:
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Students]
+      summary: 学生を削除する（論理削除）
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+      responses:
+        '204':
+          description: 削除完了
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /staffs:
     get:
@@ -1886,6 +1900,7 @@ components:
       required:
         [
           student_id,
+          user_id,
           display_name,
           class_room_id,
           class_room_name,
@@ -1896,6 +1911,9 @@ components:
       properties:
         student_id:
           type: integer
+        user_id:
+          type: integer
+          description: 集合メンバーAPIとの照合に使用するユーザーID
         display_name:
           type: string
         class_room_id:

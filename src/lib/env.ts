@@ -13,6 +13,7 @@ export type Env = {
   MASTER_IMPORT_COMMIT_LOCK: DurableObjectNamespace<MasterImportCommitLock>;
   NOTIFICATION_DELIVERY_QUEUE: Queue<NotificationDeliveryMessage>;
   ALLOWED_ORIGINS?: string;
+  NODE_ENV?: string;
   EVENT_DATE?: string;
   FIREBASE_PROJECT_ID: string;
   FIREBASE_CLIENT_EMAIL: string;

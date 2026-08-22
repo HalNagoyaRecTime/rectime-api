@@ -64,6 +64,7 @@ function buildStudentService(
     getByUserId: vi.fn(),
     getAllStudents: vi.fn(),
     createStudent: vi.fn(),
+    deleteStudent: vi.fn(),
     updateStudent: vi.fn(),
     validateStudentImport: vi.fn(),
     commitStudentImport: vi.fn(),
