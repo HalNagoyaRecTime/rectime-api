@@ -183,10 +183,12 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService({ validateClassRoomImport }),
-        buildTeacherService()
+        buildTeacherService(),
+        buildUserRepository()
       );
 
       const session = await service.createImport({
+        createUserId: OWNER_USER_ID,
         type: 'classrooms',
         file: csvFile('class_code,class_name\n13A,A\n', 'c.csv'),
         fileName: 'c.csv',
@@ -248,6 +250,7 @@ describe('MasterImportService', () => {
         'master-import:legacy-1',
         JSON.stringify({
           validated_file_id: 'legacy-1',
+          create_user_id: OWNER_USER_ID,
           type: 'classrooms',
           status: 'validated',
           file_name: 'c.csv',
@@ -265,13 +268,18 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
-        buildTeacherService()
+        buildTeacherService(),
+        buildUserRepository()
       );
 
-      const session = await service.getImport('legacy-1', {
-        offset: 0,
-        limit: 10,
-      });
+      const session = await service.getImport(
+        'legacy-1',
+        {
+          offset: 0,
+          limit: 10,
+        },
+        OWNER_USER_ID
+      );
 
       expect(session?.expires_at).toBe('2026-08-20T00:30:00.000Z');
     });
@@ -510,11 +518,13 @@ describe('MasterImportService', () => {
           createFakeCommitLock(),
           buildStudentService({ validateStudentImport, commitStudentImport }),
           buildClassRoomService(),
-          buildTeacherService()
+          buildTeacherService(),
+          buildUserRepository()
         );
 
         vi.setSystemTime(new Date('2026-08-20T00:00:00.000Z'));
         const created = await service.createImport({
+          createUserId: OWNER_USER_ID,
           type: 'students',
           file: csvFile(
             'class_code,attendance_number,student_id_number,last_name,first_name\n11A,1,10001,山田,太郎\n',
@@ -526,17 +536,24 @@ describe('MasterImportService', () => {
 
         // 作成から25分後に確定する（残り5分の状態でKVが再保存される）
         vi.setSystemTime(new Date('2026-08-20T00:25:00.000Z'));
-        const outcome = await service.commitImport(created.validated_file_id);
+        const outcome = await service.commitImport(
+          created.validated_file_id,
+          OWNER_USER_ID
+        );
 
         expect(
           outcome.status === 'committed' && outcome.session.expires_at
         ).toBe('2026-08-20T00:55:00.000Z');
 
         // 再取得しても、延長後の期限が返る（updated_atがKVに永続化されている）
-        const fetched = await service.getImport(created.validated_file_id, {
-          offset: 0,
-          limit: 10,
-        });
+        const fetched = await service.getImport(
+          created.validated_file_id,
+          {
+            offset: 0,
+            limit: 10,
+          },
+          OWNER_USER_ID
+        );
         expect(fetched?.expires_at).toBe('2026-08-20T00:55:00.000Z');
         expect(fetched?.created_at).toBe('2026-08-20T00:00:00.000Z');
       } finally {
