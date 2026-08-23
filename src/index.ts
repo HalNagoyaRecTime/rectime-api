@@ -26,6 +26,7 @@ import { validationDefaultHook } from './presentation/openapi/schemas';
 import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
 import {
   studentCreateRoute,
+  studentDeleteRoute,
   studentDetailRoute,
   studentListRoute,
   studentUpdateRoute,
@@ -225,6 +226,9 @@ apiV1.openapi(staffOnly(studentCreateRoute), c => {
 });
 apiV1.openapi(staffOnly(studentUpdateRoute), c => {
   return c.get('container').studentController.updateStudent(c);
+});
+apiV1.openapi(staffOnly(studentDeleteRoute), c => {
+  return c.get('container').studentController.deleteStudent(c);
 });
 
 // Staff routes

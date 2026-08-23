@@ -84,7 +84,7 @@ export function createStudentService(
   return {
     async getStudentById(id: number): Promise<StudentDTO> {
       const student = await studentRepository.findById(id);
-      if (!student) {
+      if (!student || !student.is_live_active) {
         throw new Error('Student not found');
       }
 
@@ -92,7 +92,7 @@ export function createStudentService(
     },
     async getByUserId(userId: number): Promise<StudentDTO> {
       const student = await studentRepository.findByUserId(userId);
-      if (!student) {
+      if (!student || !student.is_live_active) {
         throw new Error('Student not found');
       }
 
@@ -116,8 +116,28 @@ export function createStudentService(
 
     async createStudent(student: StudentWriteDTO): Promise<StudentDTO> {
       await ensureClassRoomExists(student.class_room_id);
-      await ensureStudentNumberAvailable(student.student_id_number);
+      const existing = await studentRepository.findByStudentNum(
+        student.student_id_number
+      );
+      if (existing?.is_live_active) {
+        throw new Error('Student number already exists');
+      }
+      if (existing) {
+        const restored = await studentRepository.restore(
+          existing.student_id,
+          student
+        );
+        if (!restored) throw new Error('Failed to restore student');
+        return toDTO(restored);
+      }
       return toDTO(await studentRepository.create(student));
+    },
+
+    async deleteStudent(id: number): Promise<void> {
+      const deactivated = await studentRepository.deactivate(id);
+      if (!deactivated) {
+        throw new Error('Student not found');
+      }
     },
 
     async updateStudent(
@@ -125,7 +145,7 @@ export function createStudentService(
       student: StudentWriteDTO
     ): Promise<StudentDTO> {
       const existing = await studentRepository.findById(id);
-      if (!existing) {
+      if (!existing || !existing.is_live_active) {
         throw new Error('Student not found');
       }
 
@@ -200,14 +220,6 @@ export function createStudentService(
   async function ensureClassRoomExists(classRoomId: number): Promise<void> {
     if (!(await studentRepository.classRoomExists(classRoomId))) {
       throw new Error('Class room not found');
-    }
-  }
-
-  async function ensureStudentNumberAvailable(
-    studentNumber: string
-  ): Promise<void> {
-    if (await studentRepository.findByStudentNum(studentNumber)) {
-      throw new Error('Student number already exists');
     }
   }
 }

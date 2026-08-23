@@ -29,6 +29,8 @@ function createRepository(
     findExistingStudentNumbers: vi.fn().mockResolvedValue(new Set()),
     classRoomExists: vi.fn(),
     create: vi.fn(),
+    deactivate: vi.fn(),
+    restore: vi.fn(),
     update: vi.fn(),
     createMany: vi.fn(),
     ...overrides,
@@ -54,6 +56,31 @@ function createClassRoomRepository(
 }
 
 describe('StudentService', () => {
+  describe('deleteStudent', () => {
+    it('リポジトリを使って学生を論理削除する', async () => {
+      const deactivate = vi.fn().mockResolvedValue(true);
+      const service = createStudentService(
+        createRepository({ deactivate }),
+        createClassRoomRepository()
+      );
+
+      await service.deleteStudent(1);
+
+      expect(deactivate).toHaveBeenCalledWith(1);
+    });
+
+    it('学生が存在しない場合はエラーを投げる', async () => {
+      const service = createStudentService(
+        createRepository({ deactivate: vi.fn().mockResolvedValue(false) }),
+        createClassRoomRepository()
+      );
+
+      await expect(service.deleteStudent(999)).rejects.toThrow(
+        'Student not found'
+      );
+    });
+  });
+
   describe('getStudentById', () => {
     it('存在する場合は StudentEntity を StudentDTO にマッピングして返す', async () => {
       const student = buildStudent();
@@ -215,6 +242,39 @@ describe('StudentService', () => {
           student_id_number: '10000',
         })
       ).rejects.toThrow('Student number already exists');
+    });
+
+    it('無効化済みの学籍番号は新規作成せず復元する', async () => {
+      const inactive = buildStudent({ is_live_active: false });
+      const restored = buildStudent({
+        user_name: '復元後学生',
+        is_live_active: true,
+      });
+      const restore = vi.fn().mockResolvedValue(restored);
+      const create = vi.fn();
+      const repository = createRepository({
+        classRoomExists: vi.fn().mockResolvedValue(true),
+        findByStudentNum: vi.fn().mockResolvedValue(inactive),
+        create,
+        restore,
+      });
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
+      const input = {
+        display_name: '復元後学生',
+        class_room_id: 100,
+        attendance_number: 5,
+        student_id_number: '10000',
+      };
+
+      await expect(service.createStudent(input)).resolves.toMatchObject({
+        display_name: '復元後学生',
+        is_live_active: true,
+      });
+      expect(restore).toHaveBeenCalledWith(inactive.student_id, input);
+      expect(create).not.toHaveBeenCalled();
     });
   });
 

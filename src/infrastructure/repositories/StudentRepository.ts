@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
-import { asc, count, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import { class_rooms, students, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
@@ -38,6 +38,17 @@ type ReturnedStudentRow = {
 type ReturnedBulkUserRow = {
   user_id: number;
   user_name: string;
+};
+
+type InactiveStudentRow = {
+  studentId: number;
+  userId: number;
+  studentIdNumber: string;
+};
+
+type RestorableStudent = BulkCreateStudentsInput['students'][number] & {
+  studentId: number;
+  userId: number;
 };
 
 function toEntity(row: StudentJoinRow): StudentEntity {
@@ -109,11 +120,17 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
           .from(students)
           .innerJoin(users, eq(students.userId, users.id))
           .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+          .where(eq(users.isLiveActive, 1))
           .orderBy(asc(students.id))
           .limit(limit)
           .offset(offset)
           .all(),
-        orm.select({ total: count() }).from(students).get(),
+        orm
+          .select({ total: count() })
+          .from(students)
+          .innerJoin(users, eq(students.userId, users.id))
+          .where(eq(users.isLiveActive, 1))
+          .get(),
       ]);
 
       return {
@@ -140,11 +157,17 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       const unique = Array.from(new Set(studentNumbers));
       const found = new Set<string>();
 
-      for (const chunk of chunkArray(unique, D1_MAX_BOUND_PARAMETERS)) {
+      for (const chunk of chunkArray(unique, D1_MAX_BOUND_PARAMETERS - 1)) {
         const rows = await orm
           .select({ studentIdNumber: students.studentIdNumber })
           .from(students)
-          .where(inArray(students.studentIdNumber, chunk))
+          .innerJoin(users, eq(students.userId, users.id))
+          .where(
+            and(
+              inArray(students.studentIdNumber, chunk),
+              eq(users.isLiveActive, 1)
+            )
+          )
           .all();
         for (const row of rows) {
           found.add(row.studentIdNumber);
@@ -213,59 +236,82 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       return toWrittenEntity(user, created);
     },
 
+    async deactivate(id: number): Promise<boolean> {
+      const existing = await orm
+        .select({ userId: students.userId })
+        .from(students)
+        .where(eq(students.id, id))
+        .get();
+      if (!existing) return false;
+
+      await orm
+        .update(users)
+        .set({ isLiveActive: 0, updatedAt: new Date().toISOString() })
+        .where(eq(users.id, existing.userId));
+      return true;
+    },
+
     async update(
       id: number,
       student: StudentWriteDTO
     ): Promise<StudentEntity | null> {
-      const [userResult, studentResult] = await db.batch<
-        ReturnedUserRow | ReturnedStudentRow
-      >([
-        db
-          .prepare(
-            `UPDATE users
-             SET user_name = ?, updated_at = CURRENT_TIMESTAMP
-             WHERE user_id = (
-               SELECT user_id FROM students WHERE student_id = ?
-             )
-             RETURNING user_id, user_name, is_live_active`
-          )
-          .bind(student.display_name, id),
-        db
-          .prepare(
-            `UPDATE students
-             SET class_room_id = ?, attendance_number = ?, student_id_number = ?, updated_at = CURRENT_TIMESTAMP
-             WHERE student_id = ?
-             RETURNING
-               student_id,
-               user_id,
-               class_room_id,
-               attendance_number,
-               student_id_number,
-               (
-                 SELECT class_name
-                 FROM class_rooms
-                 WHERE class_room_id = ?
-               ) AS class_room_name`
-          )
-          .bind(
-            student.class_room_id,
-            student.attendance_number,
-            student.student_id_number,
-            id,
-            student.class_room_id
-          ),
-      ]);
+      return writeStudent(db, id, student, false);
+    },
 
-      const user = userResult.results[0] as ReturnedUserRow | undefined;
-      const updated = studentResult.results[0] as
-        | ReturnedStudentRow
-        | undefined;
-      return user && updated ? toWrittenEntity(user, updated) : null;
+    async restore(
+      id: number,
+      student: StudentWriteDTO
+    ): Promise<StudentEntity | null> {
+      return writeStudent(db, id, student, true);
     },
 
     async createMany(input: BulkCreateStudentsInput): Promise<void> {
       if (input.students.length === 0) {
         return;
+      }
+
+      const inactiveStudents: InactiveStudentRow[] = [];
+      const uniqueStudentNumbers = Array.from(
+        new Set(input.students.map(student => student.studentIdNumber))
+      );
+      for (const chunk of chunkArray(
+        uniqueStudentNumbers,
+        D1_MAX_BOUND_PARAMETERS - 1
+      )) {
+        const rows = await orm
+          .select({
+            studentId: students.id,
+            userId: students.userId,
+            studentIdNumber: students.studentIdNumber,
+          })
+          .from(students)
+          .innerJoin(users, eq(students.userId, users.id))
+          .where(
+            and(
+              inArray(students.studentIdNumber, chunk),
+              eq(users.isLiveActive, 0)
+            )
+          )
+          .all();
+        inactiveStudents.push(...rows);
+      }
+
+      const inactiveByStudentNumber = new Map(
+        inactiveStudents.map(student => [student.studentIdNumber, student])
+      );
+      const restorableStudents: RestorableStudent[] = [];
+      const studentsToCreate: BulkCreateStudentsInput['students'] = [];
+      for (const student of input.students) {
+        const inactive = inactiveByStudentNumber.get(student.studentIdNumber);
+        if (inactive) {
+          restorableStudents.push({
+            ...student,
+            studentId: inactive.studentId,
+            userId: inactive.userId,
+          });
+        } else {
+          studentsToCreate.push(student);
+        }
       }
 
       const statements: D1PreparedStatement[] = [];
@@ -287,8 +333,13 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         );
       }
 
+      statements.push(...buildRestoreStudentStatements(db, restorableStudents));
+
       const userStatementStartIndex = statements.length;
-      for (const chunk of chunkArray(input.students, D1_MAX_BOUND_PARAMETERS)) {
+      for (const chunk of chunkArray(
+        studentsToCreate,
+        D1_MAX_BOUND_PARAMETERS
+      )) {
         const placeholders = chunk
           .map(() => '(?, CURRENT_TIMESTAMP)')
           .join(', ');
@@ -314,7 +365,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
 
       try {
         const studentsWithUserIds = pairStudentsWithCreatedUsers(
-          input.students,
+          studentsToCreate,
           returnedUsers
         );
         const studentStatements: D1PreparedStatement[] = [];
@@ -342,7 +393,9 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
               .bind(...values)
           );
         }
-        await db.batch(studentStatements);
+        if (studentStatements.length > 0) {
+          await db.batch(studentStatements);
+        }
       } catch (error) {
         try {
           await deleteUsersByIds(db, userIds);
@@ -367,6 +420,123 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       }
     },
   };
+}
+
+async function writeStudent(
+  db: D1Database,
+  id: number,
+  student: StudentWriteDTO,
+  reactivate: boolean
+): Promise<StudentEntity | null> {
+  const [userResult, studentResult] = await db.batch<
+    ReturnedUserRow | ReturnedStudentRow
+  >([
+    db
+      .prepare(
+        `UPDATE users
+         SET user_name = ?,
+             ${reactivate ? 'is_live_active = 1,' : ''}
+             updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = (
+           SELECT user_id FROM students WHERE student_id = ?
+         )
+         RETURNING user_id, user_name, is_live_active`
+      )
+      .bind(student.display_name, id),
+    db
+      .prepare(
+        `UPDATE students
+         SET class_room_id = ?, attendance_number = ?, student_id_number = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE student_id = ?
+         RETURNING
+           student_id,
+           user_id,
+           class_room_id,
+           attendance_number,
+           student_id_number,
+           (
+             SELECT class_name
+             FROM class_rooms
+             WHERE class_room_id = ?
+           ) AS class_room_name`
+      )
+      .bind(
+        student.class_room_id,
+        student.attendance_number,
+        student.student_id_number,
+        id,
+        student.class_room_id
+      ),
+  ]);
+
+  const user = userResult.results[0] as ReturnedUserRow | undefined;
+  const updated = studentResult.results[0] as ReturnedStudentRow | undefined;
+  return user && updated ? toWrittenEntity(user, updated) : null;
+}
+
+function buildRestoreStudentStatements(
+  db: D1Database,
+  studentsToRestore: RestorableStudent[]
+): D1PreparedStatement[] {
+  const statements: D1PreparedStatement[] = [];
+
+  for (const chunk of chunkArray(
+    studentsToRestore,
+    Math.floor(D1_MAX_BOUND_PARAMETERS / 3)
+  )) {
+    const userNameCases = chunk.map(() => 'WHEN ? THEN ?').join(' ');
+    const userIds = chunk.map(student => student.userId);
+    const userValues = chunk.flatMap(student => [
+      student.userId,
+      student.displayName,
+    ]);
+    statements.push(
+      db
+        .prepare(
+          `UPDATE users
+           SET user_name = CASE user_id ${userNameCases} ELSE user_name END,
+               is_live_active = 1,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE user_id IN (${userIds.map(() => '?').join(', ')})`
+        )
+        .bind(...userValues, ...userIds)
+    );
+  }
+
+  for (const chunk of chunkArray(
+    studentsToRestore,
+    Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
+  )) {
+    const classRoomCases = chunk
+      .map(
+        () =>
+          'WHEN ? THEN (SELECT class_room_id FROM class_rooms WHERE class_code = ?)'
+      )
+      .join(' ');
+    const attendanceNumberCases = chunk.map(() => 'WHEN ? THEN ?').join(' ');
+    const studentIds = chunk.map(student => student.studentId);
+    const classRoomValues = chunk.flatMap(student => [
+      student.studentId,
+      student.classCode,
+    ]);
+    const attendanceNumberValues = chunk.flatMap(student => [
+      student.studentId,
+      student.attendanceNumber,
+    ]);
+    statements.push(
+      db
+        .prepare(
+          `UPDATE students
+           SET class_room_id = CASE student_id ${classRoomCases} ELSE class_room_id END,
+               attendance_number = CASE student_id ${attendanceNumberCases} ELSE attendance_number END,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE student_id IN (${studentIds.map(() => '?').join(', ')})`
+        )
+        .bind(...classRoomValues, ...attendanceNumberValues, ...studentIds)
+    );
+  }
+
+  return statements;
 }
 
 function pairStudentsWithCreatedUsers(

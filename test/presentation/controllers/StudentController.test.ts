@@ -23,6 +23,7 @@ function setup() {
     getStudentById: vi.fn(),
     getAllStudents: vi.fn(),
     createStudent: vi.fn(),
+    deleteStudent: vi.fn(),
     updateStudent: vi.fn(),
     getByUserId: vi.fn(),
     validateStudentImport: vi.fn(),
@@ -34,6 +35,7 @@ function setup() {
   app.get('/students/:studentId', c => controller.getStudentById(c));
   app.post('/students', c => controller.createStudent(c));
   app.put('/students/:studentId', c => controller.updateStudent(c));
+  app.delete('/students/:studentId', c => controller.deleteStudent(c));
   return { app, studentService };
 }
 
@@ -343,6 +345,41 @@ describe('StudentController', () => {
           message: '指定されたクラスが見つかりません',
         },
       });
+    });
+  });
+
+  describe('deleteStudent', () => {
+    it('論理削除に成功した場合は 204 を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.deleteStudent as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(undefined);
+
+      const res = await app.request('/students/1', { method: 'DELETE' });
+
+      expect(studentService.deleteStudent).toHaveBeenCalledWith(1);
+      expect(res.status).toBe(204);
+    });
+
+    it('数値でない ID の場合は 400 を返す', async () => {
+      const { app } = setup();
+
+      const res = await app.request('/students/abc', { method: 'DELETE' });
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'Invalid student ID' });
+    });
+
+    it('学生が存在しない場合は 404 を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.deleteStudent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Student not found'));
+
+      const res = await app.request('/students/999', { method: 'DELETE' });
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: 'Student not found' });
     });
   });
 });
