@@ -320,8 +320,12 @@ describe('MasterImportService', () => {
         )
       ).resolves.toBeNull();
       await expect(
-        service.isExpiredImport(created.validated_file_id)
+        service.isExpiredImport(created.validated_file_id, OWNER_USER_ID)
       ).resolves.toBe(true);
+      // 所有者が異なる場合は、実在したIDでもfalse（存在を漏らさない）
+      await expect(
+        service.isExpiredImport(created.validated_file_id, OTHER_USER_ID)
+      ).resolves.toBe(false);
     });
 
     it('一度も存在しないIDはisExpiredImportがfalseを返す', async () => {
@@ -334,7 +338,9 @@ describe('MasterImportService', () => {
         buildUserRepository()
       );
 
-      await expect(service.isExpiredImport('nope')).resolves.toBe(false);
+      await expect(
+        service.isExpiredImport('nope', OWNER_USER_ID)
+      ).resolves.toBe(false);
     });
 
     it('保存済みのセッションをoffset/limitでページ分けして返す', async () => {

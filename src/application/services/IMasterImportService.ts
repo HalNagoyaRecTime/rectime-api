@@ -32,6 +32,10 @@ export interface IMasterImportService {
     validatedFileId: string,
     createUserId: number
   ) => Promise<CommitMasterImportOutcome>;
-  // セッションが見つからないとき、期限切れか元から存在しないIDかを判定する
-  isExpiredImport: (validatedFileId: string) => Promise<boolean>;
+  // セッションが見つからないとき、期限切れか元から存在しないIDかを判定する。
+  // 所有者が一致する場合のみtrueを返す
+  isExpiredImport: (
+    validatedFileId: string,
+    createUserId: number
+  ) => Promise<boolean>;
 }

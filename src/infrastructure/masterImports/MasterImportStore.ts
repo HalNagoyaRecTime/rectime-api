@@ -1,5 +1,8 @@
 import type { KVNamespace } from '@cloudflare/workers-types';
-import type { MasterImportSession } from '../../domain/entities/MasterImport';
+import type {
+  MasterImportSession,
+  MasterImportTombstone,
+} from '../../domain/entities/MasterImport';
 
 export const TTL_SECONDS = 60 * 30;
 
@@ -25,7 +28,10 @@ export async function saveMasterImportSession(
   try {
     await kv.put(
       tombstoneKey(session.validated_file_id),
-      JSON.stringify({ created_at: session.created_at }),
+      JSON.stringify({
+        created_at: session.created_at,
+        create_user_id: session.create_user_id,
+      }),
       { expirationTtl: TOMBSTONE_TTL_SECONDS }
     );
   } catch (error) {
@@ -47,9 +53,16 @@ export async function getMasterImportSession(
   return JSON.parse(raw) as MasterImportSession;
 }
 
+// 所有者が一致する場合のみtrueを返す（他人のセッションの存在を漏らさないため）
 export async function hasMasterImportTombstone(
   kv: KVNamespace,
-  validatedFileId: string
+  validatedFileId: string,
+  createUserId: number
 ): Promise<boolean> {
-  return (await kv.get(tombstoneKey(validatedFileId))) !== null;
+  const raw = await kv.get(tombstoneKey(validatedFileId));
+  if (!raw) {
+    return false;
+  }
+  const tombstone = JSON.parse(raw) as MasterImportTombstone;
+  return tombstone.create_user_id === createUserId;
 }

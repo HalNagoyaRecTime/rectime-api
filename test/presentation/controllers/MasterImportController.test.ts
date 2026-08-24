@@ -197,7 +197,8 @@ describe('MasterImportController', () => {
         error_code: 'IMPORT_EXPIRED',
       });
       expect(masterImportService.isExpiredImport).toHaveBeenCalledWith(
-        'expired-1'
+        'expired-1',
+        AUTHENTICATED_USER_ID
       );
     });
 
@@ -293,7 +294,8 @@ describe('MasterImportController', () => {
       });
 
       expect(masterImportService.isExpiredImport).toHaveBeenCalledWith(
-        'expired-1'
+        'expired-1',
+        AUTHENTICATED_USER_ID
       );
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({

@@ -205,8 +205,11 @@ export function createMasterImportService(
       return toDTO(session, pagination.offset, pagination.limit);
     },
 
-    async isExpiredImport(validatedFileId: string): Promise<boolean> {
-      return hasMasterImportTombstone(kv, validatedFileId);
+    async isExpiredImport(
+      validatedFileId: string,
+      createUserId: number
+    ): Promise<boolean> {
+      return hasMasterImportTombstone(kv, validatedFileId, createUserId);
     },
 
     async commitImport(

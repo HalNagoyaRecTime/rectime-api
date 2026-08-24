@@ -21,9 +21,15 @@ type MasterImportContext = Context<{
 export function createMasterImportController(
   masterImportService: IMasterImportService
 ) {
-  const notFoundBody = async (validatedFileId: string) => ({
+  const notFoundBody = async (
+    validatedFileId: string,
+    createUserId: number
+  ) => ({
     error: 'Import not found',
-    error_code: (await masterImportService.isExpiredImport(validatedFileId))
+    error_code: (await masterImportService.isExpiredImport(
+      validatedFileId,
+      createUserId
+    ))
       ? 'IMPORT_EXPIRED'
       : 'IMPORT_NOT_FOUND',
   });
@@ -109,7 +115,7 @@ export function createMasterImportController(
         userId
       );
       if (!session) {
-        return c.json(await notFoundBody(validatedFileId), 404);
+        return c.json(await notFoundBody(validatedFileId, userId), 404);
       }
       return c.json(session, 200);
     } catch {
@@ -137,7 +143,7 @@ export function createMasterImportController(
       );
 
       if (outcome.status === 'not_found') {
-        return c.json(await notFoundBody(validatedFileId), 404);
+        return c.json(await notFoundBody(validatedFileId, userId), 404);
       }
       if (outcome.status === 'has_errors') {
         return c.json(outcome.session, 422);
