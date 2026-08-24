@@ -10,6 +10,7 @@ export interface IEventRepository {
     options: EventListOptions
   ) => Promise<{ events: EventEntity[]; total: number }>;
   findById: (id: number) => Promise<EventEntity | null>;
+  findByParticipantUserId: (userId: number) => Promise<EventEntity[]>;
   create: (event: EventWriteInput) => Promise<EventEntity>;
   delete: (id: number) => Promise<boolean>;
   hasReferences: (id: number) => Promise<boolean>;

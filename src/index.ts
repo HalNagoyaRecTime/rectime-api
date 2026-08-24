@@ -82,6 +82,7 @@ app.get('/', c => {
       staffs: '/api/v1/staffs/{staffId}',
       teachers: '/api/v1/teachers/{teacherId}',
       events: '/api/v1/events',
+      myEvents: '/api/v1/me/events',
       classRooms: '/api/v1/classrooms',
       gatheringSpots: '/api/v1/gathering-spots',
       gatherings: '/api/v1/gatherings',
@@ -149,6 +150,9 @@ apiV1.delete('/teachers/:teacherId', requireAuth, c => {
 // Event routes
 apiV1.get('/events', requireAuth, c => {
   return c.get('container').eventController.getAllEvents(c);
+});
+apiV1.get('/me/events', requireAuth, c => {
+  return c.get('container').eventController.getMyEvents(c);
 });
 
 apiV1.get('/events/:eventId', requireAuth, c => {
