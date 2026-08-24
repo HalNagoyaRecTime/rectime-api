@@ -69,6 +69,7 @@ describe('StudentService', () => {
 
       expect(dto).toEqual({
         student_id: student.student_id,
+        user_id: student.user_id,
         display_name: student.user_name,
         class_room_id: student.class_room_id,
         class_room_name: student.class_room_name,
@@ -107,6 +108,7 @@ describe('StudentService', () => {
 
       expect(dto).toEqual({
         student_id: student.student_id,
+        user_id: student.user_id,
         display_name: student.user_name,
         class_room_id: student.class_room_id,
         class_room_name: student.class_room_name,

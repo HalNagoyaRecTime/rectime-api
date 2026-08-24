@@ -17,6 +17,7 @@ import { IStudentService } from './IStudentService';
 function toDTO(student: StudentEntity): StudentDTO {
   return {
     student_id: student.student_id,
+    user_id: student.user_id,
     display_name: student.user_name,
     class_room_id: student.class_room_id,
     class_room_name: student.class_room_name,
