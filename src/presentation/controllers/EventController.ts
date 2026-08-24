@@ -131,13 +131,13 @@ export function createEventController(
       const events = await eventService.getMyEvents(userId);
       return c.json({ events });
     } catch (error) {
-      return c.json(
-        {
-          error: 'Failed to fetch events',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      const details =
+        error instanceof Error && error.cause instanceof Error
+          ? error.cause.message
+          : error instanceof Error
+            ? error.message
+            : String(error);
+      return c.json({ error: 'Failed to fetch events', details }, 500);
     }
   };
 
