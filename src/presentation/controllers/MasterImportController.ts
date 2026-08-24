@@ -1,6 +1,10 @@
 import { Context } from 'hono';
 import { z } from 'zod';
 import { IMasterImportService } from '../../application/services/IMasterImportService';
+import type { Env } from '../../lib/env';
+import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
+import type { ContainerVariables } from '../middleware/diContainer';
+import type { AuthVariables } from '../middleware/requireAuth';
 
 const masterImportTypeSchema = z.enum(['students', 'classrooms', 'teachers']);
 
@@ -8,6 +12,11 @@ const paginationSchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(2000).default(100),
 });
+
+type MasterImportContext = Context<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
+}>;
 
 export function createMasterImportController(
   masterImportService: IMasterImportService
@@ -19,7 +28,14 @@ export function createMasterImportController(
       : 'IMPORT_NOT_FOUND',
   });
 
-  const createImport = async (c: Context) => {
+  const createImport = async (c: MasterImportContext) => {
+    const userId = c.get('authenticatedUserId');
+    if (userId === null) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+    if (!(await masterImportService.canManageImports(userId))) {
+      return c.json({ error: 'Master import forbidden' }, 403);
+    }
     const body = await c.req.parseBody().catch(() => null);
     if (!body) {
       return c.json({ error: 'Invalid multipart request body' }, 400);
@@ -43,6 +59,7 @@ export function createMasterImportController(
 
     try {
       const session = await masterImportService.createImport({
+        createUserId: userId,
         type: parsedType.data,
         file,
         fileName: file.name,
@@ -59,7 +76,14 @@ export function createMasterImportController(
     }
   };
 
-  const getImport = async (c: Context) => {
+  const getImport = async (c: MasterImportContext) => {
+    const userId = c.get('authenticatedUserId');
+    if (userId === null) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+    if (!(await masterImportService.canManageImports(userId))) {
+      return c.json({ error: 'Master import forbidden' }, 403);
+    }
     const validatedFileId = c.req.param('validatedFileId');
     if (!validatedFileId) {
       return c.json({ error: 'Invalid import ID' }, 400);
@@ -81,7 +105,8 @@ export function createMasterImportController(
     try {
       const session = await masterImportService.getImport(
         validatedFileId,
-        parsedPagination.data
+        parsedPagination.data,
+        userId
       );
       if (!session) {
         return c.json(await notFoundBody(validatedFileId), 404);
@@ -92,14 +117,24 @@ export function createMasterImportController(
     }
   };
 
-  const commitImport = async (c: Context) => {
+  const commitImport = async (c: MasterImportContext) => {
+    const userId = c.get('authenticatedUserId');
+    if (userId === null) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+    if (!(await masterImportService.canManageImports(userId))) {
+      return c.json({ error: 'Master import forbidden' }, 403);
+    }
     const validatedFileId = c.req.param('validatedFileId');
     if (!validatedFileId) {
       return c.json({ error: 'Invalid import ID' }, 400);
     }
 
     try {
-      const outcome = await masterImportService.commitImport(validatedFileId);
+      const outcome = await masterImportService.commitImport(
+        validatedFileId,
+        userId
+      );
 
       if (outcome.status === 'not_found') {
         return c.json(await notFoundBody(validatedFileId), 404);

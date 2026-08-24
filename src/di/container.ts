@@ -115,7 +115,8 @@ export function createDIContainer(env: Env) {
     env.MASTER_IMPORT_COMMIT_LOCK,
     studentService,
     classRoomService,
-    teacherService
+    teacherService,
+    userRepository
   );
   const firebaseTokenService = createFirebaseTokenService(
     firebaseTokenRepository

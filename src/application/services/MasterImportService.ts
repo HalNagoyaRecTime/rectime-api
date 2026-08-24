@@ -21,6 +21,7 @@ import {
 import type { IStudentService } from './IStudentService';
 import type { IClassRoomService } from './IClassRoomService';
 import type { ITeacherService } from './ITeacherService';
+import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { StudentImportRow } from '../dto/StudentDTO';
 import type { ClassRoomImportRow } from '../dto/ClassRoomDTO';
 import type { TeacherImportRow } from '../dto/TeacherDTO';
@@ -117,7 +118,8 @@ export function createMasterImportService(
   commitLock: DurableObjectNamespace<MasterImportCommitLock>,
   studentService: IStudentService,
   classRoomService: IClassRoomService,
-  teacherService: ITeacherService
+  teacherService: ITeacherService,
+  userRepository: IUserRepository
 ): IMasterImportService {
   async function validateByType(type: MasterImportType, rows: unknown[]) {
     if (type === 'students') {
@@ -152,6 +154,10 @@ export function createMasterImportService(
   }
 
   return {
+    async canManageImports(userId: number): Promise<boolean> {
+      return userRepository.isStaff(userId);
+    },
+
     async createImport(
       input: CreateMasterImportInput
     ): Promise<MasterImportSessionDTO> {
@@ -166,6 +172,7 @@ export function createMasterImportService(
 
       const session: MasterImportSession = {
         validated_file_id: crypto.randomUUID(),
+        create_user_id: input.createUserId,
         type: input.type,
         status: 'validated',
         file_name: input.fileName,
@@ -185,10 +192,14 @@ export function createMasterImportService(
 
     async getImport(
       validatedFileId: string,
-      pagination: { offset: number; limit: number }
+      pagination: { offset: number; limit: number },
+      createUserId: number
     ): Promise<MasterImportSessionDTO | null> {
       const session = await getMasterImportSession(kv, validatedFileId);
       if (!session) {
+        return null;
+      }
+      if (session.create_user_id !== createUserId) {
         return null;
       }
       return toDTO(session, pagination.offset, pagination.limit);
@@ -199,10 +210,15 @@ export function createMasterImportService(
     },
 
     async commitImport(
-      validatedFileId: string
+      validatedFileId: string,
+      createUserId: number
     ): Promise<CommitMasterImportOutcome> {
       const session = await getMasterImportSession(kv, validatedFileId);
       if (!session) {
+        return { status: 'not_found' };
+      }
+
+      if (session.create_user_id !== createUserId) {
         return { status: 'not_found' };
       }
 

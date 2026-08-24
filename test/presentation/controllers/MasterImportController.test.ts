@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { createMasterImportController } from '../../../src/presentation/controllers/MasterImportController';
 import type { IMasterImportService } from '../../../src/application/services/IMasterImportService';
 import type { MasterImportSessionDTO } from '../../../src/application/dto/MasterImportDTO';
+import type { Env } from '../../../src/lib/env';
+import type { ContainerVariables } from '../../../src/presentation/middleware/diContainer';
+import type { AuthenticationVariables } from '../../../src/presentation/middleware/bearerAuthentication';
+import type { AuthVariables } from '../../../src/presentation/middleware/requireAuth';
+
+const AUTHENTICATED_USER_ID = 1;
 
 function buildSession(
   overrides: Partial<MasterImportSessionDTO> = {}
@@ -27,15 +33,24 @@ function buildSession(
   };
 }
 
-function setup() {
+function setup(options: { authenticated?: boolean; canManage?: boolean } = {}) {
+  const { authenticated = true, canManage = true } = options;
   const masterImportService: IMasterImportService = {
+    canManageImports: vi.fn().mockResolvedValue(canManage),
     createImport: vi.fn(),
     getImport: vi.fn(),
     commitImport: vi.fn(),
     isExpiredImport: vi.fn().mockResolvedValue(false),
   };
   const controller = createMasterImportController(masterImportService);
-  const app = new Hono();
+  const app = new Hono<{
+    Bindings: Env;
+    Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
+  }>();
+  app.use('*', async (c, next) => {
+    c.set('authenticatedUserId', authenticated ? AUTHENTICATED_USER_ID : null);
+    await next();
+  });
   app.post('/master-imports', c => controller.createImport(c));
   app.get('/master-imports/:validatedFileId', c => controller.getImport(c));
   app.post('/master-imports/:validatedFileId/commit', c =>
@@ -143,10 +158,11 @@ describe('MasterImportController', () => {
 
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual(session);
-      expect(masterImportService.getImport).toHaveBeenCalledWith('abc-123', {
-        offset: 0,
-        limit: 100,
-      });
+      expect(masterImportService.getImport).toHaveBeenCalledWith(
+        'abc-123',
+        { offset: 0, limit: 100 },
+        AUTHENTICATED_USER_ID
+      );
     });
 
     it('存在しないvalidatedFileIdは404を返す', async () => {
@@ -302,6 +318,86 @@ describe('MasterImportController', () => {
         error: 'Commit is still in progress, please retry',
         error_code: 'COMMIT_IN_PROGRESS',
       });
+    });
+  });
+
+  describe('認証・権限チェック', () => {
+    it('未認証の場合はcreateImportで401を返す', async () => {
+      const { app, masterImportService } = setup({ authenticated: false });
+
+      const formData = new FormData();
+      formData.append('type', 'students');
+      formData.append(
+        'file',
+        new File(['a,b\n1,2\n'], 'students.csv', { type: 'text/csv' })
+      );
+
+      const res = await app.request('/master-imports', {
+        method: 'POST',
+        body: formData,
+      });
+
+      expect(res.status).toBe(401);
+      expect(masterImportService.createImport).not.toHaveBeenCalled();
+    });
+
+    it('管理者権限がない場合はcreateImportで403を返す', async () => {
+      const { app, masterImportService } = setup({ canManage: false });
+
+      const formData = new FormData();
+      formData.append('type', 'students');
+      formData.append(
+        'file',
+        new File(['a,b\n1,2\n'], 'students.csv', { type: 'text/csv' })
+      );
+
+      const res = await app.request('/master-imports', {
+        method: 'POST',
+        body: formData,
+      });
+
+      expect(res.status).toBe(403);
+      expect(masterImportService.createImport).not.toHaveBeenCalled();
+    });
+
+    it('未認証の場合はgetImportで401を返す', async () => {
+      const { app, masterImportService } = setup({ authenticated: false });
+
+      const res = await app.request('/master-imports/abc-123');
+
+      expect(res.status).toBe(401);
+      expect(masterImportService.getImport).not.toHaveBeenCalled();
+    });
+
+    it('管理者権限がない場合はgetImportで403を返す', async () => {
+      const { app, masterImportService } = setup({ canManage: false });
+
+      const res = await app.request('/master-imports/abc-123');
+
+      expect(res.status).toBe(403);
+      expect(masterImportService.getImport).not.toHaveBeenCalled();
+    });
+
+    it('未認証の場合はcommitImportで401を返す', async () => {
+      const { app, masterImportService } = setup({ authenticated: false });
+
+      const res = await app.request('/master-imports/abc-123/commit', {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(401);
+      expect(masterImportService.commitImport).not.toHaveBeenCalled();
+    });
+
+    it('管理者権限がない場合はcommitImportで403を返す', async () => {
+      const { app, masterImportService } = setup({ canManage: false });
+
+      const res = await app.request('/master-imports/abc-123/commit', {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(403);
+      expect(masterImportService.commitImport).not.toHaveBeenCalled();
     });
   });
 });

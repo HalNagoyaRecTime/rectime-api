@@ -216,6 +216,14 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       const classRoomIds = 'userName' in input ? input.classRoomIds : [];
       const hasClassRoomAssignments = classRoomIds.length > 0;
 
+      // classRoomIds の件数ぶんだけ '?' を並べたもの（例: '?, ?, ?'）。
+      // IN 句と存在確認の両方で使い回す。
+      const classRoomIdPlaceholders = classRoomIds.map(() => '?').join(', ');
+      // 「指定された class_room_id が全件実在するか」を表す条件式。
+      // 末尾の ? には classRoomIds.length を bind する。
+      const classRoomsExistCondition = `(SELECT COUNT(*) FROM class_rooms
+                        WHERE class_room_id IN (${classRoomIdPlaceholders})) = ?`;
+
       // classRoomIds の存在確認を各文の条件に含めることで、存在確認と
       // users/teachers の作成・クラス紐付けを同じ batch 内で扱う。
       // 対象クラスが欠けている場合は全ての書き込みが実行されないため、
@@ -228,10 +236,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
               .prepare(
                 `INSERT INTO users (user_name, updated_at)
                  SELECT ?, CURRENT_TIMESTAMP
-                 WHERE (SELECT COUNT(*) FROM class_rooms
-                        WHERE class_room_id IN (${classRoomIds
-                          .map(() => '?')
-                          .join(', ')})) = ?
+                 WHERE ${classRoomsExistCondition}
                  RETURNING user_id, user_name, is_live_active`
               )
               .bind(displayName, ...classRoomIds, classRoomIds.length),
@@ -239,10 +244,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
               .prepare(
                 `INSERT INTO teachers (user_id, updated_at)
                  SELECT last_insert_rowid(), CURRENT_TIMESTAMP
-                 WHERE (SELECT COUNT(*) FROM class_rooms
-                        WHERE class_room_id IN (${classRoomIds
-                          .map(() => '?')
-                          .join(', ')})) = ?
+                 WHERE ${classRoomsExistCondition}
                  RETURNING teacher_id, user_id`
               )
               .bind(...classRoomIds, classRoomIds.length),
@@ -251,13 +253,8 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
                 `UPDATE class_rooms
                  SET teacher_id = last_insert_rowid(),
                      updated_at = CURRENT_TIMESTAMP
-                 WHERE class_room_id IN (${classRoomIds
-                   .map(() => '?')
-                   .join(', ')})
-                   AND (SELECT COUNT(*) FROM class_rooms
-                        WHERE class_room_id IN (${classRoomIds
-                          .map(() => '?')
-                          .join(', ')})) = ?
+                 WHERE class_room_id IN (${classRoomIdPlaceholders})
+                   AND ${classRoomsExistCondition}
                  RETURNING class_room_id`
               )
               .bind(...classRoomIds, ...classRoomIds, classRoomIds.length),

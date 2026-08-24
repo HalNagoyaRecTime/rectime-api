@@ -19,6 +19,7 @@ function buildSession(
 ): MasterImportSession {
   return {
     validated_file_id: 'file-1',
+    create_user_id: 1,
     type: 'students',
     status: 'validated',
     file_name: 's.csv',

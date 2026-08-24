@@ -2,6 +2,7 @@ import type { MasterImportType } from '../../domain/entities/MasterImport';
 import type { MasterImportSessionDTO } from '../dto/MasterImportDTO';
 
 export interface CreateMasterImportInput {
+  createUserId: number;
   type: MasterImportType;
   file: Blob;
   fileName: string;
@@ -18,14 +19,19 @@ export type CommitMasterImportOutcome =
   | { status: 'timeout' };
 
 export interface IMasterImportService {
+  canManageImports: (userId: number) => Promise<boolean>;
   createImport: (
     input: CreateMasterImportInput
   ) => Promise<MasterImportSessionDTO>;
   getImport: (
     validatedFileId: string,
-    pagination: { offset: number; limit: number }
+    pagination: { offset: number; limit: number },
+    createUserId: number
   ) => Promise<MasterImportSessionDTO | null>;
-  commitImport: (validatedFileId: string) => Promise<CommitMasterImportOutcome>;
+  commitImport: (
+    validatedFileId: string,
+    createUserId: number
+  ) => Promise<CommitMasterImportOutcome>;
   // セッションが見つからないとき、期限切れか元から存在しないIDかを判定する
   isExpiredImport: (validatedFileId: string) => Promise<boolean>;
 }
