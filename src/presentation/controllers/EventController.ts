@@ -121,6 +121,26 @@ export function createEventController(
     }
   };
 
+  const getMyEvents = async (c: Context) => {
+    const eventContext = c as EventContext;
+    const userId = eventContext.get('authenticatedUserId');
+    if (userId === null) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+    try {
+      const events = await eventService.getMyEvents(userId);
+      return c.json({ events });
+    } catch (error) {
+      return c.json(
+        {
+          error: 'Failed to fetch events',
+          details: error instanceof Error ? error.message : String(error),
+        },
+        500
+      );
+    }
+  };
+
   const createEvent = async (c: Context) => {
     const parsed = await parseEventBody(c);
     if (!parsed.success) return parsed.response;
@@ -227,6 +247,7 @@ export function createEventController(
   return {
     getAllEvents,
     getEventById,
+    getMyEvents,
     createEvent,
     updateEvent,
     patchEvent,

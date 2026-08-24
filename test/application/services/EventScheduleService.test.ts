@@ -38,6 +38,7 @@ function setup() {
     exists: vi.fn(),
     findAll: vi.fn(),
     findById: vi.fn().mockResolvedValue(event),
+    findByParticipantUserId: vi.fn(),
     create: vi.fn(),
     delete: vi.fn(),
     hasReferences: vi.fn(),

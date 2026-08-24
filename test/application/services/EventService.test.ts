@@ -24,6 +24,7 @@ function createRepository(
     exists: vi.fn(),
     findAll: vi.fn(),
     findById: vi.fn(),
+    findByParticipantUserId: vi.fn(),
     create: vi.fn(),
     delete: vi.fn(),
     hasReferences: vi.fn(),
@@ -77,6 +78,19 @@ describe('EventService', () => {
       await expect(
         createEventService(repository).getEventById(999)
       ).rejects.toThrow('Event not found');
+    });
+  });
+
+  describe('getMyEvents', () => {
+    it('指定したuserIdが参加するイベントをDTOへ変換して返す', async () => {
+      const events = [buildEvent()];
+      const repository = createRepository({
+        findByParticipantUserId: vi.fn().mockResolvedValue(events),
+      });
+      const service = createEventService(repository);
+
+      await expect(service.getMyEvents(7)).resolves.toEqual(events);
+      expect(repository.findByParticipantUserId).toHaveBeenCalledWith(7);
     });
   });
 

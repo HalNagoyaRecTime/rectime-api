@@ -23,6 +23,7 @@ function setup() {
   const eventService: IEventService = {
     getAllEvents: vi.fn(),
     getEventById: vi.fn(),
+    getMyEvents: vi.fn(),
     createEvent: vi.fn(),
     deleteEvent: vi.fn(),
   };
@@ -40,6 +41,7 @@ function setup() {
     await next();
   });
   app.get('/events', c => controller.getAllEvents(c));
+  app.get('/me/events', c => controller.getMyEvents(c));
   app.get('/events/:eventId', c => controller.getEventById(c));
   app.post('/events', c => controller.createEvent(c));
   app.put('/events/:eventId', c => controller.updateEvent(c));
@@ -183,6 +185,37 @@ describe('EventController', () => {
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({
         error: 'Failed to fetch event',
+        details: 'db error',
+      });
+    });
+  });
+
+  describe('getMyEvents', () => {
+    it('認証済みユーザーIDでServiceを呼び出し、参加イベント一覧を返す', async () => {
+      const { app, eventService } = setup();
+      const events = [buildEvent()];
+      (eventService.getMyEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
+        events
+      );
+
+      const response = await app.request('/me/events');
+
+      expect(eventService.getMyEvents).toHaveBeenCalledWith(7);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ events });
+    });
+
+    it('Serviceがエラーを投げた場合は500を返す', async () => {
+      const { app, eventService } = setup();
+      (eventService.getMyEvents as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('db error')
+      );
+
+      const response = await app.request('/me/events');
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({
+        error: 'Failed to fetch events',
         details: 'db error',
       });
     });

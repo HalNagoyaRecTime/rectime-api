@@ -643,6 +643,28 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /me/events:
+    get:
+      tags: [Events]
+      summary: ログイン中のユーザーが参加するイベント一覧を取得する
+      responses:
+        '200':
+          description: 参加イベント一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /events/{eventId}:
     get:
       tags: [Events]
