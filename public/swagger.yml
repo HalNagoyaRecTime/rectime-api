@@ -647,6 +647,10 @@ paths:
     get:
       tags: [Events]
       summary: ログイン中のユーザーが参加するイベント一覧を取得する
+      parameters:
+        - $ref: '#/components/parameters/ClientType'
+      security:
+        - bearerAuth: []
       responses:
         '200':
           description: 参加イベント一覧
