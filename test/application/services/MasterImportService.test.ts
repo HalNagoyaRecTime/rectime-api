@@ -164,7 +164,8 @@ describe('MasterImportService', () => {
           },
         ],
       });
-      expect(kv.put).toHaveBeenCalledTimes(1);
+      // セッション本体と墓標の2件を保存する
+      expect(kv.put).toHaveBeenCalledTimes(2);
       expect(new Date(session.expires_at).getTime()).toBe(
         new Date(session.created_at).getTime() + TTL_SECONDS * 1000
       );
@@ -282,6 +283,64 @@ describe('MasterImportService', () => {
       );
 
       expect(session?.expires_at).toBe('2026-08-20T00:30:00.000Z');
+    });
+
+    it('本体が期限切れで消えても、墓標が残っていればisExpiredImportがtrueを返す', async () => {
+      const kv = createFakeKv();
+      const validateClassRoomImport = vi.fn().mockResolvedValue({
+        total: 1,
+        success_count: 1,
+        error_count: 0,
+        errors: [],
+      });
+      const service = createMasterImportService(
+        kv,
+        createFakeCommitLock(),
+        buildStudentService(),
+        buildClassRoomService({ validateClassRoomImport }),
+        buildTeacherService(),
+        buildUserRepository()
+      );
+
+      const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
+        type: 'classrooms',
+        file: csvFile('class_code,class_name\n13A,A\n', 'c.csv'),
+        fileName: 'c.csv',
+      });
+
+      // TTL切れで本体だけが消えた状態を再現する（墓標はより長いTTLで残る）
+      await kv.delete(`master-import:${created.validated_file_id}`);
+
+      await expect(
+        service.getImport(
+          created.validated_file_id,
+          { offset: 0, limit: 10 },
+          OWNER_USER_ID
+        )
+      ).resolves.toBeNull();
+      await expect(
+        service.isExpiredImport(created.validated_file_id, OWNER_USER_ID)
+      ).resolves.toBe(true);
+      // 所有者が異なる場合は、実在したIDでもfalse（存在を漏らさない）
+      await expect(
+        service.isExpiredImport(created.validated_file_id, OTHER_USER_ID)
+      ).resolves.toBe(false);
+    });
+
+    it('一度も存在しないIDはisExpiredImportがfalseを返す', async () => {
+      const service = createMasterImportService(
+        createFakeKv(),
+        createFakeCommitLock(),
+        buildStudentService(),
+        buildClassRoomService(),
+        buildTeacherService(),
+        buildUserRepository()
+      );
+
+      await expect(
+        service.isExpiredImport('nope', OWNER_USER_ID)
+      ).resolves.toBe(false);
     });
 
     it('保存済みのセッションをoffset/limitでページ分けして返す', async () => {

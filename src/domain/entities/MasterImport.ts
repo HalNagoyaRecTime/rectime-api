@@ -22,3 +22,9 @@ export interface MasterImportSession {
   updated_at?: string;
   committed_result: MasterImportCommittedResult | null;
 }
+
+// セッション本体が期限切れで消えた後も残す、存在確認用の最小情報
+export interface MasterImportTombstone {
+  created_at: string;
+  create_user_id: number;
+}

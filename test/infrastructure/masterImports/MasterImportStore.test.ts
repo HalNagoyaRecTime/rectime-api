@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { KVNamespace } from '@cloudflare/workers-types';
 import {
   getMasterImportSession,
+  hasMasterImportTombstone,
   saveMasterImportSession,
 } from '../../../src/infrastructure/masterImports/MasterImportStore';
 import type { MasterImportSession } from '../../../src/domain/entities/MasterImport';
@@ -41,11 +42,83 @@ describe('MasterImportStore', () => {
 
       await saveMasterImportSession(kv, session);
 
-      expect(kv.put).toHaveBeenCalledTimes(1);
+      expect(kv.put).toHaveBeenCalledTimes(2);
       expect(kv.put).toHaveBeenCalledWith(
         `master-import:${session.validated_file_id}`,
         JSON.stringify(session),
         { expirationTtl: 1800 }
+      );
+    });
+
+    it('墓標を本体より長いTTLでKVへ保存する', async () => {
+      const kv = createFakeKv();
+      const session = buildSession();
+
+      await saveMasterImportSession(kv, session);
+
+      expect(kv.put).toHaveBeenCalledWith(
+        `master-import-meta:${session.validated_file_id}`,
+        JSON.stringify({
+          created_at: session.created_at,
+          create_user_id: session.create_user_id,
+        }),
+        { expirationTtl: 604800 }
+      );
+    });
+
+    it('墓標の保存に失敗しても、取込自体は成功させる', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const kv = {
+        put: vi.fn(async (name: string) => {
+          if (name.startsWith('master-import-meta:')) {
+            throw new Error('kv unavailable');
+          }
+        }),
+        get: vi.fn(async () => null),
+      } as unknown as KVNamespace;
+      const session = buildSession();
+
+      await expect(
+        saveMasterImportSession(kv, session)
+      ).resolves.toBeUndefined();
+      expect(kv.put).toHaveBeenCalledWith(
+        `master-import:${session.validated_file_id}`,
+        JSON.stringify(session),
+        { expirationTtl: 1800 }
+      );
+      expect(warn).toHaveBeenCalled();
+
+      warn.mockRestore();
+    });
+  });
+
+  describe('hasMasterImportTombstone', () => {
+    it('墓標が存在し所有者が一致する場合はtrueを返す', async () => {
+      const kv = createFakeKv(
+        JSON.stringify({ created_at: 'x', create_user_id: 1 })
+      );
+
+      await expect(hasMasterImportTombstone(kv, 'file-1', 1)).resolves.toBe(
+        true
+      );
+      expect(kv.get).toHaveBeenCalledWith('master-import-meta:file-1');
+    });
+
+    it('墓標が存在しても所有者が異なる場合はfalseを返す', async () => {
+      const kv = createFakeKv(
+        JSON.stringify({ created_at: 'x', create_user_id: 1 })
+      );
+
+      await expect(hasMasterImportTombstone(kv, 'file-1', 2)).resolves.toBe(
+        false
+      );
+    });
+
+    it('墓標が存在しない場合はfalseを返す', async () => {
+      const kv = createFakeKv(null);
+
+      await expect(hasMasterImportTombstone(kv, 'nope', 1)).resolves.toBe(
+        false
       );
     });
   });
