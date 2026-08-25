@@ -118,6 +118,88 @@ describe('FcmService', () => {
       expect(result).toEqual({ success: true, messageId: '' });
     });
 
+    it('iOS端末にはAPNs alert/background設定を付ける', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: 'token-a' }), {
+            status: 200,
+          })
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ name: 'projects/x/messages/ios' }), {
+            status: 200,
+          })
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const service = createFcmService(buildConfig());
+      await service.sendNotificationToToken({
+        token: 'ios-device-token',
+        platform: 'ios',
+        title: 'タイトル',
+        body: '本文',
+        importance: 3,
+        data: { type: 'event_reminder', eventId: '12' },
+      });
+
+      const sentBody = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+      expect(sentBody.message.apns).toEqual({
+        headers: {
+          'apns-priority': '10',
+          'apns-push-type': 'alert',
+        },
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1,
+            'content-available': 1,
+            'interruption-level': 'time-sensitive',
+          },
+        },
+      });
+      expect(sentBody.message.data).toEqual({
+        type: 'event_reminder',
+        eventId: '12',
+      });
+    });
+
+    it('Android端末にはhigh priorityと通知channelを付ける', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: 'token-a' }), {
+            status: 200,
+          })
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ name: 'projects/x/messages/android' }),
+            {
+              status: 200,
+            }
+          )
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const service = createFcmService(buildConfig());
+      await service.sendNotificationToToken({
+        token: 'android-device-token',
+        platform: 'android',
+        title: 'タイトル',
+        body: '本文',
+      });
+
+      const sentBody = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+      expect(sentBody.message.android).toEqual({
+        priority: 'HIGH',
+        notification: {
+          channel_id: 'rectime_importance_2',
+          sound: 'default',
+        },
+      });
+    });
+
     it('FCM リクエストが失敗した場合は FCM request failed エラーを投げる', async () => {
       const fetchMock = vi
         .fn()
@@ -142,6 +224,48 @@ describe('FcmService', () => {
           body: '本文',
         })
       ).rejects.toThrow('FCM request failed:');
+    });
+
+    it('FCM structured errorからUNREGISTEREDを保持する', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: 'token-a' }), {
+            status: 200,
+          })
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              error: {
+                status: 'NOT_FOUND',
+                details: [
+                  {
+                    '@type':
+                      'type.googleapis.com/google.firebase.fcm.v1.FcmError',
+                    errorCode: 'UNREGISTERED',
+                  },
+                ],
+              },
+            }),
+            { status: 404 }
+          )
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const service = createFcmService(buildConfig());
+
+      await expect(
+        service.sendNotificationToToken({
+          token: 'expired-device-token',
+          platform: 'ios',
+          title: 'タイトル',
+          body: '本文',
+        })
+      ).rejects.toMatchObject({
+        httpStatus: 404,
+        fcmErrorCode: 'UNREGISTERED',
+      });
     });
 
     it('同じService内の並行送信ではGoogle OAuth tokenを1回だけ取得する', async () => {
@@ -339,6 +463,34 @@ describe('FcmService', () => {
         'Missing Cloudflare Secrets: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL'
       );
     });
+
+    it('通常送信では TEST_FCM_TOKEN が未設定でも送信できる', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: 'token-a' }), {
+            status: 200,
+          })
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ name: 'projects/x/messages/1' }), {
+            status: 200,
+          })
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const service = createFcmService(buildConfig({ testFcmToken: '' }));
+      await expect(
+        service.sendNotificationToToken({
+          token: 'device-token',
+          title: 'タイトル',
+          body: '本文',
+        })
+      ).resolves.toEqual({
+        success: true,
+        messageId: 'projects/x/messages/1',
+      });
+    });
   });
 
   describe('sendTestNotification', () => {
@@ -372,6 +524,21 @@ describe('FcmService', () => {
       const sentBody = JSON.parse(secondInit.body as string);
       expect(sentBody.message.token).toBe('test-fcm-token');
       expect(sentBody.message.data).toEqual({ type: 'test' });
+    });
+
+    it('TEST_FCM_TOKEN が未設定の場合は送信前にエラーを投げる', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const service = createFcmService(buildConfig({ testFcmToken: '' }));
+
+      await expect(
+        service.sendTestNotification({
+          title: 'テスト',
+          body: 'テスト本文',
+        })
+      ).rejects.toThrow('Missing Cloudflare Secrets: TEST_FCM_TOKEN');
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 });

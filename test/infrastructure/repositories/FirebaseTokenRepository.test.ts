@@ -90,6 +90,29 @@ describe('FirebaseTokenRepository', () => {
     }
   );
 
+  it('iOS Tokenをplatform=1で登録できる', async () => {
+    const userId = await createUser('Firebase iOS利用者');
+
+    await expect(
+      repository.register({
+        userId,
+        platform: 'ios',
+        fcmToken: 'token-ios',
+      })
+    ).resolves.toMatchObject({
+      user_id: userId,
+      platform: 'ios',
+      is_firebase_active: true,
+    });
+
+    const stored = await env.DB.prepare(
+      'SELECT platform FROM firebase_tokens WHERE fcm_token = ?'
+    )
+      .bind('token-ios')
+      .first<{ platform: number }>();
+    expect(stored?.platform).toBe(1);
+  });
+
   it('同じ利用者のToken更新時に既存行を最新Tokenへ更新する', async () => {
     const userId = await createUser('Firebaseトークン更新利用者');
     const first = await repository.register({

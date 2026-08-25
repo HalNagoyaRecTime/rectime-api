@@ -9,7 +9,7 @@ import type { AuthVariables } from '../middleware/requireAuth';
 const registerFirebaseTokenSchema = z
   .object({
     fcmToken: z.string().min(1),
-    platform: z.literal('android'),
+    platform: z.enum(['ios', 'android']),
   })
   .strict();
 

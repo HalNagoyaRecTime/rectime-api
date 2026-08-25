@@ -22,6 +22,7 @@ function buildSchedule(
     notification_id: 4,
     firebase_token_id: 9,
     fcm_token: 'token-a',
+    platform: 2,
     is_firebase_active: 1,
     notification_type: 'event_reminder',
     title: '集合のお知らせ',
@@ -160,8 +161,10 @@ describe('ScheduledNotificationService', () => {
     );
     expect(fcmService.sendNotificationToToken).toHaveBeenCalledWith({
       token: 'token-a',
+      platform: 'android',
       title: '集合のお知らせ',
       body: '集合時刻です。',
+      importance: 2,
       data: {
         type: 'event_reminder',
         eventId: '2',
@@ -189,13 +192,31 @@ describe('ScheduledNotificationService', () => {
 
     expect(fcmService.sendNotificationToToken).toHaveBeenCalledWith({
       token: 'token-a',
+      platform: 'android',
       title: '集合のお知らせ',
       body: '集合時刻です。',
+      importance: 2,
       data: {
         type: 'manual',
         notificationId: '12',
       },
     });
+  });
+
+  it('iOS端末にはplatformとimportanceを渡して送信する', async () => {
+    const { service, fcmService } = setup({
+      schedules: [buildSchedule({ platform: 1, importance: 3 })],
+    });
+
+    await service.sendQueuedNotifications([1]);
+
+    expect(fcmService.sendNotificationToToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        token: 'token-a',
+        platform: 'ios',
+        importance: 3,
+      })
+    );
   });
 
   it('1件が失敗しても同じmessageの残りを続けて送信する', async () => {
