@@ -36,20 +36,20 @@ flowchart LR
 
 ## 配置
 
-| Path | 配置するもの |
-| --- | --- |
-| `src/index.ts` | Routeとentry point |
-| `src/presentation/` | HTTP入力、レスポンス、Middleware |
-| `src/application/services/` | Application Service |
-| `src/application/dto/` | Applicationで利用する入出力型 |
-| `src/domain/entities/` | Domain Entity |
-| `src/domain/interfaces/` | RepositoryやQueueなどの契約 |
-| `src/infrastructure/` | Repository、DB、認証、Queue等の実装 |
-| `src/di/` | 依存関係の組み立て |
-| `src/lib/` | DBや環境変数の共通処理 |
-| `src/types/` | Bindingなどの共通型 |
-| `migrations/` | D1 migration |
-| `test/` | Testとfixture |
+| Path                            | 配置するもの                         |
+| ------------------------------- | ------------------------------------ |
+| `src/index.ts`                  | Routeとentry point                   |
+| `src/presentation/`             | HTTP入力、レスポンス、Middleware     |
+| `src/application/services/`     | Application Service                  |
+| `src/application/dto/`          | Applicationで利用する入出力型        |
+| `src/domain/entities/`          | Domain Entity                        |
+| `src/domain/interfaces/`        | RepositoryやQueueなどの契約          |
+| `src/infrastructure/`           | Repository、DB、認証、Queue等の実装  |
+| `src/di/`                       | 依存関係の組み立て                   |
+| `src/lib/`                      | DBや環境変数の共通処理               |
+| `src/types/`                    | Bindingなどの共通型                  |
+| `migrations/`                   | D1 migration                         |
+| `test/`                         | Testとfixture                        |
 
 ## 型の境界
 
