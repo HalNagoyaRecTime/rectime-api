@@ -12,7 +12,19 @@ export interface FirebaseTokenEntity {
 /** 1: iOS、2: Android */
 export type FirebasePlatform = 1 | 2;
 
-export type FirebasePlatformName = 'android';
+export type FirebasePlatformName = 'ios' | 'android';
+
+export function firebasePlatformToCode(
+  platform: FirebasePlatformName
+): FirebasePlatform {
+  return platform === 'ios' ? 1 : 2;
+}
+
+export function firebasePlatformToName(
+  platform: FirebasePlatform
+): FirebasePlatformName {
+  return platform === 1 ? 'ios' : 'android';
+}
 
 export interface RegisterFirebaseTokenInput {
   userId: number;
