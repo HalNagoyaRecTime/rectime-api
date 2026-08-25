@@ -302,6 +302,67 @@ describe('StudentRepository', () => {
       });
     });
 
+    it('復元対象と新規学生が混在し、新規学生の登録に失敗した場合は復元も取り消す', async () => {
+      const created = await repo.create({
+        display_name: '混在失敗時の復元前学生',
+        class_room_id: seeded.classRoomId,
+        attendance_number: 44,
+        student_id_number: 'RESTORE-ROLLBACK-20000',
+      });
+      await repo.deactivate(created.student_id);
+
+      await expect(
+        repo.createMany({
+          newClassRooms: [
+            {
+              classCode: 'RESTORE-ROLLBACK-NEW',
+              className: 'RESTORE-ROLLBACK-NEW',
+            },
+          ],
+          students: [
+            {
+              displayName: '混在失敗時の復元後学生',
+              classCode: 'RESTORE-ROLLBACK-NEW',
+              attendanceNumber: 45,
+              studentIdNumber: 'RESTORE-ROLLBACK-20000',
+            },
+            {
+              displayName: '混在失敗時の新規学生',
+              classCode: 'RESTORE-ROLLBACK-MISSING',
+              attendanceNumber: 1,
+              studentIdNumber: 'RESTORE-ROLLBACK-20001',
+            },
+          ],
+        })
+      ).rejects.toThrow();
+
+      expect(
+        await repo.findByStudentNum('RESTORE-ROLLBACK-20000')
+      ).toMatchObject({
+        student_id: created.student_id,
+        user_id: created.user_id,
+        user_name: '混在失敗時の復元前学生',
+        class_room_id: seeded.classRoomId,
+        attendance_number: 44,
+        is_live_active: false,
+      });
+      expect(await repo.findByStudentNum('RESTORE-ROLLBACK-20001')).toBeNull();
+
+      const orphanedUser = await env.DB.prepare(
+        'SELECT user_id FROM users WHERE user_name = ?'
+      )
+        .bind('混在失敗時の新規学生')
+        .first();
+      expect(orphanedUser).toBeNull();
+
+      const orphanedClassRoom = await env.DB.prepare(
+        'SELECT class_room_id FROM class_rooms WHERE class_code = ?'
+      )
+        .bind('RESTORE-ROLLBACK-NEW')
+        .first();
+      expect(orphanedClassRoom).toBeNull();
+    });
+
     it('usersのRETURNING行が入力と逆順でも学生情報を正しく対応付ける', async () => {
       const reorderedRepo = createStudentRepository(
         reverseBatchResultRows(env.DB)

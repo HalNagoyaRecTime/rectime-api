@@ -240,7 +240,6 @@ describe('MasterImportService', () => {
           error_count: 0,
           errors: [],
           rows: [],
-          create_user_id: OWNER_USER_ID,
           created_at: '2026-08-20T00:00:00.000Z',
           committed_result: null,
         })

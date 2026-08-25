@@ -333,8 +333,6 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         );
       }
 
-      statements.push(...buildRestoreStudentStatements(db, restorableStudents));
-
       const userStatementStartIndex = statements.length;
       for (const chunk of chunkArray(
         studentsToCreate,
@@ -353,12 +351,13 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         );
       }
 
-      const results = await db.batch<ReturnedBulkUserRow>(statements);
-
       const returnedUsers: ReturnedBulkUserRow[] = [];
-      for (let i = userStatementStartIndex; i < results.length; i++) {
-        for (const row of results[i].results) {
-          returnedUsers.push(row);
+      if (statements.length > 0) {
+        const results = await db.batch<ReturnedBulkUserRow>(statements);
+        for (let i = userStatementStartIndex; i < results.length; i++) {
+          for (const row of results[i].results) {
+            returnedUsers.push(row);
+          }
         }
       }
       const userIds = returnedUsers.map(row => row.user_id);
@@ -368,7 +367,12 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
           studentsToCreate,
           returnedUsers
         );
-        const studentStatements: D1PreparedStatement[] = [];
+        // 復元と新規学生の作成を同じbatchに含め、どちらかが失敗した場合は
+        // 復元だけが反映された状態を残さない。
+        const studentStatements = buildRestoreStudentStatements(
+          db,
+          restorableStudents
+        );
         for (const chunk of chunkArray(
           studentsWithUserIds,
           Math.floor(D1_MAX_BOUND_PARAMETERS / 4)
