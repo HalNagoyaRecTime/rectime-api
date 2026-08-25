@@ -1912,6 +1912,7 @@ components:
       required:
         [
           student_id,
+          user_id,
           display_name,
           class_room_id,
           class_room_name,
@@ -1921,6 +1922,8 @@ components:
         ]
       properties:
         student_id:
+          type: integer
+        user_id:
           type: integer
         display_name:
           type: string
