@@ -68,4 +68,63 @@ describe('EventRepository', () => {
       await expect(repo.findById(999999)).resolves.toBeNull();
     });
   });
+
+  describe('exists', () => {
+    it('存在するidはtrue、存在しないidはfalseを返す', async () => {
+      const target = seeded.events[0];
+
+      await expect(repo.exists(target.eventId)).resolves.toBe(true);
+      await expect(repo.exists(999999)).resolves.toBe(false);
+    });
+  });
+
+  describe('findByParticipantUserId', () => {
+    it('ユーザーが集合に参加しているイベントだけを返す', async () => {
+      const target = seeded.events[0];
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('findByParticipantUserId用ユーザー') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const spot = await env.DB.prepare(
+        "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('findByParticipantUserId用集合場所') RETURNING gathering_spot_id"
+      ).first<{ gathering_spot_id: number }>();
+      const gathering = await env.DB.prepare(
+        'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id'
+      )
+        .bind(target.eventId, spot!.gathering_spot_id)
+        .first<{ gathering_id: number }>();
+      await env.DB.prepare(
+        'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+      )
+        .bind(gathering!.gathering_id, user!.user_id)
+        .run();
+
+      try {
+        const result = await repo.findByParticipantUserId(user!.user_id);
+
+        expect(result).toHaveLength(1);
+        expect(result[0].event_id).toBe(target.eventId);
+      } finally {
+        await env.DB.prepare(
+          'DELETE FROM gathering_group_members WHERE gathering_id = ?'
+        )
+          .bind(gathering!.gathering_id)
+          .run();
+        await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
+          .bind(gathering!.gathering_id)
+          .run();
+        await env.DB.prepare(
+          'DELETE FROM gathering_spots WHERE gathering_spot_id = ?'
+        )
+          .bind(spot!.gathering_spot_id)
+          .run();
+        await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+          .bind(user!.user_id)
+          .run();
+      }
+    });
+
+    it('参加している集合が無いユーザーは空配列を返す', async () => {
+      await expect(repo.findByParticipantUserId(999999)).resolves.toEqual([]);
+    });
+  });
 });

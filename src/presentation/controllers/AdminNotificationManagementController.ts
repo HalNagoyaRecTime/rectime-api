@@ -4,7 +4,8 @@ import type { IAdminNotificationManagementService } from '../../application/serv
 import type { ManualNotificationAudience } from '../../domain/entities/AdminNotification';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
-import type { AuthenticationVariables } from '../middleware/sessionAuthentication';
+import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
+import type { AuthVariables } from '../middleware/requireAuth';
 
 const notificationIdSchema = z.coerce.number().int().positive();
 const audienceSchema = z.discriminatedUnion('type', [
@@ -60,7 +61,7 @@ const listQuerySchema = z
 
 type AdminNotificationManagementContext = Context<{
   Bindings: Env;
-  Variables: ContainerVariables & AuthenticationVariables;
+  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>;
 
 export function createAdminNotificationManagementController(

@@ -1,0 +1,551 @@
+import { env as workerEnv } from 'cloudflare:workers';
+import { Hono } from 'hono';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import type { KVNamespace } from '@cloudflare/workers-types';
+import { account } from '../../../../src/presentation/auth/routes/account';
+import { signAccessToken } from '../../../../src/infrastructure/auth/jwt';
+import type { MobileRefreshEntry } from '../../../../src/domain/auth/types';
+import type { Env } from '../../../../src/lib/env';
+import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
+
+const JWT_SECRET = 'a'.repeat(32);
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  bytes.forEach(byte => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+let privateKeyPem: string;
+
+beforeAll(async () => {
+  const keyPair = (await crypto.subtle.generateKey(
+    {
+      name: 'RSASSA-PKCS1-v1_5',
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: 'SHA-256',
+    },
+    true,
+    ['sign', 'verify']
+  )) as CryptoKeyPair;
+  const pkcs8 = (await crypto.subtle.exportKey(
+    'pkcs8',
+    keyPair.privateKey
+  )) as ArrayBuffer;
+  privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${arrayBufferToBase64(pkcs8)}\n-----END PRIVATE KEY-----`;
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+beforeEach(async () => {
+  await workerEnv.DB.prepare('DELETE FROM staffs').run();
+  await workerEnv.DB.prepare('DELETE FROM teachers').run();
+  await workerEnv.DB.prepare('DELETE FROM students').run();
+  await workerEnv.DB.prepare('DELETE FROM users').run();
+});
+
+function buildEnv(overrides: Partial<Env> = {}): Env {
+  return {
+    DB: workerEnv.DB,
+    AUTH_KV: createMockKv(),
+    MASTER_IMPORT_COMMIT_LOCK: {} as Env['MASTER_IMPORT_COMMIT_LOCK'],
+    NOTIFICATION_DELIVERY_QUEUE: {} as Env['NOTIFICATION_DELIVERY_QUEUE'],
+    ALLOWED_ORIGINS: '',
+    FIREBASE_PROJECT_ID: 'project',
+    FIREBASE_CLIENT_EMAIL: 'sa@example.iam.gserviceaccount.com',
+    FIREBASE_PRIVATE_KEY: 'dummy-key',
+    TEST_FCM_TOKEN: 'test-token',
+    MICROSOFT_CLIENT_ID: 'client-id',
+    MICROSOFT_CLIENT_PRIVATE_KEY: 'dummy-key',
+    MICROSOFT_CERT_THUMBPRINT: 'thumbprint',
+    MICROSOFT_TENANT: 'common',
+    ALLOWED_MICROSOFT_TENANTS: '',
+    MICROSOFT_MOBILE_REDIRECT_URI: 'https://example.com/mobile-callback',
+    FRONTEND_URL: 'https://example.com',
+    JWT_SECRET,
+    JWT_EXPIRES_SEC: '3600',
+    MOBILE_REFRESH_EXPIRES_SEC: '2592000',
+    STUDENT_EMAIL_DOMAIN: 'nhs.hal.ac.jp',
+    ...overrides,
+  };
+}
+
+function createMockKv(): KVNamespace {
+  const store = new Map<string, string>();
+  return {
+    put: async (key: string, value: string) => {
+      store.set(key, value);
+    },
+    get: async (key: string) => store.get(key) ?? null,
+    delete: async (key: string) => {
+      store.delete(key);
+    },
+  } as unknown as KVNamespace;
+}
+
+function buildApp() {
+  const app = new Hono<{ Bindings: Env }>();
+  app.use('*', diContainerMiddleware);
+  app.route('/', account);
+  return app;
+}
+
+async function buildWebToken(): Promise<string> {
+  return signAccessToken(
+    {
+      sub: 'user-1',
+      oid: 'oid-1',
+      email: 'tanaka@example.com',
+      display_name: '田中太郎',
+      client_type: 'web',
+    },
+    JWT_SECRET,
+    3600
+  );
+}
+
+describe('GET /auth/me', () => {
+  it('webは有効なBearerトークンがあればユーザー情報のみを返す', async () => {
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const userId = String(user!.user_id);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      access_token?: string;
+      user?: {
+        id: string;
+        email: string;
+        display_name: string;
+        is_student: boolean;
+        is_staff: boolean;
+        is_teacher: boolean;
+      };
+    };
+
+    expect(body.access_token).toBeUndefined();
+    expect(body.user).toMatchObject({
+      id: userId,
+      email: 'tanaka@example.com',
+      display_name: '田中太郎',
+      is_student: false,
+      is_staff: false,
+      is_teacher: false,
+    });
+  });
+
+  it('Authorizationヘッダーが無い場合は401を返す', async () => {
+    const app = buildApp();
+
+    const res = await app.request('/me', {}, buildEnv());
+
+    expect(res.status).toBe(401);
+  });
+
+  it('mobile用に発行されたトークンをwebで使おうとすると401を返す', async () => {
+    const env = buildEnv();
+    const token = await signAccessToken(
+      {
+        sub: 'user-1',
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'mobile',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(401);
+  });
+
+  it('学生ユーザーの場合はstudent_id_number/class_room_nameを含めて返す', async () => {
+    const env = buildEnv();
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3A', '3年A組') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('学生太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '50001')"
+    )
+      .bind(user!.user_id, classRoom!.class_room_id)
+      .run();
+    const userId = String(user!.user_id);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-student',
+        email: 'gakusei@example.com',
+        display_name: '学生太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      user?: {
+        student_id_number: string | null;
+        class_room_name: string | null;
+      };
+    };
+    expect(body.user).toMatchObject({
+      student_id_number: '50001',
+      class_room_name: '3年A組',
+    });
+  });
+
+  it('学生でないユーザーの場合はstudent_id_number/class_room_nameがnullで返る', async () => {
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('教師花子') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+    const userId = String(user!.user_id);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-teacher',
+        email: 'sensei@example.com',
+        display_name: '教師花子',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      user?: {
+        student_id_number: string | null;
+        class_room_name: string | null;
+      };
+    };
+    expect(body.user).toMatchObject({
+      student_id_number: null,
+      class_room_name: null,
+    });
+  });
+});
+
+describe('POST /auth/logout', () => {
+  it('webはBearerトークンが無い場合は401を返す', async () => {
+    const app = buildApp();
+
+    const res = await app.request('/logout', { method: 'POST' }, buildEnv());
+
+    expect(res.status).toBe(401);
+  });
+
+  it('webは有効なBearerトークンとrefresh_token_idを指定するとKVエントリを削除して成功する', async () => {
+    const env = buildEnv();
+    const token = await buildWebToken();
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-1',
+      JSON.stringify({
+        user_id: 'user-1',
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+    await env.AUTH_KV.put('mobile_refresh_by_user:user-1', 'refresh-1');
+    const app = buildApp();
+
+    const res = await app.request(
+      '/logout',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ message: 'Logged out successfully' });
+    expect(await env.AUTH_KV.get('mobile_refresh:refresh-1')).toBeNull();
+    expect(await env.AUTH_KV.get('mobile_refresh_by_user:user-1')).toBeNull();
+  });
+
+  it('他ユーザーが所有するrefresh_token_idを指定しても削除しない', async () => {
+    const env = buildEnv();
+    const token = await buildWebToken();
+    const otherUsersEntry = JSON.stringify({
+      user_id: 'other-user',
+      oid: 'oid-other',
+      tid: 'tid-1',
+      sub: 'sub-other',
+      email: 'other@example.com',
+      display_name: '他ユーザー',
+      client_type: 'web',
+      ms_refresh_token: 'ms-refresh-other',
+      created_at: new Date().toISOString(),
+    } satisfies MobileRefreshEntry);
+    await env.AUTH_KV.put(
+      'mobile_refresh:other-users-refresh',
+      otherUsersEntry
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/logout',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'other-users-refresh' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    expect(await env.AUTH_KV.get('mobile_refresh:other-users-refresh')).toBe(
+      otherUsersEntry
+    );
+  });
+});
+
+describe('POST /auth/refresh', () => {
+  it('refresh_token_idが無い場合は400を返す', async () => {
+    const app = buildApp();
+
+    const res = await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+      buildEnv()
+    );
+
+    expect(res.status).toBe(400);
+  });
+
+  it('存在しないrefresh_token_idの場合は401を返す', async () => {
+    const app = buildApp();
+
+    const res = await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token_id: 'unknown' }),
+      },
+      buildEnv()
+    );
+
+    expect(res.status).toBe(401);
+  });
+
+  it('mobile向けに発行されたrefresh_token_idをwebから使おうとすると400を返す', async () => {
+    const env = buildEnv();
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-mobile-1',
+      JSON.stringify({
+        user_id: 'user-1',
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'mobile',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-mobile-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_REFRESH_CLIENT_TYPE');
+    // クライアント種別不一致時はKVのエントリを消費(ローテーション)しない
+    expect(
+      await env.AUTH_KV.get('mobile_refresh:refresh-mobile-1')
+    ).not.toBeNull();
+  });
+
+  it('webは有効なrefresh_token_idを指定すると新しいアクセストークンを発行しIDをローテーションする', async () => {
+    const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-1',
+      JSON.stringify({
+        user_id: 'user-1',
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          access_token: 'graph-access-1',
+          refresh_token: 'ms-refresh-2',
+        }),
+        { status: 200 }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const app = buildApp();
+    const res = await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      access_token: string;
+      refresh_token_id: string;
+      token_type: string;
+      expires_in: number;
+    };
+    expect(body.token_type).toBe('Bearer');
+    expect(body.refresh_token_id).not.toBe('refresh-1');
+    expect(await env.AUTH_KV.get('mobile_refresh:refresh-1')).toBeNull();
+    expect(
+      await env.AUTH_KV.get(`mobile_refresh:${body.refresh_token_id}`)
+    ).not.toBeNull();
+  });
+
+  it('Microsoftのリフレッシュに失敗した場合は401を返す', async () => {
+    const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-1',
+      JSON.stringify({
+        user_id: 'user-1',
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'invalid_grant' }), {
+        status: 400,
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const app = buildApp();
+    const res = await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('REFRESH_TOKEN_EXPIRED');
+  });
+});

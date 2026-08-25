@@ -13,9 +13,14 @@ describe('Gathering master services', () => {
       updated_at: '2026-01-01 00:00:00',
     };
     const repository: IGatheringSpotRepository = {
+      exists: vi.fn(),
       findAll: vi.fn().mockResolvedValue([spot]),
+      findPage: vi.fn(),
+      findById: vi.fn(),
       create: vi.fn().mockResolvedValue(spot),
       update: vi.fn(),
+      delete: vi.fn(),
+      hasGatherings: vi.fn(),
     };
     const service = createGatheringSpotService(repository);
 
@@ -31,9 +36,14 @@ describe('Gathering master services', () => {
       updated_at: '2026-01-02 00:00:00',
     };
     const repository: IGatheringSpotRepository = {
+      exists: vi.fn(),
       findAll: vi.fn(),
+      findPage: vi.fn(),
+      findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn().mockResolvedValue(updatedSpot),
+      delete: vi.fn(),
+      hasGatherings: vi.fn(),
     };
     const service = createGatheringSpotService(repository);
     const input = { gathering_spot_name: '正門前' };
@@ -46,9 +56,14 @@ describe('Gathering master services', () => {
 
   it('集合場所の更新対象が存在しない場合はエラーにする', async () => {
     const repository: IGatheringSpotRepository = {
+      exists: vi.fn(),
       findAll: vi.fn(),
+      findPage: vi.fn(),
+      findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn().mockResolvedValue(null),
+      delete: vi.fn(),
+      hasGatherings: vi.fn(),
     };
     const service = createGatheringSpotService(repository);
 
@@ -57,6 +72,60 @@ describe('Gathering master services', () => {
         gathering_spot_name: '正門前',
       })
     ).rejects.toThrow('Gathering spot not found');
+  });
+
+  it('集合場所をIDで取得し、存在しない場合はエラーにする', async () => {
+    const repository: IGatheringSpotRepository = {
+      exists: vi.fn(),
+      findAll: vi.fn(),
+      findPage: vi.fn(),
+      findById: vi.fn().mockResolvedValue(null),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      hasGatherings: vi.fn(),
+    };
+    const service = createGatheringSpotService(repository);
+
+    await expect(service.getGatheringSpotById(999)).rejects.toThrow(
+      'Gathering spot not found'
+    );
+  });
+
+  it('未使用の集合場所を削除する', async () => {
+    const repository: IGatheringSpotRepository = {
+      exists: vi.fn(),
+      findAll: vi.fn(),
+      findPage: vi.fn(),
+      findById: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn().mockResolvedValue(true),
+      hasGatherings: vi.fn().mockResolvedValue(false),
+    };
+    const service = createGatheringSpotService(repository);
+
+    await expect(service.deleteGatheringSpot(1)).resolves.toBeUndefined();
+    expect(repository.delete).toHaveBeenCalledWith(1);
+  });
+
+  it('利用中の集合場所は削除せず409用エラーにする', async () => {
+    const repository: IGatheringSpotRepository = {
+      exists: vi.fn(),
+      findAll: vi.fn(),
+      findPage: vi.fn(),
+      findById: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      hasGatherings: vi.fn().mockResolvedValue(true),
+    };
+    const service = createGatheringSpotService(repository);
+
+    await expect(service.deleteGatheringSpot(1)).rejects.toThrow(
+      'Gathering spot is in use'
+    );
+    expect(repository.delete).not.toHaveBeenCalled();
   });
 
   it('集合対象者の追加・一覧取得・解除をRepositoryへ委譲する', async () => {
@@ -80,8 +149,8 @@ describe('Gathering master services', () => {
     await expect(service.getGatheringMembers(1)).resolves.toEqual([member]);
     await expect(service.removeGatheringMember(1, 2)).resolves.toBe(true);
 
-    expect(repository.existsGathering).toHaveBeenCalledTimes(3);
-    expect(repository.existsUser).toHaveBeenCalledTimes(2);
+    expect(repository.existsGathering).toHaveBeenCalledTimes(2);
+    expect(repository.existsUser).toHaveBeenCalledTimes(1);
     expect(repository.create).toHaveBeenCalledWith(1, 2);
     expect(repository.findByGatheringId).toHaveBeenCalledWith(1);
     expect(repository.remove).toHaveBeenCalledWith(1, 2);
@@ -138,5 +207,15 @@ describe('Gathering master services', () => {
     await expect(
       createGatheringGroupMemberService(repository).removeGatheringMember(1, 2)
     ).rejects.toThrow('Gathering member not found');
+  });
+
+  it('所属解除でRepositoryの例外をそのまま送出する', async () => {
+    const repository: IGatheringGroupMemberRepository = {
+      remove: vi.fn().mockRejectedValue(new Error('database error')),
+    } as unknown as IGatheringGroupMemberRepository;
+
+    await expect(
+      createGatheringGroupMemberService(repository).removeGatheringMember(1, 2)
+    ).rejects.toThrow('database error');
   });
 });

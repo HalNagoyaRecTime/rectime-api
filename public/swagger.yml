@@ -330,6 +330,26 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
   /teachers:
+    post:
+      tags: [Teachers]
+      summary: 教員を新規登録する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeacherCreateRequest'
+      responses:
+        '201':
+          description: 登録された教員
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Teacher'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
     get:
       tags: [Teachers]
       summary: 教員一覧を検索する
@@ -353,12 +373,29 @@ paths:
             minimum: 1
         - name: isLiveActive
           in: query
-          description: 有効状態で絞り込む
+          description: 有効状態で絞り込む。未指定時は有効な教員のみ返す
           schema:
             type: boolean
+        - name: search
+          in: query
+          description: 教員名・クラスコード・クラス名の部分一致
+          schema:
+            type: string
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [teacherId, displayName]
+            default: teacherId
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
         - name: limit
           in: query
-          description: 取得件数（デフォルト20、最大100）
+          description: 取得件数（デフォルト50、最大100）
           schema:
             type: integer
             minimum: 1
@@ -376,6 +413,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TeacherPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -424,18 +463,117 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     delete:
       tags: [Teachers]
-      summary: 教員を削除する（担当クラスに割り当てられている場合は削除できない）
+      summary: 教員を論理削除する（担当クラスの割り当ては解除される）
       parameters:
         - $ref: '#/components/parameters/TeacherId'
       responses:
         '204':
-          description: 削除成功
+          description: 論理削除成功（users.is_live_activeを0にし、担当クラスを解除）
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /master-imports:
+    post:
+      tags: [MasterImports]
+      summary: CSV・Excelファイルを取り込み、検査した上でvalidatedFileIdを発行する（DBへの書き込みは行わない）
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MasterImportUploadRequest'
+      responses:
+        '201':
+          description: 検査結果とvalidatedFileId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterImportSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /master-imports/{validatedFileId}:
+    get:
+      tags: [MasterImports]
+      summary: 取込内容・検査結果を確認する
+      parameters:
+        - $ref: '#/components/parameters/ValidatedFileId'
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          description: 確認する行の最大件数（最大2000件）
+          schema: { type: integer, minimum: 1, maximum: 2000, default: 100 }
+      responses:
+        '200':
+          description: 取込セッションの内容
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterImportSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/MasterImportNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /master-imports/{validatedFileId}/commit:
+    post:
+      tags: [MasterImports]
+      summary: |
+        検査済みのデータをそのまま確定登録する。1件でもエラーがあれば1件も登録しない。
+        既に確定済みのvalidatedFileIdに対して再度呼び出した場合は、DBへ再度書き込むことなく
+        前回と同じ結果を返す（二重登録の防止）。
+      parameters:
+        - $ref: '#/components/parameters/ValidatedFileId'
+      responses:
+        '200':
+          description: 既に確定済みだったため、前回の結果をそのまま返した
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterImportSession'
+        '201':
+          description: 今回新たに確定登録した
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterImportSession'
+        '404':
+          $ref: '#/components/responses/MasterImportNotFound'
+        '422':
+          description: エラー行が存在するため1件も登録されなかった
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterImportSession'
+        '503':
+          description: |
+            同じvalidatedFileIdに対する確定処理が既に進行中のため、一定時間待っても
+            完了を確認できなかった。Retry-Afterヘッダーの秒数待ってから再試行すること。
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: 再試行までの推奨待機秒数
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  error_code:
+                    type: string
+                    example: COMMIT_IN_PROGRESS
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -505,6 +643,32 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /me/events:
+    get:
+      tags: [Events]
+      summary: ログイン中のユーザーが参加するイベント一覧を取得する
+      parameters:
+        - $ref: '#/components/parameters/ClientType'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 参加イベント一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /events/{eventId}:
     get:
       tags: [Events]
@@ -526,7 +690,12 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     put:
       tags: [Events]
-      summary: イベントを更新する
+      summary: イベントと自動通知設定を更新する
+      description: |
+        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        競技基本情報と、開始15分前の自動通知予定を1つの処理で更新します。
+        notification_enabledがfalseの場合は、未送信のevent_reminderのみ削除します。
+        同じイベントが先に更新された場合は409 Conflictを返します。
       parameters:
         - $ref: '#/components/parameters/EventId'
       requestBody:
@@ -534,18 +703,60 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EventWriteRequest'
+              $ref: '#/components/schemas/UpdateEventWithNotificationRequest'
       responses:
         '200':
-          description: 更新後のイベント
+          description: 更新後のイベントと通知予定
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Event'
+                $ref: '#/components/schemas/EventScheduleResult'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      tags: [Events]
+      summary: イベントと自動通知設定を部分更新する
+      description: |
+        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        指定された競技情報だけを更新し、未指定の項目は変更しません。
+        競技名、開始時刻、notification_enabledのいずれかを変更した場合は、
+        未送信のevent_reminderを更新後の内容で再生成します。
+        同じイベントが先に更新された場合は409 Conflictを返します。
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchEventWithNotificationRequest'
+      responses:
+        '200':
+          description: 更新後のイベントと通知予定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventScheduleResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
     delete:
@@ -590,9 +801,11 @@ paths:
     put:
       tags: [Events]
       summary: イベント時刻と通知予定を更新する
+      deprecated: true
       description: |
         staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
         通知ありの場合は、開催日の競技開始15分前に送信するdraft通知予定を作成または更新します。
+        新規実装ではPUT /events/{eventId}を使用してください。
       parameters:
         - $ref: '#/components/parameters/EventId'
       requestBody:
@@ -608,6 +821,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EventScheduleResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /events/{eventId}/notification-summary:
+    get:
+      tags: [Events]
+      summary: 競技単位の自動通知配信状況を取得する
+      description: |
+        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        Token単位のevent_reminderを競技単位で集約し、手動通知は含めません。
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: 競技単位の自動通知配信状況
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventNotificationSummary'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -749,6 +989,24 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
   /gathering-spots/{gatheringSpotId}:
+    get:
+      tags: [Gathering spots]
+      summary: 集合場所の詳細を取得する
+      parameters:
+        - $ref: '#/components/parameters/GatheringSpotId'
+      responses:
+        '200':
+          description: 集合場所の詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatheringSpot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
     put:
       tags: [Gathering spots]
       summary: 集合場所を更新する
@@ -771,6 +1029,22 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Gathering spots]
+      summary: 集合場所を削除する
+      parameters:
+        - $ref: '#/components/parameters/GatheringSpotId'
+      responses:
+        '204':
+          description: 削除成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1010,6 +1284,43 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /notification/schedules/{notificationId}:
+    parameters:
+      - name: notificationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    put:
+      tags: [Notification schedules]
+      summary: 通知予定を更新する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateScheduleRequest'
+      responses:
+        '200':
+          description: 更新後の通知予定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateScheduleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1294,8 +1605,10 @@ paths:
       tags: [Auth]
       summary: Microsoftからの認可コールバックを処理する
       description: |
-        Webクライアントの認可コードフロー専用エンドポイントです。Microsoftからのリダイレクトで
-        呼び出され、認証成功時はセッションCookieを発行してフロントエンドへリダイレクトします。
+        Microsoftからのリダイレクトで呼び出され、トークン交換は行わずに
+        `code` / `state` をそのまま `FRONTEND_URL/auth/callback` へ中継します。
+        フロントエンドはそこから `POST /auth/microsoft/token`（`client_type: web`）を
+        呼び出して自らトークン交換を行います。
         失敗時は `FRONTEND_URL/login?error=auth_failed` へリダイレクトします。
       parameters:
         - name: code
@@ -1312,18 +1625,17 @@ paths:
             type: string
       responses:
         '302':
-          description: 認証成功時はフロントエンドへ、失敗時はログイン画面へリダイレクト
-          headers:
-            Set-Cookie:
-              description: 認証成功時のみ、セッションCookie（`session`）を発行
-              schema:
-                type: string
+          description: 成功時は `FRONTEND_URL/auth/callback?code=...&state=...` へ、失敗時はログイン画面へリダイレクト
 
   /auth/microsoft/token:
     post:
       tags: [Auth]
-      summary: Mobileクライアントの認可コードをアクセストークンと交換する
-      description: 'Mobileクライアント専用（`X-Client-Type: mobile` が必須）です。'
+      summary: 認可コードをrectime-apiのアクセストークンと交換する
+      description: |
+        Mobile/Web共通のエンドポイントです（`X-Client-Type` で切り替え）。
+        - mobile: `code_verifier` はクライアントが生成し、ボディで送信します。
+        - web: `code_verifier` は `/auth/microsoft/login` 時にサーバー側で生成・
+          保存済みのものを使うため、ボディでは `code` / `state` のみを送信します。
       parameters:
         - $ref: '#/components/parameters/ClientType'
       requestBody:
@@ -1334,11 +1646,11 @@ paths:
               $ref: '#/components/schemas/TokenExchangeRequest'
       responses:
         '200':
-          description: モバイル用アクセストークン・リフレッシュトークン
+          description: アクセストークン(refresh_token_idも併せて返却)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MobileTokenResponse'
+                $ref: '#/components/schemas/TokenResponse'
         '400':
           $ref: '#/components/responses/AuthBadRequest'
         '401':
@@ -1348,11 +1660,10 @@ paths:
     get:
       tags: [Auth]
       summary: ログイン中のユーザー情報を取得する
-      description: 'Webクライアントはセッション Cookie、Mobileクライアントは `Authorization: Bearer` で認証します。'
+      description: 'Mobile/Webいずれも `Authorization: Bearer` で認証します。Cookieは使用しません。'
       parameters:
         - $ref: '#/components/parameters/ClientType'
       security:
-        - sessionCookie: []
         - bearerAuth: []
       responses:
         '200':
@@ -1378,7 +1689,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ClientType'
       security:
-        - sessionCookie: []
         - bearerAuth: []
       responses:
         '200':
@@ -1403,14 +1713,16 @@ paths:
     post:
       tags: [Auth]
       summary: ログアウトする
+      description: >-
+        Mobile/Web共通。Bearerトークンで認証したうえで、`refresh_token_id`が
+        保持するMicrosoftリフレッシュトークンのKVエントリを破棄します。
       parameters:
         - $ref: '#/components/parameters/ClientType'
       security:
-        - sessionCookie: []
         - bearerAuth: []
       requestBody:
         required: false
-        description: Mobileクライアントの場合のみ、`refresh_token_id` を指定可能
+        description: '`refresh_token_id` を指定可能'
         content:
           application/json:
             schema:
@@ -1421,11 +1733,6 @@ paths:
       responses:
         '200':
           description: ログアウト成功
-          headers:
-            Set-Cookie:
-              description: Webクライアントの場合、セッションCookieを削除
-              schema:
-                type: string
           content:
             application/json:
               schema:
@@ -1436,41 +1743,36 @@ paths:
                     type: string
         '400':
           $ref: '#/components/responses/AuthBadRequest'
+        '401':
+          $ref: '#/components/responses/AuthUnauthorized'
 
   /auth/refresh:
     post:
       tags: [Auth]
-      summary: セッション・トークンを更新する
-      description: Webクライアントはセッション Cookie を、Mobileクライアントは `refresh_token_id` を用いて更新します。
+      summary: アクセストークンを更新する
+      description: >-
+        Mobile/Web共通。`refresh_token_id` を用いてrectime-apiのアクセス
+        トークンを再発行します。`refresh_token_id` は使用の都度ローテーション
+        されます。
       parameters:
         - $ref: '#/components/parameters/ClientType'
-      security:
-        - sessionCookie: []
-        - bearerAuth: []
       requestBody:
-        required: false
-        description: Mobileクライアントの場合のみ必須
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [refresh_token_id]
               properties:
                 refresh_token_id:
                   type: string
       responses:
         '200':
-          description: 更新結果（Webはセッション更新のみ、Mobileは新しいトークンを返却）
+          description: 新しいアクセストークン・refresh_token_id
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/RefreshWebResponse'
-                  - $ref: '#/components/schemas/MobileTokenResponse'
-          headers:
-            Set-Cookie:
-              description: Webクライアントの場合のみ、更新後のセッションCookieを発行
-              schema:
-                type: string
+                $ref: '#/components/schemas/TokenResponse'
         '400':
           $ref: '#/components/responses/AuthBadRequest'
         '401':
@@ -1513,6 +1815,12 @@ components:
       schema:
         type: integer
         minimum: 1
+    ValidatedFileId:
+      name: validatedFileId
+      in: path
+      required: true
+      schema:
+        type: string
     GatheringId:
       name: gatheringId
       in: path
@@ -1567,6 +1875,22 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    MasterImportNotFound:
+      description: |
+        取込セッションが存在しない。error_code で、有効期限切れ(IMPORT_EXPIRED)と
+        元から存在しないvalidatedFileId(IMPORT_NOT_FOUND)を区別できる。
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error, error_code]
+            properties:
+              error:
+                type: string
+                example: Import not found
+              error_code:
+                type: string
+                enum: [IMPORT_EXPIRED, IMPORT_NOT_FOUND]
     Conflict:
       description: リソースの現在状態では操作できない
       content:
@@ -1593,10 +1917,6 @@ components:
             $ref: '#/components/schemas/AuthError'
 
   securitySchemes:
-    sessionCookie:
-      type: apiKey
-      in: cookie
-      name: session
     bearerAuth:
       type: http
       scheme: bearer
@@ -1608,6 +1928,7 @@ components:
       required:
         [
           student_id,
+          user_id,
           display_name,
           class_room_id,
           class_room_name,
@@ -1617,6 +1938,8 @@ components:
         ]
       properties:
         student_id:
+          type: integer
+        user_id:
           type: integer
         display_name:
           type: string
@@ -1707,17 +2030,31 @@ components:
 
     TeacherUpdateRequest:
       type: object
-      required: [userName, isLiveActive, classRoomIds]
+      required: [userName, classRoomIds]
+      additionalProperties: false
       properties:
         userName:
           type: string
           minLength: 1
-        isLiveActive:
-          type: boolean
         classRoomIds:
           type: array
           uniqueItems: true
           description: 重複したIDを指定した場合は400を返す
+          items:
+            type: integer
+            minimum: 1
+
+    TeacherCreateRequest:
+      type: object
+      required: [userName, classRoomIds]
+      additionalProperties: false
+      properties:
+        userName:
+          type: string
+          minLength: 1
+        classRoomIds:
+          type: array
+          uniqueItems: true
           items:
             type: integer
             minimum: 1
@@ -1804,6 +2141,65 @@ components:
           items:
             $ref: '#/components/schemas/NotificationSchedule'
 
+    EventNotificationSummary:
+      type: object
+      required: [event_id, scheduled_at, total, draft, sending, sent, failed]
+      properties:
+        event_id:
+          type: integer
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 自動通知の配信予定時刻。通知予定がない場合はnullです。
+        total:
+          type: integer
+          minimum: 0
+        draft:
+          type: integer
+          minimum: 0
+        sending:
+          type: integer
+          minimum: 0
+        sent:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+
+    UpdateEventWithNotificationRequest:
+      allOf:
+        - $ref: '#/components/schemas/EventWriteRequest'
+        - type: object
+          properties:
+            notification_enabled:
+              type: boolean
+              description: 省略時は既存の未送信event_reminderの有無を維持します。
+
+    PatchEventWithNotificationRequest:
+      type: object
+      minProperties: 1
+      properties:
+        event_name:
+          type: string
+        rule_text:
+          type: string
+          nullable: true
+        venue:
+          type: string
+        start_time:
+          type: string
+          pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
+        end_time:
+          type: string
+          pattern: '^(?:[01]\d|2[0-3])[0-5]\d$'
+        notification_enabled:
+          type: boolean
+          description: |
+            trueの場合は更新後の競技開始15分前にevent_reminderを再生成し、
+            falseの場合は未送信のevent_reminderを削除します。
+
     EventWriteRequest:
       type: object
       required: [event_name, venue, start_time, end_time]
@@ -1868,6 +2264,106 @@ components:
         total: { type: integer }
         limit: { type: integer }
         offset: { type: integer }
+
+    MasterImportUploadRequest:
+      type: object
+      required: [type, file]
+      properties:
+        type:
+          type: string
+          enum: [students, classrooms, teachers]
+          description: 取り込むデータの種別
+        file:
+          type: string
+          format: binary
+          description: CSV(.csv)またはExcel(.xlsx/.xls)ファイル
+
+    MasterImportRowError:
+      type: object
+      required: [row_index, reason]
+      description: 実体は学生・クラス・教官それぞれの検査結果のエラー形式（reasonの内容が種別ごとに異なる）
+      properties:
+        row_index:
+          type: integer
+        reason:
+          type: string
+      additionalProperties: true
+
+    MasterImportCommittedResult:
+      type: object
+      required: [imported, error_count, errors]
+      properties:
+        imported:
+          type: integer
+        error_count:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/MasterImportRowError'
+
+    MasterImportSession:
+      type: object
+      required:
+        [
+          validated_file_id,
+          type,
+          status,
+          file_name,
+          total,
+          success_count,
+          error_count,
+          errors,
+          rows,
+          rows_total,
+          rows_limit,
+          rows_offset,
+          created_at,
+          expires_at,
+          committed_result,
+        ]
+      properties:
+        validated_file_id:
+          type: string
+        type:
+          type: string
+          enum: [students, classrooms, teachers]
+        status:
+          type: string
+          enum: [validated, committed]
+        file_name:
+          type: string
+        total:
+          type: integer
+        success_count:
+          type: integer
+        error_count:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/MasterImportRowError'
+        rows:
+          type: array
+          description: 検査済みの行データ（offset/limitでページ分けされる）。実体はtypeに応じた学生・クラス・教官の行形式
+          items: {}
+        rows_total:
+          type: integer
+        rows_limit:
+          type: integer
+        rows_offset:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          description: セッションの有効期限。この時刻を過ぎると404になる
+        committed_result:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/MasterImportCommittedResult'
 
     GatheringSpot:
       type: object
@@ -2410,6 +2906,167 @@ components:
         audience:
           $ref: '#/components/schemas/AdminNotificationAudience'
 
+    ScheduleCreatedUser:
+      type: object
+      required: [user_id, user_name]
+      properties:
+        user_id:
+          type: integer
+        user_name:
+          type: string
+
+    ScheduleEvent:
+      type: object
+      required: [event_id, event_name, start_time, end_time]
+      properties:
+        event_id:
+          type: integer
+        event_name:
+          type: string
+        start_time:
+          type: string
+          description: JSTの時刻（HHMM形式）
+          example: '1030'
+        end_time:
+          type: string
+          description: JSTの時刻（HHMM形式）
+          example: '1100'
+
+    ScheduleDeliverySummary:
+      type: object
+      required: [total, draft, sending, sent, failed]
+      properties:
+        total:
+          type: integer
+        draft:
+          type: integer
+        sending:
+          type: integer
+        sent:
+          type: integer
+        failed:
+          type: integer
+
+    ScheduleNotification:
+      type: object
+      required:
+        [notification_id, notification_type, title, body, created_user, event, send_time, delivery_summary]
+      properties:
+        notification_id:
+          type: integer
+        notification_type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        created_user:
+          $ref: '#/components/schemas/ScheduleCreatedUser'
+        event:
+          $ref: '#/components/schemas/ScheduleEvent'
+        send_time:
+          type: string
+          format: date-time
+        delivery_summary:
+          $ref: '#/components/schemas/ScheduleDeliverySummary'
+
+    ScheduleListResponse:
+      type: object
+      required: [notification_schedules, total, limit, offset]
+      properties:
+        notification_schedules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleNotification'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    CreateScheduleRequest:
+      type: object
+      required: [userId, eventId, notificationId, sendAt]
+      properties:
+        userId:
+          type: integer
+          minimum: 1
+        eventId:
+          type: integer
+          minimum: 1
+        notificationId:
+          type: integer
+          minimum: 1
+        importance:
+          type: integer
+          enum: [2]
+          default: 2
+        sendAt:
+          type: string
+          format: date-time
+          description: UTCオフセットを含むISO 8601形式
+          example: '2026-07-16T09:00:00.000Z'
+
+    CreateScheduleResponse:
+      type: object
+      required: [user_id, event_id, notification_id, firebase_token_id, importance, send_at]
+      properties:
+        user_id:
+          type: integer
+        event_id:
+          type: integer
+        notification_id:
+          type: integer
+        firebase_token_id:
+          type: integer
+        importance:
+          type: integer
+          enum: [2]
+        send_at:
+          type: string
+          format: date-time
+
+    UpdateScheduleRequest:
+      type: object
+      required: [create_user_id, new_event_id, new_gathering_id, new_send_at]
+      properties:
+        create_user_id:
+          type: integer
+          minimum: 1
+        new_event_id:
+          type: integer
+          minimum: 1
+        new_gathering_id:
+          type: integer
+          minimum: 1
+        new_importance:
+          type: integer
+          enum: [2]
+          default: 2
+        new_send_at:
+          type: string
+          format: date-time
+          description: UTCオフセットを含むISO 8601形式
+          example: '2026-07-16T09:00:00.000Z'
+
+    UpdateScheduleResponse:
+      type: object
+      required: [create_user_id, new_event_id, new_importance, new_send_at, new_gathering_id]
+      properties:
+        create_user_id:
+          type: integer
+        new_event_id:
+          type: integer
+        new_importance:
+          type: integer
+          enum: [2]
+        new_send_at:
+          type: string
+          format: date-time
+        new_gathering_id:
+          type: integer
+
     Notification:
       type: object
       required:
@@ -2608,6 +3265,12 @@ components:
         avatar_updated_at:
           type: string
           nullable: true
+        student_id_number:
+          type: string
+          nullable: true
+        class_room_name:
+          type: string
+          nullable: true
         is_student:
           type: boolean
           description: students テーブルに紐づくアカウントかどうか
@@ -2620,7 +3283,7 @@ components:
 
     TokenExchangeRequest:
       type: object
-      required: [code, state, code_verifier]
+      required: [code, state]
       properties:
         code:
           type: string
@@ -2630,8 +3293,9 @@ components:
           type: string
           minLength: 43
           maxLength: 128
+          description: mobileクライアントのみ必須。webはサーバー側で保存済みのものを使うため不要。
 
-    MobileTokenResponse:
+    TokenResponse:
       type: object
       required: [access_token, refresh_token_id, token_type, expires_in]
       properties:
@@ -2639,6 +3303,8 @@ components:
           type: string
         refresh_token_id:
           type: string
+          description: >-
+            POST /auth/refresh で使うトークンID。使用の都度ローテーションされる。
         token_type:
           type: string
           example: Bearer
@@ -2646,13 +3312,6 @@ components:
           type: integer
         user:
           $ref: '#/components/schemas/AuthUser'
-
-    RefreshWebResponse:
-      type: object
-      required: [message]
-      properties:
-        message:
-          type: string
 
     AuthError:
       type: object
@@ -2678,6 +3337,10 @@ tags:
     description: イベント
   - name: Classrooms
     description: クラス
+  - name: Teachers
+    description: 教官
+  - name: MasterImports
+    description: 学生・クラス・教官のCSV/Excel一括取込
   - name: Gathering spots
     description: 集合場所
   - name: Gathering members

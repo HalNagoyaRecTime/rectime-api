@@ -1,0 +1,495 @@
+name: Sync PR review fields
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '3,33 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-pr-review-project
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update review fields in Project
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
+          script: |
+            const owner = 'HalNagoyaRecTime';
+            const projectNumber = 1;
+            const repositories = [
+              'recwatch',
+              'rectime-mobile',
+              'rectime-api',
+              'rectime-2026-docs',
+            ];
+            const fieldNames = {
+              count: 'Approve数',
+              approvers: 'Approveした人',
+              nonApprovers: 'Approveしてない人',
+              status: 'レビュー状況',
+              lastActivity: '最終コミット・コメント日',
+              createdAge: 'PR作成日',
+            };
+
+            const projectQuery = `
+              query($owner: String!, $projectNumber: Int!, $after: String) {
+                organization(login: $owner) {
+                  projectV2(number: $projectNumber) {
+                    id
+                    fields(first: 100) {
+                      nodes {
+                        __typename
+                        ... on ProjectV2Field {
+                          id
+                          name
+                          dataType
+                        }
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options {
+                            id
+                            name
+                          }
+                        }
+                      }
+                    }
+                    items(first: 100, after: $after) {
+                      nodes {
+                        id
+                        content {
+                          ... on PullRequest {
+                            id
+                          }
+                        }
+                      }
+                      pageInfo {
+                        hasNextPage
+                        endCursor
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            let projectId;
+            let projectFields;
+            let cursor = null;
+            const itemIdsByPullRequestId = new Map();
+
+            do {
+              const data = await github.graphql(projectQuery, {
+                owner,
+                projectNumber,
+                after: cursor,
+              });
+              const project = data.organization?.projectV2;
+              if (!project) {
+                throw new Error(`Project ${owner}#${projectNumber} was not found.`);
+              }
+
+              projectId ??= project.id;
+              projectFields ??= project.fields.nodes;
+              for (const item of project.items.nodes) {
+                if (item.content?.id) {
+                  itemIdsByPullRequestId.set(item.content.id, item.id);
+                }
+              }
+
+              cursor = project.items.pageInfo.hasNextPage
+                ? project.items.pageInfo.endCursor
+                : null;
+            } while (cursor);
+
+            const countField = projectFields.find(
+              (field) =>
+                field.name === fieldNames.count && field.dataType === 'NUMBER',
+            );
+            const approversField = projectFields.find(
+              (field) =>
+                field.name === fieldNames.approvers && field.dataType === 'TEXT',
+            );
+            const nonApproversField = projectFields.find(
+              (field) =>
+                field.name === fieldNames.nonApprovers &&
+                field.dataType === 'TEXT',
+            );
+            const statusField = projectFields.find(
+              (field) =>
+                field.name === fieldNames.status &&
+                field.__typename === 'ProjectV2SingleSelectField',
+            );
+            const lastActivityField = projectFields.find(
+              (field) =>
+                field.name === fieldNames.lastActivity &&
+                field.dataType === 'DATE',
+            );
+            const createdAgeField = projectFields.find(
+              (field) =>
+                field.name === fieldNames.createdAge && field.dataType === 'TEXT',
+            );
+
+            if (
+              !countField ||
+              !approversField ||
+              !nonApproversField ||
+              !statusField ||
+              !lastActivityField ||
+              !createdAgeField
+            ) {
+              throw new Error(
+                'Approve数、Approveした人、Approveしてない人、レビュー状況、最終コミット・コメント日、PR作成日のフィールドを確認してください。',
+              );
+            }
+
+            const statusOptions = new Map(
+              statusField.options.map((option) => [option.name, option.id]),
+            );
+            const requiredStatuses = [
+              '未レビュー',
+              'コメントあり',
+              '修正依頼あり',
+              '対応済み・Review待ち',
+              'Approveあり',
+            ];
+            for (const status of requiredStatuses) {
+              if (!statusOptions.has(status)) {
+                throw new Error(`レビュー状況に「${status}」を追加してください。`);
+              }
+            }
+
+            async function addToProject(contentId) {
+              const result = await github.graphql(
+                `mutation($projectId: ID!, $contentId: ID!) {
+                  addProjectV2ItemById(
+                    input: { projectId: $projectId, contentId: $contentId }
+                  ) {
+                    item {
+                      id
+                    }
+                  }
+                }`,
+                { projectId, contentId },
+              );
+              return result.addProjectV2ItemById.item.id;
+            }
+
+            async function updateField(itemId, fieldId, value) {
+              await github.graphql(
+                `mutation($input: UpdateProjectV2ItemFieldValueInput!) {
+                  updateProjectV2ItemFieldValue(input: $input) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                }`,
+                {
+                  input: { projectId, itemId, fieldId, value },
+                },
+              );
+            }
+
+            async function clearField(itemId, fieldId) {
+              await github.graphql(
+                `mutation($input: ClearProjectV2ItemFieldValueInput!) {
+                  clearProjectV2ItemFieldValue(input: $input) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                }`,
+                {
+                  input: { projectId, itemId, fieldId },
+                },
+              );
+            }
+
+            function summarizeReviewState(
+              pull,
+              reviews,
+              reviewRequests,
+              hasComments,
+            ) {
+              const latestDecisionByUser = new Map();
+              const reviewerLogins = new Set();
+
+              for (const review of reviews) {
+                const login = review.user?.login;
+                if (!login || review.user?.type === 'Bot') continue;
+
+                if (review.state !== 'PENDING') {
+                  reviewerLogins.add(login);
+                }
+                if (
+                  review.state === 'APPROVED' ||
+                  review.state === 'CHANGES_REQUESTED'
+                ) {
+                  latestDecisionByUser.set(login, {
+                    state: review.state,
+                    commitId: review.commit_id,
+                  });
+                } else if (review.state === 'DISMISSED') {
+                  latestDecisionByUser.delete(login);
+                }
+              }
+
+              for (const reviewer of reviewRequests.users ?? []) {
+                if (reviewer.login && reviewer.type !== 'Bot') {
+                  reviewerLogins.add(reviewer.login);
+                }
+              }
+
+              const decisions = [...latestDecisionByUser.entries()];
+              const approvers = decisions
+                .filter(([, review]) => review.state === 'APPROVED')
+                .map(([login]) => login)
+                .sort((left, right) => left.localeCompare(right, 'en'));
+              const changeRequests = decisions
+                .filter(([, review]) => review.state === 'CHANGES_REQUESTED')
+                .map(([, review]) => review);
+              // Review後に依頼一覧から消えた人も、Approveするまでは表示対象に残す。
+              const nonApprovers = [
+                ...[...reviewerLogins]
+                  .filter((login) => !approvers.includes(login))
+                  .map((login) => `@${login}`),
+                ...(reviewRequests.teams ?? []).map(
+                  (team) => `@${owner}/${team.slug}`,
+                ),
+              ].sort((left, right) => left.localeCompare(right, 'en'));
+
+              let status;
+              if (changeRequests.length > 0) {
+                const hasNewCommit = changeRequests.every(
+                  (review) =>
+                    review.commitId && review.commitId !== pull.head.sha,
+                );
+                status = hasNewCommit
+                  ? '対応済み・Review待ち'
+                  : '修正依頼あり';
+              } else if (approvers.length > 0) {
+                status = 'Approveあり';
+              } else if (hasComments) {
+                status = 'コメントあり';
+              } else {
+                status = '未レビュー';
+              }
+
+              return { approvers, nonApprovers, status };
+            }
+
+            function getDatePartsInJapan(value) {
+              const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'Asia/Tokyo',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+              }).formatToParts(value);
+              const dateParts = Object.fromEntries(
+                parts.map((part) => [part.type, part.value]),
+              );
+
+              return dateParts;
+            }
+
+            function formatDateInJapan(value) {
+              const dateParts = getDatePartsInJapan(value);
+
+              return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+            }
+
+            function getDaysSinceCreated(createdAt, currentDate) {
+              const created = getDatePartsInJapan(new Date(createdAt));
+              const current = getDatePartsInJapan(currentDate);
+              const createdDay = Date.UTC(
+                Number(created.year),
+                Number(created.month) - 1,
+                Number(created.day),
+              );
+              const currentDay = Date.UTC(
+                Number(current.year),
+                Number(current.month) - 1,
+                Number(current.day),
+              );
+
+              return Math.max(
+                0,
+                Math.floor((currentDay - createdDay) / (24 * 60 * 60 * 1000)),
+              );
+            }
+
+            function getLastActivityDate(
+              pull,
+              commits,
+              reviews,
+              issueComments,
+              reviewComments,
+            ) {
+              const activityDates = [
+                ...commits.map(
+                  (commit) =>
+                    commit.commit.committer?.date ?? commit.commit.author?.date,
+                ),
+                ...reviews
+                  .filter(
+                    (review) =>
+                      review.user?.type !== 'Bot' && review.state !== 'PENDING',
+                  )
+                  .map((review) => review.submitted_at),
+                ...issueComments
+                  .filter((comment) => comment.user?.type !== 'Bot')
+                  .map((comment) => comment.updated_at ?? comment.created_at),
+                ...reviewComments
+                  .filter((comment) => comment.user?.type !== 'Bot')
+                  .map((comment) => comment.updated_at ?? comment.created_at),
+              ];
+              const timestamps = activityDates
+                .filter(Boolean)
+                .map((value) => Date.parse(value))
+                .filter(Number.isFinite);
+              const fallbackTimestamp = Date.parse(pull.created_at);
+              const latestTimestamp =
+                timestamps.length > 0
+                  ? Math.max(...timestamps)
+                  : fallbackTimestamp;
+
+              return formatDateInJapan(new Date(latestTimestamp));
+            }
+
+            const syncStartedAt = new Date();
+            let updatedCount = 0;
+
+            for (const repo of repositories) {
+              const pulls = await github.paginate(github.rest.pulls.list, {
+                owner,
+                repo,
+                state: 'open',
+                per_page: 100,
+              });
+
+              for (const pull of pulls) {
+                const [
+                  reviewRequestsResponse,
+                  commits,
+                  reviews,
+                  issueComments,
+                  reviewComments,
+                ] =
+                  await Promise.all([
+                    github.rest.pulls.listRequestedReviewers({
+                      owner,
+                      repo,
+                      pull_number: pull.number,
+                    }),
+                    github.paginate(github.rest.pulls.listCommits, {
+                      owner,
+                      repo,
+                      pull_number: pull.number,
+                      per_page: 100,
+                    }),
+                    github.paginate(github.rest.pulls.listReviews, {
+                      owner,
+                      repo,
+                      pull_number: pull.number,
+                      per_page: 100,
+                    }),
+                    github.paginate(github.rest.issues.listComments, {
+                      owner,
+                      repo,
+                      issue_number: pull.number,
+                      per_page: 100,
+                    }),
+                    github.paginate(github.rest.pulls.listReviewComments, {
+                      owner,
+                      repo,
+                      pull_number: pull.number,
+                      per_page: 100,
+                    }),
+                  ]);
+                const hasReviewActivity = reviews.some(
+                  (review) =>
+                    review.user?.type !== 'Bot' && review.state !== 'PENDING',
+                );
+                const hasComments =
+                  hasReviewActivity ||
+                  issueComments.some((comment) => comment.user?.type !== 'Bot') ||
+                  reviewComments.some(
+                    (comment) => comment.user?.type !== 'Bot',
+                  );
+                const { approvers, nonApprovers, status } =
+                  summarizeReviewState(
+                    pull,
+                    reviews,
+                    reviewRequestsResponse.data,
+                    hasComments,
+                  );
+                const lastActivityDate = getLastActivityDate(
+                  pull,
+                  commits,
+                  reviews,
+                  issueComments,
+                  reviewComments,
+                );
+                // Draft PRは空欄にし、レビュー対象になったPRだけ作成経過日を表示する。
+                const createdAgeText = pull.draft
+                  ? null
+                  : `${getDaysSinceCreated(
+                      pull.created_at,
+                      syncStartedAt,
+                    )}日前に作成`;
+
+                let itemId = itemIdsByPullRequestId.get(pull.node_id);
+                if (!itemId) {
+                  itemId = await addToProject(pull.node_id);
+                  itemIdsByPullRequestId.set(pull.node_id, itemId);
+                }
+
+                await updateField(itemId, countField.id, {
+                  number: approvers.length,
+                });
+                if (approvers.length > 0) {
+                  await updateField(itemId, approversField.id, {
+                    text: approvers.map((login) => `@${login}`).join(', '),
+                  });
+                } else {
+                  await clearField(itemId, approversField.id);
+                }
+                if (nonApprovers.length > 0) {
+                  await updateField(itemId, nonApproversField.id, {
+                    text: nonApprovers.join(', '),
+                  });
+                } else {
+                  await clearField(itemId, nonApproversField.id);
+                }
+                await updateField(itemId, statusField.id, {
+                  singleSelectOptionId: statusOptions.get(status),
+                });
+                await updateField(itemId, lastActivityField.id, {
+                  date: lastActivityDate,
+                });
+                if (createdAgeText) {
+                  await updateField(itemId, createdAgeField.id, {
+                    text: createdAgeText,
+                  });
+                } else {
+                  await clearField(itemId, createdAgeField.id);
+                }
+
+                updatedCount += 1;
+                core.info(
+                  `${repo}#${pull.number}: ${approvers.length} approvals, ${nonApprovers.length} non-approvers, ${status}, ${lastActivityDate}, ${createdAgeText ?? 'draft'}`,
+                );
+              }
+            }
+
+            await core.summary
+              .addHeading('PR review sync')
+              .addRaw(`${updatedCount} open pull requests updated.`)
+              .write();

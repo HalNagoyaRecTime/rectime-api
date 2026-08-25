@@ -2,10 +2,15 @@ import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createGatheringGroupMemberRepository } from '../../../src/infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringSpotRepository } from '../../../src/infrastructure/repositories/GatheringSpotRepository';
+import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 
 describe('Gathering master repositories', () => {
   const gatheringSpotRepository = createGatheringSpotRepository(env.DB);
-  const memberRepository = createGatheringGroupMemberRepository(env.DB);
+  const userRepository = createUserRepository(env.DB);
+  const memberRepository = createGatheringGroupMemberRepository(
+    env.DB,
+    userRepository
+  );
   let gatheringIds: number[] = [];
   let gatheringSpotIds: number[] = [];
   let eventIds: number[] = [];
@@ -120,6 +125,142 @@ describe('Gathering master repositories', () => {
         gathering_spot_name: '存在しない場所',
       })
     ).resolves.toBeNull();
+  });
+
+  it('集合場所の存在を確認できる', async () => {
+    const spot = await gatheringSpotRepository.create('体育館前');
+    gatheringSpotIds.push(spot.gathering_spot_id);
+
+    await expect(
+      gatheringSpotRepository.exists(spot.gathering_spot_id)
+    ).resolves.toBe(true);
+    await expect(gatheringSpotRepository.exists(999999)).resolves.toBe(false);
+  });
+
+  it('集合場所一覧を名称検索・ページネーションできる', async () => {
+    const first = await gatheringSpotRepository.create('体育館前');
+    const second = await gatheringSpotRepository.create('体育館裏');
+    const third = await gatheringSpotRepository.create('正門前');
+    gatheringSpotIds.push(
+      first.gathering_spot_id,
+      second.gathering_spot_id,
+      third.gathering_spot_id
+    );
+
+    await expect(
+      gatheringSpotRepository.findPage({ name: '体育館', limit: 1, offset: 0 })
+    ).resolves.toMatchObject({
+      total: 2,
+      limit: 1,
+      offset: 0,
+      gathering_spots: [
+        expect.objectContaining({
+          gathering_spot_id: first.gathering_spot_id,
+          gathering_spot_name: '体育館前',
+        }),
+      ],
+    });
+  });
+
+  it('集合場所一覧を指定した列と方向でソートできる', async () => {
+    const first = await gatheringSpotRepository.create('体育館前');
+    const second = await gatheringSpotRepository.create('正門前');
+    const third = await gatheringSpotRepository.create('校庭');
+    gatheringSpotIds.push(
+      first.gathering_spot_id,
+      second.gathering_spot_id,
+      third.gathering_spot_id
+    );
+
+    await expect(
+      gatheringSpotRepository.findPage({
+        limit: 20,
+        offset: 0,
+        sortBy: 'name',
+        sortOrder: 'desc',
+      })
+    ).resolves.toMatchObject({
+      gathering_spots: [
+        expect.objectContaining({ gathering_spot_name: '正門前' }),
+        expect.objectContaining({ gathering_spot_name: '校庭' }),
+        expect.objectContaining({ gathering_spot_name: '体育館前' }),
+      ],
+    });
+  });
+
+  it('名称検索とcreatedAt・updatedAtソートを組み合わせられる', async () => {
+    const first = await gatheringSpotRepository.create('体育館前');
+    const second = await gatheringSpotRepository.create('体育館裏');
+    const third = await gatheringSpotRepository.create('正門前');
+    gatheringSpotIds.push(
+      first.gathering_spot_id,
+      second.gathering_spot_id,
+      third.gathering_spot_id
+    );
+
+    await env.DB.batch([
+      env.DB.prepare(
+        'UPDATE gathering_spots SET created_at = ?, updated_at = ? WHERE gathering_spot_id = ?'
+      ).bind(
+        '2026-01-02 00:00:00',
+        '2026-01-01 00:00:00',
+        first.gathering_spot_id
+      ),
+      env.DB.prepare(
+        'UPDATE gathering_spots SET created_at = ?, updated_at = ? WHERE gathering_spot_id = ?'
+      ).bind(
+        '2026-01-03 00:00:00',
+        '2026-01-03 00:00:00',
+        second.gathering_spot_id
+      ),
+      env.DB.prepare(
+        'UPDATE gathering_spots SET created_at = ?, updated_at = ? WHERE gathering_spot_id = ?'
+      ).bind(
+        '2026-01-01 00:00:00',
+        '2026-01-04 00:00:00',
+        third.gathering_spot_id
+      ),
+    ]);
+
+    await expect(
+      gatheringSpotRepository.findPage({
+        name: '体育館',
+        limit: 20,
+        offset: 0,
+        sortBy: 'updatedAt',
+        sortOrder: 'desc',
+      })
+    ).resolves.toMatchObject({
+      total: 2,
+      gathering_spots: [
+        expect.objectContaining({
+          gathering_spot_id: second.gathering_spot_id,
+        }),
+        expect.objectContaining({
+          gathering_spot_id: first.gathering_spot_id,
+        }),
+      ],
+    });
+
+    await expect(
+      gatheringSpotRepository.findPage({
+        name: '体育館',
+        limit: 20,
+        offset: 0,
+        sortBy: 'createdAt',
+        sortOrder: 'asc',
+      })
+    ).resolves.toMatchObject({
+      total: 2,
+      gathering_spots: [
+        expect.objectContaining({
+          gathering_spot_id: first.gathering_spot_id,
+        }),
+        expect.objectContaining({
+          gathering_spot_id: second.gathering_spot_id,
+        }),
+      ],
+    });
   });
 
   it('集合対象者を追加・一覧取得・解除でき、重複追加を防止する', async () => {

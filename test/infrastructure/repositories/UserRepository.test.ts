@@ -26,6 +26,20 @@ describe('UserRepository', () => {
     await env.DB.prepare('DELETE FROM users').run();
   });
 
+  describe('exists', () => {
+    it('存在するuserIdの場合はtrueを返す', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('存在確認テスト') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(repo.exists(user!.user_id)).resolves.toBe(true);
+    });
+
+    it('存在しないuserIdの場合はfalseを返す', async () => {
+      await expect(repo.exists(999999)).resolves.toBe(false);
+    });
+  });
+
   describe('findUserIdByMicrosoftAccount', () => {
     it('未登録の oid/tid の場合は null を返す', async () => {
       await expect(
@@ -207,6 +221,69 @@ describe('UserRepository', () => {
         "SELECT user_id FROM users WHERE user_name = '田中太郎（重複）'"
       ).all();
       expect(users.results).toHaveLength(0);
+    });
+  });
+
+  describe('linkMicrosoftAccount', () => {
+    it('指定したuser_idにMicrosoftアカウントを紐付ける', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('学生太郎') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await repo.linkMicrosoftAccount({
+        userId: String(user!.user_id),
+        oid: 'oid-link-1',
+        tid: 'tid-link-1',
+      });
+
+      await expect(
+        repo.findUserIdByMicrosoftAccount('oid-link-1', 'tid-link-1')
+      ).resolves.toBe(String(user!.user_id));
+    });
+
+    it('既に別のMicrosoftアカウントと紐付いているuser_idを指定すると、UNIQUE制約違反のエラーを投げる', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('学生太郎') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await repo.linkMicrosoftAccount({
+        userId: String(user!.user_id),
+        oid: 'oid-existing',
+        tid: 'tid-existing',
+      });
+
+      await expect(
+        repo.linkMicrosoftAccount({
+          userId: String(user!.user_id),
+          oid: 'oid-new',
+          tid: 'tid-new',
+        })
+      ).rejects.toThrow(
+        /UNIQUE constraint failed.*microsoft_account_links\.user_id/
+      );
+    });
+
+    it('既に登録済みのoid/tidの組み合わせを、別のuser_idに紐付けようとするとUNIQUE制約違反のエラーを投げる', async () => {
+      const userA = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('学生A') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const userB = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('学生B') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await repo.linkMicrosoftAccount({
+        userId: String(userA!.user_id),
+        oid: 'oid-dup',
+        tid: 'tid-dup',
+      });
+
+      await expect(
+        repo.linkMicrosoftAccount({
+          userId: String(userB!.user_id),
+          oid: 'oid-dup',
+          tid: 'tid-dup',
+        })
+      ).rejects.toThrow(
+        /UNIQUE constraint failed.*microsoft_account_links\.oid/
+      );
     });
   });
 

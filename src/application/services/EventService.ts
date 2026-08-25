@@ -8,7 +8,6 @@ import type {
   CreateEventRequestDTO,
   EventDTO,
   GetEventsRequestDTO,
-  UpdateEventRequestDTO,
 } from '../dto/EventDTO';
 import type { IEventService } from './IEventService';
 
@@ -25,9 +24,7 @@ function toEventDTO(event: EventEntity): EventDTO {
   };
 }
 
-function toEventWriteInput(
-  event: CreateEventRequestDTO | UpdateEventRequestDTO
-): EventWriteInput {
+function toEventWriteInput(event: CreateEventRequestDTO): EventWriteInput {
   return {
     name: event.event_name,
     ruleText: event.rule_text,
@@ -67,16 +64,12 @@ export function createEventService(
       }
       return toEventDTO(event);
     },
+    async getMyEvents(userId) {
+      const events = await eventRepository.findByParticipantUserId(userId);
+      return events.map(toEventDTO);
+    },
     async createEvent(event) {
       return toEventDTO(await eventRepository.create(toEventWriteInput(event)));
-    },
-    async updateEvent(id, event) {
-      const updated = await eventRepository.update(
-        id,
-        toEventWriteInput(event)
-      );
-      if (!updated) throw new Error('Event not found');
-      return toEventDTO(updated);
     },
     async deleteEvent(id: number): Promise<void> {
       if (await eventRepository.hasReferences(id)) {

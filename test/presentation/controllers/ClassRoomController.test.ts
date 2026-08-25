@@ -10,6 +10,8 @@ function setup() {
     createClassroom: vi.fn(),
     updateClassroom: vi.fn(),
     deleteClassroom: vi.fn(),
+    validateClassRoomImport: vi.fn(),
+    commitClassRoomImport: vi.fn(),
   };
   const controller = createClassRoomController(service);
   const app = new Hono();

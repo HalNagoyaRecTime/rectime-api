@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, asc, count, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type {
   DueNotificationSchedule,
@@ -207,14 +207,48 @@ export function createNotificationScheduleRepository(
       );
     },
 
-    async claimDue(now) {
+    async findDeliveryCandidateIds(dueAt, staleBefore, limit) {
+      const rows = await orm
+        .select({ id: notification_schedules.id })
+        .from(notification_schedules)
+        .where(
+          and(
+            sql`datetime(${notification_schedules.sendAt}) <= datetime(${dueAt})`,
+            or(
+              eq(notification_schedules.sendStatus, 'draft'),
+              and(
+                eq(notification_schedules.sendStatus, 'sending'),
+                sql`datetime(${notification_schedules.updatedAt}) <= datetime(${staleBefore})`
+              )
+            )
+          )
+        )
+        .orderBy(
+          asc(notification_schedules.sendAt),
+          asc(notification_schedules.id)
+        )
+        .limit(limit)
+        .all();
+      return rows.map(row => row.id);
+    },
+
+    async claimForDelivery(notificationScheduleIds, dueAt, staleBefore) {
+      if (notificationScheduleIds.length === 0) return [];
+
       const claimed = await orm
         .update(notification_schedules)
         .set({ sendStatus: 'sending', updatedAt: sql`CURRENT_TIMESTAMP` })
         .where(
           and(
-            eq(notification_schedules.sendStatus, 'draft'),
-            sql`datetime(${notification_schedules.sendAt}) <= datetime(${now})`
+            inArray(notification_schedules.id, notificationScheduleIds),
+            sql`datetime(${notification_schedules.sendAt}) <= datetime(${dueAt})`,
+            or(
+              eq(notification_schedules.sendStatus, 'draft'),
+              and(
+                eq(notification_schedules.sendStatus, 'sending'),
+                sql`datetime(${notification_schedules.updatedAt}) <= datetime(${staleBefore})`
+              )
+            )
           )
         )
         .returning({ id: notification_schedules.id })

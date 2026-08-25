@@ -1,11 +1,65 @@
 import type {
   ClassRoomDTO,
+  ClassRoomImportCommitResult,
+  ClassRoomImportErrorReason,
+  ClassRoomImportInput,
+  ClassRoomImportRow,
+  ClassRoomImportRowError,
+  ClassRoomImportValidationResult,
   ClassRoomPageDTO,
   ClassRoomRequestDTO,
 } from '../dto/ClassRoomDTO';
 import type { ClassRoomEntity } from '../../domain/entities/ClassRoom';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import type { IClassRoomService } from './IClassRoomService';
+
+async function findImportErrors(
+  rows: ClassRoomImportRow[],
+  classRoomRepository: IClassRoomRepository
+): Promise<ClassRoomImportRowError[]> {
+  const seenInFile = new Set<string>();
+  const fileDuplicateRowIndexes = new Set<number>();
+  const errors: ClassRoomImportRowError[] = [];
+  const codesToCheck: string[] = [];
+
+  const pushError = (
+    rowIndex: number,
+    row: ClassRoomImportRow,
+    reason: ClassRoomImportErrorReason
+  ) => {
+    errors.push({
+      row_index: rowIndex + 1,
+      class_code: row.class_code,
+      class_name: row.class_name,
+      reason,
+    });
+  };
+
+  for (const [rowIndex, row] of rows.entries()) {
+    if (seenInFile.has(row.class_code)) {
+      fileDuplicateRowIndexes.add(rowIndex);
+      pushError(rowIndex, row, 'class_code_duplicate_in_file');
+      continue;
+    }
+    seenInFile.add(row.class_code);
+    codesToCheck.push(row.class_code);
+  }
+
+  const existingCodes =
+    await classRoomRepository.findExistingClassCodes(codesToCheck);
+
+  for (const [rowIndex, row] of rows.entries()) {
+    if (fileDuplicateRowIndexes.has(rowIndex)) {
+      continue;
+    }
+    if (existingCodes.has(row.class_code)) {
+      pushError(rowIndex, row, 'class_code_duplicate_in_db');
+    }
+  }
+
+  errors.sort((a, b) => a.row_index - b.row_index);
+  return errors;
+}
 
 export function createClassRoomService(
   classRoomRepository: IClassRoomRepository
@@ -79,6 +133,47 @@ export function createClassRoomService(
       if (!(await classRoomRepository.delete(id))) {
         throw new Error('Class not found');
       }
+    },
+
+    async validateClassRoomImport(
+      input: ClassRoomImportInput
+    ): Promise<ClassRoomImportValidationResult> {
+      const errors = await findImportErrors(input.rows, classRoomRepository);
+      return {
+        total: input.rows.length,
+        success_count: input.rows.length - errors.length,
+        error_count: errors.length,
+        errors,
+      };
+    },
+
+    async commitClassRoomImport(
+      input: ClassRoomImportInput
+    ): Promise<ClassRoomImportCommitResult> {
+      const errors = await findImportErrors(input.rows, classRoomRepository);
+      if (errors.length > 0) {
+        return {
+          total: input.rows.length,
+          imported: 0,
+          error_count: errors.length,
+          errors,
+        };
+      }
+
+      await classRoomRepository.createMany(
+        input.rows.map(row => ({
+          class_code: row.class_code,
+          class_name: row.class_name,
+          teacher_id: null,
+        }))
+      );
+
+      return {
+        total: input.rows.length,
+        imported: input.rows.length,
+        error_count: 0,
+        errors: [],
+      };
     },
   };
 }

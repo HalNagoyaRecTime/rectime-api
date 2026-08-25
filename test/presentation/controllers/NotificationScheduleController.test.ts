@@ -4,7 +4,8 @@ import type { INotificationScheduleService } from '../../../src/application/serv
 import { createNotificationScheduleController } from '../../../src/presentation/controllers/NotificationScheduleController';
 import type { Env } from '../../../src/lib/env';
 import type { ContainerVariables } from '../../../src/presentation/middleware/diContainer';
-import type { AuthenticationVariables } from '../../../src/presentation/middleware/sessionAuthentication';
+import type { AuthenticationVariables } from '../../../src/presentation/middleware/bearerAuthentication';
+import type { AuthVariables } from '../../../src/presentation/middleware/requireAuth';
 
 const schedule = {
   notification_schedule_id: 1,
@@ -35,7 +36,7 @@ function setup() {
   const controller = createNotificationScheduleController(service);
   const app = new Hono<{
     Bindings: Env;
-    Variables: ContainerVariables & AuthenticationVariables;
+    Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
   }>();
   app.use('*', async (c, next) => {
     c.set(

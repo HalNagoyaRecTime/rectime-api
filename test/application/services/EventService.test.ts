@@ -21,10 +21,11 @@ function createRepository(
   overrides: Partial<IEventRepository> = {}
 ): IEventRepository {
   return {
+    exists: vi.fn(),
     findAll: vi.fn(),
     findById: vi.fn(),
+    findByParticipantUserId: vi.fn(),
     create: vi.fn(),
-    update: vi.fn(),
     delete: vi.fn(),
     hasReferences: vi.fn(),
     ...overrides,
@@ -80,6 +81,19 @@ describe('EventService', () => {
     });
   });
 
+  describe('getMyEvents', () => {
+    it('指定したuserIdが参加するイベントをDTOへ変換して返す', async () => {
+      const events = [buildEvent()];
+      const repository = createRepository({
+        findByParticipantUserId: vi.fn().mockResolvedValue(events),
+      });
+      const service = createEventService(repository);
+
+      await expect(service.getMyEvents(7)).resolves.toEqual(events);
+      expect(repository.findByParticipantUserId).toHaveBeenCalledWith(7);
+    });
+  });
+
   describe('createEvent', () => {
     it('リクエストDTOをDomain入力型へ変換して作成する', async () => {
       const event = buildEvent();
@@ -103,33 +117,6 @@ describe('EventService', () => {
         venue: '体育館',
         startTime: '0900',
         endTime: '0930',
-      });
-    });
-  });
-
-  describe('updateEvent', () => {
-    it('リクエストDTOをDomain入力型へ変換して更新する', async () => {
-      const event = buildEvent({ event_name: '更新後の開会式' });
-      const repository = createRepository({
-        update: vi.fn().mockResolvedValue(event),
-      });
-
-      await expect(
-        createEventService(repository).updateEvent(1, {
-          event_name: '更新後の開会式',
-          rule_text: '更新規則',
-          venue: '体育館',
-          start_time: '1000',
-          end_time: '1030',
-        })
-      ).resolves.toEqual(event);
-
-      expect(repository.update).toHaveBeenCalledWith(1, {
-        name: '更新後の開会式',
-        ruleText: '更新規則',
-        venue: '体育館',
-        startTime: '1000',
-        endTime: '1030',
       });
     });
   });

@@ -1,11 +1,12 @@
 import type { Context } from 'hono';
 import type { Env as Bindings } from '../../lib/env';
+import type { ContainerVariables } from '../middleware/diContainer';
 import { base64URLtoBytes } from '../../infrastructure/auth/base64url';
 import {
   BASE64_URL_PATTERN,
   ACCOUNT_PHOTO_PATH,
 } from '../../domain/auth/types';
-import type { Session, AppUser, UserCategories } from '../../domain/auth/types';
+import type { AppUser, UserCategories } from '../../domain/auth/types';
 import type { IdTokenClaims } from '../../infrastructure/auth/verifyIdToken';
 import {
   buildMicrosoftAuthorizeUrl as infraBuildAuthorizeUrl,
@@ -13,16 +14,19 @@ import {
   refreshMicrosoftAccessToken as infraRefreshToken,
 } from '../../infrastructure/auth/microsoftClient';
 import { createUserRepository } from '../../infrastructure/repositories/UserRepository';
-import {
-  createAuthService,
-  getSessionTtlSeconds,
-} from '../../application/services/authService';
+import { createStudentRepository } from '../../infrastructure/repositories/StudentRepository';
+import { createAuthService } from '../../application/services/authService';
+import type { IStudentService } from '../../application/services/IStudentService';
+import type { StudentDTO } from '../../application/dto/StudentDTO';
 
-export type AppContext = Context<{ Bindings: Bindings }>;
+export type AppContext = Context<{
+  Bindings: Bindings;
+  Variables: ContainerVariables;
+}>;
 
 export function errorResponse(
   c: AppContext,
-  status: 400 | 401 | 404 | 500,
+  status: 400 | 401 | 404 | 409 | 500,
   code: string,
   message: string
 ): Response {
@@ -41,14 +45,6 @@ export function getNumberEnv(
 ): number {
   const parsed = Number.parseInt(value ?? '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-export function shouldUseSecureCookie(c: AppContext): boolean {
-  try {
-    return new URL(c.env.MICROSOFT_REDIRECT_URI).protocol === 'https:';
-  } catch {
-    return true;
-  }
 }
 
 export function getBearerToken(c: AppContext): string | null {
@@ -79,6 +75,8 @@ export function userResponse(
     display_name: string;
     avatar_url?: string | null;
     avatar_updated_at?: string | null;
+    student_id_number: string | null;
+    class_room_name: string | null;
   },
   categories: UserCategories
 ) {
@@ -88,10 +86,22 @@ export function userResponse(
     display_name: user.display_name,
     avatar_url: user.avatar_url ?? ACCOUNT_PHOTO_PATH,
     avatar_updated_at: user.avatar_updated_at ?? null,
+    student_id_number: user.student_id_number,
+    class_room_name: user.class_room_name,
     is_student: categories.is_student,
     is_staff: categories.is_staff,
     is_teacher: categories.is_teacher,
   };
+}
+
+// web向けMicrosoft OAuthのredirect_uriを、環境ごとの固定secretではなく
+// 実際のリクエストURLから動的に組み立てる。production/development/preview
+// のいずれであっても、そのWorker自身の実際のオリジンに対して常に正しい
+// callback URLになるため、環境ごとに別値のsecretを管理する必要がなくなる。
+// (Microsoft Entra側には、実際に使われる各オリジンのcallback URLを
+// redirect URIとして事前に登録しておく必要がある)
+export function buildWebRedirectUri(c: AppContext): string {
+  return `${new URL(c.req.url).origin}/api/v1/auth/microsoft/callback`;
 }
 
 export function buildMicrosoftAuthorizeUrl(
@@ -141,24 +151,30 @@ export async function refreshMicrosoftAccessToken(
   );
 }
 
-export async function saveSession(
-  c: AppContext,
-  sessionId: string,
-  session: Session
-): Promise<void> {
-  const ttl = getSessionTtlSeconds(session.expires_at);
-  await c.env.AUTH_KV.put(`session:${sessionId}`, JSON.stringify(session), {
-    expirationTtl: ttl,
-  });
-}
-
 export async function upsertUser(
   c: AppContext,
   claims: IdTokenClaims
 ): Promise<AppUser> {
   const userRepository = createUserRepository(c.env.DB);
-  const authService = createAuthService(userRepository, c.env.AUTH_KV);
+  const studentRepository = createStudentRepository(c.env.DB);
+  const authService = createAuthService(
+    userRepository,
+    studentRepository,
+    c.env.STUDENT_EMAIL_DOMAIN
+  );
   return authService.upsertUser(claims);
+}
+
+export async function getStudentInfoOrNull(
+  studentService: IStudentService,
+  userId: number
+): Promise<StudentDTO | null> {
+  return studentService.getByUserId(userId).catch(err => {
+    if (err instanceof Error && err.message === 'Student not found') {
+      return null;
+    }
+    throw err;
+  });
 }
 
 export async function getUserCategories(

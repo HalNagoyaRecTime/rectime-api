@@ -1,7 +1,12 @@
 import { drizzle } from 'drizzle-orm/d1';
-import { and, asc, count, eq, sql, SQL } from 'drizzle-orm';
+import { and, asc, count, eq, SQL } from 'drizzle-orm';
 import * as schema from '../database/schema';
-import { events, gatherings, notification_schedules } from '../database/schema';
+import {
+  events,
+  gatherings,
+  gathering_group_members,
+  notification_schedules,
+} from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
 import type {
@@ -28,6 +33,16 @@ export function createEventRepository(db: D1Database): IEventRepository {
   const orm = drizzle(db, { schema });
 
   return {
+    async exists(id: number): Promise<boolean> {
+      return Boolean(
+        await orm
+          .select({ id: events.id })
+          .from(events)
+          .where(eq(events.id, id))
+          .get()
+      );
+    },
+
     async findAll(
       options: EventListOptions
     ): Promise<{ events: EventEntity[]; total: number }> {
@@ -72,6 +87,31 @@ export function createEventRepository(db: D1Database): IEventRepository {
       return result ? toEntity(result) : null;
     },
 
+    async findByParticipantUserId(userId: number): Promise<EventEntity[]> {
+      const rows = await orm
+        .selectDistinct({
+          id: events.id,
+          name: events.name,
+          ruleText: events.ruleText,
+          venue: events.venue,
+          startTime: events.startTime,
+          endTime: events.endTime,
+          createdAt: events.createdAt,
+          updatedAt: events.updatedAt,
+        })
+        .from(gathering_group_members)
+        .innerJoin(
+          gatherings,
+          eq(gathering_group_members.gatheringId, gatherings.id)
+        )
+        .innerJoin(events, eq(gatherings.eventId, events.id))
+        .where(eq(gathering_group_members.userId, userId))
+        .orderBy(asc(events.startTime))
+        .all();
+
+      return rows.map(toEntity);
+    },
+
     async create(event: EventWriteInput): Promise<EventEntity> {
       const created = await orm
         .insert(events)
@@ -86,26 +126,6 @@ export function createEventRepository(db: D1Database): IEventRepository {
         .get();
       if (!created) throw new Error('Failed to create event');
       return toEntity(created);
-    },
-
-    async update(
-      id: number,
-      event: EventWriteInput
-    ): Promise<EventEntity | null> {
-      const updated = await orm
-        .update(events)
-        .set({
-          name: event.name,
-          ruleText: event.ruleText,
-          venue: event.venue,
-          startTime: event.startTime,
-          endTime: event.endTime,
-          updatedAt: sql`CURRENT_TIMESTAMP`,
-        })
-        .where(eq(events.id, id))
-        .returning()
-        .get();
-      return updated ? toEntity(updated) : null;
     },
 
     async delete(id: number): Promise<boolean> {

@@ -6,6 +6,8 @@ import {
   GatheringDetailsEntity,
 } from '../../domain/entities/Gathering';
 import { IGatheringRepository } from '../../domain/interfaces/repositories/IGatheringRepository';
+import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
+import type { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
 import * as schema from '../database/schema';
 import { events, gathering_spots, gatherings } from '../database/schema';
 
@@ -22,7 +24,9 @@ const detailSelection = {
 };
 
 export function createGatheringRepository(
-  db: D1Database
+  db: D1Database,
+  eventRepository: IEventRepository,
+  gatheringSpotRepository: IGatheringSpotRepository
 ): IGatheringRepository {
   const orm = drizzle(db, { schema });
 
@@ -70,25 +74,11 @@ export function createGatheringRepository(
         .all();
     },
 
-    async existsEvent(eventId: number): Promise<boolean> {
-      return Boolean(
-        await orm
-          .select({ id: events.id })
-          .from(events)
-          .where(eq(events.id, eventId))
-          .get()
-      );
-    },
+    // 存在確認自体は対応する各Repositoryの責務のため、重複させずそれぞれへ委譲する。
+    existsEvent: eventId => eventRepository.exists(eventId),
 
-    async existsGatheringSpot(gatheringSpotId: number): Promise<boolean> {
-      return Boolean(
-        await orm
-          .select({ id: gathering_spots.id })
-          .from(gathering_spots)
-          .where(eq(gathering_spots.id, gatheringSpotId))
-          .get()
-      );
-    },
+    existsGatheringSpot: gatheringSpotId =>
+      gatheringSpotRepository.exists(gatheringSpotId),
 
     async create(input: CreateGatheringInput): Promise<GatheringDetailsEntity> {
       const row = await orm

@@ -1,7 +1,9 @@
 import type { AppUser, UserCategories } from '../../auth/types';
 
 export interface IUserRepository {
+  exists(userId: number): Promise<boolean>;
   isStaffOrTeacher(userId: number): Promise<boolean>;
+  isStaff(userId: number): Promise<boolean>;
   getUserCategories(userId: number): Promise<UserCategories>;
   findUserIdByMicrosoftAccount(
     oid: string,
@@ -22,4 +24,9 @@ export interface IUserRepository {
     email: string;
     displayName: string;
   }): Promise<AppUser | null>;
+  linkMicrosoftAccount(params: {
+    userId: string;
+    oid: string;
+    tid: string;
+  }): Promise<void>;
 }

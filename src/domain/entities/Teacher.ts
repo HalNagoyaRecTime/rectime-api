@@ -17,6 +17,9 @@ export interface TeacherSearchFilter {
   userName?: string;
   classRoomId?: number;
   isLiveActive?: boolean;
+  search?: string;
+  sortBy?: 'teacherId' | 'displayName';
+  sortOrder?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
 }
@@ -30,6 +33,10 @@ export interface TeacherPage {
 
 export interface TeacherUpdateInput {
   userName: string;
-  isLiveActive: boolean;
+  classRoomIds: number[];
+}
+
+export interface TeacherCreateInput {
+  userName: string;
   classRoomIds: number[];
 }
