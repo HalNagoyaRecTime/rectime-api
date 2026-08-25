@@ -1,4 +1,4 @@
-name: Add Assigned Issue to Project
+name: Upsert Assigned Issue in Project
 
 on:
   issues:
@@ -9,10 +9,172 @@ permissions:
   contents: read
 
 jobs:
-  add-to-project:
+  upsert-project-item:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/add-to-project@v2
+      - name: Add issue or move existing item to Todo
+        uses: actions/github-script@v7
         with:
-          project-url: https://github.com/orgs/HalNagoyaRecTime/projects/1
           github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
+          script: |
+            const owner = 'HalNagoyaRecTime';
+            const projectNumber = 1;
+            const issueId = context.payload.issue?.node_id;
+
+            if (!issueId) {
+              throw new Error('Issue node ID was not found in the event payload.');
+            }
+
+            const projectQuery = `
+              query ($owner: String!, $projectNumber: Int!, $after: String) {
+                organization(login: $owner) {
+                  projectV2(number: $projectNumber) {
+                    id
+                    fields(first: 100) {
+                      nodes {
+                        __typename
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options {
+                            id
+                            name
+                          }
+                        }
+                      }
+                    }
+                    items(
+                      first: 100
+                      after: $after
+                      archivedStates: [ARCHIVED, NOT_ARCHIVED]
+                    ) {
+                      nodes {
+                        id
+                        isArchived
+                        content {
+                          ... on Issue {
+                            id
+                          }
+                        }
+                      }
+                      pageInfo {
+                        hasNextPage
+                        endCursor
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            let project;
+            let existingItem;
+            let after = null;
+
+            do {
+              const data = await github.graphql(projectQuery, {
+                owner,
+                projectNumber,
+                after,
+              });
+
+              project = data.organization?.projectV2;
+              if (!project) {
+                throw new Error(`Project ${owner}#${projectNumber} was not found.`);
+              }
+
+              existingItem = project.items.nodes.find(
+                (item) => item.content?.id === issueId,
+              );
+              after = project.items.pageInfo.hasNextPage
+                ? project.items.pageInfo.endCursor
+                : null;
+            } while (!existingItem && after);
+
+            const statusField = project.fields.nodes.find(
+              (field) =>
+                field.__typename === 'ProjectV2SingleSelectField' &&
+                field.name === 'Status',
+            );
+            const todoOption = statusField?.options.find(
+              (option) => option.name === 'Todo',
+            );
+
+            if (!statusField || !todoOption) {
+              throw new Error(
+                `Project ${owner}#${projectNumber} does not have a Status field with a Todo option.`,
+              );
+            }
+
+            let itemId = existingItem?.id;
+
+            if (itemId && existingItem.isArchived) {
+              await github.graphql(
+                `
+                  mutation ($projectId: ID!, $itemId: ID!) {
+                    unarchiveProjectV2Item(
+                      input: { projectId: $projectId, itemId: $itemId }
+                    ) {
+                      item {
+                        id
+                      }
+                    }
+                  }
+                `,
+                { projectId: project.id, itemId },
+              );
+              core.info(`Unarchived existing project item ${itemId}.`);
+            }
+
+            if (!itemId) {
+              const result = await github.graphql(
+                `
+                  mutation ($projectId: ID!, $contentId: ID!) {
+                    addProjectV2ItemById(
+                      input: { projectId: $projectId, contentId: $contentId }
+                    ) {
+                      item {
+                        id
+                      }
+                    }
+                  }
+                `,
+                { projectId: project.id, contentId: issueId },
+              );
+              itemId = result.addProjectV2ItemById.item.id;
+              core.info(`Added issue to project as item ${itemId}.`);
+            } else {
+              core.info(`Reusing existing project item ${itemId}.`);
+            }
+
+            await github.graphql(
+              `
+                mutation (
+                  $projectId: ID!
+                  $itemId: ID!
+                  $fieldId: ID!
+                  $optionId: String!
+                ) {
+                  updateProjectV2ItemFieldValue(
+                    input: {
+                      projectId: $projectId
+                      itemId: $itemId
+                      fieldId: $fieldId
+                      value: { singleSelectOptionId: $optionId }
+                    }
+                  ) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                }
+              `,
+              {
+                projectId: project.id,
+                itemId,
+                fieldId: statusField.id,
+                optionId: todoOption.id,
+              },
+            );
+
+            core.info(`Set project item ${itemId} to Todo.`);
