@@ -11,6 +11,63 @@ servers:
     description: APIのベースパス
 
 paths:
+  /admin/users:
+    get:
+      tags: [Users]
+      summary: 管理画面向けにUserを横断検索する
+      description: |
+        usersを基準にStudent / Teacherと担当クラスを横断検索します。
+        検索結果はuser_id単位で重複せず、認証情報は返しません。
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          description: ユーザー名・user_id・クラスコード・クラス名の部分一致検索。user_idは数値として完全一致。
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [all, student, teacher]
+            default: all
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, all]
+            default: active
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: User検索結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSearchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /admin/notifications:
     get:
       tags: [Notifications]
@@ -1923,6 +1980,41 @@ components:
       bearerFormat: JWT
 
   schemas:
+    UserSearchResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSearchItem'
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        offset:
+          type: integer
+          minimum: 0
+
+    UserSearchItem:
+      type: object
+      required: [user_id, display_name, is_live_active, categories]
+      properties:
+        user_id:
+          type: integer
+        display_name:
+          type: string
+        is_live_active:
+          type: boolean
+        categories:
+          type: array
+          items:
+            type: string
+            enum: [student, teacher]
+
     Student:
       type: object
       required:
@@ -3327,6 +3419,8 @@ components:
               type: string
 
 tags:
+  - name: Users
+    description: User管理
   - name: Students
     description: 学生情報
   - name: Staffs

@@ -91,6 +91,7 @@ app.get('/', c => {
       firebaseTokens: '/api/v1/firebase-tokens',
       notifications: '/api/v1/notifications',
       adminNotifications: '/api/v1/admin/notifications',
+      adminUsers: '/api/v1/admin/users',
       myNotifications: '/api/v1/me/notifications',
       testNotification: '/api/v1/notifications/test',
       notificationSchedules: '/api/v1/notification-schedules',
@@ -266,6 +267,10 @@ apiV1.put('/notification/schedules/:notificationId', requireAuth, c => {
 });
 
 // Notification routes
+apiV1.get('/admin/users', requireAuth, c => {
+  return c.get('container').userSearchController.searchUsers(c);
+});
+
 apiV1.post('/admin/notifications', requireAuth, c => {
   return c
     .get('container')
