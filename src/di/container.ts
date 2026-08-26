@@ -53,6 +53,9 @@ import { createGatheringGroupMemberController } from '../presentation/controller
 import { createGatheringController } from '../presentation/controllers/GatheringController';
 import { createScheduleController } from '../presentation/controllers/ScheduleController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
+import { createUserStatusRepository } from '../infrastructure/repositories/UserStatusRepository';
+import { createUserService } from '../application/services/UserService';
+import { createUserController } from '../presentation/controllers/UserController';
 import { createAuthService } from '../application/services/authService';
 import type { Env } from '../lib/env';
 
@@ -95,6 +98,10 @@ export function createDIContainer(env: Env) {
     userRepository,
     studentRepository,
     env.STUDENT_EMAIL_DOMAIN
+  );
+  const userService = createUserService(
+    userRepository,
+    createUserStatusRepository(db)
   );
   const studentService = createStudentService(
     studentRepository,
@@ -161,6 +168,7 @@ export function createDIContainer(env: Env) {
   const scheduleService = createScheduleService(scheduleRepository);
 
   // Controllers
+  const userController = createUserController(userService);
   const studentController = createStudentController(studentService);
   const staffController = createStaffController(staffService);
   const teacherController = createTeacherController(teacherService);
@@ -202,6 +210,7 @@ export function createDIContainer(env: Env) {
 
   return {
     authService,
+    userController,
     studentService,
     studentController,
     staffController,

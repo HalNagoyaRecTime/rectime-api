@@ -108,6 +108,11 @@ const apiV1 = new Hono<{
 apiV1.use('*', diContainerMiddleware);
 apiV1.use('*', bearerAuthenticationMiddleware);
 
+// Admin user routes
+apiV1.patch('/admin/users/:userId', requireAuth, c => {
+  return c.get('container').userController.updateUserStatus(c);
+});
+
 // Student routes
 apiV1.get('/students', requireAuth, c => {
   return c.get('container').studentController.getAllStudent(c);
