@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
+import { insertClassRoomWithTeam } from '../fixtures/classRooms';
 
 // migrations/0017_unify_auth_users_with_users.sql のうち、auth_users から
 // students を経由して users へ Firebase トークンの参照先を付け替える変換を検証する。
@@ -174,18 +175,20 @@ describe('0017_unify_auth_users_with_users.sql のデータ変換', () => {
       .run();
     await env.DB.prepare("DELETE FROM users WHERE user_name LIKE '0017移行テスト%' ").run();
     await env.DB.prepare('DELETE FROM class_rooms WHERE class_code = ?').bind(classCode).run();
+    await env.DB.prepare("DELETE FROM teams WHERE team_name = '0017移行テスト学級'").run();
   });
 
   it('students.student_id_numberを介してFirebaseトークンと送信ログの参照をusersへ移行し、auth_usersを削除する', async () => {
-    const classRoom = await env.DB.prepare(
-      'INSERT INTO class_rooms (class_code, class_name) VALUES (?, ?) RETURNING class_room_id'
-    ).bind(classCode, '0017移行テスト学級').first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(env.DB, {
+      classCode,
+      className: '0017移行テスト学級',
+    });
     const user = await env.DB.prepare(
       'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
     ).bind('0017移行テスト生徒').first<{ user_id: number }>();
     await env.DB.prepare(
       'INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, ?, ?)'
-    ).bind(user!.user_id, classRoom!.class_room_id, 1, studentNumber).run();
+    ).bind(user!.user_id, classRoom.classRoomId, 1, studentNumber).run();
     const event = await env.DB.prepare(
       'INSERT INTO events (event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?) RETURNING event_id'
     ).bind(eventName, 'テスト会場', '0900', '1000').first<{ event_id: number }>();
