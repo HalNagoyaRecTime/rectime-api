@@ -6,6 +6,7 @@ import {
   students as studentsTable,
   users,
 } from '../../src/infrastructure/database/schema';
+import { insertClassRoomWithTeam } from './classRooms';
 
 // テスト専用の学生データ。マイグレーションのシードには依存しない。
 const STUDENTS = [
@@ -58,17 +59,13 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
   await orm.delete(studentsTable);
   await orm.delete(users);
   await orm.delete(class_rooms);
+  await db.prepare('DELETE FROM teams').run();
 
   const now = new Date().toISOString();
-  const [classRoom] = await orm
-    .insert(class_rooms)
-    .values({
-      classCode: 'TEST-1',
-      name: 'テスト教室',
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning();
+  const { classRoomId } = await insertClassRoomWithTeam(db, {
+    classCode: 'TEST-1',
+    className: 'テスト教室',
+  });
 
   const seededStudents: SeededStudent[] = [];
   for (const s of STUDENTS) {
@@ -85,7 +82,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
       .insert(studentsTable)
       .values({
         userId: user.id,
-        classRoomId: classRoom.id,
+        classRoomId,
         attendanceNumber: s.attendanceNumber,
         studentIdNumber: s.studentIdNumber,
         createdAt: now,
@@ -96,7 +93,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
     seededStudents.push({
       studentId: student.id,
       userId: user.id,
-      classRoomId: classRoom.id,
+      classRoomId,
       displayName: s.displayName,
       attendanceNumber: s.attendanceNumber,
       studentIdNumber: s.studentIdNumber,
@@ -114,7 +111,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
     .returning();
 
   return {
-    classRoomId: classRoom.id,
+    classRoomId,
     students: seededStudents,
     teacher: { userId: teacher.id, displayName: teacher.userName },
   };

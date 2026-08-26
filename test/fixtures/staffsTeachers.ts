@@ -8,6 +8,7 @@ import {
   students as studentsTable,
   users,
 } from '../../src/infrastructure/database/schema';
+import { insertClassRoomWithTeam } from './classRooms';
 
 // テスト専用の職員・教員データ。マイグレーションのシードには依存しない。
 const STAFFS = [
@@ -60,9 +61,10 @@ export async function seedStaffsTeachers(db: D1Database): Promise<SeededData> {
   await db.prepare('DELETE FROM gatherings').run();
   await db.prepare('DELETE FROM events').run();
   await orm.delete(studentsTable);
-  // class_rooms.teacher_id が teachers を参照しているため、
-  // teachers を消す前に class_rooms 側の参照を外しておく必要がある。
+  // class_rooms.teacher_id が teachers を、class_rooms.team_id が teams を
+  // 参照しているため、teachers/teams を消す前に class_rooms 側を先に消す必要がある。
   await orm.delete(class_rooms);
+  await db.prepare('DELETE FROM teams').run();
   await orm.delete(staffsTable);
   await orm.delete(teachersTable);
   await orm.delete(users);
@@ -111,20 +113,15 @@ export async function seedStaffsTeachers(db: D1Database): Promise<SeededData> {
   for (const [index, c] of CLASS_ROOMS.entries()) {
     // 最初のクラスだけ最初の教員を担任として割り当てる
     const teacherId = index === 0 ? seededTeachers[0].teacherId : null;
-    const [classRoom] = await orm
-      .insert(class_rooms)
-      .values({
-        classCode: c.classCode,
-        name: c.name,
-        teacherId,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
+    const { classRoomId } = await insertClassRoomWithTeam(db, {
+      classCode: c.classCode,
+      className: c.name,
+      teacherId,
+    });
     seededClassRooms.push({
-      classRoomId: classRoom.id,
-      classCode: classRoom.classCode,
-      className: classRoom.name,
+      classRoomId,
+      classCode: c.classCode,
+      className: c.name,
     });
   }
 
