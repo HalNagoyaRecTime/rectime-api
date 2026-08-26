@@ -107,7 +107,6 @@ export function createDIContainer(env: Env) {
     eventRepository,
     eventScheduleRepository,
     notificationScheduleRepository,
-    userRepository,
   });
   const classRoomService = createClassRoomService(classRoomRepository);
   const masterImportService = createMasterImportService(
@@ -115,8 +114,7 @@ export function createDIContainer(env: Env) {
     env.MASTER_IMPORT_COMMIT_LOCK,
     studentService,
     classRoomService,
-    teacherService,
-    userRepository
+    teacherService
   );
   const firebaseTokenService = createFirebaseTokenService(
     firebaseTokenRepository
@@ -134,19 +132,16 @@ export function createDIContainer(env: Env) {
     fcmService,
   });
   const notificationScheduleService = createNotificationScheduleService(
-    notificationScheduleRepository,
-    userRepository
+    notificationScheduleRepository
   );
   const notificationService = createNotificationService(notificationRepository);
   const adminNotificationService = createAdminNotificationService(
-    adminNotificationRepository,
-    userRepository
+    adminNotificationRepository
   );
   const adminNotificationManagementService =
     createAdminNotificationManagementService(
       adminNotificationManagementRepository,
-      adminNotificationRepository,
-      userRepository
+      adminNotificationRepository
     );
   const mobileNotificationService = createMobileNotificationService(
     mobileNotificationRepository

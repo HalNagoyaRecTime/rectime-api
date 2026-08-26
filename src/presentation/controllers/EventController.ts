@@ -292,9 +292,6 @@ function eventError(c: Context, error: unknown, fallback: string) {
   if (error instanceof Error && error.message === 'Event is in use') {
     return c.json({ error: 'Event is in use' }, 409);
   }
-  if (error instanceof Error && error.message === 'Schedule update forbidden') {
-    return c.json({ error: error.message }, 403);
-  }
   if (error instanceof Error && error.message === 'Event update conflict') {
     return c.json({ error: error.message, code: 'EVENT_UPDATE_CONFLICT' }, 409);
   }

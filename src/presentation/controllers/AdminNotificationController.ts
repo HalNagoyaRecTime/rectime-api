@@ -50,10 +50,6 @@ export function createAdminNotificationController(
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
     }
-    if (!(await adminNotificationService.canCreateManualNotification(userId))) {
-      return c.json({ error: 'Manual notification creation forbidden' }, 403);
-    }
-
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createManualNotificationSchema.safeParse(body);
     if (!parsedBody.success) {

@@ -62,22 +62,30 @@ describe('UserRepository', () => {
     });
   });
 
-  describe('isStaffOrTeacher', () => {
-    it.each(['staffs', 'teachers'] as const)(
-      '%sに登録されたユーザーには更新権限がある',
-      async table => {
-        const user = await env.DB.prepare(
-          "INSERT INTO users (user_name) VALUES ('管理者') RETURNING user_id"
-        ).first<{ user_id: number }>();
-        await env.DB.prepare(`INSERT INTO ${table} (user_id) VALUES (?)`)
-          .bind(user!.user_id)
-          .run();
+  describe('isStaff', () => {
+    it('staffsに登録されたユーザーにはstaff権限がある', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('職員') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await env.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+        .bind(user!.user_id)
+        .run();
 
-        await expect(repo.isStaffOrTeacher(user!.user_id)).resolves.toBe(true);
-      }
-    );
+      await expect(repo.isStaff(user!.user_id)).resolves.toBe(true);
+    });
 
-    it('studentsにのみ登録されたユーザーには更新権限がない', async () => {
+    it('teachersにのみ登録されたユーザーにはstaff権限がない', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('教員') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+        .bind(user!.user_id)
+        .run();
+
+      await expect(repo.isStaff(user!.user_id)).resolves.toBe(false);
+    });
+
+    it('studentsにのみ登録されたユーザーにはstaff権限がない', async () => {
       const classRoom = await env.DB.prepare(
         "INSERT INTO class_rooms (class_code, class_name) VALUES ('AUTHZ', '権限確認') RETURNING class_room_id"
       ).first<{ class_room_id: number }>();
@@ -90,7 +98,11 @@ describe('UserRepository', () => {
         .bind(user!.user_id, classRoom!.class_room_id)
         .run();
 
-      await expect(repo.isStaffOrTeacher(user!.user_id)).resolves.toBe(false);
+      await expect(repo.isStaff(user!.user_id)).resolves.toBe(false);
+    });
+
+    it('存在しないユーザーにはstaff権限がない', async () => {
+      await expect(repo.isStaff(999999)).resolves.toBe(false);
     });
   });
 
