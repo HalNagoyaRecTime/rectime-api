@@ -13,6 +13,10 @@ import type { AuthenticationVariables } from '../middleware/bearerAuthentication
 
 const eventIdSchema = z.coerce.number().int().positive();
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
+const eventListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
 const eventWriteSchema = z
   .object({
     event_name: z.string().trim().min(1).max(100),
@@ -64,8 +68,6 @@ export function createEventController(
   const getAllEvents = async (c: Context) => {
     try {
       const startTime = c.req.query('start_time');
-      const limit = c.req.query('limit');
-      const offset = c.req.query('offset');
 
       if (startTime !== undefined && !hhmmSchema.safeParse(startTime).success) {
         return c.json(
@@ -74,11 +76,25 @@ export function createEventController(
         );
       }
 
+      const parsedQuery = eventListQuerySchema.safeParse({
+        limit: c.req.query('limit'),
+        offset: c.req.query('offset'),
+      });
+      if (!parsedQuery.success) {
+        return c.json(
+          {
+            error: 'Invalid event list query',
+            details: parsedQuery.error.flatten(),
+          },
+          400
+        );
+      }
+
       return c.json(
         await eventService.getAllEvents({
           start_time: startTime,
-          limit: limit ? parseInt(limit) : undefined,
-          offset: offset ? parseInt(offset) : undefined,
+          limit: parsedQuery.data.limit,
+          offset: parsedQuery.data.offset,
         })
       );
     } catch (error) {

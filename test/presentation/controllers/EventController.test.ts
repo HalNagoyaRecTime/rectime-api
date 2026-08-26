@@ -130,6 +130,36 @@ describe('EventController', () => {
         details: 'db error',
       });
     });
+
+    it.each(['abc', '-1', '0', '1.5'])(
+      '不正なlimitクエリ %s は400を返す',
+      async invalid => {
+        const { app, eventService } = setup();
+
+        const response = await app.request(`/events?limit=${invalid}`);
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          error: 'Invalid event list query',
+        });
+        expect(eventService.getAllEvents).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(['abc', '-1', '1.5'])(
+      '不正なoffsetクエリ %s は400を返す',
+      async invalid => {
+        const { app, eventService } = setup();
+
+        const response = await app.request(`/events?offset=${invalid}`);
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          error: 'Invalid event list query',
+        });
+        expect(eventService.getAllEvents).not.toHaveBeenCalled();
+      }
+    );
   });
 
   describe('getEventById', () => {
