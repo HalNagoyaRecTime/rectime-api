@@ -10,6 +10,7 @@ import {
   teachers,
   users,
 } from '../../../src/infrastructure/database/schema';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 describe('ClassRoomRepository', () => {
   let repo: IClassRoomRepository;
@@ -27,6 +28,7 @@ describe('ClassRoomRepository', () => {
     await orm.delete(teachers);
     await orm.delete(users);
     await orm.delete(class_rooms);
+    await env.DB.prepare('DELETE FROM teams').run();
     const [teacherUser] = await orm
       .insert(users)
       .values({ userName: '担任教員' })
@@ -35,20 +37,22 @@ describe('ClassRoomRepository', () => {
       .insert(teachers)
       .values({ userId: teacherUser.id })
       .returning();
-    const classrooms = await orm
-      .insert(class_rooms)
-      .values([
-        { classCode: '12B', name: '2年Bクラス', teacherId: teacher.id },
-        { classCode: 'IA14A', name: '高度情報学科AI開発先行コース' },
-      ])
-      .returning();
+    const classroom1 = await insertClassRoomWithTeam(env.DB, {
+      classCode: '12B',
+      className: '2年Bクラス',
+      teacherId: teacher.id,
+    });
+    await insertClassRoomWithTeam(env.DB, {
+      classCode: 'IA14A',
+      className: '高度情報学科AI開発先行コース',
+    });
     const [studentUser] = await orm
       .insert(users)
       .values({ userName: '所属学生' })
       .returning();
     await orm.insert(students).values({
       userId: studentUser.id,
-      classRoomId: classrooms[0].id,
+      classRoomId: classroom1.classRoomId,
       attendanceNumber: 1,
       studentIdNumber: 'CLASS-TEST-001',
     });

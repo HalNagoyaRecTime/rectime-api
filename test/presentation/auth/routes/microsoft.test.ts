@@ -20,6 +20,7 @@ import type {
   MobileRefreshEntry,
 } from '../../../../src/domain/auth/types';
 import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
+import { insertClassRoomWithTeam } from '../../../fixtures/classRooms';
 
 const JWT_SECRET = 'a'.repeat(32);
 const KID = 'test-kid';
@@ -611,9 +612,10 @@ describe('POST /auth/microsoft/token', () => {
   it('学籍番号紐付け時にuser_idが既に別のMicrosoftアカウントと紐付いている場合、409 STUDENT_ALREADY_LINKEDを返す', async () => {
     const env = buildEnv();
 
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3A', '3年A組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3A',
+      className: '3年A組',
+    });
 
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
@@ -622,7 +624,7 @@ describe('POST /auth/microsoft/token', () => {
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '50000')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     // この学生のuser_idに、既に別のMicrosoftアカウントが紐付いている状態を作る
@@ -676,16 +678,17 @@ describe('POST /auth/microsoft/token', () => {
   it('学生ユーザーが初回ログイン時、学籍番号から紐付いてstudent_id_number/class_room_nameを返す', async () => {
     const env = buildEnv();
 
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3B', '3年B組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3B',
+      className: '3年B組',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('学生次郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 2, '60001')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     const now = Math.floor(Date.now() / 1000);
