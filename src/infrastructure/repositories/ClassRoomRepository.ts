@@ -150,9 +150,6 @@ export function createClassRoomRepository(
         return;
       }
 
-      // team_name にはUNIQUE制約が無く class_code のようにサブクエリで
-      // 突き合わせられないため、teamのINSERT直後に last_insert_rowid() で
-      // そのteam_idを同じbatch内の対応するclass_roomsのINSERTへ渡す。
       const statements: D1PreparedStatement[] = [];
       for (const input of inputs) {
         statements.push(
