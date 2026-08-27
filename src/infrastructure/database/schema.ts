@@ -17,6 +17,9 @@ export const class_rooms = sqliteTable(
     // 未定のこともあるためNULLを許容する。逆方向（1人の教員が複数クラスを
     // 担当すること）は許容するため、UNIQUE制約は付けない。
     teacherId: integer('teacher_id').references(() => teachers.id),
+    teamId: integer('team_id')
+      .notNull()
+      .references(() => teams.id),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
@@ -27,6 +30,7 @@ export const class_rooms = sqliteTable(
   table => [
     uniqueIndex('uq_class_rooms_class_code').on(table.classCode),
     index('idx_class_rooms_teacher_id').on(table.teacherId),
+    index('idx_class_rooms_team_id').on(table.teamId),
   ]
 );
 
@@ -301,6 +305,31 @@ export const microsoft_account_links = sqliteTable('microsoft_account_links', {
   createdAt: text('created_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const teams = sqliteTable('teams', {
+  id: integer('team_id').primaryKey({ autoIncrement: true }),
+  name: text('team_name').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const team_scores = sqliteTable('team_scores', {
+  id: integer('team_score_id').primaryKey({ autoIncrement: true }),
+  eventId: integer('event_id')
+    .notNull()
+    .references(() => events.id),
+  teamId: integer('team_id')
+    .notNull()
+    .references(() => teams.id),
+  scores: integer('scores').notNull(),
   updatedAt: text('updated_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
