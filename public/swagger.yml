@@ -193,6 +193,44 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /admin/users/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    patch:
+      tags: [Users]
+      summary: Userの有効・無効状態を変更する
+      description: |
+        `users.is_live_active` のみを更新します。
+        通常運用ではUserを物理削除せず、この状態で利用可能かどうかを管理します。
+        Student / Teacher固有データや所属情報は変更しないため、再有効化すると
+        無効化前の情報をそのまま利用できます。
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserStatusRequest'
+      responses:
+        '200':
+          description: 変更後のUser状態
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /students:
     get:
       tags: [Students]
@@ -1909,6 +1947,22 @@ components:
       bearerFormat: JWT
 
   schemas:
+    UserStatus:
+      type: object
+      required: [user_id, is_live_active]
+      properties:
+        user_id:
+          type: integer
+        is_live_active:
+          type: boolean
+    UpdateUserStatusRequest:
+      type: object
+      required: [is_active]
+      additionalProperties: false
+      properties:
+        is_active:
+          type: boolean
+          description: trueでUserを有効化、falseで無効化する
     Student:
       type: object
       required:
@@ -3313,6 +3367,8 @@ components:
               type: string
 
 tags:
+  - name: Users
+    description: User共通（有効・無効状態の管理）
   - name: Students
     description: 学生情報
   - name: Staffs
