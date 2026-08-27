@@ -268,11 +268,6 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         return;
       }
 
-      // team_name にはUNIQUE制約が無く class_code のようにサブクエリで
-      // 突き合わせられないため、まずteamsをまとめて作り、名前で対応付けて
-      // team_idを解決してからclass_roomsを作る。D1は1回のWorker呼び出しあたりの
-      // クエリ数に上限があるため、1行ずつ文を発行するのではなく複数行をまとめた
-      // INSERTで文の総数を抑える。
       const teamStatements: D1PreparedStatement[] = [];
       for (const chunk of chunkArray(
         input.newClassRooms,
@@ -435,10 +430,6 @@ function pairStudentsWithCreatedUsers(
     );
   }
 
-  // SQLiteは複数行をRETURNINGした際の行順を保証しないため、
-  // 配列の位置ではなく、登録した表示名ごとにIDをまとめて対応付ける。
-  // 同姓同名のusers行はこの時点では区別できないため、IDをスタックとして消費する。
-  // https://sqlite.org/lang_returning.html
   const userIdsByName = new Map<string, number[]>();
   for (const user of returnedUsers) {
     const ids = userIdsByName.get(user.user_name) ?? [];
@@ -476,8 +467,6 @@ async function deleteUsersByIds(db: D1Database, userIds: number[]) {
 }
 
 async function deleteClassRoomsByCodes(db: D1Database, classCodes: string[]) {
-  // 対応するteamsは呼び出し元(createMany)がteamIdsを直接把握しているため、
-  // そちら側でdeleteTeamsByIdsによりまとめて後片付けする。
   for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
     const placeholders = chunk.map(() => '?').join(', ');
     await db
@@ -500,9 +489,6 @@ function pairNewClassRoomsWithCreatedTeams(
     );
   }
 
-  // SQLiteは複数行をRETURNINGした際の行順を保証しないため、
-  // 配列の位置ではなく、team_name(=class_name)ごとにIDをまとめて対応付ける。
-  // 同名クラスが同じbatch内にある場合は区別できないため、IDをスタックとして消費する。
   const teamIdsByName = new Map<string, number[]>();
   for (const team of createdTeams) {
     const ids = teamIdsByName.get(team.team_name) ?? [];

@@ -123,9 +123,6 @@ export function createClassRoomRepository(
     },
 
     async create(input: ClassRoomInput): Promise<ClassRoomEntity> {
-      // team作成とclass_room作成を1つのbatchにまとめ、片方が失敗したら
-      // もう片方も残らないようにする(batchはD1上で1トランザクションとして
-      // アトミックに実行される)。
       const [, classRoomResult] = await db.batch<
         { team_id: number } | { class_room_id: number }
       >([
@@ -276,9 +273,6 @@ function pairClassRoomsWithCreatedTeams(
     );
   }
 
-  // SQLiteは複数行をRETURNINGした際の行順を保証しないため、
-  // 配列の位置ではなく、team_name(=class_name)ごとにIDをまとめて対応付ける。
-  // 同名クラスが同じbatch内にある場合は区別できないため、IDをスタックとして消費する。
   const teamIdsByName = new Map<string, number[]>();
   for (const team of createdTeams) {
     const ids = teamIdsByName.get(team.team_name) ?? [];
