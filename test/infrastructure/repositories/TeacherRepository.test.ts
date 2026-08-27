@@ -1,19 +1,18 @@
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTeacherRepository } from '../../../src/infrastructure/repositories/TeacherRepository';
+import { createUserStatusRepository } from '../../../src/infrastructure/repositories/UserStatusRepository';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
 import {
   seedStaffsTeachers,
   type SeededData,
 } from '../../fixtures/staffsTeachers';
 
-// 無効化されたユーザーの状態を用意するためのヘルパー。
-// User の有効・無効の切り替えは User 側の API が担うため、
-// TeacherRepository には無効化用のメソッドを持たせていない。
+// User の無効化は PATCH /api/v1/admin/users/:userId が使う UserStatusRepository で行う。
+// テスト用の直接SQLではなく実運用と同じ経路を通すことで、
+// この経路が Teacher 固有データ・所属情報に影響しないことを検証できる。
 async function deactivateUser(userId: number): Promise<void> {
-  await env.DB.prepare('UPDATE users SET is_live_active = 0 WHERE user_id = ?')
-    .bind(userId)
-    .run();
+  await createUserStatusRepository(env.DB).updateLiveActive(userId, false);
 }
 
 describe('TeacherRepository', () => {
