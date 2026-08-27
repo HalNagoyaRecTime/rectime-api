@@ -270,20 +270,22 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
 
       const statements: D1PreparedStatement[] = [];
 
-      for (const chunk of chunkArray(
-        input.newClassRooms,
-        Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
-      )) {
-        const placeholders = chunk
-          .map(() => '(?, ?, NULL, CURRENT_TIMESTAMP)')
-          .join(', ');
-        const values = chunk.flatMap(room => [room.classCode, room.className]);
+      // team_name にはUNIQUE制約が無く class_code のようにサブクエリで
+      // 突き合わせられないため、teamのINSERT直後に last_insert_rowid() で
+      // そのteam_idを同じbatch内の対応するclass_roomsのINSERTへ渡す。
+      for (const room of input.newClassRooms) {
+        statements.push(
+          db
+            .prepare('INSERT INTO teams (team_name) VALUES (?)')
+            .bind(room.className)
+        );
         statements.push(
           db
             .prepare(
-              `INSERT INTO class_rooms (class_code, class_name, teacher_id, updated_at) VALUES ${placeholders}`
+              `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id, updated_at)
+               VALUES (?, ?, NULL, last_insert_rowid(), CURRENT_TIMESTAMP)`
             )
-            .bind(...values)
+            .bind(room.classCode, room.className)
         );
       }
 
@@ -422,9 +424,24 @@ async function deleteUsersByIds(db: D1Database, userIds: number[]) {
 async function deleteClassRoomsByCodes(db: D1Database, classCodes: string[]) {
   for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
     const placeholders = chunk.map(() => '?').join(', ');
+    const teams = await db
+      .prepare(
+        `SELECT team_id FROM class_rooms WHERE class_code IN (${placeholders})`
+      )
+      .bind(...chunk)
+      .all<{ team_id: number }>();
     await db
       .prepare(`DELETE FROM class_rooms WHERE class_code IN (${placeholders})`)
       .bind(...chunk)
       .run();
+
+    const teamIds = teams.results.map(row => row.team_id);
+    if (teamIds.length > 0) {
+      const teamPlaceholders = teamIds.map(() => '?').join(', ');
+      await db
+        .prepare(`DELETE FROM teams WHERE team_id IN (${teamPlaceholders})`)
+        .bind(...teamIds)
+        .run();
+    }
   }
 }

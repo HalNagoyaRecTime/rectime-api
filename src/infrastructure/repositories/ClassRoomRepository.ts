@@ -123,11 +123,21 @@ export function createClassRoomRepository(
     },
 
     async create(input: ClassRoomInput): Promise<ClassRoomEntity> {
+      const team = await db
+        .prepare('INSERT INTO teams (team_name) VALUES (?) RETURNING team_id')
+        .bind(input.class_name)
+        .first<{ team_id: number }>();
+      if (!team) throw new Error('Failed to create team for class room');
       const row = await db
         .prepare(
-          'INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES (?, ?, ?) RETURNING class_room_id'
+          'INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id) VALUES (?, ?, ?, ?) RETURNING class_room_id'
         )
-        .bind(input.class_code, input.class_name, input.teacher_id)
+        .bind(
+          input.class_code,
+          input.class_name,
+          input.teacher_id,
+          team.team_id
+        )
         .first<{ class_room_id: number }>();
       if (!row) throw new Error('Failed to create class');
       const classroom = await findById(row.class_room_id);
@@ -140,23 +150,23 @@ export function createClassRoomRepository(
         return;
       }
 
+      // team_name にはUNIQUE制約が無く class_code のようにサブクエリで
+      // 突き合わせられないため、teamのINSERT直後に last_insert_rowid() で
+      // そのteam_idを同じbatch内の対応するclass_roomsのINSERTへ渡す。
       const statements: D1PreparedStatement[] = [];
-      for (const chunk of chunkArray(
-        inputs,
-        Math.floor(D1_MAX_BOUND_PARAMETERS / 3)
-      )) {
-        const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');
-        const values = chunk.flatMap(input => [
-          input.class_code,
-          input.class_name,
-          input.teacher_id,
-        ]);
+      for (const input of inputs) {
+        statements.push(
+          db
+            .prepare('INSERT INTO teams (team_name) VALUES (?)')
+            .bind(input.class_name)
+        );
         statements.push(
           db
             .prepare(
-              `INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ${placeholders}`
+              `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
+               VALUES (?, ?, ?, last_insert_rowid())`
             )
-            .bind(...values)
+            .bind(input.class_code, input.class_name, input.teacher_id)
         );
       }
       await db.batch(statements);
@@ -176,11 +186,18 @@ export function createClassRoomRepository(
     },
 
     async delete(id: number): Promise<boolean> {
-      const result = await db
-        .prepare('DELETE FROM class_rooms WHERE class_room_id = ?')
+      const row = await db
+        .prepare(
+          'DELETE FROM class_rooms WHERE class_room_id = ? RETURNING team_id'
+        )
         .bind(id)
+        .first<{ team_id: number }>();
+      if (!row) return false;
+      await db
+        .prepare('DELETE FROM teams WHERE team_id = ?')
+        .bind(row.team_id)
         .run();
-      return (result.meta.changes ?? 0) > 0;
+      return true;
     },
 
     async teacherExists(id: number): Promise<boolean> {
