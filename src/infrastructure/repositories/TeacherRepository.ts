@@ -440,28 +440,6 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         classRoomsByTeacher.get(id) ?? []
       );
     },
-
-    async deactivate(id: number): Promise<boolean> {
-      const existing = await orm
-        .select({ userId: teachers.userId })
-        .from(teachers)
-        .where(eq(teachers.id, id))
-        .get();
-      if (!existing) return false;
-
-      const now = new Date().toISOString();
-      await orm.batch([
-        orm
-          .update(users)
-          .set({ isLiveActive: 0, updatedAt: now })
-          .where(eq(users.id, existing.userId)),
-        orm
-          .update(class_rooms)
-          .set({ teacherId: null, updatedAt: now })
-          .where(eq(class_rooms.teacherId, id)),
-      ]);
-      return true;
-    },
   };
 }
 

@@ -143,9 +143,6 @@ apiV1.get('/teachers/:teacherId', requireAuth, c => {
 apiV1.put('/teachers/:teacherId', requireAuth, c => {
   return c.get('container').teacherController.updateTeacher(c);
 });
-apiV1.delete('/teachers/:teacherId', requireAuth, c => {
-  return c.get('container').teacherController.deleteTeacher(c);
-});
 
 // Event routes
 apiV1.get('/events', requireAuth, c => {

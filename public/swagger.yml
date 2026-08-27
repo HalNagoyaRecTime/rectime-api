@@ -461,20 +461,6 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
-    delete:
-      tags: [Teachers]
-      summary: 教員を論理削除する（担当クラスの割り当ては解除される）
-      parameters:
-        - $ref: '#/components/parameters/TeacherId'
-      responses:
-        '204':
-          description: 論理削除成功（users.is_live_activeを0にし、担当クラスを解除）
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
 
   /master-imports:
     post:

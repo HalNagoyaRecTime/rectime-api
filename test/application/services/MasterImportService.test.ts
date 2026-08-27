@@ -94,7 +94,6 @@ function buildTeacherService(
     getTeacherById: vi.fn(),
     getAllTeachers: vi.fn(),
     updateTeacher: vi.fn(),
-    deleteTeacher: vi.fn(),
     validateTeacherImport: vi.fn(),
     commitTeacherImport: vi.fn(),
     ...overrides,

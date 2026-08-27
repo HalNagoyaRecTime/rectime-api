@@ -174,34 +174,10 @@ export function createTeacherController(teacherService: ITeacherService) {
     }
   };
 
-  const deleteTeacher = async (c: Context) => {
-    const teacherId = getTeacherId(c);
-    if (teacherId === null) {
-      return c.json({ error: 'Invalid teacher ID' }, 400);
-    }
-
-    try {
-      await teacherService.deleteTeacher(teacherId);
-      return c.body(null, 204);
-    } catch (error) {
-      if (error instanceof Error && error.message === 'Teacher not found') {
-        return c.json({ error: error.message }, 404);
-      }
-      return c.json(
-        {
-          error: 'Failed to delete teacher',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
-    }
-  };
-
   return {
     createTeacher,
     getTeacherById,
     getAllTeachers,
     updateTeacher,
-    deleteTeacher,
   };
 }

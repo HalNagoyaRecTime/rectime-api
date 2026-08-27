@@ -21,7 +21,6 @@ function setup() {
     getTeacherById: vi.fn(),
     getAllTeachers: vi.fn(),
     updateTeacher: vi.fn(),
-    deleteTeacher: vi.fn(),
     validateTeacherImport: vi.fn(),
     commitTeacherImport: vi.fn(),
   };
@@ -31,7 +30,6 @@ function setup() {
   app.get('/teachers', c => controller.getAllTeachers(c));
   app.get('/teachers/:teacherId', c => controller.getTeacherById(c));
   app.put('/teachers/:teacherId', c => controller.updateTeacher(c));
-  app.delete('/teachers/:teacherId', c => controller.deleteTeacher(c));
   return { app, teacherService };
 }
 
@@ -338,63 +336,6 @@ describe('TeacherController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(validBody),
       });
-
-      expect(res.status).toBe(500);
-    });
-  });
-
-  describe('deleteTeacher', () => {
-    it('削除に成功した場合は 204 を返す', async () => {
-      const { app, teacherService } = setup();
-      (
-        teacherService.deleteTeacher as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(undefined);
-
-      const res = await app.request('/teachers/1', { method: 'DELETE' });
-
-      expect(teacherService.deleteTeacher).toHaveBeenCalledWith(1);
-      expect(res.status).toBe(204);
-    });
-
-    it('数値でない ID の場合は 400 を返す', async () => {
-      const { app } = setup();
-
-      const res = await app.request('/teachers/abc', { method: 'DELETE' });
-
-      expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: 'Invalid teacher ID' });
-    });
-
-    it('サービスが Teacher not found を投げた場合は 404 を返す', async () => {
-      const { app, teacherService } = setup();
-      (
-        teacherService.deleteTeacher as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('Teacher not found'));
-
-      const res = await app.request('/teachers/999', { method: 'DELETE' });
-
-      expect(res.status).toBe(404);
-      expect(await res.json()).toEqual({ error: 'Teacher not found' });
-    });
-
-    it('削除済み教員の再削除も 204 を返す', async () => {
-      const { app, teacherService } = setup();
-      (
-        teacherService.deleteTeacher as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(undefined);
-
-      const res = await app.request('/teachers/1', { method: 'DELETE' });
-
-      expect(res.status).toBe(204);
-    });
-
-    it('その他の例外の場合は 500 を返す', async () => {
-      const { app, teacherService } = setup();
-      (
-        teacherService.deleteTeacher as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('db error'));
-
-      const res = await app.request('/teachers/1', { method: 'DELETE' });
 
       expect(res.status).toBe(500);
     });

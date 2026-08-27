@@ -24,7 +24,6 @@ function buildRepository(
     create: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),
-    deactivate: vi.fn(),
     ...overrides,
   };
 }
@@ -249,40 +248,6 @@ describe('TeacherService', () => {
       await expect(
         service.updateTeacher(1, { userName: 'x', classRoomIds: [1] })
       ).rejects.toThrow('Teacher not found');
-    });
-  });
-
-  describe('deleteTeacher', () => {
-    it('論理削除を実行する', async () => {
-      const repository = buildRepository({
-        deactivate: vi.fn().mockResolvedValue(true),
-      });
-      const service = createTeacherService(repository);
-
-      await service.deleteTeacher(1);
-
-      expect(repository.deactivate).toHaveBeenCalledWith(1);
-    });
-
-    it('教員が存在しない場合はエラーを投げる', async () => {
-      const repository = buildRepository({
-        findById: vi.fn().mockResolvedValue(null),
-      });
-      const service = createTeacherService(repository);
-
-      await expect(service.deleteTeacher(999)).rejects.toThrow(
-        'Teacher not found'
-      );
-    });
-
-    it('担当クラスの有無にかかわらず論理削除する', async () => {
-      const repository = buildRepository({
-        deactivate: vi.fn().mockResolvedValue(true),
-      });
-      const service = createTeacherService(repository);
-
-      await expect(service.deleteTeacher(1)).resolves.toBeUndefined();
-      expect(repository.deactivate).toHaveBeenCalledWith(1);
     });
   });
 
