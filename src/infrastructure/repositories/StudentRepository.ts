@@ -268,98 +268,155 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         return;
       }
 
-      const statements: D1PreparedStatement[] = [];
-
-      for (const room of input.newClassRooms) {
-        statements.push(
-          db
-            .prepare('INSERT INTO teams (team_name) VALUES (?)')
-            .bind(room.className)
-        );
-        statements.push(
-          db
-            .prepare(
-              `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id, updated_at)
-               VALUES (?, ?, NULL, last_insert_rowid(), CURRENT_TIMESTAMP)`
-            )
-            .bind(room.classCode, room.className)
-        );
-      }
-
-      const userStatementStartIndex = statements.length;
-      for (const chunk of chunkArray(input.students, D1_MAX_BOUND_PARAMETERS)) {
-        const placeholders = chunk
-          .map(() => '(?, CURRENT_TIMESTAMP)')
-          .join(', ');
-        const values = chunk.map(student => student.displayName);
-        statements.push(
+      // team_name にはUNIQUE制約が無く class_code のようにサブクエリで
+      // 突き合わせられないため、まずteamsをまとめて作り、名前で対応付けて
+      // team_idを解決してからclass_roomsを作る。D1は1回のWorker呼び出しあたりの
+      // クエリ数に上限があるため、1行ずつ文を発行するのではなく複数行をまとめた
+      // INSERTで文の総数を抑える。
+      const teamStatements: D1PreparedStatement[] = [];
+      for (const chunk of chunkArray(
+        input.newClassRooms,
+        D1_MAX_BOUND_PARAMETERS
+      )) {
+        const placeholders = chunk.map(() => '(?)').join(', ');
+        const values = chunk.map(room => room.className);
+        teamStatements.push(
           db
             .prepare(
-              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id, user_name`
+              `INSERT INTO teams (team_name) VALUES ${placeholders} RETURNING team_id, team_name`
             )
             .bind(...values)
         );
       }
-
-      const results = await db.batch<ReturnedBulkUserRow>(statements);
-
-      const returnedUsers: ReturnedBulkUserRow[] = [];
-      for (let i = userStatementStartIndex; i < results.length; i++) {
-        for (const row of results[i].results) {
-          returnedUsers.push(row);
-        }
+      const teamResults =
+        teamStatements.length > 0
+          ? await db.batch<{ team_id: number; team_name: string }>(
+              teamStatements
+            )
+          : [];
+      const createdTeams: { team_id: number; team_name: string }[] = [];
+      for (const result of teamResults) {
+        createdTeams.push(...result.results);
       }
-      const userIds = returnedUsers.map(row => row.user_id);
+      const teamIds = createdTeams.map(team => team.team_id);
 
       try {
-        const studentsWithUserIds = pairStudentsWithCreatedUsers(
-          input.students,
-          returnedUsers
+        const newClassRoomsWithTeamIds = pairNewClassRoomsWithCreatedTeams(
+          input.newClassRooms,
+          createdTeams
         );
-        const studentStatements: D1PreparedStatement[] = [];
+
+        const statements: D1PreparedStatement[] = [];
+
         for (const chunk of chunkArray(
-          studentsWithUserIds,
+          newClassRoomsWithTeamIds,
           Math.floor(D1_MAX_BOUND_PARAMETERS / 4)
         )) {
           const placeholders = chunk
-            .map(
-              () =>
-                '(?, (SELECT class_room_id FROM class_rooms WHERE class_code = ?), ?, ?, CURRENT_TIMESTAMP)'
-            )
+            .map(() => '(?, ?, NULL, ?, CURRENT_TIMESTAMP)')
             .join(', ');
           const values = chunk.flatMap(item => [
-            item.userId,
-            item.classCode,
-            item.attendanceNumber,
-            item.studentIdNumber,
+            item.room.classCode,
+            item.room.className,
+            item.teamId,
           ]);
-          studentStatements.push(
+          statements.push(
             db
               .prepare(
-                `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number, updated_at) VALUES ${placeholders}`
+                `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id, updated_at) VALUES ${placeholders}`
               )
               .bind(...values)
           );
         }
-        await db.batch(studentStatements);
-      } catch (error) {
-        try {
-          await deleteUsersByIds(db, userIds);
-        } catch (userDeletionError) {
-          console.error(
-            'Error deleting users after student creation failure:',
-            userDeletionError
+
+        const userStatementStartIndex = statements.length;
+        for (const chunk of chunkArray(
+          input.students,
+          D1_MAX_BOUND_PARAMETERS
+        )) {
+          const placeholders = chunk
+            .map(() => '(?, CURRENT_TIMESTAMP)')
+            .join(', ');
+          const values = chunk.map(student => student.displayName);
+          statements.push(
+            db
+              .prepare(
+                `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id, user_name`
+              )
+              .bind(...values)
           );
         }
+
+        const results = await db.batch<ReturnedBulkUserRow>(statements);
+
+        const returnedUsers: ReturnedBulkUserRow[] = [];
+        for (let i = userStatementStartIndex; i < results.length; i++) {
+          for (const row of results[i].results) {
+            returnedUsers.push(row);
+          }
+        }
+        const userIds = returnedUsers.map(row => row.user_id);
+
         try {
-          await deleteClassRoomsByCodes(
-            db,
-            input.newClassRooms.map(room => room.classCode)
+          const studentsWithUserIds = pairStudentsWithCreatedUsers(
+            input.students,
+            returnedUsers
           );
-        } catch (classRoomDeletionError) {
+          const studentStatements: D1PreparedStatement[] = [];
+          for (const chunk of chunkArray(
+            studentsWithUserIds,
+            Math.floor(D1_MAX_BOUND_PARAMETERS / 4)
+          )) {
+            const placeholders = chunk
+              .map(
+                () =>
+                  '(?, (SELECT class_room_id FROM class_rooms WHERE class_code = ?), ?, ?, CURRENT_TIMESTAMP)'
+              )
+              .join(', ');
+            const values = chunk.flatMap(item => [
+              item.userId,
+              item.classCode,
+              item.attendanceNumber,
+              item.studentIdNumber,
+            ]);
+            studentStatements.push(
+              db
+                .prepare(
+                  `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number, updated_at) VALUES ${placeholders}`
+                )
+                .bind(...values)
+            );
+          }
+          await db.batch(studentStatements);
+        } catch (error) {
+          try {
+            await deleteUsersByIds(db, userIds);
+          } catch (userDeletionError) {
+            console.error(
+              'Error deleting users after student creation failure:',
+              userDeletionError
+            );
+          }
+          try {
+            await deleteClassRoomsByCodes(
+              db,
+              input.newClassRooms.map(room => room.classCode)
+            );
+          } catch (classRoomDeletionError) {
+            console.error(
+              'Error deleting class rooms after student creation failure:',
+              classRoomDeletionError
+            );
+          }
+          throw error;
+        }
+      } catch (error) {
+        try {
+          await deleteTeamsByIds(db, teamIds);
+        } catch (teamDeletionError) {
           console.error(
-            'Error deleting class rooms after student creation failure:',
-            classRoomDeletionError
+            'Error deleting teams after student creation failure:',
+            teamDeletionError
           );
         }
         throw error;
@@ -419,26 +476,58 @@ async function deleteUsersByIds(db: D1Database, userIds: number[]) {
 }
 
 async function deleteClassRoomsByCodes(db: D1Database, classCodes: string[]) {
+  // 対応するteamsは呼び出し元(createMany)がteamIdsを直接把握しているため、
+  // そちら側でdeleteTeamsByIdsによりまとめて後片付けする。
   for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
     const placeholders = chunk.map(() => '?').join(', ');
-    const teams = await db
-      .prepare(
-        `SELECT team_id FROM class_rooms WHERE class_code IN (${placeholders})`
-      )
-      .bind(...chunk)
-      .all<{ team_id: number }>();
     await db
       .prepare(`DELETE FROM class_rooms WHERE class_code IN (${placeholders})`)
       .bind(...chunk)
       .run();
+  }
+}
 
-    const teamIds = teams.results.map(row => row.team_id);
-    if (teamIds.length > 0) {
-      const teamPlaceholders = teamIds.map(() => '?').join(', ');
-      await db
-        .prepare(`DELETE FROM teams WHERE team_id IN (${teamPlaceholders})`)
-        .bind(...teamIds)
-        .run();
+function pairNewClassRoomsWithCreatedTeams(
+  newClassRooms: BulkCreateStudentsInput['newClassRooms'],
+  createdTeams: { team_id: number; team_name: string }[]
+): {
+  room: BulkCreateStudentsInput['newClassRooms'][number];
+  teamId: number;
+}[] {
+  if (createdTeams.length !== newClassRooms.length) {
+    throw new Error(
+      `Created team count does not match new class room count: expected ${newClassRooms.length}, received ${createdTeams.length}`
+    );
+  }
+
+  // SQLiteは複数行をRETURNINGした際の行順を保証しないため、
+  // 配列の位置ではなく、team_name(=class_name)ごとにIDをまとめて対応付ける。
+  // 同名クラスが同じbatch内にある場合は区別できないため、IDをスタックとして消費する。
+  const teamIdsByName = new Map<string, number[]>();
+  for (const team of createdTeams) {
+    const ids = teamIdsByName.get(team.team_name) ?? [];
+    ids.push(team.team_id);
+    teamIdsByName.set(team.team_name, ids);
+  }
+
+  return newClassRooms.map((room, index) => {
+    const ids = teamIdsByName.get(room.className);
+    const teamId = ids?.pop();
+    if (teamId === undefined) {
+      throw new Error(
+        `Created team not found for new class room at index ${index}`
+      );
     }
+    return { room, teamId };
+  });
+}
+
+async function deleteTeamsByIds(db: D1Database, teamIds: number[]) {
+  for (const chunk of chunkArray(teamIds, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM teams WHERE team_id IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
   }
 }

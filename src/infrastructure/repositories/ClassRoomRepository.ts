@@ -123,22 +123,26 @@ export function createClassRoomRepository(
     },
 
     async create(input: ClassRoomInput): Promise<ClassRoomEntity> {
-      const team = await db
-        .prepare('INSERT INTO teams (team_name) VALUES (?) RETURNING team_id')
-        .bind(input.class_name)
-        .first<{ team_id: number }>();
-      if (!team) throw new Error('Failed to create team for class room');
-      const row = await db
-        .prepare(
-          'INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id) VALUES (?, ?, ?, ?) RETURNING class_room_id'
-        )
-        .bind(
-          input.class_code,
-          input.class_name,
-          input.teacher_id,
-          team.team_id
-        )
-        .first<{ class_room_id: number }>();
+      // team作成とclass_room作成を1つのbatchにまとめ、片方が失敗したら
+      // もう片方も残らないようにする(batchはD1上で1トランザクションとして
+      // アトミックに実行される)。
+      const [, classRoomResult] = await db.batch<
+        { team_id: number } | { class_room_id: number }
+      >([
+        db
+          .prepare('INSERT INTO teams (team_name) VALUES (?)')
+          .bind(input.class_name),
+        db
+          .prepare(
+            `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
+             VALUES (?, ?, ?, last_insert_rowid())
+             RETURNING class_room_id`
+          )
+          .bind(input.class_code, input.class_name, input.teacher_id),
+      ]);
+      const row = classRoomResult.results[0] as
+        | { class_room_id: number }
+        | undefined;
       if (!row) throw new Error('Failed to create class');
       const classroom = await findById(row.class_room_id);
       if (!classroom) throw new Error('Failed to fetch created class');
@@ -150,23 +154,68 @@ export function createClassRoomRepository(
         return;
       }
 
-      const statements: D1PreparedStatement[] = [];
-      for (const input of inputs) {
-        statements.push(
-          db
-            .prepare('INSERT INTO teams (team_name) VALUES (?)')
-            .bind(input.class_name)
-        );
-        statements.push(
+      const teamStatements: D1PreparedStatement[] = [];
+      for (const chunk of chunkArray(inputs, D1_MAX_BOUND_PARAMETERS)) {
+        const placeholders = chunk.map(() => '(?)').join(', ');
+        const values = chunk.map(input => input.class_name);
+        teamStatements.push(
           db
             .prepare(
-              `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
-               VALUES (?, ?, ?, last_insert_rowid())`
+              `INSERT INTO teams (team_name) VALUES ${placeholders} RETURNING team_id, team_name`
             )
-            .bind(input.class_code, input.class_name, input.teacher_id)
+            .bind(...values)
         );
       }
-      await db.batch(statements);
+      const teamResults = await db.batch<{
+        team_id: number;
+        team_name: string;
+      }>(teamStatements);
+      const createdTeams: { team_id: number; team_name: string }[] = [];
+      for (const result of teamResults) {
+        createdTeams.push(...result.results);
+      }
+
+      try {
+        const inputsWithTeamIds = pairClassRoomsWithCreatedTeams(
+          inputs,
+          createdTeams
+        );
+
+        const statements: D1PreparedStatement[] = [];
+        for (const chunk of chunkArray(
+          inputsWithTeamIds,
+          Math.floor(D1_MAX_BOUND_PARAMETERS / 4)
+        )) {
+          const placeholders = chunk.map(() => '(?, ?, ?, ?)').join(', ');
+          const values = chunk.flatMap(item => [
+            item.input.class_code,
+            item.input.class_name,
+            item.input.teacher_id,
+            item.teamId,
+          ]);
+          statements.push(
+            db
+              .prepare(
+                `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id) VALUES ${placeholders}`
+              )
+              .bind(...values)
+          );
+        }
+        await db.batch(statements);
+      } catch (error) {
+        try {
+          await deleteTeamsByIds(
+            db,
+            createdTeams.map(team => team.team_id)
+          );
+        } catch (teamDeletionError) {
+          console.error(
+            'Error deleting teams after class room creation failure:',
+            teamDeletionError
+          );
+        }
+        throw error;
+      }
     },
 
     async update(
@@ -215,4 +264,46 @@ export function createClassRoomRepository(
       return row !== null;
     },
   };
+}
+
+function pairClassRoomsWithCreatedTeams(
+  inputs: ClassRoomInput[],
+  createdTeams: { team_id: number; team_name: string }[]
+): { input: ClassRoomInput; teamId: number }[] {
+  if (createdTeams.length !== inputs.length) {
+    throw new Error(
+      `Created team count does not match class room input count: expected ${inputs.length}, received ${createdTeams.length}`
+    );
+  }
+
+  // SQLiteは複数行をRETURNINGした際の行順を保証しないため、
+  // 配列の位置ではなく、team_name(=class_name)ごとにIDをまとめて対応付ける。
+  // 同名クラスが同じbatch内にある場合は区別できないため、IDをスタックとして消費する。
+  const teamIdsByName = new Map<string, number[]>();
+  for (const team of createdTeams) {
+    const ids = teamIdsByName.get(team.team_name) ?? [];
+    ids.push(team.team_id);
+    teamIdsByName.set(team.team_name, ids);
+  }
+
+  return inputs.map((input, index) => {
+    const ids = teamIdsByName.get(input.class_name);
+    const teamId = ids?.pop();
+    if (teamId === undefined) {
+      throw new Error(
+        `Created team not found for class room input at index ${index}`
+      );
+    }
+    return { input, teamId };
+  });
+}
+
+async function deleteTeamsByIds(db: D1Database, teamIds: number[]) {
+  for (const chunk of chunkArray(teamIds, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM teams WHERE team_id IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+  }
 }
