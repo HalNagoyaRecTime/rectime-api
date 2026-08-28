@@ -11,10 +11,15 @@ import {
 } from './schemas';
 
 export const adminUserSearchQuery = z.object({
-  q: z.string().trim().min(1).optional().openapi({
-    param: { name: 'q', in: 'query' },
-    description: '表示名、ユーザーID、クラスコード、クラス名の検索文字列',
-  }),
+  q: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .openapi({
+      param: { name: 'q', in: 'query' },
+      description: '表示名、ユーザーID、クラスコード、クラス名の検索文字列',
+    }),
   category: z
     .enum(['all', 'student', 'teacher'])
     .default('all')
