@@ -150,34 +150,37 @@ app.use('*', (c, next) => {
 app.openapi(healthRoute, c => c.json({ status: 'ok' } as const, 200));
 
 app.openapi(apiOverviewRoute, c => {
-  return c.json({
-    message: 'rectime_be',
-    version: '1.0.0',
-    endpoints: {
-      students: '/api/v1/students/{studentId}',
-      staffs: '/api/v1/staffs/{staffId}',
-      teachers: '/api/v1/teachers/{teacherId}',
-      events: '/api/v1/events',
-      classRooms: '/api/v1/classrooms',
-      gatheringSpots: '/api/v1/gathering-spots',
-      gatherings: '/api/v1/gatherings',
-      gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
-      schedules: '/api/v1/notification/schedules',
-      firebaseTokens: '/api/v1/firebase-tokens',
-      notifications: '/api/v1/notifications',
-      adminNotifications: '/api/v1/admin/notifications',
-      adminUsers: '/api/v1/admin/users',
-      myNotifications: '/api/v1/me/notifications',
-      testNotification: '/api/v1/notifications/test',
-      notificationSchedules: '/api/v1/notification-schedules',
-      myEvents: '/api/v1/me/events',
+  return c.json(
+    {
+      message: 'rectime_be',
+      version: '1.0.0',
+      endpoints: {
+        students: '/api/v1/students/{studentId}',
+        staffs: '/api/v1/staffs/{staffId}',
+        teachers: '/api/v1/teachers/{teacherId}',
+        events: '/api/v1/events',
+        classRooms: '/api/v1/classrooms',
+        gatheringSpots: '/api/v1/gathering-spots',
+        gatherings: '/api/v1/gatherings',
+        gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
+        schedules: '/api/v1/notification/schedules',
+        firebaseTokens: '/api/v1/firebase-tokens',
+        notifications: '/api/v1/notifications',
+        adminNotifications: '/api/v1/admin/notifications',
+        adminUsers: '/api/v1/admin/users',
+        myNotifications: '/api/v1/me/notifications',
+        testNotification: '/api/v1/notifications/test',
+        notificationSchedules: '/api/v1/notification-schedules',
+        myEvents: '/api/v1/me/events',
+      },
+      // 非公開の環境で存在しないエンドポイントを案内しないよう、
+      // DOCS_ENABLED が有効なときだけ含める。
+      ...(isDocsEnabled(c.env)
+        ? { openapi: '/openapi.json', docs: '/docs' }
+        : {}),
     },
-    // 非公開の環境で存在しないエンドポイントを案内しないよう、
-    // DOCS_ENABLED が有効なときだけ含める。
-    ...(isDocsEnabled(c.env)
-      ? { openapi: '/openapi.json', docs: '/docs' }
-      : {}),
-  }, 200);
+    200
+  );
 });
 
 // API v1 routes
