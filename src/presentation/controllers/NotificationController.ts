@@ -88,12 +88,15 @@ export function createNotificationController(
         limit: parsedQuery.data.limit,
         offset: parsedQuery.data.offset,
       });
-      return c.json({
-        notifications: result.notifications,
-        total: result.total,
-        limit: parsedQuery.data.limit,
-        offset: parsedQuery.data.offset,
-      });
+      return c.json(
+        {
+          notifications: result.notifications,
+          total: result.total,
+          limit: parsedQuery.data.limit,
+          offset: parsedQuery.data.offset,
+        },
+        200
+      );
     } catch (error) {
       return c.json(
         {
@@ -113,7 +116,8 @@ export function createNotificationController(
 
     try {
       return c.json(
-        await notificationService.getNotificationById(parsedId.data)
+        await notificationService.getNotificationById(parsedId.data),
+        200
       );
     } catch (error) {
       if (
@@ -154,7 +158,7 @@ export function createNotificationController(
         parsedId.data,
         parsedBody.data
       );
-      return c.json(notification);
+      return c.json(notification, 200);
     } catch (error) {
       if (
         error instanceof Error &&
@@ -174,7 +178,7 @@ export function createNotificationController(
 
   const sendTestNotification = async (c: Context) => {
     try {
-      const body = await c.req.json();
+      const body = await c.req.json().catch(() => undefined);
       const parsedBody = testNotificationSchema.safeParse(body);
 
       if (!parsedBody.success) {
@@ -188,7 +192,7 @@ export function createNotificationController(
       }
 
       const result = await fcmService.sendTestNotification(parsedBody.data);
-      return c.json(result);
+      return c.json(result, 200);
     } catch (error) {
       return c.json(
         {

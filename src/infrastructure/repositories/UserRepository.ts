@@ -1,14 +1,73 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import * as schema from '../database/schema';
-import { microsoft_account_links, users } from '../database/schema';
+import {
+  microsoft_account_links,
+  staffs,
+  students,
+  teachers,
+  users,
+} from '../database/schema';
 
 export function createUserRepository(db: D1Database): IUserRepository {
   const orm = drizzle(db, { schema });
 
   return {
+    async exists(userId) {
+      return Boolean(
+        await orm
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, userId))
+          .get()
+      );
+    },
+    async isStaffOrTeacher(userId) {
+      const row = await orm
+        .select({ userId: users.id })
+        .from(users)
+        .leftJoin(staffs, eq(staffs.userId, users.id))
+        .leftJoin(teachers, eq(teachers.userId, users.id))
+        .where(
+          and(
+            eq(users.id, userId),
+            sql`${staffs.id} IS NOT NULL OR ${teachers.id} IS NOT NULL`
+          )
+        )
+        .get();
+      return Boolean(row);
+    },
+    async isStaff(userId) {
+      const row = await orm
+        .select({ userId: users.id })
+        .from(users)
+        .leftJoin(staffs, eq(staffs.userId, users.id))
+        .where(and(eq(users.id, userId), sql`${staffs.id} IS NOT NULL`))
+        .get();
+      return Boolean(row);
+    },
+    async getUserCategories(userId) {
+      const row = await orm
+        .select({
+          isStudent: sql<number>`CASE WHEN ${students.id} IS NOT NULL THEN 1 ELSE 0 END`,
+          isStaff: sql<number>`CASE WHEN ${staffs.id} IS NOT NULL THEN 1 ELSE 0 END`,
+          isTeacher: sql<number>`CASE WHEN ${teachers.id} IS NOT NULL THEN 1 ELSE 0 END`,
+        })
+        .from(users)
+        .leftJoin(students, eq(students.userId, users.id))
+        .leftJoin(staffs, eq(staffs.userId, users.id))
+        .leftJoin(teachers, eq(teachers.userId, users.id))
+        .where(eq(users.id, userId))
+        .get();
+
+      return {
+        is_student: Boolean(row?.isStudent),
+        is_staff: Boolean(row?.isStaff),
+        is_teacher: Boolean(row?.isTeacher),
+      };
+    },
     async findUserIdByMicrosoftAccount(oid, tid) {
       const row = await orm
         .select({ userId: users.id })
@@ -84,6 +143,30 @@ export function createUserRepository(db: D1Database): IUserRepository {
         email,
         display_name: displayName,
       };
+    },
+    //すでに学生登録時にusersにuser_idが存在している場合、microsoft_account_linksをそのuser_idに合わせてinsertする
+    async linkMicrosoftAccount({ userId, oid, tid }) {
+      const now = new Date().toISOString();
+
+      try {
+        await orm
+          .insert(microsoft_account_links)
+          .values({
+            userId: Number(userId),
+            oid,
+            tid,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run();
+      } catch (err) {
+        // DrizzleはD1の制約違反を「Failed query」エラーでラップする。
+        // 既存の生SQL実装と同じエラーを呼び出し元へ返せるよう、原因を再送出する。
+        if (err instanceof Error && err.cause instanceof Error) {
+          throw err.cause;
+        }
+        throw err;
+      }
     },
 
     async updateUser({ userId, oid, tid, sub, email, displayName }) {

@@ -5,8 +5,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "wrangler dev --env development",
-    "dev:remote-db": "wrangler dev --env remote-development",
+    "dev": "wrangler dev --env development --ip 0.0.0.0",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate:dev:local": "wrangler d1 migrations apply rectime-api-dev --local --env development",
@@ -16,6 +15,7 @@
     "format:check": "prettier --check .",
     "format:fix": "prettier --write .",
     "lint": "eslint .",
+    "prepare": "husky",
     "type-check": "tsc --noEmit",
     "check": "npm run format:check && npm run lint && npm run type-check",
     "test": "vitest run",
@@ -25,9 +25,12 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.2",
+    "@hono/swagger-ui": "^0.6.1",
+    "@hono/zod-openapi": "^0.19.10",
     "crypto": "^1.0.1",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.9.6",
+    "read-excel-file": "^9.3.5",
     "zod": "^3.22.4"
   },
   "devDependencies": {
@@ -39,6 +42,8 @@
     "@vitest/ui": "^4.1.9",
     "eslint": "^9.35.0",
     "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.6.2",
     "tsx": "^4.4.0",
     "typescript": "^5.9.2",

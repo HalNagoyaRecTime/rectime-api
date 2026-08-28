@@ -1,0 +1,259 @@
+name: Deploy to Cloudflare Workers
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+
+# concurrency.group と jobs.migrate.environment / jobs.deploy.environment は
+# production/staging判定の式を共有している。どれもジョブのステップが実行される前に
+# 評価されるフィールドのため、ステップのoutputsを介して1箇所に共通化することができない
+# (needsで依存する別jobに判定を切り出せば可能だが、そこまでの構成変更はしていない)。
+# production/stagingの判定式を変更する場合は、この3箇所すべてを必ず合わせて変更すること。
+#
+# ただしPRプレビュー(pull_request)は、developmentと同じグループにしていない:
+# 同じグループにすると全PRが1つのグループに集約され、無関係な別PRの分まで
+# 完全に直列(1つずつ順番待ち)になってしまう(developへの通常デプロイも同様に
+# 別PRの後ろに並ばされ得る)。PRごとに一意なグループに分離し、無関係なPR同士は
+# 並行して進み、同一PRへの連続pushだけが直列化されるようにする。
+#
+# fork由来のPRではセキュリティ上の理由からworkflow_run.pull_requestsが空になり、
+# pull_requests[0].numberがnullになる。この場合は全fork PRがgroup名"pr-"に
+# 集約されてしまうため、フォールバックとしてworkflow_run.id(実行ごとに一意)を使う。
+# fork PRの連続pushはこのフォールバックにより直列化されない(実行ごとに別グループになる)が、
+# "Set deploy target"のPR_NUMBER空チェックでいずれのpushも即座に失敗するため実害は小さい。
+#
+# concurrency.groupへの参加とcancel-in-progressの発火は、ワークフロー実行がキューされた
+# 時点(=jobs.target.ifが評価される前)で起こる。そのため、workflow_dispatchがmain以外の
+# ブランチから実行された場合にgroup式のどの条件にも一致しないと、最終フォールバックの
+# 'development'に落ちてしまい、jobがskipされる前に進行中のdevelopデプロイを巻き添え
+# キャンセルしてしまう。これを防ぐため、workflow_dispatch(main以外)専用のユニークな
+# group('invalid-dispatch-<ブランチ名>')に分離し、他のgroupと絶対に衝突しないようにする。
+#
+# cancel-in-progressは全イベント種別でfalse固定にしている。同一PRへ短時間で
+# 連続pushすると、直前のpushのjobs.migrateが`d1 migrations apply`を実行中の
+# ままこのgroup(pr-<番号>)へcancel-in-progress: trueで巻き添えキャンセルされ、
+# D1の状態が中途半端になる可能性があった。これは他PR/developとの直列化待ちが
+# 発生していなくても、同一PR内の連続pushだけで起こり得る(レビュー指摘: PR #204
+# discussion_r3818106363、MayugeStudio)。連続pushはキャンセルされず順番に
+# 直列実行される分、PRプレビューの反映が数分遅れる場合があるが、それよりD1の
+# 整合性を優先する。
+#
+# ここでのgroupはPR番号・ブランチ単位(=「同じ対象への連続実行」)の直列化であり、
+# 「同じD1を共有する別々の対象」間の直列化は保証しない。例えばPR #1とPR #2は別groupの
+# ため同時に走り得るが、両方とも最終的に共有のdevelopment用D1(rectime-api-dev)へ
+# migrationを適用する。この競合を防ぐため、migrationの適用だけはjobs.migrateという
+# 別ジョブに分離し、D1データベース名を基準にした専用concurrency.group(下部参照)で
+# 直列化している(レビュー指摘: PR #204 review 4957824497)。
+concurrency:
+  group: deploy-cloudflare-workers-${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' && 'production' || format('invalid-dispatch-{0}', github.ref_name)) || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || (github.event.workflow_run.event == 'pull_request') && format('pr-{0}', github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id) || 'development' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  target:
+    # workflow_dispatchがmain以外のブランチから実行された場合、ここでジョブ自体を
+    # skipする(以前は"Set deploy target"ステップのシェル側ガードのみで、そこに至る
+    # 前にconcurrency.groupの'development'フォールバックに入って進行中のdevelop
+    # デプロイを巻き添えキャンセルしてしまっていた。concurrency.group側の対応は上部参照)。
+    # シェル側のガードは冗長化として残す。
+    #
+    # pull_requestはさらに、PRがfork由来でないことも検証する。fork PRはhead_repository
+    # がこのリポジトリと一致しないため、ここでskipすることでcheckout/npm ci自体が
+    # 実行されなくなり、fork側コードのpostinstallなどが(pull-requests: writeを含む)
+    # GITHUB_TOKENへアクセスできる状態でCIランナー上で動くことを防ぐ
+    # (fork PRは従来から"Set deploy target"のPR_NUMBER空チェックで結局失敗していたため、
+    # ここでのskipによる機能低下はない)。
+    #
+    # migrate/deployはこのjobにneeds:で依存しており、このjobがskipされると
+    # デフォルトの挙動でmigrate/deployも自動的にskipされる(GitHub Actionsの仕様)。
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       (github.event.workflow_run.event == 'push' ||
+        (github.event.workflow_run.event == 'pull_request' &&
+         github.event.workflow_run.head_repository.full_name == github.repository)))
+    name: Determine deploy target (${{ github.event.workflow_run.head_branch || github.ref_name }})
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.target.outputs.mode }}
+      env_flag: ${{ steps.target.outputs.env_flag }}
+      d1_database: ${{ steps.target.outputs.d1_database }}
+      preview_alias: ${{ steps.target.outputs.preview_alias }}
+      pr_number: ${{ steps.target.outputs.pr_number }}
+    steps:
+      - name: Set deploy target
+        id: target
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          EVENT: ${{ github.event.workflow_run.event || 'workflow_dispatch' }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            # 本番デプロイは手動実行(workflow_dispatch)のみで行うが、
+            # 誤って main 以外のブランチから実行され本番に反映されることを防ぐため、
+            # ブランチも合わせて検証する。
+            if [ "$BRANCH" != "main" ]; then
+              echo "::error::本番デプロイはmainブランチからのworkflow_dispatchのみ許可されています(現在のブランチ: $BRANCH)"
+              exit 1
+            fi
+            echo "mode=deploy" >> "$GITHUB_OUTPUT"
+            echo "env_flag=" >> "$GITHUB_OUTPUT"
+            echo "d1_database=rectime-api" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = "pull_request" ]; then
+            if [ -z "$PR_NUMBER" ]; then
+              echo "::error::workflow_runイベントからPR番号を取得できませんでした(フォークからのPRの可能性があります)"
+              exit 1
+            fi
+            # PRごとに独立したpreview URL(pr-<番号>-rectime-api-development.<subdomain>.workers.dev)を発行する。
+            # D1/KVはenv.developmentと共用(バージョンごとに分離できないため)。
+            echo "mode=pr-preview" >> "$GITHUB_OUTPUT"
+            echo "env_flag=--env development" >> "$GITHUB_OUTPUT"
+            echo "d1_database=rectime-api-dev" >> "$GITHUB_OUTPUT"
+            echo "preview_alias=pr-${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+            echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          elif [ "$BRANCH" = "main" ]; then
+            # mainへのpushはstagingへ自動デプロイする(本番はworkflow_dispatchのみ)。
+            echo "mode=deploy" >> "$GITHUB_OUTPUT"
+            echo "env_flag=--env staging" >> "$GITHUB_OUTPUT"
+            echo "d1_database=rectime-api-staging" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=deploy" >> "$GITHUB_OUTPUT"
+            echo "env_flag=--env development" >> "$GITHUB_OUTPUT"
+            echo "d1_database=rectime-api-dev" >> "$GITHUB_OUTPUT"
+          fi
+
+  migrate:
+    needs: target
+    # PRプレビュー(pr-<番号>)とdevelopブランチへのpushは別concurrency.group
+    # (上部参照)のため、同時に走り得る。しかしどちらも同じ共有D1
+    # (rectime-api-dev、env.development)へmigrationを適用するため、
+    # ここだけはD1データベース名を基準にした専用グループで直列化する
+    # (production/staging用D1は他のどのイベント種別とも共有されないため、
+    # このグループでも実質的に競合は起きないが、統一的に扱うためD1名で分岐する)。
+    # cancel-in-progressはfalse固定: 直列待ちにするだけで、進行中のmigrationを
+    # 決してキャンセルしない(D1の状態が中途半端になることを避けるため)。
+    #
+    # queue: maxが必須(レビュー指摘: PR #204 review 4991001083、kaketo113)。
+    # このgroupはPR番号をまたいで共有されるため、デフォルトのqueue: single
+    # (待機は最大1件、後から来たものが待機中の1件を置き換える)のままだと、
+    # 例えばPR A実行中にPR B/Cのmigrateが連続で到着した場合、待機中のBがCに
+    # 置き換えられてしまい、Bのmigrate・deploy(previewのアップロード/コメント含む)
+    # が永久に実行されなくなる。queue: maxで最大100件まで待機できるようにし、
+    # どのPRのmigrateも必ず(いつかは)実行されることを保証する。
+    concurrency:
+      group: deploy-cloudflare-workers-migrate-${{ needs.target.outputs.d1_database }}
+      cancel-in-progress: false
+      queue: max
+    name: Apply D1 migrations (${{ needs.target.outputs.d1_database }})
+    runs-on: ubuntu-latest
+    # jobs.target(上部)・jobs.deploy(下部)と同じ判定式(先頭コメント参照)。
+    environment: ${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply D1 migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply ${{ needs.target.outputs.d1_database }} --remote ${{ needs.target.outputs.env_flag }}
+
+  deploy:
+    needs: [target, migrate]
+    name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
+    runs-on: ubuntu-latest
+    # jobs.migrate(上部)と同じ判定式(先頭コメント参照)。
+    # PRプレビューもdevelopmentと同じGitHub Environment(同じsecrets/vars)を使うため、
+    # concurrency.groupのようなPRごとの分離はここでは不要。
+    environment: ${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy to Cloudflare Workers
+        if: needs.target.outputs.mode == 'deploy'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --minify ${{ needs.target.outputs.env_flag }}
+
+      - name: Upload PR preview version
+        if: needs.target.outputs.mode == 'pr-preview'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            versions upload --minify --env development
+            --preview-alias ${{ needs.target.outputs.preview_alias }}
+            --message "PR #${{ needs.target.outputs.pr_number }}"
+
+      - name: Comment preview URL on PR
+        if: needs.target.outputs.mode == 'pr-preview'
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_ALIAS: ${{ needs.target.outputs.preview_alias }}
+          PR_NUMBER: ${{ needs.target.outputs.pr_number }}
+        with:
+          script: |
+            const alias = process.env.PREVIEW_ALIAS;
+            const url = `https://${alias}-rectime-api-development.rectime-project.workers.dev`;
+            const prNumber = Number(process.env.PR_NUMBER);
+            const marker = "<!-- rectime-api-preview-url -->";
+            const body = [
+              marker,
+              `🚀 Preview: ${url}`,
+              "",
+              "(Microsoft OAuthログインは、このURLがMicrosoft Entra側に事前登録されていない場合失敗します。API自体の動作確認には利用できます)",
+            ].join("\n");
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+            }
