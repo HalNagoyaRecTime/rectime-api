@@ -93,6 +93,7 @@ import {
   scheduleUpdateRoute,
   testNotificationRoute,
 } from './presentation/openapi/notifications';
+import { adminUserSearchRoute } from './presentation/openapi/adminUsers';
 
 const app = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationDefaultHook,
@@ -359,7 +360,7 @@ apiV1.openapi(authed(scheduleUpdateRoute), c => {
 });
 
 // Notification routes
-apiV1.get('/admin/users', requireAuth, c => {
+apiV1.openapi(authed(adminUserSearchRoute), c => {
   return c.get('container').userSearchController.searchUsers(c);
 });
 
