@@ -108,7 +108,7 @@ export function createTeacherController(teacherService: ITeacherService) {
       }
 
       const teacher = await teacherService.getTeacherById(teacherId);
-      return c.json(teacher);
+      return c.json(teacher, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Teacher not found') {
         return c.json({ error: 'Teacher not found' }, 404);
@@ -121,7 +121,7 @@ export function createTeacherController(teacherService: ITeacherService) {
     try {
       const filter = parseSearchFilter(c);
       const teachers = await teacherService.getAllTeachers(filter);
-      return c.json(teachers);
+      return c.json(teachers, 200);
     } catch (error) {
       if (
         error instanceof Error &&
@@ -156,7 +156,7 @@ export function createTeacherController(teacherService: ITeacherService) {
         teacherId,
         parsedBody.data
       );
-      return c.json(teacher);
+      return c.json(teacher, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Teacher not found') {
         return c.json({ error: error.message }, 404);

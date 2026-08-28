@@ -145,7 +145,7 @@ export function createMasterImportController(
           {
             error: 'Commit is still in progress, please retry',
             error_code: 'COMMIT_IN_PROGRESS',
-          },
+          } as const,
           503
         );
       }

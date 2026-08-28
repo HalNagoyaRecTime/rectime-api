@@ -90,12 +90,15 @@ export function createNotificationScheduleController(
           limit: parsedQuery.data.limit,
           offset: parsedQuery.data.offset,
         });
-      return c.json({
-        notification_schedules: result.notification_schedules,
-        total: result.total,
-        limit: parsedQuery.data.limit,
-        offset: parsedQuery.data.offset,
-      });
+      return c.json(
+        {
+          notification_schedules: result.notification_schedules,
+          total: result.total,
+          limit: parsedQuery.data.limit,
+          offset: parsedQuery.data.offset,
+        },
+        200
+      );
     } catch (error) {
       return c.json(
         {
@@ -122,7 +125,8 @@ export function createNotificationScheduleController(
       return c.json(
         await notificationScheduleService.getNotificationScheduleById(
           parsedId.data
-        )
+        ),
+        200
       );
     } catch (error) {
       if (
