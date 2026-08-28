@@ -17,7 +17,7 @@ const eventIdSchema = z.coerce.number().int().positive();
 export function createGatheringController(gatheringService: IGatheringService) {
   const getAllGatherings = async (c: Context) => {
     try {
-      return c.json(await gatheringService.getAllGatherings());
+      return c.json(await gatheringService.getAllGatherings(), 200);
     } catch (error) {
       return c.json(
         {
@@ -37,7 +37,8 @@ export function createGatheringController(gatheringService: IGatheringService) {
 
     try {
       return c.json(
-        await gatheringService.getGatheringsByEventId(parsedEventId.data)
+        await gatheringService.getGatheringsByEventId(parsedEventId.data),
+        200
       );
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {
