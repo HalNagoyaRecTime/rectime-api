@@ -67,9 +67,7 @@ type AdminNotificationManagementContext = Context<{
 export function createAdminNotificationManagementController(
   service: IAdminNotificationManagementService
 ) {
-  const requireAuthenticatedUser = (
-    c: AdminNotificationManagementContext
-  ): Response | null => {
+  const requireAuthenticatedUser = (c: AdminNotificationManagementContext) => {
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);

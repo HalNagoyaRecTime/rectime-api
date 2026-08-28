@@ -42,9 +42,7 @@ const notificationScheduleListQuerySchema = z
 export function createNotificationScheduleController(
   notificationScheduleService: INotificationScheduleService
 ) {
-  const requireAuthenticatedUser = (
-    c: NotificationScheduleContext
-  ): { userId: number } | Response => {
+  const requireAuthenticatedUser = (c: NotificationScheduleContext) => {
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
