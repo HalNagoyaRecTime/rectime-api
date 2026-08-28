@@ -110,12 +110,15 @@ export function createAdminNotificationManagementController(
         limit: parsedQuery.data.limit,
         offset: parsedQuery.data.offset,
       });
-      return c.json({
-        notifications: result.notifications,
-        total: result.total,
-        limit: parsedQuery.data.limit,
-        offset: parsedQuery.data.offset,
-      });
+      return c.json(
+        {
+          notifications: result.notifications,
+          total: result.total,
+          limit: parsedQuery.data.limit,
+          offset: parsedQuery.data.offset,
+        },
+        200
+      );
     } catch (error) {
       return internalError(c, 'Failed to fetch admin notifications', error);
     }
@@ -127,10 +130,13 @@ export function createAdminNotificationManagementController(
     const authenticationError = requireAuthenticatedUser(c);
     if (authenticationError) return authenticationError;
     const notificationId = parseNotificationId(c);
-    if (notificationId instanceof Response) return notificationId;
+    if (typeof notificationId !== 'number') return notificationId;
 
     try {
-      return c.json(await service.getAdminNotificationById(notificationId));
+      return c.json(
+        await service.getAdminNotificationById(notificationId),
+        200
+      );
     } catch (error) {
       return handleManagementError(
         c,
@@ -146,7 +152,7 @@ export function createAdminNotificationManagementController(
     const authenticationError = requireAuthenticatedUser(c);
     if (authenticationError) return authenticationError;
     const notificationId = parseNotificationId(c);
-    if (notificationId instanceof Response) return notificationId;
+    if (typeof notificationId !== 'number') return notificationId;
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = updateSchema.safeParse(body);
     if (!parsedBody.success) {
@@ -169,7 +175,8 @@ export function createAdminNotificationManagementController(
           audience: parsedBody.data.audience
             ? toAudience(parsedBody.data.audience)
             : undefined,
-        })
+        }),
+        200
       );
     } catch (error) {
       return handleManagementError(
@@ -186,7 +193,7 @@ export function createAdminNotificationManagementController(
     const authenticationError = requireAuthenticatedUser(c);
     if (authenticationError) return authenticationError;
     const notificationId = parseNotificationId(c);
-    if (notificationId instanceof Response) return notificationId;
+    if (typeof notificationId !== 'number') return notificationId;
 
     try {
       await service.deleteAdminNotification(notificationId);
@@ -208,9 +215,7 @@ export function createAdminNotificationManagementController(
   };
 }
 
-function parseNotificationId(
-  c: AdminNotificationManagementContext
-): number | Response {
+function parseNotificationId(c: AdminNotificationManagementContext) {
   const parsedId = notificationIdSchema.safeParse(
     c.req.param('notificationId')
   );
@@ -241,7 +246,7 @@ function handleManagementError(
   c: AdminNotificationManagementContext,
   error: unknown,
   fallback: string
-): Response {
+) {
   if (
     error instanceof Error &&
     error.message === 'Admin notification not found'
@@ -271,7 +276,7 @@ function internalError(
   c: AdminNotificationManagementContext,
   message: string,
   error: unknown
-): Response {
+) {
   return c.json(
     {
       error: message,

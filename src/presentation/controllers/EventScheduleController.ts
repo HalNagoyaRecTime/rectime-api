@@ -60,7 +60,8 @@ export function createEventScheduleController(
           end_time: parsedBody.data.endTime,
           notification_enabled: parsedBody.data.notificationEnabled,
           event_date: eventDate,
-        })
+        }),
+        200
       );
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {
@@ -90,7 +91,8 @@ export function createEventScheduleController(
       return c.json(
         await eventScheduleService.getEventNotificationSummary(
           parsedEventId.data
-        )
+        ),
+        200
       );
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {
