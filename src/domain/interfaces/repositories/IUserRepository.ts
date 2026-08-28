@@ -2,7 +2,6 @@ import type { AppUser, UserCategories } from '../../auth/types';
 
 export interface IUserRepository {
   exists(userId: number): Promise<boolean>;
-  isStaffOrTeacher(userId: number): Promise<boolean>;
   isStaff(userId: number): Promise<boolean>;
   getUserCategories(userId: number): Promise<UserCategories>;
   findUserIdByMicrosoftAccount(

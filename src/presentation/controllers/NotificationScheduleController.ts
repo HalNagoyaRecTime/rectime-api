@@ -1,4 +1,4 @@
-import type { Context } from 'hono';
+﻿import type { Context } from 'hono';
 import { z } from 'zod';
 import type { INotificationScheduleService } from '../../application/services/INotificationScheduleService';
 import type { Env } from '../../lib/env';
@@ -42,22 +42,12 @@ const notificationScheduleListQuerySchema = z
 export function createNotificationScheduleController(
   notificationScheduleService: INotificationScheduleService
 ) {
-  const authorizeManager = async (
+  const requireAuthenticatedUser = (
     c: NotificationScheduleContext
-  ): Promise<{ userId: number } | Response> => {
+  ): { userId: number } | Response => {
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
-    }
-    if (
-      !(await notificationScheduleService.canManageNotificationSchedules(
-        userId
-      ))
-    ) {
-      return c.json(
-        { error: 'Notification schedule management forbidden' },
-        403
-      );
     }
     return { userId };
   };
@@ -65,8 +55,8 @@ export function createNotificationScheduleController(
   const getAllNotificationSchedules = async (
     c: NotificationScheduleContext
   ) => {
-    const authorization = await authorizeManager(c);
-    if (authorization instanceof Response) return authorization;
+    const authentication = requireAuthenticatedUser(c);
+    if (authentication instanceof Response) return authentication;
 
     const parsedQuery = notificationScheduleListQuerySchema.safeParse({
       sendStatus: c.req.query('sendStatus'),
@@ -120,8 +110,8 @@ export function createNotificationScheduleController(
   const getNotificationScheduleById = async (
     c: NotificationScheduleContext
   ) => {
-    const authorization = await authorizeManager(c);
-    if (authorization instanceof Response) return authorization;
+    const authentication = requireAuthenticatedUser(c);
+    if (authentication instanceof Response) return authentication;
 
     const parsedId = notificationScheduleIdSchema.safeParse(c.req.param('id'));
     if (!parsedId.success) {
@@ -152,8 +142,8 @@ export function createNotificationScheduleController(
   };
 
   const deleteNotificationSchedule = async (c: NotificationScheduleContext) => {
-    const authorization = await authorizeManager(c);
-    if (authorization instanceof Response) return authorization;
+    const authentication = requireAuthenticatedUser(c);
+    if (authentication instanceof Response) return authentication;
 
     const parsedId = notificationScheduleIdSchema.safeParse(c.req.param('id'));
     if (!parsedId.success) {
@@ -189,8 +179,8 @@ export function createNotificationScheduleController(
   };
 
   const createNotificationSchedule = async (c: NotificationScheduleContext) => {
-    const authorization = await authorizeManager(c);
-    if (authorization instanceof Response) return authorization;
+    const authentication = requireAuthenticatedUser(c);
+    if (authentication instanceof Response) return authentication;
 
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createNotificationScheduleSchema.safeParse(body);
@@ -207,7 +197,7 @@ export function createNotificationScheduleController(
     try {
       const schedule =
         await notificationScheduleService.createNotificationSchedule({
-          created_user_id: authorization.userId,
+          created_user_id: authentication.userId,
           event_id: parsedBody.data.eventId ?? null,
           notification_id: parsedBody.data.notificationId,
           firebase_token_id: parsedBody.data.firebaseTokenId,

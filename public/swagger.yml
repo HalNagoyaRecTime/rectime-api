@@ -72,7 +72,7 @@ paths:
       tags: [Notifications]
       summary: 管理画面から手動通知を一括予約する
       description: |
-        ログイン中のstaffまたはteacherが、配信対象を指定して手動通知を予約します。
+        ログイン中のstaffが、配信対象を指定して手動通知を予約します。
         Backendが対象利用者の有効なFirebase Tokenを解決し、Token単位の通知予定を作成します。
         `userId` と `firebaseTokenId` はRequestで受け取りません。
         `scheduledAt`はJST基準で環境変数`EVENT_DATE`と同じ開催日だけを受け付けます。
@@ -692,7 +692,7 @@ paths:
       tags: [Events]
       summary: イベントと自動通知設定を更新する
       description: |
-        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        staffとして登録されているログインユーザーのみ実行できます。
         競技基本情報と、開始15分前の自動通知予定を1つの処理で更新します。
         notification_enabledがfalseの場合は、未送信のevent_reminderのみ削除します。
         同じイベントが先に更新された場合は409 Conflictを返します。
@@ -727,7 +727,7 @@ paths:
       tags: [Events]
       summary: イベントと自動通知設定を部分更新する
       description: |
-        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        staffとして登録されているログインユーザーのみ実行できます。
         指定された競技情報だけを更新し、未指定の項目は変更しません。
         競技名、開始時刻、notification_enabledのいずれかを変更した場合は、
         未送信のevent_reminderを更新後の内容で再生成します。
@@ -803,7 +803,7 @@ paths:
       summary: イベント時刻と通知予定を更新する
       deprecated: true
       description: |
-        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        staffとして登録されているログインユーザーのみ実行できます。
         通知ありの場合は、開催日の競技開始15分前に送信するdraft通知予定を作成または更新します。
         新規実装ではPUT /events/{eventId}を使用してください。
       parameters:
@@ -837,7 +837,7 @@ paths:
       tags: [Events]
       summary: 競技単位の自動通知配信状況を取得する
       description: |
-        staffsまたはteachersとして登録されているログインユーザーのみ実行できます。
+        staffとして登録されているログインユーザーのみ実行できます。
         Token単位のevent_reminderを競技単位で集約し、手動通知は含めません。
       parameters:
         - $ref: '#/components/parameters/EventId'

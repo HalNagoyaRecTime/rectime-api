@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createAdminNotificationService } from '../../../src/application/services/AdminNotificationService';
 import type { IAdminNotificationRepository } from '../../../src/domain/interfaces/repositories/IAdminNotificationRepository';
-import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 
 function setup() {
   const adminNotificationRepository: IAdminNotificationRepository = {
@@ -13,23 +12,9 @@ function setup() {
       schedule_count: 2,
     }),
   };
-  const userRepository: IUserRepository = {
-    exists: vi.fn(),
-    isStaffOrTeacher: vi.fn().mockResolvedValue(true),
-    isStaff: vi.fn().mockResolvedValue(true),
-    getUserCategories: vi.fn(),
-    findUserIdByMicrosoftAccount: vi.fn(),
-    createUserWithMicrosoftLink: vi.fn(),
-    updateUser: vi.fn(),
-    linkMicrosoftAccount: vi.fn(),
-  };
   return {
     adminNotificationRepository,
-    userRepository,
-    service: createAdminNotificationService(
-      adminNotificationRepository,
-      userRepository
-    ),
+    service: createAdminNotificationService(adminNotificationRepository),
   };
 }
 
@@ -42,13 +27,6 @@ const input = {
 };
 
 describe('AdminNotificationService', () => {
-  it('staffsまたはteachersだけを作成者として許可する', async () => {
-    const { service, userRepository } = setup();
-
-    await expect(service.canCreateManualNotification(1)).resolves.toBe(true);
-    expect(userRepository.isStaffOrTeacher).toHaveBeenCalledWith(1);
-  });
-
   it('対象が存在して有効Tokenがあれば一括作成する', async () => {
     const { service, adminNotificationRepository } = setup();
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+﻿import { describe, expect, it, vi } from 'vitest';
 import { createAuthService } from '../../../src/application/services/authService';
 import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
@@ -34,7 +34,6 @@ describe('createAuthService', () => {
   function setup() {
     const userRepository: IUserRepository = {
       exists: vi.fn(),
-      isStaffOrTeacher: vi.fn(),
       isStaff: vi.fn(),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
@@ -65,7 +64,6 @@ describe('createAuthService', () => {
   it('studentEmailDomainが未設定の場合はエラーを投げる', () => {
     const userRepository: IUserRepository = {
       exists: vi.fn(),
-      isStaffOrTeacher: vi.fn(),
       isStaff: vi.fn(),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
