@@ -95,7 +95,8 @@ export function createEventController(
           start_time: startTime,
           limit: parsedQuery.data.limit,
           offset: parsedQuery.data.offset,
-        })
+        }),
+        200
       );
     } catch (error) {
       return c.json(
@@ -119,7 +120,7 @@ export function createEventController(
       }
 
       const event = await eventService.getEventById(parsedId.data);
-      return c.json(event);
+      return c.json(event, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {
         return c.json(
@@ -208,7 +209,8 @@ export function createEventController(
           end_time: request.end_time,
           notification_enabled: request.notification_enabled,
           event_date: eventContext.env?.EVENT_DATE,
-        })
+        }),
+        200
       );
     } catch (error) {
       return eventError(c, error, 'Failed to update event');
@@ -242,7 +244,8 @@ export function createEventController(
           user_id: userId,
           ...request,
           event_date: eventContext.env?.EVENT_DATE,
-        })
+        }),
+        200
       );
     } catch (error) {
       return eventError(c, error, 'Failed to update event');

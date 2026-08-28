@@ -20,16 +20,14 @@ const notificationListQuerySchema = z.object({
 export function createMobileNotificationController(
   mobileNotificationService: IMobileNotificationService
 ) {
-  const getAuthenticatedUserId = (
-    c: MobileNotificationContext
-  ): number | Response => {
+  const getAuthenticatedUserId = (c: MobileNotificationContext) => {
     const userId = c.get('authenticatedUserId');
     return userId ?? c.json({ error: 'Authentication required' }, 401);
   };
 
   const getNotifications = async (c: MobileNotificationContext) => {
     const userId = getAuthenticatedUserId(c);
-    if (userId instanceof Response) return userId;
+    if (typeof userId !== 'number') return userId;
 
     const parsedQuery = notificationListQuerySchema.safeParse({
       limit: c.req.query('limit'),
@@ -50,7 +48,7 @@ export function createMobileNotificationController(
         userId,
         parsedQuery.data
       );
-      return c.json(result);
+      return c.json(result, 200);
     } catch {
       return c.json({ error: 'Failed to fetch notifications' }, 500);
     }
@@ -58,7 +56,7 @@ export function createMobileNotificationController(
 
   const getNotificationById = async (c: MobileNotificationContext) => {
     const userId = getAuthenticatedUserId(c);
-    if (userId instanceof Response) return userId;
+    if (typeof userId !== 'number') return userId;
 
     const parsedId = notificationIdSchema.safeParse(
       c.req.param('notificationId')
@@ -72,7 +70,8 @@ export function createMobileNotificationController(
         await mobileNotificationService.getNotificationById(
           parsedId.data,
           userId
-        )
+        ),
+        200
       );
     } catch (error) {
       if (
