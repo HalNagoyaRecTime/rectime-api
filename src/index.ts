@@ -366,17 +366,17 @@ apiV1.openapi(authed(adminNotificationCreateRoute), c => {
 apiV1.openapi(authed(adminNotificationListRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotifications(c);
+    .adminNotificationManagementController.getAdminNotifications(c) as never;
 });
 apiV1.openapi(authed(adminNotificationDetailRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotificationById(c);
+    .adminNotificationManagementController.getAdminNotificationById(c) as never;
 });
 apiV1.openapi(authed(adminNotificationUpdateRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.updateAdminNotification(c);
+    .adminNotificationManagementController.updateAdminNotification(c) as never;
 });
 apiV1.openapi(authed(adminNotificationDeleteRoute), c => {
   return c
@@ -407,17 +407,17 @@ apiV1.openapi(authed(myNotificationDetailRoute), c => {
 apiV1.openapi(authed(notificationScheduleListRoute), c => {
   return c
     .get('container')
-    .notificationScheduleController.getAllNotificationSchedules(c);
+    .notificationScheduleController.getAllNotificationSchedules(c) as never;
 });
 apiV1.openapi(authed(notificationScheduleCreateRoute), c => {
   return c
     .get('container')
-    .notificationScheduleController.createNotificationSchedule(c);
+    .notificationScheduleController.createNotificationSchedule(c) as never;
 });
 apiV1.openapi(authed(notificationScheduleDetailRoute), c => {
   return c
     .get('container')
-    .notificationScheduleController.getNotificationScheduleById(c);
+    .notificationScheduleController.getNotificationScheduleById(c) as never;
 });
 apiV1.openapi(authed(notificationScheduleDeleteRoute), c => {
   return c
