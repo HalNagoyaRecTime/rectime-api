@@ -76,8 +76,11 @@ iOSリリース時に、認証・主要API・D1・デプロイで問題が発生
 - `JWT_SECRET`とToken期限関連設定
 - `ALLOWED_ORIGINS`
 - `FRONTEND_URL`
+- `EVENT_DATE`
 
 確認結果は`設定あり／なし`だけを記録し、Secret値や暗号化前の内容は残さない。
+
+`EVENT_DATE`はSecretではないため、値が`YYYY-MM-DD`形式で設定され、実際のイベント開催日（JST）と一致していることまで確認する。未設定、不正な形式、または開催日の誤りがある場合、自動通知を生成するイベント更新が失敗し、Cronによる通知配信も停止する。
 
 ### 5.3 D1 Migration
 
@@ -192,6 +195,18 @@ npx wrangler d1 execute rectime-api --remote \
 
 Repositoryの`migrations/`、適用済みMigration、実テーブルを比較する。手動DDLで修正せず、原因となるMigrationと適用経路を確認する。
 
+### 7.5 イベント更新・通知配信の停止
+
+イベント時刻の更新または通知配信が失敗している一方で、`/health`が正常な場合は、対象Workerの`EVENT_DATE`を確認する。
+
+1. Cloudflare Dashboardで対象WorkerのSettingsからVariables and Secretsを開く。
+2. `EVENT_DATE`が設定されていることを確認する。
+3. 値が`YYYY-MM-DD`形式であることを確認する。
+4. 値が実際のイベント開催日（JST）と一致していることを確認する。
+5. Workers Logsで`EVENT_DATE is not configured correctly`または通知配信停止の警告がないことを確認する。
+
+値を変更する必要がある場合は、対象環境と開催日を担当者2名で確認し、変更後にイベント更新と通知予定作成を再確認する。
+
 ## 8. Queue状態の確認
 
 通知機能自体のE2EはこのRunbookの対象外だが、Queue backlogがWorker障害の原因かを確認する。
@@ -254,6 +269,7 @@ npx wrangler d1 time-travel restore rectime-api --bookmark "<BOOKMARK>"
 - [ ] 未適用Migrationを確認した
 - [ ] production D1のTime Travel bookmarkを記録した
 - [ ] Secret／Bindingの名前と設定有無を確認した
+- [ ] `EVENT_DATE`が`YYYY-MM-DD`形式で実際のイベント開催日（JST）と一致している
 - [ ] `/health`が`200`を返す
 - [ ] iOSログインと`/auth/me`が成功する
 - [ ] イベント一覧／詳細を取得できる
@@ -282,6 +298,7 @@ Health Check:
 代表API Smoke Test:
 Workers Logs／Metrics:
 Migration状態:
+EVENT_DATE確認:
 D1 bookmark:
 残課題:
 Rollback判断者:
