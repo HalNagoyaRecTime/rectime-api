@@ -49,7 +49,7 @@ export function createUserSearchController(service: IUserSearchService) {
 
     try {
       const query: UserSearchQueryDTO = parsedQuery.data;
-      return c.json(await service.searchUsers(query));
+      return c.json(await service.searchUsers(query), 200);
     } catch (error) {
       return c.json(
         {
