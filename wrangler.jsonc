@@ -150,11 +150,11 @@
       "kv_namespaces": [
         {
           "binding": "AUTH_KV",
-          "id": "7bdb66e8753148b09d88626e563193aa",
+          "id": "8b9d0339f2a34fe88a165fe3b4cdfa49",
           // preview_id は `wrangler dev --remote` 専用。このリポジトリの
           // `npm run dev` はローカルシミュレーションのみで使わないが、
           // 既にdry-runで動作確認済みの値のため維持する。
-          "preview_id": "7bdb66e8753148b09d88626e563193aa",
+          "preview_id": "8b9d0339f2a34fe88a165fe3b4cdfa49",
         },
       ],
       "d1_databases": [
