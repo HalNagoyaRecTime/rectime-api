@@ -1,9 +1,11 @@
-import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
+import { swaggerUI } from '@hono/swagger-ui';
+import { OpenAPIHono, type RouteConfig } from '@hono/zod-openapi';
 import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
-import type { Env } from './lib/env';
+import { isDocsEnabled, type Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
 import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
 import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
@@ -19,8 +21,82 @@ import {
   bearerAuthenticationMiddleware,
   type AuthenticationVariables,
 } from './presentation/middleware/bearerAuthentication';
+import { validationDefaultHook } from './presentation/openapi/schemas';
+import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
+import {
+  studentCreateRoute,
+  studentDetailRoute,
+  studentListRoute,
+  studentUpdateRoute,
+} from './presentation/openapi/students';
+import {
+  staffDetailRoute,
+  staffListRoute,
+} from './presentation/openapi/staffs';
+import {
+  teacherDeleteRoute,
+  teacherDetailRoute,
+  teacherListRoute,
+  teacherUpdateRoute,
+} from './presentation/openapi/teachers';
+import {
+  eventCreateRoute,
+  eventDeleteRoute,
+  eventDetailRoute,
+  eventGatheringListRoute,
+  eventListRoute,
+  eventNotificationSummaryRoute,
+  eventPatchRoute,
+  eventScheduleUpdateRoute,
+  eventUpdateRoute,
+} from './presentation/openapi/events';
+import {
+  classRoomCreateRoute,
+  classRoomDeleteRoute,
+  classRoomDetailRoute,
+  classRoomListRoute,
+  classRoomUpdateRoute,
+} from './presentation/openapi/classrooms';
+import {
+  masterImportCommitRoute,
+  masterImportCreateRoute,
+  masterImportDetailRoute,
+} from './presentation/openapi/masterImports';
+import {
+  gatheringCreateRoute,
+  gatheringDeleteRoute,
+  gatheringListRoute,
+  gatheringMemberCreateRoute,
+  gatheringMemberDeleteRoute,
+  gatheringMemberListRoute,
+  gatheringSpotCreateRoute,
+  gatheringSpotListRoute,
+  gatheringSpotUpdateRoute,
+} from './presentation/openapi/gatherings';
+import {
+  adminNotificationCreateRoute,
+  adminNotificationDeleteRoute,
+  adminNotificationDetailRoute,
+  adminNotificationListRoute,
+  adminNotificationUpdateRoute,
+  firebaseTokenCreateRoute,
+  myNotificationDetailRoute,
+  myNotificationListRoute,
+  notificationCreateRoute,
+  notificationDetailRoute,
+  notificationListRoute,
+  notificationScheduleCreateRoute,
+  notificationScheduleDeleteRoute,
+  notificationScheduleDetailRoute,
+  notificationScheduleListRoute,
+  notificationUpdateRoute,
+  scheduleUpdateRoute,
+  testNotificationRoute,
+} from './presentation/openapi/notifications';
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new OpenAPIHono<{ Bindings: Env }>({
+  defaultHook: validationDefaultHook,
+});
 
 let corsWarnLogged = false;
 const allowedOriginRulesCache = new Map<string, AllowedOriginRule[]>();
@@ -71,62 +147,79 @@ app.use('*', (c, next) => {
   return next();
 });
 
-app.get('/health', c => c.json({ status: 'ok' }));
+app.openapi(healthRoute, c => c.json({ status: 'ok' } as const, 200));
 
-app.get('/', c => {
-  return c.json({
-    message: 'rectime_be',
-    version: '1.0.0',
-    endpoints: {
-      students: '/api/v1/students/{studentId}',
-      staffs: '/api/v1/staffs/{staffId}',
-      teachers: '/api/v1/teachers/{teacherId}',
-      events: '/api/v1/events',
-      myEvents: '/api/v1/me/events',
-      classRooms: '/api/v1/classrooms',
-      gatheringSpots: '/api/v1/gathering-spots',
-      gatherings: '/api/v1/gatherings',
-      gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
-      schedules: '/api/v1/notification/schedules',
-      firebaseTokens: '/api/v1/firebase-tokens',
-      notifications: '/api/v1/notifications',
-      adminNotifications: '/api/v1/admin/notifications',
-      myNotifications: '/api/v1/me/notifications',
-      testNotification: '/api/v1/notifications/test',
-      notificationSchedules: '/api/v1/notification-schedules',
+app.openapi(apiOverviewRoute, c => {
+  return c.json(
+    {
+      message: 'rectime_be',
+      version: '1.0.0',
+      endpoints: {
+        students: '/api/v1/students/{studentId}',
+        staffs: '/api/v1/staffs/{staffId}',
+        teachers: '/api/v1/teachers/{teacherId}',
+        events: '/api/v1/events',
+        classRooms: '/api/v1/classrooms',
+        gatheringSpots: '/api/v1/gathering-spots',
+        gatherings: '/api/v1/gatherings',
+        gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
+        schedules: '/api/v1/notification/schedules',
+        firebaseTokens: '/api/v1/firebase-tokens',
+        notifications: '/api/v1/notifications',
+        adminNotifications: '/api/v1/admin/notifications',
+        myNotifications: '/api/v1/me/notifications',
+        testNotification: '/api/v1/notifications/test',
+        notificationSchedules: '/api/v1/notification-schedules',
+        myEvents: '/api/v1/me/events',
+      },
+      // 非公開の環境で存在しないエンドポイントを案内しないよう、
+      // DOCS_ENABLED が有効なときだけ含める。
+      ...(isDocsEnabled(c.env)
+        ? { openapi: '/openapi.json', docs: '/docs' }
+        : {}),
     },
-    swagger: '/swagger.yml',
-  });
+    200
+  );
 });
 
 // API v1 routes
-const apiV1 = new Hono<{
+const apiV1 = new OpenAPIHono<{
   Bindings: Env;
   Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
-}>();
+}>({ defaultHook: validationDefaultHook });
 
 apiV1.use('*', diContainerMiddleware);
 apiV1.use('*', bearerAuthenticationMiddleware);
 
+/**
+ * apiV1.use('*', requireAuth) にはしていない: /auth ルート（ログイン自体）まで
+ * ブロックしてしまわないよう、認証が必要なルートにのみ個別に付与する。
+ * OpenAPIHono ではミドルウェアをルート定義側で受け取るため、ここで包む。
+ */
+const authed = <R extends RouteConfig>(route: R) => ({
+  ...route,
+  middleware: requireAuth,
+});
+
 // Student routes
-apiV1.get('/students', requireAuth, c => {
+apiV1.openapi(authed(studentListRoute), c => {
   return c.get('container').studentController.getAllStudent(c);
 });
-apiV1.get('/students/:studentId', requireAuth, c => {
+apiV1.openapi(authed(studentDetailRoute), c => {
   return c.get('container').studentController.getStudentById(c);
 });
-apiV1.post('/students', requireAuth, c => {
+apiV1.openapi(authed(studentCreateRoute), c => {
   return c.get('container').studentController.createStudent(c);
 });
-apiV1.put('/students/:studentId', requireAuth, c => {
+apiV1.openapi(authed(studentUpdateRoute), c => {
   return c.get('container').studentController.updateStudent(c);
 });
 
 // Staff routes
-apiV1.get('/staffs', requireAuth, c => {
+apiV1.openapi(authed(staffListRoute), c => {
   return c.get('container').staffController.getAllStaffs(c);
 });
-apiV1.get('/staffs/:staffId', requireAuth, c => {
+apiV1.openapi(authed(staffDetailRoute), c => {
   return c.get('container').staffController.getStaffById(c);
 });
 
@@ -134,93 +227,92 @@ apiV1.get('/staffs/:staffId', requireAuth, c => {
 apiV1.post('/teachers', requireAuth, c => {
   return c.get('container').teacherController.createTeacher(c);
 });
-apiV1.get('/teachers', requireAuth, c => {
+apiV1.openapi(authed(teacherListRoute), c => {
   return c.get('container').teacherController.getAllTeachers(c);
 });
-apiV1.get('/teachers/:teacherId', requireAuth, c => {
+apiV1.openapi(authed(teacherDetailRoute), c => {
   return c.get('container').teacherController.getTeacherById(c);
 });
-apiV1.put('/teachers/:teacherId', requireAuth, c => {
+apiV1.openapi(authed(teacherUpdateRoute), c => {
   return c.get('container').teacherController.updateTeacher(c);
 });
-apiV1.delete('/teachers/:teacherId', requireAuth, c => {
+apiV1.openapi(authed(teacherDeleteRoute), c => {
   return c.get('container').teacherController.deleteTeacher(c);
 });
 
 // Event routes
-apiV1.get('/events', requireAuth, c => {
+apiV1.openapi(authed(eventListRoute), c => {
   return c.get('container').eventController.getAllEvents(c);
+});
+apiV1.openapi(authed(eventDetailRoute), c => {
+  return c.get('container').eventController.getEventById(c);
 });
 apiV1.get('/me/events', requireAuth, c => {
   return c.get('container').eventController.getMyEvents(c);
 });
-
-apiV1.get('/events/:eventId', requireAuth, c => {
-  return c.get('container').eventController.getEventById(c);
-});
-apiV1.get('/events/:eventId/gatherings', requireAuth, c => {
+apiV1.openapi(authed(eventGatheringListRoute), c => {
   return c.get('container').gatheringController.getGatheringsByEventId(c);
 });
-apiV1.post('/events', requireAuth, c => {
+apiV1.openapi(authed(eventCreateRoute), c => {
   return c.get('container').eventController.createEvent(c);
 });
-apiV1.put('/events/:eventId', requireAuth, c => {
+apiV1.openapi(authed(eventUpdateRoute), c => {
   return c.get('container').eventController.updateEvent(c);
 });
-apiV1.patch('/events/:eventId', requireAuth, c => {
+apiV1.openapi(authed(eventPatchRoute), c => {
   return c.get('container').eventController.patchEvent(c);
 });
-apiV1.delete('/events/:eventId', requireAuth, c => {
+apiV1.openapi(authed(eventDeleteRoute), c => {
   return c.get('container').eventController.deleteEvent(c);
 });
-apiV1.put('/events/:eventId/schedule', requireAuth, c => {
+apiV1.openapi(authed(eventScheduleUpdateRoute), c => {
   return c.get('container').eventScheduleController.updateEventSchedule(c);
 });
-apiV1.get('/events/:eventId/notification-summary', requireAuth, c => {
+apiV1.openapi(authed(eventNotificationSummaryRoute), c => {
   return c
     .get('container')
     .eventScheduleController.getEventNotificationSummary(c);
 });
 
 // Classroom routes
-apiV1.get('/classrooms', requireAuth, c => {
+apiV1.openapi(authed(classRoomListRoute), c => {
   return c.get('container').classRoomController.getAllClassrooms(c);
 });
-apiV1.get('/classrooms/:classId', requireAuth, c => {
+apiV1.openapi(authed(classRoomDetailRoute), c => {
   return c.get('container').classRoomController.getClassroomById(c);
 });
-apiV1.post('/classrooms', requireAuth, c => {
+apiV1.openapi(authed(classRoomCreateRoute), c => {
   return c.get('container').classRoomController.createClassroom(c);
 });
-apiV1.put('/classrooms/:classId', requireAuth, c => {
+apiV1.openapi(authed(classRoomUpdateRoute), c => {
   return c.get('container').classRoomController.updateClassroom(c);
 });
-apiV1.delete('/classrooms/:classId', requireAuth, c => {
+apiV1.openapi(authed(classRoomDeleteRoute), c => {
   return c.get('container').classRoomController.deleteClassroom(c);
 });
 
 // Master import routes
-apiV1.post('/master-imports', requireAuth, c => {
+apiV1.openapi(authed(masterImportCreateRoute), c => {
   return c.get('container').masterImportController.createImport(c);
 });
-apiV1.get('/master-imports/:validatedFileId', requireAuth, c => {
+apiV1.openapi(authed(masterImportDetailRoute), c => {
   return c.get('container').masterImportController.getImport(c);
 });
-apiV1.post('/master-imports/:validatedFileId/commit', requireAuth, c => {
+apiV1.openapi(authed(masterImportCommitRoute), c => {
   return c.get('container').masterImportController.commitImport(c);
 });
 
 // Gathering spot routes
-apiV1.get('/gathering-spots', requireAuth, c => {
+apiV1.openapi(authed(gatheringSpotListRoute), c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
 });
 apiV1.get('/gathering-spots/:gatheringSpotId', requireAuth, c => {
   return c.get('container').gatheringSpotController.getGatheringSpotById(c);
 });
-apiV1.post('/gathering-spots', requireAuth, c => {
+apiV1.openapi(authed(gatheringSpotCreateRoute), c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
-apiV1.put('/gathering-spots/:gatheringSpotId', requireAuth, c => {
+apiV1.openapi(authed(gatheringSpotUpdateRoute), c => {
   return c.get('container').gatheringSpotController.updateGatheringSpot(c);
 });
 apiV1.delete('/gathering-spots/:gatheringSpotId', requireAuth, c => {
@@ -228,112 +320,112 @@ apiV1.delete('/gathering-spots/:gatheringSpotId', requireAuth, c => {
 });
 
 // Gathering member routes
-apiV1.get('/gatherings/:gatheringId/members', requireAuth, c => {
+apiV1.openapi(authed(gatheringMemberListRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.getGatheringMembers(c);
 });
-apiV1.post('/gatherings/:gatheringId/members', requireAuth, c => {
+apiV1.openapi(authed(gatheringMemberCreateRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.addGatheringMember(c);
 });
-apiV1.delete('/gatherings/:gatheringId/members/:userId', requireAuth, c => {
+apiV1.openapi(authed(gatheringMemberDeleteRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.removeGatheringMember(c);
 });
 
 // Gathering routes
-apiV1.get('/gatherings', requireAuth, c => {
+apiV1.openapi(authed(gatheringListRoute), c => {
   return c.get('container').gatheringController.getAllGatherings(c);
 });
-apiV1.post('/gatherings', requireAuth, c => {
+apiV1.openapi(authed(gatheringCreateRoute), c => {
   return c.get('container').gatheringController.createGathering(c);
 });
-apiV1.delete('/gatherings/:gatheringId', requireAuth, c => {
+apiV1.openapi(authed(gatheringDeleteRoute), c => {
   return c.get('container').gatheringController.deleteGathering(c);
 });
 
 // Firebase token routes
-apiV1.post('/firebase-tokens', requireAuth, c => {
+apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
 });
 
 // Notification schedule routes
-apiV1.put('/notification/schedules/:notificationId', requireAuth, c => {
+apiV1.openapi(authed(scheduleUpdateRoute), c => {
   return c.get('container').scheduleController.updateSchedule(c);
 });
 
 // Notification routes
-apiV1.post('/admin/notifications', requireAuth, c => {
+apiV1.openapi(authed(adminNotificationCreateRoute), c => {
   return c
     .get('container')
     .adminNotificationController.createManualNotification(c);
 });
-apiV1.get('/admin/notifications', requireAuth, c => {
+apiV1.openapi(authed(adminNotificationListRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.getAdminNotifications(c);
 });
-apiV1.get('/admin/notifications/:notificationId', requireAuth, c => {
+apiV1.openapi(authed(adminNotificationDetailRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.getAdminNotificationById(c);
 });
-apiV1.put('/admin/notifications/:notificationId', requireAuth, c => {
+apiV1.openapi(authed(adminNotificationUpdateRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.updateAdminNotification(c);
 });
-apiV1.delete('/admin/notifications/:notificationId', requireAuth, c => {
+apiV1.openapi(authed(adminNotificationDeleteRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.deleteAdminNotification(c);
 });
 
-apiV1.post('/notifications', requireAuth, c => {
+apiV1.openapi(authed(notificationCreateRoute), c => {
   return c.get('container').notificationController.createNotification(c);
 });
-apiV1.get('/notifications', requireAuth, c => {
+apiV1.openapi(authed(notificationListRoute), c => {
   return c.get('container').notificationController.getNotifications(c);
 });
-apiV1.get('/notifications/:id', requireAuth, c => {
+apiV1.openapi(authed(notificationDetailRoute), c => {
   return c.get('container').notificationController.getNotificationById(c);
 });
-apiV1.put('/notifications/:id', requireAuth, c => {
+apiV1.openapi(authed(notificationUpdateRoute), c => {
   return c.get('container').notificationController.updateNotification(c);
 });
 
-apiV1.get('/me/notifications', requireAuth, c => {
+apiV1.openapi(authed(myNotificationListRoute), c => {
   return c.get('container').mobileNotificationController.getNotifications(c);
 });
-apiV1.get('/me/notifications/:notificationId', requireAuth, c => {
+apiV1.openapi(authed(myNotificationDetailRoute), c => {
   return c.get('container').mobileNotificationController.getNotificationById(c);
 });
 
-apiV1.get('/notification-schedules', requireAuth, c => {
+apiV1.openapi(authed(notificationScheduleListRoute), c => {
   return c
     .get('container')
     .notificationScheduleController.getAllNotificationSchedules(c);
 });
-apiV1.post('/notification-schedules', requireAuth, c => {
+apiV1.openapi(authed(notificationScheduleCreateRoute), c => {
   return c
     .get('container')
     .notificationScheduleController.createNotificationSchedule(c);
 });
-apiV1.get('/notification-schedules/:id', requireAuth, c => {
+apiV1.openapi(authed(notificationScheduleDetailRoute), c => {
   return c
     .get('container')
     .notificationScheduleController.getNotificationScheduleById(c);
 });
-apiV1.delete('/notification-schedules/:id', requireAuth, c => {
+apiV1.openapi(authed(notificationScheduleDeleteRoute), c => {
   return c
     .get('container')
     .notificationScheduleController.deleteNotificationSchedule(c);
 });
 
-apiV1.post('/notifications/test', requireAuth, c => {
+apiV1.openapi(authed(testNotificationRoute), c => {
   return c.get('container').notificationController.sendTestNotification(c);
 });
 
@@ -342,6 +434,37 @@ apiV1.route('/auth', authRouter);
 
 // Mount API v1
 app.route('/api/v1', apiV1);
+
+app.openAPIRegistry.registerComponent('securitySchemes', 'Bearer', {
+  type: 'http',
+  scheme: 'bearer',
+  bearerFormat: 'JWT',
+});
+
+/**
+ * API仕様は認証を通さずに読めてしまうため、DOCS_ENABLED="true" の環境
+ * (development/preview)でのみ公開する。未設定の本番では404を返す。
+ */
+const requireDocsEnabled: MiddlewareHandler<{ Bindings: Env }> = async (
+  c,
+  next
+) => {
+  if (!isDocsEnabled(c.env)) return c.notFound();
+  await next();
+};
+
+app.use('/openapi.json', requireDocsEnabled);
+app.use('/docs', requireDocsEnabled);
+
+app.doc('/openapi.json', {
+  openapi: '3.0.3',
+  info: { title: 'RecTime API', version: '1.0.0' },
+});
+
+app.get(
+  '/docs',
+  swaggerUI({ url: '/openapi.json', title: 'RecTime API Docs' })
+);
 
 export { app };
 
