@@ -161,6 +161,8 @@ describe('presentation/auth/helpers', () => {
           id: 'user-1',
           email: 'tanaka@example.com',
           display_name: '田中太郎',
+          student_id_number: '10000',
+          class_room_name: 'IH11A111',
         },
         { is_student: false, is_staff: false, is_teacher: false }
       );
@@ -171,6 +173,8 @@ describe('presentation/auth/helpers', () => {
         display_name: '田中太郎',
         avatar_url: ACCOUNT_PHOTO_PATH,
         avatar_updated_at: null,
+        student_id_number: '10000',
+        class_room_name: 'IH11A111',
         is_student: false,
         is_staff: false,
         is_teacher: false,
@@ -185,6 +189,8 @@ describe('presentation/auth/helpers', () => {
           display_name: '田中太郎',
           avatar_url: 'https://example.com/avatar.png',
           avatar_updated_at: '2026-01-01T00:00:00.000Z',
+          student_id_number: '10000',
+          class_room_name: 'IH11A111',
         },
         { is_student: true, is_staff: false, is_teacher: false }
       );
@@ -195,6 +201,8 @@ describe('presentation/auth/helpers', () => {
         display_name: '田中太郎',
         avatar_url: 'https://example.com/avatar.png',
         avatar_updated_at: '2026-01-01T00:00:00.000Z',
+        student_id_number: '10000',
+        class_room_name: 'IH11A111',
         is_student: true,
         is_staff: false,
         is_teacher: false,

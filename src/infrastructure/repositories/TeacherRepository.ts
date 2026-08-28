@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { class_rooms, teachers, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
@@ -9,6 +9,7 @@ import {
   TeacherPage,
   TeacherSearchFilter,
   TeacherUpdateInput,
+  TeacherCreateInput,
 } from '../../domain/entities/Teacher';
 import {
   ITeacherRepository,
@@ -30,7 +31,7 @@ type ReturnedTeacherRow = {
 };
 
 const DEFAULT_OFFSET = 0;
-const DEFAULT_LIMIT = 20;
+const DEFAULT_LIMIT = 50;
 
 // LIKE検索の対象文字列に % や _ そのものが含まれていても、ワイルドカードとして
 // 展開されず文字通りに一致するよう、SQLiteの ESCAPE 句と組み合わせて使う。
@@ -124,8 +125,26 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`
         );
       }
+      if (filter.search) {
+        const escapedPattern = `%${escapeLikePattern(filter.search)}%`;
+        conditions.push(
+          or(
+            sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
+            sql`EXISTS (
+              SELECT 1 FROM class_rooms search_class_rooms
+              WHERE search_class_rooms.teacher_id = teachers.teacher_id
+                AND (
+                  search_class_rooms.class_code LIKE ${escapedPattern} ESCAPE ${'\\'}
+                  OR search_class_rooms.class_name LIKE ${escapedPattern} ESCAPE ${'\\'}
+                )
+            )`
+          )!
+        );
+      }
       if (filter.isLiveActive !== undefined) {
         conditions.push(eq(users.isLiveActive, filter.isLiveActive ? 1 : 0));
+      } else {
+        conditions.push(eq(users.isLiveActive, 1));
       }
 
       if (filter.classRoomId !== undefined) {
@@ -156,10 +175,13 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .select()
         .from(teachers)
         .innerJoin(users, eq(teachers.userId, users.id));
+      const sortOrder = filter.sortOrder === 'desc' ? desc : asc;
+      const sortColumn =
+        filter.sortBy === 'displayName' ? users.userName : teachers.id;
       const results = await (
         whereClause ? rowsBaseQuery.where(whereClause) : rowsBaseQuery
       )
-        .orderBy(asc(teachers.id))
+        .orderBy(sortOrder(sortColumn), asc(teachers.id))
         .limit(limit)
         .offset(offset)
         .all();
@@ -186,39 +208,106 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       return rows.length === classRoomIds.length;
     },
 
-    async create(input: NewTeacherInput): Promise<TeacherEntity> {
-      const [userResult, teacherResult] = await db.batch<
-        ReturnedUserRow | ReturnedTeacherRow
-      >([
-        db
-          .prepare(
-            `INSERT INTO users (user_name, updated_at)
-             VALUES (?, CURRENT_TIMESTAMP)
-             RETURNING user_id, user_name, is_live_active`
-          )
-          .bind(input.displayName),
-        db.prepare(
-          `INSERT INTO teachers (user_id, updated_at)
-           VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
-           RETURNING teacher_id, user_id`
-        ),
-      ]);
+    async create(
+      input: NewTeacherInput | TeacherCreateInput
+    ): Promise<TeacherEntity> {
+      const displayName =
+        'userName' in input ? input.userName : input.displayName;
+      const classRoomIds = 'userName' in input ? input.classRoomIds : [];
+      const hasClassRoomAssignments = classRoomIds.length > 0;
+
+      // classRoomIds の件数ぶんだけ '?' を並べたもの（例: '?, ?, ?'）。
+      // IN 句と存在確認の両方で使い回す。
+      const classRoomIdPlaceholders = classRoomIds.map(() => '?').join(', ');
+      // 「指定された class_room_id が全件実在するか」を表す条件式。
+      // 末尾の ? には classRoomIds.length を bind する。
+      const classRoomsExistCondition = `(SELECT COUNT(*) FROM class_rooms
+                        WHERE class_room_id IN (${classRoomIdPlaceholders})) = ?`;
+
+      // classRoomIds の存在確認を各文の条件に含めることで、存在確認と
+      // users/teachers の作成・クラス紐付けを同じ batch 内で扱う。
+      // 対象クラスが欠けている場合は全ての書き込みが実行されないため、
+      // 教員だけが作成される状態を防げる。
+      const batchResults = hasClassRoomAssignments
+        ? await db.batch<
+            ReturnedUserRow | ReturnedTeacherRow | { class_room_id: number }
+          >([
+            db
+              .prepare(
+                `INSERT INTO users (user_name, updated_at)
+                 SELECT ?, CURRENT_TIMESTAMP
+                 WHERE ${classRoomsExistCondition}
+                 RETURNING user_id, user_name, is_live_active`
+              )
+              .bind(displayName, ...classRoomIds, classRoomIds.length),
+            db
+              .prepare(
+                `INSERT INTO teachers (user_id, updated_at)
+                 SELECT last_insert_rowid(), CURRENT_TIMESTAMP
+                 WHERE ${classRoomsExistCondition}
+                 RETURNING teacher_id, user_id`
+              )
+              .bind(...classRoomIds, classRoomIds.length),
+            db
+              .prepare(
+                `UPDATE class_rooms
+                 SET teacher_id = last_insert_rowid(),
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE class_room_id IN (${classRoomIdPlaceholders})
+                   AND ${classRoomsExistCondition}
+                 RETURNING class_room_id`
+              )
+              .bind(...classRoomIds, ...classRoomIds, classRoomIds.length),
+          ])
+        : await db.batch<ReturnedUserRow | ReturnedTeacherRow>([
+            db
+              .prepare(
+                `INSERT INTO users (user_name, updated_at)
+                 VALUES (?, CURRENT_TIMESTAMP)
+                 RETURNING user_id, user_name, is_live_active`
+              )
+              .bind(displayName),
+            db.prepare(
+              `INSERT INTO teachers (user_id, updated_at)
+               VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
+               RETURNING teacher_id, user_id`
+            ),
+          ]);
+
+      const [userResult, teacherResult] = batchResults;
 
       const user = userResult.results[0] as ReturnedUserRow | undefined;
       const created = teacherResult.results[0] as
         | ReturnedTeacherRow
         | undefined;
       if (!user || !created) {
+        if (hasClassRoomAssignments) {
+          throw new Error('Class room not found');
+        }
         throw new Error('Failed to create teacher');
       }
 
-      return {
-        teacher_id: created.teacher_id,
-        user_id: user.user_id,
-        user_name: user.user_name,
-        is_live_active: user.is_live_active === 1,
-        class_rooms: [],
-      };
+      if (hasClassRoomAssignments) {
+        const assignmentResult = batchResults[2];
+        if (assignmentResult.results.length !== classRoomIds.length) {
+          throw new Error('Failed to assign class rooms');
+        }
+      }
+
+      const result = await orm
+        .select()
+        .from(teachers)
+        .innerJoin(users, eq(teachers.userId, users.id))
+        .where(eq(teachers.id, created.teacher_id))
+        .get();
+      if (!result) throw new Error('Failed to create teacher');
+      const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [
+        created.teacher_id,
+      ]);
+      return toEntity(
+        result,
+        classRoomsByTeacher.get(created.teacher_id) ?? []
+      );
     },
 
     async createMany(inputs: NewTeacherInput[]): Promise<void> {
@@ -265,7 +354,14 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         }
         await db.batch(teacherStatements);
       } catch (error) {
-        await deleteUsersByIds(db, userIds);
+        try {
+          await deleteUsersByIds(db, userIds);
+        } catch (userDeletionError) {
+          console.error(
+            'Error deleting users after teacher creation failure:',
+            userDeletionError
+          );
+        }
         throw error;
       }
     },
@@ -280,7 +376,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .innerJoin(users, eq(teachers.userId, users.id))
         .where(eq(teachers.id, id))
         .get();
-      if (!existing) return null;
+      if (!existing || existing.users.isLiveActive !== 1) return null;
 
       const now = new Date().toISOString();
 
@@ -288,7 +384,6 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .update(users)
         .set({
           userName: input.userName,
-          isLiveActive: input.isLiveActive ? 1 : 0,
           updatedAt: now,
         })
         .where(eq(users.id, existing.users.id));
@@ -339,7 +434,6 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           users: {
             ...existing.users,
             userName: input.userName,
-            isLiveActive: input.isLiveActive ? 1 : 0,
             updatedAt: now,
           },
         },
@@ -347,40 +441,26 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       );
     },
 
-    async hasClassAssignments(id: number): Promise<boolean> {
-      const row = await orm
-        .select({ id: class_rooms.id })
-        .from(class_rooms)
-        .where(eq(class_rooms.teacherId, id))
+    async deactivate(id: number): Promise<boolean> {
+      const existing = await orm
+        .select({ userId: teachers.userId })
+        .from(teachers)
+        .where(eq(teachers.id, id))
         .get();
-      return Boolean(row);
-    },
+      if (!existing) return false;
 
-    async delete(id: number): Promise<boolean> {
-      // class_rooms.teacher_id は ON DELETE の挙動を明示していない外部キーのため、
-      // 割り当てが残ったまま削除しようとするとFK制約違反になる。
-      // hasClassAssignments によるチェックと実際の delete の間に、別リクエストが
-      // 担当クラスを新規に割り当てる競合が起きても、このエラーを検知して
-      // 呼び出し元（Service層）が既存の参照エラーと同じ扱いをできるようにする。
-      try {
-        const row = await orm
-          .delete(teachers)
-          .where(eq(teachers.id, id))
-          .returning()
-          .get();
-        return Boolean(row);
-      } catch (err) {
-        const message =
-          err instanceof Error && err.cause instanceof Error
-            ? err.cause.message
-            : err instanceof Error
-              ? err.message
-              : String(err);
-        if (message.includes('FOREIGN KEY constraint failed')) {
-          throw new Error('Teacher is referenced by other data');
-        }
-        throw err;
-      }
+      const now = new Date().toISOString();
+      await orm.batch([
+        orm
+          .update(users)
+          .set({ isLiveActive: 0, updatedAt: now })
+          .where(eq(users.id, existing.userId)),
+        orm
+          .update(class_rooms)
+          .set({ teacherId: null, updatedAt: now })
+          .where(eq(class_rooms.teacherId, id)),
+      ]);
+      return true;
     },
   };
 }

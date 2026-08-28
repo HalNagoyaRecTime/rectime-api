@@ -34,6 +34,7 @@ export type Env = {
   JWT_SECRET: string;
   JWT_EXPIRES_SEC: string;
   MOBILE_REFRESH_EXPIRES_SEC: string;
+  STUDENT_EMAIL_DOMAIN: string;
 };
 
 /** OpenAPI仕様（/openapi.json・/docs）を公開してよい環境か。 */

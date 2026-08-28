@@ -91,7 +91,11 @@ export function createDIContainer(env: Env) {
   );
 
   // Services
-  const authService = createAuthService(userRepository);
+  const authService = createAuthService(
+    userRepository,
+    studentRepository,
+    env.STUDENT_EMAIL_DOMAIN
+  );
   const studentService = createStudentService(
     studentRepository,
     classRoomRepository
@@ -111,7 +115,8 @@ export function createDIContainer(env: Env) {
     env.MASTER_IMPORT_COMMIT_LOCK,
     studentService,
     classRoomService,
-    teacherService
+    teacherService,
+    userRepository
   );
   const firebaseTokenService = createFirebaseTokenService(
     firebaseTokenRepository
@@ -197,6 +202,7 @@ export function createDIContainer(env: Env) {
 
   return {
     authService,
+    studentService,
     studentController,
     staffController,
     teacherController,

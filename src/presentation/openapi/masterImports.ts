@@ -2,6 +2,7 @@ import { createRoute } from '@hono/zod-openapi';
 import {
   badRequestResponse,
   bearerAuth,
+  forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
   notFoundResponse,
@@ -100,6 +101,7 @@ export const masterImportCreateRoute = createRoute({
     201: jsonResponse(masterImportSessionSchema, '検証結果'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -118,6 +120,7 @@ export const masterImportDetailRoute = createRoute({
     200: jsonResponse(masterImportSessionSchema, '検証結果'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     500: internalServerErrorResponse,
   },
@@ -135,6 +138,7 @@ export const masterImportCommitRoute = createRoute({
     201: jsonResponse(masterImportSessionSchema, '確定した取込結果'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     422: jsonResponse(
       masterImportSessionSchema,

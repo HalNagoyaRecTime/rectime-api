@@ -14,6 +14,7 @@ import { account } from '../../../../src/presentation/auth/routes/account';
 import { signAccessToken } from '../../../../src/infrastructure/auth/jwt';
 import type { MobileRefreshEntry } from '../../../../src/domain/auth/types';
 import type { Env } from '../../../../src/lib/env';
+import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
 
 const JWT_SECRET = 'a'.repeat(32);
 
@@ -78,6 +79,7 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
     JWT_SECRET,
     JWT_EXPIRES_SEC: '3600',
     MOBILE_REFRESH_EXPIRES_SEC: '2592000',
+    STUDENT_EMAIL_DOMAIN: 'nhs.hal.ac.jp',
     ...overrides,
   };
 }
@@ -97,6 +99,7 @@ function createMockKv(): KVNamespace {
 
 function buildApp() {
   const app = new Hono<{ Bindings: Env }>();
+  app.use('*', diContainerMiddleware);
   app.route('/', account);
   return app;
 }
@@ -195,6 +198,93 @@ describe('GET /auth/me', () => {
     );
 
     expect(res.status).toBe(401);
+  });
+
+  it('学生ユーザーの場合はstudent_id_number/class_room_nameを含めて返す', async () => {
+    const env = buildEnv();
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3A', '3年A組') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('学生太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '50001')"
+    )
+      .bind(user!.user_id, classRoom!.class_room_id)
+      .run();
+    const userId = String(user!.user_id);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-student',
+        email: 'gakusei@example.com',
+        display_name: '学生太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      user?: {
+        student_id_number: string | null;
+        class_room_name: string | null;
+      };
+    };
+    expect(body.user).toMatchObject({
+      student_id_number: '50001',
+      class_room_name: '3年A組',
+    });
+  });
+
+  it('学生でないユーザーの場合はstudent_id_number/class_room_nameがnullで返る', async () => {
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('教師花子') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+    const userId = String(user!.user_id);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-teacher',
+        email: 'sensei@example.com',
+        display_name: '教師花子',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      user?: {
+        student_id_number: string | null;
+        class_room_name: string | null;
+      };
+    };
+    expect(body.user).toMatchObject({
+      student_id_number: null,
+      class_room_name: null,
+    });
   });
 });
 

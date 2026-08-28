@@ -7,6 +7,7 @@ import {
   jsonResponse,
   noContentResponse,
   notFoundResponse,
+  paginationFields,
   positivePathParam,
   timestampSchema,
   unauthorizedResponse,
@@ -33,6 +34,17 @@ export const gatheringSpotListResponseSchema = z
 export type GatheringSpotListResponseDTO = z.infer<
   typeof gatheringSpotListResponseSchema
 >;
+
+export const gatheringSpotPageResponseSchema = z
+  .object({
+    gathering_spots: z.array(gatheringSpotResponseSchema),
+    ...paginationFields,
+  })
+  .openapi('GatheringSpotPage');
+
+export const gatheringSpotListResultSchema = z
+  .union([gatheringSpotListResponseSchema, gatheringSpotPageResponseSchema])
+  .openapi('GatheringSpotListResult');
 
 export const gatheringMemberResponseSchema = z
   .object({
@@ -129,7 +141,8 @@ export const gatheringSpotListRoute = createRoute({
   summary: '集合場所一覧を取得する',
   security: bearerAuth,
   responses: {
-    200: jsonResponse(gatheringSpotListResponseSchema, '集合場所一覧'),
+    200: jsonResponse(gatheringSpotListResultSchema, '集合場所一覧'),
+    400: badRequestResponse,
     401: unauthorizedResponse,
     500: internalServerErrorResponse,
   },

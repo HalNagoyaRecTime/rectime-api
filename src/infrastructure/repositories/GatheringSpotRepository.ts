@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, count, desc, eq, like, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringSpotEntity } from '../../domain/entities/GatheringSpot';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
@@ -42,6 +42,57 @@ export function createGatheringSpotRepository(
       return rows.map(toEntity);
     },
 
+    async findPage(options): Promise<{
+      gathering_spots: GatheringSpotEntity[];
+      total: number;
+      limit: number;
+      offset: number;
+    }> {
+      const nameFilter = options.name
+        ? like(gathering_spots.name, `%${options.name}%`)
+        : undefined;
+      const sortColumn = {
+        id: gathering_spots.id,
+        name: gathering_spots.name,
+        createdAt: gathering_spots.createdAt,
+        updatedAt: gathering_spots.updatedAt,
+      }[options.sortBy ?? 'id'];
+      const orderBy =
+        options.sortOrder === 'desc' ? desc(sortColumn) : asc(sortColumn);
+      const [rows, totalRow] = await Promise.all([
+        orm
+          .select()
+          .from(gathering_spots)
+          .where(nameFilter)
+          .orderBy(orderBy)
+          .limit(options.limit)
+          .offset(options.offset)
+          .all(),
+        orm
+          .select({ total: count() })
+          .from(gathering_spots)
+          .where(nameFilter)
+          .get(),
+      ]);
+      return {
+        gathering_spots: rows.map(toEntity),
+        total: totalRow?.total ?? 0,
+        limit: options.limit,
+        offset: options.offset,
+      };
+    },
+
+    async findById(
+      gatheringSpotId: number
+    ): Promise<GatheringSpotEntity | null> {
+      const row = await orm
+        .select()
+        .from(gathering_spots)
+        .where(eq(gathering_spots.id, gatheringSpotId))
+        .get();
+      return row ? toEntity(row) : null;
+    },
+
     async create(gatheringSpotName: string): Promise<GatheringSpotEntity> {
       const row = await orm
         .insert(gathering_spots)
@@ -63,6 +114,24 @@ export function createGatheringSpotRepository(
         .returning()
         .get();
       return row ? toEntity(row) : null;
+    },
+
+    async delete(gatheringSpotId: number): Promise<boolean> {
+      const result = await orm
+        .delete(gathering_spots)
+        .where(eq(gathering_spots.id, gatheringSpotId))
+        .run();
+      return result.meta.changes > 0;
+    },
+
+    async hasGatherings(gatheringSpotId: number): Promise<boolean> {
+      return Boolean(
+        await orm
+          .select({ id: schema.gatherings.id })
+          .from(schema.gatherings)
+          .where(eq(schema.gatherings.gatheringSpotId, gatheringSpotId))
+          .get()
+      );
     },
   };
 }

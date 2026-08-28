@@ -7,6 +7,7 @@ import type { StudentDTO } from '../../../src/application/dto/StudentDTO';
 function buildStudent(overrides: Partial<StudentDTO> = {}): StudentDTO {
   return {
     student_id: 1,
+    user_id: 10,
     display_name: '山田太郎',
     class_room_id: 1,
     class_room_name: '1年A組',
@@ -23,6 +24,7 @@ function setup() {
     getAllStudents: vi.fn(),
     createStudent: vi.fn(),
     updateStudent: vi.fn(),
+    getByUserId: vi.fn(),
     validateStudentImport: vi.fn(),
     commitStudentImport: vi.fn(),
   };

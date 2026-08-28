@@ -74,6 +74,7 @@ export const teacherListRoute = createRoute({
   request: { query: teacherListQuery },
   responses: {
     200: jsonResponse(teacherPageResponseSchema, '教員一覧'),
+    400: badRequestResponse,
     401: unauthorizedResponse,
     500: internalServerErrorResponse,
   },

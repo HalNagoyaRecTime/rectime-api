@@ -170,6 +170,7 @@ app.openapi(apiOverviewRoute, c => {
         myNotifications: '/api/v1/me/notifications',
         testNotification: '/api/v1/notifications/test',
         notificationSchedules: '/api/v1/notification-schedules',
+        myEvents: '/api/v1/me/events',
       },
       // 非公開の環境で存在しないエンドポイントを案内しないよう、
       // DOCS_ENABLED が有効なときだけ含める。
@@ -223,6 +224,9 @@ apiV1.openapi(authed(staffDetailRoute), c => {
 });
 
 // Teacher routes
+apiV1.post('/teachers', requireAuth, c => {
+  return c.get('container').teacherController.createTeacher(c);
+});
 apiV1.openapi(authed(teacherListRoute), c => {
   return c.get('container').teacherController.getAllTeachers(c);
 });
@@ -242,6 +246,9 @@ apiV1.openapi(authed(eventListRoute), c => {
 });
 apiV1.openapi(authed(eventDetailRoute), c => {
   return c.get('container').eventController.getEventById(c);
+});
+apiV1.get('/me/events', requireAuth, c => {
+  return c.get('container').eventController.getMyEvents(c);
 });
 apiV1.openapi(authed(eventGatheringListRoute), c => {
   return c.get('container').gatheringController.getGatheringsByEventId(c);
@@ -299,11 +306,17 @@ apiV1.openapi(authed(masterImportCommitRoute), c => {
 apiV1.openapi(authed(gatheringSpotListRoute), c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
 });
+apiV1.get('/gathering-spots/:gatheringSpotId', requireAuth, c => {
+  return c.get('container').gatheringSpotController.getGatheringSpotById(c);
+});
 apiV1.openapi(authed(gatheringSpotCreateRoute), c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
 apiV1.openapi(authed(gatheringSpotUpdateRoute), c => {
   return c.get('container').gatheringSpotController.updateGatheringSpot(c);
+});
+apiV1.delete('/gathering-spots/:gatheringSpotId', requireAuth, c => {
+  return c.get('container').gatheringSpotController.deleteGatheringSpot(c);
 });
 
 // Gathering member routes

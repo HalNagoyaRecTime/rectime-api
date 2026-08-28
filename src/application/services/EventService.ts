@@ -64,6 +64,10 @@ export function createEventService(
       }
       return toEventDTO(event);
     },
+    async getMyEvents(userId) {
+      const events = await eventRepository.findByParticipantUserId(userId);
+      return events.map(toEventDTO);
+    },
     async createEvent(event) {
       return toEventDTO(await eventRepository.create(toEventWriteInput(event)));
     },

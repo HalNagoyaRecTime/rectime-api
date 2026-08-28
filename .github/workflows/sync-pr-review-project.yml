@@ -32,6 +32,7 @@ jobs:
             const fieldNames = {
               count: 'Approve数',
               approvers: 'Approveした人',
+              nonApprovers: 'Approveしてない人',
               status: 'レビュー状況',
               lastActivity: '最終コミット・コメント日',
               createdAge: 'PR作成日',
@@ -116,6 +117,11 @@ jobs:
               (field) =>
                 field.name === fieldNames.approvers && field.dataType === 'TEXT',
             );
+            const nonApproversField = projectFields.find(
+              (field) =>
+                field.name === fieldNames.nonApprovers &&
+                field.dataType === 'TEXT',
+            );
             const statusField = projectFields.find(
               (field) =>
                 field.name === fieldNames.status &&
@@ -134,12 +140,13 @@ jobs:
             if (
               !countField ||
               !approversField ||
+              !nonApproversField ||
               !statusField ||
               !lastActivityField ||
               !createdAgeField
             ) {
               throw new Error(
-                'Approve数、Approveした人、レビュー状況、最終コミット・コメント日、PR作成日のフィールドを確認してください。',
+                'Approve数、Approveした人、Approveしてない人、レビュー状況、最終コミット・コメント日、PR作成日のフィールドを確認してください。',
               );
             }
 
@@ -205,13 +212,22 @@ jobs:
               );
             }
 
-            function summarizeReviewState(pull, reviews, hasComments) {
+            function summarizeReviewState(
+              pull,
+              reviews,
+              reviewRequests,
+              hasComments,
+            ) {
               const latestDecisionByUser = new Map();
+              const reviewerLogins = new Set();
 
               for (const review of reviews) {
                 const login = review.user?.login;
                 if (!login || review.user?.type === 'Bot') continue;
 
+                if (review.state !== 'PENDING') {
+                  reviewerLogins.add(login);
+                }
                 if (
                   review.state === 'APPROVED' ||
                   review.state === 'CHANGES_REQUESTED'
@@ -225,6 +241,12 @@ jobs:
                 }
               }
 
+              for (const reviewer of reviewRequests.users ?? []) {
+                if (reviewer.login && reviewer.type !== 'Bot') {
+                  reviewerLogins.add(reviewer.login);
+                }
+              }
+
               const decisions = [...latestDecisionByUser.entries()];
               const approvers = decisions
                 .filter(([, review]) => review.state === 'APPROVED')
@@ -233,6 +255,15 @@ jobs:
               const changeRequests = decisions
                 .filter(([, review]) => review.state === 'CHANGES_REQUESTED')
                 .map(([, review]) => review);
+              // Review後に依頼一覧から消えた人も、Approveするまでは表示対象に残す。
+              const nonApprovers = [
+                ...[...reviewerLogins]
+                  .filter((login) => !approvers.includes(login))
+                  .map((login) => `@${login}`),
+                ...(reviewRequests.teams ?? []).map(
+                  (team) => `@${owner}/${team.slug}`,
+                ),
+              ].sort((left, right) => left.localeCompare(right, 'en'));
 
               let status;
               if (changeRequests.length > 0) {
@@ -251,7 +282,7 @@ jobs:
                 status = '未レビュー';
               }
 
-              return { approvers, status };
+              return { approvers, nonApprovers, status };
             }
 
             function getDatePartsInJapan(value) {
@@ -344,8 +375,19 @@ jobs:
               });
 
               for (const pull of pulls) {
-                const [commits, reviews, issueComments, reviewComments] =
+                const [
+                  reviewRequestsResponse,
+                  commits,
+                  reviews,
+                  issueComments,
+                  reviewComments,
+                ] =
                   await Promise.all([
+                    github.rest.pulls.listRequestedReviewers({
+                      owner,
+                      repo,
+                      pull_number: pull.number,
+                    }),
                     github.paginate(github.rest.pulls.listCommits, {
                       owner,
                       repo,
@@ -381,11 +423,13 @@ jobs:
                   reviewComments.some(
                     (comment) => comment.user?.type !== 'Bot',
                   );
-                const { approvers, status } = summarizeReviewState(
-                  pull,
-                  reviews,
-                  hasComments,
-                );
+                const { approvers, nonApprovers, status } =
+                  summarizeReviewState(
+                    pull,
+                    reviews,
+                    reviewRequestsResponse.data,
+                    hasComments,
+                  );
                 const lastActivityDate = getLastActivityDate(
                   pull,
                   commits,
@@ -417,6 +461,13 @@ jobs:
                 } else {
                   await clearField(itemId, approversField.id);
                 }
+                if (nonApprovers.length > 0) {
+                  await updateField(itemId, nonApproversField.id, {
+                    text: nonApprovers.join(', '),
+                  });
+                } else {
+                  await clearField(itemId, nonApproversField.id);
+                }
                 await updateField(itemId, statusField.id, {
                   singleSelectOptionId: statusOptions.get(status),
                 });
@@ -433,7 +484,7 @@ jobs:
 
                 updatedCount += 1;
                 core.info(
-                  `${repo}#${pull.number}: ${approvers.length} approvals, ${status}, ${lastActivityDate}, ${createdAgeText ?? 'draft'}`,
+                  `${repo}#${pull.number}: ${approvers.length} approvals, ${nonApprovers.length} non-approvers, ${status}, ${lastActivityDate}, ${createdAgeText ?? 'draft'}`,
                 );
               }
             }

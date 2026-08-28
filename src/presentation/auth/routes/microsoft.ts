@@ -17,6 +17,7 @@ import {
   exchangeMicrosoftToken,
   upsertUser,
   userResponse,
+  getStudentInfoOrNull,
   getUserCategories,
 } from '../helpers';
 import {
@@ -24,8 +25,12 @@ import {
   type MobileRefreshEntry,
   ACCOUNT_PHOTO_PATH,
 } from '../../../domain/auth/types';
+import type { ContainerVariables } from '../../middleware/diContainer';
 
-const microsoft = new Hono<{ Bindings: Bindings }>();
+const microsoft = new Hono<{
+  Bindings: Bindings;
+  Variables: ContainerVariables;
+}>();
 
 // GET /auth/microsoft/login
 microsoft.get('/login', async c => {
@@ -268,7 +273,22 @@ microsoft.post('/token', async c => {
     );
   }
 
-  const user = await upsertUser(c, claims);
+  let user;
+  try {
+    user = await upsertUser(c, claims);
+  } catch (err) {
+    if (err instanceof Error && err.message === 'STUDENT_ALREADY_LINKED') {
+      return errorResponse(
+        c,
+        409,
+        'STUDENT_ALREADY_LINKED',
+        'この学生は既に別のMicrosoftアカウントと連携されています。'
+      );
+    }
+    throw err;
+  }
+  const { studentService } = c.get('container');
+  const student = await getStudentInfoOrNull(studentService, Number(user.id));
   const refreshTokenId = crypto.randomUUID();
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
 
@@ -317,7 +337,14 @@ microsoft.post('/token', async c => {
     refresh_token_id: refreshTokenId,
     token_type: 'Bearer',
     expires_in: jwtTtl,
-    user: userResponse(user, categories),
+    user: userResponse(
+      {
+        ...user,
+        student_id_number: student?.student_id_number ?? null,
+        class_room_name: student?.class_room_name ?? null,
+      },
+      categories
+    ),
   });
 });
 

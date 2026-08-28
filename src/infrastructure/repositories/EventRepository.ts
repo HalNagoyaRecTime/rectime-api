@@ -1,7 +1,12 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { and, asc, count, eq, SQL } from 'drizzle-orm';
 import * as schema from '../database/schema';
-import { events, gatherings, notification_schedules } from '../database/schema';
+import {
+  events,
+  gatherings,
+  gathering_group_members,
+  notification_schedules,
+} from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
 import type {
@@ -80,6 +85,31 @@ export function createEventRepository(db: D1Database): IEventRepository {
         .get();
 
       return result ? toEntity(result) : null;
+    },
+
+    async findByParticipantUserId(userId: number): Promise<EventEntity[]> {
+      const rows = await orm
+        .selectDistinct({
+          id: events.id,
+          name: events.name,
+          ruleText: events.ruleText,
+          venue: events.venue,
+          startTime: events.startTime,
+          endTime: events.endTime,
+          createdAt: events.createdAt,
+          updatedAt: events.updatedAt,
+        })
+        .from(gathering_group_members)
+        .innerJoin(
+          gatherings,
+          eq(gathering_group_members.gatheringId, gatherings.id)
+        )
+        .innerJoin(events, eq(gatherings.eventId, events.id))
+        .where(eq(gathering_group_members.userId, userId))
+        .orderBy(asc(events.startTime))
+        .all();
+
+      return rows.map(toEntity);
     },
 
     async create(event: EventWriteInput): Promise<EventEntity> {

@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import type { Env as Bindings } from '../../lib/env';
+import type { ContainerVariables } from '../middleware/diContainer';
 import { base64URLtoBytes } from '../../infrastructure/auth/base64url';
 import {
   BASE64_URL_PATTERN,
@@ -13,13 +14,19 @@ import {
   refreshMicrosoftAccessToken as infraRefreshToken,
 } from '../../infrastructure/auth/microsoftClient';
 import { createUserRepository } from '../../infrastructure/repositories/UserRepository';
+import { createStudentRepository } from '../../infrastructure/repositories/StudentRepository';
 import { createAuthService } from '../../application/services/authService';
+import type { IStudentService } from '../../application/services/IStudentService';
+import type { StudentDTO } from '../../application/dto/StudentDTO';
 
-export type AppContext = Context<{ Bindings: Bindings }>;
+export type AppContext = Context<{
+  Bindings: Bindings;
+  Variables: ContainerVariables;
+}>;
 
 export function errorResponse(
   c: AppContext,
-  status: 400 | 401 | 404 | 500,
+  status: 400 | 401 | 404 | 409 | 500,
   code: string,
   message: string
 ): Response {
@@ -68,6 +75,8 @@ export function userResponse(
     display_name: string;
     avatar_url?: string | null;
     avatar_updated_at?: string | null;
+    student_id_number: string | null;
+    class_room_name: string | null;
   },
   categories: UserCategories
 ) {
@@ -77,6 +86,8 @@ export function userResponse(
     display_name: user.display_name,
     avatar_url: user.avatar_url ?? ACCOUNT_PHOTO_PATH,
     avatar_updated_at: user.avatar_updated_at ?? null,
+    student_id_number: user.student_id_number,
+    class_room_name: user.class_room_name,
     is_student: categories.is_student,
     is_staff: categories.is_staff,
     is_teacher: categories.is_teacher,
@@ -145,8 +156,25 @@ export async function upsertUser(
   claims: IdTokenClaims
 ): Promise<AppUser> {
   const userRepository = createUserRepository(c.env.DB);
-  const authService = createAuthService(userRepository);
+  const studentRepository = createStudentRepository(c.env.DB);
+  const authService = createAuthService(
+    userRepository,
+    studentRepository,
+    c.env.STUDENT_EMAIL_DOMAIN
+  );
   return authService.upsertUser(claims);
+}
+
+export async function getStudentInfoOrNull(
+  studentService: IStudentService,
+  userId: number
+): Promise<StudentDTO | null> {
+  return studentService.getByUserId(userId).catch(err => {
+    if (err instanceof Error && err.message === 'Student not found') {
+      return null;
+    }
+    throw err;
+  });
 }
 
 export async function getUserCategories(

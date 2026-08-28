@@ -14,11 +14,14 @@ import {
 } from '../../infrastructure/masterImports/parseImportFile';
 import {
   getMasterImportSession,
+  hasMasterImportTombstone,
   saveMasterImportSession,
+  TTL_SECONDS,
 } from '../../infrastructure/masterImports/MasterImportStore';
 import type { IStudentService } from './IStudentService';
 import type { IClassRoomService } from './IClassRoomService';
 import type { ITeacherService } from './ITeacherService';
+import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { StudentImportRow } from '../dto/StudentDTO';
 import type { ClassRoomImportRow } from '../dto/ClassRoomDTO';
 import type { TeacherImportRow } from '../dto/TeacherDTO';
@@ -77,6 +80,10 @@ function toDTO(
     rows_offset: offset,
     created_at: session.created_at,
     committed_result: session.committed_result,
+    expires_at: new Date(
+      new Date(session.updated_at ?? session.created_at).getTime() +
+        TTL_SECONDS * 1000
+    ).toISOString(),
   };
 }
 
@@ -111,7 +118,8 @@ export function createMasterImportService(
   commitLock: DurableObjectNamespace<MasterImportCommitLock>,
   studentService: IStudentService,
   classRoomService: IClassRoomService,
-  teacherService: ITeacherService
+  teacherService: ITeacherService,
+  userRepository: IUserRepository
 ): IMasterImportService {
   async function validateByType(type: MasterImportType, rows: unknown[]) {
     if (type === 'students') {
@@ -146,6 +154,10 @@ export function createMasterImportService(
   }
 
   return {
+    async canManageImports(userId: number): Promise<boolean> {
+      return userRepository.isStaff(userId);
+    },
+
     async createImport(
       input: CreateMasterImportInput
     ): Promise<MasterImportSessionDTO> {
@@ -156,8 +168,11 @@ export function createMasterImportService(
 
       const validation = await validateByType(input.type, rows);
 
+      const now = new Date().toISOString();
+
       const session: MasterImportSession = {
         validated_file_id: crypto.randomUUID(),
+        create_user_id: input.createUserId,
         type: input.type,
         status: 'validated',
         file_name: input.fileName,
@@ -166,7 +181,8 @@ export function createMasterImportService(
         error_count: validation.error_count,
         errors: validation.errors,
         rows,
-        created_at: new Date().toISOString(),
+        created_at: now,
+        updated_at: now,
         committed_result: null,
       };
 
@@ -176,20 +192,36 @@ export function createMasterImportService(
 
     async getImport(
       validatedFileId: string,
-      pagination: { offset: number; limit: number }
+      pagination: { offset: number; limit: number },
+      createUserId: number
     ): Promise<MasterImportSessionDTO | null> {
       const session = await getMasterImportSession(kv, validatedFileId);
       if (!session) {
         return null;
       }
+      if (session.create_user_id !== createUserId) {
+        return null;
+      }
       return toDTO(session, pagination.offset, pagination.limit);
     },
 
+    async isExpiredImport(
+      validatedFileId: string,
+      createUserId: number
+    ): Promise<boolean> {
+      return hasMasterImportTombstone(kv, validatedFileId, createUserId);
+    },
+
     async commitImport(
-      validatedFileId: string
+      validatedFileId: string,
+      createUserId: number
     ): Promise<CommitMasterImportOutcome> {
       const session = await getMasterImportSession(kv, validatedFileId);
       if (!session) {
+        return { status: 'not_found' };
+      }
+
+      if (session.create_user_id !== createUserId) {
         return { status: 'not_found' };
       }
 
@@ -209,9 +241,9 @@ export function createMasterImportService(
       }
 
       const lockStub = commitLock.get(commitLock.idFromName(validatedFileId));
-      const acquired = await lockStub.tryBeginCommit();
+      const lockToken = await lockStub.tryBeginCommit();
 
-      if (!acquired) {
+      if (!lockToken) {
         for (let attempt = 0; attempt < COMMIT_WAIT_MAX_ATTEMPTS; attempt++) {
           await sleep(COMMIT_WAIT_POLL_INTERVAL_MS);
           const latest = await getMasterImportSession(kv, validatedFileId);
@@ -248,6 +280,7 @@ export function createMasterImportService(
         const updatedSession: MasterImportSession = {
           ...session,
           status: 'committed',
+          updated_at: new Date().toISOString(),
           committed_result: {
             imported: commitResult.imported,
             error_count: commitResult.error_count,
@@ -262,7 +295,7 @@ export function createMasterImportService(
           alreadyCommitted: false,
         };
       } finally {
-        await lockStub.releaseLock();
+        await lockStub.releaseLock(lockToken);
       }
     },
   };
