@@ -71,7 +71,7 @@ export function createFirebaseTokenController(
         fcmToken: parsedBody.data.fcmToken,
       });
 
-      return c.json(result);
+      return c.json(result, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'User not found') {
         return c.json({ error: error.message }, 404);
