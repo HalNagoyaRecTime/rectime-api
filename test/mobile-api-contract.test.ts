@@ -1,6 +1,6 @@
-import { parse } from 'yaml';
-import { describe, expect, it } from 'vitest';
-import swaggerYaml from '../public/swagger.yml?raw';
+import { env } from 'cloudflare:workers';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { app } from '../src/index';
 
 type OpenApiOperation = {
   security?: Array<Record<string, unknown>>;
@@ -18,14 +18,24 @@ type OpenApiDocument = {
   };
 };
 
-const document = parse(swaggerYaml) as OpenApiDocument;
+let document: OpenApiDocument;
+
+beforeAll(async () => {
+  const response = await app.fetch(
+    new Request('http://example.com/openapi.json'),
+    env
+  );
+
+  expect(response.status).toBe(200);
+  document = (await response.json()) as OpenApiDocument;
+});
 
 const mobileGetPaths = [
-  '/events',
-  '/events/{eventId}',
-  '/events/{eventId}/gatherings',
-  '/me/notifications',
-  '/me/notifications/{notificationId}',
+  '/api/v1/events',
+  '/api/v1/events/{eventId}',
+  '/api/v1/events/{eventId}/gatherings',
+  '/api/v1/me/notifications',
+  '/api/v1/me/notifications/{notificationId}',
 ] as const;
 
 describe('mobile API contract', () => {
@@ -35,7 +45,7 @@ describe('mobile API contract', () => {
       const operation = document.paths[path]?.get;
 
       expect(operation).toBeDefined();
-      expect(operation?.security).toContainEqual({ bearerAuth: [] });
+      expect(operation?.security).toContainEqual({ Bearer: [] });
       expect(operation?.responses).toHaveProperty('401');
     }
   );
@@ -78,10 +88,7 @@ describe('mobile API contract', () => {
         'related_event',
       ],
     ],
-    [
-      'MobileNotificationListResponse',
-      ['notifications', 'total', 'limit', 'offset'],
-    ],
+    ['MobileNotificationList', ['notifications', 'total', 'limit', 'offset']],
   ])(
     'keeps the %s response fields required by the mobile client',
     (schemaName, fields) => {
