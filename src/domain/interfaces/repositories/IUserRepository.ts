@@ -1,5 +1,7 @@
 import type { AppUser, UserCategories } from '../../auth/types';
 
+export type UserDeletionStatus = 'active' | 'deletion_pending' | 'deleted';
+
 export interface IUserRepository {
   exists(userId: number): Promise<boolean>;
   isStaffOrTeacher(userId: number): Promise<boolean>;
@@ -9,6 +11,7 @@ export interface IUserRepository {
     oid: string,
     tid: string
   ): Promise<string | null>;
+  getDeletionStatus(userId: string): Promise<UserDeletionStatus | null>;
   createUserWithMicrosoftLink(params: {
     oid: string;
     tid: string;

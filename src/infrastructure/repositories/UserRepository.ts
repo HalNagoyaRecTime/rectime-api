@@ -83,6 +83,15 @@ export function createUserRepository(db: D1Database): IUserRepository {
       return row ? String(row.userId) : null;
     },
 
+    async getDeletionStatus(userId) {
+      const row = await orm
+        .select({ deletionStatus: users.deletionStatus })
+        .from(users)
+        .where(eq(users.id, Number(userId)))
+        .get();
+      return row ? row.deletionStatus : null;
+    },
+
     async createUserWithMicrosoftLink({ oid, tid, sub, email, displayName }) {
       const now = new Date().toISOString();
 

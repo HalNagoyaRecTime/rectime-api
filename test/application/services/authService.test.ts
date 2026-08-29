@@ -38,6 +38,7 @@ describe('createAuthService', () => {
       isStaff: vi.fn(),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
+      getDeletionStatus: vi.fn().mockResolvedValue('active'),
       createUserWithMicrosoftLink: vi.fn(),
       updateUser: vi.fn(),
       linkMicrosoftAccount: vi.fn(),
@@ -69,6 +70,7 @@ describe('createAuthService', () => {
       isStaff: vi.fn(),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
+      getDeletionStatus: vi.fn().mockResolvedValue('active'),
       createUserWithMicrosoftLink: vi.fn(),
       updateUser: vi.fn(),
       linkMicrosoftAccount: vi.fn(),
@@ -113,6 +115,36 @@ describe('createAuthService', () => {
         displayName: '田中太郎',
       });
       expect(result).toEqual(updated);
+    });
+
+    it('既存ユーザーのdeletion_statusがdeletion_pendingの場合はACCOUNT_DELETION_PENDINGを投げる', async () => {
+      const { userRepository, service } = setup();
+      (
+        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockResolvedValue('user-1');
+      (
+        userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
+      ).mockResolvedValue('deletion_pending');
+
+      await expect(service.upsertUser(buildClaims())).rejects.toThrow(
+        'ACCOUNT_DELETION_PENDING'
+      );
+      expect(userRepository.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('既存ユーザーのdeletion_statusがdeletedの場合はACCOUNT_DELETION_PENDINGを投げる', async () => {
+      const { userRepository, service } = setup();
+      (
+        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockResolvedValue('user-1');
+      (
+        userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
+      ).mockResolvedValue('deleted');
+
+      await expect(service.upsertUser(buildClaims())).rejects.toThrow(
+        'ACCOUNT_DELETION_PENDING'
+      );
+      expect(userRepository.updateUser).not.toHaveBeenCalled();
     });
 
     it('既存ユーザーが見つかるが update が null を返す場合は USER_NOT_FOUND を投げる', async () => {

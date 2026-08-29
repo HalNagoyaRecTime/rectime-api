@@ -44,6 +44,12 @@ export function createAuthService(
       );
 
       if (existingUserId) {
+        const deletionStatus =
+          await userRepository.getDeletionStatus(existingUserId);
+        if (deletionStatus && deletionStatus !== 'active') {
+          throw new Error('ACCOUNT_DELETION_PENDING');
+        }
+
         const updated = await userRepository.updateUser({
           userId: existingUserId,
           oid: claims.oid,
