@@ -429,6 +429,22 @@ describe('POST /auth/microsoft/token', () => {
 
   it('webは成功時、ボディにcode_verifierが無くてもサーバー保存済みのものを使って交換しaccess_token/refresh_token_idを返す', async () => {
     const env = buildEnv();
+
+    // web token exchangeはstaff権限が無いと403になるため、既に
+    // Microsoftアカウントと紐付いた既存staffユーザーとしてログインし直す
+    // (2回目ログイン = updateUserの経路)ケースで検証する。
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-1', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+
     const now = Math.floor(Date.now() / 1000);
     const idToken = await signIdToken({
       sub: 'sub-1',
@@ -509,7 +525,7 @@ describe('POST /auth/microsoft/token', () => {
     expect(await env.AUTH_KV.get('pkce:state-1')).toBeNull();
   });
 
-  it('mobileは成功時、ボディのcode_verifierを使って交換しaccess_token/refresh_token_idを返す', async () => {
+  it('mobileは成功時、ボディのcode_verifierを使って交換しaccess_token/refresh_token_idを返す(staff権限は不要)', async () => {
     const env = buildEnv();
     const now = Math.floor(Date.now() / 1000);
     const idToken = await signIdToken({
@@ -673,7 +689,7 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.error?.code).toBe('STUDENT_ALREADY_LINKED');
   });
 
-  it('学生ユーザーが初回ログイン時、学籍番号から紐付いてstudent_id_number/class_room_nameを返す', async () => {
+  it('student + staffユーザーが初回ログイン時、既存Studentのuser_idでstaff判定されstudent_id_number/class_room_nameを返す', async () => {
     const env = buildEnv();
 
     const classRoom = await workerEnv.DB.prepare(
@@ -686,6 +702,9 @@ describe('POST /auth/microsoft/token', () => {
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 2, '60001')"
     )
       .bind(user!.user_id, classRoom!.class_room_id)
+      .run();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
       .run();
 
     const now = Math.floor(Date.now() / 1000);
@@ -739,7 +758,65 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.user.class_room_name).toBe('3年B組');
   });
 
-  it('学生でないユーザーがログインした場合、エラーにならずstudent_id_number/class_room_nameがnullで返る', async () => {
+  it('studentのみ(staffではない)ユーザーはWebログインできない', async () => {
+    const env = buildEnv();
+
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3C', '3年C組') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('学生三郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 3, '60002')"
+    )
+      .bind(user!.user_id, classRoom!.class_room_id)
+      .run();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-student-2',
+      oid: 'oid-student-2',
+      tid: 'tid-1',
+      name: '学生三郎',
+      preferred_username: 'nhs60002@nhs.hal.ac.jp',
+      nonce: 'nonce-student-2',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-student-2',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-student-2',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-student-2',
+          state: 'state-student-2',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('STAFF_REQUIRED');
+  });
+
+  it('staffではない新規ユーザーはWebログインできない', async () => {
     const env = buildEnv();
 
     const now = Math.floor(Date.now() / 1000);
@@ -780,14 +857,66 @@ describe('POST /auth/microsoft/token', () => {
       env
     );
 
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      user: {
-        student_id_number: string | null;
-        class_room_name: string | null;
-      };
-    };
-    expect(body.user.student_id_number).toBeNull();
-    expect(body.user.class_room_name).toBeNull();
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('STAFF_REQUIRED');
+  });
+
+  it('teacherのみ(staffではない)ユーザーはWebログインできない', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('教員花子') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-teacher-2', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-teacher-2',
+      oid: 'oid-teacher-2',
+      tid: 'tid-1',
+      name: '教員花子',
+      preferred_username: 'hanako@example.com',
+      nonce: 'nonce-teacher-2',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-teacher-2',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-teacher-2',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-teacher-2',
+          state: 'state-teacher-2',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('STAFF_REQUIRED');
   });
 });

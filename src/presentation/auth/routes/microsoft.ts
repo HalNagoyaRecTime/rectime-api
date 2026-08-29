@@ -287,6 +287,19 @@ microsoft.post('/token', async c => {
     }
     throw err;
   }
+
+  if (clientType === 'web') {
+    const isStaff = await c
+      .get('container')
+      .authorizationService.isStaff(Number(user.id));
+    if (!isStaff) {
+      return c.json(
+        { error: { code: 'STAFF_REQUIRED', message: 'staff権限が必要です' } },
+        403
+      );
+    }
+  }
+
   const { studentService } = c.get('container');
   const student = await getStudentInfoOrNull(studentService, Number(user.id));
   const refreshTokenId = crypto.randomUUID();
