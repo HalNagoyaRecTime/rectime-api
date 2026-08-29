@@ -17,6 +17,7 @@ type ClassRoomRow = {
   class_code: string;
   class_name: string;
   student_count: number;
+  team_id: number;
   teacher_id: number | null;
   teacher_user_id: number | null;
   teacher_display_name: string | null;
@@ -28,6 +29,7 @@ const classRoomSelect = `
     c.class_code,
     c.class_name,
     COUNT(s.student_id) AS student_count,
+    c.team_id,
     t.teacher_id,
     u.user_id AS teacher_user_id,
     u.user_name AS teacher_display_name
@@ -43,6 +45,7 @@ function toEntity(row: ClassRoomRow): ClassRoomEntity {
     class_code: row.class_code,
     class_name: row.class_name,
     student_count: Number(row.student_count),
+    team_id: row.team_id,
     teacher:
       row.teacher_id === null ||
       row.teacher_user_id === null ||
@@ -123,6 +126,24 @@ export function createClassRoomRepository(
     },
 
     async create(input: ClassRoomInput): Promise<ClassRoomEntity> {
+      if (input.team_id !== null) {
+        const row = await db
+          .prepare(
+            'INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id) VALUES (?, ?, ?, ?) RETURNING class_room_id'
+          )
+          .bind(
+            input.class_code,
+            input.class_name,
+            input.teacher_id,
+            input.team_id
+          )
+          .first<{ class_room_id: number }>();
+        if (!row) throw new Error('Failed to create class');
+        const classroom = await findById(row.class_room_id);
+        if (!classroom) throw new Error('Failed to fetch created class');
+        return classroom;
+      }
+
       const [, classRoomResult] = await db.batch<
         { team_id: number } | { class_room_id: number }
       >([
@@ -221,32 +242,50 @@ export function createClassRoomRepository(
     ): Promise<ClassRoomEntity | null> {
       const row = await db
         .prepare(
-          'UPDATE class_rooms SET class_code = ?, class_name = ?, teacher_id = ?, updated_at = CURRENT_TIMESTAMP WHERE class_room_id = ? RETURNING class_room_id'
+          `UPDATE class_rooms
+           SET class_code = ?, class_name = ?, teacher_id = ?,
+               team_id = COALESCE(?, team_id), updated_at = CURRENT_TIMESTAMP
+           WHERE class_room_id = ?
+           RETURNING class_room_id`
         )
-        .bind(input.class_code, input.class_name, input.teacher_id, id)
+        .bind(
+          input.class_code,
+          input.class_name,
+          input.teacher_id,
+          input.team_id ?? null,
+          id
+        )
         .first<{ class_room_id: number }>();
       return row ? findById(row.class_room_id) : null;
     },
 
     async delete(id: number): Promise<boolean> {
-      const row = await db
-        .prepare(
-          'DELETE FROM class_rooms WHERE class_room_id = ? RETURNING team_id'
-        )
+      const result = await db
+        .prepare('DELETE FROM class_rooms WHERE class_room_id = ?')
         .bind(id)
-        .first<{ team_id: number }>();
-      if (!row) return false;
-      await db
-        .prepare('DELETE FROM teams WHERE team_id = ?')
-        .bind(row.team_id)
         .run();
-      return true;
+      return (result.meta?.changes ?? 0) > 0;
     },
 
     async teacherExists(id: number): Promise<boolean> {
       const row = await db
         .prepare('SELECT teacher_id FROM teachers WHERE teacher_id = ?')
         .bind(id)
+        .first();
+      return row !== null;
+    },
+
+    async existsWithTeamId(
+      teamId: number,
+      excludeClassRoomId?: number
+    ): Promise<boolean> {
+      const row = await db
+        .prepare(
+          `SELECT 1 AS referenced FROM class_rooms
+           WHERE team_id = ? AND class_room_id != ?
+           LIMIT 1`
+        )
+        .bind(teamId, excludeClassRoomId ?? -1)
         .first();
       return row !== null;
     },

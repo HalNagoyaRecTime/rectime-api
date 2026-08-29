@@ -11,6 +11,7 @@ const classRoomRequestSchema = z.object({
   classCode: z.string().trim().min(1),
   className: z.string().trim().min(1),
   teacherId: z.number().int().positive().nullable(),
+  teamId: z.number().int().positive().optional(),
 });
 
 export function createClassRoomController(classService: IClassRoomService) {
@@ -72,6 +73,7 @@ export function createClassRoomController(classService: IClassRoomService) {
           class_code: body.data.classCode,
           class_name: body.data.className,
           teacher_id: body.data.teacherId,
+          team_id: body.data.teamId,
         }),
         201
       );
@@ -96,6 +98,7 @@ export function createClassRoomController(classService: IClassRoomService) {
           class_code: body.data.classCode,
           class_name: body.data.className,
           teacher_id: body.data.teacherId,
+          team_id: body.data.teamId,
         })
       );
     } catch (error) {
@@ -136,10 +139,16 @@ function handleWriteError(c: Context, error: unknown, fallback: string) {
   if (error instanceof Error && error.message === 'Teacher not found') {
     return c.json({ error: error.message }, 404);
   }
+  if (error instanceof Error && error.message === 'Team not found') {
+    return c.json({ error: error.message }, 404);
+  }
   if (error instanceof Error && error.message === 'Class not found') {
     return c.json({ error: error.message }, 404);
   }
   if (error instanceof Error && error.message === 'Class code already exists') {
+    return c.json({ error: error.message }, 409);
+  }
+  if (error instanceof Error && error.message === 'Team name already exists') {
     return c.json({ error: error.message }, 409);
   }
   return c.json(
