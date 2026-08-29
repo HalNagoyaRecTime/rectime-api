@@ -124,7 +124,7 @@
         // TODO: recwatchのPRごとのPreview URLに応じた動的化を別途検討する
         // (Refererヘッダーから取得しALLOWED_ORIGINSで検証する方式を予定)。
         // それまでは固定値。
-        "FRONTEND_URL": "https://recwatch.pages.dev",
+        "FRONTEND_URL": "https://develop.recwatch.pages.dev",
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
@@ -214,7 +214,7 @@
         "MICROSOFT_TENANT": "organizations",
         "ALLOWED_MICROSOFT_TENANTS": "8d41d6d7-36ce-4e0c-8c6d-cf2c54c39039",
         "MICROSOFT_MOBILE_REDIRECT_URI": "com.rectime.mobile://auth/callback",
-        "FRONTEND_URL": "https://recwatch.pages.dev",
+        "FRONTEND_URL": "https://staging.recwatch.pages.dev",
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
