@@ -16,9 +16,12 @@ CREATE TABLE team_scores (
 CREATE INDEX idx_team_scores_event_id ON team_scores(event_id);
 CREATE INDEX idx_team_scores_team_id ON team_scores(team_id);
 
--- 既存のclass_roomsを、そのクラス名をそのままチーム名としてteamsへ引き継ぐ
-INSERT INTO teams (team_name)
-SELECT class_name FROM class_rooms;
+-- 既存のclass_roomsを、そのクラス名をそのままチーム名としてteamsへ引き継ぐ。
+-- 並び順を保証しない問い合わせ同士をROW_NUMBER()等で突き合わせるのは危険なため、
+-- team_idにclass_room_idの値をそのまま明示的に採番する。
+-- これによりteam_idとclass_room_idが常に一致し、対応付けに関する仮定が一切不要になる。
+INSERT INTO teams (team_id, team_name)
+SELECT class_room_id, class_name FROM class_rooms;
 
 -- class_rooms.team_id はNOT NULLにするが、SQLite(D1)は既存行があるカラムを
 -- 後からNOT NULLに変更できない。また、students.class_room_id が class_rooms を
@@ -41,27 +44,14 @@ CREATE TABLE class_rooms (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 直前のINSERTでteamsはclass_rooms_legacyと同じ並び順(class_room_id昇順)で
--- 1行ずつ採番されているため、ROW_NUMBER()で突き合わせて対応するteam_idを引き継ぐ
+-- 直前のteams採番でteam_id = class_room_idとしているため、
+-- 対応するteam_idはclass_room_idの値をそのまま使えばよい。
 INSERT INTO class_rooms (
   class_room_id, class_code, class_name, teacher_id, team_id, created_at, updated_at
 )
 SELECT
-  c.class_room_id,
-  c.class_code,
-  c.class_name,
-  c.teacher_id,
-  t.team_id,
-  c.created_at,
-  c.updated_at
-FROM (
-  SELECT *, ROW_NUMBER() OVER (ORDER BY class_room_id) AS rn
-  FROM class_rooms_legacy
-) c
-JOIN (
-  SELECT team_id, ROW_NUMBER() OVER (ORDER BY team_id) AS rn
-  FROM teams
-) t ON t.rn = c.rn;
+  class_room_id, class_code, class_name, teacher_id, class_room_id, created_at, updated_at
+FROM class_rooms_legacy;
 
 -- students自体のスキーマ・データは変更せず、参照先だけを新しいclass_roomsに
 -- 向け直すために作り直す。
