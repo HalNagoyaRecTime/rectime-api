@@ -1,9 +1,13 @@
 CREATE TABLE teams (
   team_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- 複数クラスをまとめた編成名として運用されるため、重複は運用事故に
+  -- つながる。一意制約で防ぐ。
   team_name TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX uq_teams_team_name ON teams(team_name);
 
 CREATE TABLE team_scores (
   team_score_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -13,7 +17,10 @@ CREATE TABLE team_scores (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_team_scores_event_id ON team_scores(event_id);
+-- 同じイベント・同じチームの得点行が複数登録されることを防ぐ。
+-- (event_id, team_id)の複合一意索引はevent_id単体の絞り込みも
+-- 先頭列としてカバーできるため、別途event_id単体の索引は持たない。
+CREATE UNIQUE INDEX uq_team_scores_event_team ON team_scores(event_id, team_id);
 CREATE INDEX idx_team_scores_team_id ON team_scores(team_id);
 
 -- 既存のclass_roomsを、そのクラス名をそのままチーム名としてteamsへ引き継ぐ。
