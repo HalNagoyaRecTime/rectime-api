@@ -18,11 +18,11 @@ iOSリリース時に、認証・主要API・D1・デプロイで問題が発生
 
 ## 3. 環境一覧
 
-| 用途 | Worker | D1 | Queue | デプロイ契機 |
-| --- | --- | --- | --- | --- |
-| production | `rectime-api` | `rectime-api` | `rectime-notification-delivery` | `main`でDeploy Workflowを手動実行した場合のみ |
-| staging | `rectime-api-staging` | `rectime-api-staging` | `rectime-notification-delivery-staging` | `main`へのpush |
-| development | `rectime-api-development` | `rectime-api-dev` | `rectime-notification-delivery-dev` | `develop`へのpush／PRごとのプレビュー |
+| 用途 | Worker | ベースURL | D1 | Queue | デプロイ契機 |
+| --- | --- | --- | --- | --- | --- |
+| production | `rectime-api` | `https://rectime-api.rectime-project.workers.dev` | `rectime-api` | `rectime-notification-delivery` | `main`でDeploy Workflowを手動実行した場合のみ |
+| staging | `rectime-api-staging` | `https://rectime-api-staging.rectime-project.workers.dev` | `rectime-api-staging` | `rectime-notification-delivery-staging` | `main`へのpush |
+| development | `rectime-api-development` | `https://rectime-api-development.rectime-project.workers.dev` | `rectime-api-dev` | `rectime-notification-delivery-dev` | `develop`へのpush／PRごとのプレビュー |
 
 > `main`へのpushはstagingへ反映される。productionへ反映するには、`main`でDeploy Workflowを手動実行する必要がある。
 
@@ -31,7 +31,7 @@ iOSリリース時に、認証・主要API・D1・デプロイで問題が発生
 旧preview環境は廃止済みで、PRごとのプレビューはdevelopment環境へ統合されている。PRごとに`pr-<番号>-rectime-api-development.<subdomain>.workers.dev`が払い出され、D1、KV、Queueはdevelopment環境と共用する。
 
 - プレビュー専用の保存領域を新規作成しない
-- 存在しないPreview BindingのDashboard上での応急追加
+- 障害時に不足するPreview BindingをDashboardで応急追加しない
 - 障害調査時は、環境一覧と`wrangler.jsonc`、`.github/workflows/deploy.yml`が一致していることを確認する
 
 ## 4. 権限と担当
@@ -126,9 +126,12 @@ iOSでMicrosoftログイン後、Token値を画面やログへ出力せずに以
 
 ### 6.3 代表API
 
-Bearer Tokenを安全なローカル環境変数へ一時設定し、履歴に残さない端末で実行する。
+Bearer Tokenを画面とShell履歴へ残さないよう、以下のコマンドで一時的に読み込む。入力後にEnterを押してもTokenは表示されない。
 
 ```shell
+read -rs ACCESS_TOKEN
+echo
+
 curl --fail-with-body --silent --show-error \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H "X-Client-Type: mobile" \
@@ -177,7 +180,7 @@ npx wrangler tail rectime-api --format pretty
 ### 7.3 API 5xx
 
 1. 発生時刻、Endpoint、HTTP Method、Status、request IDがあれば記録する。
-2. 同じEndpointをdevelopment／stagingで再現できるか確認する。
+2. 同じEndpointを、環境一覧のベースURLを使用してdevelopment／stagingで再現できるか確認する。
 3. Workers Logsのexceptionと直前のDeploy SHAを照合する。
 4. D1エラーの場合はMigration状態とテーブル存在を確認する。
 5. 外部サービス障害の場合はMicrosoft／Firebase／CloudflareのStatusを確認する。
