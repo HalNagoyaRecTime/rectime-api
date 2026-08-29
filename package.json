@@ -1,38 +1,53 @@
 {
   "name": "recreation-management-api",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
-    "dev": "tsx --watch src/index.ts",
-    "dev:wrangler": "wrangler dev",
+    "dev": "wrangler dev --env development --ip 0.0.0.0",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
-    "db:migrate --remote": "wrangler d1 migrations apply rec_time_stg --remote",
-    "db:migrate --local": "wrangler d1 migrations apply rec_time_stg --local",
+    "db:migrate:remote": "wrangler d1 migrations apply rectime-api --remote",
+    "db:migrate:local": "wrangler d1 migrations apply rectime-api-dev --local --env development",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "format:fix": "prettier --write .",
     "lint": "eslint .",
-    "type-check": "tsc --noEmit"
+    "prepare": "husky",
+    "type-check": "tsc --noEmit",
+    "check": "npm run format:check && npm run lint && npm run type-check",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.2",
-    "@prisma/adapter-d1": "^5.22.0",
-    "@prisma/client": "^5.22.0",
+    "@hono/swagger-ui": "^0.6.1",
+    "@hono/zod-openapi": "^0.19.10",
     "crypto": "^1.0.1",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.9.6",
+    "read-excel-file": "^9.3.5",
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.16.18",
     "@cloudflare/workers-types": "^4.20250909.0",
     "@typescript-eslint/eslint-plugin": "^8.43.0",
     "@typescript-eslint/parser": "^8.43.0",
+    "@vitest/coverage-istanbul": "^4.1.9",
+    "@vitest/ui": "^4.1.9",
     "eslint": "^9.35.0",
     "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.6.2",
-    "prisma": "^5.22.0",
     "tsx": "^4.4.0",
     "typescript": "^5.9.2",
+    "vitest": "^4.1.9",
     "wrangler": "^4.4.0"
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  "packageManager": "npm@10.9.2"
 }

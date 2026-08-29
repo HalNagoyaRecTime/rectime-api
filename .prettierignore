@@ -4,3 +4,5 @@ dist/
 migrations/
 package-lock.json
 *.md
+*.yml
+.idea/httpRequests/

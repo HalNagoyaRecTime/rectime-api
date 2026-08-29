@@ -12,10 +12,27 @@ export default [
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: 'module',
+        projectService: {
+          allowDefaultProject: ['*.config.ts'],
+        },
+        tsconfigRootDir: import.meta.dirname,
       },
       globals: {
+        atob: 'readonly',
+        btoa: 'readonly',
         console: 'readonly',
+        crypto: 'readonly',
+        CryptoKey: 'readonly',
+        fetch: 'readonly',
         process: 'readonly',
+        ExecutionContext: 'readonly',
+        Response: 'readonly',
+        ScheduledEvent: 'readonly',
+        TextDecoder: 'readonly',
+        TextEncoder: 'readonly',
+        Request: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
       },
     },
     plugins: {
@@ -23,6 +40,8 @@ export default [
     },
     rules: {
       ...tseslint.configs.recommended.rules,
+      'no-undef': 'off',
+      '@typescript-eslint/no-deprecated': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_' },
