@@ -124,7 +124,7 @@
         // TODO: recwatchのPRごとのPreview URLに応じた動的化を別途検討する
         // (Refererヘッダーから取得しALLOWED_ORIGINSで検証する方式を予定)。
         // それまでは固定値。
-        "FRONTEND_URL": "https://recwatch.pages.dev",
+        "FRONTEND_URL": "https://develop.recwatch.pages.dev",
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
