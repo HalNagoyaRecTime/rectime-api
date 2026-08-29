@@ -18,22 +18,21 @@ iOSリリース時に、認証・主要API・D1・デプロイで問題が発生
 
 ## 3. 環境一覧
 
-| 用途 | Worker | D1 | Queue | 備考 |
+| 用途 | Worker | D1 | Queue | デプロイ契機 |
 | --- | --- | --- | --- | --- |
-| production | `rectime-api` | `rectime-api` | `rectime-notification-delivery` | `main`からデプロイ |
-| development | `rectime-api-development` | `rectime-api-dev` | `rectime-notification-delivery-dev` | 開発・疎通確認用 |
-| staging | `rectime-api-staging` | PR #204の設定を確認 | PR #204の設定を確認 | PR #204 merge後に正式利用 |
-| preview | 廃止予定 | developmentと共用していた | developmentと共用していた | 新規の運用手順では使用しない |
+| production | `rectime-api` | `rectime-api` | `rectime-notification-delivery` | `main`でDeploy Workflowを手動実行した場合のみ |
+| staging | `rectime-api-staging` | `rectime-api-staging` | `rectime-notification-delivery-staging` | `main`へのpush |
+| development | `rectime-api-development` | `rectime-api-dev` | `rectime-notification-delivery-dev` | `develop`へのpush／PRごとのプレビュー |
 
-### 環境移行中の注意
+> `main`へのpushはstagingへ反映される。productionへ反映するには、`main`でDeploy Workflowを手動実行する必要がある。
 
-2026-08-21時点では、Repositoryの`wrangler.jsonc`と`.github/workflows/deploy.yml`に旧Preview設定が残っている。チーム方針によりPreviewは廃止し、developmentへ移行予定である。
+### プレビュー環境について
 
-以下は移行完了まで実行しない。
+旧preview環境は廃止済みで、PRごとのプレビューはdevelopment環境へ統合されている。PRごとに`pr-<番号>-rectime-api-development.<subdomain>.workers.dev`が払い出され、D1、KV、Queueはdevelopment環境と共用する。
 
-- Preview専用KVの新規作成
+- プレビュー専用の保存領域を新規作成しない
 - 存在しないPreview BindingのDashboard上での応急追加
-- Previewを前提としたiOS E2Eの完了判定
+- 障害調査時は、環境一覧と`wrangler.jsonc`、`.github/workflows/deploy.yml`が一致していることを確認する
 
 ## 4. 権限と担当
 
@@ -60,7 +59,7 @@ iOSリリース時に、認証・主要API・D1・デプロイで問題が発生
 
 1. 対象Commit SHAとリリース担当者を記録する。
 2. CIの`format:check`、`lint`、`type-check`、`test`が成功していることを確認する。
-3. Deploy Workflowの対象branch、Worker、D1が想定どおりであることを確認する。
+3. Deploy Workflowの対象branch、Worker、D1が想定どおりであり、本Runbookの環境一覧と`wrangler.jsonc`、`.github/workflows/deploy.yml`が一致していることを確認する。
 4. 未解決のBlocking Issueがないことを確認する。
 
 ### 5.2 Secretと環境変数
@@ -246,7 +245,7 @@ npx wrangler rollback <VERSION_ID> \
 - Worker RollbackではD1 data／schema、KV、Queueは戻らない。
 - 旧Workerが現在のD1 schemaと互換性を持つか確認する。
 - Binding先Resourceが削除・変更されている場合、Rollbackできないことがある。
-- Rollback後に`/health`、`/auth/me`、代表APIを再確認する。
+- Rollback後に`/health`、`/api/v1/auth/me`、代表APIを再確認する。
 
 ### 9.3 D1 Restore
 
@@ -265,13 +264,16 @@ npx wrangler d1 time-travel restore rectime-api --bookmark "<BOOKMARK>"
 
 - [ ] 対象Commit SHAと担当者を記録した
 - [ ] CIがすべて成功している
+- [ ] 本Runbookの環境一覧が`wrangler.jsonc`と`.github/workflows/deploy.yml`に一致している
 - [ ] Deploy対象Worker／D1を確認した
 - [ ] 未適用Migrationを確認した
 - [ ] production D1のTime Travel bookmarkを記録した
 - [ ] Secret／Bindingの名前と設定有無を確認した
 - [ ] `EVENT_DATE`が`YYYY-MM-DD`形式で実際のイベント開催日（JST）と一致している
+- [ ] `main`でDeploy Workflowを手動実行し、production環境で成功したことを確認した
+- [ ] `npx wrangler deployments list --name rectime-api`で対象Commit SHAがproductionへ反映されていることを確認した
 - [ ] `/health`が`200`を返す
-- [ ] iOSログインと`/auth/me`が成功する
+- [ ] iOSログインと`/api/v1/auth/me`が成功する
 - [ ] イベント一覧／詳細を取得できる
 - [ ] Android／Webの主要認証に回帰がない
 
@@ -306,8 +308,6 @@ Rollback判断者:
 
 ## 12. 現時点の残作業
 
-- [ ] PR #204を基準にstagingの正式なWorker／D1／Queue名を確定する
-- [ ] Preview廃止後のDeploy Workflowと本Runbookを同期する
 - [ ] development環境でSmoke Testを実行する
 - [ ] staging環境で本Runbookを1回通して実施記録を残す
 - [ ] production設定は値を公開せずBindingとEndpointだけ確認する
