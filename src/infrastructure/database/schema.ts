@@ -310,27 +310,38 @@ export const microsoft_account_links = sqliteTable('microsoft_account_links', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const teams = sqliteTable('teams', {
-  id: integer('team_id').primaryKey({ autoIncrement: true }),
-  name: text('team_name').notNull(),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const teams = sqliteTable(
+  'teams',
+  {
+    id: integer('team_id').primaryKey({ autoIncrement: true }),
+    name: text('team_name').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [uniqueIndex('uq_teams_team_name').on(table.name)]
+);
 
-export const team_scores = sqliteTable('team_scores', {
-  id: integer('team_score_id').primaryKey({ autoIncrement: true }),
-  eventId: integer('event_id')
-    .notNull()
-    .references(() => events.id),
-  teamId: integer('team_id')
-    .notNull()
-    .references(() => teams.id),
-  scores: integer('scores').notNull(),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const team_scores = sqliteTable(
+  'team_scores',
+  {
+    id: integer('team_score_id').primaryKey({ autoIncrement: true }),
+    eventId: integer('event_id')
+      .notNull()
+      .references(() => events.id),
+    teamId: integer('team_id')
+      .notNull()
+      .references(() => teams.id),
+    scores: integer('scores').notNull(),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    uniqueIndex('uq_team_scores_event_team').on(table.eventId, table.teamId),
+    index('idx_team_scores_team_id').on(table.teamId),
+  ]
+);
