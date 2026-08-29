@@ -106,6 +106,7 @@ describe('ClassRoomRepository', () => {
       class_code: '13A',
       class_name: '3年Aクラス',
       teacher_id: null,
+      team_id: null,
     });
     expect(created).toMatchObject({
       class_code: '13A',
@@ -118,6 +119,7 @@ describe('ClassRoomRepository', () => {
       class_code: '13B',
       class_name: '3年Bクラス',
       teacher_id: null,
+      team_id: null,
     });
     expect(updated).toMatchObject({
       class_code: '13B',
@@ -127,12 +129,101 @@ describe('ClassRoomRepository', () => {
     await expect(repo.findById(created.class_room_id)).resolves.toBeNull();
   });
 
+  it('既存のteam_idを指定して作成すると、そのteamをそのまま使い新規teamを作らない', async () => {
+    const base = await repo.create({
+      class_code: '16A',
+      class_name: '6年Aクラス',
+      teacher_id: null,
+      team_id: null,
+    });
+
+    const joined = await repo.create({
+      class_code: '16B',
+      class_name: '6年Bクラス（合同）',
+      teacher_id: null,
+      team_id: base.team_id,
+    });
+
+    expect(joined.team_id).toBe(base.team_id);
+  });
+
+  it('deleteはclass_roomの行だけを削除し、teamの削除有無は判断しない（判断はApplication層の責務）', async () => {
+    const base = await repo.create({
+      class_code: '17A',
+      class_name: '7年Aクラス',
+      teacher_id: null,
+      team_id: null,
+    });
+    const joined = await repo.create({
+      class_code: '17B',
+      class_name: '7年Bクラス（合同）',
+      teacher_id: null,
+      team_id: base.team_id,
+    });
+
+    await expect(repo.delete(joined.class_room_id)).resolves.toBe(true);
+    await expect(repo.findById(base.class_room_id)).resolves.toMatchObject({
+      team_id: base.team_id,
+    });
+
+    // 他のclass_roomがまだ参照していてもいなくても、deleteはteamに手を出さない。
+    const teamRow = await env.DB.prepare(
+      'SELECT team_id FROM teams WHERE team_id = ?'
+    )
+      .bind(base.team_id)
+      .first();
+    expect(teamRow).not.toBeNull();
+
+    await expect(repo.delete(base.class_room_id)).resolves.toBe(true);
+    const teamRowAfterLastDelete = await env.DB.prepare(
+      'SELECT team_id FROM teams WHERE team_id = ?'
+    )
+      .bind(base.team_id)
+      .first();
+    expect(teamRowAfterLastDelete).not.toBeNull();
+  });
+
+  describe('existsWithTeamId', () => {
+    it('他のclass_roomが同じteamを参照していればtrueを返す', async () => {
+      const base = await repo.create({
+        class_code: '18A',
+        class_name: '8年Aクラス',
+        teacher_id: null,
+        team_id: null,
+      });
+      const joined = await repo.create({
+        class_code: '18B',
+        class_name: '8年Bクラス（合同）',
+        teacher_id: null,
+        team_id: base.team_id,
+      });
+
+      await expect(
+        repo.existsWithTeamId(base.team_id, joined.class_room_id)
+      ).resolves.toBe(true);
+    });
+
+    it('自分自身しか参照していなければfalseを返す（excludeで自分自身を除外する）', async () => {
+      const base = await repo.create({
+        class_code: '19A',
+        class_name: '9年Aクラス',
+        teacher_id: null,
+        team_id: null,
+      });
+
+      await expect(
+        repo.existsWithTeamId(base.team_id, base.class_room_id)
+      ).resolves.toBe(false);
+    });
+  });
+
   it('class_codeの一意制約を適用する', async () => {
     await expect(
       repo.create({
         class_code: 'IA14A',
         class_name: '重複クラス',
         teacher_id: null,
+        team_id: null,
       })
     ).rejects.toThrow(/UNIQUE/);
   });
@@ -182,8 +273,18 @@ describe('ClassRoomRepository', () => {
   describe('createMany', () => {
     it('複数のクラスをまとめて作成する', async () => {
       await repo.createMany([
-        { class_code: '14D', class_name: '4年Dクラス', teacher_id: null },
-        { class_code: '14E', class_name: '4年Eクラス', teacher_id: null },
+        {
+          class_code: '14D',
+          class_name: '4年Dクラス',
+          teacher_id: null,
+          team_id: null,
+        },
+        {
+          class_code: '14E',
+          class_name: '4年Eクラス',
+          teacher_id: null,
+          team_id: null,
+        },
       ]);
 
       await expect(repo.findByCode('14D')).resolves.toMatchObject({
@@ -204,8 +305,18 @@ describe('ClassRoomRepository', () => {
     it('class_codeが重複する行がある場合は1件も登録しない', async () => {
       await expect(
         repo.createMany([
-          { class_code: '15A', class_name: '5年Aクラス', teacher_id: null },
-          { class_code: 'IA14A', class_name: '重複クラス', teacher_id: null },
+          {
+            class_code: '15A',
+            class_name: '5年Aクラス',
+            teacher_id: null,
+            team_id: null,
+          },
+          {
+            class_code: 'IA14A',
+            class_name: '重複クラス',
+            teacher_id: null,
+            team_id: null,
+          },
         ])
       ).rejects.toThrow();
 
@@ -217,6 +328,7 @@ describe('ClassRoomRepository', () => {
         class_code: `BULK2K-${i}`,
         class_name: `一括クラス${i}`,
         teacher_id: null,
+        team_id: null,
       }));
 
       await repo.createMany(inputs);

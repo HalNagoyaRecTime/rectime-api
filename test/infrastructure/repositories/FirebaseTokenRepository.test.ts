@@ -27,7 +27,7 @@ describe('FirebaseTokenRepository', () => {
     await env.DB.prepare('DELETE FROM firebase_tokens').run();
     const classRoom = await insertClassRoomWithTeam(env.DB, {
       classCode: `FIREBASE-TEST-${sequence}`,
-      className: 'Firebaseトークンテスト用学級',
+      className: `Firebaseトークンテスト用学級${sequence}`,
     });
     classRoomId = classRoom.classRoomId;
     repository = createFirebaseTokenRepository(env.DB);

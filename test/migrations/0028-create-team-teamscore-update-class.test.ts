@@ -22,8 +22,9 @@ async function prepareLegacySchema() {
     env.DB.prepare('DROP INDEX IF EXISTS idx_class_rooms_team_id'),
     env.DB.prepare('DROP INDEX IF EXISTS uq_class_rooms_class_code'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_class_rooms_teacher_id'),
-    env.DB.prepare('DROP INDEX IF EXISTS idx_team_scores_event_id'),
+    env.DB.prepare('DROP INDEX IF EXISTS uq_team_scores_event_team'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_team_scores_team_id'),
+    env.DB.prepare('DROP INDEX IF EXISTS uq_teams_team_name'),
     env.DB.prepare('ALTER TABLE students RENAME TO students_backup'),
     env.DB.prepare('ALTER TABLE class_rooms RENAME TO class_rooms_backup'),
     env.DB.prepare('ALTER TABLE team_scores RENAME TO team_scores_backup'),
@@ -57,8 +58,9 @@ async function prepareLegacySchema() {
 
 async function restoreCurrentSchema() {
   await env.DB.batch([
-    env.DB.prepare('DROP INDEX IF EXISTS idx_team_scores_event_id'),
+    env.DB.prepare('DROP INDEX IF EXISTS uq_team_scores_event_team'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_team_scores_team_id'),
+    env.DB.prepare('DROP INDEX IF EXISTS uq_teams_team_name'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_class_rooms_team_id'),
     env.DB.prepare('DROP INDEX IF EXISTS uq_class_rooms_class_code'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_class_rooms_teacher_id'),
@@ -81,8 +83,9 @@ async function restoreCurrentSchema() {
     env.DB.prepare(
       'CREATE INDEX idx_class_rooms_team_id ON class_rooms(team_id)'
     ),
+    env.DB.prepare('CREATE UNIQUE INDEX uq_teams_team_name ON teams(team_name)'),
     env.DB.prepare(
-      'CREATE INDEX idx_team_scores_event_id ON team_scores(event_id)'
+      'CREATE UNIQUE INDEX uq_team_scores_event_team ON team_scores(event_id, team_id)'
     ),
     env.DB.prepare(
       'CREATE INDEX idx_team_scores_team_id ON team_scores(team_id)'
