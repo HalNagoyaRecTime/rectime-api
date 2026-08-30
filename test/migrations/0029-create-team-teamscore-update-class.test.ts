@@ -251,4 +251,145 @@ describe('0029_create_team_teamscore_update_class.sql', () => {
       .all();
     expect(teams.results).toHaveLength(2);
   });
+
+  it('学生データは移行後も内容と所属が保たれる', async () => {
+    await prepareLegacySchema();
+    const ROOM = 900501;
+    await env.DB.prepare(
+      'INSERT INTO class_rooms (class_room_id, class_code, class_name) VALUES (?, ?, ?)'
+    )
+      .bind(ROOM, '90I', 'テスト90I組')
+      .run();
+
+    const USER = 900601;
+    const STUDENT = 900701;
+    await env.DB.prepare('INSERT INTO users (user_id, user_name) VALUES (?, ?)')
+      .bind(USER, 'テスト太郎')
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO students
+         (student_id, user_id, class_room_id, attendance_number, student_id_number)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+      .bind(STUDENT, USER, ROOM, 7, 'S900701')
+      .run();
+
+    await runMigration();
+
+    const student = await env.DB.prepare(
+      'SELECT * FROM students WHERE student_id = ?'
+    )
+      .bind(STUDENT)
+      .first();
+    expect(student).toMatchObject({
+      user_id: USER,
+      class_room_id: ROOM,
+      attendance_number: 7,
+      student_id_number: 'S900701',
+    });
+
+    const foreignKeys = await env.DB.prepare(
+      'PRAGMA foreign_key_list(students)'
+    ).all<{ table: string; from: string; to: string }>();
+    expect(foreignKeys.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          table: 'class_rooms',
+          from: 'class_room_id',
+          to: 'class_room_id',
+        }),
+      ])
+    );
+
+    const foreignKeyErrors = await env.DB.prepare(
+      'PRAGMA foreign_key_check'
+    ).all();
+    expect(foreignKeyErrors.results).toEqual([]);
+  });
+
+  it('同じクラスに複数の学生がいても全員移行される', async () => {
+    await prepareLegacySchema();
+    const ROOM = 900502;
+    await env.DB.prepare(
+      'INSERT INTO class_rooms (class_room_id, class_code, class_name) VALUES (?, ?, ?)'
+    )
+      .bind(ROOM, '90J', 'テスト90J組')
+      .run();
+
+    const USER_A = 900602;
+    const USER_B = 900603;
+    const STUDENT_A = 900702;
+    const STUDENT_B = 900703;
+    await env.DB.prepare(
+      'INSERT INTO users (user_id, user_name) VALUES (?, ?), (?, ?)'
+    )
+      .bind(USER_A, 'テスト花子', USER_B, 'テスト次郎')
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO students
+         (student_id, user_id, class_room_id, attendance_number, student_id_number)
+       VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`
+    )
+      .bind(
+        STUDENT_A,
+        USER_A,
+        ROOM,
+        1,
+        'S900702',
+        STUDENT_B,
+        USER_B,
+        ROOM,
+        2,
+        'S900703'
+      )
+      .run();
+
+    await runMigration();
+
+    const students = await env.DB.prepare(
+      'SELECT student_id FROM students WHERE class_room_id = ? ORDER BY student_id'
+    )
+      .bind(ROOM)
+      .all<{ student_id: number }>();
+    expect(students.results.map(row => row.student_id)).toEqual([
+      STUDENT_A,
+      STUDENT_B,
+    ]);
+  });
+
+  it('移行後もstudent_idのAUTOINCREMENT採番が既存の最大値から継続する', async () => {
+    await prepareLegacySchema();
+    const ROOM = 900503;
+    const USER = 900604;
+    const STUDENT = 900704;
+    await env.DB.prepare(
+      'INSERT INTO class_rooms (class_room_id, class_code, class_name) VALUES (?, ?, ?)'
+    )
+      .bind(ROOM, '90K', 'テスト90K組')
+      .run();
+    await env.DB.prepare('INSERT INTO users (user_id, user_name) VALUES (?, ?)')
+      .bind(USER, 'テスト三郎')
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO students
+         (student_id, user_id, class_room_id, attendance_number, student_id_number)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+      .bind(STUDENT, USER, ROOM, 1, 'S900704')
+      .run();
+
+    await runMigration();
+
+    const nextUser = await env.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('テスト四郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const next = await env.DB.prepare(
+      `INSERT INTO students
+         (user_id, class_room_id, attendance_number, student_id_number)
+       VALUES (?, ?, ?, ?) RETURNING student_id`
+    )
+      .bind(nextUser!.user_id, ROOM, 2, 'S900705')
+      .first<{ student_id: number }>();
+    expect(next!.student_id).toBeGreaterThan(STUDENT);
+  });
 });
