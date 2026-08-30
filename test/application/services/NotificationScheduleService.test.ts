@@ -28,6 +28,7 @@ describe('NotificationScheduleService', () => {
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
       getDeletionStatus: vi.fn(),
+      markAsDeleted: vi.fn(),
       createUserWithMicrosoftLink: vi.fn(),
       updateUser: vi.fn(),
       linkMicrosoftAccount: vi.fn(),

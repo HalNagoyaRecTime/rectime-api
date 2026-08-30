@@ -336,4 +336,53 @@ describe('UserRepository', () => {
       ).resolves.toBeNull();
     });
   });
+
+  describe('markAsDeleted', () => {
+    it('deletion_statusをdeletedにし、microsoft_account_linksを削除する', async () => {
+      const created = await repo.createUserWithMicrosoftLink({
+        oid: 'oid-deleted-1',
+        tid: 'tid-deleted-1',
+        sub: 'sub-deleted-1',
+        email: 'tanaka@example.com',
+        displayName: '田中太郎',
+      });
+
+      await expect(repo.markAsDeleted(created.id)).resolves.toBe(true);
+
+      const userRow = await env.DB.prepare(
+        'SELECT deletion_status, deleted_at FROM users WHERE user_id = ?'
+      )
+        .bind(created.id)
+        .first<{ deletion_status: string; deleted_at: string | null }>();
+      expect(userRow?.deletion_status).toBe('deleted');
+      expect(userRow?.deleted_at).not.toBeNull();
+
+      const link = await env.DB.prepare(
+        'SELECT * FROM microsoft_account_links WHERE user_id = ?'
+      )
+        .bind(created.id)
+        .first();
+      expect(link).toBeNull();
+
+      // links が消えているため、同じ oid/tid では既存ユーザーとして
+      // 見つからなくなる(再登録時に新規作成経路へ進める)。
+      await expect(
+        repo.findUserIdByMicrosoftAccount('oid-deleted-1', 'tid-deleted-1')
+      ).resolves.toBeNull();
+    });
+
+    it('存在しないuserIdの場合はfalseを返す', async () => {
+      await expect(repo.markAsDeleted('999999')).resolves.toBe(false);
+    });
+
+    it('microsoft_account_linksが無いユーザーでも冪等に成功する', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('リンク無し') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(repo.markAsDeleted(String(user!.user_id))).resolves.toBe(
+        true
+      );
+    });
+  });
 });

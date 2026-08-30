@@ -191,5 +191,33 @@ export function createUserRepository(db: D1Database): IUserRepository {
       if (!user) return null;
       return { id: userId, oid, tid, sub, email, display_name: displayName };
     },
+
+    async markAsDeleted(userId) {
+      const now = new Date().toISOString();
+
+      const updated = await orm
+        .update(users)
+        .set({
+          deletionStatus: 'deleted',
+          deletedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(users.id, Number(userId)))
+        .returning({ id: users.id })
+        .get();
+      if (!updated) return false;
+
+      // microsoft_account_linksの削除は、再登録時に
+      // findUserIdByMicrosoftAccountがこの(削除済みの)userIdを
+      // 誤って返さないようにするための後始末。updateが既に完了した後の
+      // 削除失敗は、同じuserIdで再実行すれば解消できる(updateは
+      // deletionStatusが既にdeletedでも冪等に成功する)。
+      await orm
+        .delete(microsoft_account_links)
+        .where(eq(microsoft_account_links.userId, Number(userId)))
+        .run();
+
+      return true;
+    },
   };
 }

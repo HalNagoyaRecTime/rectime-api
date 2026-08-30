@@ -114,6 +114,7 @@ function buildUserRepository(
     createUserWithMicrosoftLink: vi.fn(),
     updateUser: vi.fn(),
     linkMicrosoftAccount: vi.fn(),
+    markAsDeleted: vi.fn(),
     ...overrides,
   };
 }

@@ -42,6 +42,7 @@ describe('createAuthService', () => {
       createUserWithMicrosoftLink: vi.fn(),
       updateUser: vi.fn(),
       linkMicrosoftAccount: vi.fn(),
+      markAsDeleted: vi.fn(),
     };
     const studentRepository: IStudentRepository = {
       findById: vi.fn(),
@@ -74,6 +75,7 @@ describe('createAuthService', () => {
       createUserWithMicrosoftLink: vi.fn(),
       updateUser: vi.fn(),
       linkMicrosoftAccount: vi.fn(),
+      markAsDeleted: vi.fn(),
     };
     const studentRepository: IStudentRepository = {
       findById: vi.fn(),
