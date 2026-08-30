@@ -217,6 +217,139 @@ describe('ClassRoomRepository', () => {
     });
   });
 
+  describe('deleteAndCleanupTeam', () => {
+    it('他のclass_roomがteamを参照していなければ、クラス削除とあわせてteamも削除する', async () => {
+      const base = await repo.create({
+        class_code: '21A',
+        class_name: '1年Aクラス',
+        teacher_id: null,
+        team_id: null,
+      });
+
+      await expect(
+        repo.deleteAndCleanupTeam(base.class_room_id, base.team_id)
+      ).resolves.toBe(true);
+
+      await expect(repo.findById(base.class_room_id)).resolves.toBeNull();
+      const teamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.team_id)
+        .first();
+      expect(teamRow).toBeNull();
+    });
+
+    it('他のclass_roomがteamを参照していれば、クラス削除だけ行いteamは残す', async () => {
+      const base = await repo.create({
+        class_code: '21B',
+        class_name: '1年Bクラス',
+        teacher_id: null,
+        team_id: null,
+      });
+      const joined = await repo.create({
+        class_code: '21C',
+        class_name: '1年Cクラス（合同）',
+        teacher_id: null,
+        team_id: base.team_id,
+      });
+
+      await expect(
+        repo.deleteAndCleanupTeam(joined.class_room_id, base.team_id)
+      ).resolves.toBe(true);
+
+      const teamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.team_id)
+        .first();
+      expect(teamRow).not.toBeNull();
+    });
+
+    it('存在しないclass_room_idの場合はfalseを返す', async () => {
+      await expect(repo.deleteAndCleanupTeam(999999, 999999)).resolves.toBe(
+        false
+      );
+    });
+  });
+
+  describe('updateAndCleanupTeam', () => {
+    it('team_idを変更し、移動元teamに他のclass_roomがなければ移動元teamも削除する', async () => {
+      const base = await repo.create({
+        class_code: '22A',
+        class_name: '2年Aクラス',
+        teacher_id: null,
+        team_id: null,
+      });
+      const destination = await repo.create({
+        class_code: '22B',
+        class_name: '2年Bクラス',
+        teacher_id: null,
+        team_id: null,
+      });
+
+      const updated = await repo.updateAndCleanupTeam(
+        base.class_room_id,
+        {
+          class_code: base.class_code,
+          class_name: base.class_name,
+          teacher_id: null,
+          team_id: destination.team_id,
+        },
+        base.team_id
+      );
+
+      expect(updated?.team_id).toBe(destination.team_id);
+      const oldTeamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.team_id)
+        .first();
+      expect(oldTeamRow).toBeNull();
+    });
+
+    it('移動元teamに他のclass_roomが残っていれば、移動元teamは削除しない', async () => {
+      const base = await repo.create({
+        class_code: '22C',
+        class_name: '2年Cクラス',
+        teacher_id: null,
+        team_id: null,
+      });
+      const sibling = await repo.create({
+        class_code: '22D',
+        class_name: '2年Dクラス（合同）',
+        teacher_id: null,
+        team_id: base.team_id,
+      });
+      const destination = await repo.create({
+        class_code: '22E',
+        class_name: '2年Eクラス',
+        teacher_id: null,
+        team_id: null,
+      });
+
+      await repo.updateAndCleanupTeam(
+        base.class_room_id,
+        {
+          class_code: base.class_code,
+          class_name: base.class_name,
+          teacher_id: null,
+          team_id: destination.team_id,
+        },
+        base.team_id
+      );
+
+      const oldTeamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.team_id)
+        .first();
+      expect(oldTeamRow).not.toBeNull();
+      await expect(repo.findById(sibling.class_room_id)).resolves.toMatchObject(
+        { team_id: base.team_id }
+      );
+    });
+  });
+
   it('class_codeの一意制約を適用する', async () => {
     await expect(
       repo.create({

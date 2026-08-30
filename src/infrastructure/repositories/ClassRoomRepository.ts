@@ -176,9 +176,6 @@ export function createClassRoomRepository(
         return;
       }
 
-      // team挿入(1文にN件)とclass_rooms挿入(1件ずつ、team_nameで対応するteam_idを引く)を
-      // 同じdb.batchにまとめ、片方だけ確定して名前を握ったteamが残ることを防ぐ。
-      // db.batchは1トランザクションとして扱われ、途中で失敗すれば全体がロールバックされる。
       for (const chunk of chunkArray(
         inputs,
         Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
@@ -232,12 +229,61 @@ export function createClassRoomRepository(
       return row ? findById(row.class_room_id) : null;
     },
 
+    async updateAndCleanupTeam(
+      id: number,
+      input: ClassRoomInput,
+      previousTeamId: number
+    ): Promise<ClassRoomEntity | null> {
+      const [updateResult] = await db.batch<{ class_room_id: number }>([
+        db
+          .prepare(
+            `UPDATE class_rooms
+             SET class_code = ?, class_name = ?, teacher_id = ?,
+                 team_id = COALESCE(?, team_id), updated_at = CURRENT_TIMESTAMP
+             WHERE class_room_id = ?
+             RETURNING class_room_id`
+          )
+          .bind(
+            input.class_code,
+            input.class_name,
+            input.teacher_id,
+            input.team_id ?? null,
+            id
+          ),
+        db
+          .prepare(
+            `DELETE FROM teams WHERE team_id = ? AND NOT EXISTS (
+               SELECT 1 FROM class_rooms WHERE team_id = ?
+             )`
+          )
+          .bind(previousTeamId, previousTeamId),
+      ]);
+      const row = updateResult.results[0] as
+        | { class_room_id: number }
+        | undefined;
+      return row ? findById(row.class_room_id) : null;
+    },
+
     async delete(id: number): Promise<boolean> {
       const result = await db
         .prepare('DELETE FROM class_rooms WHERE class_room_id = ?')
         .bind(id)
         .run();
       return (result.meta?.changes ?? 0) > 0;
+    },
+
+    async deleteAndCleanupTeam(id: number, teamId: number): Promise<boolean> {
+      const [deleteResult] = await db.batch<unknown>([
+        db.prepare('DELETE FROM class_rooms WHERE class_room_id = ?').bind(id),
+        db
+          .prepare(
+            `DELETE FROM teams WHERE team_id = ? AND NOT EXISTS (
+               SELECT 1 FROM class_rooms WHERE team_id = ?
+             )`
+          )
+          .bind(teamId, teamId),
+      ]);
+      return (deleteResult.meta?.changes ?? 0) > 0;
     },
 
     async teacherExists(id: number): Promise<boolean> {

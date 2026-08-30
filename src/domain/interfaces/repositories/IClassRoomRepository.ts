@@ -15,7 +15,13 @@ export interface IClassRoomRepository {
     id: number,
     input: ClassRoomInput
   ) => Promise<ClassRoomEntity | null>;
+  updateAndCleanupTeam: (
+    id: number,
+    input: ClassRoomInput,
+    previousTeamId: number
+  ) => Promise<ClassRoomEntity | null>;
   delete: (id: number) => Promise<boolean>;
+  deleteAndCleanupTeam: (id: number, teamId: number) => Promise<boolean>;
   teacherExists: (id: number) => Promise<boolean>;
   existsWithTeamId: (
     teamId: number,
