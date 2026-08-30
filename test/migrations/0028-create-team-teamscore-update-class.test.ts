@@ -128,13 +128,13 @@ describe('0028_create_team_teamscore_update_class.sql', () => {
         class_room_id: ROOM_A,
         class_code: '90C',
         class_name: 'テスト90C組',
-        team_name: 'テスト90C組',
+        team_name: 'テスト90C組(90C)',
       },
       {
         class_room_id: ROOM_B,
         class_code: '90D',
         class_name: 'テスト90D組',
-        team_name: 'テスト90D組',
+        team_name: 'テスト90D組(90D)',
       },
     ]);
 
@@ -224,7 +224,7 @@ describe('0028_create_team_teamscore_update_class.sql', () => {
     const team = await env.DB.prepare(
       'SELECT team_id FROM teams WHERE team_name = ?'
     )
-      .bind('テスト90G組')
+      .bind('テスト90G組(90G)')
       .first<{ team_id: number }>();
     const next = await env.DB.prepare(
       'INSERT INTO class_rooms (class_code, class_name, team_id) VALUES (?, ?, ?) RETURNING class_room_id'
@@ -232,5 +232,23 @@ describe('0028_create_team_teamscore_update_class.sql', () => {
       .bind('90H', 'テスト90H組', team!.team_id)
       .first<{ class_room_id: number }>();
     expect(next!.class_room_id).toBeGreaterThan(ROOM);
+  });
+
+  it('クラス名が重複していても移行できる', async () => {
+    await prepareLegacySchema();
+    await env.DB.prepare(
+      'INSERT INTO class_rooms (class_room_id, class_code, class_name) VALUES (?, ?, ?), (?, ?, ?)'
+    )
+      .bind(900401, '90X', 'テスト90組', 900402, '90Y', 'テスト90組')
+      .run();
+
+    await expect(runMigration()).resolves.not.toThrow();
+
+    const teams = await env.DB.prepare(
+      'SELECT team_id FROM teams WHERE team_id IN (?, ?)'
+    )
+      .bind(900401, 900402)
+      .all();
+    expect(teams.results).toHaveLength(2);
   });
 });

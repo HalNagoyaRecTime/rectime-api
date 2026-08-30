@@ -28,7 +28,7 @@ CREATE INDEX idx_team_scores_team_id ON team_scores(team_id);
 -- team_idにclass_room_idの値をそのまま明示的に採番する。
 -- これによりteam_idとclass_room_idが常に一致し、対応付けに関する仮定が一切不要になる。
 INSERT INTO teams (team_id, team_name)
-SELECT class_room_id, class_name FROM class_rooms;
+SELECT class_room_id, class_name||'('||class_code||')' FROM class_rooms;
 
 -- class_rooms.team_id はNOT NULLにするが、SQLite(D1)は既存行があるカラムを
 -- 後からNOT NULLに変更できない。また、students.class_room_id が class_rooms を
