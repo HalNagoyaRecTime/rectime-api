@@ -21,36 +21,6 @@ function reverseBatchResultRows(db: D1Database): D1Database {
   } as D1Database;
 }
 
-function replaceFirstReturnedUserName(db: D1Database): D1Database {
-  let replaced = false;
-
-  return {
-    prepare: query => db.prepare(query),
-    batch: async <T = unknown>(statements: D1PreparedStatement[]) => {
-      const results = await db.batch<T>(statements);
-      return results.map(result => {
-        if (replaced) return result;
-
-        const firstRow = result.results[0] as
-          | Record<string, unknown>
-          | undefined;
-        if (!firstRow || typeof firstRow.user_name !== 'string') {
-          return result;
-        }
-
-        replaced = true;
-        return {
-          ...result,
-          results: [
-            { ...firstRow, user_name: '対応する入力がない表示名' } as T,
-            ...result.results.slice(1),
-          ],
-        };
-      });
-    },
-  } as D1Database;
-}
-
 describe('StudentRepository', () => {
   let repo: IStudentRepository;
   let seeded: SeededData;
@@ -268,13 +238,9 @@ describe('StudentRepository', () => {
       expect(first?.user_id).not.toBe(second?.user_id);
     });
 
-    it('作成したuserとの対応付けに失敗した場合、userとnewClassRoomsを後片付けする', async () => {
-      const mismatchedRepo = createStudentRepository(
-        replaceFirstReturnedUserName(env.DB)
-      );
-
+    it('studentsの挿入が失敗した場合、直前に作成したnewClassRoomsとteamも残らない', async () => {
       await expect(
-        mismatchedRepo.createMany({
+        repo.createMany({
           newClassRooms: [
             {
               classCode: 'PAIR-CLEANUP-NEW',
@@ -283,21 +249,15 @@ describe('StudentRepository', () => {
           ],
           students: [
             {
-              displayName: '対応付け後片付け対象の生徒',
+              displayName: '後片付け確認対象の生徒',
               classCode: 'PAIR-CLEANUP-NEW',
               attendanceNumber: 24,
-              studentIdNumber: 'PAIR-CLEANUP-20000',
+              // 既存のシード生徒と学籍番号を重複させ、students挿入をUNIQUE制約で失敗させる
+              studentIdNumber: seeded.students[0].studentIdNumber,
             },
           ],
         })
-      ).rejects.toThrow('Created user not found for student input at index 0');
-
-      const orphanedUser = await env.DB.prepare(
-        'SELECT user_id FROM users WHERE user_name = ?'
-      )
-        .bind('対応付け後片付け対象の生徒')
-        .first();
-      expect(orphanedUser).toBeNull();
+      ).rejects.toThrow();
 
       const orphanedClassRoom = await env.DB.prepare(
         'SELECT class_room_id FROM class_rooms WHERE class_code = ?'
@@ -305,6 +265,13 @@ describe('StudentRepository', () => {
         .bind('PAIR-CLEANUP-NEW')
         .first();
       expect(orphanedClassRoom).toBeNull();
+
+      const orphanedTeam = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_name = ?'
+      )
+        .bind('PAIR-CLEANUP-NEW（PAIR-CLEANUP-NEW）')
+        .first();
+      expect(orphanedTeam).toBeNull();
     });
 
     it('既存クラスに複数の学生をまとめて作成する', async () => {

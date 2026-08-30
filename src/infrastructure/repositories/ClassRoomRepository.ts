@@ -176,67 +176,36 @@ export function createClassRoomRepository(
         return;
       }
 
-      const teamStatements: D1PreparedStatement[] = [];
-      for (const chunk of chunkArray(inputs, D1_MAX_BOUND_PARAMETERS)) {
-        const placeholders = chunk.map(() => '(?)').join(', ');
-        const values = chunk.map(provisionalTeamName);
-        teamStatements.push(
+      // team挿入(1文にN件)とclass_rooms挿入(1件ずつ、team_nameで対応するteam_idを引く)を
+      // 同じdb.batchにまとめ、片方だけ確定して名前を握ったteamが残ることを防ぐ。
+      // db.batchは1トランザクションとして扱われ、途中で失敗すれば全体がロールバックされる。
+      for (const chunk of chunkArray(
+        inputs,
+        Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
+      )) {
+        const teamPlaceholders = chunk.map(() => '(?)').join(', ');
+        const teamValues = chunk.map(provisionalTeamName);
+        const statements: D1PreparedStatement[] = [
           db
-            .prepare(
-              `INSERT INTO teams (team_name) VALUES ${placeholders} RETURNING team_id, team_name`
-            )
-            .bind(...values)
-        );
-      }
-      const teamResults = await db.batch<{
-        team_id: number;
-        team_name: string;
-      }>(teamStatements);
-      const createdTeams: { team_id: number; team_name: string }[] = [];
-      for (const result of teamResults) {
-        createdTeams.push(...result.results);
-      }
-
-      try {
-        const inputsWithTeamIds = pairClassRoomsWithCreatedTeams(
-          inputs,
-          createdTeams
-        );
-
-        const statements: D1PreparedStatement[] = [];
-        for (const chunk of chunkArray(
-          inputsWithTeamIds,
-          Math.floor(D1_MAX_BOUND_PARAMETERS / 4)
-        )) {
-          const placeholders = chunk.map(() => '(?, ?, ?, ?)').join(', ');
-          const values = chunk.flatMap(item => [
-            item.input.class_code,
-            item.input.class_name,
-            item.input.teacher_id,
-            item.teamId,
-          ]);
+            .prepare(`INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`)
+            .bind(...teamValues),
+        ];
+        for (const input of chunk) {
           statements.push(
             db
               .prepare(
-                `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id) VALUES ${placeholders}`
+                `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
+                 SELECT ?, ?, ?, team_id FROM teams WHERE team_name = ?`
               )
-              .bind(...values)
+              .bind(
+                input.class_code,
+                input.class_name,
+                input.teacher_id,
+                provisionalTeamName(input)
+              )
           );
         }
         await db.batch(statements);
-      } catch (error) {
-        try {
-          await deleteTeamsByIds(
-            db,
-            createdTeams.map(team => team.team_id)
-          );
-        } catch (teamDeletionError) {
-          console.error(
-            'Error deleting teams after class room creation failure:',
-            teamDeletionError
-          );
-        }
-        throw error;
       }
     },
 
@@ -304,43 +273,4 @@ export function createClassRoomRepository(
       return row !== null;
     },
   };
-}
-
-function pairClassRoomsWithCreatedTeams(
-  inputs: ClassRoomInput[],
-  createdTeams: { team_id: number; team_name: string }[]
-): { input: ClassRoomInput; teamId: number }[] {
-  if (createdTeams.length !== inputs.length) {
-    throw new Error(
-      `Created team count does not match class room input count: expected ${inputs.length}, received ${createdTeams.length}`
-    );
-  }
-
-  const teamIdsByName = new Map<string, number[]>();
-  for (const team of createdTeams) {
-    const ids = teamIdsByName.get(team.team_name) ?? [];
-    ids.push(team.team_id);
-    teamIdsByName.set(team.team_name, ids);
-  }
-
-  return inputs.map((input, index) => {
-    const ids = teamIdsByName.get(provisionalTeamName(input));
-    const teamId = ids?.pop();
-    if (teamId === undefined) {
-      throw new Error(
-        `Created team not found for class room input at index ${index}`
-      );
-    }
-    return { input, teamId };
-  });
-}
-
-async function deleteTeamsByIds(db: D1Database, teamIds: number[]) {
-  for (const chunk of chunkArray(teamIds, D1_MAX_BOUND_PARAMETERS)) {
-    const placeholders = chunk.map(() => '?').join(', ');
-    await db
-      .prepare(`DELETE FROM teams WHERE team_id IN (${placeholders})`)
-      .bind(...chunk)
-      .run();
-  }
 }

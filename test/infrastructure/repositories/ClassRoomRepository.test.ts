@@ -323,6 +323,41 @@ describe('ClassRoomRepository', () => {
       await expect(repo.findByCode('15A')).resolves.toBeNull();
     });
 
+    it('class_codeが重複する行がある場合、作成しかけたteamも残らない（team挿入とclass_rooms挿入は同一トランザクション）', async () => {
+      const before = await env.DB.prepare(
+        'SELECT COUNT(*) AS total FROM teams'
+      ).first<{ total: number }>();
+
+      await expect(
+        repo.createMany([
+          {
+            class_code: '15C',
+            class_name: '孤立チーム確認クラス',
+            teacher_id: null,
+            team_id: null,
+          },
+          {
+            class_code: 'IA14A',
+            class_name: '重複クラス',
+            teacher_id: null,
+            team_id: null,
+          },
+        ])
+      ).rejects.toThrow();
+
+      const after = await env.DB.prepare(
+        'SELECT COUNT(*) AS total FROM teams'
+      ).first<{ total: number }>();
+      expect(after?.total).toBe(before?.total);
+
+      const orphanedTeam = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_name = ?'
+      )
+        .bind('孤立チーム確認クラス（15C）')
+        .first();
+      expect(orphanedTeam).toBeNull();
+    });
+
     it('クラス名が重複する行があっても作成できる（暫定チーム名はクラスコードで一意化される）', async () => {
       await repo.createMany([
         {
