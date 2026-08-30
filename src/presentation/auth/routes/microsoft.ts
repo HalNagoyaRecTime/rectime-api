@@ -328,9 +328,13 @@ microsoft.post('/token', async c => {
       'state のクライアント種別が不正です。'
     );
   }
-  if (pkce.purpose !== 'login') {
+  if (pkce.purpose && pkce.purpose !== 'login') {
     // /delete-login で発行された state がこちらに紛れ込んだ場合、
     // upsertUserや一般API用Tokenの発行に進んでしまうため拒否する。
+    // purposeが未設定の場合はpurpose導入前(デプロイ境界をまたいで
+    // Microsoft認証中だった)の通常ログインとして扱い、拒否しない。
+    // 削除確認フロー側は必ずpurpose: 'account_deletion'を書き込むため、
+    // 削除用のstateがここに紛れ込むことはない。
     return errorResponse(
       c,
       400,

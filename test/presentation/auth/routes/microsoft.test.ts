@@ -517,6 +517,57 @@ describe('POST /auth/microsoft/token', () => {
     expect(await env.AUTH_KV.get('pkce:state-1')).toBeNull();
   });
 
+  it('purposeフィールドを含まない(purpose導入前に保存された)stateでも通常ログインとして成功する', async () => {
+    // API更新の直前にMicrosoftログイン画面を開いた利用者が、認証中に
+    // デプロイをまたいで戻ってきた場合を再現する。KV上のPkceEntryには
+    // purposeフィールドが存在しない(JSON.stringifyでpurposeキー自体が
+    // 無い状態)。この場合を新コードのpurposeチェックがINVALID_STATE_
+    // PURPOSEとして拒否してしまうと、正当な通常ログインができなくなる。
+    const env = buildEnv();
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-legacy-1',
+      oid: 'oid-legacy-1',
+      tid: 'tid-1',
+      name: '田中太郎',
+      preferred_username: 'tanaka@example.com',
+      nonce: 'nonce-legacy-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-legacy-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-legacy-1',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+        // purposeを意図的に含めない(デプロイ境界をまたいだ場合の再現)
+      })
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-legacy-1',
+          state: 'state-legacy-1',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { access_token: string };
+    expect(body.access_token).toBeTruthy();
+  });
+
   it('mobileは成功時、ボディのcode_verifierを使って交換しaccess_token/refresh_token_idを返す', async () => {
     const env = buildEnv();
     const now = Math.floor(Date.now() / 1000);
