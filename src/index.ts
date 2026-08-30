@@ -174,6 +174,8 @@ app.openapi(apiOverviewRoute, c => {
         notificationSchedules: '/api/v1/notification-schedules',
         myEvents: '/api/v1/me/events',
       },
+      // 非公開の環境で存在しないエンドポイントを案内しないよう、
+      // DOCS_ENABLED が有効なときだけ含める。
       ...(isDocsEnabled(c.env)
         ? { openapi: '/openapi.json', docs: '/docs' }
         : {}),
@@ -182,6 +184,7 @@ app.openapi(apiOverviewRoute, c => {
   );
 });
 
+// API v1 routes
 const apiV1 = new OpenAPIHono<{
   Bindings: Env;
   Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
@@ -190,11 +193,17 @@ const apiV1 = new OpenAPIHono<{
 apiV1.use('*', diContainerMiddleware);
 apiV1.use('*', bearerAuthenticationMiddleware);
 
+/**
+ * apiV1.use('*', requireAuth) にはしていない: /auth ルート（ログイン自体）まで
+ * ブロックしてしまわないよう、認証が必要なルートにのみ個別に付与する。
+ * OpenAPIHono ではミドルウェアをルート定義側で受け取るため、ここで包む。
+ */
 const authed = <R extends RouteConfig>(route: R) => ({
   ...route,
   middleware: requireAuth,
 });
 
+// Student routes
 apiV1.openapi(authed(studentListRoute), c => {
   return c.get('container').studentController.getAllStudent(c);
 });
@@ -208,6 +217,7 @@ apiV1.openapi(authed(studentUpdateRoute), c => {
   return c.get('container').studentController.updateStudent(c);
 });
 
+// Staff routes
 apiV1.openapi(authed(staffListRoute), c => {
   return c.get('container').staffController.getAllStaffs(c);
 });
@@ -215,6 +225,7 @@ apiV1.openapi(authed(staffDetailRoute), c => {
   return c.get('container').staffController.getStaffById(c);
 });
 
+// Teacher routes
 apiV1.post('/teachers', requireAuth, c => {
   return c.get('container').teacherController.createTeacher(c);
 });
@@ -231,6 +242,7 @@ apiV1.openapi(authed(teacherDeleteRoute), c => {
   return c.get('container').teacherController.deleteTeacher(c);
 });
 
+// Event routes
 apiV1.openapi(authed(eventListRoute), c => {
   return c.get('container').eventController.getAllEvents(c);
 });
@@ -264,6 +276,7 @@ apiV1.openapi(authed(eventNotificationSummaryRoute), c => {
     .eventScheduleController.getEventNotificationSummary(c);
 });
 
+// Classroom routes
 apiV1.openapi(authed(classRoomListRoute), c => {
   return c.get('container').classRoomController.getAllClassrooms(c);
 });
@@ -280,6 +293,7 @@ apiV1.openapi(authed(classRoomDeleteRoute), c => {
   return c.get('container').classRoomController.deleteClassroom(c);
 });
 
+// Master import routes
 apiV1.openapi(authed(masterImportCreateRoute), c => {
   return c.get('container').masterImportController.createImport(c);
 });
@@ -290,6 +304,7 @@ apiV1.openapi(authed(masterImportCommitRoute), c => {
   return c.get('container').masterImportController.commitImport(c);
 });
 
+// Gathering spot routes
 apiV1.openapi(authed(gatheringSpotListRoute), c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
 });
@@ -306,6 +321,7 @@ apiV1.delete('/gathering-spots/:gatheringSpotId', requireAuth, c => {
   return c.get('container').gatheringSpotController.deleteGatheringSpot(c);
 });
 
+// Gathering member routes
 apiV1.openapi(authed(gatheringMemberListRoute), c => {
   return c
     .get('container')
@@ -322,6 +338,7 @@ apiV1.openapi(authed(gatheringMemberDeleteRoute), c => {
     .gatheringGroupMemberController.removeGatheringMember(c);
 });
 
+// Gathering routes
 apiV1.openapi(authed(gatheringListRoute), c => {
   return c.get('container').gatheringController.getAllGatherings(c);
 });
@@ -332,10 +349,12 @@ apiV1.openapi(authed(gatheringDeleteRoute), c => {
   return c.get('container').gatheringController.deleteGathering(c);
 });
 
+// Firebase token routes
 apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
 });
 
+// Notification schedule routes
 apiV1.openapi(authed(scheduleUpdateRoute), c => {
   return c.get('container').scheduleController.updateSchedule(c);
 });
@@ -344,6 +363,7 @@ apiV1.openapi(authed(adminUserSearchRoute), c => {
   return c.get('container').userSearchController.searchUsers(c);
 });
 
+// Notification routes
 apiV1.openapi(authed(adminNotificationCreateRoute), c => {
   return c
     .get('container')
@@ -415,7 +435,10 @@ apiV1.openapi(authed(testNotificationRoute), c => {
   return c.get('container').notificationController.sendTestNotification(c);
 });
 
+// Auth routes
 apiV1.route('/auth', authRouter);
+
+// Mount API v1
 app.route('/api/v1', apiV1);
 
 app.openAPIRegistry.registerComponent('securitySchemes', 'Bearer', {
@@ -424,6 +447,10 @@ app.openAPIRegistry.registerComponent('securitySchemes', 'Bearer', {
   bearerFormat: 'JWT',
 });
 
+/**
+ * API仕様は認証を通さずに読めてしまうため、DOCS_ENABLED="true" の環境
+ * (development/preview)でのみ公開する。未設定の本番では404を返す。
+ */
 const requireDocsEnabled: MiddlewareHandler<{ Bindings: Env }> = async (
   c,
   next
