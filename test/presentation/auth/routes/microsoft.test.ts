@@ -568,6 +568,38 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.access_token).toBeTruthy();
   });
 
+  it('purposeがaccount_deletion(/delete-loginで発行されたstate)の場合は400 INVALID_STATE_PURPOSEを返す', async () => {
+    // /delete-token側のクロスユース拒否(purposeがloginの場合)は別途
+    // テスト済み。逆方向として、削除確認フロー用に発行されたstateが
+    // 通常ログインの/tokenに渡された場合も拒否されることを確認する。
+    const env = buildEnv();
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'account_deletion',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'auth-code-1', state: 'state-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_STATE_PURPOSE');
+  });
+
   it('mobileは成功時、ボディのcode_verifierを使って交換しaccess_token/refresh_token_idを返す', async () => {
     const env = buildEnv();
     const now = Math.floor(Date.now() / 1000);
