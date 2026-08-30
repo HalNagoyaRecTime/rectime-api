@@ -44,6 +44,17 @@ export function createAuthService(
       );
 
       if (existingUserId) {
+        const deletionStatus =
+          await userRepository.getDeletionStatus(existingUserId);
+        if (deletionStatus && deletionStatus !== 'active') {
+          throw new Error('ACCOUNT_DELETION_PENDING');
+        }
+
+        // updateUser自体もWHERE句にdeletion_status = 'active'を含めており、
+        // ここまでのgetDeletionStatus確認とこのupdateの間にmarkAsDeletedが
+        // 割り込んだ場合(TOCTOU)は0件更新になりnullが返る。その場合は
+        // updated===null→USER_NOT_FOUNDと即断せず、最新状態を見て
+        // ACCOUNT_DELETION_PENDINGを優先させる。
         const updated = await userRepository.updateUser({
           userId: existingUserId,
           oid: claims.oid,
@@ -52,7 +63,14 @@ export function createAuthService(
           email,
           displayName,
         });
-        if (!updated) throw new Error('USER_NOT_FOUND');
+        if (!updated) {
+          const latestStatus =
+            await userRepository.getDeletionStatus(existingUserId);
+          if (latestStatus && latestStatus !== 'active') {
+            throw new Error('ACCOUNT_DELETION_PENDING');
+          }
+          throw new Error('USER_NOT_FOUND');
+        }
         return updated;
       }
 
@@ -61,52 +79,75 @@ export function createAuthService(
         const student =
           await studentRepository.findByStudentNum(studentIdNumber);
         if (student) {
-          try {
-            await userRepository.linkMicrosoftAccount({
-              userId: String(student.user_id),
-              oid: claims.oid,
-              tid: claims.tid,
-            });
-            return {
-              id: String(student.user_id),
-              oid: claims.oid,
-              tid: claims.tid,
-              sub: claims.sub,
-              email,
-              display_name: student.user_name,
-            };
-          } catch (err) {
-            if (!(err instanceof Error)) throw err;
-
-            //user_idが既に別のMicrosoftアカウントと結びついている場合
-            if (
-              err.message.includes('UNIQUE constraint failed') &&
-              err.message.includes('microsoft_account_links.user_id')
-            ) {
-              throw new Error('STUDENT_ALREADY_LINKED');
-            }
-
-            // 同時初回ログインによる UNIQUE 制約違反: 先勝ちしたレコードを正とする
-            // この場合、既に存在するusers.user_idを活用し、microsoft_account_linksに挿入完了した結果
-            // に対しての(oid,tid)のUNIQUE制約違反になるので、usersは更新しない
-            if (
-              err.message.includes('UNIQUE constraint failed') &&
-              err.message.includes('microsoft_account_links.oid')
-            ) {
-              const racedUserId =
-                await userRepository.findUserIdByMicrosoftAccount(
-                  claims.oid,
-                  claims.tid
-                );
-              if (!racedUserId) throw new Error('LINK_STUDENT_FAILED');
+          const studentDeletionStatus = await userRepository.getDeletionStatus(
+            String(student.user_id)
+          );
+          if (studentDeletionStatus === 'deletion_pending') {
+            throw new Error('ACCOUNT_DELETION_PENDING');
+          }
+          // deletionStatusが'deleted'の場合はここでlinkMicrosoftAccountを
+          // 呼ばない。この学籍番号の古いuser_idへ紐付けてしまうと、
+          // 削除済みユーザーへMicrosoftアカウントが再度紐付き、ログイン用
+          // Tokenが発行されてしまう(#265で確定した「本人削除済みデータを
+          // 復元しない」に反する)。studentが見つからなかった場合と同じく
+          // 素通りさせ、後続のcreateUserWithMicrosoftLinkで新規アカウント
+          // として登録する。
+          if (studentDeletionStatus !== 'deleted') {
+            try {
+              // linkMicrosoftAccount自体もINSERT ... WHERE deletion_status
+              // = 'active'を条件に含めており、直前のgetDeletionStatus確認と
+              // このINSERTの間にmarkAsDeletedが割り込んだ場合(TOCTOU)は
+              // ACCOUNT_DELETION_PENDINGがthrowされる。
+              await userRepository.linkMicrosoftAccount({
+                userId: String(student.user_id),
+                oid: claims.oid,
+                tid: claims.tid,
+              });
               return {
-                id: racedUserId,
+                id: String(student.user_id),
                 oid: claims.oid,
                 tid: claims.tid,
                 sub: claims.sub,
                 email,
                 display_name: student.user_name,
               };
+            } catch (err) {
+              if (!(err instanceof Error)) throw err;
+
+              if (err.message === 'ACCOUNT_DELETION_PENDING') {
+                throw err;
+              }
+
+              //user_idが既に別のMicrosoftアカウントと結びついている場合
+              if (
+                err.message.includes('UNIQUE constraint failed') &&
+                err.message.includes('microsoft_account_links.user_id')
+              ) {
+                throw new Error('STUDENT_ALREADY_LINKED');
+              }
+
+              // 同時初回ログインによる UNIQUE 制約違反: 先勝ちしたレコードを正とする
+              // この場合、既に存在するusers.user_idを活用し、microsoft_account_linksに挿入完了した結果
+              // に対しての(oid,tid)のUNIQUE制約違反になるので、usersは更新しない
+              if (
+                err.message.includes('UNIQUE constraint failed') &&
+                err.message.includes('microsoft_account_links.oid')
+              ) {
+                const racedUserId =
+                  await userRepository.findUserIdByMicrosoftAccount(
+                    claims.oid,
+                    claims.tid
+                  );
+                if (!racedUserId) throw new Error('LINK_STUDENT_FAILED');
+                return {
+                  id: racedUserId,
+                  oid: claims.oid,
+                  tid: claims.tid,
+                  sub: claims.sub,
+                  email,
+                  display_name: student.user_name,
+                };
+              }
             }
           }
         }
