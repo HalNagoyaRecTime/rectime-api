@@ -73,7 +73,7 @@
     {
       "binding": "DB",
       "database_name": "rectime-api",
-      "database_id": "f031b887-a3a2-41f1-8c54-5ccdd323fcbb",
+      "database_id": "987476e3-374e-43cf-bcf6-d2821195462b",
       "migrations_dir": "migrations",
     },
   ],
