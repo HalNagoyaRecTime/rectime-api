@@ -50,6 +50,11 @@ export function createAuthService(
           throw new Error('ACCOUNT_DELETION_PENDING');
         }
 
+        // updateUser自体もWHERE句にdeletion_status = 'active'を含めており、
+        // ここまでのgetDeletionStatus確認とこのupdateの間にmarkAsDeletedが
+        // 割り込んだ場合(TOCTOU)は0件更新になりnullが返る。その場合は
+        // updated===null→USER_NOT_FOUNDと即断せず、最新状態を見て
+        // ACCOUNT_DELETION_PENDINGを優先させる。
         const updated = await userRepository.updateUser({
           userId: existingUserId,
           oid: claims.oid,
@@ -58,7 +63,14 @@ export function createAuthService(
           email,
           displayName,
         });
-        if (!updated) throw new Error('USER_NOT_FOUND');
+        if (!updated) {
+          const latestStatus =
+            await userRepository.getDeletionStatus(existingUserId);
+          if (latestStatus && latestStatus !== 'active') {
+            throw new Error('ACCOUNT_DELETION_PENDING');
+          }
+          throw new Error('USER_NOT_FOUND');
+        }
         return updated;
       }
 
@@ -82,6 +94,10 @@ export function createAuthService(
           // として登録する。
           if (studentDeletionStatus !== 'deleted') {
             try {
+              // linkMicrosoftAccount自体もINSERT ... WHERE deletion_status
+              // = 'active'を条件に含めており、直前のgetDeletionStatus確認と
+              // このINSERTの間にmarkAsDeletedが割り込んだ場合(TOCTOU)は
+              // ACCOUNT_DELETION_PENDINGがthrowされる。
               await userRepository.linkMicrosoftAccount({
                 userId: String(student.user_id),
                 oid: claims.oid,
@@ -97,6 +113,10 @@ export function createAuthService(
               };
             } catch (err) {
               if (!(err instanceof Error)) throw err;
+
+              if (err.message === 'ACCOUNT_DELETION_PENDING') {
+                throw err;
+              }
 
               //user_idが既に別のMicrosoftアカウントと結びついている場合
               if (

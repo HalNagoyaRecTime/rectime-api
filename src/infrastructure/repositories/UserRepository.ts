@@ -158,17 +158,29 @@ export function createUserRepository(db: D1Database): IUserRepository {
       const now = new Date().toISOString();
 
       try {
-        await orm
-          .insert(microsoft_account_links)
-          .values({
-            userId: Number(userId),
-            oid,
-            tid,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .run();
+        // INSERT ... SELECT ... WHERE で「対象userIdがdeletion_status =
+        // 'active'であること」をINSERT自体の条件に含める。呼び出し元が
+        // 事前にgetDeletionStatusで確認していても、確認からこのINSERTまでの
+        // 間にmarkAsDeletedが割り込むと、確認時点ではactiveでも実行時には
+        // 既にdeleted/deletion_pendingになっている可能性がある(TOCTOU)。
+        // その場合はWHERE句が偽になり0行挿入となるため、
+        // ACCOUNT_DELETION_PENDINGとして呼び出し元へ区別して伝える。
+        const result = await orm.run(sql`
+          INSERT INTO microsoft_account_links (user_id, oid, tid, created_at, updated_at)
+          SELECT ${Number(userId)}, ${oid}, ${tid}, ${now}, ${now}
+          FROM users
+          WHERE user_id = ${Number(userId)} AND deletion_status = 'active'
+        `);
+        if (result.meta.changes === 0) {
+          throw new Error('ACCOUNT_DELETION_PENDING');
+        }
       } catch (err) {
+        if (
+          err instanceof Error &&
+          err.message === 'ACCOUNT_DELETION_PENDING'
+        ) {
+          throw err;
+        }
         // DrizzleはD1の制約違反を「Failed query」エラーでラップする。
         // 既存の生SQL実装と同じエラーを呼び出し元へ返せるよう、原因を再送出する。
         if (err instanceof Error && err.cause instanceof Error) {
@@ -181,10 +193,18 @@ export function createUserRepository(db: D1Database): IUserRepository {
     async updateUser({ userId, oid, tid, sub, email, displayName }) {
       const now = new Date().toISOString();
 
+      // deletion_status = 'active' をWHERE句自体に含める。呼び出し元で
+      // 事前にgetDeletionStatusを確認していても、確認からこのUPDATEまでの
+      // 間にmarkAsDeletedが割り込むと、確認時点ではactiveでも実行時には
+      // 既にdeleted/deletion_pendingになっている可能性がある(TOCTOU)。
+      // 条件をUPDATE自体に含めることで、その場合は0件更新となり
+      // 更新されない(＝古いuser_nameのまま)ことを保証する。
       const user = await orm
         .update(users)
         .set({ userName: displayName, updatedAt: now })
-        .where(eq(users.id, Number(userId)))
+        .where(
+          and(eq(users.id, Number(userId)), eq(users.deletionStatus, 'active'))
+        )
         .returning({ id: users.id })
         .get();
 
@@ -193,9 +213,28 @@ export function createUserRepository(db: D1Database): IUserRepository {
     },
 
     async markAsDeleted(userId) {
+      const existing = await orm
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, Number(userId)))
+        .get();
+      if (!existing) return false;
+
       const now = new Date().toISOString();
 
-      const updated = await orm
+      // deleteを先に実行する。update(deletionStatus: 'deleted')を先に
+      // 成功させてしまうと、後続のlinks削除が失敗した場合に「本人には
+      // 削除完了と見えるが、Microsoftアカウントとの紐付けは残っている」
+      // という状態になり得る。順序を入れ替えても、links削除の後で
+      // updateが失敗する部分失敗は起こり得るが、その場合は
+      // deletionStatusがまだ'active'のまま(＝本人にも削除未完了と見える)
+      // なので、同じuserIdでmarkAsDeletedを再実行すれば解消できる。
+      await orm
+        .delete(microsoft_account_links)
+        .where(eq(microsoft_account_links.userId, Number(userId)))
+        .run();
+
+      await orm
         .update(users)
         .set({
           deletionStatus: 'deleted',
@@ -203,18 +242,6 @@ export function createUserRepository(db: D1Database): IUserRepository {
           updatedAt: now,
         })
         .where(eq(users.id, Number(userId)))
-        .returning({ id: users.id })
-        .get();
-      if (!updated) return false;
-
-      // microsoft_account_linksの削除は、再登録時に
-      // findUserIdByMicrosoftAccountがこの(削除済みの)userIdを
-      // 誤って返さないようにするための後始末。updateが既に完了した後の
-      // 削除失敗は、同じuserIdで再実行すれば解消できる(updateは
-      // deletionStatusが既にdeletedでも冪等に成功する)。
-      await orm
-        .delete(microsoft_account_links)
-        .where(eq(microsoft_account_links.userId, Number(userId)))
         .run();
 
       return true;

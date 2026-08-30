@@ -285,6 +285,24 @@ describe('UserRepository', () => {
         /UNIQUE constraint failed.*microsoft_account_links\.oid/
       );
     });
+
+    it('deletion_statusがactiveでないuser_idには紐付けず、ACCOUNT_DELETION_PENDINGを投げる', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status) VALUES ('学生太郎', 'deletion_pending') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(
+        repo.linkMicrosoftAccount({
+          userId: String(user!.user_id),
+          oid: 'oid-inactive',
+          tid: 'tid-inactive',
+        })
+      ).rejects.toThrow('ACCOUNT_DELETION_PENDING');
+
+      await expect(
+        repo.findUserIdByMicrosoftAccount('oid-inactive', 'tid-inactive')
+      ).resolves.toBeNull();
+    });
   });
 
   describe('updateUser', () => {
@@ -334,6 +352,39 @@ describe('UserRepository', () => {
           displayName: '田中太郎',
         })
       ).resolves.toBeNull();
+    });
+
+    it('deletion_statusがactiveでないuser_idの場合は更新せずnullを返す', async () => {
+      const created = await repo.createUserWithMicrosoftLink({
+        oid: 'oid-inactive-update',
+        tid: 'tid-inactive-update',
+        sub: 'sub-inactive-update',
+        email: 'tanaka@example.com',
+        displayName: '田中太郎',
+      });
+      await env.DB.prepare(
+        "UPDATE users SET deletion_status = 'deletion_pending' WHERE user_id = ?"
+      )
+        .bind(created.id)
+        .run();
+
+      await expect(
+        repo.updateUser({
+          userId: created.id,
+          oid: 'oid-inactive-update',
+          tid: 'tid-inactive-update',
+          sub: 'sub-inactive-update',
+          email: 'tanaka@example.com',
+          displayName: '田中花子',
+        })
+      ).resolves.toBeNull();
+
+      const row = await env.DB.prepare(
+        'SELECT user_name FROM users WHERE user_id = ?'
+      )
+        .bind(created.id)
+        .first();
+      expect(row).toMatchObject({ user_name: '田中太郎' });
     });
   });
 

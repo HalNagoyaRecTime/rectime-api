@@ -1,5 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { env as workerEnv } from 'cloudflare:workers';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAuthService } from '../../../src/application/services/authService';
+import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
+import { createStudentRepository } from '../../../src/infrastructure/repositories/StudentRepository';
 import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import type { AppUser } from '../../../src/domain/auth/types';
@@ -160,6 +163,29 @@ describe('createAuthService', () => {
 
       await expect(service.upsertUser(buildClaims())).rejects.toThrow(
         'USER_NOT_FOUND'
+      );
+    });
+
+    it('deletion_status確認時はactiveだが、updateUser実行までの間に削除が完了した場合(TOCTOU)、ACCOUNT_DELETION_PENDINGを投げる', async () => {
+      // ログイン処理がactiveであることを確認した直後に、非同期のアカウント
+      // 削除がdeletion_status: deletedへ遷移させ、updateUser自体が
+      // (WHERE deletion_status = 'active'により)0件更新でnullを返すケース。
+      // updateUserがnullを返した後、最新状態を再確認してACCOUNT_DELETION_
+      // PENDINGを優先させることを確認する(USER_NOT_FOUNDにフォールバック
+      // させると、削除済みユーザーのTokenが発行される余地が残ってしまう)。
+      const { userRepository, service } = setup();
+      (
+        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockResolvedValue('user-1');
+      (userRepository.getDeletionStatus as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce('active')
+        .mockResolvedValueOnce('deleted');
+      (userRepository.updateUser as ReturnType<typeof vi.fn>).mockResolvedValue(
+        null
+      );
+
+      await expect(service.upsertUser(buildClaims())).rejects.toThrow(
+        'ACCOUNT_DELETION_PENDING'
       );
     });
 
@@ -493,6 +519,45 @@ describe('createAuthService', () => {
       expect(result.display_name).toBe('学生登録時の名前');
     });
 
+    it('deletion_status確認時はactiveだが、linkMicrosoftAccount実行までの間に削除が完了した場合(TOCTOU)、ACCOUNT_DELETION_PENDINGを投げる', async () => {
+      // getDeletionStatusでactiveと確認した直後に、非同期のアカウント削除が
+      // 完了しdeletedへ遷移した場合、linkMicrosoftAccount自体が
+      // (INSERT ... WHERE deletion_status = 'active'により)0行挿入となり
+      // ACCOUNT_DELETION_PENDINGを投げる。この例外がSTUDENT_ALREADY_LINKED
+      // 等のUNIQUE制約違反ハンドリングに紛れて握りつぶされず、外へ
+      // 伝播することを確認する(削除済みユーザーのTokenが発行される
+      // 余地を残さないため)。
+      const { userRepository, studentRepository, service } = setup();
+      const claims = buildClaims({
+        preferred_username: 'nhs50000@nhs.hal.ac.jp',
+      });
+      (
+        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(null);
+      (
+        studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        student_id: 1,
+        user_id: 100,
+        user_name: '田中太郎',
+        class_room_id: 1,
+        class_room_name: '3年A組',
+        attendance_number: 5,
+        student_id_number: '50000',
+        is_live_active: true,
+      });
+      (
+        userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
+      ).mockResolvedValue('active');
+      (
+        userRepository.linkMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('ACCOUNT_DELETION_PENDING'));
+
+      await expect(service.upsertUser(claims)).rejects.toThrow(
+        'ACCOUNT_DELETION_PENDING'
+      );
+    });
+
     it('学籍番号紐付け時にuser_idが重複した場合、STUDENT_ALREADY_LINKEDを投げる', async () => {
       const { userRepository, studentRepository, service } = setup();
       const claims = buildClaims({
@@ -567,5 +632,118 @@ describe('createAuthService', () => {
         display_name: '田中太郎',
       });
     });
+  });
+});
+
+// レビュー指摘: ログイン処理の「deletion_status確認」と「Microsoft連携の
+// 作成/更新」が別クエリのため、両者の間にアカウント削除(markAsDeleted)が
+// 非同期に割り込むと、確認時点ではactiveでも実行時には既にdeletedになって
+// いる可能性がある(TOCTOU)。ここではモックではなく実DB・実UserRepository/
+// StudentRepositoryを使い、実際に
+//   1. ログイン処理がactiveであることを確認する
+//   2. (この間に)アカウント削除が完了し、deletedになってMicrosoft連携が
+//      削除される
+//   3. ログイン処理が、削除済みユーザーへMicrosoft連携を作り直そうとする
+// という順序を再現し、4(削除済みユーザーのTokenが発行される)が
+// 起きないことを確認する。
+describe('createAuthService (実DB・TOCTOU再現)', () => {
+  beforeEach(async () => {
+    await workerEnv.DB.prepare('DELETE FROM microsoft_account_links').run();
+    await workerEnv.DB.prepare('DELETE FROM students').run();
+    await workerEnv.DB.prepare('DELETE FROM users').run();
+  });
+
+  function buildRealService() {
+    const userRepository = createUserRepository(workerEnv.DB);
+    const studentRepository = createStudentRepository(workerEnv.DB);
+    const service = createAuthService(
+      userRepository,
+      studentRepository,
+      'nhs.hal.ac.jp'
+    );
+    return { userRepository, studentRepository, service };
+  }
+
+  it('既存ユーザーの確認直後に削除が完了しても、Tokenが発行されずACCOUNT_DELETION_PENDINGになる', async () => {
+    const { userRepository, service } = buildRealService();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-toctou-1', 'tid-toctou-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+
+    // 1. ログイン処理がactiveであることを確認する時点を、実際の
+    //    getDeletionStatus呼び出しをspyして再現する。
+    const getDeletionStatusSpy = vi.spyOn(userRepository, 'getDeletionStatus');
+    getDeletionStatusSpy.mockImplementationOnce(async userId => {
+      const status = await createUserRepository(workerEnv.DB).getDeletionStatus(
+        userId
+      );
+      // 2. 確認直後、非同期のアカウント削除が完了する
+      //    (deletion_status: deleted かつ microsoft_account_links 削除)。
+      await userRepository.markAsDeleted(userId);
+      return status; // 確認した時点ではまだ 'active'
+    });
+
+    // 3〜4. ログイン処理が続行し、Microsoft連携を作り直そうとするが、
+    //       Tokenは発行されない(ACCOUNT_DELETION_PENDING)。
+    await expect(
+      service.upsertUser(
+        buildClaims({ oid: 'oid-toctou-1', tid: 'tid-toctou-1' })
+      )
+    ).rejects.toThrow('ACCOUNT_DELETION_PENDING');
+
+    const linkRow = await workerEnv.DB.prepare(
+      'SELECT * FROM microsoft_account_links WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(linkRow).toBeNull();
+  });
+
+  it('学籍番号紐付けの確認直後に削除が完了しても、古いuser_idへ紐付けられずACCOUNT_DELETION_PENDINGになる', async () => {
+    const { userRepository, service } = buildRealService();
+
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('T1', 'TOCTOUクラス') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('学生太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '80001')"
+    )
+      .bind(user!.user_id, classRoom!.class_room_id)
+      .run();
+
+    const getDeletionStatusSpy = vi.spyOn(userRepository, 'getDeletionStatus');
+    getDeletionStatusSpy.mockImplementationOnce(async userId => {
+      const status = await createUserRepository(workerEnv.DB).getDeletionStatus(
+        userId
+      );
+      await userRepository.markAsDeleted(userId);
+      return status;
+    });
+
+    await expect(
+      service.upsertUser(
+        buildClaims({
+          oid: 'oid-toctou-2',
+          tid: 'tid-toctou-2',
+          preferred_username: 'nhs80001@nhs.hal.ac.jp',
+        })
+      )
+    ).rejects.toThrow('ACCOUNT_DELETION_PENDING');
+
+    const linkRow = await workerEnv.DB.prepare(
+      'SELECT * FROM microsoft_account_links WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(linkRow).toBeNull();
   });
 });
