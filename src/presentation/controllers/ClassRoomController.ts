@@ -103,7 +103,8 @@ export function createClassRoomController(classService: IClassRoomService) {
           class_name: body.data.className,
           teacher_id: body.data.teacherId,
           team_id: body.data.teamId,
-        })
+        }),
+        200
       );
     } catch (error) {
       return handleWriteError(c, error, 'Failed to update class');
