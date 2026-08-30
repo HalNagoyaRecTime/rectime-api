@@ -45,7 +45,7 @@ export function createStudentController(studentService: IStudentService) {
       }
 
       const student = await studentService.getStudentById(parsedId.data);
-      return c.json(student);
+      return c.json(student, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Student not found') {
         return c.json({ error: 'Student not found' }, 404);
@@ -70,7 +70,7 @@ export function createStudentController(studentService: IStudentService) {
     }
 
     try {
-      return c.json(await studentService.getAllStudents(parsedQuery.data));
+      return c.json(await studentService.getAllStudents(parsedQuery.data), 200);
     } catch {
       return c.json({ error: 'Failed to fetch students' }, 500);
     }
@@ -97,7 +97,8 @@ export function createStudentController(studentService: IStudentService) {
 
     try {
       return c.json(
-        await studentService.updateStudent(parsedId.data, parsedBody.data)
+        await studentService.updateStudent(parsedId.data, parsedBody.data),
+        200
       );
     } catch (error) {
       return toStudentErrorResponse(c, error, 'Failed to update student');

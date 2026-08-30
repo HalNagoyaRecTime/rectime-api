@@ -285,6 +285,14 @@ microsoft.post('/token', async c => {
         'この学生は既に別のMicrosoftアカウントと連携されています。'
       );
     }
+    if (err instanceof Error && err.message === 'ACCOUNT_DELETION_PENDING') {
+      return errorResponse(
+        c,
+        410,
+        'ACCOUNT_DELETION_PENDING',
+        'このアカウントは削除処理中または削除済みのため、ログインできません。'
+      );
+    }
     throw err;
   }
   const { studentService } = c.get('container');

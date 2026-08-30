@@ -42,9 +42,7 @@ const notificationScheduleListQuerySchema = z
 export function createNotificationScheduleController(
   notificationScheduleService: INotificationScheduleService
 ) {
-  const authorizeManager = async (
-    c: NotificationScheduleContext
-  ): Promise<{ userId: number } | Response> => {
+  const authorizeManager = async (c: NotificationScheduleContext) => {
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
@@ -66,7 +64,7 @@ export function createNotificationScheduleController(
     c: NotificationScheduleContext
   ) => {
     const authorization = await authorizeManager(c);
-    if (authorization instanceof Response) return authorization;
+    if (!('userId' in authorization)) return authorization;
 
     const parsedQuery = notificationScheduleListQuerySchema.safeParse({
       sendStatus: c.req.query('sendStatus'),
@@ -100,12 +98,15 @@ export function createNotificationScheduleController(
           limit: parsedQuery.data.limit,
           offset: parsedQuery.data.offset,
         });
-      return c.json({
-        notification_schedules: result.notification_schedules,
-        total: result.total,
-        limit: parsedQuery.data.limit,
-        offset: parsedQuery.data.offset,
-      });
+      return c.json(
+        {
+          notification_schedules: result.notification_schedules,
+          total: result.total,
+          limit: parsedQuery.data.limit,
+          offset: parsedQuery.data.offset,
+        },
+        200
+      );
     } catch (error) {
       return c.json(
         {
@@ -121,7 +122,7 @@ export function createNotificationScheduleController(
     c: NotificationScheduleContext
   ) => {
     const authorization = await authorizeManager(c);
-    if (authorization instanceof Response) return authorization;
+    if (!('userId' in authorization)) return authorization;
 
     const parsedId = notificationScheduleIdSchema.safeParse(c.req.param('id'));
     if (!parsedId.success) {
@@ -132,7 +133,8 @@ export function createNotificationScheduleController(
       return c.json(
         await notificationScheduleService.getNotificationScheduleById(
           parsedId.data
-        )
+        ),
+        200
       );
     } catch (error) {
       if (
@@ -153,7 +155,7 @@ export function createNotificationScheduleController(
 
   const deleteNotificationSchedule = async (c: NotificationScheduleContext) => {
     const authorization = await authorizeManager(c);
-    if (authorization instanceof Response) return authorization;
+    if (!('userId' in authorization)) return authorization;
 
     const parsedId = notificationScheduleIdSchema.safeParse(c.req.param('id'));
     if (!parsedId.success) {
@@ -190,7 +192,7 @@ export function createNotificationScheduleController(
 
   const createNotificationSchedule = async (c: NotificationScheduleContext) => {
     const authorization = await authorizeManager(c);
-    if (authorization instanceof Response) return authorization;
+    if (!('userId' in authorization)) return authorization;
 
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createNotificationScheduleSchema.safeParse(body);
