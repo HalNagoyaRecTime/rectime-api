@@ -190,12 +190,16 @@ microsoft.get('/delete-login', async c => {
     );
 
     return c.json({
+      // prompt=login で資格情報の再入力を強制する(削除確認フローの目的は
+      // 「今操作している本人」の再認証であり、prompt=select_accountのままだと
+      // Microsoft側のセッションが残っている場合に無入力で認証が完了し得るため)。
       auth_url: buildMicrosoftAuthorizeUrl(
         c,
         c.env.MICROSOFT_MOBILE_REDIRECT_URI,
         state,
         codeChallenge,
-        nonce
+        nonce,
+        'login'
       ),
     });
   }
@@ -219,13 +223,15 @@ microsoft.get('/delete-login', async c => {
   // 戻り先はFRONTEND_URL固定(既存/callbackと同じリダイレクト先)。
   // クライアントからreturn_toを受け取らないことで、削除確認フローが
   // 任意のオリジンへのオープンリダイレクトに使われることを防ぐ。
+  // prompt=login については上記mobile側の分岐と同じ理由。
   return c.redirect(
     buildMicrosoftAuthorizeUrl(
       c,
       buildWebRedirectUri(c),
       state,
       codeChallenge,
-      nonce
+      nonce,
+      'login'
     ),
     302
   );

@@ -265,6 +265,9 @@ describe('GET /auth/microsoft/login', () => {
     expect(new URL(location).searchParams.get('redirect_uri')).toBe(
       'http://localhost/api/v1/auth/microsoft/callback'
     );
+    // 通常ログインはprompt=select_accountのまま
+    // (削除確認フローのみprompt=loginへ切り替える)。
+    expect(new URL(location).searchParams.get('prompt')).toBe('select_account');
 
     const state = new URL(location).searchParams.get('state') as string;
     const stored = JSON.parse(
@@ -1011,6 +1014,10 @@ describe('GET /auth/microsoft/delete-login', () => {
     expect(res.status).toBe(302);
     const location = res.headers.get('Location') ?? '';
     expect(location).toContain('login.microsoftonline.com');
+    // 削除確認フローはprompt=loginで資格情報の再入力を強制する。
+    // Microsoft側にセッションが残っていても、prompt=select_accountのままだと
+    // 無入力で認証が完了し得るため、「今操作している本人」の再認証にならない。
+    expect(new URL(location).searchParams.get('prompt')).toBe('login');
 
     const state = new URL(location).searchParams.get('state') as string;
     const stored = JSON.parse(
@@ -1021,7 +1028,7 @@ describe('GET /auth/microsoft/delete-login', () => {
     expect(stored.code_verifier).toBeTruthy();
   });
 
-  it('mobileは有効なパラメータでauth_urlを返しKVにpurpose: account_deletionで保存する', async () => {
+  it('mobileは有効なパラメータでauth_urlを返しKVにpurpose: account_deletionで保存し、prompt=loginを含むauth_urlを返す', async () => {
     const env = buildEnv();
     const state = generateRandom(32);
     const codeChallenge = generateRandom(32);
@@ -1040,6 +1047,9 @@ describe('GET /auth/microsoft/delete-login', () => {
     );
 
     expect(res.status).toBe(200);
+    const body = (await res.json()) as { auth_url: string };
+    expect(new URL(body.auth_url).searchParams.get('prompt')).toBe('login');
+
     const stored = JSON.parse(
       (await env.AUTH_KV.get(`pkce:${state}`)) as string
     ) as PkceEntry;
