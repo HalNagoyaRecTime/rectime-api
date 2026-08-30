@@ -270,6 +270,47 @@ describe('ClassRoomRepository', () => {
         false
       );
     });
+
+    it('team_scoresが残っていれば、他のclass_roomがなくてもteamは残す', async () => {
+      const base = await repo.create({
+        class_code: '21D',
+        class_name: '1年Dクラス',
+        teacher_id: null,
+        team_id: null,
+      });
+      const event = await env.DB.prepare(
+        "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('体育祭', '校庭', '1000', '1200') RETURNING event_id"
+      ).first<{ event_id: number }>();
+      await env.DB.prepare(
+        'INSERT INTO team_scores (event_id, team_id, scores) VALUES (?, ?, 10)'
+      )
+        .bind(event!.event_id, base.team_id)
+        .run();
+
+      await expect(
+        repo.deleteAndCleanupTeam(base.class_room_id, base.team_id)
+      ).resolves.toBe(true);
+
+      await expect(repo.findById(base.class_room_id)).resolves.toBeNull();
+      const teamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.team_id)
+        .first();
+      expect(teamRow).not.toBeNull();
+
+      // team_scoresを残したteamはCLEANUP_TEAM_SQLでは消えないため、
+      // 他ファイルの無条件DELETE FROM teamsがFK違反で壊れないよう明示的に後始末する。
+      await env.DB.prepare('DELETE FROM team_scores WHERE team_id = ?')
+        .bind(base.team_id)
+        .run();
+      await env.DB.prepare('DELETE FROM teams WHERE team_id = ?')
+        .bind(base.team_id)
+        .run();
+      await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
+        .bind(event!.event_id)
+        .run();
+    });
   });
 
   describe('updateAndCleanupTeam', () => {
@@ -347,6 +388,60 @@ describe('ClassRoomRepository', () => {
       await expect(repo.findById(sibling.class_room_id)).resolves.toMatchObject(
         { team_id: base.team_id }
       );
+    });
+
+    it('移動元teamにteam_scoresが残っていれば、他のclass_roomがなくても移動元teamは削除しない', async () => {
+      const base = await repo.create({
+        class_code: '22F',
+        class_name: '2年Fクラス',
+        teacher_id: null,
+        team_id: null,
+      });
+      const destination = await repo.create({
+        class_code: '22G',
+        class_name: '2年Gクラス',
+        teacher_id: null,
+        team_id: null,
+      });
+      const event = await env.DB.prepare(
+        "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('体育祭', '校庭', '1000', '1200') RETURNING event_id"
+      ).first<{ event_id: number }>();
+      await env.DB.prepare(
+        'INSERT INTO team_scores (event_id, team_id, scores) VALUES (?, ?, 10)'
+      )
+        .bind(event!.event_id, base.team_id)
+        .run();
+
+      const updated = await repo.updateAndCleanupTeam(
+        base.class_room_id,
+        {
+          class_code: base.class_code,
+          class_name: base.class_name,
+          teacher_id: null,
+          team_id: destination.team_id,
+        },
+        base.team_id
+      );
+
+      expect(updated?.team_id).toBe(destination.team_id);
+      const oldTeamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.team_id)
+        .first();
+      expect(oldTeamRow).not.toBeNull();
+
+      // team_scoresを残したteamはCLEANUP_TEAM_SQLでは消えないため、
+      // 他ファイルの無条件DELETE FROM teamsがFK違反で壊れないよう明示的に後始末する。
+      await env.DB.prepare('DELETE FROM team_scores WHERE team_id = ?')
+        .bind(base.team_id)
+        .run();
+      await env.DB.prepare('DELETE FROM teams WHERE team_id = ?')
+        .bind(base.team_id)
+        .run();
+      await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
+        .bind(event!.event_id)
+        .run();
     });
   });
 

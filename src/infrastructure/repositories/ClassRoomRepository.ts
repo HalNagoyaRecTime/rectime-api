@@ -12,6 +12,13 @@ import { chunkArray } from './chunk';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
 
+const CLEANUP_TEAM_SQL = `
+      DELETE FROM teams 
+      WHERE team_id = ? 
+      AND NOT EXISTS (SELECT 1 FROM class_rooms WHERE team_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM team_scores WHERE team_id = ?)
+    `;
+
 type ClassRoomRow = {
   class_room_id: number;
   class_code: string;
@@ -251,12 +258,8 @@ export function createClassRoomRepository(
             id
           ),
         db
-          .prepare(
-            `DELETE FROM teams WHERE team_id = ? AND NOT EXISTS (
-               SELECT 1 FROM class_rooms WHERE team_id = ?
-             )`
-          )
-          .bind(previousTeamId, previousTeamId),
+          .prepare(CLEANUP_TEAM_SQL)
+          .bind(previousTeamId, previousTeamId, previousTeamId),
       ]);
       const row = updateResult.results[0] as
         | { class_room_id: number }
@@ -275,13 +278,7 @@ export function createClassRoomRepository(
     async deleteAndCleanupTeam(id: number, teamId: number): Promise<boolean> {
       const [deleteResult] = await db.batch<unknown>([
         db.prepare('DELETE FROM class_rooms WHERE class_room_id = ?').bind(id),
-        db
-          .prepare(
-            `DELETE FROM teams WHERE team_id = ? AND NOT EXISTS (
-               SELECT 1 FROM class_rooms WHERE team_id = ?
-             )`
-          )
-          .bind(teamId, teamId),
+        db.prepare(CLEANUP_TEAM_SQL).bind(teamId, teamId, teamId),
       ]);
       return (deleteResult.meta?.changes ?? 0) > 0;
     },
