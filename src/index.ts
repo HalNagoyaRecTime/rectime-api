@@ -93,6 +93,7 @@ import {
   scheduleUpdateRoute,
   testNotificationRoute,
 } from './presentation/openapi/notifications';
+import { adminUserSearchRoute } from './presentation/openapi/adminUsers';
 
 const app = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationDefaultHook,
@@ -167,6 +168,7 @@ app.openapi(apiOverviewRoute, c => {
         firebaseTokens: '/api/v1/firebase-tokens',
         notifications: '/api/v1/notifications',
         adminNotifications: '/api/v1/admin/notifications',
+        adminUsers: '/api/v1/admin/users',
         myNotifications: '/api/v1/me/notifications',
         testNotification: '/api/v1/notifications/test',
         notificationSchedules: '/api/v1/notification-schedules',
@@ -355,6 +357,10 @@ apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
 // Notification schedule routes
 apiV1.openapi(authed(scheduleUpdateRoute), c => {
   return c.get('container').scheduleController.updateSchedule(c);
+});
+
+apiV1.openapi(authed(adminUserSearchRoute), c => {
+  return c.get('container').userSearchController.searchUsers(c);
 });
 
 // Notification routes
