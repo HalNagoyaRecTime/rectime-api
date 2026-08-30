@@ -213,6 +213,36 @@ describe('FirebaseTokenRepository', () => {
     expect(count?.count).toBe(1);
   });
 
+  it('同じTokenを別利用者が同時に登録しても有効な行を1つに保つ', async () => {
+    const firstUserId = await createUser('Firebase Token同時登録1');
+    const secondUserId = await createUser('Firebase Token同時登録2');
+
+    await Promise.all([
+      repository.register({
+        userId: firstUserId,
+        platform: 'android',
+        fcmToken: 'token-simultaneous',
+      }),
+      repository.register({
+        userId: secondUserId,
+        platform: 'android',
+        fcmToken: 'token-simultaneous',
+      }),
+    ]);
+
+    const rows = await env.DB.prepare(
+      `SELECT user_id, is_firebase_active
+       FROM firebase_tokens
+       WHERE fcm_token = ?`
+    )
+      .bind('token-simultaneous')
+      .all<{ user_id: number; is_firebase_active: number }>();
+    expect(rows.results).toHaveLength(2);
+    expect(
+      rows.results.filter(row => row.is_firebase_active === 1)
+    ).toHaveLength(1);
+  });
+
   it('存在しないusers.user_idでは登録しない', async () => {
     await expect(
       repository.register({

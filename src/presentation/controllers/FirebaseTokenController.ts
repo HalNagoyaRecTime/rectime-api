@@ -26,7 +26,7 @@ function isFirebaseTokenUniqueConstraintError(error: unknown): boolean {
     visited.add(current);
     if (
       current.message.includes('UNIQUE constraint failed') &&
-      current.message.includes('idx_firebase_tokens_active_fcm_token')
+      current.message.includes('firebase_tokens.fcm_token')
     ) {
       return true;
     }
