@@ -1,4 +1,4 @@
-﻿import type { Context } from 'hono';
+import type { Context } from 'hono';
 import { z } from 'zod';
 import type { INotificationScheduleService } from '../../application/services/INotificationScheduleService';
 import type { Env } from '../../lib/env';
