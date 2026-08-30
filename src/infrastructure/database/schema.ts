@@ -213,27 +213,36 @@ export const gatheringGroupMembersRelations = relations(
   })
 );
 
-export const firebase_tokens = sqliteTable('firebase_tokens', {
-  firebaseTokenId: integer('firebase_token_id').primaryKey({
-    autoIncrement: true,
-  }),
-  userId: integer('user_id')
-    .notNull()
-    .references(() => users.id)
-    .unique(),
-  platform: integer('platform').notNull(),
-  fcmToken: text('fcm_token').notNull().unique(),
-  isFirebaseActive: integer('is_firebase_active').notNull().default(1),
-  lastSeenAt: text('last_seen_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const firebase_tokens = sqliteTable(
+  'firebase_tokens',
+  {
+    firebaseTokenId: integer('firebase_token_id').primaryKey({
+      autoIncrement: true,
+    }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id)
+      .unique(),
+    platform: integer('platform').notNull(),
+    fcmToken: text('fcm_token').notNull(),
+    isFirebaseActive: integer('is_firebase_active').notNull().default(1),
+    lastSeenAt: text('last_seen_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    uniqueIndex('idx_firebase_tokens_active_fcm_token')
+      .on(table.fcmToken)
+      .where(sql`${table.isFirebaseActive} = 1`),
+    index('idx_firebase_tokens_active').on(table.isFirebaseActive),
+  ]
+);
 
 export const notification_schedules = sqliteTable(
   'notification_schedules',

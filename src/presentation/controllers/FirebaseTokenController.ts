@@ -26,7 +26,7 @@ function isFirebaseTokenUniqueConstraintError(error: unknown): boolean {
     visited.add(current);
     if (
       current.message.includes('UNIQUE constraint failed') &&
-      current.message.includes('firebase_tokens.fcm_token')
+      current.message.includes('idx_firebase_tokens_active_fcm_token')
     ) {
       return true;
     }
@@ -78,7 +78,7 @@ export function createFirebaseTokenController(
       }
       if (isFirebaseTokenUniqueConstraintError(error)) {
         return c.json(
-          { error: 'Firebase token is already registered to another user' },
+          { error: 'Firebase token is being registered by another request' },
           409
         );
       }

@@ -132,12 +132,14 @@ describe('FirebaseTokenController', () => {
     expect(response.status).toBe(404);
   });
 
-  it('別ユーザーに登録済みのTokenには409を返す', async () => {
+  it('有効なToken重複には409を返す', async () => {
     const { app, firebaseTokenService } = setup();
     (
       firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
     ).mockRejectedValue(
-      new Error('UNIQUE constraint failed: firebase_tokens.fcm_token')
+      new Error(
+        "UNIQUE constraint failed: index 'idx_firebase_tokens_active_fcm_token'"
+      )
     );
 
     const response = await app.request('/firebase-tokens', {
@@ -151,14 +153,14 @@ describe('FirebaseTokenController', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: 'Firebase token is already registered to another user',
+      error: 'Firebase token is being registered by another request',
     });
   });
 
   it('D1でラップされたToken重複エラーにも409を返す', async () => {
     const { app, firebaseTokenService } = setup();
     const sqliteError = new Error(
-      'UNIQUE constraint failed: firebase_tokens.fcm_token'
+      "UNIQUE constraint failed: index 'idx_firebase_tokens_active_fcm_token'"
     );
     const d1Error = new Error('D1_ERROR: constraint failed', {
       cause: sqliteError,
@@ -182,7 +184,7 @@ describe('FirebaseTokenController', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: 'Firebase token is already registered to another user',
+      error: 'Firebase token is being registered by another request',
     });
   });
 
