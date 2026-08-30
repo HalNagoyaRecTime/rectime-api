@@ -34,17 +34,30 @@ export const class_rooms = sqliteTable(
   ]
 );
 
-export const users = sqliteTable('users', {
-  id: integer('user_id').primaryKey({ autoIncrement: true }),
-  userName: text('user_name').notNull(),
-  isLiveActive: integer('is_live_active').notNull().default(1),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const users = sqliteTable(
+  'users',
+  {
+    id: integer('user_id').primaryKey({ autoIncrement: true }),
+    userName: text('user_name').notNull(),
+    isLiveActive: integer('is_live_active').notNull().default(1),
+    // 本人によるアカウント削除(#265)の状態。管理上の一時無効化を表す
+    // isLiveActiveとは独立した軸で、'deleted'になったユーザーは
+    // 学生の再登録復元(#262)の対象から除外する。
+    deletionStatus: text('deletion_status')
+      .notNull()
+      .default('active')
+      .$type<'active' | 'deletion_pending' | 'deleted'>(),
+    deletionRequestedAt: text('deletion_requested_at'),
+    deletedAt: text('deleted_at'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [index('idx_users_deletion_status').on(table.deletionStatus)]
+);
 
 export const students = sqliteTable('students', {
   id: integer('student_id').primaryKey({ autoIncrement: true }),

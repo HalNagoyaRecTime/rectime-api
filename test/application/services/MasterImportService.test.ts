@@ -110,9 +110,11 @@ function buildUserRepository(
     isStaff: vi.fn().mockResolvedValue(true),
     getUserCategories: vi.fn(),
     findUserIdByMicrosoftAccount: vi.fn(),
+    getDeletionStatus: vi.fn(),
     createUserWithMicrosoftLink: vi.fn(),
     updateUser: vi.fn(),
     linkMicrosoftAccount: vi.fn(),
+    markAsDeleted: vi.fn(),
     ...overrides,
   };
 }
