@@ -320,6 +320,77 @@ describe('createAuthService', () => {
       });
     });
 
+    it('学籍番号で見つかった学生のdeletion_statusがdeletion_pendingの場合、ACCOUNT_DELETION_PENDINGを投げてlinkMicrosoftAccountを呼ばない', async () => {
+      const { userRepository, studentRepository, service } = setup();
+      const claims = buildClaims({
+        preferred_username: 'nhs50000@nhs.hal.ac.jp',
+      });
+      (
+        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(null);
+      (
+        studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        student_id: 1,
+        user_id: 100,
+        user_name: '田中太郎',
+        class_room_id: 1,
+        class_room_name: '3年A組',
+        attendance_number: 5,
+        student_id_number: '50000',
+        is_live_active: true,
+      });
+      (
+        userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
+      ).mockResolvedValue('deletion_pending');
+
+      await expect(service.upsertUser(claims)).rejects.toThrow(
+        'ACCOUNT_DELETION_PENDING'
+      );
+      expect(userRepository.linkMicrosoftAccount).not.toHaveBeenCalled();
+    });
+
+    it('学籍番号で見つかった学生のdeletion_statusがdeletedの場合、古いuser_idへ紐付けず新規アカウントとして作成する', async () => {
+      const { userRepository, studentRepository, service } = setup();
+      const claims = buildClaims({
+        preferred_username: 'nhs50000@nhs.hal.ac.jp',
+      });
+      const created = buildAppUser({ id: 'user-new' });
+      (
+        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(null);
+      (
+        studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        student_id: 1,
+        user_id: 100,
+        user_name: '田中太郎(削除済み)',
+        class_room_id: 1,
+        class_room_name: '3年A組',
+        attendance_number: 5,
+        student_id_number: '50000',
+        is_live_active: true,
+      });
+      (
+        userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
+      ).mockResolvedValue('deleted');
+      (
+        userRepository.createUserWithMicrosoftLink as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(created);
+
+      const result = await service.upsertUser(claims);
+
+      expect(userRepository.linkMicrosoftAccount).not.toHaveBeenCalled();
+      expect(userRepository.createUserWithMicrosoftLink).toHaveBeenCalledWith({
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'nhs50000@nhs.hal.ac.jp',
+        displayName: '田中太郎',
+      });
+      expect(result).toEqual(created);
+    });
+
     it('メールドメインが学生用ドメインと一致しない場合、学籍番号として扱わない', async () => {
       const { userRepository, studentRepository, service } = setup();
       const claims = buildClaims({
