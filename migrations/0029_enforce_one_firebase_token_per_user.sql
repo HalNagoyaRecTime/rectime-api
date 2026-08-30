@@ -6,8 +6,8 @@
 
 -- 1利用者に複数行が存在すると user_id のUNIQUE化でどの行を残すか一意に決まらない。
 -- 検知した時点で中断する。
-CREATE TABLE __migration_0028_guard (duplicated_user_count INTEGER CHECK (duplicated_user_count = 0));
-INSERT INTO __migration_0028_guard (duplicated_user_count)
+CREATE TABLE __migration_0029_guard (duplicated_user_count INTEGER CHECK (duplicated_user_count = 0));
+INSERT INTO __migration_0029_guard (duplicated_user_count)
 SELECT COUNT(*)
 FROM (
   SELECT user_id
@@ -15,7 +15,29 @@ FROM (
   GROUP BY user_id
   HAVING COUNT(*) > 1
 );
-DROP TABLE __migration_0028_guard;
+DROP TABLE __migration_0029_guard;
+
+-- 既存データが削除済みでも、AUTOINCREMENTが一度払い出したIDを再利用しないよう
+-- 旧テーブルの高水位を退避する。firebase_token_id の再利用は、過去の
+-- notification_schedules を別の端末の送信履歴として解釈させてしまう。
+CREATE TABLE __migration_0029_sequences (
+  firebase_tokens_seq INTEGER NOT NULL,
+  notification_schedules_seq INTEGER NOT NULL
+);
+
+INSERT INTO __migration_0029_sequences (
+  firebase_tokens_seq,
+  notification_schedules_seq
+)
+SELECT
+  COALESCE(
+    (SELECT seq FROM sqlite_sequence WHERE name = 'firebase_tokens'),
+    0
+  ),
+  COALESCE(
+    (SELECT seq FROM sqlite_sequence WHERE name = 'notification_schedules'),
+    0
+  );
 
 DROP INDEX IF EXISTS idx_firebase_tokens_user_id;
 DROP INDEX IF EXISTS idx_firebase_tokens_active;
@@ -24,10 +46,13 @@ DROP INDEX IF EXISTS idx_notification_schedules_event_id;
 DROP INDEX IF EXISTS idx_notification_schedules_notification_id;
 DROP INDEX IF EXISTS idx_notification_schedules_firebase_token_id;
 
+-- 旧テーブルを一時名へ変更し、最終名のテーブルを直接作成する。
+-- 子テーブルの外部キーをテーブル名のrenameへ依存させないことで、
+-- legacy_alter_tableの設定にかかわらずfirebase_tokensを参照できるようにする。
 ALTER TABLE notification_schedules RENAME TO notification_schedules_legacy;
 ALTER TABLE firebase_tokens RENAME TO firebase_tokens_legacy;
 
-CREATE TABLE firebase_tokens_new (
+CREATE TABLE firebase_tokens (
   firebase_token_id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL UNIQUE REFERENCES users(user_id),
   platform INTEGER NOT NULL CHECK (platform IN (1, 2)),
@@ -38,7 +63,7 @@ CREATE TABLE firebase_tokens_new (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO firebase_tokens_new (
+INSERT INTO firebase_tokens (
   firebase_token_id,
   user_id,
   platform,
@@ -59,12 +84,12 @@ SELECT
   updated_at
 FROM firebase_tokens_legacy;
 
-CREATE TABLE notification_schedules_new (
+CREATE TABLE notification_schedules (
   notification_schedule_id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_user_id INTEGER REFERENCES users(user_id),
   event_id INTEGER REFERENCES events(event_id),
   notification_id INTEGER NOT NULL REFERENCES notifications(notification_id),
-  firebase_token_id INTEGER NOT NULL REFERENCES firebase_tokens_new(firebase_token_id),
+  firebase_token_id INTEGER NOT NULL REFERENCES firebase_tokens(firebase_token_id),
   importance INTEGER NOT NULL DEFAULT 2
     CHECK (importance BETWEEN 1 AND 4),
   send_status TEXT NOT NULL DEFAULT 'draft'
@@ -76,7 +101,7 @@ CREATE TABLE notification_schedules_new (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO notification_schedules_new (
+INSERT INTO notification_schedules (
   notification_schedule_id,
   created_user_id,
   event_id,
@@ -108,8 +133,38 @@ FROM notification_schedules_legacy;
 DROP TABLE notification_schedules_legacy;
 DROP TABLE firebase_tokens_legacy;
 
-ALTER TABLE firebase_tokens_new RENAME TO firebase_tokens;
-ALTER TABLE notification_schedules_new RENAME TO notification_schedules;
+-- 現存する最大IDと旧AUTOINCREMENT高水位の大きい方を維持する。
+UPDATE sqlite_sequence
+SET seq = MAX(
+  seq,
+  (SELECT firebase_tokens_seq FROM __migration_0029_sequences)
+)
+WHERE name = 'firebase_tokens';
+
+INSERT INTO sqlite_sequence (name, seq)
+SELECT 'firebase_tokens', firebase_tokens_seq
+FROM __migration_0029_sequences
+WHERE firebase_tokens_seq > 0
+  AND NOT EXISTS (
+    SELECT 1 FROM sqlite_sequence WHERE name = 'firebase_tokens'
+  );
+
+UPDATE sqlite_sequence
+SET seq = MAX(
+  seq,
+  (SELECT notification_schedules_seq FROM __migration_0029_sequences)
+)
+WHERE name = 'notification_schedules';
+
+INSERT INTO sqlite_sequence (name, seq)
+SELECT 'notification_schedules', notification_schedules_seq
+FROM __migration_0029_sequences
+WHERE notification_schedules_seq > 0
+  AND NOT EXISTS (
+    SELECT 1 FROM sqlite_sequence WHERE name = 'notification_schedules'
+  );
+
+DROP TABLE __migration_0029_sequences;
 
 CREATE UNIQUE INDEX idx_firebase_tokens_active_fcm_token
   ON firebase_tokens(fcm_token)
