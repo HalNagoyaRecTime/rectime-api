@@ -14,6 +14,13 @@ import { chunkArray } from './chunk';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
 
+function provisionalTeamName(room: {
+  classCode: string;
+  className: string;
+}): string {
+  return `${room.className}（${room.classCode}）`;
+}
+
 type StudentJoinRow = {
   students: typeof students.$inferSelect;
   users: typeof users.$inferSelect;
@@ -274,7 +281,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         D1_MAX_BOUND_PARAMETERS
       )) {
         const placeholders = chunk.map(() => '(?)').join(', ');
-        const values = chunk.map(room => room.className);
+        const values = chunk.map(provisionalTeamName);
         teamStatements.push(
           db
             .prepare(
@@ -497,7 +504,7 @@ function pairNewClassRoomsWithCreatedTeams(
   }
 
   return newClassRooms.map((room, index) => {
-    const ids = teamIdsByName.get(room.className);
+    const ids = teamIdsByName.get(provisionalTeamName(room));
     const teamId = ids?.pop();
     if (teamId === undefined) {
       throw new Error(

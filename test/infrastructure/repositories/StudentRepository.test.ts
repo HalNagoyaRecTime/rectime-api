@@ -358,6 +358,40 @@ describe('StudentRepository', () => {
       });
     });
 
+    it('新規クラスのクラス名が重複していても作成できる（暫定チーム名はクラスコードで一意化される）', async () => {
+      await repo.createMany({
+        newClassRooms: [
+          { classCode: 'DUP-NEW-A', className: '重複組' },
+          { classCode: 'DUP-NEW-B', className: '重複組' },
+        ],
+        students: [
+          {
+            displayName: '一括生徒D',
+            classCode: 'DUP-NEW-A',
+            attendanceNumber: 1,
+            studentIdNumber: '20003',
+          },
+          {
+            displayName: '一括生徒E',
+            classCode: 'DUP-NEW-B',
+            attendanceNumber: 1,
+            studentIdNumber: '20004',
+          },
+        ],
+      });
+
+      const createdD = await repo.findByStudentNum('20003');
+      const createdE = await repo.findByStudentNum('20004');
+      expect(createdD).toMatchObject({
+        user_name: '一括生徒D',
+        class_room_name: '重複組',
+      });
+      expect(createdE).toMatchObject({
+        user_name: '一括生徒E',
+        class_room_name: '重複組',
+      });
+    });
+
     it('一部の行が学籍番号のUNIQUE制約に違反する場合、他の行も含めて何も登録されない', async () => {
       await expect(
         repo.createMany({

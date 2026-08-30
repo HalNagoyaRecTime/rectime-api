@@ -39,6 +39,10 @@ const classRoomSelect = `
   LEFT JOIN users u ON u.user_id = t.user_id
 `;
 
+function provisionalTeamName(input: ClassRoomInput): string {
+  return `${input.class_name}（${input.class_code}）`;
+}
+
 function toEntity(row: ClassRoomRow): ClassRoomEntity {
   return {
     class_room_id: row.class_room_id,
@@ -149,7 +153,7 @@ export function createClassRoomRepository(
       >([
         db
           .prepare('INSERT INTO teams (team_name) VALUES (?)')
-          .bind(input.class_name),
+          .bind(provisionalTeamName(input)),
         db
           .prepare(
             `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
@@ -175,7 +179,7 @@ export function createClassRoomRepository(
       const teamStatements: D1PreparedStatement[] = [];
       for (const chunk of chunkArray(inputs, D1_MAX_BOUND_PARAMETERS)) {
         const placeholders = chunk.map(() => '(?)').join(', ');
-        const values = chunk.map(input => input.class_name);
+        const values = chunk.map(provisionalTeamName);
         teamStatements.push(
           db
             .prepare(
@@ -320,7 +324,7 @@ function pairClassRoomsWithCreatedTeams(
   }
 
   return inputs.map((input, index) => {
-    const ids = teamIdsByName.get(input.class_name);
+    const ids = teamIdsByName.get(provisionalTeamName(input));
     const teamId = ids?.pop();
     if (teamId === undefined) {
       throw new Error(

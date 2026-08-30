@@ -323,6 +323,29 @@ describe('ClassRoomRepository', () => {
       await expect(repo.findByCode('15A')).resolves.toBeNull();
     });
 
+    it('クラス名が重複する行があっても作成できる（暫定チーム名はクラスコードで一意化される）', async () => {
+      await repo.createMany([
+        {
+          class_code: '20A',
+          class_name: '重複組',
+          teacher_id: null,
+          team_id: null,
+        },
+        {
+          class_code: '20B',
+          class_name: '重複組',
+          teacher_id: null,
+          team_id: null,
+        },
+      ]);
+
+      const created20A = await repo.findByCode('20A');
+      const created20B = await repo.findByCode('20B');
+      expect(created20A?.class_name).toBe('重複組');
+      expect(created20B?.class_name).toBe('重複組');
+      expect(created20A?.team_id).not.toBe(created20B?.team_id);
+    });
+
     it('2,000件のクラスをまとめて作成できる', async () => {
       const inputs = Array.from({ length: 2000 }, (_, i) => ({
         class_code: `BULK2K-${i}`,
