@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0028_create_team_teamscore_update_class.sql'
+    item => item.name === '0029_create_team_teamscore_update_class.sql'
   );
   if (!migration) {
     throw new Error(
-      '0028_create_team_teamscore_update_class.sql is not registered'
+      '0029_create_team_teamscore_update_class.sql is not registered'
     );
   }
   return migration.queries;
@@ -97,7 +97,7 @@ async function runMigration() {
   await env.DB.batch(migrationQueries.map(query => env.DB.prepare(query)));
 }
 
-describe('0028_create_team_teamscore_update_class.sql', () => {
+describe('0029_create_team_teamscore_update_class.sql', () => {
   afterEach(async () => {
     await restoreCurrentSchema();
   });
