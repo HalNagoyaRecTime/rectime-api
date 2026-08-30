@@ -29,6 +29,7 @@ export const classRoomResponseSchema = z
     class_name: z.string(),
     student_count: z.number().int(),
     teacher: classRoomTeacherSchema.nullable(),
+    team_id: z.number().int(),
   })
   .openapi('ClassRoom');
 
@@ -56,6 +57,7 @@ export const classRoomWriteSchema = z
     classCode: z.string().trim().min(1),
     className: z.string().trim().min(1),
     teacherId: z.number().int().positive().nullable(),
+    teamId: z.number().int().positive().optional(),
   })
   .openapi('ClassRoomWriteRequest');
 
