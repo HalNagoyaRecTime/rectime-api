@@ -335,7 +335,11 @@ apiV1.delete(
 );
 
 // Gathering member routes
-apiV1.openapi(staffOnly(gatheringMemberListRoute), c => {
+//
+// GETだけはstaff限定にしない: 学生アプリが本人の参加する集合を判定して
+// 「出場」表示を出すのにこの一覧取得を使っている(レビュー指摘)。
+// 追加・削除(POST/DELETE)は引き続きstaff限定とする。
+apiV1.openapi(authed(gatheringMemberListRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.getGatheringMembers(c);
