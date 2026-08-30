@@ -20,6 +20,7 @@ import type {
   MobileRefreshEntry,
 } from '../../../../src/domain/auth/types';
 import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
+import { createUserRepository } from '../../../../src/infrastructure/repositories/UserRepository';
 
 const JWT_SECRET = 'a'.repeat(32);
 const KID = 'test-kid';
@@ -673,6 +674,59 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.error?.code).toBe('STUDENT_ALREADY_LINKED');
   });
 
+  it('deletion_statusがdeletion_pendingの既存ユーザーがログインを試みると410 ACCOUNT_DELETION_PENDINGを返す', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('田中太郎', 'deletion_pending') RETURNING user_id"
+    ).first<{ user_id: number }>();
+
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-1', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-1',
+      oid: 'oid-1',
+      tid: 'tid-1',
+      name: '田中太郎',
+      preferred_username: 'tanaka@example.com',
+      nonce: 'nonce-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-1',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'auth-code-1', state: 'state-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
+  });
+
   it('学生ユーザーが初回ログイン時、学籍番号から紐付いてstudent_id_number/class_room_nameを返す', async () => {
     const env = buildEnv();
 
@@ -789,5 +843,148 @@ describe('POST /auth/microsoft/token', () => {
     };
     expect(body.user.student_id_number).toBeNull();
     expect(body.user.class_room_name).toBeNull();
+  });
+
+  it('markAsDeleted実行後に同じ学籍番号メールでログインすると、古い削除済みユーザーへ紐付けず新規アカウントとして登録される', async () => {
+    const env = buildEnv();
+
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3C', '3年C組') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const oldUser = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('学生太郎(削除前)') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 3, '70001')"
+    )
+      .bind(oldUser!.user_id, classRoom!.class_room_id)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-deleted-student-1', 'tid-1')"
+    )
+      .bind(oldUser!.user_id)
+      .run();
+
+    // 本人によるアカウント削除が完了した状態を再現する
+    // (deletion_status: deleted かつ microsoft_account_links 削除済み)。
+    const userRepository = createUserRepository(env.DB);
+    await userRepository.markAsDeleted(String(oldUser!.user_id));
+
+    // 同じ学籍番号(=同じ学生メール)で、別のMicrosoftアカウントとして
+    // 再登録を試みる想定(削除後に発行し直されたMicrosoftアカウント等)。
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-deleted-student-2',
+      oid: 'oid-deleted-student-2',
+      tid: 'tid-1',
+      name: '学生太郎(再登録)',
+      preferred_username: 'nhs70001@nhs.hal.ac.jp',
+      nonce: 'nonce-deleted-student-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-deleted-student-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-deleted-student-1',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-deleted-student-1',
+          state: 'state-deleted-student-1',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { user: { id: string } };
+    // 古い(削除済みの)user_idへ紐付けられていない(=新規のuser_idが発行された)
+    expect(body.user.id).not.toBe(String(oldUser!.user_id));
+
+    const oldUserRow = await workerEnv.DB.prepare(
+      'SELECT deletion_status FROM users WHERE user_id = ?'
+    )
+      .bind(oldUser!.user_id)
+      .first<{ deletion_status: string }>();
+    expect(oldUserRow?.deletion_status).toBe('deleted');
+  });
+
+  it('deletion_pendingの学生が学籍番号ログインを試みると410 ACCOUNT_DELETION_PENDINGを返す', async () => {
+    const env = buildEnv();
+
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3D', '3年D組') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('学生太郎(削除処理中)', 'deletion_pending') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 4, '70002')"
+    )
+      .bind(user!.user_id, classRoom!.class_room_id)
+      .run();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-pending-student-1',
+      oid: 'oid-pending-student-1',
+      tid: 'tid-1',
+      name: '学生太郎',
+      preferred_username: 'nhs70002@nhs.hal.ac.jp',
+      nonce: 'nonce-pending-student-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-pending-student-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-pending-student-1',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-pending-student-1',
+          state: 'state-pending-student-1',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
+
+    const linkRow = await workerEnv.DB.prepare(
+      'SELECT * FROM microsoft_account_links WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(linkRow).toBeNull();
   });
 });

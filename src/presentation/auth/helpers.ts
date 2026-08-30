@@ -26,7 +26,7 @@ export type AppContext = Context<{
 
 export function errorResponse(
   c: AppContext,
-  status: 400 | 401 | 404 | 409 | 500,
+  status: 400 | 401 | 404 | 409 | 410 | 500,
   code: string,
   message: string
 ): Response {
