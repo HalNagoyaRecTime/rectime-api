@@ -539,5 +539,53 @@ describe('StudentRepository', () => {
         class_room_name: 'BULK25-99',
       });
     });
+
+    it('db.batch()の呼び出しがチャンク分割された場合、後のチャンクが失敗すると先に確定した分もまとめて後片付けされる', async () => {
+      const CHUNK_SIZE = 250; // STUDENTS_PER_BATCH_CALLと同じ値
+      const newClassRooms = [
+        { classCode: 'CROSS-CHUNK-NEW', className: 'CROSS-CHUNK-NEW' },
+      ];
+      const firstChunkStudents = Array.from({ length: CHUNK_SIZE }, (_, i) => ({
+        displayName: `チャンク跨ぎ生徒${i}`,
+        classCode: 'CROSS-CHUNK-NEW',
+        attendanceNumber: i + 1,
+        studentIdNumber: `CROSS-CHUNK-${String(i).padStart(5, '0')}`,
+      }));
+      const secondChunkStudents = [
+        {
+          displayName: '2チャンク目で重複する生徒',
+          classCode: 'CROSS-CHUNK-NEW',
+          attendanceNumber: CHUNK_SIZE + 1,
+          // seedStudents で既に使われている学籍番号にぶつけて2チャンク目を失敗させる
+          studentIdNumber: seeded.students[0].studentIdNumber,
+        },
+      ];
+
+      await expect(
+        repo.createMany({
+          newClassRooms,
+          students: [...firstChunkStudents, ...secondChunkStudents],
+        })
+      ).rejects.toThrow();
+
+      // 1チャンク目(250人)は一度コミットされているはずだが、
+      // 2チャンク目の失敗を受けてまとめて後片付けされていること
+      for (const student of firstChunkStudents) {
+        expect(await repo.findByStudentNum(student.studentIdNumber)).toBeNull();
+      }
+      const orphanedUsers = await env.DB.prepare(
+        'SELECT user_id FROM users WHERE user_name LIKE ?'
+      )
+        .bind('チャンク跨ぎ生徒%')
+        .all();
+      expect(orphanedUsers.results).toHaveLength(0);
+
+      const orphanedClassRoom = await env.DB.prepare(
+        'SELECT class_room_id FROM class_rooms WHERE class_code = ?'
+      )
+        .bind('CROSS-CHUNK-NEW')
+        .first();
+      expect(orphanedClassRoom).toBeNull();
+    });
   });
 });

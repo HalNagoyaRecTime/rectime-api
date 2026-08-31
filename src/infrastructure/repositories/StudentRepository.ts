@@ -299,6 +299,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         }
       }
 
+      const committedStudentIdNumbers: string[] = [];
       try {
         for (const chunk of chunkArray(
           input.students,
@@ -331,8 +332,21 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
             );
           }
           await db.batch(studentStatements);
+          committedStudentIdNumbers.push(
+            ...chunk.map(student => student.studentIdNumber)
+          );
         }
       } catch (error) {
+        if (committedStudentIdNumbers.length > 0) {
+          try {
+            await deleteStudentsByIdNumbers(db, committedStudentIdNumbers);
+          } catch (cleanupError) {
+            console.error(
+              'Error deleting already-committed students after student creation failure:',
+              cleanupError
+            );
+          }
+        }
         if (input.newClassRooms.length > 0) {
           try {
             await deleteNewClassRoomsAndTeams(db, input.newClassRooms);
@@ -349,6 +363,38 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
   };
 }
 
+async function deleteStudentsByIdNumbers(
+  db: D1Database,
+  studentIdNumbers: string[]
+) {
+  for (const chunk of chunkArray(
+    studentIdNumbers,
+    Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
+  )) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    const userIds = await db
+      .prepare(
+        `SELECT user_id FROM students WHERE student_id_number IN (${placeholders})`
+      )
+      .bind(...chunk)
+      .all<{ user_id: number }>();
+    await db
+      .prepare(
+        `DELETE FROM students WHERE student_id_number IN (${placeholders})`
+      )
+      .bind(...chunk)
+      .run();
+    const ids = userIds.results.map(row => row.user_id);
+    for (const userIdChunk of chunkArray(ids, D1_MAX_BOUND_PARAMETERS)) {
+      const userPlaceholders = userIdChunk.map(() => '?').join(', ');
+      await db
+        .prepare(`DELETE FROM users WHERE user_id IN (${userPlaceholders})`)
+        .bind(...userIdChunk)
+        .run();
+    }
+  }
+}
+
 async function deleteNewClassRoomsAndTeams(
   db: D1Database,
   newClassRooms: BulkCreateStudentsInput['newClassRooms']
@@ -356,7 +402,6 @@ async function deleteNewClassRoomsAndTeams(
   const classCodes = newClassRooms.map(room => room.classCode);
   const teamNames = newClassRooms.map(provisionalTeamName);
 
-  // class_roomsはteamsを外部キー参照しているため、子から先に削除する。
   for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
     const placeholders = chunk.map(() => '?').join(', ');
     await db
