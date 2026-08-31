@@ -505,5 +505,39 @@ describe('StudentRepository', () => {
         class_room_name: 'BULK2K-39',
       });
     });
+
+    // CSV受付上限(MAX_IMPORT_ROW_COUNT = 2,500件)ぴったりでも、D1のdb.batch()
+    // 1回あたりの文数上限(1000文)に触れずに作成できることを確認する。
+    it('受付上限の2,500件の学生を、新規クラス100件とあわせてまとめて作成できる', async () => {
+      const newClassRooms = Array.from({ length: 100 }, (_, i) => ({
+        classCode: `BULK25-${i}`,
+        className: `BULK25-${i}`,
+      }));
+      const students = Array.from({ length: 2500 }, (_, i) => ({
+        displayName: `上限生徒${i}`,
+        classCode: `BULK25-${i % 100}`,
+        attendanceNumber: Math.floor(i / 100) + 1,
+        studentIdNumber: `BULK25${String(i).padStart(5, '0')}`,
+      }));
+
+      await repo.createMany({ newClassRooms, students });
+
+      const first = await repo.findByStudentNum('BULK2500000');
+      const middle = await repo.findByStudentNum('BULK2501250');
+      const last = await repo.findByStudentNum('BULK2502499');
+      expect(first).toMatchObject({
+        user_name: '上限生徒0',
+        class_room_name: 'BULK25-0',
+        attendance_number: 1,
+      });
+      expect(middle).toMatchObject({
+        user_name: '上限生徒1250',
+        class_room_name: 'BULK25-50',
+      });
+      expect(last).toMatchObject({
+        user_name: '上限生徒2499',
+        class_room_name: 'BULK25-99',
+      });
+    });
   });
 });

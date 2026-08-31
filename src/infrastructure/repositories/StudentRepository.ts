@@ -13,6 +13,8 @@ import { StudentWriteDTO } from '../../application/dto/StudentDTO';
 import { chunkArray } from './chunk';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
+const D1_MAX_BATCH_STATEMENTS = 1000;
+const STUDENTS_PER_BATCH_CALL = Math.floor(D1_MAX_BATCH_STATEMENTS / 2 / 2);
 
 function provisionalTeamName(room: {
   classCode: string;
@@ -271,21 +273,18 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       }
 
       if (input.newClassRooms.length > 0) {
-        // team挿入とclass_rooms挿入を同じdb.batchにまとめ、片方だけ確定して
-        // 名前を握ったteamが残ることを防ぐ。
-        const classRoomStatements: D1PreparedStatement[] = [];
         for (const chunk of chunkArray(
           input.newClassRooms,
           Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
         )) {
           const teamPlaceholders = chunk.map(() => '(?)').join(', ');
-          classRoomStatements.push(
+          const classRoomStatements: D1PreparedStatement[] = [
             db
               .prepare(
                 `INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`
               )
-              .bind(...chunk.map(provisionalTeamName))
-          );
+              .bind(...chunk.map(provisionalTeamName)),
+          ];
           for (const room of chunk) {
             classRoomStatements.push(
               db
@@ -296,41 +295,43 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
                 .bind(room.classCode, room.className, provisionalTeamName(room))
             );
           }
+          await db.batch(classRoomStatements);
         }
-        await db.batch(classRoomStatements);
       }
 
       try {
-        // userとstudentを1件ずつペアにして同じdb.batchへ積み、
-        // last_insert_rowid()でuser_idをstudentへそのまま引き渡す。
-        // 表示名の重複によるマッチングの曖昧さも同時に解消される。
-        const studentStatements: D1PreparedStatement[] = [];
-        for (const student of input.students) {
-          studentStatements.push(
-            db
-              .prepare(
-                'INSERT INTO users (user_name, updated_at) VALUES (?, CURRENT_TIMESTAMP)'
-              )
-              .bind(student.displayName)
-          );
-          studentStatements.push(
-            db
-              .prepare(
-                `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number, updated_at)
-                 VALUES (
-                   last_insert_rowid(),
-                   (SELECT class_room_id FROM class_rooms WHERE class_code = ?),
-                   ?, ?, CURRENT_TIMESTAMP
-                 )`
-              )
-              .bind(
-                student.classCode,
-                student.attendanceNumber,
-                student.studentIdNumber
-              )
-          );
+        for (const chunk of chunkArray(
+          input.students,
+          STUDENTS_PER_BATCH_CALL
+        )) {
+          const studentStatements: D1PreparedStatement[] = [];
+          for (const student of chunk) {
+            studentStatements.push(
+              db
+                .prepare(
+                  'INSERT INTO users (user_name, updated_at) VALUES (?, CURRENT_TIMESTAMP)'
+                )
+                .bind(student.displayName)
+            );
+            studentStatements.push(
+              db
+                .prepare(
+                  `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number, updated_at)
+                   VALUES (
+                     last_insert_rowid(),
+                     (SELECT class_room_id FROM class_rooms WHERE class_code = ?),
+                     ?, ?, CURRENT_TIMESTAMP
+                   )`
+                )
+                .bind(
+                  student.classCode,
+                  student.attendanceNumber,
+                  student.studentIdNumber
+                )
+            );
+          }
+          await db.batch(studentStatements);
         }
-        await db.batch(studentStatements);
       } catch (error) {
         if (input.newClassRooms.length > 0) {
           try {
