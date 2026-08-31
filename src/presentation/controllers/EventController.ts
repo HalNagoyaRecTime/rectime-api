@@ -10,13 +10,10 @@ import type { IEventService } from '../../application/services/IEventService';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
+import { eventListQuery } from '../openapi/events';
 
 const eventIdSchema = z.coerce.number().int().positive();
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
-const eventListQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).optional(),
-  offset: z.coerce.number().int().min(0).optional(),
-});
 const eventWriteSchema = z
   .object({
     event_name: z.string().trim().min(1).max(100),
@@ -61,41 +58,20 @@ type EventContext = Context<{
   Variables: ContainerVariables & AuthenticationVariables;
 }>;
 
+type EventListInput = { out: { query: z.infer<typeof eventListQuery> } };
+
 export function createEventController(
   eventService: IEventService,
   eventScheduleService: IEventScheduleService
 ) {
   const getAllEvents = async (c: Context) => {
     try {
-      const startTime = c.req.query('start_time');
-
-      if (startTime !== undefined && !hhmmSchema.safeParse(startTime).success) {
-        return c.json(
-          { error: 'Invalid start_time', code: 'INVALID_START_TIME' },
-          400
-        );
-      }
-
-      const parsedQuery = eventListQuerySchema.safeParse({
-        limit: c.req.query('limit'),
-        offset: c.req.query('offset'),
-      });
-      if (!parsedQuery.success) {
-        return c.json(
-          {
-            error: 'Invalid event list query',
-            details: parsedQuery.error.flatten(),
-          },
-          400
-        );
-      }
+      const { start_time, limit, offset } = (
+        c.req as Context<{ Bindings: Env }, string, EventListInput>['req']
+      ).valid('query');
 
       return c.json(
-        await eventService.getAllEvents({
-          start_time: startTime,
-          limit: parsedQuery.data.limit,
-          offset: parsedQuery.data.offset,
-        }),
+        await eventService.getAllEvents({ start_time, limit, offset }),
         200
       );
     } catch (error) {

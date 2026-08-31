@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
+import { OpenAPIHono } from '@hono/zod-openapi';
 import { describe, expect, it, vi } from 'vitest';
 import { createEventController } from '../../../src/presentation/controllers/EventController';
+import { eventListRoute } from '../../../src/presentation/openapi/events';
+import { validationDefaultHook } from '../../../src/presentation/openapi/schemas';
 import type { IEventScheduleService } from '../../../src/application/services/IEventScheduleService';
 import type { IEventService } from '../../../src/application/services/IEventService';
 import type { EventEntity } from '../../../src/domain/entities/Event';
@@ -40,26 +43,37 @@ function setup() {
     c.set('authenticatedUserId', 7);
     await next();
   });
-  app.get('/events', c => controller.getAllEvents(c));
   app.get('/me/events', c => controller.getMyEvents(c));
   app.get('/events/:eventId', c => controller.getEventById(c));
   app.post('/events', c => controller.createEvent(c));
   app.put('/events/:eventId', c => controller.updateEvent(c));
   app.patch('/events/:eventId', c => controller.patchEvent(c));
   app.delete('/events/:eventId', c => controller.deleteEvent(c));
-  return { app, eventService, eventScheduleService };
+
+  // getAllEvents は c.req.valid('query') に依存するため openapi 経由でマウントする
+  const eventListApp = new OpenAPIHono<{
+    Bindings: { EVENT_DATE?: string };
+    Variables: { authenticatedUserId: number | null };
+  }>({ defaultHook: validationDefaultHook });
+  eventListApp.use('*', async (c, next) => {
+    c.set('authenticatedUserId', 7);
+    await next();
+  });
+  eventListApp.openapi(eventListRoute, c => controller.getAllEvents(c));
+
+  return { app, eventListApp, eventService, eventScheduleService };
 }
 
 describe('EventController', () => {
   describe('getAllEvents', () => {
     it('クエリパラメータなしの場合、undefinedを渡しlimit=50/offset=0を既定値として返す', async () => {
-      const { app, eventService } = setup();
+      const { eventListApp, eventService } = setup();
       const events = [buildEvent()];
       (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
         { events, total: 1, limit: 50, offset: 0 }
       );
 
-      const response = await app.request('/events');
+      const response = await eventListApp.request('/events');
 
       expect(eventService.getAllEvents).toHaveBeenCalledWith({
         start_time: undefined,
@@ -76,13 +90,13 @@ describe('EventController', () => {
     });
 
     it('start_time、limit、offsetクエリを解析してサービスに渡す', async () => {
-      const { app, eventService } = setup();
+      const { eventListApp, eventService } = setup();
       const events = [buildEvent()];
       (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
         { events, total: 1, limit: 10, offset: 5 }
       );
 
-      const response = await app.request(
+      const response = await eventListApp.request(
         '/events?start_time=0930&limit=10&offset=5'
       );
 
@@ -103,26 +117,28 @@ describe('EventController', () => {
     it.each(['2460', '2360', '9999'])(
       'HHMMとして不正なstart_timeクエリ %s は400を返す',
       async invalid => {
-        const { app, eventService } = setup();
+        const { eventListApp, eventService } = setup();
 
-        const response = await app.request(`/events?start_time=${invalid}`);
+        const response = await eventListApp.request(
+          `/events?start_time=${invalid}`
+        );
 
         expect(response.status).toBe(400);
-        expect(await response.json()).toEqual({
-          error: 'Invalid start_time',
-          code: 'INVALID_START_TIME',
+        expect(await response.json()).toMatchObject({
+          error: 'Invalid request',
+          code: 'VALIDATION_ERROR',
         });
         expect(eventService.getAllEvents).not.toHaveBeenCalled();
       }
     );
 
     it('サービスが例外を投げた場合は500とdetailsを返す', async () => {
-      const { app, eventService } = setup();
+      const { eventListApp, eventService } = setup();
       (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockRejectedValue(
         new Error('db error')
       );
 
-      const response = await app.request('/events');
+      const response = await eventListApp.request('/events');
 
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({
@@ -134,13 +150,14 @@ describe('EventController', () => {
     it.each(['abc', '-1', '0', '1.5'])(
       '不正なlimitクエリ %s は400を返す',
       async invalid => {
-        const { app, eventService } = setup();
+        const { eventListApp, eventService } = setup();
 
-        const response = await app.request(`/events?limit=${invalid}`);
+        const response = await eventListApp.request(`/events?limit=${invalid}`);
 
         expect(response.status).toBe(400);
         expect(await response.json()).toMatchObject({
-          error: 'Invalid event list query',
+          error: 'Invalid request',
+          code: 'VALIDATION_ERROR',
         });
         expect(eventService.getAllEvents).not.toHaveBeenCalled();
       }
@@ -149,17 +166,33 @@ describe('EventController', () => {
     it.each(['abc', '-1', '1.5'])(
       '不正なoffsetクエリ %s は400を返す',
       async invalid => {
-        const { app, eventService } = setup();
+        const { eventListApp, eventService } = setup();
 
-        const response = await app.request(`/events?offset=${invalid}`);
+        const response = await eventListApp.request(
+          `/events?offset=${invalid}`
+        );
 
         expect(response.status).toBe(400);
         expect(await response.json()).toMatchObject({
-          error: 'Invalid event list query',
+          error: 'Invalid request',
+          code: 'VALIDATION_ERROR',
         });
         expect(eventService.getAllEvents).not.toHaveBeenCalled();
       }
     );
+
+    it('limitが100を超える場合は400を返す', async () => {
+      const { eventListApp, eventService } = setup();
+
+      const response = await eventListApp.request('/events?limit=101');
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: 'Invalid request',
+        code: 'VALIDATION_ERROR',
+      });
+      expect(eventService.getAllEvents).not.toHaveBeenCalled();
+    });
   });
 
   describe('getEventById', () => {
