@@ -11,6 +11,7 @@ import type { AuthVariables } from '../../../src/presentation/middleware/require
 function setup(authenticatedUserId: number | null = 7) {
   const firebaseTokenService: IFirebaseTokenService = {
     registerFirebaseToken: vi.fn(),
+    unregisterFirebaseToken: vi.fn(),
   };
   const controller = createFirebaseTokenController(firebaseTokenService);
   const app = new Hono<{
@@ -22,6 +23,9 @@ function setup(authenticatedUserId: number | null = 7) {
     await next();
   });
   app.post('/firebase-tokens', c => controller.registerFirebaseToken(c));
+  app.delete('/firebase-tokens/current', c =>
+    controller.unregisterFirebaseToken(c)
+  );
   return { app, firebaseTokenService };
 }
 
@@ -34,6 +38,20 @@ const result: RegisterFirebaseTokenResult = {
 };
 
 describe('FirebaseTokenController', () => {
+  it('認証済みユーザーのTokenを無効化して204を返す', async () => {
+    const { app, firebaseTokenService } = setup();
+
+    const response = await app.request('/firebase-tokens/current', {
+      method: 'DELETE',
+    });
+
+    expect(firebaseTokenService.unregisterFirebaseToken).toHaveBeenCalledWith(
+      7
+    );
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+  });
+
   it('認証済みuserIdとAndroid TokenをServiceへ渡す', async () => {
     const { app, firebaseTokenService } = setup();
     (

@@ -61,6 +61,7 @@ describe('ScheduledNotificationService', () => {
     };
     const firebaseTokenRepository: IFirebaseTokenRepository = {
       register: vi.fn(),
+      deactivateForUser: vi.fn(),
       findActiveTokens: vi.fn(),
       deactivate: vi.fn(),
     };

@@ -7,4 +7,5 @@ export interface IFirebaseTokenService {
   registerFirebaseToken: (
     input: RegisterFirebaseTokenInput
   ) => Promise<RegisterFirebaseTokenResult>;
+  unregisterFirebaseToken: (userId: number) => Promise<void>;
 }

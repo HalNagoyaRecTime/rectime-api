@@ -154,6 +154,25 @@ describe('FirebaseTokenRepository', () => {
     await expect(repository.findActiveTokens()).resolves.toHaveLength(1);
   });
 
+  it('ユーザーの現在Tokenを冪等に無効化する', async () => {
+    const userId = await createUser('Firebase Token解除利用者');
+    await repository.register({
+      userId,
+      platform: 'android',
+      fcmToken: 'token-unregister',
+    });
+
+    await expect(repository.deactivateForUser(userId)).resolves.toBeUndefined();
+    await expect(repository.deactivateForUser(userId)).resolves.toBeUndefined();
+
+    const stored = await env.DB.prepare(
+      'SELECT is_firebase_active FROM firebase_tokens WHERE user_id = ?'
+    )
+      .bind(userId)
+      .first<{ is_firebase_active: number }>();
+    expect(stored?.is_firebase_active).toBe(0);
+  });
+
   it('別利用者に登録済みのTokenを上書きしない', async () => {
     const firstUserId = await createUser('Firebase Token所有者');
     const secondUserId = await createUser('Firebase Token別利用者');

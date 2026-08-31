@@ -14,5 +14,8 @@ export function createFirebaseTokenService(
     ): Promise<RegisterFirebaseTokenResult> {
       return firebaseTokenRepository.register(input);
     },
+    async unregisterFirebaseToken(userId: number): Promise<void> {
+      return firebaseTokenRepository.deactivateForUser(userId);
+    },
   };
 }

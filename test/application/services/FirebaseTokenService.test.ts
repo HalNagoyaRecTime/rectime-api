@@ -14,6 +14,7 @@ describe('FirebaseTokenService', () => {
     };
     const repository: IFirebaseTokenRepository = {
       register: vi.fn().mockResolvedValue(result),
+      deactivateForUser: vi.fn(),
       findActiveTokens: vi.fn(),
       deactivate: vi.fn(),
     };
@@ -26,5 +27,18 @@ describe('FirebaseTokenService', () => {
 
     await expect(service.registerFirebaseToken(input)).resolves.toEqual(result);
     expect(repository.register).toHaveBeenCalledWith(input);
+  });
+
+  it('認証ユーザーのFirebase Tokenを無効化する', async () => {
+    const repository: IFirebaseTokenRepository = {
+      register: vi.fn(),
+      deactivateForUser: vi.fn().mockResolvedValue(undefined),
+      findActiveTokens: vi.fn(),
+      deactivate: vi.fn(),
+    };
+    const service = createFirebaseTokenService(repository);
+
+    await expect(service.unregisterFirebaseToken(7)).resolves.toBeUndefined();
+    expect(repository.deactivateForUser).toHaveBeenCalledWith(7);
   });
 });

@@ -91,7 +91,27 @@ export function createFirebaseTokenController(
     }
   };
 
+  const unregisterFirebaseToken = async (c: FirebaseTokenContext) => {
+    try {
+      const userId = c.get('authenticatedUserId');
+      if (!userId) {
+        return c.json({ error: 'Authentication required' }, 401);
+      }
+
+      await firebaseTokenService.unregisterFirebaseToken(userId);
+      return c.body(null, 204);
+    } catch {
+      return c.json(
+        {
+          error: 'Failed to unregister Firebase token',
+        },
+        500
+      );
+    }
+  };
+
   return {
     registerFirebaseToken,
+    unregisterFirebaseToken,
   };
 }
