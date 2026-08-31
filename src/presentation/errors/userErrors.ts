@@ -126,6 +126,11 @@ export const UserErrors = {
     code: 'CLASS_ROOM_NOT_FOUND',
     message: '指定されたクラスが見つかりません',
   },
+  STUDENT_CLASS_ROOM_NOT_FOUND: {
+    status: 404,
+    code: 'CLASS_ROOM_NOT_FOUND',
+    message: '指定されたクラスが見つかりません',
+  },
   INVALID_CLASS_ID: {
     status: 400,
     code: 'INVALID_CLASS_ID',

@@ -143,7 +143,7 @@ function toStudentErrorResponse(
     return errorResponse(c, UserErrors.STUDENT_NOT_FOUND);
   }
   if (error.message === 'Class room not found') {
-    return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
+    return errorResponse(c, UserErrors.STUDENT_CLASS_ROOM_NOT_FOUND);
   }
   if (
     error.message === 'Student number already exists' ||
