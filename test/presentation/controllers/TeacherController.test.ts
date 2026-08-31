@@ -85,7 +85,12 @@ describe('TeacherController', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: 'Class room not found' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'CLASS_ROOM_NOT_FOUND',
+          message: '指定されたクラスが見つかりません',
+        },
+      });
     });
   });
   describe('getTeacherById', () => {
@@ -109,7 +114,12 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers/abc');
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: 'Invalid teacher ID' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'INVALID_TEACHER_ID',
+          message: '教員IDが正しくありません',
+        },
+      });
     });
 
     it('サービスが Teacher not found を投げた場合は 404 を返す', async () => {
@@ -121,7 +131,9 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers/999');
 
       expect(res.status).toBe(404);
-      expect(await res.json()).toEqual({ error: 'Teacher not found' });
+      expect(await res.json()).toEqual({
+        error: { code: 'TEACHER_NOT_FOUND', message: '教員が見つかりません' },
+      });
     });
 
     it('その他の例外の場合は 500 を返す', async () => {
@@ -133,7 +145,12 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers/1');
 
       expect(res.status).toBe(500);
-      expect(await res.json()).toEqual({ error: 'Failed to fetch teacher' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'TEACHER_FETCH_FAILED',
+          message: '教員の取得に失敗しました',
+        },
+      });
     });
   });
 
@@ -211,7 +228,12 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers');
 
       expect(res.status).toBe(500);
-      expect(await res.json()).toEqual({ error: 'Failed to fetch teachers' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'TEACHER_LIST_FAILED',
+          message: '教員一覧の取得に失敗しました',
+        },
+      });
     });
   });
 
@@ -249,7 +271,12 @@ describe('TeacherController', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: 'Invalid teacher ID' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'INVALID_TEACHER_ID',
+          message: '教員IDが正しくありません',
+        },
+      });
     });
 
     it('isLiveActive を送信した場合は400を返す', async () => {
@@ -273,8 +300,8 @@ describe('TeacherController', () => {
       });
 
       expect(res.status).toBe(400);
-      const body = (await res.json()) as { error: string };
-      expect(body.error).toBe('Invalid teacher update request body');
+      const body = (await res.json()) as { error: { message: string } };
+      expect(body.error.message).toBe('教員の更新内容が正しくありません');
     });
 
     it('classRoomIds に重複がある場合は 400 を返す', async () => {
@@ -290,8 +317,8 @@ describe('TeacherController', () => {
       });
 
       expect(res.status).toBe(400);
-      const body = (await res.json()) as { error: string };
-      expect(body.error).toBe('Invalid teacher update request body');
+      const body = (await res.json()) as { error: { message: string } };
+      expect(body.error.message).toBe('教員の更新内容が正しくありません');
       expect(teacherService.updateTeacher).not.toHaveBeenCalled();
     });
 
@@ -308,7 +335,9 @@ describe('TeacherController', () => {
       });
 
       expect(res.status).toBe(404);
-      expect(await res.json()).toEqual({ error: 'Teacher not found' });
+      expect(await res.json()).toEqual({
+        error: { code: 'TEACHER_NOT_FOUND', message: '教員が見つかりません' },
+      });
     });
 
     it('サービスが Class room not found を投げた場合は 400 を返す', async () => {
@@ -324,7 +353,12 @@ describe('TeacherController', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: 'Class room not found' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'CLASS_ROOM_NOT_FOUND',
+          message: '指定されたクラスが見つかりません',
+        },
+      });
     });
 
     it('その他の例外の場合は 500 を返す', async () => {
@@ -362,7 +396,12 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers/abc', { method: 'DELETE' });
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: 'Invalid teacher ID' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'INVALID_TEACHER_ID',
+          message: '教員IDが正しくありません',
+        },
+      });
     });
 
     it('サービスが Teacher not found を投げた場合は 404 を返す', async () => {
@@ -374,7 +413,9 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers/999', { method: 'DELETE' });
 
       expect(res.status).toBe(404);
-      expect(await res.json()).toEqual({ error: 'Teacher not found' });
+      expect(await res.json()).toEqual({
+        error: { code: 'TEACHER_NOT_FOUND', message: '教員が見つかりません' },
+      });
     });
 
     it('削除済み教員の再削除も 204 を返す', async () => {

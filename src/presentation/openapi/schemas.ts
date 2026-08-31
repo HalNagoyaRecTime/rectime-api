@@ -1,6 +1,8 @@
 import { z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import type { ZodError, ZodSchema } from 'zod';
+import { CommonErrors } from '../errors/commonErrors';
+import { toValidationErrorDetails } from '../errors/validationErrorDetails';
 
 export { z };
 
@@ -22,20 +24,32 @@ export const jsonResponse = <Schema extends ZodSchema>(
     description,
   }) as const;
 
+/**
+ * Validation errors returned by request-body/query validation.
+ *
+ * Keep this shape independent from Zod's internal `issues` representation so
+ * clients can rely on a stable API contract even if the validation library
+ * changes.
+ */
+export const validationErrorDetailsSchema = z
+  .object({
+    fieldErrors: z.record(z.array(z.string())),
+    formErrors: z.array(z.string()),
+  })
+  .openapi('ValidationErrorDetails');
+
+export type { ValidationErrorDetails } from '../errors/validationErrorDetails';
+
 export const errorResponseSchema = z
   .object({
-    error: z.string(),
-    code: z.string().optional(),
-    error_code: z.string().optional(),
-    details: z
-      .union([
-        z.string(),
-        z.object({
-          formErrors: z.array(z.string()),
-          fieldErrors: z.record(z.array(z.string()).optional()),
-        }),
-      ])
-      .optional(),
+    error: z.object({
+      code: z.string(),
+      message: z.string(),
+      // Validation responses use validationErrorDetailsSchema. `z.any()` is
+      // retained as the second branch so existing error-specific extensions
+      // remain backward compatible.
+      details: z.union([validationErrorDetailsSchema, z.any()]).optional(),
+    }),
   })
   .openapi('Error');
 
@@ -58,11 +72,13 @@ export const validationDefaultHook = (
 ): Response | undefined => {
   if (result.success) return;
   const body: ErrorResponseDTO = {
-    error: 'Invalid request',
-    code: 'VALIDATION_ERROR',
-    details: result.error.flatten(),
+    error: {
+      code: CommonErrors.VALIDATION_ERROR.code,
+      message: CommonErrors.VALIDATION_ERROR.message,
+      details: toValidationErrorDetails(result.error),
+    },
   };
-  return c.json(body, 400);
+  return c.json(body, CommonErrors.VALIDATION_ERROR.status);
 };
 
 export const badRequestResponse = jsonResponse(

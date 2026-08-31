@@ -140,8 +140,10 @@ describe('MasterImportController', () => {
 
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({
-        error: 'Failed to parse import file',
-        details: 'bad file',
+        error: {
+          code: 'IMPORT_FILE_INVALID',
+          message: '取込ファイルを読み取れませんでした',
+        },
       });
     });
   });
@@ -175,8 +177,10 @@ describe('MasterImportController', () => {
 
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({
-        error: 'Import not found',
-        error_code: 'IMPORT_NOT_FOUND',
+        error: {
+          code: 'IMPORT_NOT_FOUND',
+          message: '取込データが見つかりません',
+        },
       });
     });
 
@@ -193,8 +197,10 @@ describe('MasterImportController', () => {
 
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({
-        error: 'Import not found',
-        error_code: 'IMPORT_EXPIRED',
+        error: {
+          code: 'IMPORT_EXPIRED',
+          message: '取込データの有効期限が切れています',
+        },
       });
       expect(masterImportService.isExpiredImport).toHaveBeenCalledWith(
         'expired-1',
@@ -275,8 +281,10 @@ describe('MasterImportController', () => {
 
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({
-        error: 'Import not found',
-        error_code: 'IMPORT_NOT_FOUND',
+        error: {
+          code: 'IMPORT_NOT_FOUND',
+          message: '取込データが見つかりません',
+        },
       });
     });
 
@@ -299,8 +307,10 @@ describe('MasterImportController', () => {
       );
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({
-        error: 'Import not found',
-        error_code: 'IMPORT_EXPIRED',
+        error: {
+          code: 'IMPORT_EXPIRED',
+          message: '取込データの有効期限が切れています',
+        },
       });
     });
 
@@ -317,8 +327,10 @@ describe('MasterImportController', () => {
       expect(res.status).toBe(503);
       expect(res.headers.get('Retry-After')).toBe('3');
       expect(await res.json()).toEqual({
-        error: 'Commit is still in progress, please retry',
-        error_code: 'COMMIT_IN_PROGRESS',
+        error: {
+          code: 'COMMIT_IN_PROGRESS',
+          message: '確定処理を実行中です。しばらく待ってから再試行してください',
+        },
       });
     });
   });

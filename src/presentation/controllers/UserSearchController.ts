@@ -6,6 +6,9 @@ import type { Env } from '../../lib/env';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthVariables } from '../middleware/requireAuth';
+import { CommonErrors } from '../errors/commonErrors';
+import { errorResponse } from '../errors/errorResponse';
+import { UserErrors } from '../errors/userErrors';
 
 const querySchema = z.object({
   q: z.string().trim().min(1).optional(),
@@ -24,10 +27,10 @@ export function createUserSearchController(service: IUserSearchService) {
   const searchUsers = async (c: UserSearchContext) => {
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
+      return errorResponse(c, CommonErrors.UNAUTHORIZED);
     }
     if (!(await service.canSearchUsers(userId))) {
-      return c.json({ error: 'User search forbidden' }, 403);
+      return errorResponse(c, UserErrors.USER_SEARCH_FORBIDDEN);
     }
 
     const parsedQuery = querySchema.safeParse({
@@ -38,26 +41,18 @@ export function createUserSearchController(service: IUserSearchService) {
       offset: c.req.query('offset'),
     });
     if (!parsedQuery.success) {
-      return c.json(
-        {
-          error: 'Invalid user search query',
-          details: parsedQuery.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        UserErrors.INVALID_USER_SEARCH_QUERY,
+        parsedQuery.error.flatten()
       );
     }
 
     try {
       const query: UserSearchQueryDTO = parsedQuery.data;
       return c.json(await service.searchUsers(query), 200);
-    } catch (error) {
-      return c.json(
-        {
-          error: 'Failed to search users',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+    } catch {
+      return errorResponse(c, UserErrors.USER_SEARCH_FAILED);
     }
   };
 
