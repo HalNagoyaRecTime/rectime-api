@@ -32,18 +32,11 @@ export class FcmRequestError extends Error {
 
 export function isPermanentFcmTokenError(error: unknown): boolean {
   if (error instanceof FcmRequestError) {
-    return (
-      error.fcmErrorCode === 'UNREGISTERED' ||
-      error.fcmErrorCode === 'INVALID_ARGUMENT'
-    );
+    return error.fcmErrorCode === 'UNREGISTERED';
   }
 
   const message = error instanceof Error ? error.message : String(error);
-  return (
-    message.includes('UNREGISTERED') ||
-    message.includes('invalid token') ||
-    message.includes('INVALID_ARGUMENT')
-  );
+  return message.includes('UNREGISTERED') || message.includes('invalid token');
 }
 
 export interface IFcmService {

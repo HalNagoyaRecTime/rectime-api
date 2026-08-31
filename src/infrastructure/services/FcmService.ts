@@ -140,7 +140,8 @@ function buildPlatformConfig(
   importance = 2
 ): Record<string, unknown> {
   if (platform === 'ios') {
-    const interruptionLevel = importance >= 3 ? 'time-sensitive' : 'active';
+    const interruptionLevel =
+      IOS_INTERRUPTION_LEVEL_BY_IMPORTANCE[importance] ?? 'active';
     return {
       apns: {
         headers: {
@@ -150,8 +151,6 @@ function buildPlatformConfig(
         payload: {
           aps: {
             sound: 'default',
-            badge: 1,
-            'content-available': 1,
             'interruption-level': interruptionLevel,
           },
         },
@@ -159,20 +158,16 @@ function buildPlatformConfig(
     };
   }
 
-  if (platform === 'android') {
-    return {
-      android: {
-        priority: 'HIGH',
-        notification: {
-          channel_id: 'rectime_importance_2',
-          sound: 'default',
-        },
-      },
-    };
-  }
-
   return {};
 }
+
+/** 保存時の制約で重要度は1〜4。段階ごとの表示レベルを明示的に対応付ける。 */
+const IOS_INTERRUPTION_LEVEL_BY_IMPORTANCE: Record<number, string> = {
+  1: 'passive',
+  2: 'active',
+  3: 'time-sensitive',
+  4: 'time-sensitive',
+};
 
 function extractFcmErrorCode(responseBody: unknown): string | null {
   if (!responseBody || typeof responseBody !== 'object') return null;

@@ -94,9 +94,7 @@ export function createFirebaseTokenRepository(
       return {
         firebase_token_id: registeredToken.firebase_token_id,
         user_id: registeredToken.user_id,
-        platform: firebasePlatformToName(
-          registeredToken.platform as FirebasePlatform
-        ),
+        platform: firebasePlatformToName(registeredToken.platform),
         is_firebase_active: registeredToken.is_firebase_active === 1,
         last_seen_at: registeredToken.last_seen_at,
       };
