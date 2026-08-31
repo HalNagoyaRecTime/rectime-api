@@ -47,7 +47,7 @@ const classRoomSelect = `
 `;
 
 function provisionalTeamName(input: ClassRoomInput): string {
-  return `${input.class_name}（${input.class_code}）`;
+  return `${input.class_name}(${input.class_code})`;
 }
 
 function toEntity(row: ClassRoomRow): ClassRoomEntity {

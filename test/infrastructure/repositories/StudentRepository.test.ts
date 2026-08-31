@@ -269,7 +269,7 @@ describe('StudentRepository', () => {
       const orphanedTeam = await env.DB.prepare(
         'SELECT team_id FROM teams WHERE team_name = ?'
       )
-        .bind('PAIR-CLEANUP-NEW（PAIR-CLEANUP-NEW）')
+        .bind('PAIR-CLEANUP-NEW(PAIR-CLEANUP-NEW)')
         .first();
       expect(orphanedTeam).toBeNull();
     });

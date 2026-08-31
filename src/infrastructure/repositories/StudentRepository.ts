@@ -18,7 +18,7 @@ function provisionalTeamName(room: {
   classCode: string;
   className: string;
 }): string {
-  return `${room.className}（${room.classCode}）`;
+  return `${room.className}(${room.classCode})`;
 }
 
 type StudentJoinRow = {

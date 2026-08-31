@@ -581,7 +581,7 @@ describe('ClassRoomRepository', () => {
       const orphanedTeam = await env.DB.prepare(
         'SELECT team_id FROM teams WHERE team_name = ?'
       )
-        .bind('孤立チーム確認クラス（15C）')
+        .bind('孤立チーム確認クラス(15C)')
         .first();
       expect(orphanedTeam).toBeNull();
     });
