@@ -1,9 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createFcmService } from '../../../src/infrastructure/services/FcmService';
-import {
-  FcmRequestError,
-  isPermanentFcmTokenError,
-} from '../../../src/application/services/IFcmService';
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
