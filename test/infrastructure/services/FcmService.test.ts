@@ -1,5 +1,9 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createFcmService } from '../../../src/infrastructure/services/FcmService';
+import {
+  FcmRequestError,
+  isPermanentFcmTokenError,
+} from '../../../src/application/services/IFcmService';
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -152,8 +156,6 @@ describe('FcmService', () => {
         payload: {
           aps: {
             sound: 'default',
-            badge: 1,
-            'content-available': 1,
             'interruption-level': 'time-sensitive',
           },
         },
@@ -164,7 +166,7 @@ describe('FcmService', () => {
       });
     });
 
-    it('Android端末にはhigh priorityと通知channelを付ける', async () => {
+    it('Android端末には既存の送信内容を維持して追加設定を付けない', async () => {
       const fetchMock = vi
         .fn()
         .mockResolvedValueOnce(
@@ -191,13 +193,7 @@ describe('FcmService', () => {
       });
 
       const sentBody = JSON.parse(fetchMock.mock.calls[1][1].body as string);
-      expect(sentBody.message.android).toEqual({
-        priority: 'HIGH',
-        notification: {
-          channel_id: 'rectime_importance_2',
-          sound: 'default',
-        },
-      });
+      expect(sentBody.message.android).toBeUndefined();
     });
 
     it('FCM リクエストが失敗した場合は FCM request failed エラーを投げる', async () => {
