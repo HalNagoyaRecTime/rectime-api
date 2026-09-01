@@ -6,8 +6,8 @@ export type ValidationErrorDetails = {
 };
 
 /**
- * Converts a Zod validation error to the public API error contract.
- * Zod's `issues` array is intentionally not exposed to API consumers.
+ * Zodの検証エラーを公開APIのエラー契約へ変換する。
+ * Zodの`issues`配列はAPI利用者へ意図的に公開しない。
  */
 export function toValidationErrorDetails(
   error: ZodError

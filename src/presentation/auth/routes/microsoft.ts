@@ -117,6 +117,10 @@ microsoft.get('/login', async c => {
 });
 
 // GET /auth/microsoft/delete-login
+// アカウント削除確認専用のMicrosoft再認証を開始する。/login と同じ
+// PKCE/state発行の仕組みを使うが、KVのpurposeを'account_deletion'にする
+// ことで、/delete-token側がupsertUserや一般API用Tokenの発行に進まない
+// ようにする。
 microsoft.get('/delete-login', async c => {
   const clientType = getClientType(c);
   if (!clientType) {
@@ -157,6 +161,9 @@ microsoft.get('/delete-login', async c => {
     );
 
     return c.json({
+      // prompt=login で資格情報の再入力を強制する(削除確認フローの目的は
+      // 「今操作している本人」の再認証であり、prompt=select_accountのままだと
+      // Microsoft側のセッションが残っている場合に無入力で認証が完了し得るため)。
       auth_url: buildMicrosoftAuthorizeUrl(
         c,
         c.env.MICROSOFT_MOBILE_REDIRECT_URI,
@@ -184,6 +191,10 @@ microsoft.get('/delete-login', async c => {
     { expirationTtl: 600 }
   );
 
+  // 戻り先はFRONTEND_URL固定(既存/callbackと同じリダイレクト先)。
+  // クライアントからreturn_toを受け取らないことで、削除確認フローが
+  // 任意のオリジンへのオープンリダイレクトに使われることを防ぐ。
+  // prompt=login については上記mobile側の分岐と同じ理由。
   return c.redirect(
     buildMicrosoftAuthorizeUrl(
       c,
@@ -198,6 +209,9 @@ microsoft.get('/delete-login', async c => {
 });
 
 // GET /auth/microsoft/callback
+// Microsoft からのリダイレクトを受け、code/state をフロントエンドの
+// /auth/callback へそのまま中継するだけ。トークン交換は行わない
+// (フロントエンドが POST /auth/microsoft/token で自ら交換する)。
 microsoft.get('/callback', async c => {
   const { code, state, error } = c.req.query();
   const frontendUrl = c.env.FRONTEND_URL;
@@ -213,6 +227,11 @@ microsoft.get('/callback', async c => {
 });
 
 // POST /auth/microsoft/token
+// Mobile/Web 共通: authorization code を Microsoft のトークンと交換し、
+// rectime-api 自身のアクセストークンを発行する。
+// - mobile: code_verifier はクライアントが生成し、ボディで送信する。
+// - web: code_verifier は /auth/microsoft/login 時にサーバー側で生成・
+//   KV 保存済みのものを使うため、ボディでは code/state のみを要求する。
 microsoft.post('/token', async c => {
   const clientType = getClientType(c);
   if (clientType !== 'mobile' && clientType !== 'web') {
@@ -258,6 +277,12 @@ microsoft.post('/token', async c => {
   }
 
   if (pkce.purpose && pkce.purpose !== 'login') {
+    // /delete-login で発行された state がこちらに紛れ込んだ場合、
+    // upsertUserや一般API用Tokenの発行に進んでしまうため拒否する。
+    // purposeが未設定の場合はpurpose導入前(デプロイ境界をまたいで
+    // Microsoft認証中だった)の通常ログインとして扱い、拒否しない。
+    // 削除確認フロー側は必ずpurpose: 'account_deletion'を書き込むため、
+    // 削除用のstateがここに紛れ込むことはない。
     return errorResponse(c, AuthErrors.INVALID_STATE_PURPOSE);
   }
 
@@ -267,6 +292,9 @@ microsoft.post('/token', async c => {
       : pkce.code_verifier;
 
   if (!codeVerifier) {
+    // state 自体は見つかっているが code_verifier だけが欠けているケース
+    // （webでpkceエントリにcode_verifierが保存されていない等）。
+    // stateの不一致・期限切れ（STATE_MISMATCH）とは原因が異なるため区別する。
     return errorResponse(c, AuthErrors.CODE_VERIFIER_MISSING);
   }
 
@@ -321,6 +349,8 @@ microsoft.post('/token', async c => {
   const refreshTokenId = crypto.randomUUID();
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
 
+  // mobile_refresh KV は mobile/web 共通で使う。Microsoft の refresh_token を
+  // sub 単位で保持し、/auth/me/photo からの Graph アクセストークン取得に使う。
   await c.env.AUTH_KV.put(
     `mobile_refresh:${refreshTokenId}`,
     JSON.stringify({
@@ -377,6 +407,11 @@ microsoft.post('/token', async c => {
 });
 
 // POST /auth/microsoft/delete-token
+// アカウント削除確認専用。/token とPKCE検証・Microsoftとのトークン交換・
+// id_token検証までは共通だが、ここから先はupsertUser（新規作成・
+// Student紐付け・一般API用Tokenの発行）を一切行わない。
+// 既存アカウントの照合のみ行い、見つかった場合に一回限り・短期間の
+// 削除確認Token（不透明な文字列）を発行する。
 microsoft.post('/delete-token', async c => {
   const clientType = getClientType(c);
   if (clientType !== 'mobile' && clientType !== 'web') {
@@ -422,6 +457,7 @@ microsoft.post('/delete-token', async c => {
   }
 
   if (pkce.purpose !== 'account_deletion') {
+    // /login で発行された state がこちらに紛れ込んだ場合を拒否する。
     return errorResponse(c, AuthErrors.INVALID_STATE_PURPOSE);
   }
 
@@ -473,6 +509,8 @@ microsoft.post('/delete-token', async c => {
   );
 
   if (!userId) {
+    // upsertUserは呼ばない。このMicrosoftアカウントに対応する
+    // RecTimeアカウントが存在しない場合、新規作成はしない。
     return errorResponse(c, AuthErrors.ACCOUNT_NOT_FOUND);
   }
 

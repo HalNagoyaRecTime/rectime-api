@@ -25,11 +25,10 @@ export const jsonResponse = <Schema extends ZodSchema>(
   }) as const;
 
 /**
- * Validation errors returned by request-body/query validation.
+ * リクエスト本文・クエリの検証で返すエラー詳細。
  *
- * Keep this shape independent from Zod's internal `issues` representation so
- * clients can rely on a stable API contract even if the validation library
- * changes.
+ * 検証ライブラリが変わってもクライアントが安定したAPI契約を利用できるよう、
+ * Zod内部の`issues`表現から独立した形を維持する。
  */
 export const validationErrorDetailsSchema = z
   .object({
@@ -45,9 +44,8 @@ export const errorResponseSchema = z
     error: z.object({
       code: z.string(),
       message: z.string(),
-      // Validation responses use validationErrorDetailsSchema. `z.any()` is
-      // retained as the second branch so existing error-specific extensions
-      // remain backward compatible.
+      // 検証エラーにはvalidationErrorDetailsSchemaを使用する。2つ目の分岐として
+      // `z.any()`を残し、既存のエラー固有の拡張との後方互換性を維持する。
       details: z.union([validationErrorDetailsSchema, z.any()]).optional(),
     }),
   })
