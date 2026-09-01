@@ -183,33 +183,55 @@ export function createClassRoomRepository(
         return;
       }
 
-      for (const chunk of chunkArray(
-        inputs,
-        Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
-      )) {
-        const teamPlaceholders = chunk.map(() => '(?)').join(', ');
-        const teamValues = chunk.map(provisionalTeamName);
-        const statements: D1PreparedStatement[] = [
-          db
-            .prepare(`INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`)
-            .bind(...teamValues),
-        ];
-        for (const input of chunk) {
-          statements.push(
+      // db.batch()の呼び出しはチャンクごとに分かれており、それぞれ別
+      // トランザクションになる。途中のチャンクが失敗した場合に先行チャンクの
+      // 分だけ確定した状態が残らないよう、成功したchunkを記録しておき、
+      // 失敗時にまとめて後始末する。
+      const committedInputs: ClassRoomInput[] = [];
+      try {
+        for (const chunk of chunkArray(
+          inputs,
+          Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
+        )) {
+          const teamPlaceholders = chunk.map(() => '(?)').join(', ');
+          const teamValues = chunk.map(provisionalTeamName);
+          const statements: D1PreparedStatement[] = [
             db
               .prepare(
-                `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
-                 SELECT ?, ?, ?, team_id FROM teams WHERE team_name = ?`
+                `INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`
               )
-              .bind(
-                input.class_code,
-                input.class_name,
-                input.teacher_id,
-                provisionalTeamName(input)
-              )
-          );
+              .bind(...teamValues),
+          ];
+          for (const input of chunk) {
+            statements.push(
+              db
+                .prepare(
+                  `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
+                   SELECT ?, ?, ?, team_id FROM teams WHERE team_name = ?`
+                )
+                .bind(
+                  input.class_code,
+                  input.class_name,
+                  input.teacher_id,
+                  provisionalTeamName(input)
+                )
+            );
+          }
+          await db.batch(statements);
+          committedInputs.push(...chunk);
         }
-        await db.batch(statements);
+      } catch (error) {
+        if (committedInputs.length > 0) {
+          try {
+            await deleteClassRoomsAndTeamsByInputs(db, committedInputs);
+          } catch (cleanupError) {
+            console.error(
+              'Error deleting already-committed class rooms after createMany failure:',
+              cleanupError
+            );
+          }
+        }
+        throw error;
       }
     },
 
@@ -316,4 +338,28 @@ export function createClassRoomRepository(
       return row !== null;
     },
   };
+}
+
+async function deleteClassRoomsAndTeamsByInputs(
+  db: D1Database,
+  inputs: ClassRoomInput[]
+) {
+  const classCodes = inputs.map(input => input.class_code);
+  const teamNames = inputs.map(provisionalTeamName);
+
+  // class_roomsはteamsを外部キー参照しているため、子から先に削除する。
+  for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM class_rooms WHERE class_code IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+  }
+  for (const chunk of chunkArray(teamNames, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM teams WHERE team_name IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+  }
 }
