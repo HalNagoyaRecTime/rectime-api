@@ -183,10 +183,6 @@ export function createClassRoomRepository(
         return;
       }
 
-      // db.batch()の呼び出しはチャンクごとに分かれており、それぞれ別
-      // トランザクションになる。途中のチャンクが失敗した場合に先行チャンクの
-      // 分だけ確定した状態が残らないよう、成功したchunkを記録しておき、
-      // 失敗時にまとめて後始末する。
       const committedInputs: ClassRoomInput[] = [];
       try {
         for (const chunk of chunkArray(
@@ -347,7 +343,6 @@ async function deleteClassRoomsAndTeamsByInputs(
   const classCodes = inputs.map(input => input.class_code);
   const teamNames = inputs.map(provisionalTeamName);
 
-  // class_roomsはteamsを外部キー参照しているため、子から先に削除する。
   for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
     const placeholders = chunk.map(() => '?').join(', ');
     await db
