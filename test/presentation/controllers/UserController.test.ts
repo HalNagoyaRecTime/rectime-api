@@ -146,16 +146,19 @@ describe('UserController', () => {
       expect(await response.json()).toEqual({ error: 'User not found' });
     });
 
-    it('予期しないエラーの場合は500を返す', async () => {
+    it('予期しないエラーの場合は500を返し、内部エラーの詳細を応答に含めない', async () => {
       const { request } = setup({
         updateUserStatus: vi
           .fn()
-          .mockRejectedValue(new Error('D1 unavailable')),
+          .mockRejectedValue(new Error('D1 unavailable: table users')),
       });
 
       const response = await request('/admin/users/10', { is_active: false });
 
       expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({
+        error: 'Failed to update user status',
+      });
     });
   });
 });

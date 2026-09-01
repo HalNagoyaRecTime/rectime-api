@@ -61,13 +61,10 @@ export function createUserController(service: IUserService) {
       if (error instanceof Error && error.message === 'User not found') {
         return c.json({ error: error.message }, 404);
       }
-      return c.json(
-        {
-          error: 'Failed to update user status',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      // 想定外の失敗はDB由来の例外が多く、文面にテーブル名や制約名が含まれる。
+      // 調査に必要な情報はログへ出し、応答には失敗した事実だけを返す。
+      console.error('Failed to update user status', error);
+      return c.json({ error: 'Failed to update user status' }, 500);
     }
   };
 
