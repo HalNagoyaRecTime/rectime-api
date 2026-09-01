@@ -141,6 +141,10 @@ npm run deploy
 
 本番環境のシークレットは Cloudflare ダッシュボード または `wrangler secret put <KEY>` で設定する。
 
+運用時の監視、Smoke Test、障害切り分け、Rollback手順は
+[`docs/operations/ios-release-backend-runbook.md`](docs/operations/ios-release-backend-runbook.md)
+を参照する。
+
 ### CORS 設定
 
 `ALLOWED_ORIGINS` には API の URL ではなく、API を呼び出すフロントエンドの origin を設定する。

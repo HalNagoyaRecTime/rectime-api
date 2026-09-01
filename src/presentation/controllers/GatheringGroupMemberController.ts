@@ -22,7 +22,8 @@ export function createGatheringGroupMemberController(
 
     try {
       return c.json(
-        await gatheringGroupMemberService.getGatheringMembers(gatheringId)
+        await gatheringGroupMemberService.getGatheringMembers(gatheringId),
+        200
       );
     } catch (error) {
       if (error instanceof Error && error.message === 'Gathering not found') {

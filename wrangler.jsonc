@@ -10,6 +10,9 @@
   },
   "vars": {
     "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+    // DOCS_ENABLED は本番では意図的に設定しない。設定しない限り
+    // /openapi.json と /docs は404になる(src/index.ts の requireDocsEnabled)。
+    // API仕様・内部エラーコード・DB形状のヒントを無認証で公開しないため。
     "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
@@ -110,6 +113,7 @@
         "PORT": "8787",
         "HOST": "0.0.0.0",
         "ALLOWED_ORIGINS": "http://localhost:5173,https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+        "DOCS_ENABLED": "true",
         "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
         // Entraアプリの「アプリケーション(クライアント)ID」。非公開の資格情報ではないためvarsで直接設定する。
         "MICROSOFT_CLIENT_ID": "be597fc9-7946-43a2-9ba8-6a96c96fd3b7",
@@ -123,7 +127,7 @@
         // TODO: recwatchのPRごとのPreview URLに応じた動的化を別途検討する
         // (Refererヘッダーから取得しALLOWED_ORIGINSで検証する方式を予定)。
         // それまでは固定値。
-        "FRONTEND_URL": "https://recwatch.pages.dev",
+        "FRONTEND_URL": "https://develop.recwatch.pages.dev",
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
@@ -149,11 +153,11 @@
       "kv_namespaces": [
         {
           "binding": "AUTH_KV",
-          "id": "7bdb66e8753148b09d88626e563193aa",
+          "id": "8b9d0339f2a34fe88a165fe3b4cdfa49",
           // preview_id は `wrangler dev --remote` 専用。このリポジトリの
           // `npm run dev` はローカルシミュレーションのみで使わないが、
           // 既にdry-runで動作確認済みの値のため維持する。
-          "preview_id": "7bdb66e8753148b09d88626e563193aa",
+          "preview_id": "8b9d0339f2a34fe88a165fe3b4cdfa49",
         },
       ],
       "d1_databases": [
@@ -205,12 +209,15 @@
       "name": "rectime-api-staging",
       "vars": {
         "ALLOWED_ORIGINS": "https://recwatch.pages.dev,https://*.recwatch.pages.dev",
+        // Preview環境はレビュー時にSwagger UIで仕様を確認するため公開する。
+        "DOCS_ENABLED": "true",
+        // Entraのマルチテナント共通エンドポイント値。環境によらず同一。
         // Entraアプリの「アプリケーション(クライアント)ID」。非公開の資格情報ではないためvarsで直接設定する。
         "MICROSOFT_CLIENT_ID": "be597fc9-7946-43a2-9ba8-6a96c96fd3b7",
         "MICROSOFT_TENANT": "organizations",
         "ALLOWED_MICROSOFT_TENANTS": "8d41d6d7-36ce-4e0c-8c6d-cf2c54c39039",
         "MICROSOFT_MOBILE_REDIRECT_URI": "com.rectime.mobile://auth/callback",
-        "FRONTEND_URL": "https://recwatch.pages.dev",
+        "FRONTEND_URL": "https://staging.recwatch.pages.dev",
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",

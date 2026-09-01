@@ -27,7 +27,11 @@ export function createClassRoomController(classService: IClassRoomService) {
     }
     try {
       return c.json(
-        await classService.getAllClassrooms(query.data.limit, query.data.offset)
+        await classService.getAllClassrooms(
+          query.data.limit,
+          query.data.offset
+        ),
+        200
       );
     } catch (error) {
       return c.json(
@@ -44,7 +48,7 @@ export function createClassRoomController(classService: IClassRoomService) {
     const id = classIdSchema.safeParse(c.req.param('classId'));
     if (!id.success) return c.json({ error: 'Invalid class ID' }, 400);
     try {
-      return c.json(await classService.getClassroomById(id.data));
+      return c.json(await classService.getClassroomById(id.data), 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
         return c.json({ error: error.message }, 404);
@@ -96,7 +100,8 @@ export function createClassRoomController(classService: IClassRoomService) {
           class_code: body.data.classCode,
           class_name: body.data.className,
           teacher_id: body.data.teacherId,
-        })
+        }),
+        200
       );
     } catch (error) {
       return handleWriteError(c, error, 'Failed to update class');

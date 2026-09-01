@@ -71,14 +71,14 @@ export function createFirebaseTokenController(
         fcmToken: parsedBody.data.fcmToken,
       });
 
-      return c.json(result);
+      return c.json(result, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'User not found') {
         return c.json({ error: error.message }, 404);
       }
       if (isFirebaseTokenUniqueConstraintError(error)) {
         return c.json(
-          { error: 'Firebase token is already registered to another user' },
+          { error: 'Firebase token is being registered by another request' },
           409
         );
       }

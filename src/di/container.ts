@@ -56,7 +56,10 @@ import { createUserRepository } from '../infrastructure/repositories/UserReposit
 import { createUserStatusRepository } from '../infrastructure/repositories/UserStatusRepository';
 import { createUserService } from '../application/services/UserService';
 import { createUserController } from '../presentation/controllers/UserController';
+import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
+import { createUserSearchService } from '../application/services/UserSearchService';
+import { createUserSearchController } from '../presentation/controllers/UserSearchController';
 import type { Env } from '../lib/env';
 
 export function createDIContainer(env: Env) {
@@ -64,6 +67,7 @@ export function createDIContainer(env: Env) {
 
   // Repositories
   const userRepository = createUserRepository(db);
+  const userSearchRepository = createUserSearchRepository(db);
   const studentRepository = createStudentRepository(db);
   const staffRepository = createStaffRepository(db);
   const teacherRepository = createTeacherRepository(db);
@@ -102,6 +106,10 @@ export function createDIContainer(env: Env) {
   const userService = createUserService(
     userRepository,
     createUserStatusRepository(db)
+  );
+  const userSearchService = createUserSearchService(
+    userSearchRepository,
+    userRepository
   );
   const studentService = createStudentService(
     studentRepository,
@@ -194,6 +202,7 @@ export function createDIContainer(env: Env) {
     createAdminNotificationManagementController(
       adminNotificationManagementService
     );
+  const userSearchController = createUserSearchController(userSearchService);
   const notificationScheduleController = createNotificationScheduleController(
     notificationScheduleService
   );
@@ -223,6 +232,7 @@ export function createDIContainer(env: Env) {
     notificationController,
     adminNotificationController,
     adminNotificationManagementController,
+    userSearchController,
     notificationScheduleController,
     mobileNotificationController,
     scheduledNotificationService,

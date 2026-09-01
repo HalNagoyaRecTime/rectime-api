@@ -98,7 +98,7 @@ flowchart LR
 
 ### Infrastructure
 
-- RepositoryはD1の操作とDB rowからEntityへの変換を行う。
+- RepositoryはDrizzle ORMを基本とし、D1の操作とDB rowからEntityへの変換を行う。
 - 認証、Queue、ファイル解析、外部サービス連携などの具体実装を置く。
 - Schema変更時は`migrations/`に新しいSQL fileを追加する。
 - 適用済みのmigrationは変更しない。

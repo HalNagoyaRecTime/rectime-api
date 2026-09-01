@@ -41,7 +41,8 @@ export function createGatheringSpotController(
       }
       try {
         return c.json(
-          await gatheringSpotService.getGatheringSpotPage(parsedQuery.data)
+          await gatheringSpotService.getGatheringSpotPage(parsedQuery.data),
+          200
         );
       } catch (error) {
         return c.json(
@@ -54,7 +55,7 @@ export function createGatheringSpotController(
       }
     }
     try {
-      return c.json(await gatheringSpotService.getAllGatheringSpots());
+      return c.json(await gatheringSpotService.getAllGatheringSpots(), 200);
     } catch (error) {
       return c.json(
         {
@@ -149,7 +150,7 @@ export function createGatheringSpotController(
         parsedId.data,
         { gathering_spot_name: request.gatheringSpotName }
       );
-      return c.json(gatheringSpot);
+      return c.json(gatheringSpot, 200);
     } catch (error) {
       if (
         error instanceof Error &&

@@ -18,8 +18,10 @@ import type { Env } from '../../../../src/lib/env';
 import type {
   PkceEntry,
   MobileRefreshEntry,
+  DeletionConfirmationEntry,
 } from '../../../../src/domain/auth/types';
 import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
+import { createUserRepository } from '../../../../src/infrastructure/repositories/UserRepository';
 
 const JWT_SECRET = 'a'.repeat(32);
 const KID = 'test-kid';
@@ -263,6 +265,9 @@ describe('GET /auth/microsoft/login', () => {
     expect(new URL(location).searchParams.get('redirect_uri')).toBe(
       'http://localhost/api/v1/auth/microsoft/callback'
     );
+    // 通常ログインはprompt=select_accountのまま
+    // (削除確認フローのみprompt=loginへ切り替える)。
+    expect(new URL(location).searchParams.get('prompt')).toBe('select_account');
 
     const state = new URL(location).searchParams.get('state') as string;
     const stored = JSON.parse(
@@ -382,6 +387,7 @@ describe('POST /auth/microsoft/token', () => {
       JSON.stringify({
         nonce: 'n',
         client_type: 'mobile',
+        purpose: 'login',
         created_at: new Date().toISOString(),
       } satisfies PkceEntry)
     );
@@ -408,6 +414,7 @@ describe('POST /auth/microsoft/token', () => {
       JSON.stringify({
         nonce: 'n',
         client_type: 'web',
+        purpose: 'login',
         created_at: new Date().toISOString(),
       } satisfies PkceEntry)
     );
@@ -448,6 +455,7 @@ describe('POST /auth/microsoft/token', () => {
         code_verifier: generateRandom(32),
         nonce: 'nonce-1',
         client_type: 'web',
+        purpose: 'login',
         created_at: new Date().toISOString(),
       } satisfies PkceEntry)
     );
@@ -509,6 +517,89 @@ describe('POST /auth/microsoft/token', () => {
     expect(await env.AUTH_KV.get('pkce:state-1')).toBeNull();
   });
 
+  it('purposeフィールドを含まない(purpose導入前に保存された)stateでも通常ログインとして成功する', async () => {
+    // API更新の直前にMicrosoftログイン画面を開いた利用者が、認証中に
+    // デプロイをまたいで戻ってきた場合を再現する。KV上のPkceEntryには
+    // purposeフィールドが存在しない(JSON.stringifyでpurposeキー自体が
+    // 無い状態)。この場合を新コードのpurposeチェックがINVALID_STATE_
+    // PURPOSEとして拒否してしまうと、正当な通常ログインができなくなる。
+    const env = buildEnv();
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-legacy-1',
+      oid: 'oid-legacy-1',
+      tid: 'tid-1',
+      name: '田中太郎',
+      preferred_username: 'tanaka@example.com',
+      nonce: 'nonce-legacy-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-legacy-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-legacy-1',
+        client_type: 'web',
+        created_at: new Date().toISOString(),
+        // purposeを意図的に含めない(デプロイ境界をまたいだ場合の再現)
+      })
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-legacy-1',
+          state: 'state-legacy-1',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { access_token: string };
+    expect(body.access_token).toBeTruthy();
+  });
+
+  it('purposeがaccount_deletion(/delete-loginで発行されたstate)の場合は400 INVALID_STATE_PURPOSEを返す', async () => {
+    // /delete-token側のクロスユース拒否(purposeがloginの場合)は別途
+    // テスト済み。逆方向として、削除確認フロー用に発行されたstateが
+    // 通常ログインの/tokenに渡された場合も拒否されることを確認する。
+    const env = buildEnv();
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'account_deletion',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'auth-code-1', state: 'state-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_STATE_PURPOSE');
+  });
+
   it('mobileは成功時、ボディのcode_verifierを使って交換しaccess_token/refresh_token_idを返す', async () => {
     const env = buildEnv();
     const now = Math.floor(Date.now() / 1000);
@@ -529,6 +620,7 @@ describe('POST /auth/microsoft/token', () => {
       JSON.stringify({
         nonce: 'nonce-2',
         client_type: 'mobile',
+        purpose: 'login',
         created_at: new Date().toISOString(),
       } satisfies PkceEntry)
     );
@@ -580,6 +672,7 @@ describe('POST /auth/microsoft/token', () => {
         code_verifier: generateRandom(32),
         nonce: 'nonce-3',
         client_type: 'web',
+        purpose: 'login',
         created_at: new Date().toISOString(),
       } satisfies PkceEntry)
     );
@@ -652,6 +745,7 @@ describe('POST /auth/microsoft/token', () => {
         code_verifier: generateRandom(32),
         nonce: 'nonce-1',
         client_type: 'web',
+        purpose: 'login',
         created_at: new Date().toISOString(),
       } satisfies PkceEntry)
     );
@@ -671,6 +765,60 @@ describe('POST /auth/microsoft/token', () => {
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe('STUDENT_ALREADY_LINKED');
+  });
+
+  it('deletion_statusがdeletion_pendingの既存ユーザーがログインを試みると410 ACCOUNT_DELETION_PENDINGを返す', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('田中太郎', 'deletion_pending') RETURNING user_id"
+    ).first<{ user_id: number }>();
+
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-1', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-1',
+      oid: 'oid-1',
+      tid: 'tid-1',
+      name: '田中太郎',
+      preferred_username: 'tanaka@example.com',
+      nonce: 'nonce-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'login',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'auth-code-1', state: 'state-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
   });
 
   it('学生ユーザーが初回ログイン時、学籍番号から紐付いてstudent_id_number/class_room_nameを返す', async () => {
@@ -707,6 +855,7 @@ describe('POST /auth/microsoft/token', () => {
         code_verifier: generateRandom(32),
         nonce: 'nonce-student-1',
         client_type: 'web',
+        purpose: 'login',
         created_at: new Date().toISOString(),
       } satisfies PkceEntry)
     );
@@ -761,6 +910,7 @@ describe('POST /auth/microsoft/token', () => {
         code_verifier: generateRandom(32),
         nonce: 'nonce-teacher-1',
         client_type: 'web',
+        purpose: 'login',
         created_at: new Date().toISOString(),
       } satisfies PkceEntry)
     );
@@ -789,5 +939,406 @@ describe('POST /auth/microsoft/token', () => {
     };
     expect(body.user.student_id_number).toBeNull();
     expect(body.user.class_room_name).toBeNull();
+  });
+
+  it('markAsDeleted実行後に同じ学籍番号メールでログインすると、古い削除済みユーザーへ紐付けず新規アカウントとして登録される', async () => {
+    const env = buildEnv();
+
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3C', '3年C組') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const oldUser = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('学生太郎(削除前)') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 3, '70001')"
+    )
+      .bind(oldUser!.user_id, classRoom!.class_room_id)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-deleted-student-1', 'tid-1')"
+    )
+      .bind(oldUser!.user_id)
+      .run();
+
+    // 本人によるアカウント削除が完了した状態を再現する
+    // (deletion_status: deleted かつ microsoft_account_links 削除済み)。
+    const userRepository = createUserRepository(env.DB);
+    await userRepository.markAsDeleted(String(oldUser!.user_id));
+
+    // 同じ学籍番号(=同じ学生メール)で、別のMicrosoftアカウントとして
+    // 再登録を試みる想定(削除後に発行し直されたMicrosoftアカウント等)。
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-deleted-student-2',
+      oid: 'oid-deleted-student-2',
+      tid: 'tid-1',
+      name: '学生太郎(再登録)',
+      preferred_username: 'nhs70001@nhs.hal.ac.jp',
+      nonce: 'nonce-deleted-student-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-deleted-student-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-deleted-student-1',
+        client_type: 'web',
+        purpose: 'login',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-deleted-student-1',
+          state: 'state-deleted-student-1',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { user: { id: string } };
+    // 古い(削除済みの)user_idへ紐付けられていない(=新規のuser_idが発行された)
+    expect(body.user.id).not.toBe(String(oldUser!.user_id));
+
+    const oldUserRow = await workerEnv.DB.prepare(
+      'SELECT deletion_status FROM users WHERE user_id = ?'
+    )
+      .bind(oldUser!.user_id)
+      .first<{ deletion_status: string }>();
+    expect(oldUserRow?.deletion_status).toBe('deleted');
+  });
+
+  it('deletion_pendingの学生が学籍番号ログインを試みると410 ACCOUNT_DELETION_PENDINGを返す', async () => {
+    const env = buildEnv();
+
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3D', '3年D組') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('学生太郎(削除処理中)', 'deletion_pending') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 4, '70002')"
+    )
+      .bind(user!.user_id, classRoom!.class_room_id)
+      .run();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-pending-student-1',
+      oid: 'oid-pending-student-1',
+      tid: 'tid-1',
+      name: '学生太郎',
+      preferred_username: 'nhs70002@nhs.hal.ac.jp',
+      nonce: 'nonce-pending-student-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-pending-student-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-pending-student-1',
+        client_type: 'web',
+        purpose: 'login',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-pending-student-1',
+          state: 'state-pending-student-1',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
+
+    const linkRow = await workerEnv.DB.prepare(
+      'SELECT * FROM microsoft_account_links WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(linkRow).toBeNull();
+  });
+});
+
+describe('GET /auth/microsoft/delete-login', () => {
+  it('webはMicrosoftへ302リダイレクトし、KVにpurpose: account_deletionで保存する', async () => {
+    const env = buildEnv();
+    const app = buildApp();
+
+    const res = await app.request('/delete-login', {}, env);
+
+    expect(res.status).toBe(302);
+    const location = res.headers.get('Location') ?? '';
+    expect(location).toContain('login.microsoftonline.com');
+    // 削除確認フローはprompt=loginで資格情報の再入力を強制する。
+    // Microsoft側にセッションが残っていても、prompt=select_accountのままだと
+    // 無入力で認証が完了し得るため、「今操作している本人」の再認証にならない。
+    expect(new URL(location).searchParams.get('prompt')).toBe('login');
+
+    const state = new URL(location).searchParams.get('state') as string;
+    const stored = JSON.parse(
+      (await env.AUTH_KV.get(`pkce:${state}`)) as string
+    ) as PkceEntry;
+    expect(stored.client_type).toBe('web');
+    expect(stored.purpose).toBe('account_deletion');
+    expect(stored.code_verifier).toBeTruthy();
+  });
+
+  it('mobileは有効なパラメータでauth_urlを返しKVにpurpose: account_deletionで保存し、prompt=loginを含むauth_urlを返す', async () => {
+    const env = buildEnv();
+    const state = generateRandom(32);
+    const codeChallenge = generateRandom(32);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/delete-login',
+      {
+        headers: {
+          'X-Client-Type': 'mobile',
+          'X-State': state,
+          'X-PKCE-Code-Challenge': codeChallenge,
+        },
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { auth_url: string };
+    expect(new URL(body.auth_url).searchParams.get('prompt')).toBe('login');
+
+    const stored = JSON.parse(
+      (await env.AUTH_KV.get(`pkce:${state}`)) as string
+    ) as PkceEntry;
+    expect(stored.client_type).toBe('mobile');
+    expect(stored.purpose).toBe('account_deletion');
+  });
+});
+
+describe('POST /auth/microsoft/delete-token', () => {
+  it('purposeがlogin(通常/loginで発行されたstate)の場合は400 INVALID_STATE_PURPOSEを返す', async () => {
+    const env = buildEnv();
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'login',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/delete-token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'auth-code-1', state: 'state-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_STATE_PURPOSE');
+  });
+
+  it('対応するアカウントが存在しない場合は404 ACCOUNT_NOT_FOUNDを返し、upsertUserで新規作成しない', async () => {
+    const env = buildEnv();
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-1',
+      oid: 'oid-unknown',
+      tid: 'tid-1',
+      name: '田中太郎',
+      preferred_username: 'tanaka@example.com',
+      nonce: 'nonce-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'account_deletion',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/delete-token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'auth-code-1', state: 'state-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('ACCOUNT_NOT_FOUND');
+
+    const usersCount = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) as count FROM users'
+    ).first<{ count: number }>();
+    expect(usersCount?.count).toBe(0);
+  });
+
+  it('既存アカウントが見つかる場合は削除確認Tokenを発行し、一般API用access_tokenは返さない', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-1', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-1',
+      oid: 'oid-1',
+      tid: 'tid-1',
+      name: '田中太郎',
+      preferred_username: 'tanaka@example.com',
+      nonce: 'nonce-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'account_deletion',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/delete-token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'auth-code-1', state: 'state-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      deletion_confirmation_token: string;
+      expires_in: number;
+      access_token?: string;
+    };
+    expect(body.deletion_confirmation_token).toBeTruthy();
+    expect(body.access_token).toBeUndefined();
+
+    const stored = JSON.parse(
+      (await env.AUTH_KV.get(
+        `deletion_confirmation:${body.deletion_confirmation_token}`
+      )) as string
+    ) as DeletionConfirmationEntry;
+    expect(stored.user_id).toBe(String(user!.user_id));
+
+    // /delete-tokenはstateを消費するが、mobile_refresh/mobile_refresh_by_userは
+    // 発行しない(一般API用Tokenの発行経路に入らない)。
+    const mobileRefreshByUser = await env.AUTH_KV.get(
+      `mobile_refresh_by_user:${user!.user_id}`
+    );
+    expect(mobileRefreshByUser).toBeNull();
+  });
+
+  it('stateは一度使うとKVから削除され、同じstateでの再利用はできない', async () => {
+    const env = buildEnv();
+    await env.AUTH_KV.put(
+      'pkce:state-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'account_deletion',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(
+      await signIdToken({
+        sub: 'sub-1',
+        oid: 'oid-1',
+        tid: 'tid-1',
+        nonce: 'nonce-1',
+        iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+        aud: CLIENT_ID,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000) - 10,
+      })
+    );
+    const app = buildApp();
+
+    await app.request(
+      '/delete-token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'auth-code-1', state: 'state-1' }),
+      },
+      env
+    );
+
+    const res = await app.request(
+      '/delete-token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'auth-code-1', state: 'state-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('STATE_MISMATCH');
   });
 });

@@ -32,7 +32,7 @@ export function createScheduleController(scheduleService: IScheduleService) {
         parsedId.data,
         parsedBody.data
       );
-      return c.json(updatedSchedule);
+      return c.json(updatedSchedule, 200);
     } catch (error) {
       if (error instanceof SyntaxError) {
         return c.json({ error: 'Invalid schedule data' }, 400);

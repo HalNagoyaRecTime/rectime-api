@@ -25,10 +25,16 @@ export interface UserCategories {
   is_teacher: boolean;
 }
 
+// 'login': 通常ログイン(upsertUser・一般API用Tokenの発行に進む)。
+// 'account_deletion': 削除確認専用(既存アカウントの照合のみ行い、
+// upsertUserや一般API用Tokenの発行は行わない)。
+export type PkcePurpose = 'login' | 'account_deletion';
+
 export interface PkceEntry {
   code_verifier?: string;
   nonce: string;
   client_type: ClientType;
+  purpose: PkcePurpose;
   created_at: string;
 }
 
@@ -38,6 +44,14 @@ export interface MicrosoftTokenResponse {
   refresh_token?: string;
   error?: string;
   error_description?: string;
+}
+
+// 削除確認Token(deletion_confirmation:{token})の値。一回限り・短期間の
+// 使い捨てで、本人確認済みのuser_idのみを保持する。upsertUserや一般API用
+// Tokenの発行経路とは独立しているため、MobileRefreshEntryとは共有しない。
+export interface DeletionConfirmationEntry {
+  user_id: string;
+  created_at: string;
 }
 
 export interface MobileRefreshEntry {

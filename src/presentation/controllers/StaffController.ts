@@ -12,7 +12,7 @@ export function createStaffController(staffService: IStaffService) {
       }
 
       const staff = await staffService.getStaffById(staffId);
-      return c.json(staff);
+      return c.json(staff, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Staff not found') {
         return c.json({ error: 'Staff not found' }, 404);
@@ -24,7 +24,7 @@ export function createStaffController(staffService: IStaffService) {
   const getAllStaffs = async (c: Context) => {
     try {
       const staffs = await staffService.getAllStaffs();
-      return c.json(staffs);
+      return c.json(staffs, 200);
     } catch {
       return c.json({ error: 'Failed to fetch staffs' }, 500);
     }
