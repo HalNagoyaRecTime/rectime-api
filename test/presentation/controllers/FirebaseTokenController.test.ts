@@ -1,5 +1,6 @@
+import { env } from 'cloudflare:workers';
 import { Hono } from 'hono';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { IFirebaseTokenService } from '../../../src/application/services/IFirebaseTokenService';
 import type { RegisterFirebaseTokenResult } from '../../../src/domain/entities/FirebaseToken';
 import type { Env } from '../../../src/lib/env';
@@ -29,6 +30,57 @@ function setup(authenticatedUserId: number | null = 7) {
   return { app, firebaseTokenService };
 }
 
+// 409/500 の判定はSQLiteが返すエラー文へ依存する。文字列を手で組み立てると
+// スキーマ変更でメッセージ形式が変わったことを検出できないため、実際のDBで
+// 制約違反を起こして本物のエラーを取得する。
+async function createUser(userName: string): Promise<number> {
+  const row = await env.DB.prepare(
+    'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
+  )
+    .bind(userName)
+    .first<{ user_id: number }>();
+  if (!row) throw new Error('failed to create test user');
+  return row.user_id;
+}
+
+async function insertActiveToken(
+  userId: number,
+  fcmToken: string
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO firebase_tokens (user_id, platform, fcm_token, is_firebase_active)
+     VALUES (?, 2, ?, 1)`
+  )
+    .bind(userId, fcmToken)
+    .run();
+}
+
+async function captureError(run: () => Promise<unknown>): Promise<unknown> {
+  try {
+    await run();
+  } catch (error) {
+    return error;
+  }
+  throw new Error('制約違反が発生しなかった');
+}
+
+async function captureDuplicateFcmTokenError(): Promise<unknown> {
+  const ownerId = await createUser('Firebaseコントローラ確認所有者');
+  const otherId = await createUser('Firebaseコントローラ確認別利用者');
+  await insertActiveToken(ownerId, 'controller-duplicate-token');
+  return captureError(() =>
+    insertActiveToken(otherId, 'controller-duplicate-token')
+  );
+}
+
+async function captureDuplicateUserIdError(): Promise<unknown> {
+  const userId = await createUser('Firebaseコントローラ確認重複利用者');
+  await insertActiveToken(userId, 'controller-first-token');
+  return captureError(() =>
+    insertActiveToken(userId, 'controller-second-token')
+  );
+}
+
 const result: RegisterFirebaseTokenResult = {
   firebase_token_id: 1,
   user_id: 7,
@@ -38,6 +90,15 @@ const result: RegisterFirebaseTokenResult = {
 };
 
 describe('FirebaseTokenController', () => {
+  afterEach(async () => {
+    await env.DB.prepare(
+      "DELETE FROM firebase_tokens WHERE user_id IN (SELECT user_id FROM users WHERE user_name LIKE 'Firebaseコントローラ確認%')"
+    ).run();
+    await env.DB.prepare(
+      "DELETE FROM users WHERE user_name LIKE 'Firebaseコントローラ確認%'"
+    ).run();
+  });
+
   it('認証済みユーザーのTokenを無効化して204を返す', async () => {
     const { app, firebaseTokenService } = setup();
 
@@ -175,13 +236,11 @@ describe('FirebaseTokenController', () => {
     expect(response.status).toBe(404);
   });
 
-  it('別ユーザーに登録済みのTokenには409を返す', async () => {
+  it('実際のDBで発生した有効なToken重複には409を返す', async () => {
     const { app, firebaseTokenService } = setup();
     (
       firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
-    ).mockRejectedValue(
-      new Error('UNIQUE constraint failed: firebase_tokens.fcm_token')
-    );
+    ).mockRejectedValue(await captureDuplicateFcmTokenError());
 
     const response = await app.request('/firebase-tokens', {
       method: 'POST',
@@ -194,23 +253,17 @@ describe('FirebaseTokenController', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: 'Firebase token is already registered to another user',
+      error: 'Firebase token is being registered by another request',
     });
   });
 
   it('D1でラップされたToken重複エラーにも409を返す', async () => {
     const { app, firebaseTokenService } = setup();
-    const sqliteError = new Error(
-      'UNIQUE constraint failed: firebase_tokens.fcm_token'
-    );
-    const d1Error = new Error('D1_ERROR: constraint failed', {
-      cause: sqliteError,
-    });
     (
       firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
     ).mockRejectedValue(
       new Error('Failed query: update firebase_tokens', {
-        cause: d1Error,
+        cause: await captureDuplicateFcmTokenError(),
       })
     );
 
@@ -225,17 +278,15 @@ describe('FirebaseTokenController', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: 'Firebase token is already registered to another user',
+      error: 'Firebase token is being registered by another request',
     });
   });
 
-  it('別のUNIQUE制約違反には500を返す', async () => {
+  it('実際のDBで発生した別のUNIQUE制約違反には500を返す', async () => {
     const { app, firebaseTokenService } = setup();
     (
       firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
-    ).mockRejectedValue(
-      new Error('UNIQUE constraint failed: firebase_tokens.user_id')
-    );
+    ).mockRejectedValue(await captureDuplicateUserIdError());
 
     const response = await app.request('/firebase-tokens', {
       method: 'POST',
