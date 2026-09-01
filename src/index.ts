@@ -378,7 +378,7 @@ apiV1.openapi(staffOnly(scheduleUpdateRoute), c => {
   return c.get('container').scheduleController.updateSchedule(c);
 });
 
-apiV1.openapi(authed(adminUserSearchRoute), c => {
+apiV1.openapi(staffOnly(adminUserSearchRoute), c => {
   return c.get('container').userSearchController.searchUsers(c);
 });
 

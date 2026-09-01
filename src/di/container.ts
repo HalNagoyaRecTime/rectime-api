@@ -102,10 +102,7 @@ export function createDIContainer(env: Env) {
     env.STUDENT_EMAIL_DOMAIN
   );
   const authorizationService = createAuthorizationService(userRepository);
-  const userSearchService = createUserSearchService(
-    userSearchRepository,
-    userRepository
-  );
+  const userSearchService = createUserSearchService(userSearchRepository);
   const studentService = createStudentService(
     studentRepository,
     classRoomRepository
