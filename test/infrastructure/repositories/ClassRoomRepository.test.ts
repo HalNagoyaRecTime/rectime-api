@@ -626,5 +626,38 @@ describe('ClassRoomRepository', () => {
         class_name: '一括クラス1999',
       });
     });
+
+    it('db.batch()の呼び出しがチャンク分割された場合、後のチャンクが失敗すると先に確定した分もまとめて後片付けされる', async () => {
+      const CHUNK_SIZE = 20; // Math.floor(D1_MAX_BOUND_PARAMETERS / 5)と同じ値
+      const firstChunkInputs = Array.from({ length: CHUNK_SIZE }, (_, i) => ({
+        class_code: `CROSS-CHUNK-${i}`,
+        class_name: `チャンク跨ぎクラス${i}`,
+        teacher_id: null,
+        team_id: null,
+      }));
+      const secondChunkInputs = [
+        {
+          // 既存のclass_codeにぶつけて2チャンク目を失敗させる
+          class_code: 'IA14A',
+          class_name: '2チャンク目で重複するクラス',
+          teacher_id: null,
+          team_id: null,
+        },
+      ];
+
+      await expect(
+        repo.createMany([...firstChunkInputs, ...secondChunkInputs])
+      ).rejects.toThrow();
+
+      // 1チャンク目(20件)は一度コミットされているはずだが、
+      // 2チャンク目の失敗を受けてまとめて後片付けされていること
+      for (const input of firstChunkInputs) {
+        await expect(repo.findByCode(input.class_code)).resolves.toBeNull();
+      }
+      const orphanedTeams = await env.DB.prepare(
+        "SELECT team_id FROM teams WHERE team_name LIKE 'チャンク跨ぎクラス%'"
+      ).all();
+      expect(orphanedTeams.results).toHaveLength(0);
+    });
   });
 });
