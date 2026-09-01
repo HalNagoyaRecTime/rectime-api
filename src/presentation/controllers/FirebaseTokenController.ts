@@ -78,7 +78,7 @@ export function createFirebaseTokenController(
       }
       if (isFirebaseTokenUniqueConstraintError(error)) {
         return c.json(
-          { error: 'Firebase token is already registered to another user' },
+          { error: 'Firebase token is being registered by another request' },
           409
         );
       }

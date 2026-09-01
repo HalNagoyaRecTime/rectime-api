@@ -59,6 +59,7 @@ describe('OpenAPI documentation', () => {
       '/',
       '/api/v1/admin/notifications',
       '/api/v1/admin/notifications/{notificationId}',
+      '/api/v1/admin/users',
       '/api/v1/admin/users/{userId}',
       '/api/v1/classrooms',
       '/api/v1/classrooms/{classId}',
@@ -103,7 +104,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(57);
+    expect(documentedOperations).toHaveLength(58);
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {
@@ -120,6 +121,9 @@ describe('OpenAPI documentation', () => {
       Bearer: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
     });
     expect(document.paths['/api/v1/students'].get?.security).toEqual([
+      { Bearer: [] },
+    ]);
+    expect(document.paths['/api/v1/admin/users'].get?.security).toEqual([
       { Bearer: [] },
     ]);
     // 認証を要さないルートにはsecurityを付けない。
