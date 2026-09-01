@@ -55,13 +55,15 @@ describe('UserController', () => {
     it('Userを無効化して変更後の状態を返す', async () => {
       const { service, request } = setup();
 
-      const response = await request('/admin/users/10', { is_active: false });
+      const response = await request('/admin/users/10', {
+        is_live_active: false,
+      });
 
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual(userStatus);
       expect(service.updateUserStatus).toHaveBeenCalledWith({
         user_id: 10,
-        is_active: false,
+        is_live_active: false,
       });
     });
 
@@ -72,7 +74,9 @@ describe('UserController', () => {
           .mockResolvedValue({ user_id: 10, is_live_active: true }),
       });
 
-      const response = await request('/admin/users/10', { is_active: true });
+      const response = await request('/admin/users/10', {
+        is_live_active: true,
+      });
 
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
@@ -81,7 +85,7 @@ describe('UserController', () => {
       });
       expect(service.updateUserStatus).toHaveBeenCalledWith({
         user_id: 10,
-        is_active: true,
+        is_live_active: true,
       });
     });
 
@@ -90,7 +94,7 @@ describe('UserController', () => {
 
       const response = await request(
         '/admin/users/10',
-        { is_active: false },
+        { is_live_active: false },
         false
       );
 
@@ -103,7 +107,9 @@ describe('UserController', () => {
         canManageUserStatus: vi.fn().mockResolvedValue(false),
       });
 
-      const response = await request('/admin/users/10', { is_active: false });
+      const response = await request('/admin/users/10', {
+        is_live_active: false,
+      });
 
       expect(response.status).toBe(403);
       expect(service.updateUserStatus).not.toHaveBeenCalled();
@@ -113,7 +119,7 @@ describe('UserController', () => {
       const { service, request } = setup();
 
       const response = await request(`/admin/users/${userId}`, {
-        is_active: false,
+        is_live_active: false,
       });
 
       expect(response.status).toBe(400);
@@ -121,9 +127,9 @@ describe('UserController', () => {
     });
 
     it.each([
-      ['is_activeがboolean以外', { is_active: 'false' }],
-      ['is_activeがない', {}],
-      ['未知のキーを含む', { is_active: false, user_name: '変更' }],
+      ['is_live_activeがboolean以外', { is_live_active: 'false' }],
+      ['is_live_activeがない', {}],
+      ['未知のキーを含む', { is_live_active: false, user_name: '変更' }],
     ])('リクエストボディが%sの場合は400を返す', async (_label, body) => {
       const { service, request } = setup();
 
@@ -140,7 +146,9 @@ describe('UserController', () => {
           .mockRejectedValue(new Error('User not found')),
       });
 
-      const response = await request('/admin/users/999', { is_active: false });
+      const response = await request('/admin/users/999', {
+        is_live_active: false,
+      });
 
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual({ error: 'User not found' });
@@ -153,7 +161,9 @@ describe('UserController', () => {
           .mockRejectedValue(new Error('D1 unavailable: table users')),
       });
 
-      const response = await request('/admin/users/10', { is_active: false });
+      const response = await request('/admin/users/10', {
+        is_live_active: false,
+      });
 
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({

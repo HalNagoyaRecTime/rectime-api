@@ -9,7 +9,7 @@ import type { AuthVariables } from '../middleware/requireAuth';
 const userIdSchema = z.coerce.number().int().positive();
 const updateUserStatusSchema = z
   .object({
-    is_active: z.boolean(),
+    is_live_active: z.boolean(),
   })
   .strict();
 
@@ -18,8 +18,10 @@ type UserContext = Context<{
   Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>;
 
+// OpenAPIルートのハンドラは、応答をステータスごとの型として推論できる必要がある。
+// そのため以下のヘルパーには戻り値の型を注釈しない（Response と書くと型が合わなくなる）。
 export function createUserController(service: IUserService) {
-  const authorizeManager = async (c: UserContext): Promise<Response | null> => {
+  const authorizeManager = async (c: UserContext) => {
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
@@ -51,12 +53,11 @@ export function createUserController(service: IUserService) {
     }
 
     try {
-      return c.json(
-        await service.updateUserStatus({
-          user_id: targetUserId,
-          is_active: parsedBody.data.is_active,
-        })
-      );
+      const updated = await service.updateUserStatus({
+        user_id: targetUserId,
+        is_live_active: parsedBody.data.is_live_active,
+      });
+      return c.json(updated, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'User not found') {
         return c.json({ error: error.message }, 404);
@@ -73,7 +74,7 @@ export function createUserController(service: IUserService) {
   };
 }
 
-function parseUserId(c: UserContext): number | Response {
+function parseUserId(c: UserContext) {
   const parsedId = userIdSchema.safeParse(c.req.param('userId'));
   return parsedId.success
     ? parsedId.data

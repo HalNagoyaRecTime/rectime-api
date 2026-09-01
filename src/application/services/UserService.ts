@@ -29,7 +29,7 @@ export function createUserService(
       // 無効化しても再有効化時に無効化前の情報をそのまま利用できるのはこのため。
       const updated = await userStatusRepository.updateLiveActive(
         command.user_id,
-        command.is_active
+        command.is_live_active
       );
       if (!updated) {
         throw new Error('User not found');

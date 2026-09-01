@@ -23,6 +23,7 @@ import {
 } from './presentation/middleware/bearerAuthentication';
 import { validationDefaultHook } from './presentation/openapi/schemas';
 import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
+import { adminUserStatusUpdateRoute } from './presentation/openapi/adminUsers';
 import {
   studentCreateRoute,
   studentDetailRoute,
@@ -191,11 +192,6 @@ const apiV1 = new OpenAPIHono<{
 apiV1.use('*', diContainerMiddleware);
 apiV1.use('*', bearerAuthenticationMiddleware);
 
-// Admin user routes
-apiV1.patch('/admin/users/:userId', requireAuth, c => {
-  return c.get('container').userController.updateUserStatus(c);
-});
-
 /**
  * apiV1.use('*', requireAuth) にはしていない: /auth ルート（ログイン自体）まで
  * ブロックしてしまわないよう、認証が必要なルートにのみ個別に付与する。
@@ -204,6 +200,11 @@ apiV1.patch('/admin/users/:userId', requireAuth, c => {
 const authed = <R extends RouteConfig>(route: R) => ({
   ...route,
   middleware: requireAuth,
+});
+
+// Admin user routes
+apiV1.openapi(authed(adminUserStatusUpdateRoute), c => {
+  return c.get('container').userController.updateUserStatus(c);
 });
 
 // Student routes
