@@ -43,6 +43,9 @@ export const adminUserStatusUpdateRoute = createRoute({
     '通常運用ではUserを物理削除せず、この状態で利用可能かどうかを管理する。',
     'Student / Teacher固有データや所属情報は変更しないため、',
     '再有効化すると無効化前の情報をそのまま利用できる。',
+    '',
+    '自分自身の無効化と、有効な管理権限保持者が0人になる無効化は400で断る。',
+    'いずれも再有効化する手段が失われるため。',
   ].join('\n'),
   security: bearerAuth,
   request: {

@@ -62,6 +62,7 @@ describe('UserController', () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual(userStatus);
       expect(service.updateUserStatus).toHaveBeenCalledWith({
+        operator_user_id: 1,
         user_id: 10,
         is_live_active: false,
       });
@@ -84,6 +85,7 @@ describe('UserController', () => {
         is_live_active: true,
       });
       expect(service.updateUserStatus).toHaveBeenCalledWith({
+        operator_user_id: 1,
         user_id: 10,
         is_live_active: true,
       });
@@ -170,5 +172,24 @@ describe('UserController', () => {
         error: 'Failed to update user status',
       });
     });
+
+    it.each([
+      ['自分自身', 'Cannot deactivate yourself'],
+      ['最後の管理権限保持者', 'Cannot deactivate the last active staff'],
+    ])(
+      '%sの無効化をサービスが断った場合は400を返す',
+      async (_label, message) => {
+        const { request } = setup({
+          updateUserStatus: vi.fn().mockRejectedValue(new Error(message)),
+        });
+
+        const response = await request('/admin/users/10', {
+          is_live_active: false,
+        });
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({ error: message });
+      }
+    );
   });
 });

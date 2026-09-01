@@ -1,9 +1,9 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { IUserStatusRepository } from '../../domain/interfaces/repositories/IUserStatusRepository';
 import * as schema from '../database/schema';
-import { users } from '../database/schema';
+import { staffs, users } from '../database/schema';
 
 export function createUserStatusRepository(
   db: D1Database
@@ -28,6 +28,19 @@ export function createUserStatusRepository(
         user_id: updated.id,
         is_live_active: Boolean(updated.isLiveActive),
       };
+    },
+
+    async hasOtherActiveStaff(excludedUserId) {
+      const found = await orm
+        .select({ userId: staffs.userId })
+        .from(staffs)
+        .innerJoin(users, eq(staffs.userId, users.id))
+        .where(
+          and(eq(users.isLiveActive, 1), ne(staffs.userId, excludedUserId))
+        )
+        .get();
+
+      return Boolean(found);
     },
   };
 }

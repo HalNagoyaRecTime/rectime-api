@@ -8,4 +8,8 @@ export interface IUserStatusRepository {
     userId: number,
     isLiveActive: boolean
   ): Promise<UserStatusEntity | null>;
+
+  // 指定User以外に、有効な管理権限保持者(staff)が存在するか。
+  // 管理権限を持つUserが0人になる無効化を防ぐために使う。
+  hasOtherActiveStaff(excludedUserId: number): Promise<boolean>;
 }

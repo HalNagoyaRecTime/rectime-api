@@ -13,6 +13,7 @@ describe('UserStatusRepository', () => {
   beforeEach(async () => {
     // students が class_rooms と users を参照するため、子から順に削除する
     await env.DB.prepare('DELETE FROM students').run();
+    await env.DB.prepare('DELETE FROM staffs').run();
     await env.DB.prepare('DELETE FROM class_rooms').run();
     await env.DB.prepare('DELETE FROM users').run();
   });
@@ -74,4 +75,45 @@ describe('UserStatusRepository', () => {
   it('存在しないuserIdの場合はnullを返す', async () => {
     await expect(repo.updateLiveActive(999999, false)).resolves.toBeNull();
   });
+
+  describe('hasOtherActiveStaff', () => {
+    it('他に有効なstaffがいる場合はtrueを返す', async () => {
+      const target = await insertUser('対象');
+      const other = await insertUser('他のstaff');
+      await insertStaff(other);
+
+      await expect(repo.hasOtherActiveStaff(target)).resolves.toBe(true);
+    });
+
+    it('自分以外にstaffがいない場合はfalseを返す', async () => {
+      const target = await insertUser('唯一のstaff');
+      await insertStaff(target);
+
+      await expect(repo.hasOtherActiveStaff(target)).resolves.toBe(false);
+    });
+
+    it('他のstaffが無効化されている場合はfalseを返す', async () => {
+      const target = await insertUser('対象');
+      const other = await insertUser('無効化されたstaff');
+      await insertStaff(other);
+      await repo.updateLiveActive(other, false);
+
+      await expect(repo.hasOtherActiveStaff(target)).resolves.toBe(false);
+    });
+  });
 });
+
+async function insertUser(userName: string): Promise<number> {
+  const user = await env.DB.prepare(
+    'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
+  )
+    .bind(userName)
+    .first<{ user_id: number }>();
+  return user!.user_id;
+}
+
+async function insertStaff(userId: number): Promise<void> {
+  await env.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+    .bind(userId)
+    .run();
+}
