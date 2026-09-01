@@ -345,6 +345,10 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
               'Error deleting already-committed students after student creation failure:',
               cleanupError
             );
+            throw new Error(
+              `生徒の登録に失敗し、さらに登録済み分の削除にも失敗しました。手動でのデータ確認が必要です。: ${String(cleanupError)}`,
+              { cause: error }
+            );
           }
         }
         if (input.newClassRooms.length > 0) {
