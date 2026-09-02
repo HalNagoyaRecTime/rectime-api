@@ -225,6 +225,10 @@ export function createClassRoomRepository(
               'Error deleting already-committed class rooms after createMany failure:',
               cleanupError
             );
+            throw new Error(
+              `クラスの登録に失敗し、さらに登録済み分の削除にも失敗しました。手動でのデータ確認が必要です。:${String(cleanupError)}`,
+              { cause: error }
+            );
           }
         }
         throw error;
