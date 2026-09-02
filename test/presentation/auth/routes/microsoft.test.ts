@@ -928,7 +928,7 @@ describe('POST /auth/microsoft/token', () => {
     const env = buildEnv();
 
     const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3C', '3年C組') RETURNING class_room_id"
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3E', '3年E組') RETURNING class_room_id"
     ).first<{ class_room_id: number }>();
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('学生三郎') RETURNING user_id"
