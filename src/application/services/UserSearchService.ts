@@ -1,4 +1,3 @@
-import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IUserSearchRepository } from '../../domain/interfaces/repositories/IUserSearchRepository';
 import type {
   UserSearchFilter,
@@ -11,14 +10,9 @@ import type {
 import type { IUserSearchService } from './IUserSearchService';
 
 export function createUserSearchService(
-  userSearchRepository: IUserSearchRepository,
-  userRepository: IUserRepository
+  userSearchRepository: IUserSearchRepository
 ): IUserSearchService {
   return {
-    canSearchUsers(userId) {
-      return userRepository.isStaffOrTeacher(userId);
-    },
-
     async searchUsers(
       query: UserSearchQueryDTO
     ): Promise<UserSearchResponseDTO> {

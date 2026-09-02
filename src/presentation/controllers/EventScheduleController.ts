@@ -67,12 +67,6 @@ export function createEventScheduleController(
       if (error instanceof Error && error.message === 'Event not found') {
         return c.json({ error: error.message }, 404);
       }
-      if (
-        error instanceof Error &&
-        error.message === 'Schedule update forbidden'
-      ) {
-        return c.json({ error: error.message }, 403);
-      }
       return c.json(
         {
           error: 'Failed to update event schedule',
@@ -96,20 +90,13 @@ export function createEventScheduleController(
     try {
       return c.json(
         await eventScheduleService.getEventNotificationSummary(
-          parsedEventId.data,
-          userId
+          parsedEventId.data
         ),
         200
       );
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {
         return c.json({ error: error.message }, 404);
-      }
-      if (
-        error instanceof Error &&
-        error.message === 'Schedule update forbidden'
-      ) {
-        return c.json({ error: error.message }, 403);
       }
       return c.json(
         {

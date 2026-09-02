@@ -26,9 +26,6 @@ export function createUserSearchController(service: IUserSearchService) {
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
     }
-    if (!(await service.canSearchUsers(userId))) {
-      return c.json({ error: 'User search forbidden' }, 403);
-    }
 
     const parsedQuery = querySchema.safeParse({
       q: c.req.query('q'),

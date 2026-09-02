@@ -27,7 +27,6 @@ const schedule = {
 
 function setup() {
   const service: INotificationScheduleService = {
-    canManageNotificationSchedules: vi.fn().mockResolvedValue(true),
     getAllNotificationSchedules: vi.fn(),
     getNotificationScheduleById: vi.fn(),
     createNotificationSchedule: vi.fn(),
@@ -191,18 +190,6 @@ describe('NotificationScheduleController', () => {
     );
     expect(response.status).toBe(401);
     expect(service.createNotificationSchedule).not.toHaveBeenCalled();
-  });
-
-  it('staffsまたはteachersではないユーザーには403を返す', async () => {
-    const { service, authorizedRequest } = setup();
-    (
-      service.canManageNotificationSchedules as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(false);
-
-    const response = await authorizedRequest('/notification-schedules');
-
-    expect(response.status).toBe(403);
-    expect(service.getAllNotificationSchedules).not.toHaveBeenCalled();
   });
 
   it('重要度2以外は400を返す', async () => {

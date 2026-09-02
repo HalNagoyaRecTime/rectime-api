@@ -39,9 +39,6 @@ export function createMasterImportController(
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
     }
-    if (!(await masterImportService.canManageImports(userId))) {
-      return c.json({ error: 'Master import forbidden' }, 403);
-    }
     const body = await c.req.parseBody().catch(() => null);
     if (!body) {
       return c.json({ error: 'Invalid multipart request body' }, 400);
@@ -87,9 +84,6 @@ export function createMasterImportController(
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
     }
-    if (!(await masterImportService.canManageImports(userId))) {
-      return c.json({ error: 'Master import forbidden' }, 403);
-    }
     const validatedFileId = c.req.param('validatedFileId');
     if (!validatedFileId) {
       return c.json({ error: 'Invalid import ID' }, 400);
@@ -127,9 +121,6 @@ export function createMasterImportController(
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
       return c.json({ error: 'Authentication required' }, 401);
-    }
-    if (!(await masterImportService.canManageImports(userId))) {
-      return c.json({ error: 'Master import forbidden' }, 403);
     }
     const validatedFileId = c.req.param('validatedFileId');
     if (!validatedFileId) {

@@ -9,7 +9,6 @@ import type { AuthVariables } from '../../../src/presentation/middleware/require
 
 function setup() {
   const service: IAdminNotificationService = {
-    canCreateManualNotification: vi.fn().mockResolvedValue(true),
     createManualNotification: vi.fn().mockResolvedValue({
       notification_id: 10,
       notification_type: 'manual',
@@ -114,18 +113,6 @@ describe('AdminNotificationController', () => {
     const response = await request(validBody, false);
 
     expect(response.status).toBe(401);
-    expect(service.canCreateManualNotification).not.toHaveBeenCalled();
-  });
-
-  it('staffsまたはteachersでなければ403を返す', async () => {
-    const { service, request } = setup();
-    (
-      service.canCreateManualNotification as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(false);
-
-    const response = await request(validBody);
-
-    expect(response.status).toBe(403);
     expect(service.createManualNotification).not.toHaveBeenCalled();
   });
 
