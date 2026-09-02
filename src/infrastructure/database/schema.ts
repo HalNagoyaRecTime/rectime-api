@@ -30,17 +30,30 @@ export const class_rooms = sqliteTable(
   ]
 );
 
-export const users = sqliteTable('users', {
-  id: integer('user_id').primaryKey({ autoIncrement: true }),
-  userName: text('user_name').notNull(),
-  isLiveActive: integer('is_live_active').notNull().default(1),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const users = sqliteTable(
+  'users',
+  {
+    id: integer('user_id').primaryKey({ autoIncrement: true }),
+    userName: text('user_name').notNull(),
+    isLiveActive: integer('is_live_active').notNull().default(1),
+    // 本人によるアカウント削除(#265)の状態。管理上の一時無効化を表す
+    // isLiveActiveとは独立した軸で、'deleted'になったユーザーは
+    // 学生の再登録復元(#262)の対象から除外する。
+    deletionStatus: text('deletion_status')
+      .notNull()
+      .default('active')
+      .$type<'active' | 'deletion_pending' | 'deleted'>(),
+    deletionRequestedAt: text('deletion_requested_at'),
+    deletedAt: text('deleted_at'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [index('idx_users_deletion_status').on(table.deletionStatus)]
+);
 
 export const students = sqliteTable('students', {
   id: integer('student_id').primaryKey({ autoIncrement: true }),
@@ -213,27 +226,36 @@ export const gatheringGroupMembersRelations = relations(
   })
 );
 
-export const firebase_tokens = sqliteTable('firebase_tokens', {
-  firebaseTokenId: integer('firebase_token_id').primaryKey({
-    autoIncrement: true,
-  }),
-  userId: integer('user_id')
-    .notNull()
-    .references(() => users.id)
-    .unique(),
-  platform: integer('platform').notNull(),
-  fcmToken: text('fcm_token').notNull().unique(),
-  isFirebaseActive: integer('is_firebase_active').notNull().default(1),
-  lastSeenAt: text('last_seen_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const firebase_tokens = sqliteTable(
+  'firebase_tokens',
+  {
+    firebaseTokenId: integer('firebase_token_id').primaryKey({
+      autoIncrement: true,
+    }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id)
+      .unique(),
+    platform: integer('platform').notNull(),
+    fcmToken: text('fcm_token').notNull(),
+    isFirebaseActive: integer('is_firebase_active').notNull().default(1),
+    lastSeenAt: text('last_seen_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    uniqueIndex('idx_firebase_tokens_active_fcm_token')
+      .on(table.fcmToken)
+      .where(sql`${table.isFirebaseActive} = 1`),
+    index('idx_firebase_tokens_active').on(table.isFirebaseActive),
+  ]
+);
 
 export const notification_schedules = sqliteTable(
   'notification_schedules',
