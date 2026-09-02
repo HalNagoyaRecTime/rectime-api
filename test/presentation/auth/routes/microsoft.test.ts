@@ -539,7 +539,24 @@ describe('POST /auth/microsoft/token', () => {
     // purposeフィールドが存在しない(JSON.stringifyでpurposeキー自体が
     // 無い状態)。この場合を新コードのpurposeチェックがINVALID_STATE_
     // PURPOSEとして拒否してしまうと、正当な通常ログインができなくなる。
+    //
+    // Web経由のログインはstaff権限が必須(#288)なため、既にstaff登録
+    // 済みの既存ユーザーの2回目ログインとして再現する(検証したいのは
+    // purposeフィールドの有無による挙動であり、初回/再ログインの違いは
+    // 本質ではない)。
     const env = buildEnv();
+    const existingUser = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(existingUser!.user_id)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-legacy-1', 'tid-1')"
+    )
+      .bind(existingUser!.user_id)
+      .run();
+
     const now = Math.floor(Date.now() / 1000);
     const idToken = await signIdToken({
       sub: 'sub-legacy-1',
@@ -1073,6 +1090,9 @@ describe('POST /auth/microsoft/token', () => {
   });
 
   it('markAsDeleted実行後に同じ学籍番号メールでログインすると、古い削除済みユーザーへ紐付けず新規アカウントとして登録される', async () => {
+    // ここで検証したい再登録の挙動(削除済みuser_idへ紐付けず新規発行
+    // される)はclient_typeに依存しない。Webは新規ユーザーにstaff権限が
+    // 必須(#288)で新規登録の検証に使えないため、mobileで検証する。
     const env = buildEnv();
 
     const classRoom = await workerEnv.DB.prepare(
@@ -1115,9 +1135,8 @@ describe('POST /auth/microsoft/token', () => {
     await env.AUTH_KV.put(
       'pkce:state-deleted-student-1',
       JSON.stringify({
-        code_verifier: generateRandom(32),
         nonce: 'nonce-deleted-student-1',
-        client_type: 'web',
+        client_type: 'mobile',
         purpose: 'login',
         created_at: new Date().toISOString(),
       } satisfies PkceEntry)
@@ -1129,10 +1148,14 @@ describe('POST /auth/microsoft/token', () => {
       '/token',
       {
         method: 'POST',
-        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        headers: {
+          'X-Client-Type': 'mobile',
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           code: 'auth-code-deleted-student-1',
           state: 'state-deleted-student-1',
+          code_verifier: generateRandom(32),
         }),
       },
       env
