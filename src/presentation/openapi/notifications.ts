@@ -410,6 +410,19 @@ export const firebaseTokenCreateRoute = createRoute({
   },
 });
 
+export const firebaseTokenCurrentDeleteRoute = createRoute({
+  method: 'delete',
+  path: '/firebase-tokens/current',
+  tags: ['Firebase tokens'],
+  summary: '現在のユーザーのFirebaseトークンを無効化する',
+  security: bearerAuth,
+  responses: {
+    204: noContentResponse,
+    401: unauthorizedResponse,
+    500: internalServerErrorResponse,
+  },
+});
+
 export const scheduleUpdateRoute = createRoute({
   method: 'put',
   path: '/notification/schedules/{notificationId}',

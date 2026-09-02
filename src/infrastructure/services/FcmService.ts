@@ -151,8 +151,22 @@ function buildPlatformConfig(
         payload: {
           aps: {
             sound: 'default',
+            badge: 1,
+            'content-available': 1,
             'interruption-level': interruptionLevel,
           },
+        },
+      },
+    };
+  }
+
+  if (platform === 'android') {
+    return {
+      android: {
+        priority: 'HIGH',
+        notification: {
+          channel_id: 'rectime_importance_2',
+          sound: 'default',
         },
       },
     };
@@ -168,7 +182,6 @@ const IOS_INTERRUPTION_LEVEL_BY_IMPORTANCE: Record<number, string> = {
   3: 'time-sensitive',
   4: 'time-sensitive',
 };
-
 function extractFcmErrorCode(responseBody: unknown): string | null {
   if (!responseBody || typeof responseBody !== 'object') return null;
   if (!('error' in responseBody)) return null;

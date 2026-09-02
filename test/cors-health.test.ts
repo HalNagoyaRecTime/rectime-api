@@ -68,6 +68,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/events/{eventId}/notification-summary',
       '/api/v1/events/{eventId}/schedule',
       '/api/v1/firebase-tokens',
+      '/api/v1/firebase-tokens/current',
       '/api/v1/gathering-spots',
       '/api/v1/gathering-spots/{gatheringSpotId}',
       '/api/v1/gatherings',
@@ -103,7 +104,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(57);
+    expect(documentedOperations).toHaveLength(58);
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {

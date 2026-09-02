@@ -233,6 +233,20 @@ account.post('/logout', async c => {
     return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
   }
 
+  if (clientType === 'mobile') {
+    const userId = Number(claims.sub);
+    if (Number.isInteger(userId) && userId > 0) {
+      try {
+        // Token解除に失敗しても、既存のSessionログアウトは完了させる。
+        await c
+          .get('container')
+          .firebaseTokenService.unregisterFirebaseToken(userId);
+      } catch {
+        // Mobile側から先に解除を試みているため、ここではフォールバックとして扱う。
+      }
+    }
+  }
+
   const body = (await c.req.json().catch(() => null)) as {
     refresh_token_id?: unknown;
   } | null;

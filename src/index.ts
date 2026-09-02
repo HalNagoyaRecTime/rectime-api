@@ -81,6 +81,7 @@ import {
   adminNotificationListRoute,
   adminNotificationUpdateRoute,
   firebaseTokenCreateRoute,
+  firebaseTokenCurrentDeleteRoute,
   myNotificationDetailRoute,
   myNotificationListRoute,
   notificationCreateRoute,
@@ -371,6 +372,9 @@ apiV1.openapi(staffOnly(gatheringDeleteRoute), c => {
 // Firebase token routes
 apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
+});
+apiV1.openapi(authed(firebaseTokenCurrentDeleteRoute), c => {
+  return c.get('container').firebaseTokenController.unregisterFirebaseToken(c);
 });
 
 // Notification schedule routes
