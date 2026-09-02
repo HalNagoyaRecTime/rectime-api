@@ -53,6 +53,7 @@ import { createGatheringGroupMemberController } from '../presentation/controller
 import { createGatheringController } from '../presentation/controllers/GatheringController';
 import { createScheduleController } from '../presentation/controllers/ScheduleController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
+import { createUserActivationRepository } from '../infrastructure/repositories/UserActivationRepository';
 import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
 import { createUserSearchService } from '../application/services/UserSearchService';
@@ -64,6 +65,7 @@ export function createDIContainer(env: Env) {
 
   // Repositories
   const userRepository = createUserRepository(db);
+  const userActivationRepository = createUserActivationRepository(db);
   const userSearchRepository = createUserSearchRepository(db);
   const studentRepository = createStudentRepository(db);
   const staffRepository = createStaffRepository(db);
@@ -210,6 +212,8 @@ export function createDIContainer(env: Env) {
   const scheduleController = createScheduleController(scheduleService);
 
   return {
+    // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
+    userActivationRepository,
     authService,
     studentService,
     studentController,

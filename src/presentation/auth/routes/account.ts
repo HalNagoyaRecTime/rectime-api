@@ -314,6 +314,22 @@ account.post('/refresh', async c => {
     );
   }
 
+  // 無効化されたユーザーの再発行を断る(#255)。塞がないとmobile_refreshの
+  // TTLが再発行のたびに振り直され、無効化後も延び続けてしまう。
+  // エントリは削除しない: 一時的な無効化なので、再度有効化されたときに
+  // 元のTTLが切れるまでは同じセッションを再開できるようにする。
+  const isActive = await c
+    .get('container')
+    .userActivationRepository.isActive(Number(refresh.user_id));
+  if (!isActive) {
+    return errorResponse(
+      c,
+      401,
+      'USER_DEACTIVATED',
+      'このアカウントは無効化されています。'
+    );
+  }
+
   const tokens = await refreshMicrosoftAccessToken(
     c,
     refresh.ms_refresh_token,
