@@ -4,6 +4,8 @@ import { drizzle } from 'drizzle-orm/d1';
 import {
   FirebaseTokenEntity,
   FirebasePlatform,
+  firebasePlatformToCode,
+  firebasePlatformToName,
   RegisterFirebaseTokenInput,
   RegisterFirebaseTokenResult,
 } from '../../domain/entities/FirebaseToken';
@@ -39,8 +41,7 @@ export function createFirebaseTokenRepository(
     async register(
       input: RegisterFirebaseTokenInput
     ): Promise<RegisterFirebaseTokenResult> {
-      const platform = input.platform === 'android' ? 2 : null;
-      if (platform === null) throw new Error('Unsupported Firebase platform');
+      const platform = firebasePlatformToCode(input.platform);
 
       const [, upsertResult] = await db.batch<{
         firebase_token_id: number;
@@ -93,7 +94,7 @@ export function createFirebaseTokenRepository(
       return {
         firebase_token_id: registeredToken.firebase_token_id,
         user_id: registeredToken.user_id,
-        platform: 'android',
+        platform: firebasePlatformToName(registeredToken.platform),
         is_firebase_active: registeredToken.is_firebase_active === 1,
         last_seen_at: registeredToken.last_seen_at,
       };

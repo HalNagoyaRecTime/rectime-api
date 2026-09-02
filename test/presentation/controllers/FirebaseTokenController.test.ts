@@ -119,6 +119,31 @@ describe('FirebaseTokenController', () => {
     expect(await response.json()).toEqual(result);
   });
 
+  it('iOS TokenをServiceへ渡す', async () => {
+    const { app, firebaseTokenService } = setup();
+    const iosResult = { ...result, platform: 'ios' as const };
+    (
+      firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(iosResult);
+
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fcmToken: 'ios-fcm-token',
+        platform: 'ios',
+      }),
+    });
+
+    expect(firebaseTokenService.registerFirebaseToken).toHaveBeenCalledWith({
+      userId: 7,
+      platform: 'ios',
+      fcmToken: 'ios-fcm-token',
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(iosResult);
+  });
+
   it('未認証の場合は401を返す', async () => {
     const { app, firebaseTokenService } = setup(null);
 
@@ -138,7 +163,7 @@ describe('FirebaseTokenController', () => {
   it.each([
     {},
     { fcmToken: '', platform: 'android' },
-    { fcmToken: 'fcm-abc', platform: 'ios' },
+    { fcmToken: 'fcm-abc', platform: 'windows' },
     { fcmToken: 'fcm-abc', platform: 2 },
     { fcmToken: 'fcm-abc', platform: 'android', userId: 999 },
     {
