@@ -26,7 +26,7 @@ export type AppContext = Context<{
 
 export function errorResponse(
   c: AppContext,
-  status: 400 | 401 | 404 | 409 | 500,
+  status: 400 | 401 | 404 | 409 | 410 | 500,
   code: string,
   message: string
 ): Response {
@@ -109,7 +109,8 @@ export function buildMicrosoftAuthorizeUrl(
   redirectUri: string,
   state: string,
   codeChallenge: string,
-  nonce: string
+  nonce: string,
+  prompt?: 'select_account' | 'login'
 ): string {
   return infraBuildAuthorizeUrl(
     c.env.MICROSOFT_CLIENT_ID,
@@ -117,7 +118,8 @@ export function buildMicrosoftAuthorizeUrl(
     redirectUri,
     state,
     codeChallenge,
-    nonce
+    nonce,
+    prompt
   );
 }
 

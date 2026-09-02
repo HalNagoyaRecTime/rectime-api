@@ -205,7 +205,6 @@ export const gatheringMemberListRoute = createRoute({
     200: jsonResponse(gatheringMemberListResponseSchema, '参加者一覧'),
     400: badRequestResponse,
     401: unauthorizedResponse,
-    403: forbiddenResponse,
     404: notFoundResponse,
     500: internalServerErrorResponse,
   },

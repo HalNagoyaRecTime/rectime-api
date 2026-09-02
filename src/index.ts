@@ -94,6 +94,7 @@ import {
   scheduleUpdateRoute,
   testNotificationRoute,
 } from './presentation/openapi/notifications';
+import { adminUserSearchRoute } from './presentation/openapi/adminUsers';
 
 const app = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationDefaultHook,
@@ -168,6 +169,7 @@ app.openapi(apiOverviewRoute, c => {
         firebaseTokens: '/api/v1/firebase-tokens',
         notifications: '/api/v1/notifications',
         adminNotifications: '/api/v1/admin/notifications',
+        adminUsers: '/api/v1/admin/users',
         myNotifications: '/api/v1/me/notifications',
         testNotification: '/api/v1/notifications/test',
         notificationSchedules: '/api/v1/notification-schedules',
@@ -335,7 +337,11 @@ apiV1.delete(
 );
 
 // Gathering member routes
-apiV1.openapi(staffOnly(gatheringMemberListRoute), c => {
+//
+// GETだけはstaff限定にしない: 学生アプリが本人の参加する集合を判定して
+// 「出場」表示を出すのにこの一覧取得を使っている(レビュー指摘)。
+// 追加・削除(POST/DELETE)は引き続きstaff限定とする。
+apiV1.openapi(authed(gatheringMemberListRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.getGatheringMembers(c);
@@ -370,6 +376,10 @@ apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
 // Notification schedule routes
 apiV1.openapi(staffOnly(scheduleUpdateRoute), c => {
   return c.get('container').scheduleController.updateSchedule(c);
+});
+
+apiV1.openapi(staffOnly(adminUserSearchRoute), c => {
+  return c.get('container').userSearchController.searchUsers(c);
 });
 
 // Notification routes
