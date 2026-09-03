@@ -71,6 +71,11 @@ export const UserErrors = {
     code: 'STUDENT_UPDATE_FAILED',
     message: '学生の更新に失敗しました',
   },
+  STUDENT_DELETE_FAILED: {
+    status: 500,
+    code: 'STUDENT_DELETE_FAILED',
+    message: '学生の削除に失敗しました',
+  },
   INVALID_TEACHER_ID: {
     status: 400,
     code: 'INVALID_TEACHER_ID',

@@ -367,7 +367,12 @@ describe('StudentController', () => {
       const res = await app.request('/students/abc', { method: 'DELETE' });
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: 'Invalid student ID' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'INVALID_STUDENT_ID',
+          message: '学生IDが正しくありません',
+        },
+      });
     });
 
     it('学生が存在しない場合は 404 を返す', async () => {
@@ -379,7 +384,12 @@ describe('StudentController', () => {
       const res = await app.request('/students/999', { method: 'DELETE' });
 
       expect(res.status).toBe(404);
-      expect(await res.json()).toEqual({ error: 'Student not found' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'STUDENT_NOT_FOUND',
+          message: '学生が見つかりません',
+        },
+      });
     });
   });
 });
