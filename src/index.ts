@@ -227,7 +227,7 @@ apiV1.openapi(staffOnly(studentCreateRoute), c => {
 apiV1.openapi(staffOnly(studentUpdateRoute), c => {
   return c.get('container').studentController.updateStudent(c);
 });
-apiV1.openapi(staffOnly(studentDeleteRoute), c => {
+apiV1.openapi(authed(studentDeleteRoute), c => {
   return c.get('container').studentController.deleteStudent(c);
 });
 
