@@ -33,10 +33,9 @@ function buildSession(
   };
 }
 
-function setup(options: { authenticated?: boolean; canManage?: boolean } = {}) {
-  const { authenticated = true, canManage = true } = options;
+function setup(options: { authenticated?: boolean } = {}) {
+  const { authenticated = true } = options;
   const masterImportService: IMasterImportService = {
-    canManageImports: vi.fn().mockResolvedValue(canManage),
     createImport: vi.fn(),
     getImport: vi.fn(),
     commitImport: vi.fn(),
@@ -355,40 +354,12 @@ describe('MasterImportController', () => {
       expect(masterImportService.createImport).not.toHaveBeenCalled();
     });
 
-    it('管理者権限がない場合はcreateImportで403を返す', async () => {
-      const { app, masterImportService } = setup({ canManage: false });
-
-      const formData = new FormData();
-      formData.append('type', 'students');
-      formData.append(
-        'file',
-        new File(['a,b\n1,2\n'], 'students.csv', { type: 'text/csv' })
-      );
-
-      const res = await app.request('/master-imports', {
-        method: 'POST',
-        body: formData,
-      });
-
-      expect(res.status).toBe(403);
-      expect(masterImportService.createImport).not.toHaveBeenCalled();
-    });
-
     it('未認証の場合はgetImportで401を返す', async () => {
       const { app, masterImportService } = setup({ authenticated: false });
 
       const res = await app.request('/master-imports/abc-123');
 
       expect(res.status).toBe(401);
-      expect(masterImportService.getImport).not.toHaveBeenCalled();
-    });
-
-    it('管理者権限がない場合はgetImportで403を返す', async () => {
-      const { app, masterImportService } = setup({ canManage: false });
-
-      const res = await app.request('/master-imports/abc-123');
-
-      expect(res.status).toBe(403);
       expect(masterImportService.getImport).not.toHaveBeenCalled();
     });
 
@@ -400,17 +371,6 @@ describe('MasterImportController', () => {
       });
 
       expect(res.status).toBe(401);
-      expect(masterImportService.commitImport).not.toHaveBeenCalled();
-    });
-
-    it('管理者権限がない場合はcommitImportで403を返す', async () => {
-      const { app, masterImportService } = setup({ canManage: false });
-
-      const res = await app.request('/master-imports/abc-123/commit', {
-        method: 'POST',
-      });
-
-      expect(res.status).toBe(403);
       expect(masterImportService.commitImport).not.toHaveBeenCalled();
     });
   });

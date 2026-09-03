@@ -414,32 +414,6 @@ describe('EventController', () => {
       });
     });
 
-    it('更新権限がない場合は403を返す', async () => {
-      const { app, eventScheduleService } = setup();
-      (
-        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('Schedule update forbidden'));
-
-      const response = await app.request(
-        '/events/1',
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event_name: '徒競走',
-            rule_text: null,
-            venue: 'トラック',
-            start_time: '0930',
-            end_time: '0950',
-            notification_enabled: true,
-          }),
-        },
-        { EVENT_DATE: '2026-11-07' }
-      );
-
-      expect(response.status).toBe(403);
-    });
-
     it('既存時刻との組み合わせが不正な場合は400を返す', async () => {
       const { app, eventScheduleService } = setup();
       (

@@ -32,7 +32,6 @@ const notification = {
 
 function setup() {
   const service: IAdminNotificationManagementService = {
-    canManageAdminNotifications: vi.fn().mockResolvedValue(true),
     getAdminNotifications: vi
       .fn()
       .mockResolvedValue({ notifications: [notification], total: 1 }),
@@ -155,18 +154,6 @@ describe('AdminNotificationManagementController', () => {
     const response = await request('/admin/notifications', {}, false);
 
     expect(response.status).toBe(401);
-    expect(service.getAdminNotifications).not.toHaveBeenCalled();
-  });
-
-  it('staffsまたはteachersでなければ403を返す', async () => {
-    const { service, request } = setup();
-    (
-      service.canManageAdminNotifications as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(false);
-
-    const response = await request('/admin/notifications');
-
-    expect(response.status).toBe(403);
     expect(service.getAdminNotifications).not.toHaveBeenCalled();
   });
 

@@ -91,8 +91,7 @@ export function createEventScheduleController(
     try {
       return c.json(
         await eventScheduleService.getEventNotificationSummary(
-          parsedEventId.data,
-          userId
+          parsedEventId.data
         ),
         200
       );

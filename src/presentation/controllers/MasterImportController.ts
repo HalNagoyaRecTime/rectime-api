@@ -29,9 +29,6 @@ export function createMasterImportController(
     if (userId === null) {
       return errorResponse(c, CommonErrors.UNAUTHORIZED);
     }
-    if (!(await masterImportService.canManageImports(userId))) {
-      return errorResponse(c, CommonErrors.STAFF_REQUIRED);
-    }
     const body = await c.req.parseBody().catch(() => null);
     if (!body) {
       return errorResponse(c, MasterImportErrors.INVALID_MULTIPART_REQUEST);
@@ -64,9 +61,6 @@ export function createMasterImportController(
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
       return errorResponse(c, CommonErrors.UNAUTHORIZED);
-    }
-    if (!(await masterImportService.canManageImports(userId))) {
-      return errorResponse(c, CommonErrors.STAFF_REQUIRED);
     }
     const validatedFileId = c.req.param('validatedFileId');
     if (!validatedFileId) {
@@ -108,9 +102,6 @@ export function createMasterImportController(
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
       return errorResponse(c, CommonErrors.UNAUTHORIZED);
-    }
-    if (!(await masterImportService.canManageImports(userId))) {
-      return errorResponse(c, CommonErrors.STAFF_REQUIRED);
     }
     const validatedFileId = c.req.param('validatedFileId');
     if (!validatedFileId) {

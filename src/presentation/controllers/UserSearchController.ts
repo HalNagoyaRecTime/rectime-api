@@ -29,10 +29,6 @@ export function createUserSearchController(service: IUserSearchService) {
     if (userId === null) {
       return errorResponse(c, CommonErrors.UNAUTHORIZED);
     }
-    if (!(await service.canSearchUsers(userId))) {
-      return errorResponse(c, UserErrors.USER_SEARCH_FORBIDDEN);
-    }
-
     const parsedQuery = querySchema.safeParse({
       q: c.req.query('q'),
       category: c.req.query('category'),

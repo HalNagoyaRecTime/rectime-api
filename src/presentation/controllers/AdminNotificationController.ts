@@ -51,10 +51,6 @@ export function createAdminNotificationController(
   const createManualNotification = async (c: AdminNotificationContext) => {
     const userId = c.get('authenticatedUserId');
     if (userId === null) return errorResponse(c, CommonErrors.UNAUTHORIZED);
-    if (!(await adminNotificationService.canCreateManualNotification(userId))) {
-      return errorResponse(c, CommonErrors.STAFF_REQUIRED);
-    }
-
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createManualNotificationSchema.safeParse(body);
     if (!parsedBody.success) {

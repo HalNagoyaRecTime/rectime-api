@@ -73,20 +73,17 @@ type AdminNotificationManagementContext = Context<{
 export function createAdminNotificationManagementController(
   service: IAdminNotificationManagementService
 ) {
-  const authorizeManager = async (c: AdminNotificationManagementContext) => {
+  const requireAuthenticatedUser = (c: AdminNotificationManagementContext) => {
     const userId = c.get('authenticatedUserId');
     if (userId === null) return errorResponse(c, CommonErrors.UNAUTHORIZED);
-    if (!(await service.canManageAdminNotifications(userId))) {
-      return errorResponse(c, CommonErrors.STAFF_REQUIRED);
-    }
     return null;
   };
 
   const getAdminNotifications = async (
     c: AdminNotificationManagementContext
   ) => {
-    const authorizationError = await authorizeManager(c);
-    if (authorizationError) return authorizationError;
+    const authenticationError = requireAuthenticatedUser(c);
+    if (authenticationError) return authenticationError;
 
     const parsedQuery = listQuerySchema.safeParse({
       sendStatus: c.req.query('sendStatus'),
@@ -134,8 +131,8 @@ export function createAdminNotificationManagementController(
   const getAdminNotificationById = async (
     c: AdminNotificationManagementContext
   ) => {
-    const authorizationError = await authorizeManager(c);
-    if (authorizationError) return authorizationError;
+    const authenticationError = requireAuthenticatedUser(c);
+    if (authenticationError) return authenticationError;
     const notificationId = parseNotificationId(c);
     if (typeof notificationId !== 'number') return notificationId;
 
@@ -156,8 +153,8 @@ export function createAdminNotificationManagementController(
   const updateAdminNotification = async (
     c: AdminNotificationManagementContext
   ) => {
-    const authorizationError = await authorizeManager(c);
-    if (authorizationError) return authorizationError;
+    const authenticationError = requireAuthenticatedUser(c);
+    if (authenticationError) return authenticationError;
     const notificationId = parseNotificationId(c);
     if (typeof notificationId !== 'number') return notificationId;
     const body = await c.req.json().catch(() => undefined);
@@ -195,8 +192,8 @@ export function createAdminNotificationManagementController(
   const deleteAdminNotification = async (
     c: AdminNotificationManagementContext
   ) => {
-    const authorizationError = await authorizeManager(c);
-    if (authorizationError) return authorizationError;
+    const authenticationError = requireAuthenticatedUser(c);
+    if (authenticationError) return authenticationError;
     const notificationId = parseNotificationId(c);
     if (typeof notificationId !== 'number') return notificationId;
 
