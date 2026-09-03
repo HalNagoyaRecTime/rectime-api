@@ -73,6 +73,22 @@ function useStubContainer(
   });
 }
 
+// D1が一時的に不調な状況を模す。
+function useFailingContainer(
+  app: Hono<{ Bindings: Env; Variables: Variables }>
+) {
+  app.use('*', async (c, next) => {
+    c.set('container', {
+      userActivationRepository: {
+        isActive: async () => {
+          throw new Error('D1_ERROR');
+        },
+      },
+    } as unknown as DIContainer);
+    await next();
+  });
+}
+
 function buildApp(isActive = true) {
   const app = new Hono<{ Bindings: Env; Variables: Variables }>();
   useStubContainer(app, isActive);
@@ -369,6 +385,30 @@ describe('requireAuth', () => {
       );
 
       expect(res.status).toBe(401);
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('状態の確認に失敗した場合はアプリ標準形式の500を返し、ハンドラを実行しない', async () => {
+      const token = await issueToken();
+      const handler = vi.fn(() => new Response('ok'));
+      const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+      useFailingContainer(app);
+      app.use('*', bearerAuthenticationMiddleware);
+      app.get('/protected', requireAuth, handler);
+
+      const res = await app.request(
+        '/protected',
+        { headers: { Authorization: `Bearer ${token}` } },
+        buildEnv()
+      );
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: '状態の確認に失敗しました',
+        },
+      });
       expect(handler).not.toHaveBeenCalled();
     });
 

@@ -48,9 +48,22 @@ export async function rejectInactiveUser(
     return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です');
   }
 
-  const isActive = await c
-    .get('container')
-    .userActivationRepository.isActive(userId);
+  let isActive: boolean;
+  try {
+    isActive = await c
+      .get('container')
+      .userActivationRepository.isActive(userId);
+  } catch (error) {
+    // D1が一時的に不調な場合。素通りはさせないが、Honoの既定の500ではなく
+    // アプリ標準のエラー形式で返して切り分けできるようにする。
+    console.error('Failed to check user activation', error);
+    return errorResponse(
+      c,
+      500,
+      'INTERNAL_SERVER_ERROR',
+      '状態の確認に失敗しました'
+    );
+  }
 
   if (!isActive) {
     return errorResponse(
