@@ -126,8 +126,10 @@ describe('AdminNotificationController', () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
-      error: 'scheduledAt must be on EVENT_DATE',
-      code: 'INVALID_NOTIFICATION_DATE',
+      error: {
+        code: 'INVALID_NOTIFICATION_DATE',
+        message: '配信日時はイベント開催日に設定してください',
+      },
     });
     expect(service.createManualNotification).not.toHaveBeenCalled();
   });
@@ -139,7 +141,10 @@ describe('AdminNotificationController', () => {
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({
-      error: 'EVENT_DATE is not configured correctly',
+      error: {
+        code: 'EVENT_DATE_INVALID',
+        message: 'イベント日付の設定が正しくありません',
+      },
     });
     expect(service.createManualNotification).not.toHaveBeenCalled();
   });
@@ -162,17 +167,35 @@ describe('AdminNotificationController', () => {
   });
 
   it.each([
-    ['Notification audience not found', 404],
-    ['Notification audience has no active Firebase tokens', 409],
-  ] as const)('%sをHTTP %sへ変換する', async (message, status) => {
-    const { service, request } = setup();
-    (
-      service.createManualNotification as ReturnType<typeof vi.fn>
-    ).mockRejectedValue(new Error(message));
+    [
+      'Notification audience not found',
+      404,
+      'NOTIFICATION_AUDIENCE_NOT_FOUND',
+      '選択した通知対象が見つかりません',
+    ],
+    [
+      'Notification audience has no active Firebase tokens',
+      409,
+      'NOTIFICATION_AUDIENCE_HAS_NO_TOKENS',
+      '通知対象に有効な端末がありません',
+    ],
+  ] as const)(
+    '%sをHTTP %sへ変換する',
+    async (message, status, code, responseMessage) => {
+      const { service, request } = setup();
+      (
+        service.createManualNotification as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error(message));
 
-    const response = await request(validBody);
+      const response = await request(validBody);
 
-    expect(response.status).toBe(status);
-    expect(await response.json()).toEqual({ error: message });
-  });
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual({
+        error: {
+          code,
+          message: responseMessage,
+        },
+      });
+    }
+  );
 });

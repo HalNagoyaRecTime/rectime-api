@@ -1,6 +1,8 @@
 import type { Context } from 'hono';
 import { z } from 'zod';
 import type { IClassRoomService } from '../../application/services/IClassRoomService';
+import { errorResponse } from '../errors/errorResponse';
+import { UserErrors } from '../errors/userErrors';
 
 const classIdSchema = z.coerce.number().int().positive();
 const paginationSchema = z.object({
@@ -20,9 +22,10 @@ export function createClassRoomController(classService: IClassRoomService) {
       offset: c.req.query('offset'),
     });
     if (!query.success) {
-      return c.json(
-        { error: 'Invalid class list query', details: query.error.flatten() },
-        400
+      return errorResponse(
+        c,
+        UserErrors.INVALID_CLASS_LIST_QUERY,
+        query.error.flatten()
       );
     }
     try {
@@ -33,27 +36,21 @@ export function createClassRoomController(classService: IClassRoomService) {
         ),
         200
       );
-    } catch (error) {
-      return c.json(
-        {
-          error: 'Failed to fetch classrooms',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+    } catch {
+      return errorResponse(c, UserErrors.CLASS_LIST_FAILED);
     }
   };
 
   const getClassroomById = async (c: Context) => {
     const id = classIdSchema.safeParse(c.req.param('classId'));
-    if (!id.success) return c.json({ error: 'Invalid class ID' }, 400);
+    if (!id.success) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
     try {
       return c.json(await classService.getClassroomById(id.data), 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, UserErrors.CLASS_NOT_FOUND);
       }
-      return c.json({ error: 'Failed to fetch class' }, 500);
+      return errorResponse(c, UserErrors.CLASS_FETCH_FAILED);
     }
   };
 
@@ -65,9 +62,10 @@ export function createClassRoomController(classService: IClassRoomService) {
   const createClassroom = async (c: Context) => {
     const body = await parseBody(c);
     if (!body.success) {
-      return c.json(
-        { error: 'Invalid class request body', details: body.error.flatten() },
-        400
+      return errorResponse(
+        c,
+        UserErrors.INVALID_CLASS_REQUEST,
+        body.error.flatten()
       );
     }
     try {
@@ -80,18 +78,19 @@ export function createClassRoomController(classService: IClassRoomService) {
         201
       );
     } catch (error) {
-      return handleWriteError(c, error, 'Failed to create class');
+      return handleWriteError(c, error, UserErrors.CLASS_CREATE_FAILED);
     }
   };
 
   const updateClassroom = async (c: Context) => {
     const id = classIdSchema.safeParse(c.req.param('classId'));
-    if (!id.success) return c.json({ error: 'Invalid class ID' }, 400);
+    if (!id.success) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
     const body = await parseBody(c);
     if (!body.success) {
-      return c.json(
-        { error: 'Invalid class request body', details: body.error.flatten() },
-        400
+      return errorResponse(
+        c,
+        UserErrors.INVALID_CLASS_REQUEST,
+        body.error.flatten()
       );
     }
     try {
@@ -104,27 +103,27 @@ export function createClassRoomController(classService: IClassRoomService) {
         200
       );
     } catch (error) {
-      return handleWriteError(c, error, 'Failed to update class');
+      return handleWriteError(c, error, UserErrors.CLASS_UPDATE_FAILED);
     }
   };
 
   const deleteClassroom = async (c: Context) => {
     const id = classIdSchema.safeParse(c.req.param('classId'));
-    if (!id.success) return c.json({ error: 'Invalid class ID' }, 400);
+    if (!id.success) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
     try {
       await classService.deleteClassroom(id.data);
       return c.body(null, 204);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, UserErrors.CLASS_NOT_FOUND);
       }
       if (
         error instanceof Error &&
         error.message === 'Class is referenced by students'
       ) {
-        return c.json({ error: error.message }, 409);
+        return errorResponse(c, UserErrors.CLASS_REFERENCED_BY_STUDENTS);
       }
-      return c.json({ error: 'Failed to delete class' }, 500);
+      return errorResponse(c, UserErrors.CLASS_DELETE_FAILED);
     }
   };
 
@@ -137,21 +136,21 @@ export function createClassRoomController(classService: IClassRoomService) {
   };
 }
 
-function handleWriteError(c: Context, error: unknown, fallback: string) {
+function handleWriteError(
+  c: Context,
+  error: unknown,
+  fallbackError:
+    | typeof UserErrors.CLASS_CREATE_FAILED
+    | typeof UserErrors.CLASS_UPDATE_FAILED
+) {
   if (error instanceof Error && error.message === 'Teacher not found') {
-    return c.json({ error: error.message }, 404);
+    return errorResponse(c, UserErrors.TEACHER_NOT_FOUND);
   }
   if (error instanceof Error && error.message === 'Class not found') {
-    return c.json({ error: error.message }, 404);
+    return errorResponse(c, UserErrors.CLASS_NOT_FOUND);
   }
   if (error instanceof Error && error.message === 'Class code already exists') {
-    return c.json({ error: error.message }, 409);
+    return errorResponse(c, UserErrors.CLASS_CODE_ALREADY_EXISTS);
   }
-  return c.json(
-    {
-      error: fallback,
-      details: error instanceof Error ? error.message : String(error),
-    },
-    500
-  );
+  return errorResponse(c, fallbackError);
 }

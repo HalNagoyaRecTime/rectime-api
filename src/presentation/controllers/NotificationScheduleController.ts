@@ -5,6 +5,10 @@ import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import type { AuthVariables } from '../middleware/requireAuth';
+import { CommonErrors } from '../errors/commonErrors';
+import { errorResponse } from '../errors/errorResponse';
+import { EventErrors } from '../errors/eventErrors';
+import { NotificationErrors } from '../errors/notificationErrors';
 
 const createNotificationScheduleSchema = z.object({
   eventId: z.number().int().positive().nullable().optional(),
@@ -14,7 +18,6 @@ const createNotificationScheduleSchema = z.object({
   // ISO 8601形式（UTCオフセットを含む）。例: 2026-07-16T09:00:00.000Z
   sendAt: z.string().datetime({ offset: true }),
 });
-
 const notificationScheduleIdSchema = z.coerce.number().int().positive();
 
 type NotificationScheduleContext = Context<{
@@ -44,9 +47,7 @@ export function createNotificationScheduleController(
 ) {
   const requireAuthenticatedUser = (c: NotificationScheduleContext) => {
     const userId = c.get('authenticatedUserId');
-    if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
-    }
+    if (userId === null) return errorResponse(c, CommonErrors.UNAUTHORIZED);
     return { userId };
   };
 
@@ -67,12 +68,10 @@ export function createNotificationScheduleController(
       offset: c.req.query('offset'),
     });
     if (!parsedQuery.success) {
-      return c.json(
-        {
-          error: 'Invalid notification schedule query',
-          details: parsedQuery.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        NotificationErrors.INVALID_NOTIFICATION_SCHEDULE_QUERY,
+        parsedQuery.error.flatten()
       );
     }
 
@@ -97,13 +96,10 @@ export function createNotificationScheduleController(
         },
         200
       );
-    } catch (error) {
-      return c.json(
-        {
-          error: 'Failed to fetch notification schedules',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
+    } catch {
+      return errorResponse(
+        c,
+        NotificationErrors.NOTIFICATION_SCHEDULE_LIST_FAILED
       );
     }
   };
@@ -116,7 +112,10 @@ export function createNotificationScheduleController(
 
     const parsedId = notificationScheduleIdSchema.safeParse(c.req.param('id'));
     if (!parsedId.success) {
-      return c.json({ error: 'Invalid notification schedule ID' }, 400);
+      return errorResponse(
+        c,
+        NotificationErrors.INVALID_NOTIFICATION_SCHEDULE_ID
+      );
     }
 
     try {
@@ -131,14 +130,14 @@ export function createNotificationScheduleController(
         error instanceof Error &&
         error.message === 'Notification schedule not found'
       ) {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(
+          c,
+          NotificationErrors.NOTIFICATION_SCHEDULE_NOT_FOUND
+        );
       }
-      return c.json(
-        {
-          error: 'Failed to fetch notification schedule',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
+      return errorResponse(
+        c,
+        NotificationErrors.NOTIFICATION_SCHEDULE_FETCH_FAILED
       );
     }
   };
@@ -149,7 +148,10 @@ export function createNotificationScheduleController(
 
     const parsedId = notificationScheduleIdSchema.safeParse(c.req.param('id'));
     if (!parsedId.success) {
-      return c.json({ error: 'Invalid notification schedule ID' }, 400);
+      return errorResponse(
+        c,
+        NotificationErrors.INVALID_NOTIFICATION_SCHEDULE_ID
+      );
     }
 
     try {
@@ -162,20 +164,23 @@ export function createNotificationScheduleController(
         error instanceof Error &&
         error.message === 'Notification schedule not found'
       ) {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(
+          c,
+          NotificationErrors.NOTIFICATION_SCHEDULE_NOT_FOUND
+        );
       }
       if (
         error instanceof Error &&
         error.message === 'Only draft notification schedules can be deleted'
       ) {
-        return c.json({ error: error.message }, 409);
+        return errorResponse(
+          c,
+          NotificationErrors.NOTIFICATION_SCHEDULE_NOT_DRAFT
+        );
       }
-      return c.json(
-        {
-          error: 'Failed to delete notification schedule',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
+      return errorResponse(
+        c,
+        NotificationErrors.NOTIFICATION_SCHEDULE_DELETE_FAILED
       );
     }
   };
@@ -187,12 +192,10 @@ export function createNotificationScheduleController(
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createNotificationScheduleSchema.safeParse(body);
     if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid notification schedule request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        NotificationErrors.INVALID_NOTIFICATION_SCHEDULE_REQUEST,
+        parsedBody.error.flatten()
       );
     }
 
@@ -208,22 +211,20 @@ export function createNotificationScheduleController(
         });
       return c.json(schedule, 201);
     } catch (error) {
-      if (
-        error instanceof Error &&
-        [
-          'Firebase token not found',
-          'Event not found',
-          'Notification not found',
-        ].includes(error.message)
-      ) {
-        return c.json({ error: error.message }, 404);
+      if (error instanceof Error) {
+        if (error.message === 'Firebase token not found') {
+          return errorResponse(c, NotificationErrors.FIREBASE_TOKEN_NOT_FOUND);
+        }
+        if (error.message === 'Event not found') {
+          return errorResponse(c, EventErrors.EVENT_NOT_FOUND);
+        }
+        if (error.message === 'Notification not found') {
+          return errorResponse(c, NotificationErrors.NOTIFICATION_NOT_FOUND);
+        }
       }
-      return c.json(
-        {
-          error: 'Failed to create notification schedule',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
+      return errorResponse(
+        c,
+        NotificationErrors.NOTIFICATION_SCHEDULE_CREATE_FAILED
       );
     }
   };

@@ -1,6 +1,8 @@
 import { Context } from 'hono';
 import { z } from 'zod';
 import { IGatheringService } from '../../application/services/IGatheringService';
+import { errorResponse } from '../errors/errorResponse';
+import { EventErrors } from '../errors/eventErrors';
 
 const createGatheringSchema = z.object({
   eventId: z.number().int().positive(),
@@ -18,21 +20,15 @@ export function createGatheringController(gatheringService: IGatheringService) {
   const getAllGatherings = async (c: Context) => {
     try {
       return c.json(await gatheringService.getAllGatherings(), 200);
-    } catch (error) {
-      return c.json(
-        {
-          error: 'Failed to fetch gatherings',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+    } catch {
+      return errorResponse(c, EventErrors.GATHERING_LIST_FAILED);
     }
   };
 
   const getGatheringsByEventId = async (c: Context) => {
     const parsedEventId = eventIdSchema.safeParse(c.req.param('eventId'));
     if (!parsedEventId.success) {
-      return c.json({ error: 'Invalid event ID' }, 400);
+      return errorResponse(c, EventErrors.INVALID_EVENT_ID);
     }
 
     try {
@@ -42,15 +38,9 @@ export function createGatheringController(gatheringService: IGatheringService) {
       );
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, EventErrors.EVENT_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to fetch event gatherings',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, EventErrors.EVENT_GATHERING_LIST_FAILED);
     }
   };
 
@@ -58,12 +48,10 @@ export function createGatheringController(gatheringService: IGatheringService) {
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createGatheringSchema.safeParse(body);
     if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid gathering request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        EventErrors.INVALID_GATHERING_REQUEST,
+        parsedBody.error.flatten()
       );
     }
 
@@ -76,26 +64,23 @@ export function createGatheringController(gatheringService: IGatheringService) {
       });
       return c.json(gathering, 201);
     } catch (error) {
+      if (error instanceof Error && error.message === 'Event not found') {
+        return errorResponse(c, EventErrors.EVENT_NOT_FOUND);
+      }
       if (
         error instanceof Error &&
-        ['Event not found', 'Gathering spot not found'].includes(error.message)
+        error.message === 'Gathering spot not found'
       ) {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, EventErrors.GATHERING_SPOT_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to create gathering',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, EventErrors.GATHERING_CREATE_FAILED);
     }
   };
 
   const deleteGathering = async (c: Context) => {
     const gatheringId = Number(c.req.param('gatheringId'));
     if (!Number.isInteger(gatheringId) || gatheringId <= 0) {
-      return c.json({ error: 'Invalid gathering ID' }, 400);
+      return errorResponse(c, EventErrors.INVALID_GATHERING_ID);
     }
 
     try {
@@ -103,15 +88,9 @@ export function createGatheringController(gatheringService: IGatheringService) {
       return c.body(null, 204);
     } catch (error) {
       if (error instanceof Error && error.message === 'Gathering not found') {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, EventErrors.GATHERING_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to delete gathering',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, EventErrors.GATHERING_DELETE_FAILED);
     }
   };
 

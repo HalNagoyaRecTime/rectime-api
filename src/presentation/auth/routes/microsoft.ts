@@ -7,7 +7,6 @@ import {
 import { verifyIdToken } from '../../../infrastructure/auth/verifyIdToken';
 import { signAccessToken } from '../../../infrastructure/auth/jwt';
 import {
-  errorResponse,
   getClientType,
   getNumberEnv,
   isValidBase64Url,
@@ -28,6 +27,8 @@ import {
 } from '../../../domain/auth/types';
 import type { ContainerVariables } from '../../middleware/diContainer';
 import { createUserRepository } from '../../../infrastructure/repositories/UserRepository';
+import { AuthErrors } from '../../errors/authErrors';
+import { errorResponse } from '../../errors/errorResponse';
 
 const DELETION_CONFIRMATION_TTL_SEC = 600;
 
@@ -40,12 +41,7 @@ const microsoft = new Hono<{
 microsoft.get('/login', async c => {
   const clientType = getClientType(c);
   if (!clientType) {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_CLIENT_TYPE',
-      'クライアント種別が不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
   }
 
   const nonce = generateRandom(32);
@@ -61,23 +57,13 @@ microsoft.get('/login', async c => {
       !hasMinimumDecodedBytes(state, 32) ||
       !isValidBase64Url(codeChallenge)
     ) {
-      return errorResponse(
-        c,
-        400,
-        'INVALID_REQUEST',
-        'Mobile 認証開始パラメータが不正です。'
-      );
+      return errorResponse(c, AuthErrors.INVALID_REQUEST);
     }
 
     const pkceKey = `pkce:${state}`;
     const existingPkce = await c.env.AUTH_KV.get(pkceKey);
     if (existingPkce) {
-      return errorResponse(
-        c,
-        400,
-        'STATE_ALREADY_EXISTS',
-        '同じ state の認証処理がすでに開始されています。'
-      );
+      return errorResponse(c, AuthErrors.STATE_ALREADY_EXISTS);
     }
 
     await c.env.AUTH_KV.put(
@@ -138,12 +124,7 @@ microsoft.get('/login', async c => {
 microsoft.get('/delete-login', async c => {
   const clientType = getClientType(c);
   if (!clientType) {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_CLIENT_TYPE',
-      'クライアント種別が不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
   }
 
   const nonce = generateRandom(32);
@@ -159,23 +140,13 @@ microsoft.get('/delete-login', async c => {
       !hasMinimumDecodedBytes(state, 32) ||
       !isValidBase64Url(codeChallenge)
     ) {
-      return errorResponse(
-        c,
-        400,
-        'INVALID_REQUEST',
-        'Mobile 認証開始パラメータが不正です。'
-      );
+      return errorResponse(c, AuthErrors.INVALID_REQUEST);
     }
 
     const pkceKey = `pkce:${state}`;
     const existingPkce = await c.env.AUTH_KV.get(pkceKey);
     if (existingPkce) {
-      return errorResponse(
-        c,
-        400,
-        'STATE_ALREADY_EXISTS',
-        '同じ state の認証処理がすでに開始されています。'
-      );
+      return errorResponse(c, AuthErrors.STATE_ALREADY_EXISTS);
     }
 
     await c.env.AUTH_KV.put(
@@ -264,12 +235,7 @@ microsoft.get('/callback', async c => {
 microsoft.post('/token', async c => {
   const clientType = getClientType(c);
   if (clientType !== 'mobile' && clientType !== 'web') {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_CLIENT_TYPE',
-      'クライアント種別が不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
   }
 
   const body = (await c.req.json().catch(() => null)) as {
@@ -285,12 +251,7 @@ microsoft.post('/token', async c => {
     typeof body.state !== 'string' ||
     body.state.length === 0
   ) {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_REQUEST',
-      'リクエストボディが不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
   }
 
   if (
@@ -300,34 +261,21 @@ microsoft.post('/token', async c => {
       body.code_verifier.length > 128 ||
       !isValidBase64Url(body.code_verifier))
   ) {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_REQUEST',
-      'リクエストボディが不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
   }
 
   const pkceRaw = await c.env.AUTH_KV.get(`pkce:${body.state}`);
   if (!pkceRaw) {
-    return errorResponse(
-      c,
-      401,
-      'STATE_MISMATCH',
-      'state が一致しないか期限切れです。'
-    );
+    return errorResponse(c, AuthErrors.STATE_MISMATCH);
   }
-  await c.env.AUTH_KV.delete(`pkce:${body.state}`);
 
+  await c.env.AUTH_KV.delete(`pkce:${body.state}`);
   const pkce = JSON.parse(pkceRaw) as PkceEntry;
+
   if (pkce.client_type !== clientType) {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_STATE_CLIENT_TYPE',
-      'state のクライアント種別が不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_STATE_CLIENT_TYPE);
   }
+
   if (pkce.purpose && pkce.purpose !== 'login') {
     // /delete-login で発行された state がこちらに紛れ込んだ場合、
     // upsertUserや一般API用Tokenの発行に進んでしまうため拒否する。
@@ -335,28 +283,19 @@ microsoft.post('/token', async c => {
     // Microsoft認証中だった)の通常ログインとして扱い、拒否しない。
     // 削除確認フロー側は必ずpurpose: 'account_deletion'を書き込むため、
     // 削除用のstateがここに紛れ込むことはない。
-    return errorResponse(
-      c,
-      400,
-      'INVALID_STATE_PURPOSE',
-      'state の用途が不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_STATE_PURPOSE);
   }
 
   const codeVerifier =
     clientType === 'mobile'
       ? (body.code_verifier as string)
       : pkce.code_verifier;
+
   if (!codeVerifier) {
     // state 自体は見つかっているが code_verifier だけが欠けているケース
     // （webでpkceエントリにcode_verifierが保存されていない等）。
     // stateの不一致・期限切れ（STATE_MISMATCH）とは原因が異なるため区別する。
-    return errorResponse(
-      c,
-      401,
-      'CODE_VERIFIER_MISSING',
-      'code_verifier が見つかりません。もう一度ログインをやり直してください。'
-    );
+    return errorResponse(c, AuthErrors.CODE_VERIFIER_MISSING);
   }
 
   const tokens = await exchangeMicrosoftToken(
@@ -372,13 +311,9 @@ microsoft.post('/token', async c => {
     },
     { includeClientAssertion: clientType === 'web' }
   );
+
   if (!tokens?.id_token || !tokens.refresh_token) {
-    return errorResponse(
-      c,
-      401,
-      'TOKEN_EXCHANGE_FAILED',
-      'Microsoft とのトークン交換に失敗しました。'
-    );
+    return errorResponse(c, AuthErrors.TOKEN_EXCHANGE_FAILED);
   }
 
   let claims;
@@ -392,12 +327,7 @@ microsoft.post('/token', async c => {
       c.env.ALLOWED_MICROSOFT_TENANTS
     );
   } catch {
-    return errorResponse(
-      c,
-      401,
-      'INVALID_ID_TOKEN',
-      'id_token の検証に失敗しました。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_ID_TOKEN);
   }
 
   let user;
@@ -405,25 +335,17 @@ microsoft.post('/token', async c => {
     user = await upsertUser(c, claims);
   } catch (err) {
     if (err instanceof Error && err.message === 'STUDENT_ALREADY_LINKED') {
-      return errorResponse(
-        c,
-        409,
-        'STUDENT_ALREADY_LINKED',
-        'この学生は既に別のMicrosoftアカウントと連携されています。'
-      );
+      return errorResponse(c, AuthErrors.STUDENT_ALREADY_LINKED);
     }
     if (err instanceof Error && err.message === 'ACCOUNT_DELETION_PENDING') {
-      return errorResponse(
-        c,
-        410,
-        'ACCOUNT_DELETION_PENDING',
-        'このアカウントは削除処理中または削除済みのため、ログインできません。'
-      );
+      return errorResponse(c, AuthErrors.ACCOUNT_DELETION_PENDING);
     }
     throw err;
   }
+
   const { studentService } = c.get('container');
   const student = await getStudentInfoOrNull(studentService, Number(user.id));
+
   const refreshTokenId = crypto.randomUUID();
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
 
@@ -446,6 +368,7 @@ microsoft.post('/token', async c => {
     } satisfies MobileRefreshEntry),
     { expirationTtl: refreshTtl }
   );
+
   await c.env.AUTH_KV.put(`mobile_refresh_by_user:${user.id}`, refreshTokenId, {
     expirationTtl: refreshTtl,
   });
@@ -492,12 +415,7 @@ microsoft.post('/token', async c => {
 microsoft.post('/delete-token', async c => {
   const clientType = getClientType(c);
   if (clientType !== 'mobile' && clientType !== 'web') {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_CLIENT_TYPE',
-      'クライアント種別が不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
   }
 
   const body = (await c.req.json().catch(() => null)) as {
@@ -513,12 +431,7 @@ microsoft.post('/delete-token', async c => {
     typeof body.state !== 'string' ||
     body.state.length === 0
   ) {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_REQUEST',
-      'リクエストボディが不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
   }
 
   if (
@@ -528,55 +441,33 @@ microsoft.post('/delete-token', async c => {
       body.code_verifier.length > 128 ||
       !isValidBase64Url(body.code_verifier))
   ) {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_REQUEST',
-      'リクエストボディが不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
   }
 
   const pkceRaw = await c.env.AUTH_KV.get(`pkce:${body.state}`);
   if (!pkceRaw) {
-    return errorResponse(
-      c,
-      401,
-      'STATE_MISMATCH',
-      'state が一致しないか期限切れです。'
-    );
+    return errorResponse(c, AuthErrors.STATE_MISMATCH);
   }
-  await c.env.AUTH_KV.delete(`pkce:${body.state}`);
 
+  await c.env.AUTH_KV.delete(`pkce:${body.state}`);
   const pkce = JSON.parse(pkceRaw) as PkceEntry;
+
   if (pkce.client_type !== clientType) {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_STATE_CLIENT_TYPE',
-      'state のクライアント種別が不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_STATE_CLIENT_TYPE);
   }
+
   if (pkce.purpose !== 'account_deletion') {
     // /login で発行された state がこちらに紛れ込んだ場合を拒否する。
-    return errorResponse(
-      c,
-      400,
-      'INVALID_STATE_PURPOSE',
-      'state の用途が不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_STATE_PURPOSE);
   }
 
   const codeVerifier =
     clientType === 'mobile'
       ? (body.code_verifier as string)
       : pkce.code_verifier;
+
   if (!codeVerifier) {
-    return errorResponse(
-      c,
-      401,
-      'CODE_VERIFIER_MISSING',
-      'code_verifier が見つかりません。もう一度やり直してください。'
-    );
+    return errorResponse(c, AuthErrors.CODE_VERIFIER_MISSING);
   }
 
   const tokens = await exchangeMicrosoftToken(
@@ -592,13 +483,9 @@ microsoft.post('/delete-token', async c => {
     },
     { includeClientAssertion: clientType === 'web' }
   );
+
   if (!tokens?.id_token) {
-    return errorResponse(
-      c,
-      401,
-      'TOKEN_EXCHANGE_FAILED',
-      'Microsoft とのトークン交換に失敗しました。'
-    );
+    return errorResponse(c, AuthErrors.TOKEN_EXCHANGE_FAILED);
   }
 
   let claims;
@@ -612,12 +499,7 @@ microsoft.post('/delete-token', async c => {
       c.env.ALLOWED_MICROSOFT_TENANTS
     );
   } catch {
-    return errorResponse(
-      c,
-      401,
-      'INVALID_ID_TOKEN',
-      'id_token の検証に失敗しました。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_ID_TOKEN);
   }
 
   const userRepository = createUserRepository(c.env.DB);
@@ -625,15 +507,11 @@ microsoft.post('/delete-token', async c => {
     claims.oid,
     claims.tid
   );
+
   if (!userId) {
     // upsertUserは呼ばない。このMicrosoftアカウントに対応する
     // RecTimeアカウントが存在しない場合、新規作成はしない。
-    return errorResponse(
-      c,
-      404,
-      'ACCOUNT_NOT_FOUND',
-      'このMicrosoftアカウントに対応するアカウントが見つかりません。'
-    );
+    return errorResponse(c, AuthErrors.ACCOUNT_NOT_FOUND);
   }
 
   const deletionToken = crypto.randomUUID();
