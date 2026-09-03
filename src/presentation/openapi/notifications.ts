@@ -427,6 +427,7 @@ export const scheduleUpdateRoute = createRoute({
     200: jsonResponse(scheduleUpdateResponseSchema, '更新した配信予定'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     409: conflictResponse,
     500: internalServerErrorResponse,
   },
@@ -552,6 +553,7 @@ export const notificationCreateRoute = createRoute({
     201: jsonResponse(notificationResponseSchema, '作成した通知'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -567,6 +569,7 @@ export const notificationListRoute = createRoute({
     200: jsonResponse(notificationListResponseSchema, '通知一覧'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -582,6 +585,7 @@ export const notificationDetailRoute = createRoute({
     200: jsonResponse(notificationResponseSchema, '通知'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     500: internalServerErrorResponse,
   },
@@ -604,6 +608,7 @@ export const notificationUpdateRoute = createRoute({
     200: jsonResponse(notificationResponseSchema, '更新した通知'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     500: internalServerErrorResponse,
   },
@@ -731,6 +736,7 @@ export const testNotificationRoute = createRoute({
     200: jsonResponse(fcmNotificationResponseSchema, '送信結果'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     500: internalServerErrorResponse,
   },
 });

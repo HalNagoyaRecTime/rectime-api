@@ -62,7 +62,6 @@ describe('createAuthService', () => {
   function setup() {
     const userRepository: IUserRepository = {
       exists: vi.fn(),
-      isStaffOrTeacher: vi.fn(),
       isStaff: vi.fn(),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
@@ -105,7 +104,6 @@ describe('createAuthService', () => {
   it('studentEmailDomainが未設定の場合はエラーを投げる', () => {
     const userRepository: IUserRepository = {
       exists: vi.fn(),
-      isStaffOrTeacher: vi.fn(),
       isStaff: vi.fn(),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
