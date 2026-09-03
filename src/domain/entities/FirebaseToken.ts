@@ -19,10 +19,10 @@ const PLATFORM_CODE_BY_NAME = {
   android: 2,
 } as const satisfies Record<FirebasePlatformName, FirebasePlatform>;
 
-const PLATFORM_NAME_BY_CODE: Record<number, FirebasePlatformName> = {
+const PLATFORM_NAME_BY_CODE: Partial<Record<number, FirebasePlatformName>> = {
   1: 'ios',
   2: 'android',
-};
+} as const satisfies Record<FirebasePlatform, FirebasePlatformName>;
 
 export function firebasePlatformToCode(
   platform: FirebasePlatformName
