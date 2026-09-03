@@ -583,7 +583,7 @@ describe('POST /auth/refresh', () => {
       env
     );
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(410);
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
     // refresh_token_idは消費(ローテーション)されず、KVに残ったまま
@@ -624,7 +624,7 @@ describe('POST /auth/refresh', () => {
       env
     );
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(410);
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
   });
