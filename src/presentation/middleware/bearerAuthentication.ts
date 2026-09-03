@@ -6,6 +6,7 @@ import {
   type AppContext,
 } from '../auth/helpers';
 import { verifyAccessToken } from '../../infrastructure/auth/jwt';
+import { createUserRepository } from '../../infrastructure/repositories/UserRepository';
 import type { ContainerVariables } from './diContainer';
 import type { AuthUser } from '../../domain/auth/types';
 
@@ -38,6 +39,16 @@ export const bearerAuthenticationMiddleware = createMiddleware<{
         c.env.JWT_SECRET,
         clientType
       );
+      // JWT自体は自己完結検証のためDBの現在状態を反映しない。削除開始
+      // (deletion_status !== 'active')後も、exp到達までは有効なAccess
+      // Tokenが使えてしまうため、リクエストごとに最新の削除状態を確認し、
+      // 削除中・削除済みのユーザーは(有効期限内でも)未認証として扱う。
+      const userRepository = createUserRepository(c.env.DB);
+      const deletionStatus = await userRepository.getDeletionStatus(claims.sub);
+      if (deletionStatus && deletionStatus !== 'active') {
+        throw new Error('ACCOUNT_DELETION_PENDING');
+      }
+
       const userId = Number(claims.sub);
       if (Number.isInteger(userId) && userId > 0) {
         authenticatedUserId = userId;

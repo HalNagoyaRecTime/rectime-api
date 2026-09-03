@@ -123,5 +123,13 @@ export function createFirebaseTokenRepository(
         .where(eq(firebase_tokens.firebaseTokenId, firebaseTokenId))
         .run();
     },
+
+    async deactivateByUserId(userId: number): Promise<void> {
+      await orm
+        .update(firebase_tokens)
+        .set({ isFirebaseActive: 0, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .where(eq(firebase_tokens.userId, userId))
+        .run();
+    },
   };
 }

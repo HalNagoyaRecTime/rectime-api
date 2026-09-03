@@ -21,6 +21,7 @@ import {
   ACCOUNT_PHOTO_PATH,
 } from '../../../domain/auth/types';
 import { GRAPH_ME_PHOTO_URL } from '../../../infrastructure/auth/microsoftClient';
+import { createUserRepository } from '../../../infrastructure/repositories/UserRepository';
 
 const account = new Hono<{
   Bindings: Bindings;
@@ -311,6 +312,21 @@ account.post('/refresh', async c => {
       400,
       'INVALID_REFRESH_CLIENT_TYPE',
       'refresh_token_id のクライアント種別が不正です。'
+    );
+  }
+
+  // アカウント削除開始後は、有効なrefresh_token_idを持っていても
+  // 新しいAccess Tokenを発行しない。
+  const userRepository = createUserRepository(c.env.DB);
+  const deletionStatus = await userRepository.getDeletionStatus(
+    refresh.user_id
+  );
+  if (deletionStatus && deletionStatus !== 'active') {
+    return errorResponse(
+      c,
+      401,
+      'ACCOUNT_DELETION_PENDING',
+      'このアカウントは削除処理中または削除済みのため、セッションを更新できません。'
     );
   }
 
