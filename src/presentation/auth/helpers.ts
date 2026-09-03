@@ -33,6 +33,37 @@ export function errorResponse(
   return c.json({ error: { code, message } }, status);
 }
 
+// 認証済みユーザーが「今この瞬間もアクセスを許されているか」を確認する(#255)。
+// 通してよければ null、断るべきならそのまま返せるレスポンスを返す。
+// JWTは発行時点の情報しか持たないため、無効化を即座に反映するには
+// リクエストごとに現在の状態をDBで確認するしかない。
+export async function rejectInactiveUser(
+  c: AppContext,
+  sub: string | number
+): Promise<Response | null> {
+  const userId = Number(sub);
+  // subがユーザーIDとして解釈できない場合は状態を確認できないため通さない
+  // (フェイルクローズ)。
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です');
+  }
+
+  const isActive = await c
+    .get('container')
+    .userActivationRepository.isActive(userId);
+
+  if (!isActive) {
+    return errorResponse(
+      c,
+      401,
+      'USER_DEACTIVATED',
+      'このアカウントは無効化されています'
+    );
+  }
+
+  return null;
+}
+
 export function getClientType(c: AppContext): 'web' | 'mobile' | null {
   const value = c.req.header('X-Client-Type') ?? 'web';
   if (value === 'web' || value === 'mobile') return value;

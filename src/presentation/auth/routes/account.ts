@@ -15,6 +15,7 @@ import {
   userResponse,
   getStudentInfoOrNull,
   getUserCategories,
+  rejectInactiveUser,
 } from '../helpers';
 import {
   type MobileRefreshEntry,
@@ -59,6 +60,9 @@ account.get('/me', async c => {
         : 'トークンが不正です。';
     return errorResponse(c, 401, code, message);
   }
+
+  const rejected = await rejectInactiveUser(c, claims.sub);
+  if (rejected) return rejected;
 
   const student = await getStudentInfoOrNull(
     studentService,
@@ -105,6 +109,9 @@ account.get('/me/photo', async c => {
   } catch {
     return errorResponse(c, 401, 'UNAUTHORIZED', '認証が不正です。');
   }
+
+  const rejected = await rejectInactiveUser(c, claims.sub);
+  if (rejected) return rejected;
 
   // mobile_refresh KV は mobile/web 共通で使う。Microsoft の refresh_token を
   // sub 単位で保持している(POST /auth/microsoft/token 参照)。
@@ -318,17 +325,8 @@ account.post('/refresh', async c => {
   // TTLが再発行のたびに振り直され、無効化後も延び続けてしまう。
   // エントリは削除しない: 一時的な無効化なので、再度有効化されたときに
   // 元のTTLが切れるまでは同じセッションを再開できるようにする。
-  const isActive = await c
-    .get('container')
-    .userActivationRepository.isActive(Number(refresh.user_id));
-  if (!isActive) {
-    return errorResponse(
-      c,
-      401,
-      'USER_DEACTIVATED',
-      'このアカウントは無効化されています。'
-    );
-  }
+  const rejected = await rejectInactiveUser(c, refresh.user_id);
+  if (rejected) return rejected;
 
   const tokens = await refreshMicrosoftAccessToken(
     c,

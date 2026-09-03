@@ -1,6 +1,10 @@
 import { createMiddleware } from 'hono/factory';
 import type { Env } from '../../lib/env';
-import { errorResponse, type AppContext } from '../auth/helpers';
+import {
+  errorResponse,
+  rejectInactiveUser,
+  type AppContext,
+} from '../auth/helpers';
 import type { AuthUser } from '../../domain/auth/types';
 import type { AuthenticationVariables } from './bearerAuthentication';
 import type { ContainerVariables } from './diContainer';
@@ -37,17 +41,8 @@ export const requireAuth = createMiddleware<{
     return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
   }
 
-  const isActive = await c
-    .get('container')
-    .userActivationRepository.isActive(userId);
-  if (!isActive) {
-    return errorResponse(
-      appContext,
-      401,
-      'USER_DEACTIVATED',
-      'このアカウントは無効化されています'
-    );
-  }
+  const rejected = await rejectInactiveUser(appContext, userId);
+  if (rejected) return rejected;
 
   c.set('authUser', authUser);
   await next();
