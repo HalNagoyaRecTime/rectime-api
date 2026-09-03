@@ -100,6 +100,27 @@ describe('UserStatusRepository', () => {
 
       await expect(repo.hasOtherActiveStaff(target)).resolves.toBe(false);
     });
+
+    // deletion_status は is_live_active とは独立しており、退会しても
+    // is_live_active は 1 のまま残る。この2つを混同すると、退会済みのstaffを
+    // 「復旧できる人」と数えてしまう。
+    it('他のstaffが退会済みの場合はfalseを返す', async () => {
+      const target = await insertUser('対象');
+      const other = await insertUser('退会済みのstaff');
+      await insertStaff(other);
+      await markAsDeleted(other);
+
+      await expect(repo.hasOtherActiveStaff(target)).resolves.toBe(false);
+    });
+
+    it('他のstaffが削除申請中の場合はfalseを返す', async () => {
+      const target = await insertUser('対象');
+      const other = await insertUser('削除申請中のstaff');
+      await insertStaff(other);
+      await markDeletionPending(other);
+
+      await expect(repo.hasOtherActiveStaff(target)).resolves.toBe(false);
+    });
   });
 });
 
@@ -114,6 +135,25 @@ async function insertUser(userName: string): Promise<number> {
 
 async function insertStaff(userId: number): Promise<void> {
   await env.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+    .bind(userId)
+    .run();
+}
+
+// is_live_active を触らずに deletion_status だけを進める。UserRepository の
+// markAsDeleted は microsoft_account_links の削除も伴うため、ここでは
+// 「退会済みだが is_live_active は 1 のまま」という状態だけを作る。
+async function markAsDeleted(userId: number): Promise<void> {
+  await env.DB.prepare(
+    "UPDATE users SET deletion_status = 'deleted' WHERE user_id = ?"
+  )
+    .bind(userId)
+    .run();
+}
+
+async function markDeletionPending(userId: number): Promise<void> {
+  await env.DB.prepare(
+    "UPDATE users SET deletion_status = 'deletion_pending' WHERE user_id = ?"
+  )
     .bind(userId)
     .run();
 }

@@ -31,12 +31,20 @@ export function createUserStatusRepository(
     },
 
     async hasOtherActiveStaff(excludedUserId) {
+      // 「復旧できる人を必ず残す」ための判定なので、実際に稼働できるstaffだけを数える。
+      // deletion_status は is_live_active とは独立した軸で、markAsDeleted しても
+      // is_live_active は 1 のまま残る。退会済みを除外しないと、稼働している
+      // 最後の管理者を無効化できてしまう。
       const found = await orm
         .select({ userId: staffs.userId })
         .from(staffs)
         .innerJoin(users, eq(staffs.userId, users.id))
         .where(
-          and(eq(users.isLiveActive, 1), ne(staffs.userId, excludedUserId))
+          and(
+            eq(users.isLiveActive, 1),
+            eq(users.deletionStatus, 'active'),
+            ne(staffs.userId, excludedUserId)
+          )
         )
         .get();
 
