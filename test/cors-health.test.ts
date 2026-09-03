@@ -103,7 +103,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(57);
+    expect(documentedOperations).toHaveLength(58);
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {
@@ -122,6 +122,9 @@ describe('OpenAPI documentation', () => {
     expect(document.paths['/api/v1/students'].get?.security).toEqual([
       { Bearer: [] },
     ]);
+    expect(
+      document.paths['/api/v1/students/{studentId}'].delete?.security
+    ).toEqual([{ Bearer: [] }]);
     expect(document.paths['/api/v1/admin/users'].get?.security).toEqual([
       { Bearer: [] },
     ]);
