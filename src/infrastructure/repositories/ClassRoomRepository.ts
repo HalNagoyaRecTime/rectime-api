@@ -164,10 +164,15 @@ export function createClassRoomRepository(
         db
           .prepare(
             `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
-             VALUES (?, ?, ?, last_insert_rowid())
+             SELECT ?, ?, ?, team_id FROM teams WHERE team_name = ?
              RETURNING class_room_id`
           )
-          .bind(input.class_code, input.class_name, input.teacher_id),
+          .bind(
+            input.class_code,
+            input.class_name,
+            input.teacher_id,
+            provisionalTeamName(input)
+          ),
       ]);
       const row = classRoomResult.results[0] as
         | { class_room_id: number }
