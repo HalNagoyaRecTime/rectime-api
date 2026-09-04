@@ -2,10 +2,11 @@ import type {
   D1Database,
   D1PreparedStatement,
 } from '@cloudflare/workers-types';
-import type {
-  ClassRoomEntity,
-  ClassRoomInput,
-  ClassRoomPage,
+import {
+  buildProvisionalTeamName,
+  type ClassRoomEntity,
+  type ClassRoomInput,
+  type ClassRoomPage,
 } from '../../domain/entities/ClassRoom';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import { chunkArray } from './chunk';
@@ -47,7 +48,10 @@ const classRoomSelect = `
 `;
 
 function provisionalTeamName(input: ClassRoomInput): string {
-  return `${input.class_name}(${input.class_code})`;
+  return buildProvisionalTeamName({
+    className: input.class_name,
+    classCode: input.class_code,
+  });
 }
 
 function toEntity(row: ClassRoomRow): ClassRoomEntity {
@@ -164,10 +168,15 @@ export function createClassRoomRepository(
         db
           .prepare(
             `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
-             VALUES (?, ?, ?, last_insert_rowid())
+             SELECT ?, ?, ?, team_id FROM teams WHERE team_name = ?
              RETURNING class_room_id`
           )
-          .bind(input.class_code, input.class_name, input.teacher_id),
+          .bind(
+            input.class_code,
+            input.class_name,
+            input.teacher_id,
+            provisionalTeamName(input)
+          ),
       ]);
       const row = classRoomResult.results[0] as
         | { class_room_id: number }
@@ -189,16 +198,40 @@ export function createClassRoomRepository(
           inputs,
           Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
         )) {
-          const teamPlaceholders = chunk.map(() => '(?)').join(', ');
-          const teamValues = chunk.map(provisionalTeamName);
-          const statements: D1PreparedStatement[] = [
-            db
-              .prepare(
-                `INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`
-              )
-              .bind(...teamValues),
-          ];
-          for (const input of chunk) {
+          const withTeam = chunk.filter(input => input.team_id !== null);
+          const withoutTeam = chunk.filter(input => input.team_id === null);
+
+          const statements: D1PreparedStatement[] = [];
+
+          if (withoutTeam.length > 0) {
+            const teamPlaceholders = withoutTeam.map(() => '(?)').join(', ');
+            const teamValues = withoutTeam.map(provisionalTeamName);
+            statements.push(
+              db
+                .prepare(
+                  `INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`
+                )
+                .bind(...teamValues)
+            );
+          }
+
+          for (const input of withTeam) {
+            statements.push(
+              db
+                .prepare(
+                  `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
+                   VALUES (?, ?, ?, ?)`
+                )
+                .bind(
+                  input.class_code,
+                  input.class_name,
+                  input.teacher_id,
+                  input.team_id
+                )
+            );
+          }
+
+          for (const input of withoutTeam) {
             statements.push(
               db
                 .prepare(
@@ -213,6 +246,7 @@ export function createClassRoomRepository(
                 )
             );
           }
+
           await db.batch(statements);
           committedInputs.push(...chunk);
         }
@@ -345,7 +379,9 @@ async function deleteClassRoomsAndTeamsByInputs(
   inputs: ClassRoomInput[]
 ) {
   const classCodes = inputs.map(input => input.class_code);
-  const teamNames = inputs.map(provisionalTeamName);
+  const teamNames = inputs
+    .filter(input => input.team_id === null)
+    .map(provisionalTeamName);
 
   for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
     const placeholders = chunk.map(() => '?').join(', ');
