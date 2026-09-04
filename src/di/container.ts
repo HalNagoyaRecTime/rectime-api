@@ -15,6 +15,7 @@ import { createGatheringSpotRepository } from '../infrastructure/repositories/Ga
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
 import { createScheduleRepository } from '../infrastructure/repositories/ScheduleRepository';
+import { createTeamRepository } from '../infrastructure/repositories/TeamRepository';
 import { createNotificationDeliveryQueue } from '../infrastructure/queues/NotificationDeliveryQueue';
 import { createStudentService } from '../application/services/StudentService';
 import { createStaffService } from '../application/services/StaffService';
@@ -35,6 +36,7 @@ import { createGatheringSpotService } from '../application/services/GatheringSpo
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createGatheringService } from '../application/services/GatheringService';
 import { createScheduleService } from '../application/services/ScheduleService';
+import { createRankingService } from '../application/services/RankingService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createStaffController } from '../presentation/controllers/StaffController';
 import { createTeacherController } from '../presentation/controllers/TeacherController';
@@ -52,6 +54,7 @@ import { createGatheringSpotController } from '../presentation/controllers/Gathe
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createGatheringController } from '../presentation/controllers/GatheringController';
 import { createScheduleController } from '../presentation/controllers/ScheduleController';
+import { createRankingController } from '../presentation/controllers/RankingController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
@@ -91,6 +94,7 @@ export function createDIContainer(env: Env) {
     gatheringSpotRepository
   );
   const scheduleRepository = createScheduleRepository(db);
+  const teamRepository = createTeamRepository(db);
   const notificationDeliveryQueue = createNotificationDeliveryQueue(
     env.NOTIFICATION_DELIVERY_QUEUE
   );
@@ -163,6 +167,7 @@ export function createDIContainer(env: Env) {
   );
   const gatheringService = createGatheringService(gatheringRepository);
   const scheduleService = createScheduleService(scheduleRepository);
+  const rankingService = createRankingService(teamRepository);
 
   // Controllers
   const studentController = createStudentController(studentService);
@@ -204,6 +209,7 @@ export function createDIContainer(env: Env) {
   );
   const gatheringController = createGatheringController(gatheringService);
   const scheduleController = createScheduleController(scheduleService);
+  const rankingController = createRankingController(rankingService);
 
   return {
     authService,
@@ -228,6 +234,7 @@ export function createDIContainer(env: Env) {
     gatheringGroupMemberController,
     gatheringController,
     scheduleController,
+    rankingController,
   };
 }
 
