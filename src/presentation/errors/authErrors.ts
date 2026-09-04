@@ -93,6 +93,16 @@ export const AuthErrors = {
     code: 'INVALID_REFRESH_CLIENT_TYPE',
     message: 'refresh_token_id のクライアント種別が不正です',
   },
+  USER_DEACTIVATED: {
+    status: 401,
+    code: 'USER_DEACTIVATED',
+    message: 'このアカウントは無効化されています',
+  },
+  USER_ACTIVATION_CHECK_FAILED: {
+    status: 500,
+    code: 'USER_ACTIVATION_CHECK_FAILED',
+    message: 'アカウント状態の確認に失敗しました',
+  },
   REFRESH_TOKEN_EXPIRED: {
     status: 401,
     code: 'REFRESH_TOKEN_EXPIRED',

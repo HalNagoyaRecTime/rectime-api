@@ -15,6 +15,7 @@ import {
   getStudentInfoOrNull,
   getUserCategories,
 } from '../helpers';
+import { rejectInactiveUser } from '../rejectInactiveUser';
 import {
   type MobileRefreshEntry,
   ACCOUNT_PHOTO_PATH,
@@ -101,6 +102,9 @@ account.get('/me', async c => {
   if (!auth.ok) return auth.response;
   const { claims } = auth;
 
+  const rejected = await rejectInactiveUser(c, claims.sub);
+  if (rejected) return rejected;
+
   const student = await getStudentInfoOrNull(
     studentService,
     Number(claims.sub)
@@ -133,6 +137,9 @@ account.get('/me/photo', async c => {
   const auth = await authenticateActiveUser(c, clientType);
   if (!auth.ok) return auth.response;
   const { claims } = auth;
+
+  const rejected = await rejectInactiveUser(c, claims.sub);
+  if (rejected) return rejected;
 
   // mobile_refresh KV は mobile/web 共通で使う。Microsoft の refresh_token を
   // sub 単位で保持している(POST /auth/microsoft/token 参照)。
@@ -293,6 +300,15 @@ account.post('/refresh', async c => {
   if (deletionStatus && deletionStatus !== 'active') {
     return errorResponse(c, AuthErrors.ACCOUNT_DELETION_PENDING);
   }
+
+  // 無効化されたユーザーの再発行を断る(#255)。deletion_status(本人による削除)
+  // とis_live_active(管理者による無効化)は独立した軸のため、両方を確認する。
+  // 塞がないとmobile_refreshのTTLが再発行のたびに振り直され、無効化後も
+  // 延び続けてしまう。
+  // エントリは削除しない: 一時的な無効化なので、再度有効化されたときに
+  // 元のTTLが切れるまでは同じセッションを再開できるようにする。
+  const rejected = await rejectInactiveUser(c, refresh.user_id);
+  if (rejected) return rejected;
 
   const tokens = await refreshMicrosoftAccessToken(
     c,

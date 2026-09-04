@@ -104,6 +104,17 @@ function buildApp() {
   return app;
 }
 
+// /auth/refresh は users.is_live_active を確認するため(#255)、
+// 実際のユーザー行が必要になる。
+async function insertUser(isLiveActive = 1): Promise<string> {
+  const row = await workerEnv.DB.prepare(
+    'INSERT INTO users (user_name, is_live_active) VALUES (?, ?) RETURNING user_id'
+  )
+    .bind('田中太郎', isLiveActive)
+    .first<{ user_id: number }>();
+  return String(row!.user_id);
+}
+
 async function buildWebToken(): Promise<string> {
   return signAccessToken(
     {
@@ -347,6 +358,33 @@ describe('GET /auth/me', () => {
     expect(bodyText).not.toContain('削除済み太郎');
     expect(bodyText).not.toContain('tanaka@example.com');
   });
+
+  it('無効化されたユーザーの場合は401を返す (#255)', async () => {
+    const env = buildEnv();
+    const userId = await insertUser(0);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('USER_DEACTIVATED');
+  });
 });
 
 describe('GET /auth/me/photo (削除状態)', () => {
@@ -378,6 +416,55 @@ describe('GET /auth/me/photo (削除状態)', () => {
     expect(res.status).toBe(410);
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
+  });
+});
+
+describe('GET /auth/me/photo', () => {
+  it('無効化されたユーザーの場合は401を返し、Microsoftへ問い合わせない (#255)', async () => {
+    const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser(0);
+    // 無効化の確認がKV参照・Microsoft問い合わせより前に行われることを示すため、
+    // セッションは有効な状態で用意しておく。
+    await env.AUTH_KV.put(`mobile_refresh_by_user:${userId}`, 'refresh-1');
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-1',
+      JSON.stringify({
+        user_id: userId,
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me/photo',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('USER_DEACTIVATED');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -581,10 +668,11 @@ describe('POST /auth/refresh', () => {
 
   it('webは有効なrefresh_token_idを指定すると新しいアクセストークンを発行しIDをローテーションする', async () => {
     const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser();
     await env.AUTH_KV.put(
       'mobile_refresh:refresh-1',
       JSON.stringify({
-        user_id: 'user-1',
+        user_id: userId,
         oid: 'oid-1',
         tid: 'tid-1',
         sub: 'sub-1',
@@ -638,10 +726,11 @@ describe('POST /auth/refresh', () => {
 
   it('Microsoftのリフレッシュに失敗した場合は401を返す', async () => {
     const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser();
     await env.AUTH_KV.put(
       'mobile_refresh:refresh-1',
       JSON.stringify({
-        user_id: 'user-1',
+        user_id: userId,
         oid: 'oid-1',
         tid: 'tid-1',
         sub: 'sub-1',
@@ -757,5 +846,89 @@ describe('POST /auth/refresh', () => {
     expect(res.status).toBe(410);
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
+  });
+
+  it('無効化されたユーザーの場合は401を返し、Microsoftへ問い合わせない (#255)', async () => {
+    const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser(0);
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-1',
+      JSON.stringify({
+        user_id: userId,
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const app = buildApp();
+    const res = await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('USER_DEACTIVATED');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('無効化されたユーザーの場合はrefresh_token_idをローテーションせず、TTLを延長しない (#255)', async () => {
+    const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser(0);
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-1',
+      JSON.stringify({
+        user_id: userId,
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+    vi.stubGlobal('fetch', vi.fn());
+
+    const app = buildApp();
+    await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-1' }),
+      },
+      env
+    );
+
+    // 既存エントリは消さない（再度有効化されたときに同じセッションを
+    // 再開できるようにするため）が、新しいIDの発行は行わない。
+    // ローテーションが起きていれば mobile_refresh_by_user が書かれるため、
+    // それが無いことで「TTLの振り直しが起きていない」ことを確認する。
+    expect(await env.AUTH_KV.get('mobile_refresh:refresh-1')).not.toBeNull();
+    expect(
+      await env.AUTH_KV.get(`mobile_refresh_by_user:${userId}`)
+    ).toBeNull();
   });
 });
