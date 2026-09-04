@@ -17,6 +17,7 @@ import {
 } from '../helpers';
 import {
   type MobileRefreshEntry,
+  type DeletionConfirmationEntry,
   ACCOUNT_PHOTO_PATH,
 } from '../../../domain/auth/types';
 import { GRAPH_ME_PHOTO_URL } from '../../../infrastructure/auth/microsoftClient';
@@ -346,6 +347,60 @@ account.post('/refresh', async c => {
     token_type: 'Bearer',
     expires_in: jwtTtl,
   });
+});
+
+// DELETE /auth/me
+// アカウント削除を開始する(#265 PR5)。本人確認は通常のBearer Tokenでは
+// なく、削除確認専用フロー(PR2, POST /auth/microsoft/delete-token)が
+// 発行したdeletion_confirmation_tokenのみで行う。このTokenは一回限り・
+// 短期間(10分)で、消費(KVから読み取り→削除)した時点で無効になる。
+//
+// リクエスト: { "deletion_confirmation_token": string }
+// レスポンス: 202 Accepted, ボディなし(#265 PR1で確定した契約)。
+//   非同期の完了通知は無く、本エンドポイントが202を返した時点で
+//   Access Token・Refresh Session・Push通知は即座に機能しなくなる
+//   (#265 PR3)。関連データの削除・匿名化(#265 PR4)も本エンドポイント
+//   内で完了してから202を返す。
+// エラー:
+//   400 INVALID_REQUEST                       deletion_confirmation_tokenが無い/不正な形式
+//   401 DELETION_CONFIRMATION_TOKEN_INVALID    Tokenが存在しない/期限切れ/使用済み
+//
+// 注意: このエンドポイントを含む /auth 配下は現状OpenAPI(openapi.json)
+// 未対応(素のHonoハンドラーのため)。この仕様コメントが実質的な契約定義。
+//
+// 処理順序(重要): authService.startAccountDeletion(deletion_statusを
+// 'deleted'にし、Access Token・Refresh Session・Firebase Tokenを無効化
+// する)を必ず先に呼び、その後でaccountDeletionService.deleteRelatedData
+// (関連データの削除・匿名化)を呼ぶ。deleteRelatedData自身もこの順序を
+// 自己確認して強制している(#265 PR4)。
+account.delete('/me', async c => {
+  const { authService, accountDeletionService } = c.get('container');
+
+  const body = (await c.req.json().catch(() => null)) as {
+    deletion_confirmation_token?: unknown;
+  } | null;
+  if (
+    !body ||
+    typeof body.deletion_confirmation_token !== 'string' ||
+    body.deletion_confirmation_token.length === 0
+  ) {
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
+  }
+
+  const key = `deletion_confirmation:${body.deletion_confirmation_token}`;
+  const raw = await c.env.AUTH_KV.get(key);
+  if (!raw) {
+    return errorResponse(c, AuthErrors.DELETION_CONFIRMATION_TOKEN_INVALID);
+  }
+  // 読み取った時点で削除し、同じTokenでの再利用(リプレイ)を防ぐ。
+  await c.env.AUTH_KV.delete(key);
+
+  const { user_id: userId } = JSON.parse(raw) as DeletionConfirmationEntry;
+
+  await authService.startAccountDeletion(userId);
+  await accountDeletionService.deleteRelatedData(userId);
+
+  return c.body(null, 202);
 });
 
 export { account };

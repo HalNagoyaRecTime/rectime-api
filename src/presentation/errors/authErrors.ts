@@ -98,4 +98,10 @@ export const AuthErrors = {
     code: 'REFRESH_TOKEN_EXPIRED',
     message: 'セッションを更新できませんでした。もう一度ログインしてください',
   },
+  DELETION_CONFIRMATION_TOKEN_INVALID: {
+    status: 401,
+    code: 'DELETION_CONFIRMATION_TOKEN_INVALID',
+    message:
+      '削除確認が無効です。もう一度Microsoftアカウントで本人確認をやり直してください',
+  },
 } as const satisfies Record<string, ApiErrorDefinition>;
