@@ -423,13 +423,13 @@ describe('StudentRepository', () => {
       expect(orphanedClassRoom).toBeNull();
     });
 
-    it('[REPRO #215] 後片付け(deleteUsersByIds)自体が失敗すると元のエラーが握りつぶされる', async () => {
+    it('生徒登録が失敗し、新規クラス・チームの後片付け自体も失敗した場合、手動確認を促すエラーとしてcause付きで投げ直される', async () => {
       const originalPrepare = env.DB.prepare.bind(env.DB);
       const prepareSpy = vi
         .spyOn(env.DB, 'prepare')
         .mockImplementation((sql: string) => {
-          if (sql.startsWith('DELETE FROM users')) {
-            throw new Error('DELETE_USERS_FAILED');
+          if (sql.startsWith('DELETE FROM class_rooms')) {
+            throw new Error('DELETE_CLASS_ROOMS_FAILED');
           }
           return originalPrepare(sql);
         });
@@ -453,24 +453,21 @@ describe('StudentRepository', () => {
 
       prepareSpy.mockRestore();
 
-      // 期待する挙動: deleteUsersByIds が失敗しても、元の students INSERT
-      // 失敗のエラーが握りつぶされずに伝播すること
+      // 期待する挙動: 後片付け自体が失敗しても元のstudents INSERT失敗が
+      // 握りつぶされず、手動確認を促すメッセージ＋causeとして伝播すること
       expect(thrown).toBeInstanceOf(Error);
-      expect((thrown as Error).message).not.toBe('DELETE_USERS_FAILED');
+      expect((thrown as Error).message).toContain(
+        '手動でのデータ確認が必要です'
+      );
+      expect((thrown as Error).cause).toBeInstanceOf(Error);
 
-      // 期待する挙動: deleteUsersByIds が失敗しても deleteClassRoomsByCodes
-      // は独立して実行され、newClassRooms の孤児レコードが残らないこと
-      const orphanedClassRoom = await env.DB.prepare(
-        'SELECT class_room_id FROM class_rooms WHERE class_code = ?'
-      )
-        .bind('REPRO-NEW')
-        .first();
-      expect(orphanedClassRoom).toBeNull();
-
-      // 後片付け: 修正前の実行(孤児が残るケース)でも次のテストに
-      // 影響しないよう掃除しておく
+      // 後片付け: 後片付け自体を失敗させたため残ったREPRO-NEWの孤児を、
+      // 次のテストに影響しないよう手動で消しておく
       await env.DB.prepare('DELETE FROM class_rooms WHERE class_code = ?')
         .bind('REPRO-NEW')
+        .run();
+      await env.DB.prepare('DELETE FROM teams WHERE team_name = ?')
+        .bind('REPRO-NEW(REPRO-NEW)')
         .run();
     });
 
@@ -540,52 +537,65 @@ describe('StudentRepository', () => {
       });
     });
 
-    it('db.batch()の呼び出しがチャンク分割された場合、後のチャンクが失敗すると先に確定した分もまとめて後片付けされる', async () => {
-      const CHUNK_SIZE = 250; // STUDENTS_PER_BATCH_CALLと同じ値
-      const newClassRooms = [
-        { classCode: 'CROSS-CHUNK-NEW', className: 'CROSS-CHUNK-NEW' },
-      ];
-      const firstChunkStudents = Array.from({ length: CHUNK_SIZE }, (_, i) => ({
-        displayName: `チャンク跨ぎ生徒${i}`,
-        classCode: 'CROSS-CHUNK-NEW',
-        attendanceNumber: i + 1,
-        studentIdNumber: `CROSS-CHUNK-${String(i).padStart(5, '0')}`,
-      }));
-      const secondChunkStudents = [
-        {
-          displayName: '2チャンク目で重複する生徒',
-          classCode: 'CROSS-CHUNK-NEW',
-          attendanceNumber: CHUNK_SIZE + 1,
-          // seedStudents で既に使われている学籍番号にぶつけて2チャンク目を失敗させる
-          studentIdNumber: seeded.students[0].studentIdNumber,
+    it('採番したuser_idを別経路が先に使っていた場合、採番し直して登録に成功する', async () => {
+      const seed = await env.DB.prepare(
+        'SELECT COALESCE(MAX(user_id), 0) AS max_user_id FROM users'
+      ).first<{ max_user_id: number }>();
+      const racedUserId = (seed?.max_user_id ?? 0) + 1;
+
+      // createManyが1回目に採番するはずのuser_idを、通常ログイン等の
+      // 別経路が先に使ったものとして直接挿入しておく
+      await env.DB.prepare(
+        'INSERT INTO users (user_id, user_name, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)'
+      )
+        .bind(racedUserId, '衝突させるための別ユーザー')
+        .run();
+
+      await repo.createMany({
+        newClassRooms: [],
+        students: [
+          {
+            displayName: 'リトライで登録されるはずの生徒',
+            classCode: 'TEST-1',
+            attendanceNumber: 40,
+            studentIdNumber: 'RACE-RETRY-1',
+          },
+        ],
+      });
+
+      const created = await repo.findByStudentNum('RACE-RETRY-1');
+      expect(created).toMatchObject({
+        user_name: 'リトライで登録されるはずの生徒',
+      });
+    });
+
+    it('user_idの衝突が続く場合、既定回数リトライしたあとは例外を投げる', async () => {
+      let batchCallCount = 0;
+      const alwaysRacingDb = {
+        prepare: (query: string) => env.DB.prepare(query),
+        batch: async () => {
+          batchCallCount++;
+          throw new Error('D1_ERROR: UNIQUE constraint failed: users.user_id');
         },
-      ];
+      } as unknown as D1Database;
+      const racingRepo = createStudentRepository(alwaysRacingDb);
 
       await expect(
-        repo.createMany({
-          newClassRooms,
-          students: [...firstChunkStudents, ...secondChunkStudents],
+        racingRepo.createMany({
+          newClassRooms: [],
+          students: [
+            {
+              displayName: '常に衝突する生徒',
+              classCode: 'TEST-1',
+              attendanceNumber: 41,
+              studentIdNumber: 'RACE-GIVEUP-1',
+            },
+          ],
         })
-      ).rejects.toThrow();
+      ).rejects.toThrow('users.user_id');
 
-      // 1チャンク目(250人)は一度コミットされているはずだが、
-      // 2チャンク目の失敗を受けてまとめて後片付けされていること
-      for (const student of firstChunkStudents) {
-        expect(await repo.findByStudentNum(student.studentIdNumber)).toBeNull();
-      }
-      const orphanedUsers = await env.DB.prepare(
-        'SELECT user_id FROM users WHERE user_name LIKE ?'
-      )
-        .bind('チャンク跨ぎ生徒%')
-        .all();
-      expect(orphanedUsers.results).toHaveLength(0);
-
-      const orphanedClassRoom = await env.DB.prepare(
-        'SELECT class_room_id FROM class_rooms WHERE class_code = ?'
-      )
-        .bind('CROSS-CHUNK-NEW')
-        .first();
-      expect(orphanedClassRoom).toBeNull();
+      // USER_ID_ALLOCATION_MAX_ATTEMPTSと同じ値。3回試して諦めること
+      expect(batchCallCount).toBe(3);
     });
 
     it('newClassRoomsのdb.batch()がチャンク分割された場合、後のチャンクが失敗すると先に確定したteams・class_roomsもまとめて後片付けされる', async () => {
