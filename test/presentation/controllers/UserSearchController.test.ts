@@ -128,8 +128,10 @@ describe('UserSearchController', () => {
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({
-      error: 'Failed to search users',
-      details: 'database failed',
+      error: {
+        code: 'USER_SEARCH_FAILED',
+        message: 'ユーザーの検索に失敗しました',
+      },
     });
   });
 });

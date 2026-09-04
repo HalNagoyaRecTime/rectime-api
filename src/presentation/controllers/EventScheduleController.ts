@@ -6,6 +6,9 @@ import { isValidEventDate } from '../../lib/eventDate';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import type { AuthVariables } from '../middleware/requireAuth';
+import { CommonErrors } from '../errors/commonErrors';
+import { EventErrors } from '../errors/eventErrors';
+import { errorResponse } from '../errors/errorResponse';
 
 const eventIdSchema = z.coerce.number().int().positive();
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
@@ -33,22 +36,20 @@ export function createEventScheduleController(
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = updateEventScheduleSchema.safeParse(body);
     if (!parsedEventId.success || !parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid event schedule request',
-          details: parsedBody.success ? undefined : parsedBody.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        EventErrors.INVALID_EVENT_SCHEDULE_REQUEST,
+        parsedBody.success ? undefined : parsedBody.error.flatten()
       );
     }
 
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
+      return errorResponse(c, CommonErrors.UNAUTHORIZED);
     }
     const eventDate = c.env.EVENT_DATE;
     if (!isValidEventDate(eventDate)) {
-      return c.json({ error: 'EVENT_DATE is not configured correctly' }, 500);
+      return errorResponse(c, CommonErrors.EVENT_DATE_INVALID);
     }
 
     try {
@@ -65,26 +66,26 @@ export function createEventScheduleController(
       );
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, EventErrors.EVENT_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to update event schedule',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      if (
+        error instanceof Error &&
+        error.message === 'Schedule update forbidden'
+      ) {
+        return errorResponse(c, CommonErrors.STAFF_REQUIRED);
+      }
+      return errorResponse(c, EventErrors.EVENT_SCHEDULE_UPDATE_FAILED);
     }
   };
 
   const getEventNotificationSummary = async (c: EventScheduleContext) => {
     const parsedEventId = eventIdSchema.safeParse(c.req.param('eventId'));
     if (!parsedEventId.success) {
-      return c.json({ error: 'Invalid event ID' }, 400);
+      return errorResponse(c, EventErrors.INVALID_EVENT_ID);
     }
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
+      return errorResponse(c, CommonErrors.UNAUTHORIZED);
     }
 
     try {
@@ -96,15 +97,15 @@ export function createEventScheduleController(
       );
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, EventErrors.EVENT_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to fetch event notification summary',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      if (
+        error instanceof Error &&
+        error.message === 'Schedule update forbidden'
+      ) {
+        return errorResponse(c, CommonErrors.STAFF_REQUIRED);
+      }
+      return errorResponse(c, EventErrors.EVENT_NOTIFICATION_SUMMARY_FAILED);
     }
   };
 

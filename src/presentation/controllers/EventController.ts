@@ -10,6 +10,12 @@ import type { IEventService } from '../../application/services/IEventService';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
+import { CommonErrors } from '../errors/commonErrors';
+import { EventErrors } from '../errors/eventErrors';
+import {
+  errorResponse,
+  type ApiErrorDefinition,
+} from '../errors/errorResponse';
 
 const eventIdSchema = z.coerce.number().int().positive();
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
@@ -68,10 +74,7 @@ export function createEventController(
       const offset = c.req.query('offset');
 
       if (startTime !== undefined && !hhmmSchema.safeParse(startTime).success) {
-        return c.json(
-          { error: 'Invalid start_time', code: 'INVALID_START_TIME' },
-          400
-        );
+        return errorResponse(c, EventErrors.INVALID_START_TIME);
       }
 
       return c.json(
@@ -82,14 +85,8 @@ export function createEventController(
         }),
         200
       );
-    } catch (error) {
-      return c.json(
-        {
-          error: 'Failed to fetch events',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+    } catch {
+      return errorResponse(c, EventErrors.EVENT_LIST_FAILED);
     }
   };
 
@@ -97,28 +94,16 @@ export function createEventController(
     try {
       const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
       if (!parsedId.success) {
-        return c.json(
-          { error: 'Invalid event ID', code: 'INVALID_EVENT_ID' },
-          400
-        );
+        return errorResponse(c, EventErrors.INVALID_EVENT_ID);
       }
 
       const event = await eventService.getEventById(parsedId.data);
       return c.json(event, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {
-        return c.json(
-          { error: 'Event not found', code: 'EVENT_NOT_FOUND' },
-          404
-        );
+        return errorResponse(c, EventErrors.EVENT_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to fetch event',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, EventErrors.EVENT_FETCH_FAILED);
     }
   };
 
@@ -126,19 +111,13 @@ export function createEventController(
     const eventContext = c as EventContext;
     const userId = eventContext.get('authenticatedUserId');
     if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
+      return errorResponse(c, CommonErrors.UNAUTHORIZED);
     }
     try {
       const events = await eventService.getMyEvents(userId);
       return c.json({ events });
-    } catch (error) {
-      const details =
-        error instanceof Error && error.cause instanceof Error
-          ? error.cause.message
-          : error instanceof Error
-            ? error.message
-            : String(error);
-      return c.json({ error: 'Failed to fetch events', details }, 500);
+    } catch {
+      return errorResponse(c, EventErrors.MY_EVENT_LIST_FAILED);
     }
   };
 
@@ -147,29 +126,22 @@ export function createEventController(
     if (!parsed.success) return parsed.response;
     try {
       return c.json(await eventService.createEvent(parsed.data), 201);
-    } catch (error) {
-      return c.json(
-        {
-          error: 'Failed to create event',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+    } catch {
+      return errorResponse(c, EventErrors.EVENT_CREATE_FAILED);
     }
   };
 
   const updateEvent = async (c: Context) => {
     const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
-    if (!parsedId.success) return c.json({ error: 'Invalid event ID' }, 400);
+    if (!parsedId.success)
+      return errorResponse(c, EventErrors.INVALID_EVENT_ID);
     const body = await c.req.json().catch(() => undefined);
     const parsed = eventUpdateSchema.safeParse(body);
     if (!parsed.success) {
-      return c.json(
-        {
-          error: 'Invalid event request body',
-          details: parsed.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        EventErrors.INVALID_EVENT_REQUEST,
+        parsed.error.flatten()
       );
     }
     const request = {
@@ -179,7 +151,7 @@ export function createEventController(
     const eventContext = c as EventContext;
     const userId = eventContext.get('authenticatedUserId');
     if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
+      return errorResponse(c, CommonErrors.UNAUTHORIZED);
     }
     try {
       return c.json(
@@ -197,29 +169,28 @@ export function createEventController(
         200
       );
     } catch (error) {
-      return eventError(c, error, 'Failed to update event');
+      return eventError(c, error, EventErrors.EVENT_UPDATE_FAILED);
     }
   };
 
   const patchEvent = async (c: Context) => {
     const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
-    if (!parsedId.success) return c.json({ error: 'Invalid event ID' }, 400);
+    if (!parsedId.success)
+      return errorResponse(c, EventErrors.INVALID_EVENT_ID);
     const body = await c.req.json().catch(() => undefined);
     const parsed = eventPatchSchema.safeParse(body);
     if (!parsed.success) {
-      return c.json(
-        {
-          error: 'Invalid event request body',
-          details: parsed.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        EventErrors.INVALID_EVENT_REQUEST,
+        parsed.error.flatten()
       );
     }
     const request = parsed.data satisfies PatchEventRequestDTO;
     const eventContext = c as EventContext;
     const userId = eventContext.get('authenticatedUserId');
     if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
+      return errorResponse(c, CommonErrors.UNAUTHORIZED);
     }
     try {
       return c.json(
@@ -232,18 +203,19 @@ export function createEventController(
         200
       );
     } catch (error) {
-      return eventError(c, error, 'Failed to update event');
+      return eventError(c, error, EventErrors.EVENT_UPDATE_FAILED);
     }
   };
 
   const deleteEvent = async (c: Context) => {
     const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
-    if (!parsedId.success) return c.json({ error: 'Invalid event ID' }, 400);
+    if (!parsedId.success)
+      return errorResponse(c, EventErrors.INVALID_EVENT_ID);
     try {
       await eventService.deleteEvent(parsedId.data);
       return c.body(null, 204);
     } catch (error) {
-      return eventError(c, error, 'Failed to delete event');
+      return eventError(c, error, EventErrors.EVENT_DELETE_FAILED);
     }
   };
 
@@ -264,12 +236,10 @@ async function parseEventBody(c: Context) {
   if (!parsed.success) {
     return {
       success: false as const,
-      response: c.json(
-        {
-          error: 'Invalid event request body',
-          details: parsed.error.flatten(),
-        },
-        400
+      response: errorResponse(
+        c,
+        EventErrors.INVALID_EVENT_REQUEST,
+        parsed.error.flatten()
       ),
     };
   }
@@ -282,33 +252,34 @@ async function parseEventBody(c: Context) {
   };
 }
 
-function eventError(c: Context, error: unknown, fallback: string) {
+function eventError(
+  c: Context,
+  error: unknown,
+  fallback: ApiErrorDefinition<500>
+) {
   if (
     error instanceof Error &&
     error.message === 'end_time must be after start_time'
   ) {
-    return c.json({ error: error.message }, 400);
+    return errorResponse(c, EventErrors.INVALID_EVENT_TIME_RANGE);
   }
   if (error instanceof Error && error.message === 'Event not found') {
-    return c.json({ error: 'Event not found', code: 'EVENT_NOT_FOUND' }, 404);
+    return errorResponse(c, EventErrors.EVENT_NOT_FOUND);
   }
   if (error instanceof Error && error.message === 'Event is in use') {
-    return c.json({ error: 'Event is in use' }, 409);
+    return errorResponse(c, EventErrors.EVENT_IN_USE);
+  }
+  if (error instanceof Error && error.message === 'Schedule update forbidden') {
+    return errorResponse(c, CommonErrors.STAFF_REQUIRED);
   }
   if (error instanceof Error && error.message === 'Event update conflict') {
-    return c.json({ error: error.message, code: 'EVENT_UPDATE_CONFLICT' }, 409);
+    return errorResponse(c, EventErrors.EVENT_UPDATE_CONFLICT);
   }
   if (
     error instanceof Error &&
     error.message === 'EVENT_DATE is not configured correctly'
   ) {
-    return c.json({ error: error.message }, 500);
+    return errorResponse(c, CommonErrors.EVENT_DATE_INVALID);
   }
-  return c.json(
-    {
-      error: fallback,
-      details: error instanceof Error ? error.message : String(error),
-    },
-    500
-  );
+  return errorResponse(c, fallback);
 }

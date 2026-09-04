@@ -19,7 +19,7 @@ function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
   };
 }
 
-function setup() {
+function setup(authenticatedUserId: number | null = 7) {
   const eventService: IEventService = {
     getAllEvents: vi.fn(),
     getEventById: vi.fn(),
@@ -37,7 +37,7 @@ function setup() {
     Variables: { authenticatedUserId: number | null };
   }>();
   app.use('*', async (c, next) => {
-    c.set('authenticatedUserId', 7);
+    c.set('authenticatedUserId', authenticatedUserId);
     await next();
   });
   app.get('/events', c => controller.getAllEvents(c));
@@ -109,14 +109,16 @@ describe('EventController', () => {
 
         expect(response.status).toBe(400);
         expect(await response.json()).toEqual({
-          error: 'Invalid start_time',
-          code: 'INVALID_START_TIME',
+          error: {
+            code: 'INVALID_START_TIME',
+            message: '開始時刻の指定が正しくありません',
+          },
         });
         expect(eventService.getAllEvents).not.toHaveBeenCalled();
       }
     );
 
-    it('サービスが例外を投げた場合は500とdetailsを返す', async () => {
+    it('サービスが例外を投げた場合は内部詳細を含めず500を返す', async () => {
       const { app, eventService } = setup();
       (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockRejectedValue(
         new Error('db error')
@@ -126,8 +128,10 @@ describe('EventController', () => {
 
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({
-        error: 'Failed to fetch events',
-        details: 'db error',
+        error: {
+          code: 'EVENT_LIST_FAILED',
+          message: '競技一覧の取得に失敗しました',
+        },
       });
     });
   });
@@ -154,8 +158,10 @@ describe('EventController', () => {
 
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({
-        error: 'Invalid event ID',
-        code: 'INVALID_EVENT_ID',
+        error: {
+          code: 'INVALID_EVENT_ID',
+          message: '競技IDが正しくありません',
+        },
       });
     });
 
@@ -169,8 +175,7 @@ describe('EventController', () => {
 
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual({
-        error: 'Event not found',
-        code: 'EVENT_NOT_FOUND',
+        error: { code: 'EVENT_NOT_FOUND', message: '競技が見つかりません' },
       });
     });
 
@@ -184,13 +189,26 @@ describe('EventController', () => {
 
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({
-        error: 'Failed to fetch event',
-        details: 'db error',
+        error: {
+          code: 'EVENT_FETCH_FAILED',
+          message: '競技の取得に失敗しました',
+        },
       });
     });
   });
 
   describe('getMyEvents', () => {
+    it('未認証の場合は共通形式の401を返す', async () => {
+      const { app } = setup(null);
+
+      const response = await app.request('/me/events');
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({
+        error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+      });
+    });
+
     it('認証済みユーザーIDでServiceを呼び出し、参加イベント一覧を返す', async () => {
       const { app, eventService } = setup();
       const events = [buildEvent()];
@@ -215,8 +233,10 @@ describe('EventController', () => {
 
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({
-        error: 'Failed to fetch events',
-        details: 'db error',
+        error: {
+          code: 'MY_EVENT_LIST_FAILED',
+          message: '参加競技一覧の取得に失敗しました',
+        },
       });
     });
   });
@@ -348,8 +368,10 @@ describe('EventController', () => {
 
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({
-        error: 'Failed to update event',
-        details: 'db error',
+        error: {
+          code: 'EVENT_UPDATE_FAILED',
+          message: '競技の更新に失敗しました',
+        },
       });
     });
 
@@ -417,7 +439,10 @@ describe('EventController', () => {
 
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({
-        error: 'end_time must be after start_time',
+        error: {
+          code: 'INVALID_EVENT_TIME_RANGE',
+          message: '終了時刻は開始時刻より後に設定してください',
+        },
       });
     });
   });
@@ -491,7 +516,10 @@ describe('EventController', () => {
 
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({
-        error: 'end_time must be after start_time',
+        error: {
+          code: 'INVALID_EVENT_TIME_RANGE',
+          message: '終了時刻は開始時刻より後に設定してください',
+        },
       });
     });
 
@@ -538,8 +566,11 @@ describe('EventController', () => {
 
       expect(response.status).toBe(409);
       expect(await response.json()).toEqual({
-        error: 'Event update conflict',
-        code: 'EVENT_UPDATE_CONFLICT',
+        error: {
+          code: 'EVENT_UPDATE_CONFLICT',
+          message:
+            '競技情報の更新が競合しました。再読み込みしてから再度お試しください',
+        },
       });
     });
   });
@@ -554,7 +585,12 @@ describe('EventController', () => {
       const response = await app.request('/events/1', { method: 'DELETE' });
 
       expect(response.status).toBe(409);
-      expect(await response.json()).toEqual({ error: 'Event is in use' });
+      expect(await response.json()).toEqual({
+        error: {
+          code: 'EVENT_IN_USE',
+          message: '使用中の競技は削除できません',
+        },
+      });
     });
   });
 });

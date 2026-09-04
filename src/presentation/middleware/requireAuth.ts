@@ -1,7 +1,9 @@
 import { createMiddleware } from 'hono/factory';
 import type { Env } from '../../lib/env';
-import { errorResponse, type AppContext } from '../auth/helpers';
 import type { AuthUser } from '../../domain/auth/types';
+import type { AppContext } from '../auth/helpers';
+import { CommonErrors } from '../errors/commonErrors';
+import { errorResponse } from '../errors/errorResponse';
 import type { AuthenticationVariables } from './bearerAuthentication';
 
 export type { AuthUser };
@@ -25,7 +27,7 @@ export const requireAuth = createMiddleware<{
   const authUser = c.get('verifiedAuthUser');
 
   if (!authUser) {
-    return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
+    return errorResponse(appContext, CommonErrors.UNAUTHORIZED);
   }
 
   c.set('authUser', authUser);

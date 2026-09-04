@@ -6,6 +6,12 @@ import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import type { AuthVariables } from '../middleware/requireAuth';
+import { CommonErrors } from '../errors/commonErrors';
+import {
+  errorResponse,
+  type ApiErrorDefinition,
+} from '../errors/errorResponse';
+import { NotificationErrors } from '../errors/notificationErrors';
 
 const notificationIdSchema = z.coerce.number().int().positive();
 const audienceSchema = z.discriminatedUnion('type', [
@@ -69,9 +75,7 @@ export function createAdminNotificationManagementController(
 ) {
   const requireAuthenticatedUser = (c: AdminNotificationManagementContext) => {
     const userId = c.get('authenticatedUserId');
-    if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
-    }
+    if (userId === null) return errorResponse(c, CommonErrors.UNAUTHORIZED);
     return null;
   };
 
@@ -90,12 +94,10 @@ export function createAdminNotificationManagementController(
       offset: c.req.query('offset'),
     });
     if (!parsedQuery.success) {
-      return c.json(
-        {
-          error: 'Invalid admin notification query',
-          details: parsedQuery.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        NotificationErrors.INVALID_ADMIN_NOTIFICATION_QUERY,
+        parsedQuery.error.flatten()
       );
     }
 
@@ -118,7 +120,11 @@ export function createAdminNotificationManagementController(
         200
       );
     } catch (error) {
-      return internalError(c, 'Failed to fetch admin notifications', error);
+      return internalError(
+        c,
+        NotificationErrors.ADMIN_NOTIFICATION_LIST_FAILED,
+        error
+      );
     }
   };
 
@@ -139,7 +145,7 @@ export function createAdminNotificationManagementController(
       return handleManagementError(
         c,
         error,
-        'Failed to fetch admin notification'
+        NotificationErrors.ADMIN_NOTIFICATION_FETCH_FAILED
       );
     }
   };
@@ -154,12 +160,10 @@ export function createAdminNotificationManagementController(
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = updateSchema.safeParse(body);
     if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid admin notification request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        NotificationErrors.INVALID_ADMIN_NOTIFICATION_REQUEST,
+        parsedBody.error.flatten()
       );
     }
 
@@ -180,7 +184,7 @@ export function createAdminNotificationManagementController(
       return handleManagementError(
         c,
         error,
-        'Failed to update admin notification'
+        NotificationErrors.ADMIN_NOTIFICATION_UPDATE_FAILED
       );
     }
   };
@@ -200,7 +204,7 @@ export function createAdminNotificationManagementController(
       return handleManagementError(
         c,
         error,
-        'Failed to delete admin notification'
+        NotificationErrors.ADMIN_NOTIFICATION_DELETE_FAILED
       );
     }
   };
@@ -219,7 +223,7 @@ function parseNotificationId(c: AdminNotificationManagementContext) {
   );
   return parsedId.success
     ? parsedId.data
-    : c.json({ error: 'Invalid notification ID' }, 400);
+    : errorResponse(c, NotificationErrors.INVALID_NOTIFICATION_ID);
 }
 
 function toAudience(
@@ -231,10 +235,7 @@ function toAudience(
     case 'class_room':
       return { type: audience.type, class_room_id: audience.classRoomId };
     case 'gathering':
-      return {
-        type: audience.type,
-        gathering_id: audience.gatheringId,
-      };
+      return { type: audience.type, gathering_id: audience.gatheringId };
     case 'event_participants':
       return { type: audience.type, event_id: audience.eventId };
   }
@@ -243,43 +244,45 @@ function toAudience(
 function handleManagementError(
   c: AdminNotificationManagementContext,
   error: unknown,
-  fallback: string
+  fallback: ApiErrorDefinition<500>
 ) {
   if (
     error instanceof Error &&
     error.message === 'Admin notification not found'
   ) {
-    return c.json({ error: error.message }, 404);
+    return errorResponse(c, NotificationErrors.ADMIN_NOTIFICATION_NOT_FOUND);
   }
   if (
     error instanceof Error &&
     [
       'Only fully draft notifications can be updated',
       'Only fully draft notifications can be deleted',
-      'Notification audience has no active Firebase tokens',
     ].includes(error.message)
   ) {
-    return c.json({ error: error.message }, 409);
+    return errorResponse(c, NotificationErrors.ADMIN_NOTIFICATION_NOT_DRAFT);
+  }
+  if (
+    error instanceof Error &&
+    error.message === 'Notification audience has no active Firebase tokens'
+  ) {
+    return errorResponse(
+      c,
+      NotificationErrors.NOTIFICATION_AUDIENCE_HAS_NO_TOKENS
+    );
   }
   if (
     error instanceof Error &&
     error.message === 'Notification audience not found'
   ) {
-    return c.json({ error: error.message }, 404);
+    return errorResponse(c, NotificationErrors.NOTIFICATION_AUDIENCE_NOT_FOUND);
   }
   return internalError(c, fallback, error);
 }
 
 function internalError(
   c: AdminNotificationManagementContext,
-  message: string,
-  error: unknown
+  errorDefinition: ApiErrorDefinition<500>,
+  _error: unknown
 ) {
-  return c.json(
-    {
-      error: message,
-      details: error instanceof Error ? error.message : String(error),
-    },
-    500
-  );
+  return errorResponse(c, errorDefinition);
 }

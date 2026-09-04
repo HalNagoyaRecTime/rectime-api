@@ -5,6 +5,9 @@ import type { Env } from '../../lib/env';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthVariables } from '../middleware/requireAuth';
+import { CommonErrors } from '../errors/commonErrors';
+import { errorResponse } from '../errors/errorResponse';
+import { MasterImportErrors } from '../errors/masterImportErrors';
 
 const masterImportTypeSchema = z.enum(['students', 'classrooms', 'teachers']);
 
@@ -21,43 +24,24 @@ type MasterImportContext = Context<{
 export function createMasterImportController(
   masterImportService: IMasterImportService
 ) {
-  const notFoundBody = async (
-    validatedFileId: string,
-    createUserId: number
-  ) => ({
-    error: 'Import not found',
-    error_code: (await masterImportService.isExpiredImport(
-      validatedFileId,
-      createUserId
-    ))
-      ? 'IMPORT_EXPIRED'
-      : 'IMPORT_NOT_FOUND',
-  });
-
   const createImport = async (c: MasterImportContext) => {
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
+      return errorResponse(c, CommonErrors.UNAUTHORIZED);
     }
     const body = await c.req.parseBody().catch(() => null);
     if (!body) {
-      return c.json({ error: 'Invalid multipart request body' }, 400);
+      return errorResponse(c, MasterImportErrors.INVALID_MULTIPART_REQUEST);
     }
 
     const parsedType = masterImportTypeSchema.safeParse(body.type);
     if (!parsedType.success) {
-      return c.json(
-        {
-          error:
-            'Invalid or missing "type" field (expected students, classrooms or teachers)',
-        },
-        400
-      );
+      return errorResponse(c, MasterImportErrors.INVALID_IMPORT_TYPE);
     }
 
     const file = body.file;
     if (!(file instanceof File)) {
-      return c.json({ error: 'Missing "file" field' }, 400);
+      return errorResponse(c, MasterImportErrors.IMPORT_FILE_REQUIRED);
     }
 
     try {
@@ -68,37 +52,29 @@ export function createMasterImportController(
         fileName: file.name,
       });
       return c.json(session, 201);
-    } catch (error) {
-      return c.json(
-        {
-          error: 'Failed to parse import file',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        400
-      );
+    } catch {
+      return errorResponse(c, MasterImportErrors.IMPORT_FILE_INVALID);
     }
   };
 
   const getImport = async (c: MasterImportContext) => {
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
+      return errorResponse(c, CommonErrors.UNAUTHORIZED);
     }
     const validatedFileId = c.req.param('validatedFileId');
     if (!validatedFileId) {
-      return c.json({ error: 'Invalid import ID' }, 400);
+      return errorResponse(c, MasterImportErrors.INVALID_IMPORT_ID);
     }
     const parsedPagination = paginationSchema.safeParse({
       offset: c.req.query('offset'),
       limit: c.req.query('limit'),
     });
     if (!parsedPagination.success) {
-      return c.json(
-        {
-          error: 'Invalid pagination query',
-          details: parsedPagination.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        CommonErrors.INVALID_PAGINATION_QUERY,
+        parsedPagination.error.flatten()
       );
     }
 
@@ -109,22 +85,27 @@ export function createMasterImportController(
         userId
       );
       if (!session) {
-        return c.json(await notFoundBody(validatedFileId, userId), 404);
+        return errorResponse(
+          c,
+          (await masterImportService.isExpiredImport(validatedFileId, userId))
+            ? MasterImportErrors.IMPORT_EXPIRED
+            : MasterImportErrors.IMPORT_NOT_FOUND
+        );
       }
       return c.json(session, 200);
     } catch {
-      return c.json({ error: 'Failed to fetch import' }, 500);
+      return errorResponse(c, MasterImportErrors.IMPORT_FETCH_FAILED);
     }
   };
 
   const commitImport = async (c: MasterImportContext) => {
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
+      return errorResponse(c, CommonErrors.UNAUTHORIZED);
     }
     const validatedFileId = c.req.param('validatedFileId');
     if (!validatedFileId) {
-      return c.json({ error: 'Invalid import ID' }, 400);
+      return errorResponse(c, MasterImportErrors.INVALID_IMPORT_ID);
     }
 
     try {
@@ -134,24 +115,23 @@ export function createMasterImportController(
       );
 
       if (outcome.status === 'not_found') {
-        return c.json(await notFoundBody(validatedFileId, userId), 404);
+        return errorResponse(
+          c,
+          (await masterImportService.isExpiredImport(validatedFileId, userId))
+            ? MasterImportErrors.IMPORT_EXPIRED
+            : MasterImportErrors.IMPORT_NOT_FOUND
+        );
       }
       if (outcome.status === 'has_errors') {
         return c.json(outcome.session, 422);
       }
       if (outcome.status === 'timeout') {
         c.header('Retry-After', '3');
-        return c.json(
-          {
-            error: 'Commit is still in progress, please retry',
-            error_code: 'COMMIT_IN_PROGRESS',
-          } as const,
-          503
-        );
+        return errorResponse(c, MasterImportErrors.COMMIT_IN_PROGRESS);
       }
       return c.json(outcome.session, outcome.alreadyCommitted ? 200 : 201);
     } catch {
-      return c.json({ error: 'Failed to commit import' }, 500);
+      return errorResponse(c, MasterImportErrors.IMPORT_COMMIT_FAILED);
     }
   };
 

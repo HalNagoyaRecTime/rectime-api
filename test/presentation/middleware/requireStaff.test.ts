@@ -51,7 +51,10 @@ describe('requireStaff', () => {
 
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({
-      error: { code: 'STAFF_REQUIRED', message: 'staff権限が必要です' },
+      error: {
+        code: 'STAFF_REQUIRED',
+        message: 'この操作にはスタッフ権限が必要です',
+      },
     });
   });
 
