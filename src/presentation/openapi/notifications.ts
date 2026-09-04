@@ -89,7 +89,7 @@ export const firebaseTokenRegistrationResponseSchema = z
   .object({
     firebase_token_id: z.number().int(),
     user_id: z.number().int(),
-    platform: z.literal('android'),
+    platform: z.enum(['ios', 'android']),
     is_firebase_active: z.boolean(),
     last_seen_at: timestampSchema,
   })
@@ -308,7 +308,7 @@ export const mobileNotificationIdParams = z.object({
 export const registerFirebaseTokenSchema = z
   .object({
     fcmToken: z.string().min(1),
-    platform: z.literal('android'),
+    platform: z.enum(['ios', 'android']),
   })
   .openapi('RegisterFirebaseTokenRequest');
 
