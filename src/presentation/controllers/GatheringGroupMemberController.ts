@@ -1,6 +1,9 @@
 import { Context } from 'hono';
 import { z } from 'zod';
 import { IGatheringGroupMemberService } from '../../application/services/IGatheringGroupMemberService';
+import { errorResponse } from '../errors/errorResponse';
+import { EventErrors } from '../errors/eventErrors';
+import { UserErrors } from '../errors/userErrors';
 
 const addGatheringMemberSchema = z.object({
   userId: z.number().int().positive(),
@@ -17,7 +20,7 @@ export function createGatheringGroupMemberController(
   const getGatheringMembers = async (c: Context) => {
     const gatheringId = getGatheringId(c);
     if (gatheringId === null) {
-      return c.json({ error: 'Invalid gathering ID' }, 400);
+      return errorResponse(c, EventErrors.INVALID_GATHERING_ID);
     }
 
     try {
@@ -27,32 +30,24 @@ export function createGatheringGroupMemberController(
       );
     } catch (error) {
       if (error instanceof Error && error.message === 'Gathering not found') {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, EventErrors.GATHERING_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to fetch gathering members',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, EventErrors.GATHERING_MEMBER_LIST_FAILED);
     }
   };
 
   const addGatheringMember = async (c: Context) => {
     const gatheringId = getGatheringId(c);
     if (gatheringId === null) {
-      return c.json({ error: 'Invalid gathering ID' }, 400);
+      return errorResponse(c, EventErrors.INVALID_GATHERING_ID);
     }
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = addGatheringMemberSchema.safeParse(body);
     if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid gathering member request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        EventErrors.INVALID_GATHERING_MEMBER_REQUEST,
+        parsedBody.error.flatten()
       );
     }
 
@@ -63,26 +58,18 @@ export function createGatheringGroupMemberController(
       );
       return c.json(member, 201);
     } catch (error) {
-      if (
-        error instanceof Error &&
-        [
-          'Gathering member already exists',
-          'Gathering not found',
-          'User not found',
-        ].includes(error.message)
-      ) {
-        return c.json(
-          { error: error.message },
-          error.message === 'Gathering member already exists' ? 409 : 404
-        );
+      if (error instanceof Error) {
+        if (error.message === 'Gathering member already exists') {
+          return errorResponse(c, EventErrors.GATHERING_MEMBER_ALREADY_EXISTS);
+        }
+        if (error.message === 'Gathering not found') {
+          return errorResponse(c, EventErrors.GATHERING_NOT_FOUND);
+        }
+        if (error.message === 'User not found') {
+          return errorResponse(c, UserErrors.USER_NOT_FOUND);
+        }
       }
-      return c.json(
-        {
-          error: 'Failed to add gathering member',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, EventErrors.GATHERING_MEMBER_ADD_FAILED);
     }
   };
 
@@ -90,7 +77,7 @@ export function createGatheringGroupMemberController(
     const gatheringId = getGatheringId(c);
     const userId = Number(c.req.param('userId'));
     if (gatheringId === null || !Number.isInteger(userId) || userId <= 0) {
-      return c.json({ error: 'Invalid gathering member ID' }, 400);
+      return errorResponse(c, EventErrors.INVALID_GATHERING_MEMBER_ID);
     }
 
     try {
@@ -104,15 +91,9 @@ export function createGatheringGroupMemberController(
         error instanceof Error &&
         error.message === 'Gathering member not found'
       ) {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, EventErrors.GATHERING_MEMBER_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to remove gathering member',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, EventErrors.GATHERING_MEMBER_REMOVE_FAILED);
     }
   };
 

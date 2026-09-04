@@ -1,6 +1,8 @@
+import type { KVNamespace } from '@cloudflare/workers-types';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAuthService, MicrosoftClaims } from './IAuthService';
 import type { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
+import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 
 function extractStudentIdNumber(
   email: string,
@@ -27,7 +29,9 @@ function extractStudentIdNumber(
 export function createAuthService(
   userRepository: IUserRepository,
   studentRepository: IStudentRepository,
-  studentEmailDomain: string
+  studentEmailDomain: string,
+  authKv: KVNamespace,
+  firebaseTokenRepository: IFirebaseTokenRepository
 ): IAuthService {
   if (!studentEmailDomain) {
     throw new Error('STUDENT_EMAIL_DOMAIN is not configured');
@@ -187,6 +191,27 @@ export function createAuthService(
         if (!raced) throw new Error('CREATE_USER_FAILED');
         return raced;
       }
+    },
+
+    async startAccountDeletion(userId: string) {
+      // 1. DB上の状態遷移(deletion_status: deleted)とMicrosoftアカウント
+      //    リンクの解除。既に呼ばれていても冪等に成功する。
+      await userRepository.markAsDeleted(userId);
+
+      // 2. 発行済みの全Refresh Sessionを失効させる。mobile_refresh_by_user
+      //    は1ユーザー1セッション設計(新規ログインのたびに上書きされる)
+      //    のため、これを削除すれば現在・過去を含め有効なセッションが
+      //    存在しない状態になる。
+      const refreshTokenId = await authKv.get(
+        `mobile_refresh_by_user:${userId}`
+      );
+      if (refreshTokenId) {
+        await authKv.delete(`mobile_refresh:${refreshTokenId}`);
+      }
+      await authKv.delete(`mobile_refresh_by_user:${userId}`);
+
+      // 3. Firebase Token登録をPush通知対象から除外する。
+      await firebaseTokenRepository.deactivateByUserId(Number(userId));
     },
   };
 }

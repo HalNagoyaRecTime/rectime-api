@@ -131,29 +131,62 @@ describe('FirebaseTokenRepository', () => {
     await expect(repository.findActiveTokens()).resolves.toHaveLength(1);
   });
 
-  it('別利用者に登録済みのTokenを上書きしない', async () => {
-    const firstUserId = await createUser('Firebase Token所有者');
-    const secondUserId = await createUser('Firebase Token別利用者');
-    await repository.register({
-      userId: firstUserId,
+  it('同じ端末で別利用者がログインしたら旧所有者の登録を無効化して付け替える', async () => {
+    const previousOwnerId = await createUser('Firebase Token旧所有者');
+    const newOwnerId = await createUser('Firebase Token新所有者');
+    const previous = await repository.register({
+      userId: previousOwnerId,
       platform: 'android',
-      fcmToken: 'token-owned',
+      fcmToken: 'token-handover',
     });
 
-    await expect(
-      repository.register({
-        userId: secondUserId,
-        platform: 'android',
-        fcmToken: 'token-owned',
-      })
-    ).rejects.toThrow();
+    const current = await repository.register({
+      userId: newOwnerId,
+      platform: 'android',
+      fcmToken: 'token-handover',
+    });
 
-    const owner = await env.DB.prepare(
-      'SELECT user_id FROM firebase_tokens WHERE fcm_token = ?'
+    expect(current.user_id).toBe(newOwnerId);
+    expect(current.is_firebase_active).toBe(true);
+    const previousRow = await env.DB.prepare(
+      'SELECT is_firebase_active FROM firebase_tokens WHERE firebase_token_id = ?'
     )
-      .bind('token-owned')
-      .first<{ user_id: number }>();
-    expect(owner?.user_id).toBe(firstUserId);
+      .bind(previous.firebase_token_id)
+      .first<{ is_firebase_active: number }>();
+    expect(previousRow?.is_firebase_active).toBe(0);
+    const activeTokens = await repository.findActiveTokens();
+    expect(activeTokens).toHaveLength(1);
+    expect(activeTokens[0].user_id).toBe(newOwnerId);
+  });
+
+  it('付け替え後に旧所有者が別端末で登録しても既存行を再利用する', async () => {
+    const previousOwnerId = await createUser('Firebase Token再登録旧所有者');
+    const newOwnerId = await createUser('Firebase Token再登録新所有者');
+    const previous = await repository.register({
+      userId: previousOwnerId,
+      platform: 'android',
+      fcmToken: 'token-handover-again',
+    });
+    await repository.register({
+      userId: newOwnerId,
+      platform: 'android',
+      fcmToken: 'token-handover-again',
+    });
+
+    const reregistered = await repository.register({
+      userId: previousOwnerId,
+      platform: 'android',
+      fcmToken: 'token-new-device',
+    });
+
+    expect(reregistered.firebase_token_id).toBe(previous.firebase_token_id);
+    expect(reregistered.is_firebase_active).toBe(true);
+    const rowCount = await env.DB.prepare(
+      'SELECT COUNT(*) AS count FROM firebase_tokens WHERE user_id = ?'
+    )
+      .bind(previousOwnerId)
+      .first<{ count: number }>();
+    expect(rowCount?.count).toBe(1);
   });
 
   it('同一利用者から並行登録されてもToken行を重複させない', async () => {
@@ -178,6 +211,36 @@ describe('FirebaseTokenRepository', () => {
       .bind(userId)
       .first<{ count: number }>();
     expect(count?.count).toBe(1);
+  });
+
+  it('同じTokenを別利用者が同時に登録しても有効な行を1つに保つ', async () => {
+    const firstUserId = await createUser('Firebase Token同時登録1');
+    const secondUserId = await createUser('Firebase Token同時登録2');
+
+    await Promise.all([
+      repository.register({
+        userId: firstUserId,
+        platform: 'android',
+        fcmToken: 'token-simultaneous',
+      }),
+      repository.register({
+        userId: secondUserId,
+        platform: 'android',
+        fcmToken: 'token-simultaneous',
+      }),
+    ]);
+
+    const rows = await env.DB.prepare(
+      `SELECT user_id, is_firebase_active
+       FROM firebase_tokens
+       WHERE fcm_token = ?`
+    )
+      .bind('token-simultaneous')
+      .all<{ user_id: number; is_firebase_active: number }>();
+    expect(rows.results).toHaveLength(2);
+    expect(
+      rows.results.filter(row => row.is_firebase_active === 1)
+    ).toHaveLength(1);
   });
 
   it('存在しないusers.user_idでは登録しない', async () => {
@@ -209,5 +272,57 @@ describe('FirebaseTokenRepository', () => {
 
     expect(tokens).toHaveLength(1);
     expect(tokens[0].fcm_token).toBe('token-active');
+  });
+
+  describe('deactivateByUserId', () => {
+    it('指定したuser_idのToken登録を無効化する', async () => {
+      const userId = await createUser('削除対象利用者');
+      await repository.register({
+        userId,
+        platform: 'android',
+        fcmToken: 'token-to-deactivate',
+      });
+
+      await repository.deactivateByUserId(userId);
+
+      const stored = await env.DB.prepare(
+        'SELECT is_firebase_active FROM firebase_tokens WHERE user_id = ?'
+      )
+        .bind(userId)
+        .first<{ is_firebase_active: number }>();
+      expect(stored?.is_firebase_active).toBe(0);
+    });
+
+    it('他のuser_idのToken登録には影響しない', async () => {
+      const targetUserId = await createUser('削除対象利用者2');
+      const otherUserId = await createUser('無関係な利用者');
+      await repository.register({
+        userId: targetUserId,
+        platform: 'android',
+        fcmToken: 'token-target',
+      });
+      await repository.register({
+        userId: otherUserId,
+        platform: 'android',
+        fcmToken: 'token-other',
+      });
+
+      await repository.deactivateByUserId(targetUserId);
+
+      const otherStored = await env.DB.prepare(
+        'SELECT is_firebase_active FROM firebase_tokens WHERE user_id = ?'
+      )
+        .bind(otherUserId)
+        .first<{ is_firebase_active: number }>();
+      expect(otherStored?.is_firebase_active).toBe(1);
+    });
+
+    it('Token登録が存在しないuser_idでもエラーにならない', async () => {
+      const userId = await createUser('Token未登録利用者');
+
+      await expect(
+        repository.deactivateByUserId(userId)
+      ).resolves.toBeUndefined();
+    });
   });
 });

@@ -286,6 +286,99 @@ describe('GET /auth/me', () => {
       class_room_name: null,
     });
   });
+
+  it('deletion_statusがdeletion_pendingのユーザーは、有効期限内のBearerトークンでも410を返す', async () => {
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('削除処理中太郎', 'deletion_pending') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const userId = String(user!.user_id);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '削除処理中太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
+  });
+
+  it('deletion_statusがdeletedのユーザーは、有効期限内のBearerトークンでも410を返し名前やメールアドレスを含まない', async () => {
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('削除済み太郎', 'deleted') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const userId = String(user!.user_id);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '削除済み太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(410);
+    const bodyText = await res.text();
+    expect(bodyText).not.toContain('削除済み太郎');
+    expect(bodyText).not.toContain('tanaka@example.com');
+  });
+});
+
+describe('GET /auth/me/photo (削除状態)', () => {
+  it('deletion_statusがdeletedのユーザーは410を返す', async () => {
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('削除済み花子', 'deleted') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const userId = String(user!.user_id);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-1',
+        email: 'hanako@example.com',
+        display_name: '削除済み花子',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me/photo',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
+  });
 });
 
 describe('POST /auth/logout', () => {
@@ -373,6 +466,43 @@ describe('POST /auth/logout', () => {
     expect(await env.AUTH_KV.get('mobile_refresh:other-users-refresh')).toBe(
       otherUsersEntry
     );
+  });
+
+  it('deletion_statusがdeletedのユーザーは410を返す', async () => {
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('削除済み太郎', 'deleted') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const userId = String(user!.user_id);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '削除済み太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/logout',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      },
+      env
+    );
+
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
   });
 });
 
@@ -547,5 +677,85 @@ describe('POST /auth/refresh', () => {
     expect(res.status).toBe(401);
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe('REFRESH_TOKEN_EXPIRED');
+  });
+
+  it('deletion_statusがdeletion_pendingのユーザーは新しいアクセストークンを発行できない', async () => {
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('削除処理中太郎', 'deletion_pending') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-1',
+      JSON.stringify({
+        user_id: String(user!.user_id),
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '削除処理中太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
+    // refresh_token_idは消費(ローテーション)されず、KVに残ったまま
+    expect(await env.AUTH_KV.get('mobile_refresh:refresh-1')).not.toBeNull();
+  });
+
+  it('deletion_statusがdeletedのユーザーは新しいアクセストークンを発行できない', async () => {
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('削除済み太郎', 'deleted') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-1',
+      JSON.stringify({
+        user_id: String(user!.user_id),
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '削除済み太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
   });
 });
