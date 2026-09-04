@@ -587,5 +587,59 @@ describe('StudentRepository', () => {
         .first();
       expect(orphanedClassRoom).toBeNull();
     });
+
+    it('newClassRoomsのdb.batch()がチャンク分割された場合、後のチャンクが失敗すると先に確定したteams・class_roomsもまとめて後片付けされる', async () => {
+      const CHUNK_SIZE = 20; // Math.floor(D1_MAX_BOUND_PARAMETERS / 5)と同じ値
+      const firstChunkClassRooms = Array.from(
+        { length: CHUNK_SIZE },
+        (_, i) => ({
+          classCode: `CROSS-CHUNK-CLASS-${i}`,
+          className: `CROSS-CHUNK-CLASS-${i}`,
+        })
+      );
+      const secondChunkClassRooms = [
+        {
+          // seedStudents で既に使われているclass_codeにぶつけて2チャンク目を失敗させる
+          classCode: 'TEST-1',
+          className: '2チャンク目で重複するクラス',
+        },
+      ];
+      const students = firstChunkClassRooms.map((room, i) => ({
+        displayName: `新規クラス後片付け生徒${i}`,
+        classCode: room.classCode,
+        attendanceNumber: 1,
+        studentIdNumber: `NEWCLASS-CLEANUP-${String(i).padStart(3, '0')}`,
+      }));
+
+      await expect(
+        repo.createMany({
+          newClassRooms: [...firstChunkClassRooms, ...secondChunkClassRooms],
+          students,
+        })
+      ).rejects.toThrow();
+
+      // 1チャンク目(20件)は一度コミットされているはずだが、
+      // 2チャンク目の失敗を受けてteams・class_roomsともにまとめて後片付けされていること
+      for (const room of firstChunkClassRooms) {
+        const orphanedClassRoom = await env.DB.prepare(
+          'SELECT class_room_id FROM class_rooms WHERE class_code = ?'
+        )
+          .bind(room.classCode)
+          .first();
+        expect(orphanedClassRoom).toBeNull();
+      }
+      const orphanedTeams = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_name LIKE ?'
+      )
+        .bind('CROSS-CHUNK-CLASS-%')
+        .all();
+      expect(orphanedTeams.results).toHaveLength(0);
+
+      // newClassRoomsループの失敗によりstudentsループには到達しないはずなので、
+      // 生徒側にも孤児は残らないこと
+      for (const student of students) {
+        expect(await repo.findByStudentNum(student.studentIdNumber)).toBeNull();
+      }
+    });
   });
 });

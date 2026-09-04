@@ -272,30 +272,55 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         return;
       }
 
+      const committedNewClassRooms: BulkCreateStudentsInput['newClassRooms'] =
+        [];
       if (input.newClassRooms.length > 0) {
-        for (const chunk of chunkArray(
-          input.newClassRooms,
-          Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
-        )) {
-          const teamPlaceholders = chunk.map(() => '(?)').join(', ');
-          const classRoomStatements: D1PreparedStatement[] = [
-            db
-              .prepare(
-                `INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`
-              )
-              .bind(...chunk.map(provisionalTeamName)),
-          ];
-          for (const room of chunk) {
-            classRoomStatements.push(
+        try {
+          for (const chunk of chunkArray(
+            input.newClassRooms,
+            Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
+          )) {
+            const teamPlaceholders = chunk.map(() => '(?)').join(', ');
+            const classRoomStatements: D1PreparedStatement[] = [
               db
                 .prepare(
-                  `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id, updated_at)
-                   SELECT ?, ?, NULL, team_id, CURRENT_TIMESTAMP FROM teams WHERE team_name = ?`
+                  `INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`
                 )
-                .bind(room.classCode, room.className, provisionalTeamName(room))
-            );
+                .bind(...chunk.map(provisionalTeamName)),
+            ];
+            for (const room of chunk) {
+              classRoomStatements.push(
+                db
+                  .prepare(
+                    `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id, updated_at)
+                     SELECT ?, ?, NULL, team_id, CURRENT_TIMESTAMP FROM teams WHERE team_name = ?`
+                  )
+                  .bind(
+                    room.classCode,
+                    room.className,
+                    provisionalTeamName(room)
+                  )
+              );
+            }
+            await db.batch(classRoomStatements);
+            committedNewClassRooms.push(...chunk);
           }
-          await db.batch(classRoomStatements);
+        } catch (error) {
+          if (committedNewClassRooms.length > 0) {
+            try {
+              await deleteNewClassRoomsAndTeams(db, committedNewClassRooms);
+            } catch (cleanupError) {
+              console.error(
+                'Error deleting already-committed class rooms/teams after class room creation failure:',
+                cleanupError
+              );
+              throw new Error(
+                `新規クラス・チームの登録に失敗し、さらに登録済み分の削除にも失敗しました。手動でのデータ確認が必要です。: ${String(cleanupError)}`,
+                { cause: error }
+              );
+            }
+          }
+          throw error;
         }
       }
 
