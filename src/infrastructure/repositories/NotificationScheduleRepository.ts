@@ -323,5 +323,20 @@ export function createNotificationScheduleRepository(
         )
         .run();
     },
+
+    async anonymizeCreatedUserId(userId) {
+      await orm
+        .update(notification_schedules)
+        .set({ createdUserId: null, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .where(eq(notification_schedules.createdUserId, userId))
+        .run();
+    },
+
+    async deleteByFirebaseTokenId(firebaseTokenId) {
+      await orm
+        .delete(notification_schedules)
+        .where(eq(notification_schedules.firebaseTokenId, firebaseTokenId))
+        .run();
+    },
   };
 }

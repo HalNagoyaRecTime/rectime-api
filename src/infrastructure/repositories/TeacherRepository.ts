@@ -462,6 +462,26 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       ]);
       return true;
     },
+
+    async deleteByUserId(userId: number): Promise<boolean> {
+      const existing = await orm
+        .select({ id: teachers.id })
+        .from(teachers)
+        .where(eq(teachers.userId, userId))
+        .get();
+      if (!existing) return false;
+
+      // class_rooms.teacher_idはON DELETE句を持たない外部キーのため、
+      // teachers行を削除する前に必ずNULL化する(削除後のNULL化はFK違反)。
+      await orm.batch([
+        orm
+          .update(class_rooms)
+          .set({ teacherId: null, updatedAt: new Date().toISOString() })
+          .where(eq(class_rooms.teacherId, existing.id)),
+        orm.delete(teachers).where(eq(teachers.id, existing.id)),
+      ]);
+      return true;
+    },
   };
 }
 

@@ -125,5 +125,21 @@ export function createFirebaseTokenRepository(
         .where(eq(firebase_tokens.userId, userId))
         .run();
     },
+
+    async findByUserId(userId: number): Promise<FirebaseTokenEntity | null> {
+      const row = await orm
+        .select()
+        .from(firebase_tokens)
+        .where(eq(firebase_tokens.userId, userId))
+        .get();
+      return row ? toFirebaseTokenEntity(row) : null;
+    },
+
+    async deleteByUserId(userId: number): Promise<void> {
+      await orm
+        .delete(firebase_tokens)
+        .where(eq(firebase_tokens.userId, userId))
+        .run();
+    },
   };
 }

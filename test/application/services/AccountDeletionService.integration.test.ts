@@ -1,0 +1,265 @@
+import { env as workerEnv } from 'cloudflare:workers';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { createAccountDeletionService } from '../../../src/application/services/AccountDeletionService';
+import { createStudentRepository } from '../../../src/infrastructure/repositories/StudentRepository';
+import { createStaffRepository } from '../../../src/infrastructure/repositories/StaffRepository';
+import { createTeacherRepository } from '../../../src/infrastructure/repositories/TeacherRepository';
+import { createGatheringGroupMemberRepository } from '../../../src/infrastructure/repositories/GatheringGroupMemberRepository';
+import { createNotificationScheduleRepository } from '../../../src/infrastructure/repositories/NotificationScheduleRepository';
+import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
+import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
+
+// #265 PR4: 関連データの削除・匿名化を実DBで検証する。特に「D1・KV・
+// Firebaseの途中で失敗しても、安全に再実行・再開できる」ことを、同じ
+// userIdでdeleteRelatedDataを複数回呼んでも壊れないことで確認する。
+describe('AccountDeletionService (実DB統合テスト)', () => {
+  beforeEach(async () => {
+    await workerEnv.DB.prepare('DELETE FROM gathering_group_members').run();
+    await workerEnv.DB.prepare('DELETE FROM notification_schedules').run();
+    await workerEnv.DB.prepare('DELETE FROM notifications').run();
+    await workerEnv.DB.prepare('DELETE FROM gatherings').run();
+    await workerEnv.DB.prepare('DELETE FROM events').run();
+    await workerEnv.DB.prepare('DELETE FROM gathering_spots').run();
+    await workerEnv.DB.prepare('DELETE FROM firebase_tokens').run();
+    await workerEnv.DB.prepare('DELETE FROM microsoft_account_links').run();
+    await workerEnv.DB.prepare('DELETE FROM staffs').run();
+    await workerEnv.DB.prepare('DELETE FROM teachers').run();
+    await workerEnv.DB.prepare('DELETE FROM students').run();
+    await workerEnv.DB.prepare('DELETE FROM users').run();
+  });
+
+  function buildService() {
+    const db = workerEnv.DB;
+    return createAccountDeletionService({
+      studentRepository: createStudentRepository(db),
+      staffRepository: createStaffRepository(db),
+      teacherRepository: createTeacherRepository(db),
+      gatheringGroupMemberRepository: createGatheringGroupMemberRepository(
+        db,
+        createUserRepository(db)
+      ),
+      notificationScheduleRepository: createNotificationScheduleRepository(db),
+      firebaseTokenRepository: createFirebaseTokenRepository(db),
+    });
+  }
+
+  it('学生ユーザーの関連データを削除・匿名化し、再実行しても安全である', async () => {
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-1', '削除統合テストクラス') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('統合削除太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77001')"
+    )
+      .bind(user!.user_id, classRoom!.class_room_id)
+      .run();
+
+    const event = await workerEnv.DB.prepare(
+      "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('統合削除競技', '体育館', '0900', '1000') RETURNING event_id"
+    ).first<{ event_id: number }>();
+    const spot = await workerEnv.DB.prepare(
+      "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('統合削除集合場所') RETURNING gathering_spot_id"
+    ).first<{ gathering_spot_id: number }>();
+    const gathering = await workerEnv.DB.prepare(
+      'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id'
+    )
+      .bind(event!.event_id, spot!.gathering_spot_id)
+      .first<{ gathering_id: number }>();
+    await workerEnv.DB.prepare(
+      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+    )
+      .bind(gathering!.gathering_id, user!.user_id)
+      .run();
+
+    const firebaseToken = await workerEnv.DB.prepare(
+      "INSERT INTO firebase_tokens (user_id, platform, fcm_token, is_firebase_active) VALUES (?, 2, 'integration-token-1', 0) RETURNING firebase_token_id"
+    )
+      .bind(user!.user_id)
+      .first<{ firebase_token_id: number }>();
+    const notification = await workerEnv.DB.prepare(
+      "INSERT INTO notifications (notification_type, title, body) VALUES ('manual', '件名', '本文') RETURNING notification_id"
+    ).first<{ notification_id: number }>();
+    const receivedSchedule = await workerEnv.DB.prepare(
+      "INSERT INTO notification_schedules (created_user_id, event_id, notification_id, firebase_token_id, send_at) VALUES (NULL, ?, ?, ?, '2026-07-23T09:00:00.000Z') RETURNING notification_schedule_id"
+    )
+      .bind(
+        event!.event_id,
+        notification!.notification_id,
+        firebaseToken!.firebase_token_id
+      )
+      .first<{ notification_schedule_id: number }>();
+
+    // 削除対象ユーザーが「送信者(作成者)」だった通知(他ユーザー宛て)も
+    // 用意し、created_user_idだけがNULL化され通知自体は残ることを確認する。
+    const otherUser = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('無関係な受信者') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const otherToken = await workerEnv.DB.prepare(
+      "INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, 'integration-other-token') RETURNING firebase_token_id"
+    )
+      .bind(otherUser!.user_id)
+      .first<{ firebase_token_id: number }>();
+    const createdSchedule = await workerEnv.DB.prepare(
+      "INSERT INTO notification_schedules (created_user_id, event_id, notification_id, firebase_token_id, send_at) VALUES (?, ?, ?, ?, '2026-07-23T09:00:00.000Z') RETURNING notification_schedule_id"
+    )
+      .bind(
+        user!.user_id,
+        event!.event_id,
+        notification!.notification_id,
+        otherToken!.firebase_token_id
+      )
+      .first<{ notification_schedule_id: number }>();
+
+    const service = buildService();
+
+    await service.deleteRelatedData(String(user!.user_id));
+
+    // students: 行は残るが匿名化されている
+    const studentRow = await workerEnv.DB.prepare(
+      'SELECT student_id_number FROM students WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first<{ student_id_number: string }>();
+    expect(studentRow?.student_id_number).toBe(`deleted-${user!.user_id}`);
+
+    // gathering_group_members: 削除される
+    const memberRow = await workerEnv.DB.prepare(
+      'SELECT * FROM gathering_group_members WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(memberRow).toBeNull();
+
+    // firebase_tokens: 物理削除される
+    const tokenRow = await workerEnv.DB.prepare(
+      'SELECT * FROM firebase_tokens WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(tokenRow).toBeNull();
+
+    // 受信履歴(firebase_token_id経由): 物理削除される
+    const receivedRow = await workerEnv.DB.prepare(
+      'SELECT * FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(receivedSchedule!.notification_schedule_id)
+      .first();
+    expect(receivedRow).toBeNull();
+
+    // 作成者としての通知: created_user_idのみNULL化され、通知自体は残る
+    const createdRow = await workerEnv.DB.prepare(
+      'SELECT created_user_id FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(createdSchedule!.notification_schedule_id)
+      .first<{ created_user_id: number | null }>();
+    expect(createdRow).not.toBeNull();
+    expect(createdRow?.created_user_id).toBeNull();
+
+    // 再実行しても壊れない(冪等性の確認)
+    await expect(
+      service.deleteRelatedData(String(user!.user_id))
+    ).resolves.toBeUndefined();
+
+    // 再実行後も状態は変わらない
+    const studentRowAfterRetry = await workerEnv.DB.prepare(
+      'SELECT student_id_number FROM students WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first<{ student_id_number: string }>();
+    expect(studentRowAfterRetry?.student_id_number).toBe(
+      `deleted-${user!.user_id}`
+    );
+  });
+
+  it('教員ユーザーの削除でclass_rooms.teacher_idがNULL化される', async () => {
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('統合削除教員') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const teacher = await workerEnv.DB.prepare(
+      'INSERT INTO teachers (user_id) VALUES (?) RETURNING teacher_id'
+    )
+      .bind(user!.user_id)
+      .first<{ teacher_id: number }>();
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ('DEL-INT-2', '削除統合テストクラス2', ?) RETURNING class_room_id"
+    )
+      .bind(teacher!.teacher_id)
+      .first<{ class_room_id: number }>();
+
+    const service = buildService();
+    await service.deleteRelatedData(String(user!.user_id));
+
+    const teacherRow = await workerEnv.DB.prepare(
+      'SELECT * FROM teachers WHERE teacher_id = ?'
+    )
+      .bind(teacher!.teacher_id)
+      .first();
+    expect(teacherRow).toBeNull();
+
+    const classRoomRow = await workerEnv.DB.prepare(
+      'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+    )
+      .bind(classRoom!.class_room_id)
+      .first<{ teacher_id: number | null }>();
+    expect(classRoomRow?.teacher_id).toBeNull();
+
+    // 再実行しても壊れない
+    await expect(
+      service.deleteRelatedData(String(user!.user_id))
+    ).resolves.toBeUndefined();
+  });
+
+  it('一部の関連データだけ既に削除された状態(途中失敗を模した状態)から再実行しても完了できる', async () => {
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-3', '再開テストクラス') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('再開テスト太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77002')"
+    )
+      .bind(user!.user_id, classRoom!.class_room_id)
+      .run();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+
+    const service = buildService();
+
+    // 1回目の呼び出しを「途中まで進んだ状態」として扱い、staffsだけが
+    // 既に削除済み・studentsはまだ未処理という状況を人為的に作る
+    // (D1・KV・Firebaseの複数ストレージにまたがる処理が途中で中断した場合、
+    // 一部だけ成功して一部が未処理のまま残ることを想定している)。
+    await workerEnv.DB.prepare('DELETE FROM staffs WHERE user_id = ?')
+      .bind(user!.user_id)
+      .run();
+
+    // 中断後の再実行を模す。staffsは既に無いが、エラーにならず
+    // students等の残りの処理が完了することを確認する。
+    await expect(
+      service.deleteRelatedData(String(user!.user_id))
+    ).resolves.toBeUndefined();
+
+    const studentRow = await workerEnv.DB.prepare(
+      'SELECT student_id_number FROM students WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first<{ student_id_number: string }>();
+    expect(studentRow?.student_id_number).toBe(`deleted-${user!.user_id}`);
+  });
+
+  it('関連データが何も無いユーザーでもエラーにならない(冪等)', async () => {
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('関連データなし') RETURNING user_id"
+    ).first<{ user_id: number }>();
+
+    const service = buildService();
+
+    await expect(
+      service.deleteRelatedData(String(user!.user_id))
+    ).resolves.toBeUndefined();
+  });
+});

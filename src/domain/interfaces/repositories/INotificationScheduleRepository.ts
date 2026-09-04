@@ -36,4 +36,14 @@ export interface INotificationScheduleRepository {
   ) => Promise<DueNotificationSchedule[]>;
   markSent: (scheduleId: number, fcmMessageId: string) => Promise<void>;
   markFailed: (scheduleId: number, reason: string) => Promise<void>;
+  // アカウント削除(#265 PR4)専用。created_user_id(通知の作成者、nullable)を
+  // NULL化する。通知自体(他の受信者宛て)は残す。対象が無ければ何もしない
+  // (冪等)。
+  anonymizeCreatedUserId: (userId: number) => Promise<void>;
+  // アカウント削除(#265 PR4)専用。指定firebase_token_idに紐づく
+  // notification_schedules行(削除対象ユーザーが受信者だった送信履歴)を
+  // 物理削除する。firebase_token_idはNOT NULL外部キーのため、
+  // firebase_tokens行を削除する前に必ず呼ぶ必要がある。対象が無ければ
+  // 何もしない(冪等)。
+  deleteByFirebaseTokenId: (firebaseTokenId: number) => Promise<void>;
 }

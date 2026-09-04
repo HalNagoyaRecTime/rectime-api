@@ -366,6 +366,31 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         throw error;
       }
     },
+
+    async anonymizeByUserId(userId: number): Promise<boolean> {
+      const existing = await orm
+        .select({ id: students.id })
+        .from(students)
+        .where(eq(students.userId, userId))
+        .get();
+      if (!existing) return false;
+
+      const now = new Date().toISOString();
+      // class_room_id・attendance_numberは学生本人の個人情報ではないため
+      // 変更しない。student_id_numberはUNIQUE制約付きだが、userIdを含む
+      // ことで他の匿名化済み行と衝突しない値にする。
+      await orm.batch([
+        orm
+          .update(users)
+          .set({ userName: '削除済みユーザー', updatedAt: now })
+          .where(eq(users.id, userId)),
+        orm
+          .update(students)
+          .set({ studentIdNumber: `deleted-${userId}`, updatedAt: now })
+          .where(eq(students.id, existing.id)),
+      ]);
+      return true;
+    },
   };
 }
 

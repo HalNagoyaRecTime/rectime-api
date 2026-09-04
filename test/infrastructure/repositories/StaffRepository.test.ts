@@ -43,4 +43,30 @@ describe('StaffRepository', () => {
       expect(await repo.findById(999999)).toBeNull();
     });
   });
+
+  describe('deleteByUserId', () => {
+    it('指定したuser_idのstaffs行を削除する', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('削除対象職員') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await env.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+        .bind(user!.user_id)
+        .run();
+
+      await expect(repo.deleteByUserId(user!.user_id)).resolves.toBe(true);
+
+      const row = await env.DB.prepare('SELECT * FROM staffs WHERE user_id = ?')
+        .bind(user!.user_id)
+        .first();
+      expect(row).toBeNull();
+    });
+
+    it('該当するstaffs行が存在しない場合はfalseを返す(冪等)', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('非職員') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(repo.deleteByUserId(user!.user_id)).resolves.toBe(false);
+    });
+  });
 });

@@ -25,6 +25,7 @@ function buildRepository(
     createMany: vi.fn(),
     update: vi.fn(),
     deactivate: vi.fn(),
+    deleteByUserId: vi.fn(),
     ...overrides,
   };
 }

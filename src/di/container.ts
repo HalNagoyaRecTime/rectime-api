@@ -55,6 +55,7 @@ import { createScheduleController } from '../presentation/controllers/ScheduleCo
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
+import { createAccountDeletionService } from '../application/services/AccountDeletionService';
 import { createAuthorizationService } from '../application/services/AuthorizationService';
 import { createUserSearchService } from '../application/services/UserSearchService';
 import { createUserSearchController } from '../presentation/controllers/UserSearchController';
@@ -104,6 +105,14 @@ export function createDIContainer(env: Env) {
     firebaseTokenRepository
   );
   const authorizationService = createAuthorizationService(userRepository);
+  const accountDeletionService = createAccountDeletionService({
+    studentRepository,
+    staffRepository,
+    teacherRepository,
+    gatheringGroupMemberRepository,
+    notificationScheduleRepository,
+    firebaseTokenRepository,
+  });
   const userSearchService = createUserSearchService(userSearchRepository);
   const studentService = createStudentService(
     studentRepository,
@@ -207,6 +216,7 @@ export function createDIContainer(env: Env) {
 
   return {
     authService,
+    accountDeletionService,
     authorizationService,
     studentService,
     studentController,

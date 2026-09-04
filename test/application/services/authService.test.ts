@@ -17,6 +17,8 @@ function buildFirebaseTokenRepository(): IFirebaseTokenRepository {
     findActiveTokens: vi.fn(),
     deactivate: vi.fn(),
     deactivateByUserId: vi.fn(),
+    findByUserId: vi.fn(),
+    deleteByUserId: vi.fn(),
   };
 }
 
@@ -81,6 +83,7 @@ describe('createAuthService', () => {
       findExistingStudentNumbers: vi.fn(),
       createMany: vi.fn(),
       findByUserId: vi.fn(),
+      anonymizeByUserId: vi.fn(),
     };
     const studentEmailDomain = 'nhs.hal.ac.jp';
     const authKv = buildAuthKv();
@@ -123,6 +126,7 @@ describe('createAuthService', () => {
       findExistingStudentNumbers: vi.fn(),
       createMany: vi.fn(),
       findByUserId: vi.fn(),
+      anonymizeByUserId: vi.fn(),
     };
 
     expect(() =>
