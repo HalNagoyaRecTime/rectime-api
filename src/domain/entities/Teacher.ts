@@ -9,16 +9,18 @@ export interface TeacherEntity {
   user_id: number;
   user_name: string;
   is_live_active: boolean;
+  is_staff?: boolean;
   class_rooms: TeacherClassRoomEntity[];
 }
 
 export interface TeacherSearchFilter {
   teacherId?: number;
   userName?: string;
-  classRoomId?: number;
-  isLiveActive?: boolean;
   search?: string;
-  sortBy?: 'teacherId' | 'displayName';
+  classRoomId?: number;
+  isStaff?: boolean;
+  isLiveActive?: boolean;
+  sortBy?: 'teacherId' | 'displayName' | 'classCode' | 'className';
   sortOrder?: 'asc' | 'desc';
   limit?: number;
   offset?: number;

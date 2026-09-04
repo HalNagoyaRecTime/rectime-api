@@ -10,6 +10,7 @@ function buildTeacher(overrides: Partial<TeacherDTO> = {}): TeacherDTO {
     user_id: 10,
     display_name: '山田先生',
     is_live_active: true,
+    is_staff: false,
     class_rooms: [],
     ...overrides,
   };
@@ -191,18 +192,18 @@ describe('TeacherController', () => {
       });
 
       await app.request(
-        '/teachers?teacherId=1&userName=%E5%B1%B1%E7%94%B0&classRoomId=2&isLiveActive=false&offset=5&limit=5'
+        '/teachers?search=%E5%B1%B1%E7%94%B0&classRoomId=2&isStaff=false&isLiveActive=true&sortBy=className&sortOrder=desc&offset=5&limit=5'
       );
 
       expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
-        teacherId: 1,
-        userName: '山田',
+        search: '山田',
         classRoomId: 2,
-        isLiveActive: false,
+        isStaff: false,
+        isLiveActive: true,
         offset: 5,
         limit: 5,
-        sortBy: 'teacherId',
-        sortOrder: 'asc',
+        sortBy: 'className',
+        sortOrder: 'desc',
       });
     });
 
