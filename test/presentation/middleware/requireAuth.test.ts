@@ -1,5 +1,6 @@
+import { env as workerEnv } from 'cloudflare:workers';
 import { Hono } from 'hono';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { KVNamespace } from '@cloudflare/workers-types';
 import {
   requireAuth,
@@ -18,9 +19,20 @@ type Variables = ContainerVariables & AuthenticationVariables & AuthVariables;
 
 const JWT_SECRET = 'a'.repeat(32);
 
+beforeEach(async () => {
+  await workerEnv.DB.prepare('DELETE FROM gathering_group_members').run();
+  await workerEnv.DB.prepare('DELETE FROM notification_schedules').run();
+  await workerEnv.DB.prepare('DELETE FROM firebase_tokens').run();
+  await workerEnv.DB.prepare('DELETE FROM microsoft_account_links').run();
+  await workerEnv.DB.prepare('DELETE FROM staffs').run();
+  await workerEnv.DB.prepare('DELETE FROM teachers').run();
+  await workerEnv.DB.prepare('DELETE FROM students').run();
+  await workerEnv.DB.prepare('DELETE FROM users').run();
+});
+
 function buildEnv(overrides: Partial<Env> = {}): Env {
   return {
-    DB: {} as Env['DB'],
+    DB: workerEnv.DB,
     AUTH_KV: createMockKv(),
     MASTER_IMPORT_COMMIT_LOCK: {} as Env['MASTER_IMPORT_COMMIT_LOCK'],
     NOTIFICATION_DELIVERY_QUEUE: {} as Env['NOTIFICATION_DELIVERY_QUEUE'],
