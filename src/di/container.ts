@@ -56,6 +56,7 @@ import { createUserRepository } from '../infrastructure/repositories/UserReposit
 import { createUserStatusRepository } from '../infrastructure/repositories/UserStatusRepository';
 import { createUserService } from '../application/services/UserService';
 import { createUserController } from '../presentation/controllers/UserController';
+import { createUserActivationRepository } from '../infrastructure/repositories/UserActivationRepository';
 import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
 import { createAuthorizationService } from '../application/services/AuthorizationService';
@@ -68,6 +69,7 @@ export function createDIContainer(env: Env) {
 
   // Repositories
   const userRepository = createUserRepository(db);
+  const userActivationRepository = createUserActivationRepository(db);
   const userSearchRepository = createUserSearchRepository(db);
   const studentRepository = createStudentRepository(db);
   const staffRepository = createStaffRepository(db);
@@ -102,7 +104,9 @@ export function createDIContainer(env: Env) {
   const authService = createAuthService(
     userRepository,
     studentRepository,
-    env.STUDENT_EMAIL_DOMAIN
+    env.STUDENT_EMAIL_DOMAIN,
+    env.AUTH_KV,
+    firebaseTokenRepository
   );
   const userService = createUserService(createUserStatusRepository(db));
   const authorizationService = createAuthorizationService(userRepository);
@@ -209,6 +213,8 @@ export function createDIContainer(env: Env) {
   const scheduleController = createScheduleController(scheduleService);
 
   return {
+    // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
+    userActivationRepository,
     authService,
     userController,
     authorizationService,

@@ -90,6 +90,29 @@ describe('FirebaseTokenRepository', () => {
     }
   );
 
+  it('iOS Tokenをplatform=1で登録できる', async () => {
+    const userId = await createUser('Firebase iOS利用者');
+
+    await expect(
+      repository.register({
+        userId,
+        platform: 'ios',
+        fcmToken: 'token-ios',
+      })
+    ).resolves.toMatchObject({
+      user_id: userId,
+      platform: 'ios',
+      is_firebase_active: true,
+    });
+
+    const stored = await env.DB.prepare(
+      'SELECT platform FROM firebase_tokens WHERE fcm_token = ?'
+    )
+      .bind('token-ios')
+      .first<{ platform: number }>();
+    expect(stored?.platform).toBe(1);
+  });
+
   it('同じ利用者のToken更新時に既存行を最新Tokenへ更新する', async () => {
     const userId = await createUser('Firebaseトークン更新利用者');
     const first = await repository.register({
@@ -272,5 +295,57 @@ describe('FirebaseTokenRepository', () => {
 
     expect(tokens).toHaveLength(1);
     expect(tokens[0].fcm_token).toBe('token-active');
+  });
+
+  describe('deactivateByUserId', () => {
+    it('指定したuser_idのToken登録を無効化する', async () => {
+      const userId = await createUser('削除対象利用者');
+      await repository.register({
+        userId,
+        platform: 'android',
+        fcmToken: 'token-to-deactivate',
+      });
+
+      await repository.deactivateByUserId(userId);
+
+      const stored = await env.DB.prepare(
+        'SELECT is_firebase_active FROM firebase_tokens WHERE user_id = ?'
+      )
+        .bind(userId)
+        .first<{ is_firebase_active: number }>();
+      expect(stored?.is_firebase_active).toBe(0);
+    });
+
+    it('他のuser_idのToken登録には影響しない', async () => {
+      const targetUserId = await createUser('削除対象利用者2');
+      const otherUserId = await createUser('無関係な利用者');
+      await repository.register({
+        userId: targetUserId,
+        platform: 'android',
+        fcmToken: 'token-target',
+      });
+      await repository.register({
+        userId: otherUserId,
+        platform: 'android',
+        fcmToken: 'token-other',
+      });
+
+      await repository.deactivateByUserId(targetUserId);
+
+      const otherStored = await env.DB.prepare(
+        'SELECT is_firebase_active FROM firebase_tokens WHERE user_id = ?'
+      )
+        .bind(otherUserId)
+        .first<{ is_firebase_active: number }>();
+      expect(otherStored?.is_firebase_active).toBe(1);
+    });
+
+    it('Token登録が存在しないuser_idでもエラーにならない', async () => {
+      const userId = await createUser('Token未登録利用者');
+
+      await expect(
+        repository.deactivateByUserId(userId)
+      ).resolves.toBeUndefined();
+    });
   });
 });

@@ -259,6 +259,7 @@ export function createNotificationScheduleRepository(
         .select({
           ...selection,
           fcm_token: firebase_tokens.fcmToken,
+          platform: firebase_tokens.platform,
           is_firebase_active: firebase_tokens.isFirebaseActive,
         })
         .from(notification_schedules)
