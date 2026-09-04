@@ -99,7 +99,9 @@ export function createDIContainer(env: Env) {
   const authService = createAuthService(
     userRepository,
     studentRepository,
-    env.STUDENT_EMAIL_DOMAIN
+    env.STUDENT_EMAIL_DOMAIN,
+    env.AUTH_KV,
+    firebaseTokenRepository
   );
   const authorizationService = createAuthorizationService(userRepository);
   const userSearchService = createUserSearchService(userSearchRepository);

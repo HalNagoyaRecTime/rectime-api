@@ -62,6 +62,7 @@ describe('ScheduledNotificationService', () => {
       register: vi.fn(),
       findActiveTokens: vi.fn(),
       deactivate: vi.fn(),
+      deactivateByUserId: vi.fn(),
     };
     const notificationDeliveryQueue: INotificationDeliveryQueue = {
       enqueueMany: vi.fn(),

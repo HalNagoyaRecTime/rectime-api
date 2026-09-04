@@ -20,14 +20,69 @@ import {
   ACCOUNT_PHOTO_PATH,
 } from '../../../domain/auth/types';
 import { GRAPH_ME_PHOTO_URL } from '../../../infrastructure/auth/microsoftClient';
+import { createUserRepository } from '../../../infrastructure/repositories/UserRepository';
 import { AuthErrors } from '../../errors/authErrors';
 import { CommonErrors } from '../../errors/commonErrors';
-import { errorResponse } from '../../errors/errorResponse';
+import {
+  errorResponse,
+  type ApiErrorDefinition,
+} from '../../errors/errorResponse';
+import type { AppContext } from '../helpers';
 
 const account = new Hono<{
   Bindings: Bindings;
   Variables: ContainerVariables;
 }>();
+
+type ActiveAuthResult =
+  | { ok: true; claims: AccessTokenClaims }
+  | { ok: false; response: Response };
+
+// Bearer Tokenの署名検証に加え、DB上のdeletion_statusを確認する。
+// JWTは自己完結検証のため、削除開始(deletion_status !== 'active')後も
+// exp到達までは署名だけなら有効であり続けてしまう(#265 PR3)。/me・
+// /me/photo・/logoutはbearerAuthenticationMiddleware(apiV1.use('*', ...))
+// を経由してはいるが、その結果(verifiedAuthUser)を使わずここで
+// verifyAccessTokenを再実行しているため、ミドルウェア側のdeletion_status
+// チェックの効果を受けない。ここで改めて確認することで、削除済み/削除中
+// ユーザーのAccess Tokenでは/meが情報を返さないようにする。
+async function authenticateActiveUser(
+  c: AppContext,
+  clientType: 'web' | 'mobile',
+  invalidTokenError: ApiErrorDefinition = CommonErrors.UNAUTHORIZED,
+  sessionExpiredError: ApiErrorDefinition = invalidTokenError
+): Promise<ActiveAuthResult> {
+  const token = getBearerToken(c);
+  if (!token) {
+    return { ok: false, response: errorResponse(c, CommonErrors.UNAUTHORIZED) };
+  }
+
+  let claims: AccessTokenClaims;
+  try {
+    claims = await verifyAccessToken(token, c.env.JWT_SECRET, clientType);
+  } catch (error) {
+    const isSessionExpired =
+      error instanceof Error && error.message === 'SESSION_EXPIRED';
+    return {
+      ok: false,
+      response: errorResponse(
+        c,
+        isSessionExpired ? sessionExpiredError : invalidTokenError
+      ),
+    };
+  }
+
+  const userRepository = createUserRepository(c.env.DB);
+  const deletionStatus = await userRepository.getDeletionStatus(claims.sub);
+  if (deletionStatus && deletionStatus !== 'active') {
+    return {
+      ok: false,
+      response: errorResponse(c, AuthErrors.ACCOUNT_DELETION_PENDING),
+    };
+  }
+
+  return { ok: true, claims };
+}
 
 // GET /auth/me
 account.get('/me', async c => {
@@ -37,22 +92,14 @@ account.get('/me', async c => {
     return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
   }
 
-  const token = getBearerToken(c);
-  if (!token) {
-    return errorResponse(c, CommonErrors.UNAUTHORIZED);
-  }
-
-  let claims: AccessTokenClaims;
-  try {
-    claims = await verifyAccessToken(token, c.env.JWT_SECRET, clientType);
-  } catch (error) {
-    return errorResponse(
-      c,
-      error instanceof Error && error.message === 'SESSION_EXPIRED'
-        ? AuthErrors.SESSION_EXPIRED
-        : AuthErrors.INVALID_TOKEN
-    );
-  }
+  const auth = await authenticateActiveUser(
+    c,
+    clientType,
+    AuthErrors.INVALID_TOKEN,
+    AuthErrors.SESSION_EXPIRED
+  );
+  if (!auth.ok) return auth.response;
+  const { claims } = auth;
 
   const student = await getStudentInfoOrNull(
     studentService,
@@ -83,17 +130,9 @@ account.get('/me/photo', async c => {
     return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
   }
 
-  const token = getBearerToken(c);
-  if (!token) {
-    return errorResponse(c, CommonErrors.UNAUTHORIZED);
-  }
-
-  let claims: AccessTokenClaims;
-  try {
-    claims = await verifyAccessToken(token, c.env.JWT_SECRET, clientType);
-  } catch {
-    return errorResponse(c, CommonErrors.UNAUTHORIZED);
-  }
+  const auth = await authenticateActiveUser(c, clientType);
+  if (!auth.ok) return auth.response;
+  const { claims } = auth;
 
   // mobile_refresh KV は mobile/web 共通で使う。Microsoft の refresh_token を
   // sub 単位で保持している(POST /auth/microsoft/token 参照)。
@@ -180,17 +219,9 @@ account.post('/logout', async c => {
     return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
   }
 
-  const token = getBearerToken(c);
-  if (!token) {
-    return errorResponse(c, CommonErrors.UNAUTHORIZED);
-  }
-
-  let claims: AccessTokenClaims;
-  try {
-    claims = await verifyAccessToken(token, c.env.JWT_SECRET, clientType);
-  } catch {
-    return errorResponse(c, CommonErrors.UNAUTHORIZED);
-  }
+  const auth = await authenticateActiveUser(c, clientType);
+  if (!auth.ok) return auth.response;
+  const { claims } = auth;
 
   const body = (await c.req.json().catch(() => null)) as {
     refresh_token_id?: unknown;
@@ -251,6 +282,16 @@ account.post('/refresh', async c => {
     // X-Client-Type で再発行しようとした場合は拒否し、なりすましで
     // 別種別のアクセストークンを取得できないようにする。
     return errorResponse(c, AuthErrors.INVALID_REFRESH_CLIENT_TYPE);
+  }
+
+  // アカウント削除開始後は、有効なrefresh_token_idを持っていても
+  // 新しいAccess Tokenを発行しない。
+  const userRepository = createUserRepository(c.env.DB);
+  const deletionStatus = await userRepository.getDeletionStatus(
+    refresh.user_id
+  );
+  if (deletionStatus && deletionStatus !== 'active') {
+    return errorResponse(c, AuthErrors.ACCOUNT_DELETION_PENDING);
   }
 
   const tokens = await refreshMicrosoftAccessToken(
