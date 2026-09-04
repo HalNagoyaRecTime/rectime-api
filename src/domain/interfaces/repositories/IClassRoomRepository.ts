@@ -10,7 +10,7 @@ export interface IClassRoomRepository {
   findByCode: (classCode: string) => Promise<ClassRoomEntity | null>;
   findExistingClassCodes: (classCodes: string[]) => Promise<Set<string>>;
   create: (input: ClassRoomInput) => Promise<ClassRoomEntity>;
-  createMany: (inputs: ClassRoomInput[]) => Promise<void>;
+  createMany: (inputs: Omit<ClassRoomInput, 'team_id'>[]) => Promise<void>;
   update: (
     id: number,
     input: ClassRoomInput

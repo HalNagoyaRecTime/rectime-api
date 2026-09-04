@@ -46,7 +46,9 @@ const classRoomSelect = `
   LEFT JOIN users u ON u.user_id = t.user_id
 `;
 
-function provisionalTeamName(input: ClassRoomInput): string {
+function provisionalTeamName(
+  input: Pick<ClassRoomInput, 'class_code' | 'class_name'>
+): string {
   return `${input.class_name}(${input.class_code})`;
 }
 
@@ -183,12 +185,12 @@ export function createClassRoomRepository(
       return classroom;
     },
 
-    async createMany(inputs: ClassRoomInput[]): Promise<void> {
+    async createMany(inputs: Omit<ClassRoomInput, 'team_id'>[]): Promise<void> {
       if (inputs.length === 0) {
         return;
       }
 
-      const committedInputs: ClassRoomInput[] = [];
+      const committedInputs: Omit<ClassRoomInput, 'team_id'>[] = [];
       try {
         for (const chunk of chunkArray(
           inputs,
@@ -347,7 +349,7 @@ export function createClassRoomRepository(
 
 async function deleteClassRoomsAndTeamsByInputs(
   db: D1Database,
-  inputs: ClassRoomInput[]
+  inputs: Omit<ClassRoomInput, 'team_id'>[]
 ) {
   const classCodes = inputs.map(input => input.class_code);
   const teamNames = inputs.map(provisionalTeamName);

@@ -505,13 +505,11 @@ describe('ClassRoomRepository', () => {
           class_code: '14D',
           class_name: '4年Dクラス',
           teacher_id: null,
-          team_id: null,
         },
         {
           class_code: '14E',
           class_name: '4年Eクラス',
           teacher_id: null,
-          team_id: null,
         },
       ]);
 
@@ -537,13 +535,11 @@ describe('ClassRoomRepository', () => {
             class_code: '15A',
             class_name: '5年Aクラス',
             teacher_id: null,
-            team_id: null,
           },
           {
             class_code: 'IA14A',
             class_name: '重複クラス',
             teacher_id: null,
-            team_id: null,
           },
         ])
       ).rejects.toThrow();
@@ -562,13 +558,11 @@ describe('ClassRoomRepository', () => {
             class_code: '15C',
             class_name: '孤立チーム確認クラス',
             teacher_id: null,
-            team_id: null,
           },
           {
             class_code: 'IA14A',
             class_name: '重複クラス',
             teacher_id: null,
-            team_id: null,
           },
         ])
       ).rejects.toThrow();
@@ -592,13 +586,11 @@ describe('ClassRoomRepository', () => {
           class_code: '20A',
           class_name: '重複組',
           teacher_id: null,
-          team_id: null,
         },
         {
           class_code: '20B',
           class_name: '重複組',
           teacher_id: null,
-          team_id: null,
         },
       ]);
 
@@ -614,7 +606,6 @@ describe('ClassRoomRepository', () => {
         class_code: `BULK2K-${i}`,
         class_name: `一括クラス${i}`,
         teacher_id: null,
-        team_id: null,
       }));
 
       await repo.createMany(inputs);
@@ -633,7 +624,6 @@ describe('ClassRoomRepository', () => {
         class_code: `CROSS-CHUNK-${i}`,
         class_name: `チャンク跨ぎクラス${i}`,
         teacher_id: null,
-        team_id: null,
       }));
       const secondChunkInputs = [
         {
@@ -641,7 +631,6 @@ describe('ClassRoomRepository', () => {
           class_code: 'IA14A',
           class_name: '2チャンク目で重複するクラス',
           teacher_id: null,
-          team_id: null,
         },
       ];
 

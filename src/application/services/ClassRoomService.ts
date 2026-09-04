@@ -209,7 +209,6 @@ export function createClassRoomService(
           class_code: row.class_code,
           class_name: row.class_name,
           teacher_id: null,
-          team_id: null,
         }))
       );
 
