@@ -438,13 +438,11 @@ describe('ClassRoomService', () => {
           class_code: '13C',
           class_name: '3年Cクラス',
           teacher_id: null,
-          team_id: null,
         },
         {
           class_code: '13D',
           class_name: '3年Dクラス',
           teacher_id: null,
-          team_id: null,
         },
       ]);
     });
