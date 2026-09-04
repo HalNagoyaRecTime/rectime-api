@@ -59,6 +59,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
   await orm.delete(studentsTable);
   await orm.delete(users);
   await orm.delete(class_rooms);
+  await db.prepare('DELETE FROM team_scores').run();
   await db.prepare('DELETE FROM teams').run();
 
   const now = new Date().toISOString();

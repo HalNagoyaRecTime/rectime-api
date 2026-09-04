@@ -28,6 +28,7 @@ describe('ClassRoomRepository', () => {
     await orm.delete(teachers);
     await orm.delete(users);
     await orm.delete(class_rooms);
+    await env.DB.prepare('DELETE FROM team_scores').run();
     await env.DB.prepare('DELETE FROM teams').run();
     const [teacherUser] = await orm
       .insert(users)

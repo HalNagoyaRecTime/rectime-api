@@ -63,7 +63,9 @@ export async function seedStaffsTeachers(db: D1Database): Promise<SeededData> {
   await orm.delete(studentsTable);
   // class_rooms.teacher_id が teachers を、class_rooms.team_id が teams を
   // 参照しているため、teachers/teams を消す前に class_rooms 側を先に消す必要がある。
+  // team_scores.team_id も teams を参照しているため、teamsより先に消す。
   await orm.delete(class_rooms);
+  await db.prepare('DELETE FROM team_scores').run();
   await db.prepare('DELETE FROM teams').run();
   await orm.delete(staffsTable);
   await orm.delete(teachersTable);
