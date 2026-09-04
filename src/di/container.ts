@@ -106,6 +106,7 @@ export function createDIContainer(env: Env) {
   );
   const authorizationService = createAuthorizationService(userRepository);
   const accountDeletionService = createAccountDeletionService({
+    userRepository,
     studentRepository,
     staffRepository,
     teacherRepository,

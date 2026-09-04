@@ -1,4 +1,5 @@
 import type { IAccountDeletionService } from './IAccountDeletionService';
+import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 import type { IStaffRepository } from '../../domain/interfaces/repositories/IStaffRepository';
 import type { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
@@ -7,6 +8,7 @@ import type { INotificationScheduleRepository } from '../../domain/interfaces/re
 import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 
 export function createAccountDeletionService(deps: {
+  userRepository: IUserRepository;
   studentRepository: IStudentRepository;
   staffRepository: IStaffRepository;
   teacherRepository: ITeacherRepository;
@@ -15,6 +17,7 @@ export function createAccountDeletionService(deps: {
   firebaseTokenRepository: IFirebaseTokenRepository;
 }): IAccountDeletionService {
   const {
+    userRepository,
     studentRepository,
     staffRepository,
     teacherRepository,
@@ -26,6 +29,21 @@ export function createAccountDeletionService(deps: {
   return {
     async deleteRelatedData(userId: string) {
       const userIdNum = Number(userId);
+
+      // 呼び出し順序をコメントだけに頼らず、ここで自己確認する。
+      // authService.startAccountDeletion(markAsDeleted)がdeletion_statusを
+      // 'deleted'にし、Microsoftアカウントとの紐付けを断ち切った"後"で
+      // なければ、対象ユーザー自身がまだ通常通りAPIを叩けてしまい、
+      // firebase_tokens再登録やstudents更新などとの競合が起こり得る。
+      // 呼び出し元が順序を誤った場合はここで即座に失敗させる。
+      const deletionStatus = await userRepository.getDeletionStatus(userId);
+      if (deletionStatus !== 'deleted') {
+        throw new Error(
+          'ACCOUNT_NOT_MARKED_AS_DELETED: deleteRelatedData was called before ' +
+            'authService.startAccountDeletion completed (deletion_status must ' +
+            "be 'deleted')"
+        );
+      }
 
       // Microsoft連携・AUTH_KVのRefresh Session・Firebase Tokenの無効化は
       // authService.startAccountDeletion(#265 PR1/PR3)が既に担当済み。

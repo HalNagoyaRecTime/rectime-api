@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createAccountDeletionService } from '../../../src/application/services/AccountDeletionService';
+import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import type { IStaffRepository } from '../../../src/domain/interfaces/repositories/IStaffRepository';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
@@ -8,6 +9,17 @@ import type { INotificationScheduleRepository } from '../../../src/domain/interf
 import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
 
 function buildDeps() {
+  const userRepository: IUserRepository = {
+    exists: vi.fn(),
+    isStaff: vi.fn(),
+    getUserCategories: vi.fn(),
+    findUserIdByMicrosoftAccount: vi.fn(),
+    getDeletionStatus: vi.fn().mockResolvedValue('deleted'),
+    createUserWithMicrosoftLink: vi.fn(),
+    updateUser: vi.fn(),
+    linkMicrosoftAccount: vi.fn(),
+    markAsDeleted: vi.fn(),
+  };
   const studentRepository: IStudentRepository = {
     findById: vi.fn(),
     findByUserId: vi.fn(),
@@ -69,6 +81,7 @@ function buildDeps() {
   };
 
   return {
+    userRepository,
     studentRepository,
     staffRepository,
     teacherRepository,
@@ -80,6 +93,35 @@ function buildDeps() {
 
 describe('createAccountDeletionService', () => {
   describe('deleteRelatedData', () => {
+    it('deletion_statusが"deleted"でない場合は例外を投げ、他の処理を一切行わない', async () => {
+      // authService.startAccountDeletion(markAsDeleted)より先にこの
+      // メソッドが呼ばれた場合を再現する。呼び出し順序の誤りをコメントだけ
+      // に頼らず、ここで検知できることを確認する。
+      const deps = buildDeps();
+      (
+        deps.userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
+      ).mockResolvedValue('active');
+      const service = createAccountDeletionService(deps);
+
+      await expect(service.deleteRelatedData('10')).rejects.toThrow(
+        'ACCOUNT_NOT_MARKED_AS_DELETED'
+      );
+      expect(deps.firebaseTokenRepository.findByUserId).not.toHaveBeenCalled();
+      expect(deps.staffRepository.deleteByUserId).not.toHaveBeenCalled();
+    });
+
+    it('deletion_statusが"deletion_pending"の場合も例外を投げる(markAsDeleted完了前)', async () => {
+      const deps = buildDeps();
+      (
+        deps.userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
+      ).mockResolvedValue('deletion_pending');
+      const service = createAccountDeletionService(deps);
+
+      await expect(service.deleteRelatedData('10')).rejects.toThrow(
+        'ACCOUNT_NOT_MARKED_AS_DELETED'
+      );
+    });
+
     it('firebase_tokensが無い場合は通知履歴の削除・Token削除をスキップする', async () => {
       const deps = buildDeps();
       const service = createAccountDeletionService(deps);

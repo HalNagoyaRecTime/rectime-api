@@ -31,6 +31,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
   function buildService() {
     const db = workerEnv.DB;
     return createAccountDeletionService({
+      userRepository: createUserRepository(db),
       studentRepository: createStudentRepository(db),
       staffRepository: createStaffRepository(db),
       teacherRepository: createTeacherRepository(db),
@@ -41,6 +42,18 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       notificationScheduleRepository: createNotificationScheduleRepository(db),
       firebaseTokenRepository: createFirebaseTokenRepository(db),
     });
+  }
+
+  // deleteRelatedDataはdeletion_status === 'deleted'を自己確認するため、
+  // 実DBテストでは対象ユーザーを事前にこの状態にしておく必要がある
+  // (authService.startAccountDeletion(markAsDeleted)が完了した後、という
+  // 想定を再現する)。
+  async function markAsDeleted(userId: number): Promise<void> {
+    await workerEnv.DB.prepare(
+      "UPDATE users SET deletion_status = 'deleted' WHERE user_id = ?"
+    )
+      .bind(userId)
+      .run();
   }
 
   it('学生ユーザーの関連データを削除・匿名化し、再実行しても安全である', async () => {
@@ -112,6 +125,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       )
       .first<{ notification_schedule_id: number }>();
 
+    await markAsDeleted(user!.user_id);
     const service = buildService();
 
     await service.deleteRelatedData(String(user!.user_id));
@@ -188,6 +202,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(teacher!.teacher_id)
       .first<{ class_room_id: number }>();
 
+    await markAsDeleted(user!.user_id);
     const service = buildService();
     await service.deleteRelatedData(String(user!.user_id));
 
@@ -227,6 +242,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(user!.user_id)
       .run();
 
+    await markAsDeleted(user!.user_id);
     const service = buildService();
 
     // 1回目の呼び出しを「途中まで進んだ状態」として扱い、staffsだけが
@@ -251,15 +267,108 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     expect(studentRow?.student_id_number).toBe(`deleted-${user!.user_id}`);
   });
 
+  it('同一user_idがstaffs・teachers・studentsに同時に存在する場合も、それぞれ独立して正しく処理される', async () => {
+    // staffs/teachersは相互排他ではない設計(既存コードのコメント参照)。
+    // 通常の運用では起こりにくいが、同一user_idが複数ロールに同時に
+    // 存在するケースでも、各リポジトリのdeleteByUserId/anonymizeByUserId
+    // が独立してWHERE user_id = ?で動作し、正しく処理されることを確認する。
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-4', '複合ロールテストクラス') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('複合ロール太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77003')"
+    )
+      .bind(user!.user_id, classRoom!.class_room_id)
+      .run();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+    const teacher = await workerEnv.DB.prepare(
+      'INSERT INTO teachers (user_id) VALUES (?) RETURNING teacher_id'
+    )
+      .bind(user!.user_id)
+      .first<{ teacher_id: number }>();
+    await workerEnv.DB.prepare(
+      'UPDATE class_rooms SET teacher_id = ? WHERE class_room_id = ?'
+    )
+      .bind(teacher!.teacher_id, classRoom!.class_room_id)
+      .run();
+
+    await markAsDeleted(user!.user_id);
+    const service = buildService();
+    await service.deleteRelatedData(String(user!.user_id));
+
+    const staffRow = await workerEnv.DB.prepare(
+      'SELECT * FROM staffs WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(staffRow).toBeNull();
+
+    const teacherRow = await workerEnv.DB.prepare(
+      'SELECT * FROM teachers WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(teacherRow).toBeNull();
+
+    const classRoomRow = await workerEnv.DB.prepare(
+      'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+    )
+      .bind(classRoom!.class_room_id)
+      .first<{ teacher_id: number | null }>();
+    expect(classRoomRow?.teacher_id).toBeNull();
+
+    const studentRow = await workerEnv.DB.prepare(
+      'SELECT student_id_number FROM students WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first<{ student_id_number: string }>();
+    expect(studentRow?.student_id_number).toBe(`deleted-${user!.user_id}`);
+  });
+
   it('関連データが何も無いユーザーでもエラーにならない(冪等)', async () => {
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('関連データなし') RETURNING user_id"
     ).first<{ user_id: number }>();
 
+    await markAsDeleted(user!.user_id);
     const service = buildService();
 
     await expect(
       service.deleteRelatedData(String(user!.user_id))
     ).resolves.toBeUndefined();
+  });
+
+  it('deletion_statusがdeletedでないユーザーに対しては例外を投げ、何も変更しない', async () => {
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-5', '順序違反テストクラス') RETURNING class_room_id"
+    ).first<{ class_room_id: number }>();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('順序違反太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77004')"
+    )
+      .bind(user!.user_id, classRoom!.class_room_id)
+      .run();
+
+    // markAsDeletedを呼ばず(deletion_status: 'active'のまま)deleteRelatedData
+    // を呼ぶ、順序違反のケース。
+    const service = buildService();
+
+    await expect(
+      service.deleteRelatedData(String(user!.user_id))
+    ).rejects.toThrow('ACCOUNT_NOT_MARKED_AS_DELETED');
+
+    const studentRow = await workerEnv.DB.prepare(
+      'SELECT student_id_number FROM students WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first<{ student_id_number: string }>();
+    expect(studentRow?.student_id_number).toBe('77004');
   });
 });
