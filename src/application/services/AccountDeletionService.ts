@@ -74,6 +74,11 @@ export function createAccountDeletionService(deps: {
       // 学生情報の匿名化。student_id_numberは再登録(#265 PR1で確定済み)の
       // ためUNIQUE制約を満たしたまま行を残す。
       await studentRepository.anonymizeByUserId(userIdNum);
+
+      // users.user_nameの匿名化は学生かどうかに関係なく常に行う。
+      // students行を持たない教員・スタッフ限定のユーザーでも、実名が
+      // 残って利用者検索等に表示され続けることを防ぐ。
+      await userRepository.anonymizeUserName(userId);
     },
   };
 }

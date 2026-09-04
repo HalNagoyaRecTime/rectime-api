@@ -19,6 +19,7 @@ function buildDeps() {
     updateUser: vi.fn(),
     linkMicrosoftAccount: vi.fn(),
     markAsDeleted: vi.fn(),
+    anonymizeUserName: vi.fn().mockResolvedValue(true),
   };
   const studentRepository: IStudentRepository = {
     findById: vi.fn(),
@@ -211,6 +212,17 @@ describe('createAccountDeletionService', () => {
       await service.deleteRelatedData('10');
 
       expect(deps.studentRepository.anonymizeByUserId).toHaveBeenCalledWith(10);
+    });
+
+    it('学生かどうかに関係なくusers.user_nameを匿名化する', async () => {
+      // students行を持たない教員・スタッフ限定のユーザーでも実名が
+      // 残らないことを保証するための呼び出し。
+      const deps = buildDeps();
+      const service = createAccountDeletionService(deps);
+
+      await service.deleteRelatedData('10');
+
+      expect(deps.userRepository.anonymizeUserName).toHaveBeenCalledWith('10');
     });
 
     it('各ステップは対象が存在しなくても(false/undefinedが返っても)処理を継続する', async () => {

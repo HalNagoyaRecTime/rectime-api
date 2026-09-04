@@ -444,4 +444,27 @@ describe('UserRepository', () => {
       );
     });
   });
+
+  describe('anonymizeUserName', () => {
+    it('user_nameを固定文字列に書き換える', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('匿名化対象太郎') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(repo.anonymizeUserName(String(user!.user_id))).resolves.toBe(
+        true
+      );
+
+      const row = await env.DB.prepare(
+        'SELECT user_name FROM users WHERE user_id = ?'
+      )
+        .bind(user!.user_id)
+        .first<{ user_name: string }>();
+      expect(row?.user_name).toBe('削除済みユーザー');
+    });
+
+    it('存在しないuserIdの場合はfalseを返す', async () => {
+      await expect(repo.anonymizeUserName('999999')).resolves.toBe(false);
+    });
+  });
 });

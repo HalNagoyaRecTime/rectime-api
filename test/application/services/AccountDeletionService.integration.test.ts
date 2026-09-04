@@ -187,7 +187,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     );
   });
 
-  it('教員ユーザーの削除でclass_rooms.teacher_idがNULL化される', async () => {
+  it('教員ユーザーの削除でclass_rooms.teacher_idがNULL化され、user_nameも匿名化される', async () => {
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('統合削除教員') RETURNING user_id"
     ).first<{ user_id: number }>();
@@ -219,6 +219,16 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(classRoom!.class_room_id)
       .first<{ teacher_id: number | null }>();
     expect(classRoomRow?.teacher_id).toBeNull();
+
+    // teachers行は物理削除されており(students行を持たない)、user_nameの
+    // 匿名化がstudents経由の副作用に依存していると実名が残ってしまう。
+    // ここでは学生でなくても匿名化されることを確認する。
+    const userRow = await workerEnv.DB.prepare(
+      'SELECT user_name FROM users WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first<{ user_name: string }>();
+    expect(userRow?.user_name).toBe('削除済みユーザー');
 
     // 再実行しても壊れない
     await expect(
@@ -328,6 +338,35 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(user!.user_id)
       .first<{ student_id_number: string }>();
     expect(studentRow?.student_id_number).toBe(`deleted-${user!.user_id}`);
+  });
+
+  it('スタッフのみ(students/teachers行を持たない)のユーザーでもuser_nameが匿名化される', async () => {
+    // このケースはstudentRepository.anonymizeByUserId(students行が
+    // 存在する場合のみ動く)には一切依存しない、最も直接的な確認。
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('統合削除スタッフ') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+
+    await markAsDeleted(user!.user_id);
+    const service = buildService();
+    await service.deleteRelatedData(String(user!.user_id));
+
+    const staffRow = await workerEnv.DB.prepare(
+      'SELECT * FROM staffs WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(staffRow).toBeNull();
+
+    const userRow = await workerEnv.DB.prepare(
+      'SELECT user_name FROM users WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first<{ user_name: string }>();
+    expect(userRow?.user_name).toBe('削除済みユーザー');
   });
 
   it('関連データが何も無いユーザーでもエラーにならない(冪等)', async () => {
