@@ -16,15 +16,13 @@ const integerQuery = (minimum: number) =>
 
 const teacherListQuerySchema = z
   .object({
-    teacherId: integerQuery(1).optional(),
-    userName: z.string().trim().min(1).optional(),
-    classRoomId: integerQuery(1).optional(),
-    isLiveActive: z
-      .enum(['true', 'false'])
-      .transform(value => value === 'true')
-      .optional(),
     search: z.string().trim().min(1).optional(),
-    sortBy: z.enum(['teacherId', 'displayName']).default('teacherId'),
+    classRoomId: integerQuery(1).optional(),
+    isStaff: z.enum(['true', 'false', 'all']).default('all'),
+    isLiveActive: z.enum(['true', 'false', 'all']).default('all'),
+    sortBy: z
+      .enum(['teacherId', 'displayName', 'classCode', 'className'])
+      .default('teacherId'),
     sortOrder: z.enum(['asc', 'desc']).default('asc'),
     limit: integerQuery(1)
       .refine(value => value <= MAX_LIMIT, {
@@ -33,7 +31,14 @@ const teacherListQuerySchema = z
       .default(50),
     offset: integerQuery(0).default(0),
   })
-  .strict();
+  .strict()
+  .transform(({ isStaff, isLiveActive, ...query }) => ({
+    ...query,
+    ...(isStaff === 'all' ? {} : { isStaff: isStaff === 'true' }),
+    ...(isLiveActive === 'all'
+      ? {}
+      : { isLiveActive: isLiveActive === 'true' }),
+  }));
 
 const createTeacherSchema = z
   .object({

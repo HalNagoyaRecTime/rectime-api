@@ -9,6 +9,7 @@ function buildTeacher(overrides: Partial<TeacherEntity> = {}): TeacherEntity {
     user_id: 10,
     user_name: '山田先生',
     is_live_active: true,
+    is_staff: false,
     class_rooms: [],
     ...overrides,
   };
@@ -45,6 +46,7 @@ describe('TeacherService', () => {
         user_id: 10,
         display_name: '山田先生',
         is_live_active: true,
+        is_staff: false,
         class_rooms: [],
       });
       expect(repository.existsClassRooms).not.toHaveBeenCalled();
@@ -76,6 +78,7 @@ describe('TeacherService', () => {
         user_id: teacher.user_id,
         display_name: teacher.user_name,
         is_live_active: teacher.is_live_active,
+        is_staff: false,
         class_rooms: teacher.class_rooms,
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
@@ -92,7 +95,7 @@ describe('TeacherService', () => {
       );
     });
 
-    it('論理削除済みの場合はエラーを投げる', async () => {
+    it('無効な教員も取得できる', async () => {
       const repository = buildRepository({
         findById: vi
           .fn()
@@ -100,9 +103,10 @@ describe('TeacherService', () => {
       });
       const service = createTeacherService(repository);
 
-      await expect(service.getTeacherById(1)).rejects.toThrow(
-        'Teacher not found'
-      );
+      await expect(service.getTeacherById(1)).resolves.toMatchObject({
+        teacher_id: 1,
+        is_live_active: false,
+      });
     });
   });
 
@@ -142,9 +146,25 @@ describe('TeacherService', () => {
       });
       const service = createTeacherService(repository);
 
-      await service.getAllTeachers({ userName: '山田' });
+      await service.getAllTeachers({
+        search: '山田',
+        isStaff: false,
+        isLiveActive: true,
+        sortBy: 'classCode',
+        sortOrder: 'desc',
+        limit: 20,
+        offset: 0,
+      });
 
-      expect(repository.findAll).toHaveBeenCalledWith({ userName: '山田' });
+      expect(repository.findAll).toHaveBeenCalledWith({
+        search: '山田',
+        isStaff: false,
+        isLiveActive: true,
+        sortBy: 'classCode',
+        sortOrder: 'desc',
+        limit: 20,
+        offset: 0,
+      });
     });
 
     it('リポジトリが空件数を返す場合は空配列を返す', async () => {
@@ -236,19 +256,21 @@ describe('TeacherService', () => {
       ).rejects.toThrow('Teacher not found');
     });
 
-    it('論理削除済み教員は更新できない', async () => {
+    it('無効な教員も更新できる', async () => {
       const repository = buildRepository({
         findById: vi
           .fn()
           .mockResolvedValue(buildTeacher({ is_live_active: false })),
         existsClassRooms: vi.fn().mockResolvedValue(true),
-        update: vi.fn().mockResolvedValue(null),
+        update: vi
+          .fn()
+          .mockResolvedValue(buildTeacher({ is_live_active: false })),
       });
       const service = createTeacherService(repository);
 
       await expect(
         service.updateTeacher(1, { userName: 'x', classRoomIds: [1] })
-      ).rejects.toThrow('Teacher not found');
+      ).resolves.toMatchObject({ is_live_active: false });
     });
   });
 

@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
-import { class_rooms, teachers, users } from '../database/schema';
+import { class_rooms, staffs, teachers, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import {
@@ -42,6 +42,7 @@ function escapeLikePattern(value: string): string {
 type TeacherJoinRow = {
   teachers: typeof teachers.$inferSelect;
   users: typeof users.$inferSelect;
+  staffs: typeof staffs.$inferSelect | null;
 };
 
 function toClassRoom(row: typeof class_rooms.$inferSelect) {
@@ -84,6 +85,7 @@ function toEntity(
     user_id: row.users.id,
     user_name: row.users.userName,
     is_live_active: Boolean(row.users.isLiveActive),
+    is_staff: Boolean(row.staffs),
     class_rooms: classRooms,
   };
 }
@@ -96,6 +98,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .select()
         .from(teachers)
         .innerJoin(users, eq(teachers.userId, users.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
         .where(eq(teachers.id, id))
         .get();
 
@@ -143,8 +146,19 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       }
       if (filter.isLiveActive !== undefined) {
         conditions.push(eq(users.isLiveActive, filter.isLiveActive ? 1 : 0));
-      } else {
-        conditions.push(eq(users.isLiveActive, 1));
+      }
+      if (filter.isStaff !== undefined) {
+        conditions.push(
+          filter.isStaff
+            ? sql`EXISTS (
+                SELECT 1 FROM staffs
+                WHERE staffs.user_id = users.user_id
+              )`
+            : sql`NOT EXISTS (
+                SELECT 1 FROM staffs
+                WHERE staffs.user_id = users.user_id
+              )`
+        );
       }
 
       if (filter.classRoomId !== undefined) {
@@ -174,14 +188,36 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       const rowsBaseQuery = orm
         .select()
         .from(teachers)
-        .innerJoin(users, eq(teachers.userId, users.id));
+        .innerJoin(users, eq(teachers.userId, users.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId));
       const sortOrder = filter.sortOrder === 'desc' ? desc : asc;
+      const classSortColumn = sql<string | null>`(
+        SELECT MIN(class_code)
+        FROM class_rooms
+        WHERE class_rooms.teacher_id = teachers.teacher_id
+      )`;
+      const classNameSortColumn = sql<string | null>`(
+        SELECT MIN(class_name)
+        FROM class_rooms
+        WHERE class_rooms.teacher_id = teachers.teacher_id
+      )`;
       const sortColumn =
-        filter.sortBy === 'displayName' ? users.userName : teachers.id;
+        filter.sortBy === 'displayName'
+          ? users.userName
+          : filter.sortBy === 'classCode'
+            ? classSortColumn
+            : filter.sortBy === 'className'
+              ? classNameSortColumn
+              : teachers.id;
+      const classSortLast = sql<number>`CASE WHEN ${classSortColumn} IS NULL THEN 1 ELSE 0 END`;
+      const orderBy =
+        filter.sortBy === 'classCode' || filter.sortBy === 'className'
+          ? [classSortLast, sortOrder(sortColumn), asc(teachers.id)]
+          : [sortOrder(sortColumn), asc(teachers.id)];
       const results = await (
         whereClause ? rowsBaseQuery.where(whereClause) : rowsBaseQuery
       )
-        .orderBy(sortOrder(sortColumn), asc(teachers.id))
+        .orderBy(...orderBy)
         .limit(limit)
         .offset(offset)
         .all();
@@ -298,6 +334,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .select()
         .from(teachers)
         .innerJoin(users, eq(teachers.userId, users.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
         .where(eq(teachers.id, created.teacher_id))
         .get();
       if (!result) throw new Error('Failed to create teacher');
@@ -374,9 +411,10 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .select()
         .from(teachers)
         .innerJoin(users, eq(teachers.userId, users.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
         .where(eq(teachers.id, id))
         .get();
-      if (!existing || existing.users.isLiveActive !== 1) return null;
+      if (!existing) return null;
 
       const now = new Date().toISOString();
 
@@ -436,6 +474,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
             userName: input.userName,
             updatedAt: now,
           },
+          staffs: existing.staffs,
         },
         classRoomsByTeacher.get(id) ?? []
       );
