@@ -278,13 +278,10 @@ describe('ClassRoomRepository', () => {
         teacher_id: null,
         team_id: null,
       });
-      const event = await env.DB.prepare(
-        "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('体育祭', '校庭', '1000', '1200') RETURNING event_id"
-      ).first<{ event_id: number }>();
       await env.DB.prepare(
-        'INSERT INTO team_scores (event_id, team_id, scores) VALUES (?, ?, 10)'
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 10)'
       )
-        .bind(event!.event_id, base.team_id)
+        .bind(base.team_id)
         .run();
 
       await expect(
@@ -306,9 +303,6 @@ describe('ClassRoomRepository', () => {
         .run();
       await env.DB.prepare('DELETE FROM teams WHERE team_id = ?')
         .bind(base.team_id)
-        .run();
-      await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
-        .bind(event!.event_id)
         .run();
     });
   });
@@ -403,13 +397,10 @@ describe('ClassRoomRepository', () => {
         teacher_id: null,
         team_id: null,
       });
-      const event = await env.DB.prepare(
-        "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('体育祭', '校庭', '1000', '1200') RETURNING event_id"
-      ).first<{ event_id: number }>();
       await env.DB.prepare(
-        'INSERT INTO team_scores (event_id, team_id, scores) VALUES (?, ?, 10)'
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 10)'
       )
-        .bind(event!.event_id, base.team_id)
+        .bind(base.team_id)
         .run();
 
       const updated = await repo.updateAndCleanupTeam(
@@ -438,9 +429,6 @@ describe('ClassRoomRepository', () => {
         .run();
       await env.DB.prepare('DELETE FROM teams WHERE team_id = ?')
         .bind(base.team_id)
-        .run();
-      await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
-        .bind(event!.event_id)
         .run();
     });
   });

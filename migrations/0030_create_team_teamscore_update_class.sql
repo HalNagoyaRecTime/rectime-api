@@ -11,17 +11,10 @@ CREATE UNIQUE INDEX uq_teams_team_name ON teams(team_name);
 
 CREATE TABLE team_scores (
   team_score_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  event_id INTEGER NOT NULL REFERENCES events(event_id),
-  team_id INTEGER NOT NULL REFERENCES teams(team_id),
-  scores INTEGER NOT NULL,
+  team_id INTEGER NOT NULL REFERENCES teams(team_id) UNIQUE,
+  scores INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
--- 同じイベント・同じチームの得点行が複数登録されることを防ぐ。
--- (event_id, team_id)の複合一意索引はevent_id単体の絞り込みも
--- 先頭列としてカバーできるため、別途event_id単体の索引は持たない。
-CREATE UNIQUE INDEX uq_team_scores_event_team ON team_scores(event_id, team_id);
-CREATE INDEX idx_team_scores_team_id ON team_scores(team_id);
 
 -- 既存のclass_roomsを、そのクラス名をそのままチーム名としてteamsへ引き継ぐ。
 -- 並び順を保証しない問い合わせ同士をROW_NUMBER()等で突き合わせるのは危険なため、
@@ -29,6 +22,9 @@ CREATE INDEX idx_team_scores_team_id ON team_scores(team_id);
 -- これによりteam_idとclass_room_idが常に一致し、対応付けに関する仮定が一切不要になる。
 INSERT INTO teams (team_id, team_name)
 SELECT class_room_id, class_name||'('||class_code||')' FROM class_rooms;
+
+INSERT INTO team_scores (team_id, scores)
+SELECT team_id, 0 FROM teams;
 
 -- class_rooms.team_id はNOT NULLにするが、SQLite(D1)は既存行があるカラムを
 -- 後からNOT NULLに変更できない。また、students.class_room_id が class_rooms を

@@ -22,8 +22,6 @@ async function prepareLegacySchema() {
     env.DB.prepare('DROP INDEX IF EXISTS idx_class_rooms_team_id'),
     env.DB.prepare('DROP INDEX IF EXISTS uq_class_rooms_class_code'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_class_rooms_teacher_id'),
-    env.DB.prepare('DROP INDEX IF EXISTS uq_team_scores_event_team'),
-    env.DB.prepare('DROP INDEX IF EXISTS idx_team_scores_team_id'),
     env.DB.prepare('DROP INDEX IF EXISTS uq_teams_team_name'),
     env.DB.prepare('ALTER TABLE students RENAME TO students_backup'),
     env.DB.prepare('ALTER TABLE class_rooms RENAME TO class_rooms_backup'),
@@ -58,8 +56,6 @@ async function prepareLegacySchema() {
 
 async function restoreCurrentSchema() {
   await env.DB.batch([
-    env.DB.prepare('DROP INDEX IF EXISTS uq_team_scores_event_team'),
-    env.DB.prepare('DROP INDEX IF EXISTS idx_team_scores_team_id'),
     env.DB.prepare('DROP INDEX IF EXISTS uq_teams_team_name'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_class_rooms_team_id'),
     env.DB.prepare('DROP INDEX IF EXISTS uq_class_rooms_class_code'),
@@ -84,12 +80,6 @@ async function restoreCurrentSchema() {
       'CREATE INDEX idx_class_rooms_team_id ON class_rooms(team_id)'
     ),
     env.DB.prepare('CREATE UNIQUE INDEX uq_teams_team_name ON teams(team_name)'),
-    env.DB.prepare(
-      'CREATE UNIQUE INDEX uq_team_scores_event_team ON team_scores(event_id, team_id)'
-    ),
-    env.DB.prepare(
-      'CREATE INDEX idx_team_scores_team_id ON team_scores(team_id)'
-    ),
   ]);
 }
 
@@ -183,11 +173,27 @@ describe('0030_create_team_teamscore_update_class.sql', () => {
     ).all<{ name: string; notnull: number }>();
     expect(teamScoreColumns.results).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: 'event_id', notnull: 1 }),
         expect.objectContaining({ name: 'team_id', notnull: 1 }),
         expect.objectContaining({ name: 'scores', notnull: 1 }),
       ])
     );
+    expect(teamScoreColumns.results.map(column => column.name)).not.toContain(
+      'event_id'
+    );
+
+    const teamScores = await env.DB.prepare(
+      `SELECT ts.team_id, ts.scores
+       FROM team_scores ts
+       JOIN teams t ON t.team_id = ts.team_id
+       WHERE t.team_id IN (?, ?)
+       ORDER BY ts.team_id`
+    )
+      .bind(ROOM_A, ROOM_B)
+      .all();
+    expect(teamScores.results).toEqual([
+      { team_id: ROOM_A, scores: 0 },
+      { team_id: ROOM_B, scores: 0 },
+    ]);
 
     const foreignKeyErrors = await env.DB.prepare(
       'PRAGMA foreign_key_check'
