@@ -423,54 +423,6 @@ describe('StudentRepository', () => {
       expect(orphanedClassRoom).toBeNull();
     });
 
-    it('生徒登録が失敗し、新規クラス・チームの後片付け自体も失敗した場合、手動確認を促すエラーとしてcause付きで投げ直される', async () => {
-      const originalPrepare = env.DB.prepare.bind(env.DB);
-      const prepareSpy = vi
-        .spyOn(env.DB, 'prepare')
-        .mockImplementation((sql: string) => {
-          if (sql.startsWith('DELETE FROM class_rooms')) {
-            throw new Error('DELETE_CLASS_ROOMS_FAILED');
-          }
-          return originalPrepare(sql);
-        });
-
-      let thrown: unknown;
-      try {
-        await repo.createMany({
-          newClassRooms: [{ classCode: 'REPRO-NEW', className: 'REPRO-NEW' }],
-          students: [
-            {
-              displayName: '再現用生徒',
-              classCode: 'REPRO-MISSING',
-              attendanceNumber: 1,
-              studentIdNumber: 'REPRO-1',
-            },
-          ],
-        });
-      } catch (error) {
-        thrown = error;
-      }
-
-      prepareSpy.mockRestore();
-
-      // 期待する挙動: 後片付け自体が失敗しても元のstudents INSERT失敗が
-      // 握りつぶされず、手動確認を促すメッセージ＋causeとして伝播すること
-      expect(thrown).toBeInstanceOf(Error);
-      expect((thrown as Error).message).toContain(
-        '手動でのデータ確認が必要です'
-      );
-      expect((thrown as Error).cause).toBeInstanceOf(Error);
-
-      // 後片付け: 後片付け自体を失敗させたため残ったREPRO-NEWの孤児を、
-      // 次のテストに影響しないよう手動で消しておく
-      await env.DB.prepare('DELETE FROM class_rooms WHERE class_code = ?')
-        .bind('REPRO-NEW')
-        .run();
-      await env.DB.prepare('DELETE FROM teams WHERE team_name = ?')
-        .bind('REPRO-NEW(REPRO-NEW)')
-        .run();
-    });
-
     it('2,000件の学生を、新規クラス40件とあわせてまとめて作成できる', async () => {
       const newClassRooms = Array.from({ length: 40 }, (_, i) => ({
         classCode: `BULK2K-${i}`,
@@ -598,58 +550,49 @@ describe('StudentRepository', () => {
       expect(batchCallCount).toBe(3);
     });
 
-    it('newClassRoomsのdb.batch()がチャンク分割された場合、後のチャンクが失敗すると先に確定したteams・class_roomsもまとめて後片付けされる', async () => {
-      const CHUNK_SIZE = 20; // Math.floor(D1_MAX_BOUND_PARAMETERS / 5)と同じ値
-      const firstChunkClassRooms = Array.from(
-        { length: CHUNK_SIZE },
-        (_, i) => ({
-          classCode: `CROSS-CHUNK-CLASS-${i}`,
-          className: `CROSS-CHUNK-CLASS-${i}`,
-        })
-      );
-      const secondChunkClassRooms = [
+    it('新規クラスの一部がUNIQUE制約に違反する場合、他の新規クラス・生徒も含めて何も登録されない', async () => {
+      const validClassRoom = {
+        classCode: 'ATOMIC-NEW',
+        className: 'ATOMIC-NEW',
+      };
+      const duplicateClassRoom = {
+        // seedStudents で既に使われているclass_codeにぶつけて失敗させる
+        classCode: 'TEST-1',
+        className: '重複するクラス',
+      };
+      const students = [
         {
-          // seedStudents で既に使われているclass_codeにぶつけて2チャンク目を失敗させる
-          classCode: 'TEST-1',
-          className: '2チャンク目で重複するクラス',
+          displayName: '全体アトミック確認用の生徒',
+          classCode: validClassRoom.classCode,
+          attendanceNumber: 1,
+          studentIdNumber: 'ATOMIC-CLEANUP-1',
         },
       ];
-      const students = firstChunkClassRooms.map((room, i) => ({
-        displayName: `新規クラス後片付け生徒${i}`,
-        classCode: room.classCode,
-        attendanceNumber: 1,
-        studentIdNumber: `NEWCLASS-CLEANUP-${String(i).padStart(3, '0')}`,
-      }));
 
       await expect(
         repo.createMany({
-          newClassRooms: [...firstChunkClassRooms, ...secondChunkClassRooms],
+          newClassRooms: [validClassRoom, duplicateClassRoom],
           students,
         })
       ).rejects.toThrow();
 
-      // 1チャンク目(20件)は一度コミットされているはずだが、
-      // 2チャンク目の失敗を受けてteams・class_roomsともにまとめて後片付けされていること
-      for (const room of firstChunkClassRooms) {
-        const orphanedClassRoom = await env.DB.prepare(
-          'SELECT class_room_id FROM class_rooms WHERE class_code = ?'
-        )
-          .bind(room.classCode)
-          .first();
-        expect(orphanedClassRoom).toBeNull();
-      }
-      const orphanedTeams = await env.DB.prepare(
-        'SELECT team_id FROM teams WHERE team_name LIKE ?'
+      // 新規クラス・チーム・生徒はすべて1回のdb.batch()にまとまっているため、
+      // 一部が失敗すると何も登録されないこと
+      const orphanedClassRoom = await env.DB.prepare(
+        'SELECT class_room_id FROM class_rooms WHERE class_code = ?'
       )
-        .bind('CROSS-CHUNK-CLASS-%')
-        .all();
-      expect(orphanedTeams.results).toHaveLength(0);
+        .bind(validClassRoom.classCode)
+        .first();
+      expect(orphanedClassRoom).toBeNull();
 
-      // newClassRoomsループの失敗によりstudentsループには到達しないはずなので、
-      // 生徒側にも孤児は残らないこと
-      for (const student of students) {
-        expect(await repo.findByStudentNum(student.studentIdNumber)).toBeNull();
-      }
+      const orphanedTeam = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_name = ?'
+      )
+        .bind('ATOMIC-NEW(ATOMIC-NEW)')
+        .first();
+      expect(orphanedTeam).toBeNull();
+
+      expect(await repo.findByStudentNum('ATOMIC-CLEANUP-1')).toBeNull();
     });
   });
 });

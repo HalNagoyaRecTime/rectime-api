@@ -271,96 +271,60 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         return;
       }
 
-      const committedNewClassRooms: BulkCreateStudentsInput['newClassRooms'] =
-        [];
-      if (input.newClassRooms.length > 0) {
-        try {
-          for (const chunk of chunkArray(
-            input.newClassRooms,
-            Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
-          )) {
-            const teamPlaceholders = chunk.map(() => '(?)').join(', ');
-            const classRoomStatements: D1PreparedStatement[] = [
-              db
-                .prepare(
-                  `INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`
-                )
-                .bind(...chunk.map(provisionalTeamName)),
-            ];
-            for (const room of chunk) {
-              classRoomStatements.push(
-                db
-                  .prepare(
-                    `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id, updated_at)
-                     SELECT ?, ?, NULL, team_id, CURRENT_TIMESTAMP FROM teams WHERE team_name = ?`
-                  )
-                  .bind(
-                    room.classCode,
-                    room.className,
-                    provisionalTeamName(room)
-                  )
-              );
-            }
-            await db.batch(classRoomStatements);
-            committedNewClassRooms.push(...chunk);
-          }
-        } catch (error) {
-          if (committedNewClassRooms.length > 0) {
-            try {
-              await deleteNewClassRoomsAndTeams(db, committedNewClassRooms);
-            } catch (cleanupError) {
-              console.error(
-                'Error deleting already-committed class rooms/teams after class room creation failure:',
-                cleanupError
-              );
-              throw new Error(
-                `新規クラス・チームの登録に失敗し、さらに登録済み分の削除にも失敗しました。手動でのデータ確認が必要です。: ${String(cleanupError)}`,
-                { cause: error }
-              );
-            }
-          }
-          throw error;
+      const classRoomStatements: D1PreparedStatement[] = [];
+      for (const chunk of chunkArray(
+        input.newClassRooms,
+        Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
+      )) {
+        const teamPlaceholders = chunk.map(() => '(?)').join(', ');
+        classRoomStatements.push(
+          db
+            .prepare(`INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`)
+            .bind(...chunk.map(provisionalTeamName))
+        );
+        for (const room of chunk) {
+          classRoomStatements.push(
+            db
+              .prepare(
+                `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id, updated_at)
+                 SELECT ?, ?, NULL, team_id, CURRENT_TIMESTAMP FROM teams WHERE team_name = ?`
+              )
+              .bind(room.classCode, room.className, provisionalTeamName(room))
+          );
         }
       }
 
-      try {
-        await insertStudentsWithAllocatedUserIds(db, input.students);
-      } catch (error) {
-        if (committedNewClassRooms.length > 0) {
-          try {
-            await deleteNewClassRoomsAndTeams(db, committedNewClassRooms);
-          } catch (cleanupError) {
-            console.error(
-              'Error deleting class rooms/teams after student creation failure:',
-              cleanupError
-            );
-            throw new Error(
-              `生徒の登録に失敗し、新規クラス・チームの後片付けにも失敗しました。手動でのデータ確認が必要です。: ${String(cleanupError)}`,
-              { cause: error }
-            );
-          }
-        }
-        throw error;
-      }
+      await insertClassRoomsAndStudentsWithAllocatedUserIds(
+        db,
+        classRoomStatements,
+        input.students
+      );
     },
   };
 }
 
 /**
- * users・studentsを事前採番したuser_idでまとめてINSERTする。
+ * 新規クラス・チームと、事前採番したuser_idを使うusers・studentsを、
+ * すべて1回のdb.batch()にまとめてINSERTする。
  *
- * last_insert_rowid()に頼らず先にuser_idを決めておくことで、1人ずつ文を
- * 分ける必要がなくなり、受付上限2,500件でも合計150文程度に収まる
- * （D1の1 Worker呼び出しあたりのサブリクエスト上限1,000に対して十分小さい）。
- * db.batch()は1回の呼び出し内でアトミックなので、途中で失敗しても部分的な
- * 書き込みは残らず、手動での後片付けは不要。
+ * 新規クラス・チームの作成と生徒の作成を別々のdb.batch()に分けると、
+ * 前半が確定した後に後半が失敗した場合に手動での後片付けが必要になる
+ * （編成名・クラスコードのUNIQUE制約により、残った分が以後の取り込みを
+ * 名前衝突で弾き続ける）。1回のbatch呼び出しはD1上でアトミックなので、
+ * 1つにまとめることでこの後片付け自体を不要にする。
+ *
+ * また、last_insert_rowid()に頼らず先にuser_idを決めておくことで生徒側も
+ * 1人ずつ文を分ける必要がなくなり、受付上限2,500件・新規クラス100件でも
+ * 合計250文程度に収まる（D1の1 Worker呼び出しあたりのサブリクエスト
+ * 上限1,000に対して十分小さい）。
  *
  * MAX(user_id)取得後、実際にINSERTするまでの間に別経路（ロック対象外の
  * マスターインポートや通常ログインでの新規ユーザー作成）でuser_idが
  * 使われてしまうと衝突しうるため、その場合のみ採番からやり直す。
  */
-async function insertStudentsWithAllocatedUserIds(
+async function insertClassRoomsAndStudentsWithAllocatedUserIds(
   db: D1Database,
+  classRoomStatements: D1PreparedStatement[],
   students: BulkCreateStudentsInput['students']
 ): Promise<void> {
   for (let attempt = 1; attempt <= USER_ID_ALLOCATION_MAX_ATTEMPTS; attempt++) {
@@ -372,7 +336,7 @@ async function insertStudentsWithAllocatedUserIds(
       userId: (seed?.max_user_id ?? 0) + index + 1,
     }));
 
-    const statements: D1PreparedStatement[] = [];
+    const statements: D1PreparedStatement[] = [...classRoomStatements];
     for (const chunk of chunkArray(
       rows,
       Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
@@ -429,28 +393,5 @@ async function insertStudentsWithAllocatedUserIds(
       // 採番後、実行までの間に別経路でuser_idが使われた（同時ログイン等）。
       // user_idを取り直してリトライする。
     }
-  }
-}
-
-async function deleteNewClassRoomsAndTeams(
-  db: D1Database,
-  newClassRooms: BulkCreateStudentsInput['newClassRooms']
-) {
-  const classCodes = newClassRooms.map(room => room.classCode);
-  const teamNames = newClassRooms.map(provisionalTeamName);
-
-  for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
-    const placeholders = chunk.map(() => '?').join(', ');
-    await db
-      .prepare(`DELETE FROM class_rooms WHERE class_code IN (${placeholders})`)
-      .bind(...chunk)
-      .run();
-  }
-  for (const chunk of chunkArray(teamNames, D1_MAX_BOUND_PARAMETERS)) {
-    const placeholders = chunk.map(() => '?').join(', ');
-    await db
-      .prepare(`DELETE FROM teams WHERE team_name IN (${placeholders})`)
-      .bind(...chunk)
-      .run();
   }
 }
