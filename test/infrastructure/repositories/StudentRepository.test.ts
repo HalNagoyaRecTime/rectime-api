@@ -507,7 +507,7 @@ describe('StudentRepository', () => {
   });
 
   describe('anonymizeByUserId', () => {
-    it('student_id_numberをプレースホルダに書き換え、行は残す(user_nameはUserRepository.anonymizeUserNameの責務)', async () => {
+    it('student_id_numberをプレースホルダに書き換え、行は残す(user_nameはUserRepository.anonymizeUserの責務)', async () => {
       const classRoomId = seeded.students[0].classRoomId;
       const user = await env.DB.prepare(
         "INSERT INTO users (user_name) VALUES ('匿名化対象太郎') RETURNING user_id"
@@ -526,7 +526,7 @@ describe('StudentRepository', () => {
         class_room_id: classRoomId,
         attendance_number: 99,
       });
-      // user_nameの匿名化はUserRepository.anonymizeUserNameの責務であり、
+      // user_nameの匿名化はUserRepository.anonymizeUserの責務であり、
       // StudentRepository.anonymizeByUserIdはstudents固有のカラムのみを
       // 扱う(#265 PR4のレビュー指摘: students行の有無に関わらず
       // user_nameを匿名化できるようにするための責務分離)。

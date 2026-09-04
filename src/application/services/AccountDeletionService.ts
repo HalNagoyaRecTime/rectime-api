@@ -45,6 +45,12 @@ export function createAccountDeletionService(deps: {
         );
       }
 
+      // users.user_nameの匿名化はロールの種類によらず常に行う。
+      // staffs/teachersの削除はロール用テーブルの行を消すだけで
+      // users側の表示名には触れないため、ここで呼ばないと教員・スタッフの
+      // 実名がusersテーブルに残り続けてしまう(利用者検索等にも表示され続ける)。
+      await userRepository.anonymizeUser(userId);
+
       // Microsoft連携・AUTH_KVのRefresh Session・Firebase Tokenの無効化は
       // authService.startAccountDeletion(#265 PR1/PR3)が既に担当済み。
       // ここでは以下のみ処理する。各ステップは対象が無ければ何もしない
@@ -72,13 +78,10 @@ export function createAccountDeletionService(deps: {
       await gatheringGroupMemberRepository.deleteByUserId(userIdNum);
 
       // 学生情報の匿名化。student_id_numberは再登録(#265 PR1で確定済み)の
-      // ためUNIQUE制約を満たしたまま行を残す。
+      // ためUNIQUE制約を満たしたまま行を残す。user_nameはこの関数の先頭で
+      // userRepository.anonymizeUserが既に匿名化済みのため、ここでは
+      // students固有のカラムのみを扱う。
       await studentRepository.anonymizeByUserId(userIdNum);
-
-      // users.user_nameの匿名化は学生かどうかに関係なく常に行う。
-      // students行を持たない教員・スタッフ限定のユーザーでも、実名が
-      // 残って利用者検索等に表示され続けることを防ぐ。
-      await userRepository.anonymizeUserName(userId);
     },
   };
 }

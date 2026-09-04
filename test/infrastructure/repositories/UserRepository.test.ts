@@ -445,13 +445,13 @@ describe('UserRepository', () => {
     });
   });
 
-  describe('anonymizeUserName', () => {
+  describe('anonymizeUser', () => {
     it('user_nameを固定文字列に書き換える', async () => {
       const user = await env.DB.prepare(
         "INSERT INTO users (user_name) VALUES ('匿名化対象太郎') RETURNING user_id"
       ).first<{ user_id: number }>();
 
-      await expect(repo.anonymizeUserName(String(user!.user_id))).resolves.toBe(
+      await expect(repo.anonymizeUser(String(user!.user_id))).resolves.toBe(
         true
       );
 
@@ -464,7 +464,7 @@ describe('UserRepository', () => {
     });
 
     it('存在しないuserIdの場合はfalseを返す', async () => {
-      await expect(repo.anonymizeUserName('999999')).resolves.toBe(false);
+      await expect(repo.anonymizeUser('999999')).resolves.toBe(false);
     });
   });
 });

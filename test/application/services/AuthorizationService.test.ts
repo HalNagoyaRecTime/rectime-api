@@ -15,7 +15,7 @@ function buildUserRepository(
     updateUser: vi.fn(),
     linkMicrosoftAccount: vi.fn(),
     markAsDeleted: vi.fn(),
-    anonymizeUserName: vi.fn(),
+    anonymizeUser: vi.fn(),
     ...overrides,
   };
 }

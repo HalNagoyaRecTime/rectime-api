@@ -40,11 +40,10 @@ export interface IUserRepository {
   // 最小限の状態遷移のみを担う。
   markAsDeleted(userId: string): Promise<boolean>;
   // アカウント削除(#265 PR4)専用。users.user_nameを固定文字列に書き換える。
-  // 学生の匿名化(StudentRepository.anonymizeByUserId)はstudents行が
-  // 存在する場合のみuser_nameを書き換えるため、students行を持たない
-  // 教員・スタッフ限定のユーザーではuser_nameが実名のまま残ってしまう
-  // (利用者検索等に表示され続ける)。学生かどうかに関係なく、常にここで
-  // user_nameを匿名化する。該当するuserIdが存在しない場合は何もせず
-  // falseを返す(冪等)。
-  anonymizeUserName(userId: string): Promise<boolean>;
+  // ロール(staffs/teachers)や所属を削除するだけではusers行の表示名は
+  // 残ったままになるため、ロールの種類によらず常にこのメソッドで
+  // user_nameを匿名化する必要がある(呼び出し元:
+  // AccountDeletionService.deleteRelatedData)。該当するuserIdが
+  // 存在しない場合は何もせずfalseを返す(冪等)。
+  anonymizeUser(userId: string): Promise<boolean>;
 }

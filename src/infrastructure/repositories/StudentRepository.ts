@@ -368,10 +368,9 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
     },
 
     async anonymizeByUserId(userId: number): Promise<boolean> {
-      // users.user_nameの匿名化はUserRepository.anonymizeUserNameが学生か
-      // どうかに関係なく担当する(#265 PR4のレビュー指摘: ここでも
-      // user_nameを書き換えると、students行を持たない教員・スタッフでは
-      // 呼ばれず実名が残ってしまう)。ここではstudents固有のカラム
+      // users.user_nameの匿名化はUserRepository.anonymizeUserがロールの
+      // 種類によらず担当する(AccountDeletionService.deleteRelatedDataの
+      // 先頭で呼び出し済み)。ここではstudents固有のカラム
       // (student_id_number)のみを扱う。
       //
       // class_room_id・attendance_numberは学生本人の個人情報ではないため

@@ -232,7 +232,7 @@ export function createUserRepository(db: D1Database): IUserRepository {
       return true;
     },
 
-    async anonymizeUserName(userId) {
+    async anonymizeUser(userId) {
       const result = await orm
         .update(users)
         .set({
