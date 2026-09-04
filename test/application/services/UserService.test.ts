@@ -1,27 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createUserService } from '../../../src/application/services/UserService';
-import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 import type { IUserStatusRepository } from '../../../src/domain/interfaces/repositories/IUserStatusRepository';
 
 const OPERATOR_USER_ID = 1;
 const TARGET_USER_ID = 10;
-
-function buildUserRepository(
-  overrides: Partial<IUserRepository> = {}
-): IUserRepository {
-  return {
-    exists: vi.fn(),
-    isStaff: vi.fn().mockResolvedValue(true),
-    getUserCategories: vi.fn(),
-    findUserIdByMicrosoftAccount: vi.fn(),
-    getDeletionStatus: vi.fn(),
-    markAsDeleted: vi.fn(),
-    createUserWithMicrosoftLink: vi.fn(),
-    updateUser: vi.fn(),
-    linkMicrosoftAccount: vi.fn(),
-    ...overrides,
-  };
-}
 
 function buildUserStatusRepository(
   overrides: Partial<IUserStatusRepository> = {}
@@ -35,31 +17,14 @@ function buildUserStatusRepository(
   };
 }
 
-function createService(
-  userRepository = buildUserRepository(),
-  userStatusRepository = buildUserStatusRepository()
-) {
+function createService(userStatusRepository = buildUserStatusRepository()) {
   return {
-    service: createUserService(userRepository, userStatusRepository),
-    userRepository,
+    service: createUserService(userStatusRepository),
     userStatusRepository,
   };
 }
 
 describe('UserService', () => {
-  describe('canManageUserStatus', () => {
-    it('staffかどうかで判定する', async () => {
-      const { service, userRepository } = createService(
-        buildUserRepository({ isStaff: vi.fn().mockResolvedValue(false) })
-      );
-
-      await expect(service.canManageUserStatus(OPERATOR_USER_ID)).resolves.toBe(
-        false
-      );
-      expect(userRepository.isStaff).toHaveBeenCalledWith(OPERATOR_USER_ID);
-    });
-  });
-
   describe('updateUserStatus', () => {
     it('他のUserを無効化できる', async () => {
       const { service, userStatusRepository } = createService();
@@ -92,7 +57,6 @@ describe('UserService', () => {
 
     it('他に有効なstaffがいない場合は断り、DBを更新しない', async () => {
       const { service, userStatusRepository } = createService(
-        buildUserRepository(),
         buildUserStatusRepository({
           hasOtherActiveStaff: vi.fn().mockResolvedValue(false),
         })
@@ -110,7 +74,6 @@ describe('UserService', () => {
 
     it('有効化のときは締め出しが起きないため、上記の判定を行わない', async () => {
       const { service, userStatusRepository } = createService(
-        buildUserRepository(),
         buildUserStatusRepository({
           updateLiveActive: vi.fn().mockResolvedValue({
             user_id: OPERATOR_USER_ID,
@@ -133,7 +96,6 @@ describe('UserService', () => {
 
     it('対象Userが存在しない場合はエラーを投げる', async () => {
       const { service } = createService(
-        buildUserRepository(),
         buildUserStatusRepository({
           updateLiveActive: vi.fn().mockResolvedValue(null),
         })

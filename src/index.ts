@@ -215,7 +215,7 @@ const staffOnly = <R extends RouteConfig>(route: R) => ({
 });
 
 // Admin user routes
-apiV1.openapi(authed(adminUserStatusUpdateRoute), c => {
+apiV1.openapi(staffOnly(adminUserStatusUpdateRoute), c => {
   return c.get('container').userController.updateUserStatus(c);
 });
 

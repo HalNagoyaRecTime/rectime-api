@@ -206,11 +206,6 @@ export const UserErrors = {
     code: 'INVALID_USER_ID',
     message: 'ユーザーIDが正しくありません',
   },
-  USER_STATUS_UPDATE_FORBIDDEN: {
-    status: 403,
-    code: 'USER_STATUS_UPDATE_FORBIDDEN',
-    message: 'ユーザーの状態を変更する権限がありません',
-  },
   INVALID_USER_STATUS_REQUEST: {
     status: 400,
     code: 'INVALID_USER_STATUS_REQUEST',

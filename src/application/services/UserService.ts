@@ -1,5 +1,4 @@
 import type { UserStatusEntity } from '../../domain/entities/User';
-import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IUserStatusRepository } from '../../domain/interfaces/repositories/IUserStatusRepository';
 import type { UserStatusDTO } from '../dto/UserDTO';
 import type { IUserService } from './IUserService';
@@ -14,16 +13,9 @@ function toDTO(user: UserStatusEntity): UserStatusDTO {
 }
 
 export function createUserService(
-  userRepository: IUserRepository,
   userStatusRepository: IUserStatusRepository
 ): IUserService {
   return {
-    // User状態変更に必要な権限の判定はここに集約する。
-    // 判定基準（staffのみか、staff+teacherか）を見直す場合はこの1箇所を変える。
-    canManageUserStatus(userId) {
-      return userRepository.isStaff(userId);
-    },
-
     async updateUserStatus(command) {
       // 再有効化できるのは管理権限を持つUserだけなので、管理権限を持つUserが
       // 全員無効になると、このAPIからは誰も復旧できなくなる。

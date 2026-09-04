@@ -9,6 +9,5 @@ export interface UpdateUserStatusCommand {
 }
 
 export interface IUserService {
-  canManageUserStatus(userId: number): Promise<boolean>;
   updateUserStatus(command: UpdateUserStatusCommand): Promise<UserStatusDTO>;
 }

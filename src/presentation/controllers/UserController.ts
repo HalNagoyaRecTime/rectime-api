@@ -31,22 +31,18 @@ type UserContext = Context<{
 // OpenAPIルートのハンドラは、応答をステータスごとの型として推論できる必要がある。
 // そのため以下のヘルパーには戻り値の型を注釈しない（Response と書くと型が合わなくなる）。
 export function createUserController(service: IUserService) {
-  // 認可を通れば操作した本人のuserIdを返す。自分自身の無効化の判定に使う。
-  const authorizeManager = async (c: UserContext) => {
+  // staff権限の判定はルート側のrequireStaffが済ませている。ここでは
+  // 自分自身の無効化を断るために、操作した本人のuserIdを取り出すだけ。
+  const operatorUserId = (c: UserContext) => {
     const userId = c.get('authenticatedUserId');
-    if (userId === null) {
-      return errorResponse(c, CommonErrors.UNAUTHORIZED);
-    }
-    if (!(await service.canManageUserStatus(userId))) {
-      return errorResponse(c, UserErrors.USER_STATUS_UPDATE_FORBIDDEN);
-    }
-    return userId;
+    return userId === null
+      ? errorResponse(c, CommonErrors.UNAUTHORIZED)
+      : userId;
   };
 
   const updateUserStatus = async (c: UserContext) => {
-    // 対象Userの存在有無を権限のない相手に漏らさないよう、認可を先に判定する。
-    const operatorUserId = await authorizeManager(c);
-    if (operatorUserId instanceof Response) return operatorUserId;
+    const operator = operatorUserId(c);
+    if (operator instanceof Response) return operator;
 
     const targetUserId = parseUserId(c);
     if (targetUserId instanceof Response) return targetUserId;
@@ -63,7 +59,7 @@ export function createUserController(service: IUserService) {
 
     try {
       const updated = await service.updateUserStatus({
-        operator_user_id: operatorUserId,
+        operator_user_id: operator,
         user_id: targetUserId,
         is_live_active: parsedBody.data.is_live_active,
       });

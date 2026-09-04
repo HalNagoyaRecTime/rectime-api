@@ -11,7 +11,6 @@ const userStatus = { user_id: 10, is_live_active: false };
 
 function setup(overrides: Partial<IUserService> = {}) {
   const service: IUserService = {
-    canManageUserStatus: vi.fn().mockResolvedValue(true),
     updateUserStatus: vi.fn().mockResolvedValue(userStatus),
     ...overrides,
   };
@@ -101,19 +100,6 @@ describe('UserController', () => {
       );
 
       expect(response.status).toBe(401);
-      expect(service.updateUserStatus).not.toHaveBeenCalled();
-    });
-
-    it('権限がない場合は403を返す', async () => {
-      const { service, request } = setup({
-        canManageUserStatus: vi.fn().mockResolvedValue(false),
-      });
-
-      const response = await request('/admin/users/10', {
-        is_live_active: false,
-      });
-
-      expect(response.status).toBe(403);
       expect(service.updateUserStatus).not.toHaveBeenCalled();
     });
 
