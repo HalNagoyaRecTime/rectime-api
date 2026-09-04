@@ -424,9 +424,22 @@ microsoft.post('/token', async c => {
   }
 
   if (clientType === 'web') {
-    const isStaff = await c
-      .get('container')
-      .authorizationService.isStaff(Number(user.id));
+    let isStaff: boolean;
+    try {
+      isStaff = await c
+        .get('container')
+        .authorizationService.isStaff(Number(user.id));
+    } catch {
+      return c.json(
+        {
+          error: {
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'staff権限の確認に失敗しました',
+          },
+        },
+        500
+      );
+    }
     if (!isStaff) {
       return c.json(
         { error: { code: 'STAFF_REQUIRED', message: 'staff権限が必要です' } },
