@@ -17,6 +17,7 @@ import {
   requireAuth,
   type AuthVariables,
 } from './presentation/middleware/requireAuth';
+import { requireStaff } from './presentation/middleware/requireStaff';
 import {
   bearerAuthenticationMiddleware,
   type AuthenticationVariables,
@@ -204,47 +205,56 @@ const authed = <R extends RouteConfig>(route: R) => ({
   middleware: requireAuth,
 });
 
+/**
+ * requireAuthに加えてrequireStaffも要求する、管理系ルート向けのラッパー。
+ * staff権限の判定は requireStaff がリクエストごとにDBから行う。
+ */
+const staffOnly = <R extends RouteConfig>(route: R) => ({
+  ...route,
+  middleware: [requireAuth, requireStaff],
+});
+
 // Admin user routes
 apiV1.openapi(authed(adminUserStatusUpdateRoute), c => {
   return c.get('container').userController.updateUserStatus(c);
 });
 
 // Student routes
-apiV1.openapi(authed(studentListRoute), c => {
+apiV1.openapi(staffOnly(studentListRoute), c => {
   return c.get('container').studentController.getAllStudent(c);
 });
-apiV1.openapi(authed(studentDetailRoute), c => {
+apiV1.openapi(staffOnly(studentDetailRoute), c => {
   return c.get('container').studentController.getStudentById(c);
 });
-apiV1.openapi(authed(studentCreateRoute), c => {
+apiV1.openapi(staffOnly(studentCreateRoute), c => {
   return c.get('container').studentController.createStudent(c);
 });
-apiV1.openapi(authed(studentUpdateRoute), c => {
+apiV1.openapi(staffOnly(studentUpdateRoute), c => {
   return c.get('container').studentController.updateStudent(c);
 });
 
 // Staff routes
-apiV1.openapi(authed(staffListRoute), c => {
+apiV1.openapi(staffOnly(staffListRoute), c => {
   return c.get('container').staffController.getAllStaffs(c);
 });
-apiV1.openapi(authed(staffDetailRoute), c => {
+apiV1.openapi(staffOnly(staffDetailRoute), c => {
   return c.get('container').staffController.getStaffById(c);
 });
 
 // Teacher routes
-apiV1.post('/teachers', requireAuth, c => {
+apiV1.post('/teachers', requireAuth, requireStaff, c => {
   return c.get('container').teacherController.createTeacher(c);
 });
-apiV1.openapi(authed(teacherListRoute), c => {
+apiV1.openapi(staffOnly(teacherListRoute), c => {
   return c.get('container').teacherController.getAllTeachers(c);
 });
-apiV1.openapi(authed(teacherDetailRoute), c => {
+apiV1.openapi(staffOnly(teacherDetailRoute), c => {
   return c.get('container').teacherController.getTeacherById(c);
 });
-apiV1.openapi(authed(teacherUpdateRoute), c => {
+apiV1.openapi(staffOnly(teacherUpdateRoute), c => {
   return c.get('container').teacherController.updateTeacher(c);
 });
-apiV1.openapi(authed(teacherDeleteRoute), c => {
+apiV1.openapi(staffOnly(teacherDeleteRoute), c => {
   return c.get('container').teacherController.deleteTeacher(c);
 });
 
@@ -261,97 +271,106 @@ apiV1.get('/me/events', requireAuth, c => {
 apiV1.openapi(authed(eventGatheringListRoute), c => {
   return c.get('container').gatheringController.getGatheringsByEventId(c);
 });
-apiV1.openapi(authed(eventCreateRoute), c => {
+apiV1.openapi(staffOnly(eventCreateRoute), c => {
   return c.get('container').eventController.createEvent(c);
 });
-apiV1.openapi(authed(eventUpdateRoute), c => {
+apiV1.openapi(staffOnly(eventUpdateRoute), c => {
   return c.get('container').eventController.updateEvent(c);
 });
-apiV1.openapi(authed(eventPatchRoute), c => {
+apiV1.openapi(staffOnly(eventPatchRoute), c => {
   return c.get('container').eventController.patchEvent(c);
 });
-apiV1.openapi(authed(eventDeleteRoute), c => {
+apiV1.openapi(staffOnly(eventDeleteRoute), c => {
   return c.get('container').eventController.deleteEvent(c);
 });
-apiV1.openapi(authed(eventScheduleUpdateRoute), c => {
+apiV1.openapi(staffOnly(eventScheduleUpdateRoute), c => {
   return c.get('container').eventScheduleController.updateEventSchedule(c);
 });
-apiV1.openapi(authed(eventNotificationSummaryRoute), c => {
+apiV1.openapi(staffOnly(eventNotificationSummaryRoute), c => {
   return c
     .get('container')
     .eventScheduleController.getEventNotificationSummary(c);
 });
 
 // Classroom routes
-apiV1.openapi(authed(classRoomListRoute), c => {
+apiV1.openapi(staffOnly(classRoomListRoute), c => {
   return c.get('container').classRoomController.getAllClassrooms(c);
 });
-apiV1.openapi(authed(classRoomDetailRoute), c => {
+apiV1.openapi(staffOnly(classRoomDetailRoute), c => {
   return c.get('container').classRoomController.getClassroomById(c);
 });
-apiV1.openapi(authed(classRoomCreateRoute), c => {
+apiV1.openapi(staffOnly(classRoomCreateRoute), c => {
   return c.get('container').classRoomController.createClassroom(c);
 });
-apiV1.openapi(authed(classRoomUpdateRoute), c => {
+apiV1.openapi(staffOnly(classRoomUpdateRoute), c => {
   return c.get('container').classRoomController.updateClassroom(c);
 });
-apiV1.openapi(authed(classRoomDeleteRoute), c => {
+apiV1.openapi(staffOnly(classRoomDeleteRoute), c => {
   return c.get('container').classRoomController.deleteClassroom(c);
 });
 
 // Master import routes
-apiV1.openapi(authed(masterImportCreateRoute), c => {
+apiV1.openapi(staffOnly(masterImportCreateRoute), c => {
   return c.get('container').masterImportController.createImport(c);
 });
-apiV1.openapi(authed(masterImportDetailRoute), c => {
+apiV1.openapi(staffOnly(masterImportDetailRoute), c => {
   return c.get('container').masterImportController.getImport(c);
 });
-apiV1.openapi(authed(masterImportCommitRoute), c => {
+apiV1.openapi(staffOnly(masterImportCommitRoute), c => {
   return c.get('container').masterImportController.commitImport(c);
 });
 
 // Gathering spot routes
-apiV1.openapi(authed(gatheringSpotListRoute), c => {
+apiV1.openapi(staffOnly(gatheringSpotListRoute), c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
 });
-apiV1.get('/gathering-spots/:gatheringSpotId', requireAuth, c => {
+apiV1.get('/gathering-spots/:gatheringSpotId', requireAuth, requireStaff, c => {
   return c.get('container').gatheringSpotController.getGatheringSpotById(c);
 });
-apiV1.openapi(authed(gatheringSpotCreateRoute), c => {
+apiV1.openapi(staffOnly(gatheringSpotCreateRoute), c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
-apiV1.openapi(authed(gatheringSpotUpdateRoute), c => {
+apiV1.openapi(staffOnly(gatheringSpotUpdateRoute), c => {
   return c.get('container').gatheringSpotController.updateGatheringSpot(c);
 });
-apiV1.delete('/gathering-spots/:gatheringSpotId', requireAuth, c => {
-  return c.get('container').gatheringSpotController.deleteGatheringSpot(c);
-});
+apiV1.delete(
+  '/gathering-spots/:gatheringSpotId',
+  requireAuth,
+  requireStaff,
+  c => {
+    return c.get('container').gatheringSpotController.deleteGatheringSpot(c);
+  }
+);
 
 // Gathering member routes
+//
+// GETだけはstaff限定にしない: 学生アプリが本人の参加する集合を判定して
+// 「出場」表示を出すのにこの一覧取得を使っている(レビュー指摘)。
+// 追加・削除(POST/DELETE)は引き続きstaff限定とする。
 apiV1.openapi(authed(gatheringMemberListRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.getGatheringMembers(c);
 });
-apiV1.openapi(authed(gatheringMemberCreateRoute), c => {
+apiV1.openapi(staffOnly(gatheringMemberCreateRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.addGatheringMember(c);
 });
-apiV1.openapi(authed(gatheringMemberDeleteRoute), c => {
+apiV1.openapi(staffOnly(gatheringMemberDeleteRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.removeGatheringMember(c);
 });
 
 // Gathering routes
-apiV1.openapi(authed(gatheringListRoute), c => {
+apiV1.openapi(staffOnly(gatheringListRoute), c => {
   return c.get('container').gatheringController.getAllGatherings(c);
 });
-apiV1.openapi(authed(gatheringCreateRoute), c => {
+apiV1.openapi(staffOnly(gatheringCreateRoute), c => {
   return c.get('container').gatheringController.createGathering(c);
 });
-apiV1.openapi(authed(gatheringDeleteRoute), c => {
+apiV1.openapi(staffOnly(gatheringDeleteRoute), c => {
   return c.get('container').gatheringController.deleteGathering(c);
 });
 
@@ -361,51 +380,51 @@ apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
 });
 
 // Notification schedule routes
-apiV1.openapi(authed(scheduleUpdateRoute), c => {
+apiV1.openapi(staffOnly(scheduleUpdateRoute), c => {
   return c.get('container').scheduleController.updateSchedule(c);
 });
 
-apiV1.openapi(authed(adminUserSearchRoute), c => {
+apiV1.openapi(staffOnly(adminUserSearchRoute), c => {
   return c.get('container').userSearchController.searchUsers(c);
 });
 
 // Notification routes
-apiV1.openapi(authed(adminNotificationCreateRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
   return c
     .get('container')
     .adminNotificationController.createManualNotification(c);
 });
-apiV1.openapi(authed(adminNotificationListRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationListRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.getAdminNotifications(c);
 });
-apiV1.openapi(authed(adminNotificationDetailRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationDetailRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.getAdminNotificationById(c);
 });
-apiV1.openapi(authed(adminNotificationUpdateRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationUpdateRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.updateAdminNotification(c);
 });
-apiV1.openapi(authed(adminNotificationDeleteRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.deleteAdminNotification(c);
 });
 
-apiV1.openapi(authed(notificationCreateRoute), c => {
+apiV1.openapi(staffOnly(notificationCreateRoute), c => {
   return c.get('container').notificationController.createNotification(c);
 });
-apiV1.openapi(authed(notificationListRoute), c => {
+apiV1.openapi(staffOnly(notificationListRoute), c => {
   return c.get('container').notificationController.getNotifications(c);
 });
-apiV1.openapi(authed(notificationDetailRoute), c => {
+apiV1.openapi(staffOnly(notificationDetailRoute), c => {
   return c.get('container').notificationController.getNotificationById(c);
 });
-apiV1.openapi(authed(notificationUpdateRoute), c => {
+apiV1.openapi(staffOnly(notificationUpdateRoute), c => {
   return c.get('container').notificationController.updateNotification(c);
 });
 
@@ -416,28 +435,28 @@ apiV1.openapi(authed(myNotificationDetailRoute), c => {
   return c.get('container').mobileNotificationController.getNotificationById(c);
 });
 
-apiV1.openapi(authed(notificationScheduleListRoute), c => {
+apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
   return c
     .get('container')
     .notificationScheduleController.getAllNotificationSchedules(c);
 });
-apiV1.openapi(authed(notificationScheduleCreateRoute), c => {
+apiV1.openapi(staffOnly(notificationScheduleCreateRoute), c => {
   return c
     .get('container')
     .notificationScheduleController.createNotificationSchedule(c);
 });
-apiV1.openapi(authed(notificationScheduleDetailRoute), c => {
+apiV1.openapi(staffOnly(notificationScheduleDetailRoute), c => {
   return c
     .get('container')
     .notificationScheduleController.getNotificationScheduleById(c);
 });
-apiV1.openapi(authed(notificationScheduleDeleteRoute), c => {
+apiV1.openapi(staffOnly(notificationScheduleDeleteRoute), c => {
   return c
     .get('container')
     .notificationScheduleController.deleteNotificationSchedule(c);
 });
 
-apiV1.openapi(authed(testNotificationRoute), c => {
+apiV1.openapi(staffOnly(testNotificationRoute), c => {
   return c.get('container').notificationController.sendTestNotification(c);
 });
 

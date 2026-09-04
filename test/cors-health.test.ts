@@ -186,8 +186,10 @@ describe('OpenAPIスキーマと実レスポンスの一致', () => {
     // 各ルートが400として文書化しているスキーマに一致すること。
     expect(errorResponseSchema.safeParse(body).success).toBe(true);
     expect(body).toMatchObject({
-      error: 'Invalid request',
-      code: 'VALIDATION_ERROR',
+      error: {
+        message: 'リクエスト内容が正しくありません',
+        code: 'VALIDATION_ERROR',
+      },
     });
   });
 

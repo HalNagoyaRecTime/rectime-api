@@ -58,6 +58,7 @@ import { createUserService } from '../application/services/UserService';
 import { createUserController } from '../presentation/controllers/UserController';
 import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
+import { createAuthorizationService } from '../application/services/AuthorizationService';
 import { createUserSearchService } from '../application/services/UserSearchService';
 import { createUserSearchController } from '../presentation/controllers/UserSearchController';
 import type { Env } from '../lib/env';
@@ -107,10 +108,8 @@ export function createDIContainer(env: Env) {
     userRepository,
     createUserStatusRepository(db)
   );
-  const userSearchService = createUserSearchService(
-    userSearchRepository,
-    userRepository
-  );
+  const authorizationService = createAuthorizationService(userRepository);
+  const userSearchService = createUserSearchService(userSearchRepository);
   const studentService = createStudentService(
     studentRepository,
     classRoomRepository
@@ -122,7 +121,6 @@ export function createDIContainer(env: Env) {
     eventRepository,
     eventScheduleRepository,
     notificationScheduleRepository,
-    userRepository,
   });
   const classRoomService = createClassRoomService(classRoomRepository);
   const masterImportService = createMasterImportService(
@@ -130,8 +128,7 @@ export function createDIContainer(env: Env) {
     env.MASTER_IMPORT_COMMIT_LOCK,
     studentService,
     classRoomService,
-    teacherService,
-    userRepository
+    teacherService
   );
   const firebaseTokenService = createFirebaseTokenService(
     firebaseTokenRepository
@@ -149,19 +146,16 @@ export function createDIContainer(env: Env) {
     fcmService,
   });
   const notificationScheduleService = createNotificationScheduleService(
-    notificationScheduleRepository,
-    userRepository
+    notificationScheduleRepository
   );
   const notificationService = createNotificationService(notificationRepository);
   const adminNotificationService = createAdminNotificationService(
-    adminNotificationRepository,
-    userRepository
+    adminNotificationRepository
   );
   const adminNotificationManagementService =
     createAdminNotificationManagementService(
       adminNotificationManagementRepository,
-      adminNotificationRepository,
-      userRepository
+      adminNotificationRepository
     );
   const mobileNotificationService = createMobileNotificationService(
     mobileNotificationRepository
@@ -220,6 +214,7 @@ export function createDIContainer(env: Env) {
   return {
     authService,
     userController,
+    authorizationService,
     studentService,
     studentController,
     staffController,

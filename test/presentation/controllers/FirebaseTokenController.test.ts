@@ -170,7 +170,9 @@ describe('FirebaseTokenController', () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
-      error: 'Invalid Firebase token request body',
+      error: expect.objectContaining({
+        code: 'INVALID_FIREBASE_TOKEN_REQUEST',
+      }),
     });
     expect(firebaseTokenService.registerFirebaseToken).not.toHaveBeenCalled();
   });
@@ -210,7 +212,9 @@ describe('FirebaseTokenController', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: 'Firebase token is being registered by another request',
+      error: expect.objectContaining({
+        code: 'FIREBASE_TOKEN_REGISTRATION_CONFLICT',
+      }),
     });
   });
 
@@ -235,7 +239,9 @@ describe('FirebaseTokenController', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: 'Firebase token is being registered by another request',
+      error: expect.objectContaining({
+        code: 'FIREBASE_TOKEN_REGISTRATION_CONFLICT',
+      }),
     });
   });
 
@@ -256,7 +262,9 @@ describe('FirebaseTokenController', () => {
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({
-      error: 'Failed to register Firebase token',
+      error: expect.objectContaining({
+        code: 'FIREBASE_TOKEN_REGISTRATION_FAILED',
+      }),
     });
   });
 

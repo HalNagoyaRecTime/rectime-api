@@ -11,7 +11,6 @@ function buildUserRepository(
 ): IUserRepository {
   return {
     exists: vi.fn(),
-    isStaffOrTeacher: vi.fn(),
     isStaff: vi.fn().mockResolvedValue(true),
     getUserCategories: vi.fn(),
     findUserIdByMicrosoftAccount: vi.fn(),

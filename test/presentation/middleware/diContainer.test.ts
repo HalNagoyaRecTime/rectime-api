@@ -41,6 +41,7 @@ describe('diContainerMiddleware', () => {
         hasStudentController: Boolean(container.studentController),
         hasEventController: Boolean(container.eventController),
         hasAuthService: Boolean(container.authService),
+        hasAuthorizationService: Boolean(container.authorizationService),
       });
     });
 
@@ -50,6 +51,7 @@ describe('diContainerMiddleware', () => {
       hasStudentController: true,
       hasEventController: true,
       hasAuthService: true,
+      hasAuthorizationService: true,
     });
   });
 });

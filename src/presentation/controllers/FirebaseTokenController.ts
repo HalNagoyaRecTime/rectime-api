@@ -5,6 +5,10 @@ import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import type { AuthVariables } from '../middleware/requireAuth';
+import { CommonErrors } from '../errors/commonErrors';
+import { errorResponse } from '../errors/errorResponse';
+import { NotificationErrors } from '../errors/notificationErrors';
+import { UserErrors } from '../errors/userErrors';
 
 const registerFirebaseTokenSchema = z
   .object({
@@ -42,26 +46,24 @@ export function createFirebaseTokenController(
   const registerFirebaseToken = async (c: FirebaseTokenContext) => {
     try {
       const userId = c.get('authenticatedUserId');
-      if (!userId) {
-        return c.json({ error: 'Authentication required' }, 401);
-      }
+      if (!userId) return errorResponse(c, CommonErrors.UNAUTHORIZED);
 
       let body: unknown;
       try {
         body = await c.req.json();
       } catch {
-        return c.json({ error: 'Invalid Firebase token request body' }, 400);
+        return errorResponse(
+          c,
+          NotificationErrors.INVALID_FIREBASE_TOKEN_REQUEST
+        );
       }
 
       const parsedBody = registerFirebaseTokenSchema.safeParse(body);
-
       if (!parsedBody.success) {
-        return c.json(
-          {
-            error: 'Invalid Firebase token request body',
-            details: parsedBody.error.flatten(),
-          },
-          400
+        return errorResponse(
+          c,
+          NotificationErrors.INVALID_FIREBASE_TOKEN_REQUEST,
+          parsedBody.error.flatten()
         );
       }
 
@@ -74,24 +76,20 @@ export function createFirebaseTokenController(
       return c.json(result, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'User not found') {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, UserErrors.USER_NOT_FOUND);
       }
       if (isFirebaseTokenUniqueConstraintError(error)) {
-        return c.json(
-          { error: 'Firebase token is being registered by another request' },
-          409
+        return errorResponse(
+          c,
+          NotificationErrors.FIREBASE_TOKEN_REGISTRATION_CONFLICT
         );
       }
-      return c.json(
-        {
-          error: 'Failed to register Firebase token',
-        },
-        500
+      return errorResponse(
+        c,
+        NotificationErrors.FIREBASE_TOKEN_REGISTRATION_FAILED
       );
     }
   };
 
-  return {
-    registerFirebaseToken,
-  };
+  return { registerFirebaseToken };
 }

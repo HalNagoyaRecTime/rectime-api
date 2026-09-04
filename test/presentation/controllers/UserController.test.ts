@@ -153,7 +153,12 @@ describe('UserController', () => {
       });
 
       expect(response.status).toBe(404);
-      expect(await response.json()).toEqual({ error: 'User not found' });
+      expect(await response.json()).toEqual({
+        error: {
+          code: 'USER_NOT_FOUND',
+          message: 'ユーザーが見つかりません',
+        },
+      });
     });
 
     it('予期しないエラーの場合は500を返し、内部エラーの詳細を応答に含めない', async () => {
@@ -169,18 +174,35 @@ describe('UserController', () => {
 
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({
-        error: 'Failed to update user status',
+        error: {
+          code: 'USER_STATUS_UPDATE_FAILED',
+          message: 'ユーザー状態の更新に失敗しました',
+        },
       });
     });
 
     it.each([
-      ['自分自身', 'Cannot deactivate yourself'],
-      ['最後の管理権限保持者', 'Cannot deactivate the last active staff'],
+      [
+        '自分自身',
+        'Cannot deactivate yourself',
+        {
+          code: 'CANNOT_DEACTIVATE_SELF',
+          message: '自分自身を無効化することはできません',
+        },
+      ],
+      [
+        '最後の管理権限保持者',
+        'Cannot deactivate the last active staff',
+        {
+          code: 'CANNOT_DEACTIVATE_LAST_STAFF',
+          message: '有効な管理権限保持者が0人になるため無効化できません',
+        },
+      ],
     ])(
       '%sの無効化をサービスが断った場合は400を返す',
-      async (_label, message) => {
+      async (_label, thrownMessage, expectedError) => {
         const { request } = setup({
-          updateUserStatus: vi.fn().mockRejectedValue(new Error(message)),
+          updateUserStatus: vi.fn().mockRejectedValue(new Error(thrownMessage)),
         });
 
         const response = await request('/admin/users/10', {
@@ -188,7 +210,7 @@ describe('UserController', () => {
         });
 
         expect(response.status).toBe(400);
-        expect(await response.json()).toEqual({ error: message });
+        expect(await response.json()).toEqual({ error: expectedError });
       }
     );
   });

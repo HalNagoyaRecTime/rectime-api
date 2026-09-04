@@ -103,7 +103,7 @@ describe('iOS Bearer authentication API flow', () => {
 
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({
-      error: { code: 'INVALID_TOKEN', message: 'トークンが不正です。' },
+      error: { code: 'INVALID_TOKEN', message: '認証トークンが不正です' },
     });
   });
 
@@ -121,7 +121,8 @@ describe('iOS Bearer authentication API flow', () => {
     expect(await response.json()).toEqual({
       error: {
         code: 'SESSION_EXPIRED',
-        message: 'セッションの有効期限が切れました。',
+        message:
+          'セッションの有効期限が切れました。もう一度ログインしてください',
       },
     });
   });
@@ -139,7 +140,7 @@ describe('iOS Bearer authentication API flow', () => {
 
     expect(response.status).toBe(401);
     expect(body).toEqual({
-      error: { code: 'INVALID_TOKEN', message: 'トークンが不正です。' },
+      error: { code: 'INVALID_TOKEN', message: '認証トークンが不正です' },
     });
     expect(JSON.stringify(body)).not.toContain(invalidToken);
   });

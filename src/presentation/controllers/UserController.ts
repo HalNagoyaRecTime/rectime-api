@@ -5,6 +5,9 @@ import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import type { AuthVariables } from '../middleware/requireAuth';
+import { CommonErrors } from '../errors/commonErrors';
+import { errorResponse } from '../errors/errorResponse';
+import { UserErrors } from '../errors/userErrors';
 
 const userIdSchema = z.coerce.number().int().positive();
 const updateUserStatusSchema = z
@@ -14,10 +17,11 @@ const updateUserStatusSchema = z
   .strict();
 
 // 無効化を断る理由。いずれも再有効化する手段が失われるため400で返す。
-const DEACTIVATION_REJECTED_MESSAGES = [
-  'Cannot deactivate yourself',
-  'Cannot deactivate the last active staff',
-];
+const DEACTIVATION_REJECTED_ERRORS = {
+  'Cannot deactivate yourself': UserErrors.CANNOT_DEACTIVATE_SELF,
+  'Cannot deactivate the last active staff':
+    UserErrors.CANNOT_DEACTIVATE_LAST_STAFF,
+} as const;
 
 type UserContext = Context<{
   Bindings: Env;
@@ -31,10 +35,10 @@ export function createUserController(service: IUserService) {
   const authorizeManager = async (c: UserContext) => {
     const userId = c.get('authenticatedUserId');
     if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
+      return errorResponse(c, CommonErrors.UNAUTHORIZED);
     }
     if (!(await service.canManageUserStatus(userId))) {
-      return c.json({ error: 'User status management forbidden' }, 403);
+      return errorResponse(c, UserErrors.USER_STATUS_UPDATE_FORBIDDEN);
     }
     return userId;
   };
@@ -50,12 +54,10 @@ export function createUserController(service: IUserService) {
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = updateUserStatusSchema.safeParse(body);
     if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid user status request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        UserErrors.INVALID_USER_STATUS_REQUEST,
+        parsedBody.error.flatten()
       );
     }
 
@@ -68,18 +70,21 @@ export function createUserController(service: IUserService) {
       return c.json(updated, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'User not found') {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, UserErrors.USER_NOT_FOUND);
       }
-      if (
-        error instanceof Error &&
-        DEACTIVATION_REJECTED_MESSAGES.includes(error.message)
-      ) {
-        return c.json({ error: error.message }, 400);
+      const rejected =
+        error instanceof Error
+          ? DEACTIVATION_REJECTED_ERRORS[
+              error.message as keyof typeof DEACTIVATION_REJECTED_ERRORS
+            ]
+          : undefined;
+      if (rejected) {
+        return errorResponse(c, rejected);
       }
       // 想定外の失敗はDB由来の例外が多く、文面にテーブル名や制約名が含まれる。
       // 調査に必要な情報はログへ出し、応答には失敗した事実だけを返す。
       console.error('Failed to update user status', error);
-      return c.json({ error: 'Failed to update user status' }, 500);
+      return errorResponse(c, UserErrors.USER_STATUS_UPDATE_FAILED);
     }
   };
 
@@ -92,5 +97,5 @@ function parseUserId(c: UserContext) {
   const parsedId = userIdSchema.safeParse(c.req.param('userId'));
   return parsedId.success
     ? parsedId.data
-    : c.json({ error: 'Invalid user ID' }, 400);
+    : errorResponse(c, UserErrors.INVALID_USER_ID);
 }

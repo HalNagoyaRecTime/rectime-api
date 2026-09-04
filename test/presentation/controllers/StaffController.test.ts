@@ -47,7 +47,12 @@ describe('StaffController', () => {
       const res = await app.request('/staffs/abc');
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: 'Invalid staff ID' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'INVALID_STAFF_ID',
+          message: 'スタッフIDが正しくありません',
+        },
+      });
     });
 
     it('サービスが Staff not found を投げた場合は 404 を返す', async () => {
@@ -59,7 +64,9 @@ describe('StaffController', () => {
       const res = await app.request('/staffs/999');
 
       expect(res.status).toBe(404);
-      expect(await res.json()).toEqual({ error: 'Staff not found' });
+      expect(await res.json()).toEqual({
+        error: { code: 'STAFF_NOT_FOUND', message: 'スタッフが見つかりません' },
+      });
     });
 
     it('その他の例外の場合は 500 を返す', async () => {
@@ -71,7 +78,12 @@ describe('StaffController', () => {
       const res = await app.request('/staffs/1');
 
       expect(res.status).toBe(500);
-      expect(await res.json()).toEqual({ error: 'Failed to fetch staff' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'STAFF_FETCH_FAILED',
+          message: 'スタッフの取得に失敗しました',
+        },
+      });
     });
   });
 
@@ -98,7 +110,12 @@ describe('StaffController', () => {
       const res = await app.request('/staffs');
 
       expect(res.status).toBe(500);
-      expect(await res.json()).toEqual({ error: 'Failed to fetch staffs' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'STAFF_LIST_FAILED',
+          message: 'スタッフ一覧の取得に失敗しました',
+        },
+      });
     });
   });
 });
