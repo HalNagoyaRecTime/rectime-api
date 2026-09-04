@@ -1,13 +1,38 @@
 import { env as workerEnv } from 'cloudflare:workers';
+import type { KVNamespace } from '@cloudflare/workers-types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAuthService } from '../../../src/application/services/authService';
 import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 import { createStudentRepository } from '../../../src/infrastructure/repositories/StudentRepository';
+import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
 import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
+import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
 import type { AppUser } from '../../../src/domain/auth/types';
 import type { MicrosoftClaims } from '../../../src/application/services/IAuthService';
 import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
+
+function buildFirebaseTokenRepository(): IFirebaseTokenRepository {
+  return {
+    register: vi.fn(),
+    findActiveTokens: vi.fn(),
+    deactivate: vi.fn(),
+    deactivateByUserId: vi.fn(),
+  };
+}
+
+function buildAuthKv(): KVNamespace {
+  const store = new Map<string, string>();
+  return {
+    put: vi.fn(async (key: string, value: string) => {
+      store.set(key, value);
+    }),
+    get: vi.fn(async (key: string) => store.get(key) ?? null),
+    delete: vi.fn(async (key: string) => {
+      store.delete(key);
+    }),
+  } as unknown as KVNamespace;
+}
 
 function buildClaims(
   overrides: Partial<MicrosoftClaims> = {}
@@ -38,7 +63,6 @@ describe('createAuthService', () => {
   function setup() {
     const userRepository: IUserRepository = {
       exists: vi.fn(),
-      isStaffOrTeacher: vi.fn(),
       isStaff: vi.fn(),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
@@ -60,18 +84,27 @@ describe('createAuthService', () => {
       findByUserId: vi.fn(),
     };
     const studentEmailDomain = 'nhs.hal.ac.jp';
+    const authKv = buildAuthKv();
+    const firebaseTokenRepository = buildFirebaseTokenRepository();
     const service = createAuthService(
       userRepository,
       studentRepository,
-      studentEmailDomain
+      studentEmailDomain,
+      authKv,
+      firebaseTokenRepository
     );
-    return { userRepository, studentRepository, service };
+    return {
+      userRepository,
+      studentRepository,
+      authKv,
+      firebaseTokenRepository,
+      service,
+    };
   }
 
   it('studentEmailDomainが未設定の場合はエラーを投げる', () => {
     const userRepository: IUserRepository = {
       exists: vi.fn(),
-      isStaffOrTeacher: vi.fn(),
       isStaff: vi.fn(),
       getUserCategories: vi.fn(),
       findUserIdByMicrosoftAccount: vi.fn(),
@@ -94,7 +127,13 @@ describe('createAuthService', () => {
     };
 
     expect(() =>
-      createAuthService(userRepository, studentRepository, '')
+      createAuthService(
+        userRepository,
+        studentRepository,
+        '',
+        buildAuthKv(),
+        buildFirebaseTokenRepository()
+      )
     ).toThrow('STUDENT_EMAIL_DOMAIN is not configured');
   });
 
@@ -649,6 +688,7 @@ describe('createAuthService', () => {
 // 起きないことを確認する。
 describe('createAuthService (実DB・TOCTOU再現)', () => {
   beforeEach(async () => {
+    await workerEnv.DB.prepare('DELETE FROM firebase_tokens').run();
     await workerEnv.DB.prepare('DELETE FROM microsoft_account_links').run();
     await workerEnv.DB.prepare('DELETE FROM students').run();
     await workerEnv.DB.prepare('DELETE FROM users').run();
@@ -657,12 +697,22 @@ describe('createAuthService (実DB・TOCTOU再現)', () => {
   function buildRealService() {
     const userRepository = createUserRepository(workerEnv.DB);
     const studentRepository = createStudentRepository(workerEnv.DB);
+    const firebaseTokenRepository = createFirebaseTokenRepository(workerEnv.DB);
+    const authKv = buildAuthKv();
     const service = createAuthService(
       userRepository,
       studentRepository,
-      'nhs.hal.ac.jp'
+      'nhs.hal.ac.jp',
+      authKv,
+      firebaseTokenRepository
     );
-    return { userRepository, studentRepository, service };
+    return {
+      userRepository,
+      studentRepository,
+      firebaseTokenRepository,
+      authKv,
+      service,
+    };
   }
 
   it('既存ユーザーの確認直後に削除が完了しても、Tokenが発行されずACCOUNT_DELETION_PENDINGになる', async () => {
@@ -747,5 +797,111 @@ describe('createAuthService (実DB・TOCTOU再現)', () => {
       .bind(user!.user_id)
       .first();
     expect(linkRow).toBeNull();
+  });
+});
+
+// #265 PR3: 削除開始直後に利用を停止する。startAccountDeletionが
+// DB(deletion_status/links)・KV(Refresh Session)・Firebase Token登録の
+// 3種類を一括で失効させることを実DBで確認する。
+describe('createAuthService (実DB・startAccountDeletion)', () => {
+  beforeEach(async () => {
+    await workerEnv.DB.prepare('DELETE FROM firebase_tokens').run();
+    await workerEnv.DB.prepare('DELETE FROM microsoft_account_links').run();
+    await workerEnv.DB.prepare('DELETE FROM students').run();
+    await workerEnv.DB.prepare('DELETE FROM users').run();
+  });
+
+  function buildRealService() {
+    const userRepository = createUserRepository(workerEnv.DB);
+    const studentRepository = createStudentRepository(workerEnv.DB);
+    const firebaseTokenRepository = createFirebaseTokenRepository(workerEnv.DB);
+    const authKv = buildAuthKv();
+    const service = createAuthService(
+      userRepository,
+      studentRepository,
+      'nhs.hal.ac.jp',
+      authKv,
+      firebaseTokenRepository
+    );
+    return {
+      userRepository,
+      firebaseTokenRepository,
+      authKv,
+      service,
+    };
+  }
+
+  it('DB状態遷移・全Refresh Session失効・Firebase Token無効化を一括で行う', async () => {
+    const { userRepository, firebaseTokenRepository, authKv, service } =
+      buildRealService();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const userId = String(user!.user_id);
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-1', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+    await firebaseTokenRepository.register({
+      userId: user!.user_id,
+      platform: 'android',
+      fcmToken: 'fcm-token-1',
+    });
+    await authKv.put(
+      `mobile_refresh:refresh-1`,
+      JSON.stringify({
+        user_id: userId,
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      })
+    );
+    await authKv.put(`mobile_refresh_by_user:${userId}`, 'refresh-1');
+
+    await service.startAccountDeletion(userId);
+
+    // DB: deletion_status: deleted、microsoft_account_links削除
+    await expect(userRepository.getDeletionStatus(userId)).resolves.toBe(
+      'deleted'
+    );
+    const linkRow = await workerEnv.DB.prepare(
+      'SELECT * FROM microsoft_account_links WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(linkRow).toBeNull();
+
+    // KV: Refresh Sessionが失効(mobile_refresh/mobile_refresh_by_user共に削除)
+    expect(await authKv.get('mobile_refresh:refresh-1')).toBeNull();
+    expect(await authKv.get(`mobile_refresh_by_user:${userId}`)).toBeNull();
+
+    // Firebase Token登録がPush通知対象から除外される
+    const tokenRow = await workerEnv.DB.prepare(
+      'SELECT is_firebase_active FROM firebase_tokens WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first<{ is_firebase_active: number }>();
+    expect(tokenRow?.is_firebase_active).toBe(0);
+  });
+
+  it('Refresh Sessionが存在しないユーザーでも冪等に成功する', async () => {
+    const { userRepository, service } = buildRealService();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('田中花子') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const userId = String(user!.user_id);
+
+    await expect(service.startAccountDeletion(userId)).resolves.toBeUndefined();
+    await expect(userRepository.getDeletionStatus(userId)).resolves.toBe(
+      'deleted'
+    );
   });
 });

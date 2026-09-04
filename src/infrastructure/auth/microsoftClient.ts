@@ -11,7 +11,12 @@ export function buildMicrosoftAuthorizeUrl(
   redirectUri: string,
   state: string,
   codeChallenge: string,
-  nonce: string
+  nonce: string,
+  // 'select_account': 通常ログイン用。Microsoft側にセッションが残っていれば
+  // アカウント選択のみで認証が完了し得る。
+  // 'login': 削除確認フロー用。既存セッションがあっても資格情報の再入力を
+  // 強制し、「今操作している本人」であることを再確認させる。
+  prompt: 'select_account' | 'login' = 'select_account'
 ): string {
   const params = new URLSearchParams({
     client_id: clientId,
@@ -23,7 +28,7 @@ export function buildMicrosoftAuthorizeUrl(
     code_challenge_method: 'S256',
     nonce,
     response_mode: 'query',
-    prompt: 'select_account',
+    prompt,
   });
 
   return `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params.toString()}`;

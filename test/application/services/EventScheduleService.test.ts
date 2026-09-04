@@ -3,7 +3,6 @@ import { createEventScheduleService } from '../../../src/application/services/Ev
 import type { IEventRepository } from '../../../src/domain/interfaces/repositories/IEventRepository';
 import type { IEventScheduleRepository } from '../../../src/domain/interfaces/repositories/IEventScheduleRepository';
 import type { INotificationScheduleRepository } from '../../../src/domain/interfaces/repositories/INotificationScheduleRepository';
-import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 
 const event = {
   event_id: 1,
@@ -68,28 +67,14 @@ function setup() {
     markSent: vi.fn(),
     markFailed: vi.fn(),
   };
-  const userRepository: IUserRepository = {
-    exists: vi.fn(),
-    isStaffOrTeacher: vi.fn().mockResolvedValue(true),
-    isStaff: vi.fn().mockResolvedValue(true),
-    getUserCategories: vi.fn(),
-    findUserIdByMicrosoftAccount: vi.fn(),
-    getDeletionStatus: vi.fn(),
-    markAsDeleted: vi.fn(),
-    createUserWithMicrosoftLink: vi.fn(),
-    updateUser: vi.fn(),
-    linkMicrosoftAccount: vi.fn(),
-  };
   return {
     eventRepository,
     eventScheduleRepository,
     notificationScheduleRepository,
-    userRepository,
     service: createEventScheduleService({
       eventRepository,
       eventScheduleRepository,
       notificationScheduleRepository,
-      userRepository,
     }),
   };
 }
@@ -193,17 +178,6 @@ describe('EventScheduleService', () => {
     ).toHaveBeenCalledTimes(1);
   });
 
-  it('staffsまたはteachersではないユーザーの更新を拒否する', async () => {
-    const { service, userRepository, eventScheduleRepository } = setup();
-    (
-      userRepository.isStaffOrTeacher as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(false);
-    await expect(service.updateEventSchedule(input)).rejects.toThrow(
-      'Schedule update forbidden'
-    );
-    expect(eventScheduleRepository.apply).not.toHaveBeenCalled();
-  });
-
   it('競技情報と通知設定を同じRepository処理へ渡す', async () => {
     const { service, eventScheduleRepository } = setup();
     await service.updateEventSchedule({
@@ -305,7 +279,7 @@ describe('EventScheduleService', () => {
       failed: 1,
     });
 
-    await expect(service.getEventNotificationSummary(1, 7)).resolves.toEqual({
+    await expect(service.getEventNotificationSummary(1)).resolves.toEqual({
       event_id: 1,
       scheduled_at: '2026-11-07T01:15:00.000Z',
       total: 3,
@@ -314,19 +288,5 @@ describe('EventScheduleService', () => {
       sent: 1,
       failed: 1,
     });
-  });
-
-  it('権限がないユーザーは通知集約を取得できない', async () => {
-    const { service, userRepository, eventScheduleRepository } = setup();
-    (
-      userRepository.isStaffOrTeacher as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(false);
-
-    await expect(service.getEventNotificationSummary(1, 7)).rejects.toThrow(
-      'Schedule update forbidden'
-    );
-    expect(
-      eventScheduleRepository.getNotificationSummary
-    ).not.toHaveBeenCalled();
   });
 });

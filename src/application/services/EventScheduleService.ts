@@ -1,7 +1,6 @@
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 import type { IEventScheduleRepository } from '../../domain/interfaces/repositories/IEventScheduleRepository';
 import type { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
-import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import {
   buildEventNotificationSendAt,
   isValidEventDate,
@@ -12,22 +11,16 @@ export function createEventScheduleService(deps: {
   eventRepository: IEventRepository;
   eventScheduleRepository: IEventScheduleRepository;
   notificationScheduleRepository: INotificationScheduleRepository;
-  userRepository: IUserRepository;
 }): IEventScheduleService {
   const {
     eventRepository,
     eventScheduleRepository,
     notificationScheduleRepository,
-    userRepository,
   } = deps;
 
   return {
     async updateEventSchedule(input) {
-      const [authorized, event] = await Promise.all([
-        userRepository.isStaffOrTeacher(input.user_id),
-        eventRepository.findById(input.event_id),
-      ]);
-      if (!authorized) throw new Error('Schedule update forbidden');
+      const event = await eventRepository.findById(input.event_id);
       if (!event) throw new Error('Event not found');
 
       const startTime = input.start_time ?? event.start_time;
@@ -78,12 +71,8 @@ export function createEventScheduleService(deps: {
       };
     },
 
-    async getEventNotificationSummary(eventId, userId) {
-      const [authorized, event] = await Promise.all([
-        userRepository.isStaffOrTeacher(userId),
-        eventRepository.findById(eventId),
-      ]);
-      if (!authorized) throw new Error('Schedule update forbidden');
+    async getEventNotificationSummary(eventId) {
+      const event = await eventRepository.findById(eventId);
       if (!event) throw new Error('Event not found');
 
       return {

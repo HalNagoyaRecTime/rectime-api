@@ -63,20 +63,28 @@ describe('UserRepository', () => {
     });
   });
 
-  describe('isStaffOrTeacher', () => {
-    it.each(['staffs', 'teachers'] as const)(
-      '%sに登録されたユーザーには更新権限がある',
-      async table => {
-        const user = await env.DB.prepare(
-          "INSERT INTO users (user_name) VALUES ('管理者') RETURNING user_id"
-        ).first<{ user_id: number }>();
-        await env.DB.prepare(`INSERT INTO ${table} (user_id) VALUES (?)`)
-          .bind(user!.user_id)
-          .run();
+  describe('isStaff', () => {
+    it('staffsに登録されたユーザーはtrueを返す', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('管理者') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await env.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+        .bind(user!.user_id)
+        .run();
 
-        await expect(repo.isStaffOrTeacher(user!.user_id)).resolves.toBe(true);
-      }
-    );
+      await expect(repo.isStaff(user!.user_id)).resolves.toBe(true);
+    });
+
+    it('teachersにのみ登録されたユーザーはfalseを返す', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('教員') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+        .bind(user!.user_id)
+        .run();
+
+      await expect(repo.isStaff(user!.user_id)).resolves.toBe(false);
+    });
 
     it('studentsにのみ登録されたユーザーには更新権限がない', async () => {
       const classRoom = await insertClassRoomWithTeam(env.DB, {
@@ -92,7 +100,7 @@ describe('UserRepository', () => {
         .bind(user!.user_id, classRoom.classRoomId)
         .run();
 
-      await expect(repo.isStaffOrTeacher(user!.user_id)).resolves.toBe(false);
+      await expect(repo.isStaff(user!.user_id)).resolves.toBe(false);
     });
   });
 
