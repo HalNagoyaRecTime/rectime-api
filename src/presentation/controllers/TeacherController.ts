@@ -2,6 +2,8 @@ import { Context } from 'hono';
 import { z } from 'zod';
 import { ITeacherService } from '../../application/services/ITeacherService';
 import { TeacherSearchFilter } from '../../domain/entities/Teacher';
+import { errorResponse } from '../errors/errorResponse';
+import { UserErrors } from '../errors/userErrors';
 
 const MAX_LIMIT = 100;
 
@@ -73,12 +75,10 @@ export function createTeacherController(teacherService: ITeacherService) {
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createTeacherSchema.safeParse(body);
     if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid teacher create request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        UserErrors.INVALID_TEACHER_CREATE_REQUEST,
+        parsedBody.error.flatten()
       );
     }
 
@@ -87,15 +87,9 @@ export function createTeacherController(teacherService: ITeacherService) {
       return c.json(teacher, 201);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class room not found') {
-        return c.json({ error: error.message }, 400);
+        return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to create teacher',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, UserErrors.TEACHER_CREATE_FAILED);
     }
   };
 
@@ -104,16 +98,16 @@ export function createTeacherController(teacherService: ITeacherService) {
       const teacherId = getTeacherId(c);
 
       if (teacherId === null) {
-        return c.json({ error: 'Invalid teacher ID' }, 400);
+        return errorResponse(c, UserErrors.INVALID_TEACHER_ID);
       }
 
       const teacher = await teacherService.getTeacherById(teacherId);
       return c.json(teacher, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Teacher not found') {
-        return c.json({ error: 'Teacher not found' }, 404);
+        return errorResponse(c, UserErrors.TEACHER_NOT_FOUND);
       }
-      return c.json({ error: 'Failed to fetch teacher' }, 500);
+      return errorResponse(c, UserErrors.TEACHER_FETCH_FAILED);
     }
   };
 
@@ -127,27 +121,25 @@ export function createTeacherController(teacherService: ITeacherService) {
         error instanceof Error &&
         error.message === 'Invalid teacher list query'
       ) {
-        return c.json({ error: 'Invalid teacher list query' }, 400);
+        return errorResponse(c, UserErrors.INVALID_TEACHER_LIST_QUERY);
       }
-      return c.json({ error: 'Failed to fetch teachers' }, 500);
+      return errorResponse(c, UserErrors.TEACHER_LIST_FAILED);
     }
   };
 
   const updateTeacher = async (c: Context) => {
     const teacherId = getTeacherId(c);
     if (teacherId === null) {
-      return c.json({ error: 'Invalid teacher ID' }, 400);
+      return errorResponse(c, UserErrors.INVALID_TEACHER_ID);
     }
 
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = updateTeacherSchema.safeParse(body);
     if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid teacher update request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        UserErrors.INVALID_TEACHER_UPDATE_REQUEST,
+        parsedBody.error.flatten()
       );
     }
 
@@ -159,25 +151,19 @@ export function createTeacherController(teacherService: ITeacherService) {
       return c.json(teacher, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Teacher not found') {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, UserErrors.TEACHER_NOT_FOUND);
       }
       if (error instanceof Error && error.message === 'Class room not found') {
-        return c.json({ error: error.message }, 400);
+        return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to update teacher',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, UserErrors.TEACHER_UPDATE_FAILED);
     }
   };
 
   const deleteTeacher = async (c: Context) => {
     const teacherId = getTeacherId(c);
     if (teacherId === null) {
-      return c.json({ error: 'Invalid teacher ID' }, 400);
+      return errorResponse(c, UserErrors.INVALID_TEACHER_ID);
     }
 
     try {
@@ -185,15 +171,9 @@ export function createTeacherController(teacherService: ITeacherService) {
       return c.body(null, 204);
     } catch (error) {
       if (error instanceof Error && error.message === 'Teacher not found') {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, UserErrors.TEACHER_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to delete teacher',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, UserErrors.TEACHER_DELETE_FAILED);
     }
   };
 

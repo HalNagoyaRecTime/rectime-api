@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createNotificationScheduleService } from '../../../src/application/services/NotificationScheduleService';
 import type { INotificationScheduleRepository } from '../../../src/domain/interfaces/repositories/INotificationScheduleRepository';
-import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 
 describe('NotificationScheduleService', () => {
   function setup() {
@@ -21,22 +20,9 @@ describe('NotificationScheduleService', () => {
       markSent: vi.fn(),
       markFailed: vi.fn(),
     };
-    const userRepository: IUserRepository = {
-      exists: vi.fn(),
-      isStaffOrTeacher: vi.fn().mockResolvedValue(true),
-      isStaff: vi.fn().mockResolvedValue(true),
-      getUserCategories: vi.fn(),
-      findUserIdByMicrosoftAccount: vi.fn(),
-      getDeletionStatus: vi.fn(),
-      markAsDeleted: vi.fn(),
-      createUserWithMicrosoftLink: vi.fn(),
-      updateUser: vi.fn(),
-      linkMicrosoftAccount: vi.fn(),
-    };
     return {
       repository,
-      userRepository,
-      service: createNotificationScheduleService(repository, userRepository),
+      service: createNotificationScheduleService(repository),
     };
   }
 
@@ -48,12 +34,6 @@ describe('NotificationScheduleService', () => {
     importance: 2 as const,
     send_at: '2026-07-16T09:00:00.000Z',
   };
-
-  it('staffsまたはteachersだけを管理者として許可する', async () => {
-    const { service, userRepository } = setup();
-    await expect(service.canManageNotificationSchedules(1)).resolves.toBe(true);
-    expect(userRepository.isStaffOrTeacher).toHaveBeenCalledWith(1);
-  });
 
   it('Firebaseトークン・イベント・通知が存在すると作成する', async () => {
     const { repository, service } = setup();

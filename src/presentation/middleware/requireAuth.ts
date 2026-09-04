@@ -1,11 +1,10 @@
 import { createMiddleware } from 'hono/factory';
 import type { Env } from '../../lib/env';
-import {
-  errorResponse,
-  rejectInactiveUser,
-  type AppContext,
-} from '../auth/helpers';
 import type { AuthUser } from '../../domain/auth/types';
+import type { AppContext } from '../auth/helpers';
+import { rejectInactiveUser } from '../auth/rejectInactiveUser';
+import { CommonErrors } from '../errors/commonErrors';
+import { errorResponse } from '../errors/errorResponse';
 import type { AuthenticationVariables } from './bearerAuthentication';
 import type { ContainerVariables } from './diContainer';
 
@@ -38,7 +37,7 @@ export const requireAuth = createMiddleware<{
   // userIdがnullになるのは、トークンは正しいがsubがユーザーIDとして
   // 解釈できない場合。状態を確認できない以上は通さない（フェイルクローズ）。
   if (!authUser || userId === null) {
-    return errorResponse(appContext, 401, 'UNAUTHORIZED', '認証が必要です');
+    return errorResponse(appContext, CommonErrors.UNAUTHORIZED);
   }
 
   const rejected = await rejectInactiveUser(appContext, userId);

@@ -405,8 +405,8 @@ describe('requireAuth', () => {
       expect(res.status).toBe(500);
       expect(await res.json()).toEqual({
         error: {
-          code: 'INTERNAL_SERVER_ERROR',
-          message: '状態の確認に失敗しました',
+          code: 'USER_ACTIVATION_CHECK_FAILED',
+          message: 'アカウント状態の確認に失敗しました',
         },
       });
       expect(handler).not.toHaveBeenCalled();

@@ -32,7 +32,6 @@ const notification = {
 
 function setup() {
   const service: IAdminNotificationManagementService = {
-    canManageAdminNotifications: vi.fn().mockResolvedValue(true),
     getAdminNotifications: vi
       .fn()
       .mockResolvedValue({ notifications: [notification], total: 1 }),
@@ -158,18 +157,6 @@ describe('AdminNotificationManagementController', () => {
     expect(service.getAdminNotifications).not.toHaveBeenCalled();
   });
 
-  it('staffsまたはteachersでなければ403を返す', async () => {
-    const { service, request } = setup();
-    (
-      service.canManageAdminNotifications as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(false);
-
-    const response = await request('/admin/notifications');
-
-    expect(response.status).toBe(403);
-    expect(service.getAdminNotifications).not.toHaveBeenCalled();
-  });
-
   it.each([
     '/admin/notifications?sendStatus=canceled',
     '/admin/notifications?limit=101',
@@ -197,22 +184,45 @@ describe('AdminNotificationManagementController', () => {
   });
 
   it.each([
-    ['Admin notification not found', 404],
-    ['Only fully draft notifications can be updated', 409],
-    ['Notification audience has no active Firebase tokens', 409],
-  ] as const)('%sをHTTP %sへ変換する', async (message, status) => {
-    const { service, request } = setup();
-    (
-      service.updateAdminNotification as ReturnType<typeof vi.fn>
-    ).mockRejectedValue(new Error(message));
+    [
+      'Admin notification not found',
+      404,
+      'ADMIN_NOTIFICATION_NOT_FOUND',
+      '通知が見つかりません',
+    ],
+    [
+      'Only fully draft notifications can be updated',
+      409,
+      'ADMIN_NOTIFICATION_NOT_DRAFT',
+      '下書き状態の通知のみ変更または削除できます',
+    ],
+    [
+      'Notification audience has no active Firebase tokens',
+      409,
+      'NOTIFICATION_AUDIENCE_HAS_NO_TOKENS',
+      '通知対象に有効な端末がありません',
+    ],
+  ] as const)(
+    '%sをHTTP %sへ変換する',
+    async (message, status, code, responseMessage) => {
+      const { service, request } = setup();
+      (
+        service.updateAdminNotification as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error(message));
 
-    const response = await request('/admin/notifications/10', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: '変更後' }),
-    });
+      const response = await request('/admin/notifications/10', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: '変更後' }),
+      });
 
-    expect(response.status).toBe(status);
-    expect(await response.json()).toEqual({ error: message });
-  });
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual({
+        error: {
+          code,
+          message: responseMessage,
+        },
+      });
+    }
+  );
 });
