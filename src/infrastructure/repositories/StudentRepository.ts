@@ -376,46 +376,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
             )
         );
       }
-      try {
-        await db.batch(statements);
-      } catch (error) {
-        try {
-          await deleteUsersByIds(
-            db,
-            rows.map(row => row.userId)
-          );
-        } catch (userDeletionError) {
-          console.error(
-            'Failed to delete users after student creation failure:',
-            userDeletionError
-          );
-        }
-        if (commitedNewClassRooms.length > 0) {
-          try {
-            await deleteNewClassRoomsAndTeams(db, commitedNewClassRooms);
-          } catch (cleanupError) {
-            console.error(
-              'Failed to delete new class rooms and teams:',
-              cleanupError
-            );
-            throw new Error(
-              `生徒の登録に失敗し、さらに追加済みのクラス・編成の削除にも失敗しました。手動でのデータ確認が必要です。: ${String(cleanupError)}`,
-              { cause: error }
-            );
-          }
-        }
-        throw error;
-      }
-
-      async function deleteUsersByIds(db: D1Database, userIds: number[]) {
-        for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
-          const placeholders = chunk.map(() => '?').join(', ');
-          await db
-            .prepare(`DELETE FROM users WHERE user_id IN (${placeholders})`)
-            .bind(...chunk)
-            .run();
-        }
-      }
+      await db.batch(statements);
 
       async function deleteNewClassRoomsAndTeams(
         db: D1Database,
