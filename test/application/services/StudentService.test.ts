@@ -10,10 +10,12 @@ function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
     user_id: 10,
     user_name: '田中太郎',
     class_room_id: 100,
+    class_room_code: '1A',
     class_room_name: '1年A組',
     attendance_number: 5,
     student_id_number: '10000',
     is_live_active: true,
+    is_staff: false,
     ...overrides,
   };
 }
@@ -72,11 +74,15 @@ describe('StudentService', () => {
         student_id: student.student_id,
         user_id: student.user_id,
         display_name: student.user_name,
-        class_room_id: student.class_room_id,
-        class_room_name: student.class_room_name,
         attendance_number: student.attendance_number,
         student_id_number: student.student_id_number,
         is_live_active: true,
+        is_staff: false,
+        class_room: {
+          class_room_id: student.class_room_id,
+          class_code: '1A',
+          class_name: student.class_room_name,
+        },
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
     });
@@ -149,8 +155,8 @@ describe('StudentService', () => {
 
       const result = await service.getAllStudents({ limit: 50, offset: 0 });
 
-      expect(result.students).toHaveLength(2);
-      expect(result.students.map(d => d.student_id_number)).toEqual([
+      expect(result.items).toHaveLength(2);
+      expect(result.items.map(d => d.student_id_number)).toEqual([
         '10000',
         '10001',
       ]);
@@ -168,7 +174,7 @@ describe('StudentService', () => {
 
       await expect(
         service.getAllStudents({ limit: 50, offset: 0 })
-      ).resolves.toMatchObject({ students: [], total: 0 });
+      ).resolves.toMatchObject({ items: [], total: 0 });
     });
   });
 
@@ -193,7 +199,11 @@ describe('StudentService', () => {
 
       await expect(service.createStudent(input)).resolves.toMatchObject({
         student_id: student.student_id,
-        class_room_name: student.class_room_name,
+        class_room: {
+          class_room_id: student.class_room_id,
+          class_code: student.class_room_code,
+          class_name: student.class_room_name,
+        },
       });
       expect(repository.create).toHaveBeenCalledWith(input);
     });

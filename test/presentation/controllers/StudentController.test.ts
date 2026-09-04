@@ -2,18 +2,24 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { createStudentController } from '../../../src/presentation/controllers/StudentController';
 import type { IStudentService } from '../../../src/application/services/IStudentService';
-import type { StudentDTO } from '../../../src/application/dto/StudentDTO';
+import type { StudentManagementDTO } from '../../../src/application/dto/StudentDTO';
 
-function buildStudent(overrides: Partial<StudentDTO> = {}): StudentDTO {
+function buildStudent(
+  overrides: Partial<StudentManagementDTO> = {}
+): StudentManagementDTO {
   return {
     student_id: 1,
     user_id: 10,
     display_name: '山田太郎',
-    class_room_id: 1,
-    class_room_name: '1年A組',
     attendance_number: 1,
     student_id_number: 'S001',
     is_live_active: true,
+    is_staff: false,
+    class_room: {
+      class_room_id: 1,
+      class_code: '1A',
+      class_name: '1年A組',
+    },
     ...overrides,
   };
 }
@@ -105,7 +111,7 @@ describe('StudentController', () => {
       const students = [buildStudent()];
       (
         studentService.getAllStudents as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({ students, total: 1, limit: 50, offset: 0 });
+      ).mockResolvedValue({ items: students, total: 1, limit: 50, offset: 0 });
 
       const res = await app.request('/students');
 
@@ -113,9 +119,11 @@ describe('StudentController', () => {
       expect(studentService.getAllStudents).toHaveBeenCalledWith({
         limit: 50,
         offset: 0,
+        sortBy: 'studentId',
+        sortOrder: 'asc',
       });
       expect(await res.json()).toEqual({
-        students,
+        items: students,
         total: 1,
         limit: 50,
         offset: 0,
@@ -152,7 +160,7 @@ describe('StudentController', () => {
       expect(res.status).toBe(400);
       expect(
         ((await res.json()) as { error: { message: string } }).error.message
-      ).toBe('学生一覧の検索条件が正しくありません');
+      ).toBe('リクエスト内容が正しくありません');
     });
   });
 
