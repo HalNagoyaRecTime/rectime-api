@@ -1,14 +1,50 @@
 import { Context } from 'hono';
 import { z } from 'zod';
 import { IStudentService } from '../../application/services/IStudentService';
+import type { StudentSearchFilter } from '../../domain/entities/Student';
 import { errorResponse } from '../errors/errorResponse';
+import { CommonErrors } from '../errors/commonErrors';
 import { UserErrors } from '../errors/userErrors';
 
 const studentIdSchema = z.coerce.number().int().positive();
-const studentListQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-});
+const integerQuery = (minimum: number) =>
+  z.preprocess(
+    value =>
+      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
+    z.number().int().min(minimum)
+  );
+const studentListQuerySchema = z
+  .object({
+    search: z.string().trim().min(1).optional(),
+    classRoomId: integerQuery(1).optional(),
+    isStaff: z.enum(['true', 'false', 'all']).default('all'),
+    isLiveActive: z.enum(['true', 'false', 'all']).default('all'),
+    sortBy: z
+      .enum([
+        'studentId',
+        'studentIdNumber',
+        'displayName',
+        'classCode',
+        'className',
+        'attendanceNumber',
+      ])
+      .default('studentId'),
+    sortOrder: z.enum(['asc', 'desc']).default('asc'),
+    limit: integerQuery(1)
+      .refine(value => value <= 100, {
+        message: 'limit must be between 1 and 100',
+      })
+      .default(50),
+    offset: integerQuery(0).default(0),
+  })
+  .strict()
+  .transform(({ isStaff, isLiveActive, ...query }) => ({
+    ...query,
+    ...(isStaff === 'all' ? {} : { isStaff: isStaff === 'true' }),
+    ...(isLiveActive === 'all'
+      ? {}
+      : { isLiveActive: isLiveActive === 'true' }),
+  }));
 const studentWriteSchema = z.object({
   display_name: z.string().trim().min(1).max(100),
   class_room_id: z.number().int().positive(),
@@ -57,20 +93,22 @@ export function createStudentController(studentService: IStudentService) {
   };
 
   const getAllStudent = async (c: Context) => {
-    const parsedQuery = studentListQuerySchema.safeParse({
-      limit: c.req.query('limit'),
-      offset: c.req.query('offset'),
-    });
+    const parsedQuery = studentListQuerySchema.safeParse(c.req.query());
     if (!parsedQuery.success) {
       return errorResponse(
         c,
-        UserErrors.INVALID_STUDENT_LIST_QUERY,
+        CommonErrors.VALIDATION_ERROR,
         parsedQuery.error.flatten()
       );
     }
 
     try {
-      return c.json(await studentService.getAllStudents(parsedQuery.data), 200);
+      return c.json(
+        await studentService.getAllStudents(
+          parsedQuery.data as StudentSearchFilter
+        ),
+        200
+      );
     } catch {
       return errorResponse(c, UserErrors.STUDENT_LIST_FAILED);
     }

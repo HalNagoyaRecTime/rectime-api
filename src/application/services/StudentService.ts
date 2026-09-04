@@ -1,5 +1,6 @@
 import {
   StudentDTO,
+  StudentManagementDTO,
   StudentImportCommitResult,
   StudentImportErrorReason,
   StudentImportInput,
@@ -9,7 +10,10 @@ import {
   StudentPageDTO,
   StudentWriteDTO,
 } from '../dto/StudentDTO';
-import type { StudentEntity } from '../../domain/entities/Student';
+import type {
+  StudentEntity,
+  StudentSearchFilter,
+} from '../../domain/entities/Student';
 import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 import { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import { IStudentService } from './IStudentService';
@@ -24,6 +28,23 @@ function toDTO(student: StudentEntity): StudentDTO {
     attendance_number: student.attendance_number,
     student_id_number: student.student_id_number,
     is_live_active: student.is_live_active,
+  };
+}
+
+function toManagementDTO(student: StudentEntity): StudentManagementDTO {
+  return {
+    student_id: student.student_id,
+    user_id: student.user_id,
+    display_name: student.user_name,
+    student_id_number: student.student_id_number,
+    attendance_number: student.attendance_number,
+    is_live_active: student.is_live_active,
+    is_staff: student.is_staff,
+    class_room: {
+      class_room_id: student.class_room_id,
+      class_code: student.class_room_code ?? student.class_room_name,
+      class_name: student.class_room_name,
+    },
   };
 }
 
@@ -82,13 +103,13 @@ export function createStudentService(
   classRoomRepository: IClassRoomRepository
 ): IStudentService {
   return {
-    async getStudentById(id: number): Promise<StudentDTO> {
+    async getStudentById(id: number): Promise<StudentManagementDTO> {
       const student = await studentRepository.findById(id);
       if (!student) {
         throw new Error('Student not found');
       }
 
-      return toDTO(student);
+      return toManagementDTO(student);
     },
     async getByUserId(userId: number): Promise<StudentDTO> {
       const student = await studentRepository.findByUserId(userId);
@@ -98,32 +119,30 @@ export function createStudentService(
 
       return toDTO(student);
     },
-    async getAllStudents({
-      limit,
-      offset,
-    }: {
-      limit: number;
-      offset: number;
-    }): Promise<StudentPageDTO> {
-      const result = await studentRepository.findAll({ limit, offset });
+    async getAllStudents(
+      options: StudentSearchFilter
+    ): Promise<StudentPageDTO> {
+      const result = await studentRepository.findAll(options);
       return {
-        students: result.students.map(toDTO),
+        items: result.students.map(toManagementDTO),
         total: result.total,
-        limit,
-        offset,
+        limit: options.limit ?? 50,
+        offset: options.offset ?? 0,
       };
     },
 
-    async createStudent(student: StudentWriteDTO): Promise<StudentDTO> {
+    async createStudent(
+      student: StudentWriteDTO
+    ): Promise<StudentManagementDTO> {
       await ensureClassRoomExists(student.class_room_id);
       await ensureStudentNumberAvailable(student.student_id_number);
-      return toDTO(await studentRepository.create(student));
+      return toManagementDTO(await studentRepository.create(student));
     },
 
     async updateStudent(
       id: number,
       student: StudentWriteDTO
-    ): Promise<StudentDTO> {
+    ): Promise<StudentManagementDTO> {
       const existing = await studentRepository.findById(id);
       if (!existing) {
         throw new Error('Student not found');
@@ -141,7 +160,7 @@ export function createStudentService(
       if (!updated) {
         throw new Error('Student not found');
       }
-      return toDTO(updated);
+      return toManagementDTO(updated);
     },
 
     async validateStudentImport(
