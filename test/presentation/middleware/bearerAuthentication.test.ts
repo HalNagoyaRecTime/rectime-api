@@ -125,6 +125,41 @@ describe('bearerAuthenticationMiddleware', () => {
     expect(await response.json()).toEqual({ authenticatedUserId: null });
   });
 
+  it('deletion_status確認中にD1がエラーを投げても、正当なJWTなら認証済みとして扱う', async () => {
+    // D1の一時的な障害・タイムアウトのようなインフラ都合のエラーを、
+    // JWT不正や削除済みと区別せず「未認証」に丸めてしまうと、DB障害時に
+    // API全体が401になり得る。JWTの署名検証自体は成功している場合、
+    // deletion_status確認側の予期しない失敗は認証を無効にしないことを
+    // 確認する。
+    await insertUser(7);
+    const token = await signAccessToken(
+      {
+        sub: '7',
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const failingDb = {
+      prepare: () => {
+        throw new Error('D1_ERROR: simulated outage');
+      },
+    } as unknown as Env['DB'];
+    const app = buildApp();
+
+    const response = await app.request(
+      '/',
+      { headers: { Authorization: `Bearer ${token}` } },
+      buildEnv({ DB: failingDb })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ authenticatedUserId: 7 });
+  });
+
   it('Authorizationヘッダーが無い場合はnullをContextへ設定する', async () => {
     const app = buildApp();
 
