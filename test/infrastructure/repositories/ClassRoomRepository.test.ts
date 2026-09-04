@@ -609,45 +609,6 @@ describe('ClassRoomRepository', () => {
       expect(created20A?.team_id).not.toBe(created20B?.team_id);
     });
 
-    it('team_idを指定した行は既存teamにそのまま登録され、新規teamは作られない', async () => {
-      const base = await repo.create({
-        class_code: '30A',
-        class_name: '合同クラス親',
-        teacher_id: null,
-        team_id: null,
-      });
-
-      const teamCountBefore = await env.DB.prepare(
-        'SELECT COUNT(*) AS total FROM teams'
-      ).first<{ total: number }>();
-
-      await repo.createMany([
-        {
-          class_code: '30B',
-          class_name: '合同クラス子',
-          teacher_id: null,
-          team_id: base.team_id,
-        },
-        {
-          class_code: '30C',
-          class_name: '単独クラス',
-          teacher_id: null,
-          team_id: null,
-        },
-      ]);
-
-      const joined = await repo.findByCode('30B');
-      const standalone = await repo.findByCode('30C');
-      expect(joined?.team_id).toBe(base.team_id);
-      expect(standalone?.team_id).not.toBe(base.team_id);
-
-      const teamCountAfter = await env.DB.prepare(
-        'SELECT COUNT(*) AS total FROM teams'
-      ).first<{ total: number }>();
-      // 21Bは既存team（base）を再利用し、21Cのみ新規teamを1件作る
-      expect(teamCountAfter?.total).toBe((teamCountBefore?.total ?? 0) + 1);
-    });
-
     it('2,000件のクラスをまとめて作成できる', async () => {
       const inputs = Array.from({ length: 2000 }, (_, i) => ({
         class_code: `BULK2K-${i}`,

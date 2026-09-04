@@ -26,10 +26,3 @@ export interface ClassRoomInput {
   teacher_id: number | null;
   team_id: number | null;
 }
-
-export function buildProvisionalTeamName(params: {
-  className: string;
-  classCode: string;
-}): string {
-  return `${params.className}(${params.classCode})`;
-}
