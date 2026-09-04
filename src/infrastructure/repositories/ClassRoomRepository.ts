@@ -7,6 +7,7 @@ import type {
   ClassRoomInput,
   ClassRoomPage,
 } from '../../domain/entities/ClassRoom';
+import { buildProvisionalTeamName } from '../../domain/entities/Team';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import { chunkArray } from './chunk';
 
@@ -49,7 +50,10 @@ const classRoomSelect = `
 function provisionalTeamName(
   input: Pick<ClassRoomInput, 'class_code' | 'class_name'>
 ): string {
-  return `${input.class_name}(${input.class_code})`;
+  return buildProvisionalTeamName({
+    className: input.class_name,
+    classCode: input.class_code,
+  });
 }
 
 function toEntity(row: ClassRoomRow): ClassRoomEntity {
