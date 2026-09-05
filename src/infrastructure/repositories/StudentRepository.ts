@@ -319,6 +319,13 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
  * MAX(user_id)取得後、実際にINSERTするまでの間に別経路（ロック対象外の
  * マスターインポートや通常ログインでの新規ユーザー作成）でuser_idが
  * 使われてしまうと衝突しうるため、その場合のみ採番からやり直す。
+ *
+ * 起点は現存する行のMAXだけでなく、AUTOINCREMENTの高水位(sqlite_sequence)
+ * との大きい方を採る。外部アカウントとの紐付け失敗時の後始末でusersの
+ * 最後の行が削除されるケースがあり、その直後は現存行のMAXだけでは
+ * 既に払い出し済みの識別子まで下がってしまう。このプロジェクトは
+ * 識別子の再利用を意図的に避けてきており（firebase_token_idの移行と同じ
+ * 考え方）、ここも同様に扱う。
  */
 async function insertClassRoomsAndStudentsWithAllocatedUserIds(
   db: D1Database,
@@ -327,7 +334,15 @@ async function insertClassRoomsAndStudentsWithAllocatedUserIds(
 ): Promise<void> {
   for (let attempt = 1; attempt <= USER_ID_ALLOCATION_MAX_ATTEMPTS; attempt++) {
     const seed = await db
-      .prepare('SELECT COALESCE(MAX(user_id), 0) AS max_user_id FROM users')
+      .prepare(
+        `SELECT COALESCE(
+           MAX(
+             (SELECT COALESCE(MAX(user_id), 0) FROM users),
+             (SELECT COALESCE(seq, 0) FROM sqlite_sequence WHERE name = 'users')
+           ),
+           0
+         ) AS max_user_id`
+      )
       .first<{ max_user_id: number }>();
     const rows = students.map((student, index) => ({
       ...student,

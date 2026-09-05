@@ -521,6 +521,33 @@ describe('StudentRepository', () => {
       });
     });
 
+    it('直前に作成したuserが削除され現存の最大値が下がっても、払い出し済みのuser_idを再利用しない', async () => {
+      const deleted = await env.DB.prepare(
+        "INSERT INTO users (user_name, updated_at) VALUES ('外部アカウント紐付け失敗で消される想定のユーザー', CURRENT_TIMESTAMP) RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const deletedUserId = deleted!.user_id;
+      // 通常ログイン経路で外部アカウントとの紐付けに失敗した際の後始末を模す。
+      // AUTOINCREMENTの高水位(sqlite_sequence)はこの削除では下がらない。
+      await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+        .bind(deletedUserId)
+        .run();
+
+      await repo.createMany({
+        newClassRooms: [],
+        students: [
+          {
+            displayName: '高水位維持確認用の生徒',
+            classCode: 'TEST-1',
+            attendanceNumber: 42,
+            studentIdNumber: 'HWM-KEEP-1',
+          },
+        ],
+      });
+
+      const created = await repo.findByStudentNum('HWM-KEEP-1');
+      expect(created?.user_id).toBeGreaterThan(deletedUserId);
+    });
+
     it('user_idの衝突が続く場合、既定回数リトライしたあとは例外を投げる', async () => {
       let batchCallCount = 0;
       const alwaysRacingDb = {
