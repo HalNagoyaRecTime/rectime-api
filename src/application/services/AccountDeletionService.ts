@@ -52,15 +52,16 @@ export function createAccountDeletionService(deps: {
       // なければ、対象ユーザー自身がまだ通常通りAPIを叩けてしまい、
       // firebase_tokens再登録やstudents更新などとの競合が起こり得る。
       // 呼び出し元が順序を誤った場合はここで即座に失敗させる。
+      //
+      // メッセージはAuthErrors.ACCOUNT_DELETION_NOT_STARTEDのcodeと
+      // 一致させ、呼び出し元(presentation層)がerr.message === 'コード名'
+      // で判別してAPIエラーへ変換できるようにする(#265, ACCOUNT_DELETION_
+      // PENDINGと同じパターン)。
       const deletionStatus = await step('getDeletionStatus', () =>
         userRepository.getDeletionStatus(userId)
       );
       if (deletionStatus !== 'deleted') {
-        throw new Error(
-          'ACCOUNT_NOT_MARKED_AS_DELETED: deleteRelatedData was called before ' +
-            'authService.startAccountDeletion completed (deletion_status must ' +
-            "be 'deleted')"
-        );
+        throw new Error('ACCOUNT_DELETION_NOT_STARTED');
       }
 
       // markAsDeletedは完了しているが、関連データの削除・匿名化(後片付け)は
@@ -72,14 +73,13 @@ export function createAccountDeletionService(deps: {
       // なるため、明示的に拒否する。途中で失敗した利用者はpurged_atが
       // NULLのまま残るため、`WHERE deletion_status = 'deleted' AND
       // purged_at IS NULL`で機械的に抽出し、同じuserIdで再実行できる。
+      // メッセージはAuthErrors.ACCOUNT_ALREADY_PURGEDのcodeと一致させる
+      // (上のACCOUNT_DELETION_NOT_STARTEDと同じ理由)。
       const alreadyPurged = await step('isPurged', () =>
         userRepository.isPurged(userId)
       );
       if (alreadyPurged) {
-        throw new Error(
-          'ACCOUNT_ALREADY_PURGED: deleteRelatedData was called again after ' +
-            'purging already finished for this userId'
-        );
+        throw new Error('ACCOUNT_ALREADY_PURGED');
       }
 
       // users.user_nameの匿名化はロールの種類によらず常に行う。

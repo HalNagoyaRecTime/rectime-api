@@ -505,7 +505,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
 
     await expect(
       service.deleteRelatedData(String(user!.user_id))
-    ).rejects.toThrow('ACCOUNT_NOT_MARKED_AS_DELETED');
+    ).rejects.toThrow('ACCOUNT_DELETION_NOT_STARTED');
 
     const studentRow = await workerEnv.DB.prepare(
       'SELECT student_id_number FROM students WHERE user_id = ?'

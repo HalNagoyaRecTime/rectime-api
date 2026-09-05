@@ -107,7 +107,7 @@ describe('createAccountDeletionService', () => {
       const service = createAccountDeletionService(deps);
 
       await expect(service.deleteRelatedData('10')).rejects.toThrow(
-        'ACCOUNT_NOT_MARKED_AS_DELETED'
+        'ACCOUNT_DELETION_NOT_STARTED'
       );
       expect(deps.firebaseTokenRepository.findByUserId).not.toHaveBeenCalled();
       expect(deps.staffRepository.deleteByUserId).not.toHaveBeenCalled();
@@ -122,7 +122,7 @@ describe('createAccountDeletionService', () => {
       const service = createAccountDeletionService(deps);
 
       await expect(service.deleteRelatedData('10')).rejects.toThrow(
-        'ACCOUNT_NOT_MARKED_AS_DELETED'
+        'ACCOUNT_DELETION_NOT_STARTED'
       );
     });
 
