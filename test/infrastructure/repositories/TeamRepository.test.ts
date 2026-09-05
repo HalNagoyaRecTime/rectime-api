@@ -3,10 +3,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createTeamRepository } from '../../../src/infrastructure/repositories/TeamRepository';
 import type { ITeamRepository } from '../../../src/domain/interfaces/repositories/ITeamRepository';
 
-// teams・team_scores・class_rooms.team_idは chore/276-ranking-migration 側の
-// マイグレーションで追加される想定で、このブランチにはまだ取り込まれていない。
-// マイグレーションがdevelop経由でこのブランチに入るまで、このファイルの
-// テストはCIで失敗する（migrateされるまでの既知の状態）。
 describe('TeamRepository', () => {
   let repo: ITeamRepository;
 
@@ -254,6 +250,19 @@ describe('TeamRepository', () => {
       await expect(
         repo.updateTeam(999999, { team_name: '存在しない', class_codes: [] })
       ).resolves.toBeNull();
+    });
+  });
+
+  describe('delete', () => {
+    it('存在するチームを削除するとtrueを返す', async () => {
+      const teamId = await insertTeam('削除対象');
+
+      await expect(repo.delete(teamId)).resolves.toBe(true);
+      await expect(repo.exists(teamId)).resolves.toBe(false);
+    });
+
+    it('存在しないチームの場合はfalseを返す', async () => {
+      await expect(repo.delete(999999)).resolves.toBe(false);
     });
   });
 

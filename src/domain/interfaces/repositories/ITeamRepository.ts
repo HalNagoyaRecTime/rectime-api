@@ -21,5 +21,6 @@ export interface ITeamRepository {
     teamId: number,
     input: TeamWriteInput
   ) => Promise<TeamEntity | null>;
+  delete: (teamId: number) => Promise<boolean>;
   addScore: (teamId: number, points: number) => Promise<TeamEntity>;
 }

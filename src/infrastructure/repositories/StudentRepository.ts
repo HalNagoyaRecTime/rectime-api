@@ -5,6 +5,7 @@ import { class_rooms, students, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import { StudentEntity } from '../../domain/entities/Student';
+import { buildProvisionalTeamName } from '../../domain/entities/Team';
 import {
   BulkCreateStudentsInput,
   IStudentRepository,
@@ -13,6 +14,7 @@ import { StudentWriteDTO } from '../../application/dto/StudentDTO';
 import { chunkArray } from './chunk';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
+const USER_ID_ALLOCATION_MAX_ATTEMPTS = 3;
 
 type StudentJoinRow = {
   students: typeof students.$inferSelect;
@@ -33,11 +35,6 @@ type ReturnedStudentRow = {
   class_room_name: string;
   attendance_number: number;
   student_id_number: string;
-};
-
-type ReturnedBulkUserRow = {
-  user_id: number;
-  user_name: string;
 };
 
 function toEntity(row: StudentJoinRow): StudentEntity {
@@ -268,163 +265,146 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         return;
       }
 
-      const statements: D1PreparedStatement[] = [];
-
+      const classRoomStatements: D1PreparedStatement[] = [];
       for (const chunk of chunkArray(
         input.newClassRooms,
-        Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
+        Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
       )) {
-        const placeholders = chunk
-          .map(() => '(?, ?, NULL, CURRENT_TIMESTAMP)')
-          .join(', ');
-        const values = chunk.flatMap(room => [room.classCode, room.className]);
-        statements.push(
+        const teamPlaceholders = chunk.map(() => '(?)').join(', ');
+        classRoomStatements.push(
           db
-            .prepare(
-              `INSERT INTO class_rooms (class_code, class_name, teacher_id, updated_at) VALUES ${placeholders}`
-            )
-            .bind(...values)
+            .prepare(`INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`)
+            .bind(...chunk.map(buildProvisionalTeamName))
         );
-      }
-
-      const userStatementStartIndex = statements.length;
-      for (const chunk of chunkArray(input.students, D1_MAX_BOUND_PARAMETERS)) {
-        const placeholders = chunk
-          .map(() => '(?, CURRENT_TIMESTAMP)')
-          .join(', ');
-        const values = chunk.map(student => student.displayName);
-        statements.push(
-          db
-            .prepare(
-              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id, user_name`
-            )
-            .bind(...values)
-        );
-      }
-
-      const results = await db.batch<ReturnedBulkUserRow>(statements);
-
-      const returnedUsers: ReturnedBulkUserRow[] = [];
-      for (let i = userStatementStartIndex; i < results.length; i++) {
-        for (const row of results[i].results) {
-          returnedUsers.push(row);
-        }
-      }
-      const userIds = returnedUsers.map(row => row.user_id);
-
-      try {
-        const studentsWithUserIds = pairStudentsWithCreatedUsers(
-          input.students,
-          returnedUsers
-        );
-        const studentStatements: D1PreparedStatement[] = [];
-        for (const chunk of chunkArray(
-          studentsWithUserIds,
-          Math.floor(D1_MAX_BOUND_PARAMETERS / 4)
-        )) {
-          const placeholders = chunk
-            .map(
-              () =>
-                '(?, (SELECT class_room_id FROM class_rooms WHERE class_code = ?), ?, ?, CURRENT_TIMESTAMP)'
-            )
-            .join(', ');
-          const values = chunk.flatMap(item => [
-            item.userId,
-            item.classCode,
-            item.attendanceNumber,
-            item.studentIdNumber,
-          ]);
-          studentStatements.push(
+        for (const room of chunk) {
+          classRoomStatements.push(
             db
               .prepare(
-                `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number, updated_at) VALUES ${placeholders}`
+                `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id, updated_at)
+                 SELECT ?, ?, NULL, team_id, CURRENT_TIMESTAMP FROM teams WHERE team_name = ?`
               )
-              .bind(...values)
+              .bind(
+                room.classCode,
+                room.className,
+                buildProvisionalTeamName(room)
+              )
           );
         }
-        await db.batch(studentStatements);
-      } catch (error) {
-        try {
-          await deleteUsersByIds(db, userIds);
-        } catch (userDeletionError) {
-          console.error(
-            'Error deleting users after student creation failure:',
-            userDeletionError
-          );
-        }
-        try {
-          await deleteClassRoomsByCodes(
-            db,
-            input.newClassRooms.map(room => room.classCode)
-          );
-        } catch (classRoomDeletionError) {
-          console.error(
-            'Error deleting class rooms after student creation failure:',
-            classRoomDeletionError
-          );
-        }
-        throw error;
       }
+
+      await insertClassRoomsAndStudentsWithAllocatedUserIds(
+        db,
+        classRoomStatements,
+        input.students
+      );
     },
   };
 }
 
-function pairStudentsWithCreatedUsers(
-  studentInputs: BulkCreateStudentsInput['students'],
-  returnedUsers: ReturnedBulkUserRow[]
-) {
-  if (returnedUsers.length !== studentInputs.length) {
-    throw new Error(
-      `Created user count does not match student input count: expected ${studentInputs.length}, received ${returnedUsers.length}`
-    );
-  }
+/**
+ * 新規クラス・チームと、事前採番したuser_idを使うusers・studentsを、
+ * すべて1回のdb.batch()にまとめてINSERTする。
+ *
+ * 新規クラス・チームの作成と生徒の作成を別々のdb.batch()に分けると、
+ * 前半が確定した後に後半が失敗した場合に手動での後片付けが必要になる
+ * （編成名・クラスコードのUNIQUE制約により、残った分が以後の取り込みを
+ * 名前衝突で弾き続ける）。1回のbatch呼び出しはD1上でアトミックなので、
+ * 1つにまとめることでこの後片付け自体を不要にする。
+ *
+ * また、last_insert_rowid()に頼らず先にuser_idを決めておくことで生徒側も
+ * 1人ずつ文を分ける必要がなくなり、受付上限2,500件・新規クラス100件でも
+ * 合計250文程度に収まる（D1の1 Worker呼び出しあたりのサブリクエスト
+ * 上限1,000に対して十分小さい）。
+ *
+ * MAX(user_id)取得後、実際にINSERTするまでの間に別経路（ロック対象外の
+ * マスターインポートや通常ログインでの新規ユーザー作成）でuser_idが
+ * 使われてしまうと衝突しうるため、その場合のみ採番からやり直す。
+ *
+ * 起点は現存する行のMAXだけでなく、AUTOINCREMENTの高水位(sqlite_sequence)
+ * との大きい方を採る。外部アカウントとの紐付け失敗時の後始末でusersの
+ * 最後の行が削除されるケースがあり、その直後は現存行のMAXだけでは
+ * 既に払い出し済みの識別子まで下がってしまう。このプロジェクトは
+ * 識別子の再利用を意図的に避けてきており（firebase_token_idの移行と同じ
+ * 考え方）、ここも同様に扱う。
+ */
+async function insertClassRoomsAndStudentsWithAllocatedUserIds(
+  db: D1Database,
+  classRoomStatements: D1PreparedStatement[],
+  students: BulkCreateStudentsInput['students']
+): Promise<void> {
+  for (let attempt = 1; attempt <= USER_ID_ALLOCATION_MAX_ATTEMPTS; attempt++) {
+    const seed = await db
+      .prepare(
+        `SELECT COALESCE(
+           MAX(
+             (SELECT COALESCE(MAX(user_id), 0) FROM users),
+             (SELECT COALESCE(seq, 0) FROM sqlite_sequence WHERE name = 'users')
+           ),
+           0
+         ) AS max_user_id`
+      )
+      .first<{ max_user_id: number }>();
+    const rows = students.map((student, index) => ({
+      ...student,
+      userId: (seed?.max_user_id ?? 0) + index + 1,
+    }));
 
-  // SQLiteは複数行をRETURNINGした際の行順を保証しないため、
-  // 配列の位置ではなく、登録した表示名ごとにIDをまとめて対応付ける。
-  // 同姓同名のusers行はこの時点では区別できないため、IDをスタックとして消費する。
-  // https://sqlite.org/lang_returning.html
-  const userIdsByName = new Map<string, number[]>();
-  for (const user of returnedUsers) {
-    const ids = userIdsByName.get(user.user_name) ?? [];
-    ids.push(user.user_id);
-    userIdsByName.set(user.user_name, ids);
-  }
-
-  const paired = studentInputs.map((student, index) => {
-    const userIds = userIdsByName.get(student.displayName);
-    const userId = userIds?.pop();
-    if (userId === undefined) {
-      throw new Error(
-        `Created user not found for student input at index ${index}`
+    const statements: D1PreparedStatement[] = [...classRoomStatements];
+    for (const chunk of chunkArray(
+      rows,
+      Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
+    )) {
+      const placeholders = chunk
+        .map(() => '(?, ?, CURRENT_TIMESTAMP)')
+        .join(', ');
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO users (user_id, user_name, updated_at) VALUES ${placeholders}`
+          )
+          .bind(...chunk.flatMap(row => [row.userId, row.displayName]))
       );
     }
-    return {
-      userId,
-      classCode: student.classCode,
-      attendanceNumber: student.attendanceNumber,
-      studentIdNumber: student.studentIdNumber,
-    };
-  });
+    for (const chunk of chunkArray(
+      rows,
+      Math.floor(D1_MAX_BOUND_PARAMETERS / 4)
+    )) {
+      const placeholders = chunk
+        .map(
+          () =>
+            '(?, (SELECT class_room_id FROM class_rooms WHERE class_code = ?), ?, ?, CURRENT_TIMESTAMP)'
+        )
+        .join(', ');
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number, updated_at)
+             VALUES ${placeholders}`
+          )
+          .bind(
+            ...chunk.flatMap(row => [
+              row.userId,
+              row.classCode,
+              row.attendanceNumber,
+              row.studentIdNumber,
+            ])
+          )
+      );
+    }
 
-  return paired;
-}
-
-async function deleteUsersByIds(db: D1Database, userIds: number[]) {
-  for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
-    const placeholders = chunk.map(() => '?').join(', ');
-    await db
-      .prepare(`DELETE FROM users WHERE user_id IN (${placeholders})`)
-      .bind(...chunk)
-      .run();
-  }
-}
-
-async function deleteClassRoomsByCodes(db: D1Database, classCodes: string[]) {
-  for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
-    const placeholders = chunk.map(() => '?').join(', ');
-    await db
-      .prepare(`DELETE FROM class_rooms WHERE class_code IN (${placeholders})`)
-      .bind(...chunk)
-      .run();
+    try {
+      await db.batch(statements);
+      return;
+    } catch (error) {
+      const isUserIdRace =
+        error instanceof Error &&
+        error.message.includes('UNIQUE constraint failed') &&
+        error.message.includes('users.user_id');
+      if (!isUserIdRace || attempt === USER_ID_ALLOCATION_MAX_ATTEMPTS) {
+        throw error;
+      }
+      // 採番後、実行までの間に別経路でuser_idが使われた（同時ログイン等）。
+      // user_idを取り直してリトライする。
+    }
   }
 }

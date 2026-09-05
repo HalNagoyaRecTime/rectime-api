@@ -186,6 +186,16 @@ export const UserErrors = {
     code: 'CLASS_DELETE_FAILED',
     message: 'クラスの削除に失敗しました',
   },
+  TEAM_NOT_FOUND: {
+    status: 404,
+    code: 'TEAM_NOT_FOUND',
+    message: '指定された編成が見つかりません',
+  },
+  TEAM_NAME_ALREADY_EXISTS: {
+    status: 409,
+    code: 'TEAM_NAME_ALREADY_EXISTS',
+    message: '同じ編成名が既に存在します',
+  },
   USER_SEARCH_FORBIDDEN: {
     status: 403,
     code: 'USER_SEARCH_FORBIDDEN',

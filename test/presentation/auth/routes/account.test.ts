@@ -15,6 +15,7 @@ import { signAccessToken } from '../../../../src/infrastructure/auth/jwt';
 import type { MobileRefreshEntry } from '../../../../src/domain/auth/types';
 import type { Env } from '../../../../src/lib/env';
 import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
+import { insertClassRoomWithTeam } from '../../../fixtures/classRooms';
 
 const JWT_SECRET = 'a'.repeat(32);
 
@@ -202,16 +203,17 @@ describe('GET /auth/me', () => {
 
   it('学生ユーザーの場合はstudent_id_number/class_room_nameを含めて返す', async () => {
     const env = buildEnv();
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3A', '3年A組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3A',
+      className: '3年A組',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('学生太郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '50001')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
     const userId = String(user!.user_id);
     const token = await signAccessToken(

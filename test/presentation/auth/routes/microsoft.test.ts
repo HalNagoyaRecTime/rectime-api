@@ -21,6 +21,7 @@ import type {
   DeletionConfirmationEntry,
 } from '../../../../src/domain/auth/types';
 import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
+import { insertClassRoomWithTeam } from '../../../fixtures/classRooms';
 import { createUserRepository } from '../../../../src/infrastructure/repositories/UserRepository';
 
 const JWT_SECRET = 'a'.repeat(32);
@@ -704,9 +705,10 @@ describe('POST /auth/microsoft/token', () => {
   it('学籍番号紐付け時にuser_idが既に別のMicrosoftアカウントと紐付いている場合、409 STUDENT_ALREADY_LINKEDを返す', async () => {
     const env = buildEnv();
 
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3A', '3年A組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3A',
+      className: '3年A組',
+    });
 
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
@@ -715,7 +717,7 @@ describe('POST /auth/microsoft/token', () => {
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '50000')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     // この学生のuser_idに、既に別のMicrosoftアカウントが紐付いている状態を作る
@@ -824,16 +826,17 @@ describe('POST /auth/microsoft/token', () => {
   it('学生ユーザーが初回ログイン時、学籍番号から紐付いてstudent_id_number/class_room_nameを返す', async () => {
     const env = buildEnv();
 
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3B', '3年B組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3B',
+      className: '3年B組',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('学生次郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 2, '60001')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     const now = Math.floor(Date.now() / 1000);
@@ -944,16 +947,17 @@ describe('POST /auth/microsoft/token', () => {
   it('markAsDeleted実行後に同じ学籍番号メールでログインすると、古い削除済みユーザーへ紐付けず新規アカウントとして登録される', async () => {
     const env = buildEnv();
 
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3C', '3年C組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3C',
+      className: '3年C組',
+    });
     const oldUser = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('学生太郎(削除前)') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 3, '70001')"
     )
-      .bind(oldUser!.user_id, classRoom!.class_room_id)
+      .bind(oldUser!.user_id, classRoom.classRoomId)
       .run();
     await workerEnv.DB.prepare(
       "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-deleted-student-1', 'tid-1')"
@@ -1023,16 +1027,17 @@ describe('POST /auth/microsoft/token', () => {
   it('deletion_pendingの学生が学籍番号ログインを試みると410 ACCOUNT_DELETION_PENDINGを返す', async () => {
     const env = buildEnv();
 
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3D', '3年D組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3D',
+      className: '3年D組',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name, deletion_status) VALUES ('学生太郎(削除処理中)', 'deletion_pending') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 4, '70002')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     const now = Math.floor(Date.now() / 1000);

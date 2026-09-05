@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createClassRoomService } from '../../../src/application/services/ClassRoomService';
 import type { IClassRoomRepository } from '../../../src/domain/interfaces/repositories/IClassRoomRepository';
+import type { ITeamRepository } from '../../../src/domain/interfaces/repositories/ITeamRepository';
 
 function repository(): IClassRoomRepository {
   return {
@@ -11,15 +12,33 @@ function repository(): IClassRoomRepository {
     create: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),
+    updateAndCleanupTeam: vi.fn(),
     delete: vi.fn(),
+    deleteAndCleanupTeam: vi.fn(),
     teacherExists: vi.fn(),
+    existsWithTeamId: vi.fn().mockResolvedValue(false),
     hasStudents: vi.fn(),
+  };
+}
+
+function teamRepository(): ITeamRepository {
+  return {
+    findRanking: vi.fn(),
+    findAllTeams: vi.fn(),
+    findTeamById: vi.fn(),
+    exists: vi.fn(),
+    existsClassCodes: vi.fn(),
+    createTeam: vi.fn(),
+    updateTeam: vi.fn(),
+    delete: vi.fn(),
+    addScore: vi.fn(),
   };
 }
 
 describe('ClassRoomService', () => {
   it('一覧をlimitとoffset付きで返す', async () => {
     const repo = repository();
+    const team = teamRepository();
     (repo.findAll as ReturnType<typeof vi.fn>).mockResolvedValue({
       classrooms: [
         {
@@ -36,7 +55,7 @@ describe('ClassRoomService', () => {
     });
 
     await expect(
-      createClassRoomService(repo).getAllClassrooms(20, 0)
+      createClassRoomService(repo, team).getAllClassrooms(20, 0)
     ).resolves.toEqual({
       classrooms: [
         {
@@ -55,10 +74,11 @@ describe('ClassRoomService', () => {
 
   it('存在しない担任は登録前に404用エラーにする', async () => {
     const repo = repository();
+    const team = teamRepository();
     (repo.teacherExists as ReturnType<typeof vi.fn>).mockResolvedValue(false);
 
     await expect(
-      createClassRoomService(repo).createClassroom({
+      createClassRoomService(repo, team).createClassroom({
         class_code: 'IA14A',
         class_name: '高度情報学科AI開発先行コース',
         teacher_id: 1,
@@ -68,6 +88,7 @@ describe('ClassRoomService', () => {
 
   it('存在する担任を指定してクラスを登録できる', async () => {
     const repo = repository();
+    const team = teamRepository();
     const input = {
       class_code: 'IA14A',
       class_name: '高度情報学科AI開発先行コース',
@@ -84,19 +105,66 @@ describe('ClassRoomService', () => {
     (repo.create as ReturnType<typeof vi.fn>).mockResolvedValue(classroom);
 
     await expect(
-      createClassRoomService(repo).createClassroom(input)
+      createClassRoomService(repo, team).createClassroom(input)
     ).resolves.toEqual(classroom);
-    expect(repo.create).toHaveBeenCalledWith(input);
+    expect(repo.create).toHaveBeenCalledWith({ ...input, team_id: null });
+  });
+
+  it('存在しないteam_idは登録前に404用エラーにする', async () => {
+    const repo = repository();
+    const team = teamRepository();
+    (team.exists as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+    await expect(
+      createClassRoomService(repo, team).createClassroom({
+        class_code: 'IA14A',
+        class_name: '高度情報学科AI開発先行コース',
+        teacher_id: null,
+        team_id: 999,
+      })
+    ).rejects.toThrow('Team not found');
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('既存のteam_idを指定した場合はそのままRepositoryへ渡す（新規team作成の判断はしない）', async () => {
+    const repo = repository();
+    const team = teamRepository();
+    (team.exists as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    const classroom = {
+      class_room_id: 2,
+      class_code: '16B',
+      class_name: '6年Bクラス（合同）',
+      student_count: 0,
+      teacher: null,
+      team_id: 5,
+    };
+    (repo.create as ReturnType<typeof vi.fn>).mockResolvedValue(classroom);
+
+    await expect(
+      createClassRoomService(repo, team).createClassroom({
+        class_code: '16B',
+        class_name: '6年Bクラス（合同）',
+        teacher_id: null,
+        team_id: 5,
+      })
+    ).resolves.toEqual(classroom);
+    expect(repo.create).toHaveBeenCalledWith({
+      class_code: '16B',
+      class_name: '6年Bクラス（合同）',
+      teacher_id: null,
+      team_id: 5,
+    });
   });
 
   it('クラスコード重複を409用エラーにする', async () => {
     const repo = repository();
+    const team = teamRepository();
     (repo.create as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('UNIQUE constraint failed: class_rooms.class_code')
     );
 
     await expect(
-      createClassRoomService(repo).createClassroom({
+      createClassRoomService(repo, team).createClassroom({
         class_code: 'IA14A',
         class_name: '高度情報学科AI開発先行コース',
         teacher_id: null,
@@ -106,10 +174,11 @@ describe('ClassRoomService', () => {
 
   it('存在しないクラスを更新すると404用エラーにする', async () => {
     const repo = repository();
+    const team = teamRepository();
     (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
     await expect(
-      createClassRoomService(repo).updateClassroom(999, {
+      createClassRoomService(repo, team).updateClassroom(999, {
         class_code: 'IA14A',
         class_name: '高度情報学科AI開発先行コース',
         teacher_id: null,
@@ -117,30 +186,150 @@ describe('ClassRoomService', () => {
     ).rejects.toThrow('Class not found');
   });
 
+  it('team_idを変更し、移動元のteamを他のクラスが参照していなければ、更新とあわせてteamも削除する', async () => {
+    const repo = repository();
+    const team = teamRepository();
+    (team.exists as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      class_room_id: 1,
+      class_code: 'IA14A',
+      class_name: '高度情報学科AI開発先行コース',
+      student_count: 0,
+      teacher: null,
+      team_id: 5,
+    });
+    (repo.updateAndCleanupTeam as ReturnType<typeof vi.fn>).mockResolvedValue({
+      class_room_id: 1,
+      class_code: 'IA14A',
+      class_name: '高度情報学科AI開発先行コース',
+      student_count: 0,
+      teacher: null,
+      team_id: 9,
+    });
+
+    await createClassRoomService(repo, team).updateClassroom(1, {
+      class_code: 'IA14A',
+      class_name: '高度情報学科AI開発先行コース',
+      teacher_id: null,
+      team_id: 9,
+    });
+
+    expect(repo.updateAndCleanupTeam).toHaveBeenCalledWith(
+      1,
+      {
+        class_code: 'IA14A',
+        class_name: '高度情報学科AI開発先行コース',
+        teacher_id: null,
+        team_id: 9,
+      },
+      5
+    );
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('team_idを変更しない更新では、updateAndCleanupTeamを使わずupdateを呼ぶ', async () => {
+    const repo = repository();
+    const team = teamRepository();
+    (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      class_room_id: 1,
+      class_code: 'IA14A',
+      class_name: '高度情報学科AI開発先行コース',
+      student_count: 0,
+      teacher: null,
+      team_id: 5,
+    });
+    (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+      class_room_id: 1,
+      class_code: 'IA14B',
+      class_name: '高度情報学科AI開発先行コース',
+      student_count: 0,
+      teacher: null,
+      team_id: 5,
+    });
+
+    await createClassRoomService(repo, team).updateClassroom(1, {
+      class_code: 'IA14B',
+      class_name: '高度情報学科AI開発先行コース',
+      teacher_id: null,
+    });
+
+    expect(repo.updateAndCleanupTeam).not.toHaveBeenCalled();
+    expect(repo.update).toHaveBeenCalled();
+  });
+
   it('学生が所属するクラスの削除を拒否する', async () => {
     const repo = repository();
+    const team = teamRepository();
     (repo.hasStudents as ReturnType<typeof vi.fn>).mockResolvedValue(true);
 
     await expect(
-      createClassRoomService(repo).deleteClassroom(1)
+      createClassRoomService(repo, team).deleteClassroom(1)
     ).rejects.toThrow('Class is referenced by students');
-    expect(repo.delete).not.toHaveBeenCalled();
+    expect(repo.deleteAndCleanupTeam).not.toHaveBeenCalled();
   });
 
   it('存在しないクラスの削除を404用エラーにする', async () => {
     const repo = repository();
+    const team = teamRepository();
     (repo.hasStudents as ReturnType<typeof vi.fn>).mockResolvedValue(false);
-    (repo.delete as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
     await expect(
-      createClassRoomService(repo).deleteClassroom(999)
+      createClassRoomService(repo, team).deleteClassroom(999)
+    ).rejects.toThrow('Class not found');
+    expect(repo.deleteAndCleanupTeam).not.toHaveBeenCalled();
+  });
+
+  it('クラス削除とteamの後始末を1回の呼び出しにまとめて行う', async () => {
+    const repo = repository();
+    const team = teamRepository();
+    (repo.hasStudents as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      class_room_id: 1,
+      class_code: 'IA14A',
+      class_name: '高度情報学科AI開発先行コース',
+      student_count: 0,
+      teacher: null,
+      team_id: 5,
+    });
+    (repo.deleteAndCleanupTeam as ReturnType<typeof vi.fn>).mockResolvedValue(
+      true
+    );
+
+    await createClassRoomService(repo, team).deleteClassroom(1);
+
+    expect(repo.deleteAndCleanupTeam).toHaveBeenCalledWith(1, 5);
+    expect(repo.delete).not.toHaveBeenCalled();
+    expect(repo.existsWithTeamId).not.toHaveBeenCalled();
+    expect(team.delete).not.toHaveBeenCalled();
+  });
+
+  it('deleteAndCleanupTeamがクラス未削除を返した場合は404用エラーにする', async () => {
+    const repo = repository();
+    const team = teamRepository();
+    (repo.hasStudents as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      class_room_id: 1,
+      class_code: 'IA14A',
+      class_name: '高度情報学科AI開発先行コース',
+      student_count: 0,
+      teacher: null,
+      team_id: 5,
+    });
+    (repo.deleteAndCleanupTeam as ReturnType<typeof vi.fn>).mockResolvedValue(
+      false
+    );
+
+    await expect(
+      createClassRoomService(repo, team).deleteClassroom(1)
     ).rejects.toThrow('Class not found');
   });
 
   describe('validateClassRoomImport', () => {
     it('全行が有効な場合はerrorsが空になり、DBへの書き込みは行わない', async () => {
       const repo = repository();
-      const service = createClassRoomService(repo);
+      const team = teamRepository();
+      const service = createClassRoomService(repo, team);
 
       const result = await service.validateClassRoomImport({
         rows: [
@@ -160,10 +349,11 @@ describe('ClassRoomService', () => {
 
     it('既存DBとクラス記号が重複する行はエラーとして報告する', async () => {
       const repo = repository();
+      const team = teamRepository();
       (
         repo.findExistingClassCodes as ReturnType<typeof vi.fn>
       ).mockResolvedValue(new Set(['13C']));
-      const service = createClassRoomService(repo);
+      const service = createClassRoomService(repo, team);
 
       const result = await service.validateClassRoomImport({
         rows: [{ class_code: '13C', class_name: '3年Cクラス(重複)' }],
@@ -184,7 +374,8 @@ describe('ClassRoomService', () => {
 
     it('ファイル内でクラス記号が重複する行はエラーとして報告する', async () => {
       const repo = repository();
-      const service = createClassRoomService(repo);
+      const team = teamRepository();
+      const service = createClassRoomService(repo, team);
 
       const result = await service.validateClassRoomImport({
         rows: [
@@ -204,7 +395,8 @@ describe('ClassRoomService', () => {
 
     it('2,000件の検査でも、既存クラスコードの問い合わせは1回にまとめる(D1のクエリ数上限対策)', async () => {
       const repo = repository();
-      const service = createClassRoomService(repo);
+      const team = teamRepository();
+      const service = createClassRoomService(repo, team);
 
       const rows = Array.from({ length: 2000 }, (_, i) => ({
         class_code: `C${i}`,
@@ -230,7 +422,8 @@ describe('ClassRoomService', () => {
   describe('commitClassRoomImport', () => {
     it('全行が有効な場合は全件分をまとめてcreateManyに渡す', async () => {
       const repo = repository();
-      const service = createClassRoomService(repo);
+      const team = teamRepository();
+      const service = createClassRoomService(repo, team);
 
       const result = await service.commitClassRoomImport({
         rows: [
@@ -247,17 +440,26 @@ describe('ClassRoomService', () => {
       });
       expect(repo.createMany).toHaveBeenCalledTimes(1);
       expect(repo.createMany).toHaveBeenCalledWith([
-        { class_code: '13C', class_name: '3年Cクラス', teacher_id: null },
-        { class_code: '13D', class_name: '3年Dクラス', teacher_id: null },
+        {
+          class_code: '13C',
+          class_name: '3年Cクラス',
+          teacher_id: null,
+        },
+        {
+          class_code: '13D',
+          class_name: '3年Dクラス',
+          teacher_id: null,
+        },
       ]);
     });
 
     it('クラス記号が重複する行がある場合は1件も登録しない', async () => {
       const repo = repository();
+      const team = teamRepository();
       (
         repo.findExistingClassCodes as ReturnType<typeof vi.fn>
       ).mockResolvedValue(new Set(['13C']));
-      const service = createClassRoomService(repo);
+      const service = createClassRoomService(repo, team);
 
       const result = await service.commitClassRoomImport({
         rows: [{ class_code: '13C', class_name: '3年Cクラス(重複)' }],

@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createUserSearchRepository } from '../../../src/infrastructure/repositories/UserSearchRepository';
 import type { IUserSearchRepository } from '../../../src/domain/interfaces/repositories/IUserSearchRepository';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 describe('UserSearchRepository', () => {
   let repository: IUserSearchRepository;
@@ -38,12 +39,11 @@ describe('UserSearchRepository', () => {
   }
 
   async function insertClassRoom(code: string, name: string): Promise<number> {
-    const row = await env.DB.prepare(
-      'INSERT INTO class_rooms (class_code, class_name) VALUES (?, ?) RETURNING class_room_id'
-    )
-      .bind(code, name)
-      .first<{ class_room_id: number }>();
-    return row!.class_room_id;
+    const { classRoomId } = await insertClassRoomWithTeam(env.DB, {
+      classCode: code,
+      className: name,
+    });
+    return classRoomId;
   }
 
   it('ユーザーを重複なくカテゴリ付きで返す', async () => {

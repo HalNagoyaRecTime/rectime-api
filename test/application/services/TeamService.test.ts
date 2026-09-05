@@ -26,6 +26,7 @@ function createRepository(
     existsClassCodes: vi.fn(),
     createTeam: vi.fn(),
     updateTeam: vi.fn(),
+    delete: vi.fn(),
     addScore: vi.fn(),
     ...overrides,
   };

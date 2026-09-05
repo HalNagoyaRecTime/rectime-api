@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ManualNotificationAudience } from '../../../src/domain/entities/AdminNotification';
 import { createAdminNotificationRepository } from '../../../src/infrastructure/repositories/AdminNotificationRepository';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 interface Fixture {
   creatorId: number;
@@ -11,9 +12,10 @@ interface Fixture {
 }
 
 async function createFixture(): Promise<Fixture> {
-  const classroom = await env.DB.prepare(
-    "INSERT INTO class_rooms (class_code, class_name) VALUES ('A1', 'A組') RETURNING class_room_id"
-  ).first<{ class_room_id: number }>();
+  const classroom = await insertClassRoomWithTeam(env.DB, {
+    classCode: 'A1',
+    className: 'A組',
+  });
   const creator = await env.DB.prepare(
     "INSERT INTO users (user_name) VALUES ('管理者') RETURNING user_id"
   ).first<{ user_id: number }>();
@@ -44,10 +46,10 @@ async function createFixture(): Promise<Fixture> {
     ),
     env.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, 'S001')"
-    ).bind(first!.user_id, classroom!.class_room_id),
+    ).bind(first!.user_id, classroom.classRoomId),
     env.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 2, 'S002')"
-    ).bind(second!.user_id, classroom!.class_room_id),
+    ).bind(second!.user_id, classroom.classRoomId),
     env.DB.prepare(
       'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
     ).bind(gathering!.gathering_id, first!.user_id),
@@ -67,7 +69,7 @@ async function createFixture(): Promise<Fixture> {
 
   return {
     creatorId: creator!.user_id,
-    classRoomId: classroom!.class_room_id,
+    classRoomId: classroom.classRoomId,
     gatheringId: gathering!.gathering_id,
     eventId: event!.event_id,
   };
@@ -86,6 +88,8 @@ describe('AdminNotificationRepository', () => {
       env.DB.prepare('DELETE FROM gathering_spots'),
       env.DB.prepare('DELETE FROM students'),
       env.DB.prepare('DELETE FROM class_rooms'),
+      env.DB.prepare('DELETE FROM team_scores'),
+      env.DB.prepare('DELETE FROM teams'),
       env.DB.prepare('DELETE FROM staffs'),
       env.DB.prepare('DELETE FROM teachers'),
       env.DB.prepare('DELETE FROM events'),
