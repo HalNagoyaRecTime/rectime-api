@@ -8,6 +8,7 @@ import {
   buildAudienceStatusStatement,
   buildAudienceTokenSelect,
 } from './AdminNotificationAudienceQuery';
+import { shadowWriteNotificationAudiences } from './NotificationAudienceShadowWriter';
 
 interface AudienceStatusRow {
   target_exists: number;
@@ -34,6 +35,12 @@ export function createAdminNotificationRepository(
       if (notificationId === null || scheduleCount === 0) {
         throw new Error('Failed to create manual notification');
       }
+
+      await shadowWriteNotificationAudiences(
+        db,
+        [{ notification_id: notificationId, audience: input.audience }],
+        'manual'
+      );
 
       return {
         notification_id: notificationId,

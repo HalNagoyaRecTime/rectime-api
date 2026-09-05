@@ -6,6 +6,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
+import type { NotificationAudienceType } from '../../domain/entities/NotificationAudience';
 
 export const class_rooms = sqliteTable(
   'class_rooms',
@@ -309,6 +310,39 @@ export const notifications = sqliteTable('notifications', {
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const notification_audiences = sqliteTable(
+  'notification_audiences',
+  {
+    id: integer('notification_audience_id').primaryKey({
+      autoIncrement: true,
+    }),
+    notificationId: integer('notification_id')
+      .notNull()
+      .references(() => notifications.notificationId, { onDelete: 'cascade' }),
+    audienceType: text('audience_type')
+      .notNull()
+      .$type<NotificationAudienceType>(),
+    classRoomId: integer('class_room_id').references(() => class_rooms.id),
+    gatheringId: integer('gathering_id').references(() => gatherings.id),
+    eventId: integer('event_id').references(() => events.id),
+    userId: integer('user_id').references(() => users.id),
+    // user/usersの対象User一覧はJSON配列として保存する。
+    userIds: text('user_ids'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    index('idx_notification_audiences_notification_id').on(
+      table.notificationId
+    ),
+    index('idx_notification_audiences_type').on(table.audienceType),
+  ]
+);
 
 export const microsoft_account_links = sqliteTable('microsoft_account_links', {
   id: integer('microsoft_account_link_id').primaryKey({

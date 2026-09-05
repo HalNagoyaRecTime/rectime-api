@@ -82,6 +82,7 @@ describe('EventScheduleRepository', () => {
   beforeEach(async () => {
     await env.DB.batch([
       env.DB.prepare('DELETE FROM notification_schedules'),
+      env.DB.prepare('DELETE FROM notification_audiences'),
       env.DB.prepare('DELETE FROM notifications'),
       env.DB.prepare('DELETE FROM gathering_group_members'),
       env.DB.prepare('DELETE FROM firebase_tokens'),
@@ -112,6 +113,28 @@ describe('EventScheduleRepository', () => {
       send_at: '2026-11-07T01:15:00.000Z',
       title: '大縄跳び開始のお知らせ',
       body: '大縄跳びの開始時間が近づいています。該当チームは体育館前へ集合してください。',
+    });
+
+    const audience = await env.DB.prepare(
+      `SELECT audience_type, class_room_id, gathering_id, event_id,
+              user_id, user_ids
+       FROM notification_audiences
+       WHERE notification_id = (
+         SELECT notification_id
+         FROM notification_schedules
+         WHERE event_id = ?
+         LIMIT 1
+       )`
+    )
+      .bind(fixture.eventId)
+      .first();
+    expect(audience).toEqual({
+      audience_type: 'gathering',
+      class_room_id: null,
+      gathering_id: fixture.gatheringId,
+      event_id: null,
+      user_id: null,
+      user_ids: null,
     });
   });
 
@@ -214,6 +237,41 @@ describe('EventScheduleRepository', () => {
       start_time: '1000',
       end_time: '1030',
     });
+  });
+
+  it('AudienceのShadow Writeに失敗してもLegacy通知の更新と作成を完了する', async () => {
+    const fixture = await createFixture();
+    await env.DB.prepare(
+      `CREATE TRIGGER reject_notification_audience_shadow
+       BEFORE INSERT ON notification_audiences
+       BEGIN
+         SELECT RAISE(ABORT, 'forced audience shadow failure');
+       END`
+    ).run();
+
+    try {
+      await expect(
+        repository.apply({
+          ...buildInput(fixture),
+          event_name: 'Shadow Write失敗確認',
+        })
+      ).resolves.toBeUndefined();
+    } finally {
+      await env.DB.prepare(
+        'DROP TRIGGER IF EXISTS reject_notification_audience_shadow'
+      ).run();
+    }
+
+    const legacyRows = await env.DB.prepare(
+      `SELECT n.notification_id, COUNT(*) AS schedule_count
+       FROM notifications n
+       INNER JOIN notification_schedules ns ON ns.notification_id = n.notification_id
+       WHERE n.notification_type = 'event_reminder'
+         AND n.title = 'Shadow Write失敗確認開始のお知らせ'
+       GROUP BY n.notification_id`
+    ).all<{ notification_id: number; schedule_count: number }>();
+    expect(legacyRows.results).toHaveLength(1);
+    expect(legacyRows.results[0]?.schedule_count).toBe(1);
   });
 
   it('同じ集合に登録した複数の利用者を通知対象にする', async () => {
