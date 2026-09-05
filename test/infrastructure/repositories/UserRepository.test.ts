@@ -409,12 +409,19 @@ describe('UserRepository', () => {
       await expect(repo.markAsDeleted(created.id)).resolves.toBe(true);
 
       const userRow = await env.DB.prepare(
-        'SELECT deletion_status, deleted_at FROM users WHERE user_id = ?'
+        'SELECT deletion_status, deleted_at, purged_at FROM users WHERE user_id = ?'
       )
         .bind(created.id)
-        .first<{ deletion_status: string; deleted_at: string | null }>();
+        .first<{
+          deletion_status: string;
+          deleted_at: string | null;
+          purged_at: string | null;
+        }>();
       expect(userRow?.deletion_status).toBe('deleted');
       expect(userRow?.deleted_at).not.toBeNull();
+      // markAsDeletedの時点では、関連データの削除・匿名化(後片付け)は
+      // まだ完了していない。
+      expect(userRow?.purged_at).toBeNull();
 
       const link = await env.DB.prepare(
         'SELECT * FROM microsoft_account_links WHERE user_id = ?'
@@ -442,6 +449,90 @@ describe('UserRepository', () => {
       await expect(repo.markAsDeleted(String(user!.user_id))).resolves.toBe(
         true
       );
+    });
+  });
+
+  describe('markAsPurged / isPurged', () => {
+    it('markAsPurgedはpurged_atに完了時刻をセットし、isPurgedがtrueを返すようになる', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status) VALUES ('後片付け太郎', 'deleted') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const userId = String(user!.user_id);
+
+      await expect(repo.isPurged(userId)).resolves.toBe(false);
+
+      await expect(repo.markAsPurged(userId)).resolves.toBe(true);
+
+      const row = await env.DB.prepare(
+        'SELECT deletion_status, purged_at FROM users WHERE user_id = ?'
+      )
+        .bind(user!.user_id)
+        .first<{ deletion_status: string; purged_at: string | null }>();
+      expect(row?.deletion_status).toBe('deleted');
+      expect(row?.purged_at).not.toBeNull();
+      await expect(repo.isPurged(userId)).resolves.toBe(true);
+    });
+
+    it('存在しないuserIdの場合、markAsPurgedはfalseを返す', async () => {
+      await expect(repo.markAsPurged('999999')).resolves.toBe(false);
+    });
+
+    it('存在しないuserIdの場合、isPurgedはfalseを返す', async () => {
+      await expect(repo.isPurged('999999')).resolves.toBe(false);
+    });
+
+    it('deletion_statusが"deleted"でない場合、markAsPurgedはpurged_atをセットせずfalseを返す', async () => {
+      // 抽出条件(`WHERE deletion_status = 'deleted' AND purged_at IS
+      // NULL`)・isPurgedの判定条件と同じ2軸(状態+完了時刻)で更新を
+      // 揃えるための確認。userIdのみを条件にすると、将来「削除の取り消し」
+      // でdeletion_statusを戻す機能が入った際にpurged_atだけが残り得る。
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status) VALUES ('未削除太郎', 'active') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const userId = String(user!.user_id);
+
+      await expect(repo.markAsPurged(userId)).resolves.toBe(false);
+
+      const row = await env.DB.prepare(
+        'SELECT purged_at FROM users WHERE user_id = ?'
+      )
+        .bind(user!.user_id)
+        .first<{ purged_at: string | null }>();
+      expect(row?.purged_at).toBeNull();
+    });
+
+    it('deletion_statusが"deleted"でない場合、purged_atがセット済みでもisPurgedはfalseを返す', async () => {
+      // isPurgedはdeletion_status = 'deleted'も条件に含めるため、
+      // purged_atだけが残っていても状態が'deleted'でなければfalseを返す。
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status, purged_at) VALUES ('状態不整合太郎', 'active', CURRENT_TIMESTAMP) RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const userId = String(user!.user_id);
+
+      await expect(repo.isPurged(userId)).resolves.toBe(false);
+    });
+  });
+
+  describe('anonymizeUser', () => {
+    it('user_nameを固定文字列に書き換える', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('匿名化対象太郎') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(repo.anonymizeUser(String(user!.user_id))).resolves.toBe(
+        true
+      );
+
+      const row = await env.DB.prepare(
+        'SELECT user_name FROM users WHERE user_id = ?'
+      )
+        .bind(user!.user_id)
+        .first<{ user_name: string }>();
+      expect(row?.user_name).toBe('削除済みユーザー');
+    });
+
+    it('存在しないuserIdの場合はfalseを返す', async () => {
+      await expect(repo.anonymizeUser('999999')).resolves.toBe(false);
     });
   });
 });

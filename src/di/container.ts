@@ -56,6 +56,7 @@ import { createUserRepository } from '../infrastructure/repositories/UserReposit
 import { createUserActivationRepository } from '../infrastructure/repositories/UserActivationRepository';
 import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
+import { createAccountDeletionService } from '../application/services/AccountDeletionService';
 import { createAuthorizationService } from '../application/services/AuthorizationService';
 import { createUserSearchService } from '../application/services/UserSearchService';
 import { createUserSearchController } from '../presentation/controllers/UserSearchController';
@@ -106,6 +107,21 @@ export function createDIContainer(env: Env) {
     firebaseTokenRepository
   );
   const authorizationService = createAuthorizationService(userRepository);
+  // #265 PR4: 関連データの削除・匿名化(deleteRelatedData)の実装。
+  // 現時点ではこのコンテナに登録して公開しているだけで、実際の削除フロー
+  // (DELETE /auth/me等のHTTPハンドラ)からはまだ呼ばれていない
+  // (authService.startAccountDeletionも同様に未接続)。呼び出しはテスト
+  // (AccountDeletionService.test.ts / .integration.test.ts)のみ。
+  // ハンドラへの接続は別PR(#265 PR5)で行う予定。
+  const accountDeletionService = createAccountDeletionService({
+    userRepository,
+    studentRepository,
+    staffRepository,
+    teacherRepository,
+    gatheringGroupMemberRepository,
+    notificationScheduleRepository,
+    firebaseTokenRepository,
+  });
   const userSearchService = createUserSearchService(userSearchRepository);
   const studentService = createStudentService(
     studentRepository,
@@ -211,6 +227,7 @@ export function createDIContainer(env: Env) {
     // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
     userActivationRepository,
     authService,
+    accountDeletionService,
     authorizationService,
     studentService,
     studentController,
