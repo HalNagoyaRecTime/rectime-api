@@ -55,7 +55,7 @@ export function createAuthService(
         }
 
         // updateUser自体もWHERE句にdeletion_status = 'active'を含めており、
-        // ここまでのgetDeletionStatus確認とこのupdateの間にmarkAsPurgingが
+        // ここまでのgetDeletionStatus確認とこのupdateの間にmarkAsDeletedが
         // 割り込んだ場合(TOCTOU)は0件更新になりnullが返る。その場合は
         // updated===null→USER_NOT_FOUNDと即断せず、最新状態を見て
         // ACCOUNT_DELETION_PENDINGを優先させる。
