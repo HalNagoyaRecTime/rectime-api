@@ -364,6 +364,8 @@ account.post('/refresh', async c => {
 // エラー:
 //   400 INVALID_REQUEST                       deletion_confirmation_tokenが無い/不正な形式
 //   401 DELETION_CONFIRMATION_TOKEN_INVALID    Tokenが存在しない/期限切れ/使用済み
+//   409 ACCOUNT_DELETION_NOT_STARTED           deleteRelatedData呼び出し前提が崩れている(通常到達しない)
+//   409 ACCOUNT_ALREADY_PURGED                 後片付けが既に完了済み(同一利用者への並行実行等)
 //
 // 注意: このエンドポイントを含む /auth 配下は現状OpenAPI(openapi.json)
 // 未対応(素のHonoハンドラーのため)。この仕様コメントが実質的な契約定義。
@@ -398,7 +400,27 @@ account.delete('/me', async c => {
   const { user_id: userId } = JSON.parse(raw) as DeletionConfirmationEntry;
 
   await authService.startAccountDeletion(userId);
-  await accountDeletionService.deleteRelatedData(userId);
+
+  try {
+    await accountDeletionService.deleteRelatedData(userId);
+  } catch (error) {
+    // AccountDeletionService.deleteRelatedDataは、呼び出し順序の前提が
+    // 崩れた場合や後片付けが既に完了済みの場合にError('コード名')を
+    // throwする(#265 PR4)。ここでerr.messageをAuthErrorsのcodeと突き合わせ
+    // APIエラーへ変換する(microsoft.tsのACCOUNT_DELETION_PENDINGと同じ
+    // パターン)。想定外のエラー(DB接続断など)はそのまま再送出し、
+    // 呼び出し元(Honoのデフォルトエラーハンドリング)に委ねる。
+    if (
+      error instanceof Error &&
+      error.message === 'ACCOUNT_DELETION_NOT_STARTED'
+    ) {
+      return errorResponse(c, AuthErrors.ACCOUNT_DELETION_NOT_STARTED);
+    }
+    if (error instanceof Error && error.message === 'ACCOUNT_ALREADY_PURGED') {
+      return errorResponse(c, AuthErrors.ACCOUNT_ALREADY_PURGED);
+    }
+    throw error;
+  }
 
   return c.body(null, 202);
 });

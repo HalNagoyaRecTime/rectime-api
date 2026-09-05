@@ -996,4 +996,40 @@ describe('DELETE /auth/me', () => {
 
     expect(meRes.status).toBe(410);
   });
+
+  it('後片付けが既に完了済みの利用者に対して呼ぶと409 ACCOUNT_ALREADY_PURGEDを返す', async () => {
+    // 通常フローでは起こらないが、同一利用者に対して複数の
+    // deletion_confirmation_tokenが発行され、片方が先に処理を完了させた
+    // 後にもう片方のDELETEが実行される、といった並行実行時に
+    // AccountDeletionService.deleteRelatedDataがACCOUNT_ALREADY_PURGEDを
+    // throwする(#265 PR4)。account.ts側でこれをAPIエラーへ変換できて
+    // いることを確認する。
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status, purged_at) VALUES ('後片付け完了済み太郎', 'deleted', CURRENT_TIMESTAMP) RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const deletionToken = 'deletion-token-already-purged';
+    await env.AUTH_KV.put(
+      `deletion_confirmation:${deletionToken}`,
+      JSON.stringify({
+        user_id: String(user!.user_id),
+        created_at: new Date().toISOString(),
+      } satisfies DeletionConfirmationEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deletion_confirmation_token: deletionToken }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('ACCOUNT_ALREADY_PURGED');
+  });
 });
