@@ -45,6 +45,23 @@ export function createAccountDeletionService(deps: {
         );
       }
 
+      // markAsDeletedは完了しているが、関連データの削除・匿名化(後片付け)は
+      // 複数テーブルへの個別の書き込みで構成され単一トランザクションに
+      // できない。そのため「削除を受け付けた」(deletion_status='deleted')
+      // と「後片付けまで完了した」(purged_at IS NOT NULL)を別に管理して
+      // おり、既に後片付けが完了している利用者に対してここを素通りさせると
+      // 既に匿名化・削除済みのデータへ無意味な書き込みを繰り返すことに
+      // なるため、明示的に拒否する。途中で失敗した利用者はpurged_atが
+      // NULLのまま残るため、`WHERE deletion_status = 'deleted' AND
+      // purged_at IS NULL`で機械的に抽出し、同じuserIdで再実行できる。
+      const alreadyPurged = await userRepository.isPurged(userId);
+      if (alreadyPurged) {
+        throw new Error(
+          'ACCOUNT_ALREADY_PURGED: deleteRelatedData was called again after ' +
+            'purging already finished for this userId'
+        );
+      }
+
       // users.user_nameの匿名化はロールの種類によらず常に行う。
       // staffs/teachersの削除はロール用テーブルの行を消すだけで
       // users側の表示名には触れないため、ここで呼ばないと教員・スタッフの
@@ -96,6 +113,14 @@ export function createAccountDeletionService(deps: {
       console.log('[ACCOUNT_DELETION] anonymizeStudent: start', { userId });
       await studentRepository.anonymizeByUserId(userIdNum);
       console.log('[ACCOUNT_DELETION] anonymizeStudent: done', { userId });
+
+      // 全ステップが成功した時だけpurged_atをセットする。ここより前で
+      // エラーがthrowされた場合はpurged_atがNULLのまま残るため、
+      // `WHERE deletion_status = 'deleted' AND purged_at IS NULL` で
+      // 未完了の利用者を抽出し、同じuserIdでdeleteRelatedDataを再実行
+      // すれば続きから完了できる(各ステップは対象が無ければ何もしない
+      // 冪等な実装のため)。
+      await userRepository.markAsPurged(userId);
 
       console.log('[ACCOUNT_DELETION] deleteRelatedData: completed', {
         userId,

@@ -8,6 +8,7 @@ import { createGatheringGroupMemberRepository } from '../../../src/infrastructur
 import { createNotificationScheduleRepository } from '../../../src/infrastructure/repositories/NotificationScheduleRepository';
 import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
 import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
+import type { IGatheringGroupMemberRepository } from '../../../src/domain/interfaces/repositories/IGatheringGroupMemberRepository';
 
 // #265 PR4: 関連データの削除・匿名化を実DBで検証する。特に「D1・KV・
 // Firebaseの途中で失敗しても、安全に再実行・再開できる」ことを、同じ
@@ -27,6 +28,24 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     await workerEnv.DB.prepare('DELETE FROM students').run();
     await workerEnv.DB.prepare('DELETE FROM users').run();
   });
+
+  // gatheringGroupMemberRepository.deleteByUserIdだけを失敗させ、
+  // AccountDeletionService.deleteRelatedDataの途中失敗を再現するための
+  // スタブ。deleteByUserId以外は本テストでは呼ばれない想定。
+  function buildFailingGatheringGroupMemberRepository(): IGatheringGroupMemberRepository {
+    return {
+      existsGathering: async () => false,
+      existsUser: async () => false,
+      findByGatheringId: async () => [],
+      create: async () => {
+        throw new Error('NOT_IMPLEMENTED_IN_TEST_STUB');
+      },
+      remove: async () => false,
+      deleteByUserId: async () => {
+        throw new Error('SIMULATED_FAILURE');
+      },
+    };
+  }
 
   function buildService() {
     const db = workerEnv.DB;
@@ -54,6 +73,18 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     )
       .bind(userId)
       .run();
+  }
+
+  async function getUserDeletionState(userId: number): Promise<{
+    deletion_status: string;
+    purged_at: string | null;
+  }> {
+    const row = await workerEnv.DB.prepare(
+      'SELECT deletion_status, purged_at FROM users WHERE user_id = ?'
+    )
+      .bind(userId)
+      .first<{ deletion_status: string; purged_at: string | null }>();
+    return row!;
   }
 
   it('学生ユーザーの関連データを削除・匿名化し、再実行しても安全である', async () => {
@@ -130,6 +161,11 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
 
     await service.deleteRelatedData(String(user!.user_id));
 
+    // 全ステップ完了後はpurged_atがセットされる。
+    const stateAfterComplete = await getUserDeletionState(user!.user_id);
+    expect(stateAfterComplete.deletion_status).toBe('deleted');
+    expect(stateAfterComplete.purged_at).not.toBeNull();
+
     // students: 行は残るが匿名化されている
     const studentRow = await workerEnv.DB.prepare(
       'SELECT student_id_number FROM students WHERE user_id = ?'
@@ -171,12 +207,13 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     expect(createdRow).not.toBeNull();
     expect(createdRow?.created_user_id).toBeNull();
 
-    // 再実行しても壊れない(冪等性の確認)
+    // 後片付けが完了済み(purged_at IS NOT NULL)の利用者に対する再実行は、
+    // 無意味な書き込みを繰り返さないよう拒否される。
     await expect(
       service.deleteRelatedData(String(user!.user_id))
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow('ACCOUNT_ALREADY_PURGED');
 
-    // 再実行後も状態は変わらない
+    // 拒否後も状態は変わらない
     const studentRowAfterRetry = await workerEnv.DB.prepare(
       'SELECT student_id_number FROM students WHERE user_id = ?'
     )
@@ -229,11 +266,14 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(user!.user_id)
       .first<{ user_name: string }>();
     expect(userRow?.user_name).toBe('削除済みユーザー');
+    expect(
+      (await getUserDeletionState(user!.user_id)).purged_at
+    ).not.toBeNull();
 
-    // 再実行しても壊れない
+    // 完了済みへの再実行は拒否される
     await expect(
       service.deleteRelatedData(String(user!.user_id))
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow('ACCOUNT_ALREADY_PURGED');
   });
 
   it('一部の関連データだけ既に削除された状態(途中失敗を模した状態)から再実行しても完了できる', async () => {
@@ -263,6 +303,14 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(user!.user_id)
       .run();
 
+    // 途中失敗した利用者はpurged_atがNULLのまま残るため、
+    // `WHERE deletion_status = 'deleted' AND purged_at IS NULL`で
+    // 機械的に抽出できる(今回のレビュー指摘の核心: 誰かが申告するまで
+    // 気付けない、という状態を作らない)。
+    const stateBeforeRetry = await getUserDeletionState(user!.user_id);
+    expect(stateBeforeRetry.deletion_status).toBe('deleted');
+    expect(stateBeforeRetry.purged_at).toBeNull();
+
     // 中断後の再実行を模す。staffsは既に無いが、エラーにならず
     // students等の残りの処理が完了することを確認する。
     await expect(
@@ -275,6 +323,62 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(user!.user_id)
       .first<{ student_id_number: string }>();
     expect(studentRow?.student_id_number).toBe(`deleted-${user!.user_id}`);
+
+    // 再実行が完了するとpurged_atがセットされ、抽出対象から外れる。
+    expect(
+      (await getUserDeletionState(user!.user_id)).purged_at
+    ).not.toBeNull();
+  });
+
+  it('途中のステップで例外が発生した場合、purged_atはNULLのまま残り、後から抽出・再実行できる', async () => {
+    // AccountDeletionService.deleteRelatedDataは複数テーブルへの個別の
+    // 書き込みで構成され単一トランザクションにできないため、途中で
+    // 例外が起きた利用者は`WHERE deletion_status = 'deleted' AND
+    // purged_at IS NULL`で機械的に抽出できる必要がある(今回のレビュー
+    // 指摘)。ここではgatheringGroupMemberRepository.deleteByUserId
+    // (anonymizeUser・staffs削除より後に実行される)だけを失敗する
+    // モックに差し替え、それ以外は実DBのリポジトリを使うことで、
+    // 途中失敗を再現する。
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('例外テスト太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+
+    await markAsDeleted(user!.user_id);
+    const db = workerEnv.DB;
+    const service = createAccountDeletionService({
+      userRepository: createUserRepository(db),
+      studentRepository: createStudentRepository(db),
+      staffRepository: createStaffRepository(db),
+      teacherRepository: createTeacherRepository(db),
+      gatheringGroupMemberRepository:
+        buildFailingGatheringGroupMemberRepository(),
+      notificationScheduleRepository: createNotificationScheduleRepository(db),
+      firebaseTokenRepository: createFirebaseTokenRepository(db),
+    });
+
+    await expect(
+      service.deleteRelatedData(String(user!.user_id))
+    ).rejects.toThrow('SIMULATED_FAILURE');
+
+    // 途中で失敗しても、途中まで完了したステップ(anonymizeUser・staffs削除)
+    // は確定したまま残り、purged_atはNULLのまま。
+    const state = await getUserDeletionState(user!.user_id);
+    expect(state.deletion_status).toBe('deleted');
+    expect(state.purged_at).toBeNull();
+    const staffRow = await workerEnv.DB.prepare(
+      'SELECT * FROM staffs WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(staffRow).toBeNull();
+
+    const unpurgedUsers = await workerEnv.DB.prepare(
+      "SELECT user_id FROM users WHERE deletion_status = 'deleted' AND purged_at IS NULL"
+    ).all<{ user_id: number }>();
+    expect(unpurgedUsers.results.map(r => r.user_id)).toContain(user!.user_id);
   });
 
   it('同一user_idがstaffs・teachers・studentsに同時に存在する場合も、それぞれ独立して正しく処理される', async () => {

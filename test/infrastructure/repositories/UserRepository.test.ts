@@ -409,12 +409,19 @@ describe('UserRepository', () => {
       await expect(repo.markAsDeleted(created.id)).resolves.toBe(true);
 
       const userRow = await env.DB.prepare(
-        'SELECT deletion_status, deleted_at FROM users WHERE user_id = ?'
+        'SELECT deletion_status, deleted_at, purged_at FROM users WHERE user_id = ?'
       )
         .bind(created.id)
-        .first<{ deletion_status: string; deleted_at: string | null }>();
+        .first<{
+          deletion_status: string;
+          deleted_at: string | null;
+          purged_at: string | null;
+        }>();
       expect(userRow?.deletion_status).toBe('deleted');
       expect(userRow?.deleted_at).not.toBeNull();
+      // markAsDeletedの時点では、関連データの削除・匿名化(後片付け)は
+      // まだ完了していない。
+      expect(userRow?.purged_at).toBeNull();
 
       const link = await env.DB.prepare(
         'SELECT * FROM microsoft_account_links WHERE user_id = ?'
@@ -442,6 +449,36 @@ describe('UserRepository', () => {
       await expect(repo.markAsDeleted(String(user!.user_id))).resolves.toBe(
         true
       );
+    });
+  });
+
+  describe('markAsPurged / isPurged', () => {
+    it('markAsPurgedはpurged_atに完了時刻をセットし、isPurgedがtrueを返すようになる', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status) VALUES ('後片付け太郎', 'deleted') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const userId = String(user!.user_id);
+
+      await expect(repo.isPurged(userId)).resolves.toBe(false);
+
+      await expect(repo.markAsPurged(userId)).resolves.toBe(true);
+
+      const row = await env.DB.prepare(
+        'SELECT deletion_status, purged_at FROM users WHERE user_id = ?'
+      )
+        .bind(user!.user_id)
+        .first<{ deletion_status: string; purged_at: string | null }>();
+      expect(row?.deletion_status).toBe('deleted');
+      expect(row?.purged_at).not.toBeNull();
+      await expect(repo.isPurged(userId)).resolves.toBe(true);
+    });
+
+    it('存在しないuserIdの場合、markAsPurgedはfalseを返す', async () => {
+      await expect(repo.markAsPurged('999999')).resolves.toBe(false);
+    });
+
+    it('存在しないuserIdの場合、isPurgedはfalseを返す', async () => {
+      await expect(repo.isPurged('999999')).resolves.toBe(false);
     });
   });
 

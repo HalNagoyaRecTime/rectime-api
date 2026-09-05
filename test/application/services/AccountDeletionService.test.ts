@@ -19,6 +19,8 @@ function buildDeps() {
     updateUser: vi.fn(),
     linkMicrosoftAccount: vi.fn(),
     markAsDeleted: vi.fn(),
+    markAsPurged: vi.fn().mockResolvedValue(true),
+    isPurged: vi.fn().mockResolvedValue(false),
     anonymizeUser: vi.fn().mockResolvedValue(true),
   };
   const studentRepository: IStudentRepository = {
@@ -109,6 +111,7 @@ describe('createAccountDeletionService', () => {
       );
       expect(deps.firebaseTokenRepository.findByUserId).not.toHaveBeenCalled();
       expect(deps.staffRepository.deleteByUserId).not.toHaveBeenCalled();
+      expect(deps.userRepository.markAsPurged).not.toHaveBeenCalled();
     });
 
     it('deletion_statusが"deletion_pending"の場合も例外を投げる(markAsDeleted完了前)', async () => {
@@ -121,6 +124,21 @@ describe('createAccountDeletionService', () => {
       await expect(service.deleteRelatedData('10')).rejects.toThrow(
         'ACCOUNT_NOT_MARKED_AS_DELETED'
       );
+    });
+
+    it('後片付けが既に完了済み(isPurged: true)の場合は例外を投げ、再実行しない', async () => {
+      // 完了済みの利用者に対してdeleteRelatedDataが再度呼ばれても、
+      // 既に匿名化・削除済みのデータへ無意味な書き込みをしない。
+      const deps = buildDeps();
+      (
+        deps.userRepository.isPurged as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(true);
+      const service = createAccountDeletionService(deps);
+
+      await expect(service.deleteRelatedData('10')).rejects.toThrow(
+        'ACCOUNT_ALREADY_PURGED'
+      );
+      expect(deps.userRepository.anonymizeUser).not.toHaveBeenCalled();
     });
 
     it('firebase_tokensが無い場合は通知履歴の削除・Token削除をスキップする', async () => {
@@ -242,6 +260,28 @@ describe('createAccountDeletionService', () => {
       expect(
         deps.gatheringGroupMemberRepository.deleteByUserId
       ).toHaveBeenCalled();
+    });
+
+    it('全ステップが成功した場合のみmarkAsPurgedを呼び、deletion_statusを最終状態へ進める', async () => {
+      const deps = buildDeps();
+      const service = createAccountDeletionService(deps);
+
+      await service.deleteRelatedData('10');
+
+      expect(deps.userRepository.markAsPurged).toHaveBeenCalledWith('10');
+    });
+
+    it('途中のステップが失敗した場合はmarkAsPurgedを呼ばない(purgingのまま残し、再実行で拾えるようにする)', async () => {
+      const deps = buildDeps();
+      (
+        deps.staffRepository.deleteByUserId as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('D1_UNAVAILABLE'));
+      const service = createAccountDeletionService(deps);
+
+      await expect(service.deleteRelatedData('10')).rejects.toThrow(
+        'D1_UNAVAILABLE'
+      );
+      expect(deps.userRepository.markAsPurged).not.toHaveBeenCalled();
     });
   });
 });

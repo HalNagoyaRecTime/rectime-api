@@ -38,7 +38,22 @@ export interface IUserRepository {
   // D1・KV・Firebaseにまたがる削除処理全体(#265 PR4)はこのメソッドの
   // 呼び出し元でオーケストレーションする想定で、ここではuser_idに対する
   // 最小限の状態遷移のみを担う。
+  //
+  // 呼び出し完了時点では、関連データの削除・匿名化(後片付け)はまだ
+  // 完了していない(purged_atはNULLのまま)。後片付けは複数テーブルへの
+  // 個別の書き込みで構成され単一トランザクションにできないため、
+  // 「削除を受け付けた」(このメソッド)と「後片付けまで完了した」
+  // (markAsPurged)を別ステップに分けている。
   markAsDeleted(userId: string): Promise<boolean>;
+  // AccountDeletionService.deleteRelatedDataが関連データの削除・匿名化を
+  // 全て完了した後に呼ぶ。purged_atに完了時刻をセットする(#265 PR4)。
+  // `WHERE deletion_status = 'deleted' AND purged_at IS NULL`で、
+  // markAsDeletedは完了したが後片付けが途中で失敗した利用者を後から
+  // 機械的に抽出・再実行できるようにするための最終ステップ。
+  markAsPurged(userId: string): Promise<boolean>;
+  // 後片付け(関連データの削除・匿名化)が完了しているかを判定する。
+  // deletion_status = 'deleted' かつ purged_at IS NOT NULL の場合のみtrue。
+  isPurged(userId: string): Promise<boolean>;
   // アカウント削除(#265 PR4)専用。users.user_nameを固定文字列に書き換える。
   // ロール(staffs/teachers)や所属を削除するだけではusers行の表示名は
   // 残ったままになるため、ロールの種類によらず常にこのメソッドで

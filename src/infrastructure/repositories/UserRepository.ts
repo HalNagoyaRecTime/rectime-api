@@ -214,6 +214,10 @@ export function createUserRepository(db: D1Database): IUserRepository {
       // updateが失敗する部分失敗は起こり得るが、その場合は
       // deletionStatusがまだ'active'のまま(＝本人にも削除未完了と見える)
       // なので、同じuserIdでmarkAsDeletedを再実行すれば解消できる。
+      //
+      // purged_atはここでは変更しない(NULLのまま)。関連データの削除・
+      // 匿名化(後片付け)はAccountDeletionService.deleteRelatedDataが
+      // これ以降に行い、全ステップ完了後にmarkAsPurgedがセットする。
       await orm
         .delete(microsoft_account_links)
         .where(eq(microsoft_account_links.userId, Number(userId)))
@@ -230,6 +234,27 @@ export function createUserRepository(db: D1Database): IUserRepository {
         .run();
 
       return true;
+    },
+
+    async markAsPurged(userId) {
+      const result = await orm
+        .update(users)
+        .set({
+          purgedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(users.id, Number(userId)))
+        .run();
+      return result.meta.changes > 0;
+    },
+
+    async isPurged(userId) {
+      const row = await orm
+        .select({ purgedAt: users.purgedAt })
+        .from(users)
+        .where(eq(users.id, Number(userId)))
+        .get();
+      return Boolean(row?.purgedAt);
     },
 
     async anonymizeUser(userId) {
