@@ -103,6 +103,9 @@ describe('UserController', () => {
       expect(service.updateUserStatus).not.toHaveBeenCalled();
     });
 
+    // 以下2つはコントローラ内の保険を対象にしている。実運用では
+    // ルート定義(OpenAPI)の検証が先に走り、ここへは到達しないため、
+    // 応答コードがルート側と揃っていることまで確認する。
     it.each(['0', '-1', 'abc'])('userIdが%sの場合は400を返す', async userId => {
       const { service, request } = setup();
 
@@ -111,6 +114,9 @@ describe('UserController', () => {
       });
 
       expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
       expect(service.updateUserStatus).not.toHaveBeenCalled();
     });
 
@@ -124,6 +130,9 @@ describe('UserController', () => {
       const response = await request('/admin/users/10', body);
 
       expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
       expect(service.updateUserStatus).not.toHaveBeenCalled();
     });
 

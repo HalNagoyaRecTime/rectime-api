@@ -7,6 +7,7 @@ import type { AuthenticationVariables } from '../middleware/bearerAuthentication
 import type { AuthVariables } from '../middleware/requireAuth';
 import { CommonErrors } from '../errors/commonErrors';
 import { errorResponse } from '../errors/errorResponse';
+import { toValidationErrorDetails } from '../errors/validationErrorDetails';
 import { UserErrors } from '../errors/userErrors';
 
 const userIdSchema = z.coerce.number().int().positive();
@@ -47,13 +48,15 @@ export function createUserController(service: IUserService) {
     const targetUserId = parseUserId(c);
     if (targetUserId instanceof Response) return targetUserId;
 
+    // ルート側(OpenAPI)の検証を通過した値しか来ない。ここは保険であり、
+    // 応答コードはルート側の validationDefaultHook と同じものに揃える。
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = updateUserStatusSchema.safeParse(body);
     if (!parsedBody.success) {
       return errorResponse(
         c,
-        UserErrors.INVALID_USER_STATUS_REQUEST,
-        parsedBody.error.flatten()
+        CommonErrors.VALIDATION_ERROR,
+        toValidationErrorDetails(parsedBody.error)
       );
     }
 
@@ -89,9 +92,11 @@ export function createUserController(service: IUserService) {
   };
 }
 
+// userId もルート側の positivePathParam で検証済み。ここも保険なので
+// 応答コードをルート側と揃える。
 function parseUserId(c: UserContext) {
   const parsedId = userIdSchema.safeParse(c.req.param('userId'));
   return parsedId.success
     ? parsedId.data
-    : errorResponse(c, UserErrors.INVALID_USER_ID);
+    : errorResponse(c, CommonErrors.VALIDATION_ERROR);
 }

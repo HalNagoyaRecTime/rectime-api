@@ -201,16 +201,6 @@ export const UserErrors = {
     code: 'USER_SEARCH_FAILED',
     message: 'ユーザーの検索に失敗しました',
   },
-  INVALID_USER_ID: {
-    status: 400,
-    code: 'INVALID_USER_ID',
-    message: 'ユーザーIDが正しくありません',
-  },
-  INVALID_USER_STATUS_REQUEST: {
-    status: 400,
-    code: 'INVALID_USER_STATUS_REQUEST',
-    message: 'ユーザー状態の入力内容が正しくありません',
-  },
   CANNOT_DEACTIVATE_SELF: {
     status: 400,
     code: 'CANNOT_DEACTIVATE_SELF',
