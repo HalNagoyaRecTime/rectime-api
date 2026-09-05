@@ -1119,7 +1119,11 @@ describe('POST /auth/microsoft/token', () => {
     );
     stubMicrosoftFetch(idToken);
 
-    const app = buildApp();
+    // buildApp()はroute登録が先に固まってしまい、後から追加した
+    // モック用ミドルウェアがハンドラより後に評価されて効かないため、
+    // ここではdiContainerMiddleware→モック→routeの順で自前に組み立てる。
+    const app = new Hono<{ Bindings: Env }>();
+    app.use('*', diContainerMiddleware);
     app.use(
       '*',
       async (
@@ -1132,6 +1136,7 @@ describe('POST /auth/microsoft/token', () => {
         await next();
       }
     );
+    app.route('/', microsoft);
 
     const res = await app.request(
       '/token',
