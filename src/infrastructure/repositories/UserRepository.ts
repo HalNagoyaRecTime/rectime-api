@@ -237,22 +237,35 @@ export function createUserRepository(db: D1Database): IUserRepository {
     },
 
     async markAsPurged(userId) {
+      const now = new Date().toISOString();
+      // deletion_status = 'deleted' を条件に含める。isPurgedと同じ2軸
+      // (状態 + 完了時刻)で判定・更新を揃えるため
+      // (IUserRepository.isPurgedのコメント参照)。これにより、万一
+      // deletion_statusが'deleted'以外に戻った利用者に対して誤って
+      // purged_atだけが立った状態を作らない。
       const result = await orm
         .update(users)
-        .set({
-          purgedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(users.id, Number(userId)))
+        .set({ purgedAt: now, updatedAt: now })
+        .where(
+          and(eq(users.id, Number(userId)), eq(users.deletionStatus, 'deleted'))
+        )
         .run();
       return result.meta.changes > 0;
     },
 
     async isPurged(userId) {
+      // deletion_status = 'deleted' かつ purged_at IS NOT NULL の両方を
+      // 見る。抽出条件(`WHERE deletion_status = 'deleted' AND purged_at
+      // IS NULL`で未完了利用者を機械的に抽出する、
+      // AccountDeletionService.deleteRelatedData参照)と同じ2軸で揃えて
+      // おかないと、将来「削除の取り消し」でdeletion_statusを戻す機能が
+      // 入った際、purged_atだけが残り判定が完了扱いを返し続けてしまう。
       const row = await orm
         .select({ purgedAt: users.purgedAt })
         .from(users)
-        .where(eq(users.id, Number(userId)))
+        .where(
+          and(eq(users.id, Number(userId)), eq(users.deletionStatus, 'deleted'))
+        )
         .get();
       return Boolean(row?.purgedAt);
     },

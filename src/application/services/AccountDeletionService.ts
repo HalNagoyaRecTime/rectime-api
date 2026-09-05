@@ -82,11 +82,23 @@ export function createAccountDeletionService(deps: {
         throw new Error('ACCOUNT_ALREADY_PURGED');
       }
 
+      // 完了ログで「何を実際に消したか」をuser・staff・teacher・student・
+      // firebaseTokenの5項目でまとめて記録する。各ステップの実行結果を
+      // 都度この1オブジェクトへ書き込む(スプレッドで後から継ぎ足さない)
+      // ことで、どの値がどこで決まったかを追いやすくする。
+      const removed = {
+        user: false,
+        staff: false,
+        teacher: false,
+        student: false,
+        firebaseToken: false,
+      };
+
       // users.user_nameの匿名化はロールの種類によらず常に行う。
       // staffs/teachersの削除はロール用テーブルの行を消すだけで
       // users側の表示名には触れないため、ここで呼ばないと教員・スタッフの
       // 実名がusersテーブルに残り続けてしまう(利用者検索等にも表示され続ける)。
-      const anonymizedUser = await step('anonymizeUser', () =>
+      removed.user = await step('anonymizeUser', () =>
         userRepository.anonymizeUser(userId)
       );
 
@@ -109,7 +121,7 @@ export function createAccountDeletionService(deps: {
       // よりも個人データの消去を優先し、物理削除で問題ないとの判断を得た。
       // このため送信者側(anonymizeCreatedUserId、下記)とは扱いが異なり、
       // 受信者側の履歴は残らない。
-      const firebaseTokenRemoved = await step('firebaseTokens', async () => {
+      removed.firebaseToken = await step('firebaseTokens', async () => {
         const firebaseToken =
           await firebaseTokenRepository.findByUserId(userIdNum);
         if (!firebaseToken) return false;
@@ -127,21 +139,19 @@ export function createAccountDeletionService(deps: {
       );
 
       // ロール・所属の解除。
-      const removed = {
-        staff: await step('staff', () =>
-          staffRepository.deleteByUserId(userIdNum)
-        ),
-        teacher: await step('teacher', () =>
-          teacherRepository.deleteByUserId(userIdNum)
-        ),
-        // 学生情報の匿名化。student_id_numberは再登録(#265 PR1で確定済み)の
-        // ためUNIQUE制約を満たしたまま行を残す。user_nameはこの関数の先頭で
-        // userRepository.anonymizeUserが既に匿名化済みのため、ここでは
-        // students固有のカラムのみを扱う。
-        student: await step('student', () =>
-          studentRepository.anonymizeByUserId(userIdNum)
-        ),
-      };
+      removed.staff = await step('staff', () =>
+        staffRepository.deleteByUserId(userIdNum)
+      );
+      removed.teacher = await step('teacher', () =>
+        teacherRepository.deleteByUserId(userIdNum)
+      );
+      // 学生情報の匿名化。student_id_numberは再登録(#265 PR1で確定済み)の
+      // ためUNIQUE制約を満たしたまま行を残す。user_nameはこの関数の先頭で
+      // userRepository.anonymizeUserが既に匿名化済みのため、ここでは
+      // students固有のカラムのみを扱う。
+      removed.student = await step('student', () =>
+        studentRepository.anonymizeByUserId(userIdNum)
+      );
       await step('gatheringGroupMember', () =>
         gatheringGroupMemberRepository.deleteByUserId(userIdNum)
       );
@@ -157,14 +167,7 @@ export function createAccountDeletionService(deps: {
       // 実際に何を消したかを1行にまとめて記録する。本人・運用側からの
       // 問い合わせ時に削除の実施記録として提示できるようにするため、
       // 個人情報やToken自体は含めず、各対象の有無(true/false)のみを残す。
-      console.log('[ACCOUNT_DELETION] completed', {
-        userId,
-        removed: {
-          ...removed,
-          firebaseToken: firebaseTokenRemoved,
-          user: anonymizedUser,
-        },
-      });
+      console.log('[ACCOUNT_DELETION] completed', { userId, removed });
     },
   };
 }
