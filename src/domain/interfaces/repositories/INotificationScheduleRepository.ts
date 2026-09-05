@@ -45,5 +45,10 @@ export interface INotificationScheduleRepository {
   // 物理削除する。firebase_token_idはNOT NULL外部キーのため、
   // firebase_tokens行を削除する前に必ず呼ぶ必要がある。対象が無ければ
   // 何もしない(冪等)。
+  //
+  // 「誰が何をいつ受け取ったか」の記録がここで失われるが、本人からの
+  // 削除要求に対しては送信実績の集計・監査よりも個人データの消去を
+  // 優先する方針であることを#263の起票者に確認済み
+  // (IFirebaseTokenRepository.deleteByUserId参照)。
   deleteByFirebaseTokenId: (firebaseTokenId: number) => Promise<void>;
 }

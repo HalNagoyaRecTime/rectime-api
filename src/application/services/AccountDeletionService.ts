@@ -98,6 +98,17 @@ export function createAccountDeletionService(deps: {
       // firebase_tokensを物理削除する前に、それを参照する
       // notification_schedules(受信履歴)を先に削除する必要がある
       // (firebase_token_idはNOT NULL外部キーのため)。
+      //
+      // レビュー指摘(#265): register()の端末付け替え時は、旧所有者の
+      // firebase_tokens行を無効化するだけで残す(notification_schedulesの
+      // FK参照を保つため物理削除できない、という制約上の理由)。一方
+      // ここでは、削除対象ユーザーが受信者だった送信履歴を含めて物理削除
+      // する。これは制約の都合による結果ではなく、個人データの削除として
+      // 意図的に選んだ方針である。#263(データ保持・削除ルール)の起票者に
+      // 確認した結果、本人からの削除要求に対しては送信実績の集計・監査
+      // よりも個人データの消去を優先し、物理削除で問題ないとの判断を得た。
+      // このため送信者側(anonymizeCreatedUserId、下記)とは扱いが異なり、
+      // 受信者側の履歴は残らない。
       const firebaseTokenRemoved = await step('firebaseTokens', async () => {
         const firebaseToken =
           await firebaseTokenRepository.findByUserId(userIdNum);

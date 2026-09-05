@@ -26,5 +26,11 @@ export interface IFirebaseTokenRepository {
   // いるため、呼び出し元は必ず先にdeleteByFirebaseTokenIdで該当する
   // notification_schedules行を削除しておく必要がある。対象が無ければ
   // 何もしない(冪等)。
+  //
+  // register()の端末付け替え時(上のdeactivateByUserId参照)とは異なり
+  // 行を物理削除するのは、外部キー制約上の都合ではなく意図的な判断。
+  // 本人からの削除要求に対しては、送信実績の集計・監査よりも個人データの
+  // 消去を優先する方針を#263の起票者に確認済み(AccountDeletionService.
+  // deleteRelatedData参照)。
   deleteByUserId: (userId: number) => Promise<void>;
 }
