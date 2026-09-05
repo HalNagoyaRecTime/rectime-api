@@ -283,5 +283,72 @@ describe('createAccountDeletionService', () => {
       );
       expect(deps.userRepository.markAsPurged).not.toHaveBeenCalled();
     });
+
+    it('完了ログに各段が実際に対象を消したか(true/false)を記録する', async () => {
+      const deps = buildDeps();
+      (
+        deps.staffRepository.deleteByUserId as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(false);
+      (
+        deps.teacherRepository.deleteByUserId as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(true);
+      (
+        deps.studentRepository.anonymizeByUserId as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(false);
+      (
+        deps.firebaseTokenRepository.findByUserId as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        firebase_token_id: 5,
+        user_id: 10,
+        platform: 2,
+        fcm_token: 'token-x',
+        is_firebase_active: 0,
+        last_seen_at: '2026-01-01 00:00:00',
+        created_at: '2026-01-01 00:00:00',
+        updated_at: '2026-01-01 00:00:00',
+      });
+      const consoleLogSpy = vi
+        .spyOn(console, 'log')
+        .mockImplementation(() => {});
+      const service = createAccountDeletionService(deps);
+
+      await service.deleteRelatedData('10');
+
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        '[ACCOUNT_DELETION] completed',
+        {
+          userId: '10',
+          removed: {
+            staff: false,
+            teacher: true,
+            student: false,
+            firebaseToken: true,
+            user: true,
+          },
+        }
+      );
+      consoleLogSpy.mockRestore();
+    });
+
+    it('途中のステップが失敗した場合、その段の名前をつけてconsole.errorに記録する(個人情報は含めない)', async () => {
+      const deps = buildDeps();
+      (
+        deps.staffRepository.deleteByUserId as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('D1_UNAVAILABLE'));
+      const consoleErrorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      const service = createAccountDeletionService(deps);
+
+      await expect(service.deleteRelatedData('10')).rejects.toThrow(
+        'D1_UNAVAILABLE'
+      );
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[ACCOUNT_DELETION] failed',
+        { userId: '10', step: 'staff' }
+      );
+      consoleErrorSpy.mockRestore();
+    });
   });
 });
