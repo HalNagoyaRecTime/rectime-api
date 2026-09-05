@@ -51,6 +51,10 @@ export const adminUserStatusUpdateRoute = createRoute({
     '無効化するとリクエストごとの認証で遮断されるため、発行済みのトークンが',
     '手元に残っていても以降のAPIアクセスは拒否される。',
     'ただし通知の配信は経路によって扱いが異なり、無効化しても届く場合がある。',
+    '',
+    'Teacherを無効化しても `class_rooms.teacher_id` は解除されない。',
+    '担任の解除まで行うのは `DELETE /teachers/{teacherId}` のみで、',
+    '本APIとは最終状態が異なる点に注意する。',
   ].join('\n'),
   security: bearerAuth,
   request: {
