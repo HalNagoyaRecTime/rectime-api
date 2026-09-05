@@ -50,7 +50,7 @@ export const adminUserStatusUpdateRoute = createRoute({
     '',
     '無効化するとリクエストごとの認証で遮断されるため、発行済みのトークンが',
     '手元に残っていても以降のAPIアクセスは拒否される。',
-    '通知配信の宛先など、有効なUserだけを対象とする処理からも外れる。',
+    'ただし通知の配信は経路によって扱いが異なり、無効化しても届く場合がある。',
   ].join('\n'),
   security: bearerAuth,
   request: {
