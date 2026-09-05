@@ -94,6 +94,7 @@ describe('AdminNotificationManagementRepository', () => {
   beforeEach(async () => {
     await env.DB.batch([
       env.DB.prepare('DELETE FROM notification_schedules'),
+      env.DB.prepare('DELETE FROM notification_audiences'),
       env.DB.prepare('DELETE FROM notifications'),
       env.DB.prepare('DELETE FROM firebase_tokens'),
       env.DB.prepare('DELETE FROM gathering_group_members'),
@@ -251,6 +252,23 @@ describe('AdminNotificationManagementRepository', () => {
       recipient_count: 3,
       audience: { type: 'resolved_recipients', recipient_count: 3 },
       delivery_summary: { total: 3, draft: 3 },
+    });
+
+    const audience = await env.DB.prepare(
+      `SELECT audience_type, class_room_id, gathering_id, event_id,
+              user_id, user_ids
+       FROM notification_audiences
+       WHERE notification_id = ?`
+    )
+      .bind(fixture.notificationId)
+      .first();
+    expect(audience).toEqual({
+      audience_type: 'class_room',
+      class_room_id: fixture.classRoomId,
+      gathering_id: null,
+      event_id: null,
+      user_id: null,
+      user_ids: null,
     });
   });
 

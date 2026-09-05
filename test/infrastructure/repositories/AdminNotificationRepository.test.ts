@@ -79,6 +79,7 @@ describe('AdminNotificationRepository', () => {
   beforeEach(async () => {
     await env.DB.batch([
       env.DB.prepare('DELETE FROM notification_schedules'),
+      env.DB.prepare('DELETE FROM notification_audiences'),
       env.DB.prepare('DELETE FROM notifications'),
       env.DB.prepare('DELETE FROM firebase_tokens'),
       env.DB.prepare('DELETE FROM gathering_group_members'),
@@ -167,6 +168,28 @@ describe('AdminNotificationRepository', () => {
       title: '集合場所のお知らせ',
       body: '体育館前へ集合してください。',
     });
+
+    const storedAudience = await env.DB.prepare(
+      `SELECT audience_type, class_room_id, gathering_id, event_id,
+              user_id, user_ids
+       FROM notification_audiences
+       WHERE notification_id = ?`
+    )
+      .bind(result.notification_id)
+      .all();
+    expect(storedAudience.results).toEqual([
+      {
+        audience_type: audience.type,
+        class_room_id:
+          audience.type === 'class_room' ? fixture.classRoomId : null,
+        gathering_id:
+          audience.type === 'gathering' ? fixture.gatheringId : null,
+        event_id:
+          audience.type === 'event_participants' ? fixture.eventId : null,
+        user_id: null,
+        user_ids: null,
+      },
+    ]);
   });
 
   it('存在しない対象とTokenがない対象を区別する', async () => {
@@ -240,5 +263,51 @@ describe('AdminNotificationRepository', () => {
       "SELECT notification_id FROM notifications WHERE notification_type = 'manual'"
     ).first();
     expect(notification).toBeNull();
+  });
+
+  it('AudienceのShadow Writeに失敗してもLegacy通知の作成を完了する', async () => {
+    const fixture = await createFixture();
+    await env.DB.prepare(
+      `CREATE TRIGGER reject_notification_audience_shadow
+       BEFORE INSERT ON notification_audiences
+       BEGIN
+         SELECT RAISE(ABORT, 'forced audience shadow failure');
+       END`
+    ).run();
+
+    try {
+      await expect(
+        repository.create({
+          created_user_id: fixture.creatorId,
+          title: 'Shadow Write失敗確認',
+          body: 'Legacy通知は維持する',
+          audience: { type: 'all' },
+          scheduled_at: '2026-07-23T09:00:00+09:00',
+        })
+      ).resolves.toMatchObject({ schedule_count: 2 });
+    } finally {
+      await env.DB.prepare(
+        'DROP TRIGGER IF EXISTS reject_notification_audience_shadow'
+      ).run();
+    }
+
+    const legacyRows = await env.DB.prepare(
+      `SELECT ns.notification_id, COUNT(*) AS schedule_count
+       FROM notification_schedules ns
+       INNER JOIN notifications n ON n.notification_id = ns.notification_id
+       WHERE n.title = 'Shadow Write失敗確認'
+       GROUP BY ns.notification_id`
+    ).all<{ notification_id: number; schedule_count: number }>();
+    expect(legacyRows.results).toHaveLength(1);
+    expect(legacyRows.results[0]?.schedule_count).toBe(2);
+
+    const audienceRows = await env.DB.prepare(
+      `SELECT notification_audience_id
+       FROM notification_audiences
+       WHERE notification_id = ?`
+    )
+      .bind(legacyRows.results[0]?.notification_id)
+      .all();
+    expect(audienceRows.results).toEqual([]);
   });
 });

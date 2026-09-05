@@ -1,8 +1,11 @@
-export type ManualNotificationAudience =
-  | { type: 'all' }
-  | { type: 'class_room'; class_room_id: number }
-  | { type: 'gathering'; gathering_id: number }
-  | { type: 'event_participants'; event_id: number };
+import type { NotificationAudience } from './NotificationAudience';
+
+export type ManualNotificationAudience = Extract<
+  NotificationAudience,
+  {
+    type: 'all' | 'class_room' | 'gathering' | 'event_participants';
+  }
+>;
 
 export interface CreateAdminNotificationInput {
   created_user_id: number;

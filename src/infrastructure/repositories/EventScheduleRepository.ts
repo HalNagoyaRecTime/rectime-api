@@ -1,8 +1,11 @@
 import type {
   D1Database,
   D1PreparedStatement,
+  D1Result,
 } from '@cloudflare/workers-types';
+import type { NotificationAudienceShadowWriteInput } from '../../domain/entities/NotificationAudience';
 import type { IEventScheduleRepository } from '../../domain/interfaces/repositories/IEventScheduleRepository';
+import { shadowWriteNotificationAudiences } from './NotificationAudienceShadowWriter';
 
 interface EventAudienceRow {
   gathering_id: number;
@@ -54,6 +57,10 @@ export function createEventScheduleRepository(
       const statements: D1PreparedStatement[] = [
         buildEventUpdate(db, input, updateMarker),
       ];
+      const notificationShadowWrites: Array<{
+        resultIndex: number;
+        audience: NotificationAudienceShadowWriteInput['audience'];
+      }> = [];
 
       if (input.refresh_notifications) {
         statements.push(
@@ -83,6 +90,7 @@ export function createEventScheduleRepository(
           throw new Error('Notification send_at is required');
         }
         for (const row of audience.results) {
+          const resultIndex = statements.length;
           statements.push(
             buildNotificationInsert(
               db,
@@ -98,6 +106,13 @@ export function createEventScheduleRepository(
               updateMarker
             )
           );
+          notificationShadowWrites.push({
+            resultIndex,
+            audience: {
+              type: 'gathering',
+              gathering_id: row.gathering_id,
+            },
+          });
         }
       }
       if (input.refresh_notifications) {
@@ -106,9 +121,30 @@ export function createEventScheduleRepository(
         );
       }
 
-      const [updateResult] = await db.batch(statements);
+      const results = await db.batch(statements);
+      const [updateResult] = results;
       if (Number(updateResult.meta.changes ?? 0) === 0) {
         throw new Error('Event update conflict');
+      }
+
+      const shadowWriteInputs = notificationShadowWrites.map(write => ({
+        notification_id: getLastRowId(results[write.resultIndex]),
+        audience: write.audience,
+      }));
+      if (shadowWriteInputs.some(input => input.notification_id === null)) {
+        console.error(
+          '[NOTIFICATION_AUDIENCE] Shadow Write用の通知IDを取得できませんでした',
+          {
+            source: 'event',
+            audienceCount: shadowWriteInputs.length,
+          }
+        );
+      } else {
+        await shadowWriteNotificationAudiences(
+          db,
+          shadowWriteInputs as NotificationAudienceShadowWriteInput[],
+          'event'
+        );
       }
     },
 
@@ -297,4 +333,10 @@ function createUpdateMarker(): string {
     .toString()
     .padStart(6, '0');
   return `${iso.slice(0, -1)}${suffix}Z`;
+}
+
+function getLastRowId(result: D1Result | undefined): number | null {
+  if (!result || result.meta.changes === 0) return null;
+  const value = result.meta.last_row_id;
+  return typeof value === 'number' && value > 0 ? value : null;
 }

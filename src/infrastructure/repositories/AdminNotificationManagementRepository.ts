@@ -9,6 +9,7 @@ import type {
 } from '../../domain/entities/AdminNotificationManagement';
 import type { IAdminNotificationManagementRepository } from '../../domain/interfaces/repositories/IAdminNotificationManagementRepository';
 import { buildAudienceTokenSelect } from './AdminNotificationAudienceQuery';
+import { replaceNotificationAudienceShadow } from './NotificationAudienceShadowWriter';
 
 interface AdminNotificationRow {
   notification_id: number;
@@ -130,7 +131,19 @@ export function createAdminNotificationManagementRepository(
         ? buildAudienceUpdateStatements(db, input)
         : buildContentUpdateStatements(db, input);
       const results = await db.batch(statements);
-      if ((results[0]?.meta.changes ?? 0) > 0) return 'updated';
+      if ((results[0]?.meta.changes ?? 0) > 0) {
+        if (input.audience) {
+          await replaceNotificationAudienceShadow(
+            db,
+            {
+              notification_id: input.notification_id,
+              audience: input.audience,
+            },
+            'manual'
+          );
+        }
+        return 'updated';
+      }
 
       const current = await findById(input.notification_id);
       if (!current) return 'not_found';
