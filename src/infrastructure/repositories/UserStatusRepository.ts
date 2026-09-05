@@ -1,9 +1,9 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { IUserStatusRepository } from '../../domain/interfaces/repositories/IUserStatusRepository';
 import * as schema from '../database/schema';
-import { staffs, users } from '../database/schema';
+import { users } from '../database/schema';
 
 export function createUserStatusRepository(
   db: D1Database
@@ -14,12 +14,31 @@ export function createUserStatusRepository(
     async updateLiveActive(userId, isLiveActive) {
       const now = new Date().toISOString();
 
+      // 退会済みのUserは稼働状態を動かさない。有効化を通すと、本人はログイン
+      // できないのに通知の宛先には入る状態になってしまう。
+      const conditions = [
+        eq(users.id, userId),
+        eq(users.deletionStatus, 'active'),
+      ];
+
+      if (!isLiveActive) {
+        // 「他に稼働中のstaffが存在する場合だけ」無効化する条件付き更新。
+        // 確認と更新が1文になるため、同時に2件走っても0人にならない。
+        conditions.push(sql`EXISTS (
+          SELECT 1 FROM staffs s
+          JOIN users u ON u.user_id = s.user_id
+          WHERE s.user_id != ${userId}
+            AND u.is_live_active = 1
+            AND u.deletion_status = 'active'
+        )`);
+      }
+
       // is_live_active は DB では integer(0/1)、API境界では boolean として扱う。
       // 変換はこのRepository（システム境界）で閉じる。
       const updated = await orm
         .update(users)
         .set({ isLiveActive: isLiveActive ? 1 : 0, updatedAt: now })
-        .where(eq(users.id, userId))
+        .where(and(...conditions))
         .returning({ id: users.id, isLiveActive: users.isLiveActive })
         .get();
 
@@ -30,22 +49,11 @@ export function createUserStatusRepository(
       };
     },
 
-    async hasOtherActiveStaff(excludedUserId) {
-      // 「復旧できる人を必ず残す」ための判定なので、実際に稼働できるstaffだけを数える。
-      // deletion_status は is_live_active とは独立した軸で、markAsDeleted しても
-      // is_live_active は 1 のまま残る。退会済みを除外しないと、稼働している
-      // 最後の管理者を無効化できてしまう。
+    async existsActiveUser(userId) {
       const found = await orm
-        .select({ userId: staffs.userId })
-        .from(staffs)
-        .innerJoin(users, eq(staffs.userId, users.id))
-        .where(
-          and(
-            eq(users.isLiveActive, 1),
-            eq(users.deletionStatus, 'active'),
-            ne(staffs.userId, excludedUserId)
-          )
-        )
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.id, userId), eq(users.deletionStatus, 'active')))
         .get();
 
       return Boolean(found);

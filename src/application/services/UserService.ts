@@ -18,22 +18,11 @@ export function createUserService(
   return {
     async updateUserStatus(command) {
       // 再有効化できるのは管理権限を持つUserだけなので、管理権限を持つUserが
-      // 全員無効になると、このAPIからは誰も復旧できなくなる。
-      //
-      // 既知の制約: この確認と後続のupdateLiveActiveは別々のクエリで、
-      // 間にトランザクションがない。異なる管理者を対象にした無効化が同時に
-      // 走ると、双方がこの確認を通過して有効なstaffが0人になりうる。
-      // 塞ぐなら「他に有効なstaffが存在する場合だけUPDATEする」条件付き更新に
-      // まとめて原子的にする。管理者が少人数で同時操作も想定しにくいため、
-      // 現時点ではリスクとして記録するに留める。
+      // 全員無効になると、このAPIからは誰も復旧できなくなる。自分自身の無効化は
+      // ここで断り、他に稼働中のstaffがいるかどうかは更新と同じSQL文で判定する。
       if (!command.is_live_active) {
         if (command.operator_user_id === command.user_id) {
           throw new Error('Cannot deactivate yourself');
-        }
-        if (
-          !(await userStatusRepository.hasOtherActiveStaff(command.user_id))
-        ) {
-          throw new Error('Cannot deactivate the last active staff');
         }
       }
 
@@ -43,10 +32,19 @@ export function createUserService(
         command.user_id,
         command.is_live_active
       );
-      if (!updated) {
-        throw new Error('User not found');
+      if (updated) {
+        return toDTO(updated);
       }
-      return toDTO(updated);
+
+      // 更新できなかった理由を切り分ける。対象が残っているなら、断られたのは
+      // 「最後の稼働中staffだったため」。
+      if (
+        !command.is_live_active &&
+        (await userStatusRepository.existsActiveUser(command.user_id))
+      ) {
+        throw new Error('Cannot deactivate the last active staff');
+      }
+      throw new Error('User not found');
     },
   };
 }

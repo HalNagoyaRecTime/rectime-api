@@ -12,7 +12,7 @@ function buildUserStatusRepository(
     updateLiveActive: vi
       .fn()
       .mockResolvedValue({ user_id: TARGET_USER_ID, is_live_active: false }),
-    hasOtherActiveStaff: vi.fn().mockResolvedValue(true),
+    existsActiveUser: vi.fn().mockResolvedValue(true),
     ...overrides,
   };
 }
@@ -55,10 +55,13 @@ describe('UserService', () => {
       expect(userStatusRepository.updateLiveActive).not.toHaveBeenCalled();
     });
 
-    it('他に有効なstaffがいない場合は断り、DBを更新しない', async () => {
-      const { service, userStatusRepository } = createService(
+    // 最後の稼働中staffかどうかは更新と同じSQL文で判定するため、Service側は
+    // 「更新できなかった」ことと「対象が残っている」ことから理由を導く。
+    it('最後の稼働中staffで更新が拒まれた場合は断る', async () => {
+      const { service } = createService(
         buildUserStatusRepository({
-          hasOtherActiveStaff: vi.fn().mockResolvedValue(false),
+          updateLiveActive: vi.fn().mockResolvedValue(null),
+          existsActiveUser: vi.fn().mockResolvedValue(true),
         })
       );
 
@@ -69,21 +72,18 @@ describe('UserService', () => {
           is_live_active: false,
         })
       ).rejects.toThrow('Cannot deactivate the last active staff');
-      expect(userStatusRepository.updateLiveActive).not.toHaveBeenCalled();
     });
 
-    it('有効化のときは締め出しが起きないため、上記の判定を行わない', async () => {
-      const { service, userStatusRepository } = createService(
+    it('有効化のときは対象が自分自身でも通る', async () => {
+      const { service } = createService(
         buildUserStatusRepository({
           updateLiveActive: vi.fn().mockResolvedValue({
             user_id: OPERATOR_USER_ID,
             is_live_active: true,
           }),
-          hasOtherActiveStaff: vi.fn().mockResolvedValue(false),
         })
       );
 
-      // 対象が自分自身で、かつ他に有効なstaffがいなくても有効化はできる
       await expect(
         service.updateUserStatus({
           operator_user_id: OPERATOR_USER_ID,
@@ -91,13 +91,13 @@ describe('UserService', () => {
           is_live_active: true,
         })
       ).resolves.toEqual({ user_id: OPERATOR_USER_ID, is_live_active: true });
-      expect(userStatusRepository.hasOtherActiveStaff).not.toHaveBeenCalled();
     });
 
     it('対象Userが存在しない場合はエラーを投げる', async () => {
       const { service } = createService(
         buildUserStatusRepository({
           updateLiveActive: vi.fn().mockResolvedValue(null),
+          existsActiveUser: vi.fn().mockResolvedValue(false),
         })
       );
 
@@ -108,6 +108,25 @@ describe('UserService', () => {
           is_live_active: false,
         })
       ).rejects.toThrow('User not found');
+    });
+
+    // 退会済みUserへの有効化はRepositoryが更新しない。無効化ではないので
+    // 「最後の管理者」ではなく、対象が見つからなかった扱いにする。
+    it('有効化が拒まれた場合は対象なしとして扱う', async () => {
+      const { service, userStatusRepository } = createService(
+        buildUserStatusRepository({
+          updateLiveActive: vi.fn().mockResolvedValue(null),
+        })
+      );
+
+      await expect(
+        service.updateUserStatus({
+          operator_user_id: OPERATOR_USER_ID,
+          user_id: TARGET_USER_ID,
+          is_live_active: true,
+        })
+      ).rejects.toThrow('User not found');
+      expect(userStatusRepository.existsActiveUser).not.toHaveBeenCalled();
     });
   });
 });
