@@ -59,6 +59,14 @@ import {
   classRoomUpdateRoute,
 } from './presentation/openapi/classrooms';
 import {
+  rankingListRoute,
+  teamCreateRoute,
+  teamDetailRoute,
+  teamListRoute,
+  teamScoreAddRoute,
+  teamUpdateRoute,
+} from './presentation/openapi/ranking';
+import {
   masterImportCommitRoute,
   masterImportCreateRoute,
   masterImportDetailRoute,
@@ -301,6 +309,28 @@ apiV1.openapi(staffOnly(classRoomUpdateRoute), c => {
 });
 apiV1.openapi(staffOnly(classRoomDeleteRoute), c => {
   return c.get('container').classRoomController.deleteClassroom(c);
+});
+
+// Ranking routes
+apiV1.openapi(authed(rankingListRoute), c => {
+  return c.get('container').rankingController.getRanking(c);
+});
+apiV1.openapi(staffOnly(teamScoreAddRoute), c => {
+  return c.get('container').rankingController.addTeamScore(c);
+});
+
+// Team routes
+apiV1.openapi(authed(teamListRoute), c => {
+  return c.get('container').teamController.getAllTeams(c);
+});
+apiV1.openapi(authed(teamDetailRoute), c => {
+  return c.get('container').teamController.getTeamById(c);
+});
+apiV1.openapi(staffOnly(teamCreateRoute), c => {
+  return c.get('container').teamController.createTeam(c);
+});
+apiV1.openapi(staffOnly(teamUpdateRoute), c => {
+  return c.get('container').teamController.updateTeam(c);
 });
 
 // Master import routes
