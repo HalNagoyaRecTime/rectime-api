@@ -368,28 +368,23 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
     },
 
     async anonymizeByUserId(userId: number): Promise<boolean> {
-      const existing = await orm
-        .select({ id: students.id })
-        .from(students)
-        .where(eq(students.userId, userId))
-        .get();
-      if (!existing) return false;
-
-      const now = new Date().toISOString();
+      // users.user_nameの匿名化はUserRepository.anonymizeUserがロールの
+      // 種類によらず担当する(AccountDeletionService.deleteRelatedDataの
+      // 先頭で呼び出し済み)。ここではstudents固有のカラム
+      // (student_id_number)のみを扱う。
+      //
       // class_room_id・attendance_numberは学生本人の個人情報ではないため
       // 変更しない。student_id_numberはUNIQUE制約付きだが、userIdを含む
       // ことで他の匿名化済み行と衝突しない値にする。
-      await orm.batch([
-        orm
-          .update(users)
-          .set({ userName: '削除済みユーザー', updatedAt: now })
-          .where(eq(users.id, userId)),
-        orm
-          .update(students)
-          .set({ studentIdNumber: `deleted-${userId}`, updatedAt: now })
-          .where(eq(students.id, existing.id)),
-      ]);
-      return true;
+      const result = await orm
+        .update(students)
+        .set({
+          studentIdNumber: `deleted-${userId}`,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(students.userId, userId))
+        .run();
+      return result.meta.changes > 0;
     },
   };
 }

@@ -55,7 +55,7 @@ export function createAuthService(
         }
 
         // updateUser自体もWHERE句にdeletion_status = 'active'を含めており、
-        // ここまでのgetDeletionStatus確認とこのupdateの間にmarkAsDeletedが
+        // ここまでのgetDeletionStatus確認とこのupdateの間にmarkAsPurgingが
         // 割り込んだ場合(TOCTOU)は0件更新になりnullが返る。その場合は
         // updated===null→USER_NOT_FOUNDと即断せず、最新状態を見て
         // ACCOUNT_DELETION_PENDINGを優先させる。
@@ -195,7 +195,11 @@ export function createAuthService(
 
     async startAccountDeletion(userId: string) {
       // 1. DB上の状態遷移(deletion_status: deleted)とMicrosoftアカウント
-      //    リンクの解除。既に呼ばれていても冪等に成功する。
+      //    リンクの解除。既に呼ばれていても冪等に成功する。この時点では
+      //    関連データの削除・匿名化(後片付け)はまだ完了していない
+      //    (purged_atはNULLのまま)。後片付けはこの後accountDeletionService.
+      //    deleteRelatedDataが行う(詳細はIUserRepository.markAsPurgedの
+      //    コメント参照)。
       await userRepository.markAsDeleted(userId);
 
       // 2. 発行済みの全Refresh Sessionを失効させる。mobile_refresh_by_user

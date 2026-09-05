@@ -507,7 +507,7 @@ describe('StudentRepository', () => {
   });
 
   describe('anonymizeByUserId', () => {
-    it('user_nameとstudent_id_numberをプレースホルダに書き換え、行は残す', async () => {
+    it('student_id_numberをプレースホルダに書き換え、行は残す(user_nameはUserRepository.anonymizeUserの責務)', async () => {
       const classRoomId = seeded.students[0].classRoomId;
       const user = await env.DB.prepare(
         "INSERT INTO users (user_name) VALUES ('匿名化対象太郎') RETURNING user_id"
@@ -526,7 +526,11 @@ describe('StudentRepository', () => {
         class_room_id: classRoomId,
         attendance_number: 99,
       });
-      expect(result?.user_name).not.toBe('匿名化対象太郎');
+      // user_nameの匿名化はUserRepository.anonymizeUserの責務であり、
+      // StudentRepository.anonymizeByUserIdはstudents固有のカラムのみを
+      // 扱う(#265 PR4のレビュー指摘: students行の有無に関わらず
+      // user_nameを匿名化できるようにするための責務分離)。
+      expect(result?.user_name).toBe('匿名化対象太郎');
     });
 
     it('該当する学生が存在しない場合はfalseを返す(冪等)', async () => {
