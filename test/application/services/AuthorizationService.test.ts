@@ -15,6 +15,9 @@ function buildUserRepository(
     updateUser: vi.fn(),
     linkMicrosoftAccount: vi.fn(),
     markAsDeleted: vi.fn(),
+    markAsPurged: vi.fn(),
+    isPurged: vi.fn(),
+    anonymizeUser: vi.fn(),
     ...overrides,
   };
 }

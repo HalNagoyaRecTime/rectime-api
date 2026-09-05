@@ -108,4 +108,19 @@ export const AuthErrors = {
     code: 'REFRESH_TOKEN_EXPIRED',
     message: 'セッションを更新できませんでした。もう一度ログインしてください',
   },
+  // AccountDeletionService.deleteRelatedDataがdeletion_status !== 'deleted'
+  // (authService.startAccountDeletionが未完了)を検知した場合に返す(#265)。
+  ACCOUNT_DELETION_NOT_STARTED: {
+    status: 409,
+    code: 'ACCOUNT_DELETION_NOT_STARTED',
+    message: 'アカウント削除の受付が完了していません',
+  },
+  // AccountDeletionService.deleteRelatedDataが、既に後片付け
+  // (関連データの削除・匿名化)が完了済みの利用者に対して再度呼ばれた場合に
+  // 返す(#265)。
+  ACCOUNT_ALREADY_PURGED: {
+    status: 409,
+    code: 'ACCOUNT_ALREADY_PURGED',
+    message: 'アカウント削除の後片付けは既に完了しています',
+  },
 } as const satisfies Record<string, ApiErrorDefinition>;
