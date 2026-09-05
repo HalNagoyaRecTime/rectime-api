@@ -23,8 +23,10 @@ CREATE TABLE team_scores (
 INSERT INTO teams (team_id, team_name)
 SELECT class_room_id, class_name||'('||class_code||')' FROM class_rooms;
 
-INSERT INTO team_scores (team_id, scores)
-SELECT team_id, 0 FROM teams;
+-- team_scoresの行は得点が入ったときに初めて作る(得点入力APIでUPSERT)。
+-- ここで全teamsに0点の行を作ってしまうと、class_roomsの後片付け条件
+-- (NOT EXISTS team_scores)が本番では常に不成立になり、単独編成が
+-- 消せなくなる。
 
 -- class_rooms.team_id はNOT NULLにするが、SQLite(D1)は既存行があるカラムを
 -- 後からNOT NULLに変更できない。また、students.class_room_id が class_rooms を

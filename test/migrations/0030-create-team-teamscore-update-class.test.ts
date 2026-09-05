@@ -181,19 +181,19 @@ describe('0030_create_team_teamscore_update_class.sql', () => {
       'event_id'
     );
 
+    // team_scoresの行は得点入力時に初めて作る想定で、移行では作らない。
+    // ここで全teamsに0点の行を作ってしまうと、class_roomsの後片付け条件
+    // (NOT EXISTS team_scores)が本番では常に不成立になり、参照の無い
+    // 単独編成が二度と消せなくなる。
     const teamScores = await env.DB.prepare(
-      `SELECT ts.team_id, ts.scores
+      `SELECT ts.team_id
        FROM team_scores ts
        JOIN teams t ON t.team_id = ts.team_id
-       WHERE t.team_id IN (?, ?)
-       ORDER BY ts.team_id`
+       WHERE t.team_id IN (?, ?)`
     )
       .bind(ROOM_A, ROOM_B)
       .all();
-    expect(teamScores.results).toEqual([
-      { team_id: ROOM_A, scores: 0 },
-      { team_id: ROOM_B, scores: 0 },
-    ]);
+    expect(teamScores.results).toEqual([]);
 
     const foreignKeyErrors = await env.DB.prepare(
       'PRAGMA foreign_key_check'
