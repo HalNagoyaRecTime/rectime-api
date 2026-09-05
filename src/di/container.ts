@@ -5,6 +5,7 @@ import { createTeacherRepository } from '../infrastructure/repositories/TeacherR
 import { createEventRepository } from '../infrastructure/repositories/EventRepository';
 import { createEventScheduleRepository } from '../infrastructure/repositories/EventScheduleRepository';
 import { createClassRoomRepository } from '../infrastructure/repositories/ClassRoomRepository';
+import { createTeamRepository } from '../infrastructure/repositories/TeamRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
 import { createNotificationRepository } from '../infrastructure/repositories/NotificationRepository';
@@ -72,6 +73,7 @@ export function createDIContainer(env: Env) {
   const eventRepository = createEventRepository(db);
   const eventScheduleRepository = createEventScheduleRepository(db);
   const classRoomRepository = createClassRoomRepository(db);
+  const teamRepository = createTeamRepository(db);
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
   const notificationScheduleRepository =
     createNotificationScheduleRepository(db);
@@ -117,7 +119,10 @@ export function createDIContainer(env: Env) {
     eventScheduleRepository,
     notificationScheduleRepository,
   });
-  const classRoomService = createClassRoomService(classRoomRepository);
+  const classRoomService = createClassRoomService(
+    classRoomRepository,
+    teamRepository
+  );
   const masterImportService = createMasterImportService(
     env.AUTH_KV,
     env.MASTER_IMPORT_COMMIT_LOCK,

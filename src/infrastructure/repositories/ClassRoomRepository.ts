@@ -7,16 +7,25 @@ import type {
   ClassRoomInput,
   ClassRoomPage,
 } from '../../domain/entities/ClassRoom';
+import { buildProvisionalTeamName } from '../../domain/entities/Team';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import { chunkArray } from './chunk';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
+
+const CLEANUP_TEAM_SQL = `
+      DELETE FROM teams 
+      WHERE team_id = ? 
+      AND NOT EXISTS (SELECT 1 FROM class_rooms WHERE team_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM team_scores WHERE team_id = ?)
+    `;
 
 type ClassRoomRow = {
   class_room_id: number;
   class_code: string;
   class_name: string;
   student_count: number;
+  team_id: number;
   teacher_id: number | null;
   teacher_user_id: number | null;
   teacher_display_name: string | null;
@@ -28,6 +37,7 @@ const classRoomSelect = `
     c.class_code,
     c.class_name,
     COUNT(s.student_id) AS student_count,
+    c.team_id,
     t.teacher_id,
     u.user_id AS teacher_user_id,
     u.user_name AS teacher_display_name
@@ -37,12 +47,22 @@ const classRoomSelect = `
   LEFT JOIN users u ON u.user_id = t.user_id
 `;
 
+function provisionalTeamName(
+  input: Pick<ClassRoomInput, 'class_code' | 'class_name'>
+): string {
+  return buildProvisionalTeamName({
+    className: input.class_name,
+    classCode: input.class_code,
+  });
+}
+
 function toEntity(row: ClassRoomRow): ClassRoomEntity {
   return {
     class_room_id: row.class_room_id,
     class_code: row.class_code,
     class_name: row.class_name,
     student_count: Number(row.student_count),
+    team_id: row.team_id,
     teacher:
       row.teacher_id === null ||
       row.teacher_user_id === null ||
@@ -123,43 +143,107 @@ export function createClassRoomRepository(
     },
 
     async create(input: ClassRoomInput): Promise<ClassRoomEntity> {
-      const row = await db
-        .prepare(
-          'INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES (?, ?, ?) RETURNING class_room_id'
-        )
-        .bind(input.class_code, input.class_name, input.teacher_id)
-        .first<{ class_room_id: number }>();
+      if (input.team_id !== null) {
+        const row = await db
+          .prepare(
+            'INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id) VALUES (?, ?, ?, ?) RETURNING class_room_id'
+          )
+          .bind(
+            input.class_code,
+            input.class_name,
+            input.teacher_id,
+            input.team_id
+          )
+          .first<{ class_room_id: number }>();
+        if (!row) throw new Error('Failed to create class');
+        const classroom = await findById(row.class_room_id);
+        if (!classroom) throw new Error('Failed to fetch created class');
+        return classroom;
+      }
+
+      const [, classRoomResult] = await db.batch<
+        { team_id: number } | { class_room_id: number }
+      >([
+        db
+          .prepare('INSERT INTO teams (team_name) VALUES (?)')
+          .bind(provisionalTeamName(input)),
+        db
+          .prepare(
+            `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
+             SELECT ?, ?, ?, team_id FROM teams WHERE team_name = ?
+             RETURNING class_room_id`
+          )
+          .bind(
+            input.class_code,
+            input.class_name,
+            input.teacher_id,
+            provisionalTeamName(input)
+          ),
+      ]);
+      const row = classRoomResult.results[0] as
+        | { class_room_id: number }
+        | undefined;
       if (!row) throw new Error('Failed to create class');
       const classroom = await findById(row.class_room_id);
       if (!classroom) throw new Error('Failed to fetch created class');
       return classroom;
     },
 
-    async createMany(inputs: ClassRoomInput[]): Promise<void> {
+    async createMany(inputs: Omit<ClassRoomInput, 'team_id'>[]): Promise<void> {
       if (inputs.length === 0) {
         return;
       }
 
-      const statements: D1PreparedStatement[] = [];
-      for (const chunk of chunkArray(
-        inputs,
-        Math.floor(D1_MAX_BOUND_PARAMETERS / 3)
-      )) {
-        const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');
-        const values = chunk.flatMap(input => [
-          input.class_code,
-          input.class_name,
-          input.teacher_id,
-        ]);
-        statements.push(
-          db
-            .prepare(
-              `INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ${placeholders}`
-            )
-            .bind(...values)
-        );
+      const committedInputs: Omit<ClassRoomInput, 'team_id'>[] = [];
+      try {
+        for (const chunk of chunkArray(
+          inputs,
+          Math.floor(D1_MAX_BOUND_PARAMETERS / 5)
+        )) {
+          const teamPlaceholders = chunk.map(() => '(?)').join(', ');
+          const teamValues = chunk.map(provisionalTeamName);
+          const statements: D1PreparedStatement[] = [
+            db
+              .prepare(
+                `INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`
+              )
+              .bind(...teamValues),
+          ];
+          for (const input of chunk) {
+            statements.push(
+              db
+                .prepare(
+                  `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
+                   SELECT ?, ?, ?, team_id FROM teams WHERE team_name = ?`
+                )
+                .bind(
+                  input.class_code,
+                  input.class_name,
+                  input.teacher_id,
+                  provisionalTeamName(input)
+                )
+            );
+          }
+          await db.batch(statements);
+          committedInputs.push(...chunk);
+        }
+      } catch (error) {
+        if (committedInputs.length > 0) {
+          try {
+            await deleteClassRoomsAndTeamsByInputs(db, committedInputs);
+          } catch (cleanupError) {
+            console.error(
+              'Error deleting already-committed class rooms after createMany failure:',
+              cleanupError
+            );
+            throw new Error(
+              `クラスの登録に失敗し、さらに登録済み分の削除にも失敗しました。手動でのデータ確認が必要です。:${String(cleanupError)}`,
+              { cause: error }
+            );
+          }
+        }
+        throw error;
       }
-      await db.batch(statements);
     },
 
     async update(
@@ -168,10 +252,51 @@ export function createClassRoomRepository(
     ): Promise<ClassRoomEntity | null> {
       const row = await db
         .prepare(
-          'UPDATE class_rooms SET class_code = ?, class_name = ?, teacher_id = ?, updated_at = CURRENT_TIMESTAMP WHERE class_room_id = ? RETURNING class_room_id'
+          `UPDATE class_rooms
+           SET class_code = ?, class_name = ?, teacher_id = ?,
+               team_id = COALESCE(?, team_id), updated_at = CURRENT_TIMESTAMP
+           WHERE class_room_id = ?
+           RETURNING class_room_id`
         )
-        .bind(input.class_code, input.class_name, input.teacher_id, id)
+        .bind(
+          input.class_code,
+          input.class_name,
+          input.teacher_id,
+          input.team_id ?? null,
+          id
+        )
         .first<{ class_room_id: number }>();
+      return row ? findById(row.class_room_id) : null;
+    },
+
+    async updateAndCleanupTeam(
+      id: number,
+      input: ClassRoomInput,
+      previousTeamId: number
+    ): Promise<ClassRoomEntity | null> {
+      const [updateResult] = await db.batch<{ class_room_id: number }>([
+        db
+          .prepare(
+            `UPDATE class_rooms
+             SET class_code = ?, class_name = ?, teacher_id = ?,
+                 team_id = COALESCE(?, team_id), updated_at = CURRENT_TIMESTAMP
+             WHERE class_room_id = ?
+             RETURNING class_room_id`
+          )
+          .bind(
+            input.class_code,
+            input.class_name,
+            input.teacher_id,
+            input.team_id ?? null,
+            id
+          ),
+        db
+          .prepare(CLEANUP_TEAM_SQL)
+          .bind(previousTeamId, previousTeamId, previousTeamId),
+      ]);
+      const row = updateResult.results[0] as
+        | { class_room_id: number }
+        | undefined;
       return row ? findById(row.class_room_id) : null;
     },
 
@@ -180,13 +305,36 @@ export function createClassRoomRepository(
         .prepare('DELETE FROM class_rooms WHERE class_room_id = ?')
         .bind(id)
         .run();
-      return (result.meta.changes ?? 0) > 0;
+      return (result.meta?.changes ?? 0) > 0;
+    },
+
+    async deleteAndCleanupTeam(id: number, teamId: number): Promise<boolean> {
+      const [deleteResult] = await db.batch<unknown>([
+        db.prepare('DELETE FROM class_rooms WHERE class_room_id = ?').bind(id),
+        db.prepare(CLEANUP_TEAM_SQL).bind(teamId, teamId, teamId),
+      ]);
+      return (deleteResult.meta?.changes ?? 0) > 0;
     },
 
     async teacherExists(id: number): Promise<boolean> {
       const row = await db
         .prepare('SELECT teacher_id FROM teachers WHERE teacher_id = ?')
         .bind(id)
+        .first();
+      return row !== null;
+    },
+
+    async existsWithTeamId(
+      teamId: number,
+      excludeClassRoomId?: number
+    ): Promise<boolean> {
+      const row = await db
+        .prepare(
+          `SELECT 1 AS referenced FROM class_rooms
+           WHERE team_id = ? AND class_room_id != ?
+           LIMIT 1`
+        )
+        .bind(teamId, excludeClassRoomId ?? -1)
         .first();
       return row !== null;
     },
@@ -201,4 +349,27 @@ export function createClassRoomRepository(
       return row !== null;
     },
   };
+}
+
+async function deleteClassRoomsAndTeamsByInputs(
+  db: D1Database,
+  inputs: Omit<ClassRoomInput, 'team_id'>[]
+) {
+  const classCodes = inputs.map(input => input.class_code);
+  const teamNames = inputs.map(provisionalTeamName);
+
+  for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM class_rooms WHERE class_code IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+  }
+  for (const chunk of chunkArray(teamNames, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    await db
+      .prepare(`DELETE FROM teams WHERE team_name IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+  }
 }

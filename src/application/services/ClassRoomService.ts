@@ -9,8 +9,12 @@ import type {
   ClassRoomPageDTO,
   ClassRoomRequestDTO,
 } from '../dto/ClassRoomDTO';
-import type { ClassRoomEntity } from '../../domain/entities/ClassRoom';
+import type {
+  ClassRoomEntity,
+  ClassRoomInput,
+} from '../../domain/entities/ClassRoom';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
+import type { ITeamRepository } from '../../domain/interfaces/repositories/ITeamRepository';
 import type { IClassRoomService } from './IClassRoomService';
 
 async function findImportErrors(
@@ -62,7 +66,8 @@ async function findImportErrors(
 }
 
 export function createClassRoomService(
-  classRoomRepository: IClassRoomRepository
+  classRoomRepository: IClassRoomRepository,
+  teamRepository: ITeamRepository
 ): IClassRoomService {
   const toDTO = (classroom: ClassRoomEntity): ClassRoomDTO => ({
     ...classroom,
@@ -75,6 +80,31 @@ export function createClassRoomService(
     ) {
       throw new Error('Teacher not found');
     }
+  };
+
+  const ensureTeamExists = async (teamId: number | null) => {
+    if (teamId !== null && !(await teamRepository.exists(teamId))) {
+      throw new Error('Team not found');
+    }
+  };
+
+  const toClassRoomInput = (input: ClassRoomRequestDTO): ClassRoomInput => ({
+    class_code: input.class_code,
+    class_name: input.class_name,
+    teacher_id: input.teacher_id,
+    team_id: input.team_id ?? null,
+  });
+
+  const mapWriteError = (error: unknown): never => {
+    if (error instanceof Error) {
+      if (error.message.includes('class_rooms.class_code')) {
+        throw new Error('Class code already exists');
+      }
+      if (error.message.includes('teams.team_name')) {
+        throw new Error('Team name already exists');
+      }
+    }
+    throw error;
   };
 
   return {
@@ -99,13 +129,11 @@ export function createClassRoomService(
 
     async createClassroom(input: ClassRoomRequestDTO): Promise<ClassRoomDTO> {
       await ensureTeacherExists(input.teacher_id);
+      await ensureTeamExists(input.team_id ?? null);
       try {
-        return toDTO(await classRoomRepository.create(input));
+        return toDTO(await classRoomRepository.create(toClassRoomInput(input)));
       } catch (error) {
-        if (error instanceof Error && error.message.includes('UNIQUE')) {
-          throw new Error('Class code already exists');
-        }
-        throw error;
+        throw mapWriteError(error);
       }
     },
 
@@ -114,15 +142,26 @@ export function createClassRoomService(
       input: ClassRoomRequestDTO
     ): Promise<ClassRoomDTO> {
       await ensureTeacherExists(input.teacher_id);
+      await ensureTeamExists(input.team_id ?? null);
       try {
-        const classroom = await classRoomRepository.update(id, input);
+        const previous = await classRoomRepository.findById(id);
+        const teamChanged =
+          previous != null &&
+          input.team_id != null &&
+          previous.team_id !== input.team_id;
+
+        const classroom = teamChanged
+          ? await classRoomRepository.updateAndCleanupTeam(
+              id,
+              toClassRoomInput(input),
+              previous.team_id
+            )
+          : await classRoomRepository.update(id, toClassRoomInput(input));
         if (!classroom) throw new Error('Class not found');
+
         return toDTO(classroom);
       } catch (error) {
-        if (error instanceof Error && error.message.includes('UNIQUE')) {
-          throw new Error('Class code already exists');
-        }
-        throw error;
+        throw mapWriteError(error);
       }
     },
 
@@ -130,7 +169,12 @@ export function createClassRoomService(
       if (await classRoomRepository.hasStudents(id)) {
         throw new Error('Class is referenced by students');
       }
-      if (!(await classRoomRepository.delete(id))) {
+      const classroom = await classRoomRepository.findById(id);
+      if (!classroom) throw new Error('Class not found');
+
+      if (
+        !(await classRoomRepository.deleteAndCleanupTeam(id, classroom.team_id))
+      ) {
         throw new Error('Class not found');
       }
     },

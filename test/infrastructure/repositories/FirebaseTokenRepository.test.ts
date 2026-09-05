@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
 import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 let sequence = 0;
 
@@ -24,12 +25,11 @@ describe('FirebaseTokenRepository', () => {
     sequence += 1;
     userIds = [];
     await env.DB.prepare('DELETE FROM firebase_tokens').run();
-    const classRoom = await env.DB.prepare(
-      'INSERT INTO class_rooms (class_code, class_name) VALUES (?, ?) RETURNING class_room_id'
-    )
-      .bind(`FIREBASE-TEST-${sequence}`, 'Firebaseトークンテスト用学級')
-      .first<{ class_room_id: number }>();
-    classRoomId = classRoom!.class_room_id;
+    const classRoom = await insertClassRoomWithTeam(env.DB, {
+      classCode: `FIREBASE-TEST-${sequence}`,
+      className: `Firebaseトークンテスト用学級${sequence}`,
+    });
+    classRoomId = classRoom.classRoomId;
     repository = createFirebaseTokenRepository(env.DB);
   });
 

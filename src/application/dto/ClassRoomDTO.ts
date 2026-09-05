@@ -6,6 +6,7 @@ export interface ClassRoomDTO {
   class_name: string;
   student_count: number;
   teacher: ClassRoomTeacher | null;
+  team_id: number;
 }
 
 export interface ClassRoomPageDTO {
@@ -19,6 +20,7 @@ export interface ClassRoomRequestDTO {
   class_code: string;
   class_name: string;
   teacher_id: number | null;
+  team_id?: number | null;
 }
 
 export interface ClassRoomImportRow {
