@@ -40,23 +40,6 @@ export function createRankingController(rankingService: IRankingService) {
     }
   };
 
-  const getTeamById = async (c: Context) => {
-    const parsedId = teamIdSchema.safeParse(c.req.param('teamId'));
-    if (!parsedId.success) {
-      return errorResponse(c, TeamErrors.INVALID_TEAM_ID);
-    }
-
-    try {
-      const team = await rankingService.getTeamById(parsedId.data);
-      return c.json(team, 200);
-    } catch (error) {
-      if (error instanceof Error && error.message === 'Team not found') {
-        return errorResponse(c, TeamErrors.TEAM_NOT_FOUND);
-      }
-      return errorResponse(c, TeamErrors.TEAM_FETCH_FAILED);
-    }
-  };
-
   const addTeamScore = async (c: Context) => {
     const parsedId = teamIdSchema.safeParse(c.req.param('teamId'));
     if (!parsedId.success) {
@@ -89,7 +72,6 @@ export function createRankingController(rankingService: IRankingService) {
 
   return {
     getRanking,
-    getTeamById,
     addTeamScore,
   };
 }

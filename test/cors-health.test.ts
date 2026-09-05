@@ -92,6 +92,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/students/{studentId}',
       '/api/v1/teachers',
       '/api/v1/teachers/{teacherId}',
+      '/api/v1/teams',
       '/api/v1/teams/{teamId}',
       '/api/v1/teams/{teamId}/score',
       '/health',
@@ -106,7 +107,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(60);
+    expect(documentedOperations).toHaveLength(63);
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {

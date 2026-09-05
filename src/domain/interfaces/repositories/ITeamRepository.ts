@@ -1,14 +1,25 @@
 import {
   RankingEntryEntity,
   RankingListOptions,
-  TeamScoreEntity,
+  TeamEntity,
+  TeamListOptions,
+  TeamWriteInput,
 } from '../../entities/Team';
 
 export interface ITeamRepository {
   findRanking: (
     options: RankingListOptions
   ) => Promise<{ items: RankingEntryEntity[]; total: number }>;
-  findByIdWithScore: (teamId: number) => Promise<TeamScoreEntity | null>;
+  findAllTeams: (
+    options: TeamListOptions
+  ) => Promise<{ items: TeamEntity[]; total: number }>;
+  findTeamById: (teamId: number) => Promise<TeamEntity | null>;
   exists: (teamId: number) => Promise<boolean>;
-  addScore: (teamId: number, points: number) => Promise<TeamScoreEntity>;
+  existsClassCodes: (classCodes: string[]) => Promise<boolean>;
+  createTeam: (input: TeamWriteInput) => Promise<TeamEntity>;
+  updateTeam: (
+    teamId: number,
+    input: TeamWriteInput
+  ) => Promise<TeamEntity | null>;
+  addScore: (teamId: number, points: number) => Promise<TeamEntity>;
 }

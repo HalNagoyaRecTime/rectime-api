@@ -1,6 +1,6 @@
 import type {
   RankingEntryEntity,
-  TeamScoreEntity,
+  TeamEntity,
 } from '../../domain/entities/Team';
 import type { ITeamRepository } from '../../domain/interfaces/repositories/ITeamRepository';
 import type {
@@ -23,11 +23,14 @@ function toRankingEntryDTO(entry: RankingEntryEntity): RankingEntryDTO {
   };
 }
 
-function toTeamDTO(team: TeamScoreEntity): TeamDTO {
+function toTeamDTO(team: TeamEntity): TeamDTO {
   return {
     team_id: team.team_id,
     team_name: team.team_name,
+    registered_classes: team.registered_classes,
     scores: team.scores,
+    created_at: team.created_at,
+    updated_at: team.updated_at,
   };
 }
 
@@ -45,14 +48,6 @@ export function createRankingService(
         limit,
         offset,
       };
-    },
-
-    async getTeamById(teamId: number) {
-      const team = await teamRepository.findByIdWithScore(teamId);
-      if (!team) {
-        throw new Error('Team not found');
-      }
-      return toTeamDTO(team);
     },
 
     async addTeamScore(teamId: number, request: AddTeamScoreRequestDTO) {

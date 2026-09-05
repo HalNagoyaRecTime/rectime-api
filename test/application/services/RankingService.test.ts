@@ -3,7 +3,7 @@ import { createRankingService } from '../../../src/application/services/RankingS
 import type { ITeamRepository } from '../../../src/domain/interfaces/repositories/ITeamRepository';
 import type {
   RankingEntryEntity,
-  TeamScoreEntity,
+  TeamEntity,
 } from '../../../src/domain/entities/Team';
 
 function buildRankingEntry(
@@ -18,13 +18,14 @@ function buildRankingEntry(
   };
 }
 
-function buildTeamScore(
-  overrides: Partial<TeamScoreEntity> = {}
-): TeamScoreEntity {
+function buildTeam(overrides: Partial<TeamEntity> = {}): TeamEntity {
   return {
     team_id: 1,
     team_name: 'テストチーム',
+    registered_classes: [],
     scores: 10,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -34,8 +35,12 @@ function createRepository(
 ): ITeamRepository {
   return {
     findRanking: vi.fn(),
-    findByIdWithScore: vi.fn(),
+    findAllTeams: vi.fn(),
+    findTeamById: vi.fn(),
     exists: vi.fn(),
+    existsClassCodes: vi.fn(),
+    createTeam: vi.fn(),
+    updateTeam: vi.fn(),
     addScore: vi.fn(),
     ...overrides,
   };
@@ -74,31 +79,9 @@ describe('RankingService', () => {
     });
   });
 
-  describe('getTeamById', () => {
-    it('存在する場合はTeamDTOを返す', async () => {
-      const team = buildTeamScore();
-      const repository = createRepository({
-        findByIdWithScore: vi.fn().mockResolvedValue(team),
-      });
-      const service = createRankingService(repository);
-
-      await expect(service.getTeamById(1)).resolves.toEqual(team);
-      expect(repository.findByIdWithScore).toHaveBeenCalledWith(1);
-    });
-
-    it('存在しない場合は例外を投げる', async () => {
-      const repository = createRepository({
-        findByIdWithScore: vi.fn().mockResolvedValue(null),
-      });
-      const service = createRankingService(repository);
-
-      await expect(service.getTeamById(999)).rejects.toThrow('Team not found');
-    });
-  });
-
   describe('addTeamScore', () => {
     it('存在するチームなら得点を加算し、更新後のTeamDTOを返す', async () => {
-      const updated = buildTeamScore({ scores: 20 });
+      const updated = buildTeam({ scores: 20 });
       const repository = createRepository({
         exists: vi.fn().mockResolvedValue(true),
         addScore: vi.fn().mockResolvedValue(updated),

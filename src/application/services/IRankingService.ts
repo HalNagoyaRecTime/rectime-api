@@ -9,7 +9,6 @@ export interface IRankingService {
   getRanking: (
     options: GetRankingRequestDTO
   ) => Promise<RankingListResponseDTO>;
-  getTeamById: (teamId: number) => Promise<TeamDTO>;
   addTeamScore: (
     teamId: number,
     request: AddTeamScoreRequestDTO

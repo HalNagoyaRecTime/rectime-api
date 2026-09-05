@@ -8,7 +8,10 @@ function buildTeam(overrides: Partial<TeamDTO> = {}): TeamDTO {
   return {
     team_id: 1,
     team_name: 'テストチーム',
+    registered_classes: [],
     scores: 10,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -16,13 +19,11 @@ function buildTeam(overrides: Partial<TeamDTO> = {}): TeamDTO {
 function setup() {
   const rankingService: IRankingService = {
     getRanking: vi.fn(),
-    getTeamById: vi.fn(),
     addTeamScore: vi.fn(),
   };
   const controller = createRankingController(rankingService);
   const app = new Hono();
   app.get('/ranking', c => controller.getRanking(c));
-  app.get('/teams/:teamId', c => controller.getTeamById(c));
   app.patch('/teams/:teamId/score', c => controller.addTeamScore(c));
   return { app, rankingService };
 }
@@ -77,42 +78,6 @@ describe('RankingController', () => {
           }),
         })
       );
-    });
-  });
-
-  describe('getTeamById', () => {
-    it('存在する場合はチームを返す', async () => {
-      const { app, rankingService } = setup();
-      const team = buildTeam();
-      (
-        rankingService.getTeamById as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(team);
-
-      const response = await app.request('/teams/1');
-
-      expect(rankingService.getTeamById).toHaveBeenCalledWith(1);
-      expect(response.status).toBe(200);
-      expect(await response.json()).toEqual(team);
-    });
-
-    it('teamIdが不正な場合は400を返す', async () => {
-      const { app, rankingService } = setup();
-
-      const response = await app.request('/teams/abc');
-
-      expect(response.status).toBe(400);
-      expect(rankingService.getTeamById).not.toHaveBeenCalled();
-    });
-
-    it('存在しない場合は404を返す', async () => {
-      const { app, rankingService } = setup();
-      (
-        rankingService.getTeamById as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('Team not found'));
-
-      const response = await app.request('/teams/999');
-
-      expect(response.status).toBe(404);
     });
   });
 

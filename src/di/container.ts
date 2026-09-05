@@ -37,6 +37,7 @@ import { createGatheringGroupMemberService } from '../application/services/Gathe
 import { createGatheringService } from '../application/services/GatheringService';
 import { createScheduleService } from '../application/services/ScheduleService';
 import { createRankingService } from '../application/services/RankingService';
+import { createTeamService } from '../application/services/TeamService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createStaffController } from '../presentation/controllers/StaffController';
 import { createTeacherController } from '../presentation/controllers/TeacherController';
@@ -55,6 +56,7 @@ import { createGatheringGroupMemberController } from '../presentation/controller
 import { createGatheringController } from '../presentation/controllers/GatheringController';
 import { createScheduleController } from '../presentation/controllers/ScheduleController';
 import { createRankingController } from '../presentation/controllers/RankingController';
+import { createTeamController } from '../presentation/controllers/TeamController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
@@ -168,6 +170,7 @@ export function createDIContainer(env: Env) {
   const gatheringService = createGatheringService(gatheringRepository);
   const scheduleService = createScheduleService(scheduleRepository);
   const rankingService = createRankingService(teamRepository);
+  const teamService = createTeamService(teamRepository);
 
   // Controllers
   const studentController = createStudentController(studentService);
@@ -210,6 +213,7 @@ export function createDIContainer(env: Env) {
   const gatheringController = createGatheringController(gatheringService);
   const scheduleController = createScheduleController(scheduleService);
   const rankingController = createRankingController(rankingService);
+  const teamController = createTeamController(teamService);
 
   return {
     authService,
@@ -235,6 +239,7 @@ export function createDIContainer(env: Env) {
     gatheringController,
     scheduleController,
     rankingController,
+    teamController,
   };
 }
 
