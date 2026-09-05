@@ -1,5 +1,5 @@
 import { env as workerEnv } from 'cloudflare:workers';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import {
   afterEach,
   beforeAll,
@@ -20,7 +20,10 @@ import type {
   MobileRefreshEntry,
   DeletionConfirmationEntry,
 } from '../../../../src/domain/auth/types';
-import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
+import {
+  diContainerMiddleware,
+  type ContainerVariables,
+} from '../../../../src/presentation/middleware/diContainer';
 import { createUserRepository } from '../../../../src/infrastructure/repositories/UserRepository';
 
 const JWT_SECRET = 'a'.repeat(32);
@@ -1087,6 +1090,65 @@ describe('POST /auth/microsoft/token', () => {
     expect(res.status).toBe(403);
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe('STAFF_REQUIRED');
+  });
+
+  it('staff判定でエラーが発生した場合は500 INTERNAL_SERVER_ERRORを返す', async () => {
+    const env = buildEnv();
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-staff-error-1',
+      oid: 'oid-staff-error-1',
+      tid: 'tid-1',
+      name: 'エラー太郎',
+      preferred_username: 'error@example.com',
+      nonce: 'nonce-staff-error-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-staff-error-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-staff-error-1',
+        client_type: 'web',
+        purpose: 'login',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+
+    const app = buildApp();
+    app.use(
+      '*',
+      async (
+        c: Context<{ Bindings: Env; Variables: ContainerVariables }>,
+        next
+      ) => {
+        c.get('container').authorizationService.isStaff = vi
+          .fn()
+          .mockRejectedValue(new Error('D1 error'));
+        await next();
+      }
+    );
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-staff-error-1',
+          state: 'state-staff-error-1',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INTERNAL_SERVER_ERROR');
   });
 
   it('markAsDeleted実行後に同じ学籍番号メールでログインすると、古い削除済みユーザーへ紐付けず新規アカウントとして登録される', async () => {
