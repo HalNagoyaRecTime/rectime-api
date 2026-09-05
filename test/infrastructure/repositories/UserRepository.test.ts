@@ -480,6 +480,37 @@ describe('UserRepository', () => {
     it('存在しないuserIdの場合、isPurgedはfalseを返す', async () => {
       await expect(repo.isPurged('999999')).resolves.toBe(false);
     });
+
+    it('deletion_statusが"deleted"でない場合、markAsPurgedはpurged_atをセットせずfalseを返す', async () => {
+      // 抽出条件(`WHERE deletion_status = 'deleted' AND purged_at IS
+      // NULL`)・isPurgedの判定条件と同じ2軸(状態+完了時刻)で更新を
+      // 揃えるための確認。userIdのみを条件にすると、将来「削除の取り消し」
+      // でdeletion_statusを戻す機能が入った際にpurged_atだけが残り得る。
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status) VALUES ('未削除太郎', 'active') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const userId = String(user!.user_id);
+
+      await expect(repo.markAsPurged(userId)).resolves.toBe(false);
+
+      const row = await env.DB.prepare(
+        'SELECT purged_at FROM users WHERE user_id = ?'
+      )
+        .bind(user!.user_id)
+        .first<{ purged_at: string | null }>();
+      expect(row?.purged_at).toBeNull();
+    });
+
+    it('deletion_statusが"deleted"でない場合、purged_atがセット済みでもisPurgedはfalseを返す', async () => {
+      // isPurgedはdeletion_status = 'deleted'も条件に含めるため、
+      // purged_atだけが残っていても状態が'deleted'でなければfalseを返す。
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status, purged_at) VALUES ('状態不整合太郎', 'active', CURRENT_TIMESTAMP) RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const userId = String(user!.user_id);
+
+      await expect(repo.isPurged(userId)).resolves.toBe(false);
+    });
   });
 
   describe('anonymizeUser', () => {
