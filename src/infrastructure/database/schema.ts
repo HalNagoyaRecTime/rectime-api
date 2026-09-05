@@ -347,13 +347,19 @@ export const teams = sqliteTable(
   table => [uniqueIndex('uq_teams_team_name').on(table.name)]
 );
 
+// 得点は編成ごとの合計のみを保持する。イベント別の内訳は要件に無いため持たない。
+// (内訳が必要になった場合はevent_idを含む明細テーブルを別途追加し、
+//  ここは集計結果のキャッシュとして扱う)
 export const team_scores = sqliteTable('team_scores', {
   id: integer('team_score_id').primaryKey({ autoIncrement: true }),
   teamId: integer('team_id')
     .notNull()
-    .references(() => teams.id)
-    .unique(),
+    .unique()
+    .references(() => teams.id),
   scores: integer('scores').notNull().default(0),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text('updated_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),

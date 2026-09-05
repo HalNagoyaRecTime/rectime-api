@@ -175,6 +175,7 @@ describe('0030_create_team_teamscore_update_class.sql', () => {
       expect.arrayContaining([
         expect.objectContaining({ name: 'team_id', notnull: 1 }),
         expect.objectContaining({ name: 'scores', notnull: 1 }),
+        expect.objectContaining({ name: 'created_at', notnull: 1 }),
       ])
     );
     expect(teamScoreColumns.results.map(column => column.name)).not.toContain(

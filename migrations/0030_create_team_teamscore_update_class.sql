@@ -9,10 +9,14 @@ CREATE TABLE teams (
 
 CREATE UNIQUE INDEX uq_teams_team_name ON teams(team_name);
 
+-- 得点は編成ごとの合計のみを保持する。イベント別の内訳は要件に無いため持たない。
+-- (内訳が必要になった場合は event_id を含む明細テーブルを別途追加し、
+--  ここは集計結果のキャッシュとして扱う)
 CREATE TABLE team_scores (
   team_score_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  team_id INTEGER NOT NULL REFERENCES teams(team_id) UNIQUE,
+  team_id INTEGER NOT NULL UNIQUE REFERENCES teams(team_id),
   scores INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
