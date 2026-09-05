@@ -7,6 +7,9 @@ describe('TeamRepository', () => {
   let repo: ITeamRepository;
 
   beforeEach(async () => {
+    // students.class_room_id が class_rooms を外部キー参照しているため、
+    // 他ファイルが残したstudentsが残っているとclass_roomsを先に消せない。
+    await env.DB.prepare('DELETE FROM students').run();
     await env.DB.prepare('DELETE FROM class_rooms').run();
     await env.DB.prepare('DELETE FROM team_scores').run();
     await env.DB.prepare('DELETE FROM teams').run();
