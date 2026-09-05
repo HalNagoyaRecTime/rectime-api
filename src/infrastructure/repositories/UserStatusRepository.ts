@@ -49,6 +49,8 @@ export function createUserStatusRepository(
       };
     },
 
+    // ここでの active は deletion_status のこと。稼働状態(is_live_active)は
+    // 見ない。無効化済みでもUserとしては残っているため。
     async existsActiveUser(userId) {
       const found = await orm
         .select({ id: users.id })

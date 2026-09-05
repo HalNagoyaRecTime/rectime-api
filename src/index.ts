@@ -24,7 +24,6 @@ import {
 } from './presentation/middleware/bearerAuthentication';
 import { validationDefaultHook } from './presentation/openapi/schemas';
 import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
-import { adminUserStatusUpdateRoute } from './presentation/openapi/adminUsers';
 import {
   studentCreateRoute,
   studentDetailRoute,
@@ -95,7 +94,10 @@ import {
   scheduleUpdateRoute,
   testNotificationRoute,
 } from './presentation/openapi/notifications';
-import { adminUserSearchRoute } from './presentation/openapi/adminUsers';
+import {
+  adminUserSearchRoute,
+  adminUserStatusUpdateRoute,
+} from './presentation/openapi/adminUsers';
 
 const app = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationDefaultHook,

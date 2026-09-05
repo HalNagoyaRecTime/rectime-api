@@ -20,10 +20,11 @@ export function createUserService(
       // 再有効化できるのは管理権限を持つUserだけなので、管理権限を持つUserが
       // 全員無効になると、このAPIからは誰も復旧できなくなる。自分自身の無効化は
       // ここで断り、他に稼働中のstaffがいるかどうかは更新と同じSQL文で判定する。
-      if (!command.is_live_active) {
-        if (command.operator_user_id === command.user_id) {
-          throw new Error('Cannot deactivate yourself');
-        }
+      if (
+        !command.is_live_active &&
+        command.operator_user_id === command.user_id
+      ) {
+        throw new Error('Cannot deactivate yourself');
       }
 
       // Student / Teacher固有データや所属情報は触らず、users.is_live_activeのみ更新する。

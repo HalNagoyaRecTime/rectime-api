@@ -34,6 +34,8 @@ type UserContext = Context<{
 export function createUserController(service: IUserService) {
   // staff権限の判定はルート側のrequireStaffが済ませている。ここでは
   // 自分自身の無効化を断るために、操作した本人のuserIdを取り出すだけ。
+  // nullはrequireAuthが先に401で弾くため実際には来ないが、型上はnullを
+  // 取りうるため分岐を残す。応答コードもrequireAuthと同じものに揃える。
   const operatorUserId = (c: UserContext) => {
     const userId = c.get('authenticatedUserId');
     return userId === null
