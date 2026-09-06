@@ -1,7 +1,7 @@
 import { Context } from 'hono';
 import { z } from 'zod';
 import { ITeacherService } from '../../application/services/ITeacherService';
-import { TeacherSearchFilter } from '../../domain/entities/Teacher';
+import { CommonErrors } from '../errors/commonErrors';
 import { errorResponse } from '../errors/errorResponse';
 import { UserErrors } from '../errors/userErrors';
 
@@ -67,14 +67,6 @@ function getTeacherId(c: Context): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-function parseSearchFilter(c: Context): TeacherSearchFilter {
-  const parsed = teacherListQuerySchema.safeParse(c.req.query());
-  if (!parsed.success) {
-    throw new Error('Invalid teacher list query');
-  }
-  return parsed.data;
-}
-
 export function createTeacherController(teacherService: ITeacherService) {
   const createTeacher = async (c: Context) => {
     const body = await c.req.json().catch(() => undefined);
@@ -117,17 +109,19 @@ export function createTeacherController(teacherService: ITeacherService) {
   };
 
   const getAllTeachers = async (c: Context) => {
+    const parsedQuery = teacherListQuerySchema.safeParse(c.req.query());
+    if (!parsedQuery.success) {
+      return errorResponse(
+        c,
+        CommonErrors.VALIDATION_ERROR,
+        parsedQuery.error.flatten()
+      );
+    }
+
     try {
-      const filter = parseSearchFilter(c);
-      const teachers = await teacherService.getAllTeachers(filter);
+      const teachers = await teacherService.getAllTeachers(parsedQuery.data);
       return c.json(teachers, 200);
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === 'Invalid teacher list query'
-      ) {
-        return errorResponse(c, UserErrors.INVALID_TEACHER_LIST_QUERY);
-      }
+    } catch {
       return errorResponse(c, UserErrors.TEACHER_LIST_FAILED);
     }
   };

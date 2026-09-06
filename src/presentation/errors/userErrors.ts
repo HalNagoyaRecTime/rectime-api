@@ -81,11 +81,6 @@ export const UserErrors = {
     code: 'TEACHER_NOT_FOUND',
     message: '教員が見つかりません',
   },
-  INVALID_TEACHER_LIST_QUERY: {
-    status: 400,
-    code: 'INVALID_TEACHER_LIST_QUERY',
-    message: '教員一覧の検索条件が正しくありません',
-  },
   INVALID_TEACHER_CREATE_REQUEST: {
     status: 400,
     code: 'INVALID_TEACHER_CREATE_REQUEST',
