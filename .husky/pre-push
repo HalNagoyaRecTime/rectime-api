@@ -19,4 +19,11 @@ if [ "$has_ref_update" -eq 1 ] && [ "$has_non_delete_update" -eq 0 ]; then
   exit 0
 fi
 
-npm run check
+npm run type-check
+
+if git rev-parse --verify origin/develop >/dev/null 2>&1; then
+  npm exec -- vitest run --changed origin/develop
+else
+  echo "origin/develop not found; running full test suite."
+  npm test
+fi
