@@ -5,10 +5,77 @@ import {
   forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
+  notFoundResponse,
   paginationFields,
+  positivePathParam,
   unauthorizedResponse,
   z,
 } from './schemas';
+
+export const userStatusResponseSchema = z
+  .object({
+    user_id: z.number().int(),
+    is_live_active: z.boolean(),
+  })
+  .openapi('UserStatus');
+
+export type UserStatusResponseDTO = z.infer<typeof userStatusResponseSchema>;
+
+export const adminUserIdParams = z.object({
+  userId: positivePathParam('userId', 'ユーザーID'),
+});
+
+export const userStatusUpdateSchema = z
+  .object({
+    is_live_active: z.boolean().openapi({
+      description: 'trueでUserを有効化、falseで無効化する。',
+    }),
+  })
+  .strict()
+  .openapi('UserStatusUpdateRequest');
+
+export const adminUserStatusUpdateRoute = createRoute({
+  method: 'patch',
+  path: '/admin/users/{userId}',
+  tags: ['Users'],
+  summary: 'Userの有効・無効状態を変更する',
+  description: [
+    '`users.is_live_active` のみを更新する。',
+    '通常運用ではUserを物理削除せず、この状態で利用可能かどうかを管理する。',
+    'Student / Teacher固有データや所属情報は変更しないため、',
+    '再有効化すると無効化前の情報をそのまま利用できる。',
+    '',
+    '自分自身の無効化と、有効な管理権限保持者が0人になる無効化は400で断る。',
+    'いずれも再有効化する手段が失われるため。',
+    '',
+    '退会済み(`deletion_status` が `active` 以外)のUserは対象外で404を返す。',
+    '有効化しても本人はログインできず、通知の宛先にだけ入る状態になるため。',
+    '',
+    '無効化するとリクエストごとの認証で遮断されるため、発行済みのトークンが',
+    '手元に残っていても以降のAPIアクセスは拒否される。',
+    'ただし通知の配信は経路によって扱いが異なり、無効化しても届く場合がある。',
+    '',
+    'Teacherを無効化しても `class_rooms.teacher_id` は解除されない。',
+    '担任の解除まで行うのは `DELETE /teachers/{teacherId}` のみで、',
+    '本APIとは最終状態が異なる点に注意する。',
+  ].join('\n'),
+  security: bearerAuth,
+  request: {
+    params: adminUserIdParams,
+    body: {
+      content: { 'application/json': { schema: userStatusUpdateSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: jsonResponse(userStatusResponseSchema, '変更後のUser状態'),
+    400: badRequestResponse,
+    401: unauthorizedResponse,
+    403: forbiddenResponse,
+    404: notFoundResponse,
+    500: internalServerErrorResponse,
+  },
+});
 
 export const adminUserSearchQuery = z.object({
   q: z

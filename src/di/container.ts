@@ -53,6 +53,9 @@ import { createGatheringGroupMemberController } from '../presentation/controller
 import { createGatheringController } from '../presentation/controllers/GatheringController';
 import { createScheduleController } from '../presentation/controllers/ScheduleController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
+import { createUserStatusRepository } from '../infrastructure/repositories/UserStatusRepository';
+import { createUserService } from '../application/services/UserService';
+import { createUserController } from '../presentation/controllers/UserController';
 import { createUserActivationRepository } from '../infrastructure/repositories/UserActivationRepository';
 import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
@@ -106,6 +109,7 @@ export function createDIContainer(env: Env) {
     env.AUTH_KV,
     firebaseTokenRepository
   );
+  const userService = createUserService(createUserStatusRepository(db));
   const authorizationService = createAuthorizationService(userRepository);
   // #265 PR4: 関連データの削除・匿名化(deleteRelatedData)の実装。
   // 現時点ではこのコンテナに登録して公開しているだけで、実際の削除フロー
@@ -183,6 +187,7 @@ export function createDIContainer(env: Env) {
   const scheduleService = createScheduleService(scheduleRepository);
 
   // Controllers
+  const userController = createUserController(userService);
   const studentController = createStudentController(studentService);
   const staffController = createStaffController(staffService);
   const teacherController = createTeacherController(teacherService);
@@ -227,6 +232,7 @@ export function createDIContainer(env: Env) {
     // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
     userActivationRepository,
     authService,
+    userController,
     accountDeletionService,
     authorizationService,
     studentService,
