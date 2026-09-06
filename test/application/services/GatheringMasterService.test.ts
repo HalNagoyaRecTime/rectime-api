@@ -142,6 +142,7 @@ describe('Gathering master services', () => {
       findByGatheringId: vi.fn().mockResolvedValue([member]),
       create: vi.fn().mockResolvedValue(member),
       remove: vi.fn().mockResolvedValue(true),
+      deleteByUserId: vi.fn(),
     };
     const service = createGatheringGroupMemberService(repository);
 

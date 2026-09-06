@@ -43,5 +43,13 @@ export function createStaffRepository(db: D1Database): IStaffRepository {
 
       return results.map(toEntity);
     },
+
+    async deleteByUserId(userId: number): Promise<boolean> {
+      const result = await orm
+        .delete(staffs)
+        .where(eq(staffs.userId, userId))
+        .run();
+      return result.meta.changes > 0;
+    },
   };
 }

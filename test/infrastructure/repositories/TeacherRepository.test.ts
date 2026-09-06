@@ -484,4 +484,46 @@ describe('TeacherRepository', () => {
         .run();
     });
   });
+
+  describe('deleteByUserId', () => {
+    it('教員を物理削除し、担当クラスのteacher_idをNULL化する', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('削除対象教員') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const teacher = await env.DB.prepare(
+        'INSERT INTO teachers (user_id) VALUES (?) RETURNING teacher_id'
+      )
+        .bind(user!.user_id)
+        .first<{ teacher_id: number }>();
+      const classRoom = await env.DB.prepare(
+        "INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ('DEL-1', '削除確認クラス', ?) RETURNING class_room_id"
+      )
+        .bind(teacher!.teacher_id)
+        .first<{ class_room_id: number }>();
+
+      await expect(repo.deleteByUserId(user!.user_id)).resolves.toBe(true);
+
+      const teacherRow = await env.DB.prepare(
+        'SELECT * FROM teachers WHERE teacher_id = ?'
+      )
+        .bind(teacher!.teacher_id)
+        .first();
+      expect(teacherRow).toBeNull();
+
+      const classRoomRow = await env.DB.prepare(
+        'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+      )
+        .bind(classRoom!.class_room_id)
+        .first<{ teacher_id: number | null }>();
+      expect(classRoomRow?.teacher_id).toBeNull();
+    });
+
+    it('該当する教員が存在しない場合はfalseを返す(冪等)', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('非教員') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(repo.deleteByUserId(user!.user_id)).resolves.toBe(false);
+    });
+  });
 });

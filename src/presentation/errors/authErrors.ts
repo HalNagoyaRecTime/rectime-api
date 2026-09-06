@@ -93,9 +93,40 @@ export const AuthErrors = {
     code: 'INVALID_REFRESH_CLIENT_TYPE',
     message: 'refresh_token_id のクライアント種別が不正です',
   },
+  USER_DEACTIVATED: {
+    status: 401,
+    code: 'USER_DEACTIVATED',
+    message: 'このアカウントは無効化されています',
+  },
+  USER_ACTIVATION_CHECK_FAILED: {
+    status: 500,
+    code: 'USER_ACTIVATION_CHECK_FAILED',
+    message: 'アカウント状態の確認に失敗しました',
+  },
   REFRESH_TOKEN_EXPIRED: {
     status: 401,
     code: 'REFRESH_TOKEN_EXPIRED',
     message: 'セッションを更新できませんでした。もう一度ログインしてください',
+  },
+  DELETION_CONFIRMATION_TOKEN_INVALID: {
+    status: 401,
+    code: 'DELETION_CONFIRMATION_TOKEN_INVALID',
+    message:
+      '削除確認が無効です。もう一度Microsoftアカウントで本人確認をやり直してください',
+  },
+  // AccountDeletionService.deleteRelatedDataがdeletion_status !== 'deleted'
+  // (authService.startAccountDeletionが未完了)を検知した場合に返す(#265)。
+  ACCOUNT_DELETION_NOT_STARTED: {
+    status: 409,
+    code: 'ACCOUNT_DELETION_NOT_STARTED',
+    message: 'アカウント削除の受付が完了していません',
+  },
+  // AccountDeletionService.deleteRelatedDataが、既に後片付け
+  // (関連データの削除・匿名化)が完了済みの利用者に対して再度呼ばれた場合に
+  // 返す(#265)。
+  ACCOUNT_ALREADY_PURGED: {
+    status: 409,
+    code: 'ACCOUNT_ALREADY_PURGED',
+    message: 'アカウント削除の後片付けは既に完了しています',
   },
 } as const satisfies Record<string, ApiErrorDefinition>;

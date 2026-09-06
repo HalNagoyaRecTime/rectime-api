@@ -622,4 +622,40 @@ describe('StudentRepository', () => {
       expect(await repo.findByStudentNum('ATOMIC-CLEANUP-1')).toBeNull();
     });
   });
+
+  describe('anonymizeByUserId', () => {
+    it('student_id_numberをプレースホルダに書き換え、行は残す(user_nameはUserRepository.anonymizeUserの責務)', async () => {
+      const classRoomId = seeded.students[0].classRoomId;
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('匿名化対象太郎') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const student = await env.DB.prepare(
+        "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 99, '99999') RETURNING student_id"
+      )
+        .bind(user!.user_id, classRoomId)
+        .first<{ student_id: number }>();
+
+      await expect(repo.anonymizeByUserId(user!.user_id)).resolves.toBe(true);
+
+      const result = await repo.findById(student!.student_id);
+      expect(result).toMatchObject({
+        student_id_number: `deleted-${user!.user_id}`,
+        class_room_id: classRoomId,
+        attendance_number: 99,
+      });
+      // user_nameの匿名化はUserRepository.anonymizeUserの責務であり、
+      // StudentRepository.anonymizeByUserIdはstudents固有のカラムのみを
+      // 扱う(#265 PR4のレビュー指摘: students行の有無に関わらず
+      // user_nameを匿名化できるようにするための責務分離)。
+      expect(result?.user_name).toBe('匿名化対象太郎');
+    });
+
+    it('該当する学生が存在しない場合はfalseを返す(冪等)', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('非学生') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(repo.anonymizeByUserId(user!.user_id)).resolves.toBe(false);
+    });
+  });
 });

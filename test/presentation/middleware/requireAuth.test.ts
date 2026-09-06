@@ -11,9 +11,11 @@ import {
   type AuthenticationVariables,
 } from '../../../src/presentation/middleware/bearerAuthentication';
 import { signAccessToken } from '../../../src/infrastructure/auth/jwt';
+import type { ContainerVariables } from '../../../src/presentation/middleware/diContainer';
+import type { DIContainer } from '../../../src/di/container';
 import type { Env } from '../../../src/lib/env';
 
-type Variables = AuthenticationVariables & AuthVariables;
+type Variables = ContainerVariables & AuthenticationVariables & AuthVariables;
 
 const JWT_SECRET = 'a'.repeat(32);
 
@@ -67,8 +69,41 @@ function createMockKv(): KVNamespace {
   } as unknown as KVNamespace;
 }
 
-function buildApp() {
+// 本番では diContainerMiddleware がコンテナを設定する。ここでは requireAuth が
+// 実際に参照する userActivationRepository だけをスタブとして差し込み、
+// D1に依存せずミドルウェア単体の分岐を検証する（実SQLの検証は
+// UserActivationRepository.test.ts が実DBに対して行う）。
+function useStubContainer(
+  app: Hono<{ Bindings: Env; Variables: Variables }>,
+  isActive: boolean
+) {
+  app.use('*', async (c, next) => {
+    c.set('container', {
+      userActivationRepository: { isActive: async () => isActive },
+    } as unknown as DIContainer);
+    await next();
+  });
+}
+
+// D1が一時的に不調な状況を模す。
+function useFailingContainer(
+  app: Hono<{ Bindings: Env; Variables: Variables }>
+) {
+  app.use('*', async (c, next) => {
+    c.set('container', {
+      userActivationRepository: {
+        isActive: async () => {
+          throw new Error('D1_ERROR');
+        },
+      },
+    } as unknown as DIContainer);
+    await next();
+  });
+}
+
+function buildApp(isActive = true) {
   const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+  useStubContainer(app, isActive);
   app.use('*', bearerAuthenticationMiddleware);
   app.get('/protected', requireAuth, c => {
     return c.json({ authUser: c.get('authUser') });
@@ -82,7 +117,7 @@ describe('requireAuth', () => {
       const env = buildEnv();
       const token = await signAccessToken(
         {
-          sub: 'user-1',
+          sub: '1',
           oid: 'oid-1',
           email: 'tanaka@example.com',
           display_name: '田中太郎',
@@ -107,7 +142,7 @@ describe('requireAuth', () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({
         authUser: {
-          id: 'user-1',
+          id: '1',
           email: 'tanaka@example.com',
           display_name: '田中太郎',
         },
@@ -118,7 +153,7 @@ describe('requireAuth', () => {
       const env = buildEnv();
       const token = await signAccessToken(
         {
-          sub: 'user-1',
+          sub: '1',
           oid: 'oid-1',
           email: 'tanaka@example.com',
           display_name: '田中太郎',
@@ -128,6 +163,7 @@ describe('requireAuth', () => {
         3600
       );
       const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+      useStubContainer(app, true);
       app.use('*', bearerAuthenticationMiddleware);
       app.get('/protected', requireAuth, () => {
         throw new Error('downstream failure');
@@ -180,7 +216,7 @@ describe('requireAuth', () => {
       const env = buildEnv();
       const token = await signAccessToken(
         {
-          sub: 'user-1',
+          sub: '1',
           oid: 'oid-1',
           email: 'tanaka@example.com',
           display_name: '田中太郎',
@@ -211,7 +247,7 @@ describe('requireAuth', () => {
       const env = buildEnv();
       const token = await signAccessToken(
         {
-          sub: 'user-1',
+          sub: '1',
           oid: 'oid-1',
           email: 'tanaka@example.com',
           display_name: '田中太郎',
@@ -231,7 +267,7 @@ describe('requireAuth', () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({
         authUser: {
-          id: 'user-1',
+          id: '1',
           email: 'tanaka@example.com',
           display_name: '田中太郎',
         },
@@ -262,7 +298,7 @@ describe('requireAuth', () => {
       const env = buildEnv();
       const token = await signAccessToken(
         {
-          sub: 'user-1',
+          sub: '1',
           oid: 'oid-1',
           email: 'tanaka@example.com',
           display_name: '田中太郎',
@@ -286,7 +322,7 @@ describe('requireAuth', () => {
       const env = buildEnv();
       const token = await signAccessToken(
         {
-          sub: 'user-1',
+          sub: '1',
           oid: 'oid-1',
           email: 'tanaka@example.com',
           display_name: '田中太郎',
@@ -296,6 +332,7 @@ describe('requireAuth', () => {
         3600
       );
       const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+      useStubContainer(app, true);
       app.use('*', bearerAuthenticationMiddleware);
       app.get('/protected', requireAuth, () => {
         throw new Error('downstream failure');
@@ -308,6 +345,110 @@ describe('requireAuth', () => {
       );
 
       expect(res.status).not.toBe(401);
+    });
+  });
+
+  describe('無効化されたユーザー (#255)', () => {
+    async function issueToken(): Promise<string> {
+      return signAccessToken(
+        {
+          sub: '1',
+          oid: 'oid-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+          client_type: 'web',
+        },
+        JWT_SECRET,
+        3600
+      );
+    }
+
+    it('トークンが有効でも is_live_active が0なら401を返す', async () => {
+      const token = await issueToken();
+      const app = buildApp(false);
+
+      const res = await app.request(
+        '/protected',
+        { headers: { Authorization: `Bearer ${token}` } },
+        buildEnv()
+      );
+
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'USER_DEACTIVATED',
+          message: 'このアカウントは無効化されています',
+        },
+      });
+    });
+
+    it('無効化されている場合はハンドラを実行しない', async () => {
+      const token = await issueToken();
+      const handler = vi.fn(() => new Response('ok'));
+      const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+      useStubContainer(app, false);
+      app.use('*', bearerAuthenticationMiddleware);
+      app.get('/protected', requireAuth, handler);
+
+      const res = await app.request(
+        '/protected',
+        { headers: { Authorization: `Bearer ${token}` } },
+        buildEnv()
+      );
+
+      expect(res.status).toBe(401);
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('状態の確認に失敗した場合はアプリ標準形式の500を返し、ハンドラを実行しない', async () => {
+      const token = await issueToken();
+      const handler = vi.fn(() => new Response('ok'));
+      const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+      useFailingContainer(app);
+      app.use('*', bearerAuthenticationMiddleware);
+      app.get('/protected', requireAuth, handler);
+
+      const res = await app.request(
+        '/protected',
+        { headers: { Authorization: `Bearer ${token}` } },
+        buildEnv()
+      );
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'USER_ACTIVATION_CHECK_FAILED',
+          message: 'アカウント状態の確認に失敗しました',
+        },
+      });
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('subがユーザーIDとして解釈できないトークンは401を返す', async () => {
+      // 状態を確認できない以上は通さない（フェイルクローズ）
+      const token = await signAccessToken(
+        {
+          sub: 'not-a-number',
+          oid: 'oid-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+          client_type: 'web',
+        },
+        JWT_SECRET,
+        3600
+      );
+      const app = buildApp(true);
+
+      const res = await app.request(
+        '/protected',
+        { headers: { Authorization: `Bearer ${token}` } },
+        buildEnv()
+      );
+
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({
+        error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+      });
     });
   });
 
