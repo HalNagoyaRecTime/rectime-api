@@ -33,21 +33,21 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.16.18",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^4.20250909.0",
-    "@typescript-eslint/eslint-plugin": "^8.43.0",
+    "@typescript-eslint/eslint-plugin": "^8.68.0",
     "@typescript-eslint/parser": "^8.43.0",
-    "@vitest/coverage-istanbul": "^4.1.9",
+    "@vitest/coverage-istanbul": "^4.1.11",
     "@vitest/ui": "^4.1.9",
     "eslint": "^9.35.0",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
-    "prettier": "^3.6.2",
-    "tsx": "^4.4.0",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.13",
     "typescript": "^5.9.2",
     "vitest": "^4.1.9",
-    "wrangler": "^4.4.0"
+    "wrangler": "^4.127.1"
   },
   "packageManager": "npm@10.9.2"
 }
