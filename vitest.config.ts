@@ -33,7 +33,7 @@ export default defineConfig(async () => {
         '**/vite.config.*',
         '**/tsconfig*.json',
         '**/wrangler.jsonc',
-        'migrations/**',
+        '**/migrations/**',
       ],
       coverage: {
         // workerd ランタイムでは V8 のカバレッジ計測APIが使えないため istanbul を使用する
