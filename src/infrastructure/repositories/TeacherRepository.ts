@@ -209,7 +209,9 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
             : filter.sortBy === 'className'
               ? classNameSortColumn
               : teachers.id;
-      const classSortLast = sql<number>`CASE WHEN ${classSortColumn} IS NULL THEN 1 ELSE 0 END`;
+      const classSortKey =
+        filter.sortBy === 'className' ? classNameSortColumn : classSortColumn;
+      const classSortLast = sql<number>`CASE WHEN ${classSortKey} IS NULL THEN 1 ELSE 0 END`;
       const orderBy =
         filter.sortBy === 'classCode' || filter.sortBy === 'className'
           ? [classSortLast, sortOrder(sortColumn), asc(teachers.id)]

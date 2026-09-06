@@ -212,12 +212,35 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers?limit=101');
       expect(res.status).toBe(400);
       expect(teacherService.getAllTeachers).not.toHaveBeenCalled();
+      expect(await res.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+    });
+
+    it('isStaff=all / isLiveActive=all は絞り込みなしとして扱う', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.getAllTeachers as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+      const res = await app.request('/teachers?isStaff=all&isLiveActive=all');
+
+      expect(res.status).toBe(200);
+      expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
+        sortBy: 'teacherId',
+        sortOrder: 'asc',
+        limit: 50,
+        offset: 0,
+      });
     });
 
     it('未知のクエリパラメータは400を返す', async () => {
       const { app } = setup();
       const res = await app.request('/teachers?page=2');
       expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
     });
 
     it('サービスが例外を投げた場合は 500 を返す', async () => {
