@@ -18,6 +18,7 @@ import {
 import { rejectInactiveUser } from '../rejectInactiveUser';
 import {
   type MobileRefreshEntry,
+  type DeletionConfirmationEntry,
   ACCOUNT_PHOTO_PATH,
 } from '../../../domain/auth/types';
 import { GRAPH_ME_PHOTO_URL } from '../../../infrastructure/auth/microsoftClient';
@@ -362,6 +363,95 @@ account.post('/refresh', async c => {
     token_type: 'Bearer',
     expires_in: jwtTtl,
   });
+});
+
+// DELETE /auth/me
+// アカウント削除を開始する(#265 PR5)。本人確認は通常のBearer Tokenでは
+// なく、削除確認専用フロー(PR2, POST /auth/microsoft/delete-token)が
+// 発行したdeletion_confirmation_tokenのみで行う。このTokenは一回限り・
+// 短期間(10分)で、消費(KVから読み取り→削除)した時点で無効になる。
+//
+// リクエスト: { "deletion_confirmation_token": string }
+// レスポンス: 202 Accepted, ボディなし(#265 PR1で確定した契約)。
+//   非同期の完了通知は無く、本エンドポイントが202を返した時点で
+//   Access Token・Refresh Session・Push通知は即座に機能しなくなる
+//   (#265 PR3)。関連データの削除・匿名化(#265 PR4)も本エンドポイント
+//   内で完了してから202を返す。
+// エラー:
+//   400 INVALID_REQUEST                       deletion_confirmation_tokenが無い/不正な形式
+//   401 DELETION_CONFIRMATION_TOKEN_INVALID    Tokenが存在しない/期限切れ/使用済み
+//   409 ACCOUNT_DELETION_NOT_STARTED           deleteRelatedData呼び出し前提が崩れている(通常到達しない)
+//   409 ACCOUNT_ALREADY_PURGED                 後片付けが既に完了済み(同一利用者への並行実行等)
+//
+// 注意: このエンドポイントを含む /auth 配下は現状OpenAPI(openapi.json)
+// 未対応(素のHonoハンドラーのため)。この仕様コメントが実質的な契約定義。
+//
+// 処理順序(重要): authService.startAccountDeletion(deletion_statusを
+// 'deleted'にし、Access Token・Refresh Session・Firebase Tokenを無効化
+// する)を必ず先に呼び、その後でaccountDeletionService.deleteRelatedData
+// (関連データの削除・匿名化)を呼ぶ。deleteRelatedData自身もこの順序を
+// 自己確認して強制している(#265 PR4)。
+account.delete('/me', async c => {
+  const { authService, accountDeletionService } = c.get('container');
+
+  const body = (await c.req.json().catch(() => null)) as {
+    deletion_confirmation_token?: unknown;
+  } | null;
+  if (
+    !body ||
+    typeof body.deletion_confirmation_token !== 'string' ||
+    body.deletion_confirmation_token.length === 0
+  ) {
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
+  }
+
+  const key = `deletion_confirmation:${body.deletion_confirmation_token}`;
+  const raw = await c.env.AUTH_KV.get(key);
+  // rawが空文字の場合は、後述のput('')による消費済みマーカー。
+  // 未発行(null)と区別せず同じエラーを返す(呼び出し元からは両者を
+  // 区別する必要が無い)。
+  if (!raw) {
+    return errorResponse(c, AuthErrors.DELETION_CONFIRMATION_TOKEN_INVALID);
+  }
+
+  const { user_id: userId } = JSON.parse(raw) as DeletionConfirmationEntry;
+
+  // get→deleteの2ステップではなく、消費済みマーカー(空文字)へのput
+  // 1回で置き換える。同じTokenでほぼ同時に2回呼ばれた場合、
+  // get→deleteの間にもう一方のリクエストが削除前のTokenを読み取れて
+  // しまい、リプレイ拒否をすり抜けてstartAccountDeletion・
+  // deleteRelatedDataが2回とも走る経路が残っていたため
+  // (どちらも冪等な実装のため実害は無いが、削除完了ログの二重記録に
+  // つながり得る)。KVはread-modify-writeのアトミック性を保証しないため
+  // 根本解決ではないが、putへの一本化で競合窓を狭める。60秒だけ
+  // マーカーを残し、その後はTTLで自然に消える(deletion_confirmation:
+  // キー自体のTTLは10分のため、10分以内の再送は空文字判定で弾ける)。
+  await c.env.AUTH_KV.put(key, '', { expirationTtl: 60 });
+
+  await authService.startAccountDeletion(userId);
+
+  try {
+    await accountDeletionService.deleteRelatedData(userId);
+  } catch (error) {
+    // AccountDeletionService.deleteRelatedDataは、呼び出し順序の前提が
+    // 崩れた場合や後片付けが既に完了済みの場合にError('コード名')を
+    // throwする(#265 PR4)。ここでerr.messageをAuthErrorsのcodeと突き合わせ
+    // APIエラーへ変換する(microsoft.tsのACCOUNT_DELETION_PENDINGと同じ
+    // パターン)。想定外のエラー(DB接続断など)はそのまま再送出し、
+    // 呼び出し元(Honoのデフォルトエラーハンドリング)に委ねる。
+    if (
+      error instanceof Error &&
+      error.message === 'ACCOUNT_DELETION_NOT_STARTED'
+    ) {
+      return errorResponse(c, AuthErrors.ACCOUNT_DELETION_NOT_STARTED);
+    }
+    if (error instanceof Error && error.message === 'ACCOUNT_ALREADY_PURGED') {
+      return errorResponse(c, AuthErrors.ACCOUNT_ALREADY_PURGED);
+    }
+    throw error;
+  }
+
+  return c.body(null, 202);
 });
 
 export { account };
