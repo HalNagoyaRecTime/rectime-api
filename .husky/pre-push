@@ -15,15 +15,37 @@ while read -r local_ref local_oid remote_ref remote_oid; do
 done
 
 if [ "$has_ref_update" -eq 1 ] && [ "$has_non_delete_update" -eq 0 ]; then
-  echo "Skipping checks: remote branch deletion only."
+  echo "リモートブランチ削除のみのため、検査をスキップします。"
   exit 0
 fi
 
 npm run type-check
 
 if git rev-parse --verify origin/develop >/dev/null 2>&1; then
-  npm exec -- vitest run --changed origin/develop
+  broad_change=0
+
+  # VitestのforceRerunTriggersに依存せず、Gitの差分から全テストが必要な変更を判定する。
+  while IFS= read -r changed_file; do
+    case "$changed_file" in
+      package.json|*/package.json|package-lock.json|*/package-lock.json|tsconfig*.json|*/tsconfig*.json|vitest.config.*|*/vitest.config.*|vite.config.*|*/vite.config.*|wrangler.jsonc|*/wrangler.jsonc|migrations/*|*/migrations/*)
+        broad_change=1
+        break
+        ;;
+    esac
+  done <<EOF
+$(git diff --name-only origin/develop...HEAD)
+EOF
+
+  if [ "$broad_change" -eq 1 ]; then
+    echo "影響範囲が広い変更を検出したため、全テストを実行します。"
+    npm test
+  else
+    # 関連テストは現在チェックアウト中のHEADを基準に選択する。
+    # 別ref指定や複数refのpushでは、実際のpush対象と完全一致しない場合がある。
+    # 最終的な品質保証はCIの全テストで行う。
+    npm exec -- vitest run --changed origin/develop
+  fi
 else
-  echo "origin/develop not found; running full test suite."
+  echo "origin/develop が見つからないため、全テストを実行します。"
   npm test
 fi
