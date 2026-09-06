@@ -867,9 +867,10 @@ describe('DELETE /auth/me', () => {
     expect(await res.text()).toBe('');
 
     // deletion_confirmation_tokenは消費され、リプレイできない
+    // (削除ではなく空文字への置き換えで消費済みマーカーにする)
     expect(
       await env.AUTH_KV.get(`deletion_confirmation:${deletionToken}`)
-    ).toBeNull();
+    ).toBe('');
 
     // DB: deletion_status: deleted、Microsoft連携解除
     const userRow = await workerEnv.DB.prepare(

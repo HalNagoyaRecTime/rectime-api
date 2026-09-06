@@ -391,13 +391,26 @@ account.delete('/me', async c => {
 
   const key = `deletion_confirmation:${body.deletion_confirmation_token}`;
   const raw = await c.env.AUTH_KV.get(key);
+  // rawが空文字の場合は、後述のput('')による消費済みマーカー。
+  // 未発行(null)と区別せず同じエラーを返す(呼び出し元からは両者を
+  // 区別する必要が無い)。
   if (!raw) {
     return errorResponse(c, AuthErrors.DELETION_CONFIRMATION_TOKEN_INVALID);
   }
-  // 読み取った時点で削除し、同じTokenでの再利用(リプレイ)を防ぐ。
-  await c.env.AUTH_KV.delete(key);
 
   const { user_id: userId } = JSON.parse(raw) as DeletionConfirmationEntry;
+
+  // get→deleteの2ステップではなく、消費済みマーカー(空文字)へのput
+  // 1回で置き換える。同じTokenでほぼ同時に2回呼ばれた場合、
+  // get→deleteの間にもう一方のリクエストが削除前のTokenを読み取れて
+  // しまい、リプレイ拒否をすり抜けてstartAccountDeletion・
+  // deleteRelatedDataが2回とも走る経路が残っていたため
+  // (どちらも冪等な実装のため実害は無いが、削除完了ログの二重記録に
+  // つながり得る)。KVはread-modify-writeのアトミック性を保証しないため
+  // 根本解決ではないが、putへの一本化で競合窓を狭める。60秒だけ
+  // マーカーを残し、その後はTTLで自然に消える(deletion_confirmation:
+  // キー自体のTTLは10分のため、10分以内の再送は空文字判定で弾ける)。
+  await c.env.AUTH_KV.put(key, '', { expirationTtl: 60 });
 
   await authService.startAccountDeletion(userId);
 
