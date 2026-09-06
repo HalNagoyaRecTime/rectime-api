@@ -35,6 +35,7 @@ import {
   staffListRoute,
 } from './presentation/openapi/staffs';
 import {
+  teacherCreateRoute,
   teacherDeleteRoute,
   teacherDetailRoute,
   teacherListRoute,
@@ -236,7 +237,7 @@ apiV1.openapi(staffOnly(staffDetailRoute), c => {
 });
 
 // Teacher routes
-apiV1.post('/teachers', requireAuth, requireStaff, c => {
+apiV1.openapi(staffOnly(teacherCreateRoute), c => {
   return c.get('container').teacherController.createTeacher(c);
 });
 apiV1.openapi(staffOnly(teacherListRoute), c => {

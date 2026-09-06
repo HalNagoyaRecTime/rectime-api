@@ -1,7 +1,7 @@
 import { Context } from 'hono';
 import { z } from 'zod';
 import { ITeacherService } from '../../application/services/ITeacherService';
-import { TeacherSearchFilter } from '../../domain/entities/Teacher';
+import { CommonErrors } from '../errors/commonErrors';
 import { errorResponse } from '../errors/errorResponse';
 import { UserErrors } from '../errors/userErrors';
 
@@ -16,15 +16,13 @@ const integerQuery = (minimum: number) =>
 
 const teacherListQuerySchema = z
   .object({
-    teacherId: integerQuery(1).optional(),
-    userName: z.string().trim().min(1).optional(),
-    classRoomId: integerQuery(1).optional(),
-    isLiveActive: z
-      .enum(['true', 'false'])
-      .transform(value => value === 'true')
-      .optional(),
     search: z.string().trim().min(1).optional(),
-    sortBy: z.enum(['teacherId', 'displayName']).default('teacherId'),
+    classRoomId: integerQuery(1).optional(),
+    isStaff: z.enum(['true', 'false', 'all']).default('all'),
+    isLiveActive: z.enum(['true', 'false', 'all']).default('all'),
+    sortBy: z
+      .enum(['teacherId', 'displayName', 'classCode', 'className'])
+      .default('teacherId'),
     sortOrder: z.enum(['asc', 'desc']).default('asc'),
     limit: integerQuery(1)
       .refine(value => value <= MAX_LIMIT, {
@@ -33,7 +31,14 @@ const teacherListQuerySchema = z
       .default(50),
     offset: integerQuery(0).default(0),
   })
-  .strict();
+  .strict()
+  .transform(({ isStaff, isLiveActive, ...query }) => ({
+    ...query,
+    ...(isStaff === 'all' ? {} : { isStaff: isStaff === 'true' }),
+    ...(isLiveActive === 'all'
+      ? {}
+      : { isLiveActive: isLiveActive === 'true' }),
+  }));
 
 const createTeacherSchema = z
   .object({
@@ -60,14 +65,6 @@ const updateTeacherSchema = z
 function getTeacherId(c: Context): number | null {
   const id = Number(c.req.param('teacherId') || c.req.param('id'));
   return Number.isInteger(id) && id > 0 ? id : null;
-}
-
-function parseSearchFilter(c: Context): TeacherSearchFilter {
-  const parsed = teacherListQuerySchema.safeParse(c.req.query());
-  if (!parsed.success) {
-    throw new Error('Invalid teacher list query');
-  }
-  return parsed.data;
 }
 
 export function createTeacherController(teacherService: ITeacherService) {
@@ -112,17 +109,19 @@ export function createTeacherController(teacherService: ITeacherService) {
   };
 
   const getAllTeachers = async (c: Context) => {
+    const parsedQuery = teacherListQuerySchema.safeParse(c.req.query());
+    if (!parsedQuery.success) {
+      return errorResponse(
+        c,
+        CommonErrors.VALIDATION_ERROR,
+        parsedQuery.error.flatten()
+      );
+    }
+
     try {
-      const filter = parseSearchFilter(c);
-      const teachers = await teacherService.getAllTeachers(filter);
+      const teachers = await teacherService.getAllTeachers(parsedQuery.data);
       return c.json(teachers, 200);
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === 'Invalid teacher list query'
-      ) {
-        return errorResponse(c, UserErrors.INVALID_TEACHER_LIST_QUERY);
-      }
+    } catch {
       return errorResponse(c, UserErrors.TEACHER_LIST_FAILED);
     }
   };
