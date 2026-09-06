@@ -22,6 +22,7 @@ function toDTO(teacher: TeacherEntity): TeacherDTO {
     user_id: teacher.user_id,
     display_name: teacher.user_name,
     is_live_active: teacher.is_live_active,
+    is_staff: Boolean(teacher.is_staff),
     class_rooms: teacher.class_rooms,
   };
 }
@@ -43,7 +44,7 @@ export function createTeacherService(
     },
     async getTeacherById(id: number): Promise<TeacherDTO> {
       const teacher = await teacherRepository.findById(id);
-      if (!teacher || !teacher.is_live_active) {
+      if (!teacher) {
         throw new Error('Teacher not found');
       }
       return toDTO(teacher);
@@ -69,7 +70,7 @@ export function createTeacherService(
       // batch()でまとめて実行）を行うため、教員情報や既存の担当クラスが
       // 中途半端な状態で残ることはない。
       const teacher = await teacherRepository.findById(id);
-      if (!teacher || !teacher.is_live_active) {
+      if (!teacher) {
         throw new Error('Teacher not found');
       }
       if (input.classRoomIds.length > 0) {

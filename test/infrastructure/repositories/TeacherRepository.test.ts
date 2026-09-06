@@ -101,17 +101,21 @@ describe('TeacherRepository', () => {
       expect(result.items).toHaveLength(seeded.teachers.length);
     });
 
-    it('デフォルトでは論理削除済み教員を除外する', async () => {
+    it('デフォルトでは有効・無効を問わず教員を返す', async () => {
       const target = seeded.teachers[0];
       await repo.deactivate(target.teacherId);
 
-      const active = await repo.findAll();
+      const all = await repo.findAll();
+      const active = await repo.findAll({ isLiveActive: true });
       const inactive = await repo.findAll({ isLiveActive: false });
 
+      expect(all.items.some(item => item.teacher_id === target.teacherId)).toBe(
+        true
+      );
+      expect(all.total).toBe(seeded.teachers.length);
       expect(
         active.items.some(item => item.teacher_id === target.teacherId)
       ).toBe(false);
-      expect(active.total).toBe(seeded.teachers.length - 1);
       expect(
         inactive.items.some(item => item.teacher_id === target.teacherId)
       ).toBe(true);
@@ -162,6 +166,42 @@ describe('TeacherRepository', () => {
           .sort()
           .reverse()
       );
+    });
+
+    it('classCode/className は担当クラスなしを常に末尾へ置く', async () => {
+      for (const sortBy of ['classCode', 'className'] as const) {
+        for (const sortOrder of ['asc', 'desc'] as const) {
+          const result = await repo.findAll({ sortBy, sortOrder });
+          expect(result.items.at(-1)?.class_rooms).toEqual([]);
+          expect(result.items[0]?.teacher_id).toBe(
+            seeded.teachers[0].teacherId
+          );
+        }
+      }
+    });
+
+    it('isStaff で職員兼務の教員を絞り込める', async () => {
+      await env.DB.prepare(
+        'INSERT INTO staffs (user_id, created_at, updated_at) VALUES (?, ?, ?)'
+      )
+        .bind(
+          seeded.teachers[0].userId,
+          new Date().toISOString(),
+          new Date().toISOString()
+        )
+        .run();
+
+      const staffTeachers = await repo.findAll({ isStaff: true });
+      const nonStaffTeachers = await repo.findAll({ isStaff: false });
+
+      expect(staffTeachers.items.map(item => item.teacher_id)).toEqual([
+        seeded.teachers[0].teacherId,
+      ]);
+      expect(nonStaffTeachers.items.map(item => item.teacher_id)).toEqual([
+        seeded.teachers[1].teacherId,
+      ]);
+      expect(staffTeachers.items[0].is_staff).toBe(true);
+      expect(nonStaffTeachers.items[0].is_staff).toBe(false);
     });
 
     it('limit/offset でページ分けできる', async () => {
@@ -266,7 +306,7 @@ describe('TeacherRepository', () => {
       expect(updated).toBeNull();
     });
 
-    it('論理削除済み教員の場合は null を返す', async () => {
+    it('論理削除済み教員も更新できる', async () => {
       const target = seeded.teachers[0];
       await repo.deactivate(target.teacherId);
 
@@ -274,7 +314,11 @@ describe('TeacherRepository', () => {
         userName: '更新不可先生',
         classRoomIds: [],
       });
-      expect(updated).toBeNull();
+      expect(updated).toMatchObject({
+        teacher_id: target.teacherId,
+        user_name: '更新不可先生',
+        is_live_active: false,
+      });
     });
 
     it('存在しないクラスIDを含む場合は失敗し、氏名・有効状態・既存の担当クラスが変更前のまま残る（アトミック性）', async () => {

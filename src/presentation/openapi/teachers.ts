@@ -28,6 +28,7 @@ export const teacherResponseSchema = z
     user_id: z.number().int(),
     display_name: z.string(),
     is_live_active: z.boolean(),
+    is_staff: z.boolean(),
     class_rooms: z.array(teacherClassRoomSchema),
   })
   .openapi('Teacher');
@@ -48,18 +49,50 @@ export const teacherIdParams = z.object({
 });
 
 export const teacherListQuery = z.object({
-  teacherId: z.coerce.number().int().positive().optional(),
-  userName: z.string().optional(),
+  search: z.string().trim().min(1).optional(),
   classRoomId: z.coerce.number().int().positive().optional(),
-  isLiveActive: z.enum(['true', 'false']).optional(),
-  offset: z.coerce.number().int().min(0).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+  isStaff: z.enum(['true', 'false', 'all']).default('all').optional(),
+  isLiveActive: z.enum(['true', 'false', 'all']).default('all').optional(),
+  sortBy: z
+    .enum(['teacherId', 'displayName', 'classCode', 'className'])
+    .default('teacherId')
+    .optional(),
+  sortOrder: z.enum(['asc', 'desc']).default('asc').optional(),
+  offset: z.coerce.number().int().min(0).default(0).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50).optional(),
+});
+
+export const teacherCreateSchema = z
+  .object({
+    userName: z.string().trim().min(1),
+    classRoomIds: z.array(z.number().int().positive()),
+  })
+  .openapi('TeacherCreateRequest');
+
+export const teacherCreateRoute = createRoute({
+  method: 'post',
+  path: '/teachers',
+  tags: ['Teachers'],
+  summary: '教員を登録する',
+  security: bearerAuth,
+  request: {
+    body: {
+      content: { 'application/json': { schema: teacherCreateSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    201: jsonResponse(teacherResponseSchema, '登録した教員'),
+    400: badRequestResponse,
+    401: unauthorizedResponse,
+    403: forbiddenResponse,
+    500: internalServerErrorResponse,
+  },
 });
 
 export const teacherUpdateSchema = z
   .object({
     userName: z.string().min(1),
-    isLiveActive: z.boolean(),
     classRoomIds: z.array(z.number().int().positive()).openapi({
       description: '重複した値を含められない。',
     }),
