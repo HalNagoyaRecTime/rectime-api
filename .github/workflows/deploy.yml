@@ -155,7 +155,7 @@ jobs:
     environment: ${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
@@ -186,7 +186,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
