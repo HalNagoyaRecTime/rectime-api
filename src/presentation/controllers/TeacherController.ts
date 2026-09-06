@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ITeacherService } from '../../application/services/ITeacherService';
 import { TeacherSearchFilter } from '../../domain/entities/Teacher';
 import { errorResponse } from '../errors/errorResponse';
+import { CommonErrors } from '../errors/commonErrors';
 import { UserErrors } from '../errors/userErrors';
 
 const MAX_LIMIT = 100;
@@ -126,7 +127,7 @@ export function createTeacherController(teacherService: ITeacherService) {
         error instanceof Error &&
         error.message === 'Invalid teacher list query'
       ) {
-        return errorResponse(c, UserErrors.INVALID_TEACHER_LIST_QUERY);
+        return errorResponse(c, CommonErrors.VALIDATION_ERROR);
       }
       return errorResponse(c, UserErrors.TEACHER_LIST_FAILED);
     }
