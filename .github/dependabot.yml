@@ -33,6 +33,16 @@ updates:
           - "major"
           - "minor"
           - "patch"
+      vitest-stack:
+        applies-to: "version-updates"
+        dependency-type: "development"
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
       production-minor-and-patch:
         applies-to: "version-updates"
         dependency-type: "production"
