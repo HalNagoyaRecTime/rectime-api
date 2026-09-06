@@ -26,6 +26,15 @@ export default defineConfig(async () => {
     ],
     test: {
       setupFiles: ['./test/apply-migrations.ts'],
+      forceRerunTriggers: [
+        '**/package.json',
+        '**/package-lock.json',
+        '**/vitest.config.*',
+        '**/vite.config.*',
+        '**/tsconfig*.json',
+        '**/wrangler.jsonc',
+        'migrations/**',
+      ],
       coverage: {
         // workerd ランタイムでは V8 のカバレッジ計測APIが使えないため istanbul を使用する
         provider: 'istanbul',
