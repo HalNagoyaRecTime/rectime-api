@@ -1,3 +1,9 @@
+export interface RetryPendingPurgesResult {
+  targetCount: number;
+  succeededCount: number;
+  failedCount: number;
+}
+
 export interface IAccountDeletionService {
   // アカウント削除(#265 PR4)。関連データの削除・匿名化を行う。
   // - Microsoft連携(microsoft_account_links)・AUTH_KVのRefresh Session・
@@ -24,4 +30,14 @@ export interface IAccountDeletionService {
   // この前提はコメントだけに頼らず、実装内でdeletion_status === 'deleted'
   // を自己確認して強制している(満たさない場合は例外を投げる)。
   deleteRelatedData(userId: string): Promise<void>;
+
+  // 途中失敗で後片付けが未完了(deletion_status='deleted' AND purged_at
+  // IS NULL)のまま放置されている利用者を、userRepository.
+  // findPendingPurgeUserIdsで抽出し、それぞれdeleteRelatedDataを
+  // 再実行する(#345)。deleteRelatedData自体が冪等なため、対象1件ごとに
+  // 独立して成功・失敗する。1件の失敗が他の対象の処理を止めないよう、
+  // 例外は内部で捕捉し失敗件数としてカウントする(呼び出し元へは
+  // 再送出しない)。対象件数・成功件数・失敗件数のみを返し、
+  // 個人情報やuserId自体は返り値にもログにも含めない。
+  retryPendingPurges(limit: number): Promise<RetryPendingPurgesResult>;
 }

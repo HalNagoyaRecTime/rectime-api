@@ -18,6 +18,7 @@ function buildUserRepository(
     markAsPurged: vi.fn(),
     isPurged: vi.fn(),
     anonymizeUser: vi.fn(),
+    findPendingPurgeUserIds: vi.fn(),
     ...overrides,
   };
 }

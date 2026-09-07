@@ -22,6 +22,7 @@ function buildDeps() {
     markAsPurged: vi.fn().mockResolvedValue(true),
     isPurged: vi.fn().mockResolvedValue(false),
     anonymizeUser: vi.fn().mockResolvedValue(true),
+    findPendingPurgeUserIds: vi.fn().mockResolvedValue([]),
   };
   const studentRepository: IStudentRepository = {
     findById: vi.fn(),
@@ -349,6 +350,88 @@ describe('createAccountDeletionService', () => {
         { userId: '10', step: 'staff' }
       );
       consoleErrorSpy.mockRestore();
+    });
+  });
+
+  describe('retryPendingPurges', () => {
+    it('対象が0件の場合はfindPendingPurgeUserIdsのみ呼び、targetCount: 0を返す', async () => {
+      const deps = buildDeps();
+      const service = createAccountDeletionService(deps);
+
+      const result = await service.retryPendingPurges(100);
+
+      expect(deps.userRepository.findPendingPurgeUserIds).toHaveBeenCalledWith(
+        100
+      );
+      expect(result).toEqual({
+        targetCount: 0,
+        succeededCount: 0,
+        failedCount: 0,
+      });
+    });
+
+    it('抽出した各userIdに対してdeleteRelatedDataを呼び、全て成功すればsucceededCountに計上する', async () => {
+      const deps = buildDeps();
+      (
+        deps.userRepository.findPendingPurgeUserIds as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(['10', '20', '30']);
+      const service = createAccountDeletionService(deps);
+
+      const result = await service.retryPendingPurges(100);
+
+      expect(deps.userRepository.anonymizeUser).toHaveBeenCalledWith('10');
+      expect(deps.userRepository.anonymizeUser).toHaveBeenCalledWith('20');
+      expect(deps.userRepository.anonymizeUser).toHaveBeenCalledWith('30');
+      expect(result).toEqual({
+        targetCount: 3,
+        succeededCount: 3,
+        failedCount: 0,
+      });
+    });
+
+    it('1件が失敗しても残りの対象を処理し続け、failedCountに計上する(例外は再送出しない)', async () => {
+      const deps = buildDeps();
+      (
+        deps.userRepository.findPendingPurgeUserIds as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(['10', '20', '30']);
+      (
+        deps.userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
+      ).mockImplementation(async (userId: string) =>
+        userId === '20' ? 'active' : 'deleted'
+      );
+      const service = createAccountDeletionService(deps);
+
+      const result = await expect(
+        service.retryPendingPurges(100)
+      ).resolves.toEqual({
+        targetCount: 3,
+        succeededCount: 2,
+        failedCount: 1,
+      });
+
+      expect(deps.userRepository.anonymizeUser).toHaveBeenCalledWith('10');
+      expect(deps.userRepository.anonymizeUser).not.toHaveBeenCalledWith('20');
+      expect(deps.userRepository.anonymizeUser).toHaveBeenCalledWith('30');
+      return result;
+    });
+
+    it('完了ログに個人情報を含めず、件数のみを記録する', async () => {
+      const deps = buildDeps();
+      (
+        deps.userRepository.findPendingPurgeUserIds as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(['10']);
+      const consoleLogSpy = vi
+        .spyOn(console, 'log')
+        .mockImplementation(() => {});
+      const service = createAccountDeletionService(deps);
+
+      await service.retryPendingPurges(100);
+
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        '[ACCOUNT_DELETION] retryPendingPurges completed',
+        { targetCount: 1, succeededCount: 1, failedCount: 0 }
+      );
+      consoleLogSpy.mockRestore();
     });
   });
 });

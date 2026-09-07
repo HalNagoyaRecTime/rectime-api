@@ -107,12 +107,10 @@ export function createDIContainer(env: Env) {
     firebaseTokenRepository
   );
   const authorizationService = createAuthorizationService(userRepository);
-  // #265 PR4: 関連データの削除・匿名化(deleteRelatedData)の実装。
-  // 現時点ではこのコンテナに登録して公開しているだけで、実際の削除フロー
-  // (DELETE /auth/me等のHTTPハンドラ)からはまだ呼ばれていない
-  // (authService.startAccountDeletionも同様に未接続)。呼び出しはテスト
-  // (AccountDeletionService.test.ts / .integration.test.ts)のみ。
-  // ハンドラへの接続は別PR(#265 PR5)で行う予定。
+  // #265: 関連データの削除・匿名化(deleteRelatedData)は
+  // DELETE /auth/me(account.ts)から呼ばれる。retryPendingPurgesは
+  // 途中失敗で後片付けが未完了のまま残った利用者を拾い直す(#345)。
+  // 呼び出し元はindex.tsのscheduledハンドラ(日次Cron)。
   const accountDeletionService = createAccountDeletionService({
     userRepository,
     studentRepository,
