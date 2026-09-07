@@ -1,7 +1,6 @@
 import { Context } from 'hono';
 import { z } from 'zod';
 import { IStudentService } from '../../application/services/IStudentService';
-import type { StudentSearchFilter } from '../../domain/entities/Student';
 import { errorResponse } from '../errors/errorResponse';
 import { CommonErrors } from '../errors/commonErrors';
 import { UserErrors } from '../errors/userErrors';
@@ -27,6 +26,8 @@ const studentListQuerySchema = z
         'classCode',
         'className',
         'attendanceNumber',
+        'isStaff',
+        'isLiveActive',
       ])
       .default('studentId'),
     sortOrder: z.enum(['asc', 'desc']).default('asc'),
@@ -103,12 +104,7 @@ export function createStudentController(studentService: IStudentService) {
     }
 
     try {
-      return c.json(
-        await studentService.getAllStudents(
-          parsedQuery.data as StudentSearchFilter
-        ),
-        200
-      );
+      return c.json(await studentService.getAllStudents(parsedQuery.data), 200);
     } catch {
       return errorResponse(c, UserErrors.STUDENT_LIST_FAILED);
     }

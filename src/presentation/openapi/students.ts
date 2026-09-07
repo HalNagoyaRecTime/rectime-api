@@ -45,26 +45,30 @@ export const studentIdParams = z.object({
   studentId: positivePathParam('studentId', '学生ID'),
 });
 
-export const studentListQuery = z.object({
-  search: z.string().trim().min(1).optional(),
-  classRoomId: z.coerce.number().int().positive().optional(),
-  isStaff: z.enum(['true', 'false', 'all']).default('all').optional(),
-  isLiveActive: z.enum(['true', 'false', 'all']).default('all').optional(),
-  sortBy: z
-    .enum([
-      'studentId',
-      'studentIdNumber',
-      'displayName',
-      'classCode',
-      'className',
-      'attendanceNumber',
-    ])
-    .default('studentId')
-    .optional(),
-  sortOrder: z.enum(['asc', 'desc']).default('asc').optional(),
-  offset: z.coerce.number().int().min(0).default(0).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50).optional(),
-});
+export const studentListQuery = z
+  .object({
+    search: z.string().trim().min(1).optional(),
+    classRoomId: z.coerce.number().int().positive().optional(),
+    isStaff: z.enum(['true', 'false', 'all']).default('all').optional(),
+    isLiveActive: z.enum(['true', 'false', 'all']).default('all').optional(),
+    sortBy: z
+      .enum([
+        'studentId',
+        'studentIdNumber',
+        'displayName',
+        'classCode',
+        'className',
+        'attendanceNumber',
+        'isStaff',
+        'isLiveActive',
+      ])
+      .default('studentId')
+      .optional(),
+    sortOrder: z.enum(['asc', 'desc']).default('asc').optional(),
+    offset: z.coerce.number().int().min(0).default(0).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50).optional(),
+  })
+  .strict();
 
 export const studentWriteSchema = z
   .object({
