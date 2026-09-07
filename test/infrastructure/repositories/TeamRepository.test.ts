@@ -249,6 +249,43 @@ describe('TeamRepository', () => {
       expect(classRoom?.team_id).toBe(teamId);
     });
 
+    it('class_codesに無いクラスは自分専用のチームへ戻る(完全置換)', async () => {
+      const teamId = await insertTeam('赤組');
+      await insertClassRoom('1A', teamId);
+      await insertClassRoom('1B', teamId);
+
+      const updated = await repo.updateTeam(teamId, {
+        team_name: '赤組',
+        class_codes: ['1A'],
+      });
+
+      expect(updated?.registered_classes).toEqual(['1A']);
+      const detached = await env.DB.prepare(
+        `SELECT t.team_name, t.team_id
+         FROM class_rooms c
+         JOIN teams t ON t.team_id = c.team_id
+         WHERE c.class_code = '1B'`
+      ).first<{ team_name: string; team_id: number }>();
+      expect(detached?.team_name).toBe('1B組(1B)');
+      expect(detached?.team_id).not.toBe(teamId);
+    });
+
+    it('class_codesに空配列を渡すと所属クラスが全部外れる', async () => {
+      const teamId = await insertTeam('青組');
+      await insertClassRoom('3A', teamId);
+
+      const updated = await repo.updateTeam(teamId, {
+        team_name: '青組',
+        class_codes: [],
+      });
+
+      expect(updated?.registered_classes).toEqual([]);
+      const detached = await env.DB.prepare(
+        `SELECT team_id FROM class_rooms WHERE class_code = '3A'`
+      ).first<{ team_id: number }>();
+      expect(detached?.team_id).not.toBe(teamId);
+    });
+
     it('存在しないチームの場合はnullを返す', async () => {
       await expect(
         repo.updateTeam(999999, { team_name: '存在しない', class_codes: [] })

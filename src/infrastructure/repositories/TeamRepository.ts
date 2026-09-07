@@ -1,10 +1,11 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import type {
-  RankingEntryEntity,
-  RankingListOptions,
-  TeamEntity,
-  TeamListOptions,
-  TeamWriteInput,
+import {
+  buildProvisionalTeamName,
+  type RankingEntryEntity,
+  type RankingListOptions,
+  type TeamEntity,
+  type TeamListOptions,
+  type TeamWriteInput,
 } from '../../domain/entities/Team';
 import type { ITeamRepository } from '../../domain/interfaces/repositories/ITeamRepository';
 
@@ -65,6 +66,45 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
       .bind(teamId)
       .first<TeamRow>();
     return row ? toTeamEntity(row) : null;
+  }
+
+  // PUTは完全な状態を送る動詞のため、team_idに紐づくが渡されたclass_codesに
+  // 無いクラスは外す。class_rooms.team_idはNOT NULLで行き先が要るため、
+  // 外れたクラスは(ClassRoomRepository.createの新規team作成と同じく)
+  // 自分専用の単独編成へ戻す。
+  async function detachRemovedClassRooms(
+    teamId: number,
+    keepCodes: string[]
+  ): Promise<void> {
+    const keepPlaceholders = keepCodes.map(() => '?').join(', ');
+    const removed = await db
+      .prepare(
+        `SELECT class_room_id, class_code, class_name FROM class_rooms
+         WHERE team_id = ?
+         ${keepCodes.length > 0 ? `AND class_code NOT IN (${keepPlaceholders})` : ''}`
+      )
+      .bind(teamId, ...keepCodes)
+      .all<{ class_room_id: number; class_code: string; class_name: string }>();
+
+    for (const row of removed.results) {
+      const provisionalName = buildProvisionalTeamName({
+        className: row.class_name,
+        classCode: row.class_code,
+      });
+      await db.batch([
+        db
+          .prepare('INSERT INTO teams (team_name) VALUES (?)')
+          .bind(provisionalName),
+        db
+          .prepare(
+            `UPDATE class_rooms
+               SET team_id = (SELECT team_id FROM teams WHERE team_name = ?),
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE class_room_id = ?`
+          )
+          .bind(provisionalName, row.class_room_id),
+      ]);
+    }
   }
 
   return {
@@ -192,6 +232,8 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
         .bind(input.team_name, teamId)
         .first<{ team_id: number }>();
       if (!updated) return null;
+
+      await detachRemovedClassRooms(teamId, input.class_codes);
 
       if (input.class_codes.length > 0) {
         const placeholders = input.class_codes.map(() => '?').join(', ');
