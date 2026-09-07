@@ -69,4 +69,89 @@ describe('StaffRepository', () => {
       await expect(repo.deleteByUserId(user!.user_id)).resolves.toBe(false);
     });
   });
+
+  // このテストの中でだけ使う、staffs行数の数え上げ。
+  const countStaffRows = async (userId: number): Promise<number> => {
+    const row = await env.DB.prepare(
+      'SELECT COUNT(*) AS count FROM staffs WHERE user_id = ?'
+    )
+      .bind(userId)
+      .first<{ count: number }>();
+    return row!.count;
+  };
+
+  const insertUser = async (
+    userName: string,
+    deletionStatus = 'active'
+  ): Promise<number> => {
+    const user = await env.DB.prepare(
+      'INSERT INTO users (user_name, deletion_status) VALUES (?, ?) RETURNING user_id'
+    )
+      .bind(userName, deletionStatus)
+      .first<{ user_id: number }>();
+    return user!.user_id;
+  };
+
+  describe('addByUserId', () => {
+    it('指定したuser_idのstaffs行を追加する', async () => {
+      const userId = await insertUser('権限付与対象');
+
+      await repo.addByUserId(userId);
+
+      expect(await countStaffRows(userId)).toBe(1);
+    });
+
+    it('すでにstaffの場合も成功し、行が増えない(冪等)', async () => {
+      const userId = await insertUser('二重付与対象');
+
+      await repo.addByUserId(userId);
+      await repo.addByUserId(userId);
+
+      expect(await countStaffRows(userId)).toBe(1);
+    });
+
+    it('付与してもusersのレコードは残る', async () => {
+      const userId = await insertUser('付与後も残るUser');
+
+      await repo.addByUserId(userId);
+      await repo.deleteByUserId(userId);
+
+      const user = await env.DB.prepare(
+        'SELECT user_id FROM users WHERE user_id = ?'
+      )
+        .bind(userId)
+        .first();
+      expect(user).not.toBeNull();
+      expect(await countStaffRows(userId)).toBe(0);
+    });
+  });
+
+  describe('existsActiveUser', () => {
+    it('退会していないUserが存在する場合はtrueを返す', async () => {
+      const userId = await insertUser('在籍User');
+
+      await expect(repo.existsActiveUser(userId)).resolves.toBe(true);
+    });
+
+    it('存在しないuser_idの場合はfalseを返す', async () => {
+      await expect(repo.existsActiveUser(999999)).resolves.toBe(false);
+    });
+
+    it('退会済み(deletion_statusがactive以外)のUserはfalseを返す', async () => {
+      const userId = await insertUser('退会済みUser', 'deleted');
+
+      await expect(repo.existsActiveUser(userId)).resolves.toBe(false);
+    });
+
+    it('一時無効化(is_live_active=0)されていてもtrueを返す', async () => {
+      const userId = await insertUser('無効化中User');
+      await env.DB.prepare(
+        'UPDATE users SET is_live_active = 0 WHERE user_id = ?'
+      )
+        .bind(userId)
+        .run();
+
+      await expect(repo.existsActiveUser(userId)).resolves.toBe(true);
+    });
+  });
 });

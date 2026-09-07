@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+﻿import { describe, expect, it, vi } from 'vitest';
 import { createStaffService } from '../../../src/application/services/StaffService';
 import type { IStaffRepository } from '../../../src/domain/interfaces/repositories/IStaffRepository';
 import type { StaffEntity } from '../../../src/domain/entities/Staff';
@@ -20,6 +20,8 @@ describe('StaffService', () => {
         findById: vi.fn().mockResolvedValue(staff),
         findAll: vi.fn(),
         deleteByUserId: vi.fn(),
+        addByUserId: vi.fn(),
+        existsActiveUser: vi.fn(),
       };
       const service = createStaffService(repository);
 
@@ -38,6 +40,8 @@ describe('StaffService', () => {
         findById: vi.fn().mockResolvedValue(null),
         findAll: vi.fn(),
         deleteByUserId: vi.fn(),
+        addByUserId: vi.fn(),
+        existsActiveUser: vi.fn(),
       };
       const service = createStaffService(repository);
 
@@ -57,6 +61,8 @@ describe('StaffService', () => {
         findById: vi.fn(),
         findAll: vi.fn().mockResolvedValue(staffs),
         deleteByUserId: vi.fn(),
+        addByUserId: vi.fn(),
+        existsActiveUser: vi.fn(),
       };
       const service = createStaffService(repository);
 
@@ -71,6 +77,8 @@ describe('StaffService', () => {
         findById: vi.fn(),
         findAll: vi.fn().mockResolvedValue([]),
         deleteByUserId: vi.fn(),
+        addByUserId: vi.fn(),
+        existsActiveUser: vi.fn(),
       };
       const service = createStaffService(repository);
 
