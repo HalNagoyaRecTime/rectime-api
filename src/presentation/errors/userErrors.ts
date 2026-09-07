@@ -201,4 +201,19 @@ export const UserErrors = {
     code: 'USER_SEARCH_FAILED',
     message: 'ユーザーの検索に失敗しました',
   },
+  CANNOT_DEACTIVATE_SELF: {
+    status: 400,
+    code: 'CANNOT_DEACTIVATE_SELF',
+    message: '自分自身を無効化することはできません',
+  },
+  CANNOT_DEACTIVATE_LAST_STAFF: {
+    status: 400,
+    code: 'CANNOT_DEACTIVATE_LAST_STAFF',
+    message: '有効な管理権限保持者が0人になるため無効化できません',
+  },
+  USER_STATUS_UPDATE_FAILED: {
+    status: 500,
+    code: 'USER_STATUS_UPDATE_FAILED',
+    message: 'ユーザー状態の更新に失敗しました',
+  },
 } as const satisfies Record<string, ApiErrorDefinition>;
