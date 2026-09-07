@@ -172,30 +172,54 @@ export function createAccountDeletionService(deps: {
   const retryPendingPurges = async (
     limit: number
   ): Promise<RetryPendingPurgesResult> => {
-    const targetUserIds = await userRepository.findPendingPurgeUserIds(limit);
+    // 契約(IAccountDeletionService.retryPendingPurges)上、例外は内部で
+    // 捕捉し呼び出し元(index.tsのscheduledハンドラ、ctx.waitUntil)へは
+    // 再送出しない。対象抽出自体(findPendingPurgeUserIds)の失敗も含めて
+    // ここで捕捉することで、Cron実行がunhandled rejectionとして
+    // サイレントに落ちず、必ず完了ログ([ACCOUNT_DELETION]
+    // retryPendingPurges completed)が残るようにする。
+    try {
+      const targetUserIds = await userRepository.findPendingPurgeUserIds(limit);
 
-    let succeededCount = 0;
-    let failedCount = 0;
-    for (const userId of targetUserIds) {
-      try {
-        await deleteRelatedData(userId);
-        succeededCount += 1;
-      } catch {
-        // deleteRelatedData自体が各段の失敗を[ACCOUNT_DELETION] failedで
-        // ログしているため、ここではuserIdや例外詳細を再度ログしない
-        // (個人情報・Tokenをログに残さないという既存方針を踏襲する)。
-        // 1件の失敗で残りの対象への再実行を止めないよう、ここで捕捉する。
-        failedCount += 1;
+      let succeededCount = 0;
+      let failedCount = 0;
+      for (const userId of targetUserIds) {
+        try {
+          await deleteRelatedData(userId);
+          succeededCount += 1;
+        } catch {
+          // deleteRelatedData自体が各段の失敗を[ACCOUNT_DELETION] failedで
+          // ログしているため、ここではuserIdや例外詳細を再度ログしない
+          // (個人情報・Tokenをログに残さないという既存方針を踏襲する)。
+          // 1件の失敗で残りの対象への再実行を止めないよう、ここで捕捉する。
+          failedCount += 1;
+        }
       }
-    }
 
-    const result: RetryPendingPurgesResult = {
-      targetCount: targetUserIds.length,
-      succeededCount,
-      failedCount,
-    };
-    console.log('[ACCOUNT_DELETION] retryPendingPurges completed', result);
-    return result;
+      const result: RetryPendingPurgesResult = {
+        targetCount: targetUserIds.length,
+        succeededCount,
+        failedCount,
+      };
+      console.log('[ACCOUNT_DELETION] retryPendingPurges completed', result);
+      return result;
+    } catch (error) {
+      // findPendingPurgeUserIds自体の失敗(D1接続断など)。個々のuserIdが
+      // 定まらないため対象件数は0のまま、failedCountを1として抽出failure
+      // 自体を可視化する。例外の詳細はconsole.errorにのみ残し(個人情報を
+      // 含まないエラーオブジェクトのみ)、戻り値・上位ログには含めない。
+      console.error('[ACCOUNT_DELETION] retryPendingPurges failed', {
+        step: 'findPendingPurgeUserIds',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const result: RetryPendingPurgesResult = {
+        targetCount: 0,
+        succeededCount: 0,
+        failedCount: 1,
+      };
+      console.log('[ACCOUNT_DELETION] retryPendingPurges completed', result);
+      return result;
+    }
   };
 
   return { deleteRelatedData, retryPendingPurges };

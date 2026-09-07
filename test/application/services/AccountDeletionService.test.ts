@@ -433,5 +433,40 @@ describe('createAccountDeletionService', () => {
       );
       consoleLogSpy.mockRestore();
     });
+
+    it('findPendingPurgeUserIds自体が失敗しても例外を呼び出し元へ再送出せず、failedCount: 1で完了ログを残す', async () => {
+      // 契約(IAccountDeletionService.retryPendingPurges)上、呼び出し元
+      // (index.tsのscheduledハンドラ、ctx.waitUntil)には例外を一切送出
+      // しない。対象抽出自体の失敗(D1接続断など)がCron実行をunhandled
+      // rejectionとしてサイレントに落とさないことを確認する。
+      const deps = buildDeps();
+      (
+        deps.userRepository.findPendingPurgeUserIds as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('D1_UNAVAILABLE'));
+      const consoleErrorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      const consoleLogSpy = vi
+        .spyOn(console, 'log')
+        .mockImplementation(() => {});
+      const service = createAccountDeletionService(deps);
+
+      await expect(service.retryPendingPurges(100)).resolves.toEqual({
+        targetCount: 0,
+        succeededCount: 0,
+        failedCount: 1,
+      });
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[ACCOUNT_DELETION] retryPendingPurges failed',
+        { step: 'findPendingPurgeUserIds', error: 'D1_UNAVAILABLE' }
+      );
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        '[ACCOUNT_DELETION] retryPendingPurges completed',
+        { targetCount: 0, succeededCount: 0, failedCount: 1 }
+      );
+      consoleErrorSpy.mockRestore();
+      consoleLogSpy.mockRestore();
+    });
   });
 });
