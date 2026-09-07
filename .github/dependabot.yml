@@ -12,6 +12,37 @@ updates:
       default-days: 7
     open-pull-requests-limit: 5
     groups:
+      eslint-stack:
+        applies-to: "version-updates"
+        dependency-type: "development"
+        patterns:
+          - "eslint"
+          - "eslint-*"
+          - "@typescript-eslint/*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+      cloudflare-stack:
+        applies-to: "version-updates"
+        dependency-type: "development"
+        patterns:
+          - "wrangler"
+          - "@cloudflare/*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+      vitest-stack:
+        applies-to: "version-updates"
+        dependency-type: "development"
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
       production-minor-and-patch:
         applies-to: "version-updates"
         dependency-type: "production"
