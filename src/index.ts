@@ -96,7 +96,10 @@ import {
   scheduleUpdateRoute,
   testNotificationRoute,
 } from './presentation/openapi/notifications';
-import { adminUserSearchRoute } from './presentation/openapi/adminUsers';
+import {
+  adminUserSearchRoute,
+  adminUserStatusUpdateRoute,
+} from './presentation/openapi/adminUsers';
 
 const app = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationDefaultHook,
@@ -213,6 +216,11 @@ const authed = <R extends RouteConfig>(route: R) => ({
 const staffOnly = <R extends RouteConfig>(route: R) => ({
   ...route,
   middleware: [requireAuth, requireStaff],
+});
+
+// Admin user routes
+apiV1.openapi(staffOnly(adminUserStatusUpdateRoute), c => {
+  return c.get('container').userStatusController.updateUserStatus(c);
 });
 
 // Student routes
