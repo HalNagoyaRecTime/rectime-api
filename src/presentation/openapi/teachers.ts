@@ -54,7 +54,14 @@ export const teacherListQuery = z.object({
   isStaff: z.enum(['true', 'false', 'all']).default('all').optional(),
   isLiveActive: z.enum(['true', 'false', 'all']).default('true').optional(),
   sortBy: z
-    .enum(['teacherId', 'displayName', 'classCode', 'className'])
+    .enum([
+      'teacherId',
+      'displayName',
+      'classCode',
+      'className',
+      'isStaff',
+      'isLiveActive',
+    ])
     .default('teacherId')
     .optional(),
   sortOrder: z.enum(['asc', 'desc']).default('asc').optional(),

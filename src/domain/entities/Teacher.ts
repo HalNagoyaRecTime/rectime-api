@@ -20,7 +20,13 @@ export interface TeacherSearchFilter {
   classRoomId?: number;
   isStaff?: boolean;
   isLiveActive?: boolean;
-  sortBy?: 'teacherId' | 'displayName' | 'classCode' | 'className';
+  sortBy?:
+    | 'teacherId'
+    | 'displayName'
+    | 'classCode'
+    | 'className'
+    | 'isStaff'
+    | 'isLiveActive';
   sortOrder?: 'asc' | 'desc';
   limit?: number;
   offset?: number;

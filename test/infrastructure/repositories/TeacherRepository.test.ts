@@ -204,6 +204,67 @@ describe('TeacherRepository', () => {
       expect(nonStaffTeachers.items[0].is_staff).toBe(false);
     });
 
+    it('isStaff と isLiveActive でソートでき、同値時はteacherId昇順になる', async () => {
+      const initiallySortedByStaff = await repo.findAll({
+        sortBy: 'isStaff',
+        sortOrder: 'asc',
+      });
+      expect(initiallySortedByStaff.items.map(item => item.teacher_id)).toEqual(
+        seeded.teachers.map(teacher => teacher.teacherId)
+      );
+
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        'INSERT INTO staffs (user_id, created_at, updated_at) VALUES (?, ?, ?)'
+      )
+        .bind(seeded.teachers[0].userId, now, now)
+        .run();
+
+      const staffAsc = await repo.findAll({
+        sortBy: 'isStaff',
+        sortOrder: 'asc',
+      });
+      const staffDesc = await repo.findAll({
+        sortBy: 'isStaff',
+        sortOrder: 'desc',
+      });
+      expect(staffAsc.items.map(item => item.teacher_id)).toEqual([
+        seeded.teachers[1].teacherId,
+        seeded.teachers[0].teacherId,
+      ]);
+      expect(staffDesc.items.map(item => item.teacher_id)).toEqual([
+        seeded.teachers[0].teacherId,
+        seeded.teachers[1].teacherId,
+      ]);
+
+      const initiallySortedByActive = await repo.findAll({
+        sortBy: 'isLiveActive',
+        sortOrder: 'desc',
+      });
+      expect(
+        initiallySortedByActive.items.map(item => item.teacher_id)
+      ).toEqual(seeded.teachers.map(teacher => teacher.teacherId));
+
+      await repo.deactivate(seeded.teachers[1].teacherId);
+
+      const activeAsc = await repo.findAll({
+        sortBy: 'isLiveActive',
+        sortOrder: 'asc',
+      });
+      const activeDesc = await repo.findAll({
+        sortBy: 'isLiveActive',
+        sortOrder: 'desc',
+      });
+      expect(activeAsc.items.map(item => item.teacher_id)).toEqual([
+        seeded.teachers[1].teacherId,
+        seeded.teachers[0].teacherId,
+      ]);
+      expect(activeDesc.items.map(item => item.teacher_id)).toEqual([
+        seeded.teachers[0].teacherId,
+        seeded.teachers[1].teacherId,
+      ]);
+    });
+
     it('limit/offset でページ分けできる', async () => {
       const page1 = await repo.findAll({ offset: 0, limit: 1 });
       const page2 = await repo.findAll({ offset: 1, limit: 1 });

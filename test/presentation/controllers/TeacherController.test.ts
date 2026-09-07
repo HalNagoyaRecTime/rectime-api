@@ -253,6 +253,44 @@ describe('TeacherController', () => {
       });
     });
 
+    it('isStaff をソート条件としてサービスに渡す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.getAllTeachers as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+      const res = await app.request(
+        '/teachers?isStaff=all&isLiveActive=all&sortBy=isStaff&sortOrder=desc'
+      );
+
+      expect(res.status).toBe(200);
+      expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
+        sortBy: 'isStaff',
+        sortOrder: 'desc',
+        limit: 50,
+        offset: 0,
+      });
+    });
+
+    it('isLiveActive をソート条件としてサービスに渡す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.getAllTeachers as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+      const res = await app.request(
+        '/teachers?isLiveActive=all&sortBy=isLiveActive&sortOrder=asc'
+      );
+
+      expect(res.status).toBe(200);
+      expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
+        sortBy: 'isLiveActive',
+        sortOrder: 'asc',
+        limit: 50,
+        offset: 0,
+      });
+    });
+
     it('未知のクエリパラメータは400を返す', async () => {
       const { app } = setup();
       const res = await app.request('/teachers?page=2');

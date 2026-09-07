@@ -21,7 +21,14 @@ const teacherListQuerySchema = z
     isStaff: z.enum(['true', 'false', 'all']).default('all'),
     isLiveActive: z.enum(['true', 'false', 'all']).default('true'),
     sortBy: z
-      .enum(['teacherId', 'displayName', 'classCode', 'className'])
+      .enum([
+        'teacherId',
+        'displayName',
+        'classCode',
+        'className',
+        'isStaff',
+        'isLiveActive',
+      ])
       .default('teacherId'),
     sortOrder: z.enum(['asc', 'desc']).default('asc'),
     limit: integerQuery(1)
