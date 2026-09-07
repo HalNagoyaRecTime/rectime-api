@@ -46,25 +46,7 @@ describe('TeacherRepository', () => {
       expect(unassigned?.class_rooms).toEqual([]);
     });
 
-    it('teacherId で絞り込める', async () => {
-      const target = seeded.teachers[0];
-      const result = await repo.findAll({ teacherId: target.teacherId });
-
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0].teacher_id).toBe(target.teacherId);
-      expect(result.total).toBe(1);
-    });
-
-    it('userName の部分一致で絞り込める', async () => {
-      const target = seeded.teachers[0];
-      const result = await repo.findAll({
-        userName: target.displayName.slice(0, 2),
-      });
-
-      expect(result.items.map(t => t.teacher_id)).toContain(target.teacherId);
-    });
-
-    it('userName に % や _ が含まれる場合、ワイルドカードとしてではなく文字通り一致で絞り込む', async () => {
+    it('search に % や _ が含まれる場合、ワイルドカードとしてではなく文字通り一致で絞り込む', async () => {
       const now = new Date().toISOString();
       const wildcardUser = await env.DB.prepare(
         'INSERT INTO users (user_name, is_live_active, created_at, updated_at) VALUES (?, 1, ?, ?) RETURNING user_id'
@@ -79,7 +61,7 @@ describe('TeacherRepository', () => {
 
       // "%_" はエスケープされなければ「任意の1文字+任意0文字以上」にマッチしてしまい、
       // 無関係な既存の教員名（例: 山田先生の"田先"部分）まで拾ってしまう
-      const result = await repo.findAll({ userName: '%_off' });
+      const result = await repo.findAll({ search: '%_off' });
 
       expect(result.items.map(t => t.teacher_id)).toEqual([
         wildcardTeacher!.teacher_id,
@@ -529,7 +511,7 @@ describe('TeacherRepository', () => {
         { displayName: '一括教官B' },
       ]);
 
-      const result = await repo.findAll({ userName: '一括教官' });
+      const result = await repo.findAll({ search: '一括教官' });
       expect(result.items.map(t => t.user_name).sort()).toEqual([
         '一括教官A',
         '一括教官B',
@@ -550,7 +532,7 @@ describe('TeacherRepository', () => {
 
       await repo.createMany(inputs);
 
-      const result = await repo.findAll({ userName: '一括教官BULK2K' });
+      const result = await repo.findAll({ search: '一括教官BULK2K' });
       expect(result.total).toBe(2000);
     });
 

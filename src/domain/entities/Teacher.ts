@@ -14,8 +14,6 @@ export interface TeacherEntity {
 }
 
 export interface TeacherSearchFilter {
-  teacherId?: number;
-  userName?: string;
   search?: string;
   classRoomId?: number;
   isStaff?: boolean;

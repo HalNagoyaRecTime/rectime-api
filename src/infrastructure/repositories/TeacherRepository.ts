@@ -132,15 +132,6 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           : DEFAULT_LIMIT;
 
       const conditions = [];
-      if (filter.teacherId !== undefined) {
-        conditions.push(eq(teachers.id, filter.teacherId));
-      }
-      if (filter.userName) {
-        const escapedPattern = `%${escapeLikePattern(filter.userName)}%`;
-        conditions.push(
-          sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`
-        );
-      }
       if (filter.search) {
         const escapedPattern = `%${escapeLikePattern(filter.search)}%`;
         conditions.push(
