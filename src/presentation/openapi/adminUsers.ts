@@ -58,6 +58,11 @@ export const adminUserStatusUpdateRoute = createRoute({
     'Teacherを無効化しても `class_rooms.teacher_id` は解除されない。',
     '担任の解除まで行うのは `DELETE /teachers/{teacherId}` のみで、',
     '本APIとは最終状態が異なる点に注意する。',
+    '',
+    '一覧取得での扱いも対象によって異なる。`GET /teachers` は既定で稼働中のみを',
+    '返すため無効化すると一覧から消えるが、`GET /students` は稼働状態で',
+    '絞り込まないため無効化後も一覧に残る。表示上の区別はレスポンスの',
+    '`is_live_active` で行う。',
   ].join('\n'),
   security: bearerAuth,
   request: {
