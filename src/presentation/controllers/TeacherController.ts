@@ -19,7 +19,7 @@ const teacherListQuerySchema = z
     search: z.string().trim().min(1).optional(),
     classRoomId: integerQuery(1).optional(),
     isStaff: z.enum(['true', 'false', 'all']).default('all'),
-    isLiveActive: z.enum(['true', 'false', 'all']).default('all'),
+    isLiveActive: z.enum(['true', 'false', 'all']).default('true'),
     sortBy: z
       .enum(['teacherId', 'displayName', 'classCode', 'className'])
       .default('teacherId'),

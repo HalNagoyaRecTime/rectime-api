@@ -177,6 +177,7 @@ describe('TeacherController', () => {
         offset: 0,
         sortBy: 'teacherId',
         sortOrder: 'asc',
+        isLiveActive: true,
       });
     });
 
@@ -231,6 +232,24 @@ describe('TeacherController', () => {
         sortOrder: 'asc',
         limit: 50,
         offset: 0,
+      });
+    });
+
+    it('isLiveActive=false は無効Teacherだけを指定する', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.getAllTeachers as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+      const res = await app.request('/teachers?isLiveActive=false');
+
+      expect(res.status).toBe(200);
+      expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
+        sortBy: 'teacherId',
+        sortOrder: 'asc',
+        limit: 50,
+        offset: 0,
+        isLiveActive: false,
       });
     });
 

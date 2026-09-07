@@ -98,6 +98,22 @@ describe('OpenAPI documentation', () => {
       nullable: true,
     });
 
+    const teacherListParameters = (
+      document.paths['/api/v1/teachers'].get as {
+        parameters?: Array<{
+          name: string;
+          schema?: { default?: unknown; enum?: unknown[] };
+        }>;
+      }
+    ).parameters;
+    expect(
+      teacherListParameters?.find(param => param.name === 'isStaff')?.schema
+    ).toMatchObject({ default: 'all', enum: ['true', 'false', 'all'] });
+    expect(
+      teacherListParameters?.find(param => param.name === 'isLiveActive')
+        ?.schema
+    ).toMatchObject({ default: 'true', enum: ['true', 'false', 'all'] });
+
     const documentedOperations = Object.values(document.paths).flatMap(path =>
       Object.keys(path).filter(method =>
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
