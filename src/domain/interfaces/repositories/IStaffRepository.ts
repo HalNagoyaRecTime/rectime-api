@@ -4,7 +4,8 @@ export interface IStaffRepository {
   findById: (id: number) => Promise<StaffEntity | null>;
   findAll: () => Promise<StaffEntity[]>;
   // 該当するスタッフが存在しない場合は何もせずfalseを返す(冪等)。
-  // アカウント削除の後片付けと、staff権限の解除の両方から利用する。
+  // 無条件に削除するため、アカウント削除の後片付けから利用する。
+  // staff権限の解除にはdeleteByUserIdUnlessLastActiveStaffを使う。
   deleteByUserId: (userId: number) => Promise<boolean>;
   // staff権限の付与。すでにstaffの場合は何もしない(冪等)。
   addByUserId: (userId: number) => Promise<void>;
