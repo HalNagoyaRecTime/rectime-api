@@ -88,6 +88,9 @@ export function createStaffController(staffService: IStaffService) {
         if (error.message === 'Cannot revoke your own staff role') {
           return errorResponse(c, UserErrors.CANNOT_REVOKE_OWN_STAFF);
         }
+        if (error.message === 'Cannot revoke the last active staff') {
+          return errorResponse(c, UserErrors.CANNOT_REVOKE_LAST_STAFF);
+        }
       }
       return errorResponse(c, UserErrors.STAFF_ROLE_REVOKE_FAILED);
     }

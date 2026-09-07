@@ -31,6 +31,11 @@ export const UserErrors = {
     code: 'CANNOT_REVOKE_OWN_STAFF',
     message: '自分自身のスタッフ権限を解除することはできません',
   },
+  CANNOT_REVOKE_LAST_STAFF: {
+    status: 400,
+    code: 'CANNOT_REVOKE_LAST_STAFF',
+    message: '有効なスタッフが0人になるため解除できません',
+  },
   STAFF_ROLE_ASSIGN_FAILED: {
     status: 500,
     code: 'STAFF_ROLE_ASSIGN_FAILED',

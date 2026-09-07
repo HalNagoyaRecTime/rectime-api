@@ -22,6 +22,8 @@ describe('StaffService', () => {
         deleteByUserId: vi.fn(),
         addByUserId: vi.fn(),
         existsActiveUser: vi.fn(),
+        deleteByUserIdUnlessLastActiveStaff: vi.fn(),
+        existsStaff: vi.fn(),
       };
       const service = createStaffService(repository);
 
@@ -42,6 +44,8 @@ describe('StaffService', () => {
         deleteByUserId: vi.fn(),
         addByUserId: vi.fn(),
         existsActiveUser: vi.fn(),
+        deleteByUserIdUnlessLastActiveStaff: vi.fn(),
+        existsStaff: vi.fn(),
       };
       const service = createStaffService(repository);
 
@@ -63,6 +67,8 @@ describe('StaffService', () => {
         deleteByUserId: vi.fn(),
         addByUserId: vi.fn(),
         existsActiveUser: vi.fn(),
+        deleteByUserIdUnlessLastActiveStaff: vi.fn(),
+        existsStaff: vi.fn(),
       };
       const service = createStaffService(repository);
 
@@ -79,6 +85,8 @@ describe('StaffService', () => {
         deleteByUserId: vi.fn(),
         addByUserId: vi.fn(),
         existsActiveUser: vi.fn(),
+        deleteByUserIdUnlessLastActiveStaff: vi.fn(),
+        existsStaff: vi.fn(),
       };
       const service = createStaffService(repository);
 
@@ -96,6 +104,8 @@ describe('StaffService', () => {
       deleteByUserId: vi.fn().mockResolvedValue(true),
       addByUserId: vi.fn(),
       existsActiveUser: vi.fn().mockResolvedValue(true),
+      deleteByUserIdUnlessLastActiveStaff: vi.fn().mockResolvedValue(true),
+      existsStaff: vi.fn().mockResolvedValue(false),
       ...overrides,
     };
   }
@@ -132,18 +142,35 @@ describe('StaffService', () => {
       await service.revokeStaffRole({ operator_user_id: 1, user_id: 10 });
 
       expect(repository.existsActiveUser).toHaveBeenCalledWith(10);
-      expect(repository.deleteByUserId).toHaveBeenCalledWith(10);
+      expect(
+        repository.deleteByUserIdUnlessLastActiveStaff
+      ).toHaveBeenCalledWith(10);
     });
 
     it('対象がstaffでなくても(削除0件でも)成功する', async () => {
       const repository = buildRoleRepository({
-        deleteByUserId: vi.fn().mockResolvedValue(false),
+        deleteByUserIdUnlessLastActiveStaff: vi.fn().mockResolvedValue(false),
+        // staff行が残っていない = そもそもstaffではなかった
+        existsStaff: vi.fn().mockResolvedValue(false),
       });
       const service = createStaffService(repository);
 
       await expect(
         service.revokeStaffRole({ operator_user_id: 1, user_id: 10 })
       ).resolves.toBeUndefined();
+    });
+
+    it('最後の有効なstaffだった場合はエラーを投げる', async () => {
+      const repository = buildRoleRepository({
+        deleteByUserIdUnlessLastActiveStaff: vi.fn().mockResolvedValue(false),
+        // 削除されずstaff行が残っている = 条件付き削除に断られた
+        existsStaff: vi.fn().mockResolvedValue(true),
+      });
+      const service = createStaffService(repository);
+
+      await expect(
+        service.revokeStaffRole({ operator_user_id: 1, user_id: 10 })
+      ).rejects.toThrow('Cannot revoke the last active staff');
     });
 
     it('対象Userが存在しない場合はエラーを投げ、staffsを削除しない', async () => {
@@ -155,7 +182,9 @@ describe('StaffService', () => {
       await expect(
         service.revokeStaffRole({ operator_user_id: 1, user_id: 999 })
       ).rejects.toThrow('User not found');
-      expect(repository.deleteByUserId).not.toHaveBeenCalled();
+      expect(
+        repository.deleteByUserIdUnlessLastActiveStaff
+      ).not.toHaveBeenCalled();
     });
 
     it('自分自身の解除はエラーを投げ、staffsを削除しない', async () => {
@@ -165,7 +194,9 @@ describe('StaffService', () => {
       await expect(
         service.revokeStaffRole({ operator_user_id: 6, user_id: 6 })
       ).rejects.toThrow('Cannot revoke your own staff role');
-      expect(repository.deleteByUserId).not.toHaveBeenCalled();
+      expect(
+        repository.deleteByUserIdUnlessLastActiveStaff
+      ).not.toHaveBeenCalled();
       // 存在確認へ進む前に断る。対象は操作者自身なので存在は自明。
       expect(repository.existsActiveUser).not.toHaveBeenCalled();
     });

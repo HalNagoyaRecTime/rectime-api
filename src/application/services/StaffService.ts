@@ -45,10 +45,21 @@ export function createStaffService(
         throw new Error('Cannot revoke your own staff role');
       }
 
+      await ensureUserExists(command.user_id);
+
+      const deleted = await staffRepository.deleteByUserIdUnlessLastActiveStaff(
+        command.user_id
+      );
+      if (deleted) return;
+
+      // 削除できなかった理由を切り分ける。staff行が残っているなら、断られたのは
+      // 「最後の有効なstaffだったため」。
+      if (await staffRepository.existsStaff(command.user_id)) {
+        throw new Error('Cannot revoke the last active staff');
+      }
+
       // 対象がstaffでなくても成功として扱う。呼び出し側が求めているのは
       // 「staffでない状態」であり、それはすでに満たされているため。
-      await ensureUserExists(command.user_id);
-      await staffRepository.deleteByUserId(command.user_id);
     },
   };
 }

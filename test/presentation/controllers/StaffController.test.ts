@@ -230,6 +230,25 @@ describe('StaffController', () => {
       });
     });
 
+    it('サービスが Cannot revoke the last active staff を投げた場合は 400 を返す', async () => {
+      const { app, staffService } = setup();
+      (
+        staffService.revokeStaffRole as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Cannot revoke the last active staff'));
+
+      const res = await app.request('/admin/users/10/staff', {
+        method: 'DELETE',
+      });
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'CANNOT_REVOKE_LAST_STAFF',
+          message: '有効なスタッフが0人になるため解除できません',
+        },
+      });
+    });
+
     it('操作者を特定できない場合は 401 を返す', async () => {
       const { app, staffService } = setup(null);
 

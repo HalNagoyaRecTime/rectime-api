@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createStaffRepository } from '../../../src/infrastructure/repositories/StaffRepository';
 import type { IStaffRepository } from '../../../src/domain/interfaces/repositories/IStaffRepository';
 import {
@@ -152,6 +152,91 @@ describe('StaffRepository', () => {
         .run();
 
       await expect(repo.existsActiveUser(userId)).resolves.toBe(true);
+    });
+  });
+
+  describe('existsStaff', () => {
+    it('staffの場合はtrueを返す', async () => {
+      const userId = await insertUser('staff判定対象');
+      await repo.addByUserId(userId);
+
+      await expect(repo.existsStaff(userId)).resolves.toBe(true);
+    });
+
+    it('staffでない場合はfalseを返す', async () => {
+      const userId = await insertUser('非staff判定対象');
+
+      await expect(repo.existsStaff(userId)).resolves.toBe(false);
+    });
+  });
+
+  describe('deleteByUserIdUnlessLastActiveStaff', () => {
+    // 「有効なstaffが何人残るか」で結果が変わるため、ケースごとに
+    // staffs を空にしてから必要な行だけを作る。users には手を触れない。
+    beforeEach(async () => {
+      await env.DB.prepare('DELETE FROM staffs').run();
+    });
+
+    it('他に有効なstaffがいる場合は削除する', async () => {
+      const target = await insertUser('解除対象staff');
+      const other = await insertUser('残る他のstaff');
+      await repo.addByUserId(target);
+      await repo.addByUserId(other);
+
+      await expect(
+        repo.deleteByUserIdUnlessLastActiveStaff(target)
+      ).resolves.toBe(true);
+      expect(await countStaffRows(target)).toBe(0);
+      expect(await countStaffRows(other)).toBe(1);
+    });
+
+    it('最後の有効なstaffの場合は削除せずfalseを返す', async () => {
+      const target = await insertUser('最後のstaff');
+      await repo.addByUserId(target);
+
+      await expect(
+        repo.deleteByUserIdUnlessLastActiveStaff(target)
+      ).resolves.toBe(false);
+      expect(await countStaffRows(target)).toBe(1);
+    });
+
+    it('他のstaffが無効化(is_live_active=0)されている場合は削除しない', async () => {
+      const target = await insertUser('唯一有効なstaff');
+      const inactive = await insertUser('無効化されたstaff');
+      await repo.addByUserId(target);
+      await repo.addByUserId(inactive);
+      await env.DB.prepare(
+        'UPDATE users SET is_live_active = 0 WHERE user_id = ?'
+      )
+        .bind(inactive)
+        .run();
+
+      await expect(
+        repo.deleteByUserIdUnlessLastActiveStaff(target)
+      ).resolves.toBe(false);
+      expect(await countStaffRows(target)).toBe(1);
+    });
+
+    it('他のstaffが退会済みの場合は削除しない', async () => {
+      const target = await insertUser('退会者以外の唯一のstaff');
+      const withdrawn = await insertUser('退会済みstaff', 'deleted');
+      await repo.addByUserId(target);
+      await repo.addByUserId(withdrawn);
+
+      await expect(
+        repo.deleteByUserIdUnlessLastActiveStaff(target)
+      ).resolves.toBe(false);
+      expect(await countStaffRows(target)).toBe(1);
+    });
+
+    it('そもそもstaffでない場合はfalseを返す', async () => {
+      const target = await insertUser('非staffの解除対象');
+      const other = await insertUser('有効なstaff');
+      await repo.addByUserId(other);
+
+      await expect(
+        repo.deleteByUserIdUnlessLastActiveStaff(target)
+      ).resolves.toBe(false);
     });
   });
 });
