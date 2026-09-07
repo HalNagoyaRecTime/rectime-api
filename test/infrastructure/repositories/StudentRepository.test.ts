@@ -72,6 +72,138 @@ describe('StudentRepository', () => {
       const expected = seeded.students.map(s => s.studentIdNumber).sort();
       expect(numbers).toEqual(expected);
     });
+
+    it('氏名・学籍番号・出席番号・クラスコード・クラス名を検索できる', async () => {
+      const cases = [
+        ['田中太郎', seeded.students[0].studentId],
+        ['10001', seeded.students[1].studentId],
+        ['4', seeded.students[3].studentId],
+        ['TEST-2', seeded.students[3].studentId],
+        ['別テスト教室', seeded.students[3].studentId],
+      ] as const;
+
+      for (const [search, studentId] of cases) {
+        const result = await repo.findAll({ search });
+
+        expect(result.total).toBe(1);
+        expect(result.students.map(student => student.student_id)).toEqual([
+          studentId,
+        ]);
+      }
+    });
+
+    it('classRoomIdで絞り込み、該当しないクラスは空一覧を返す', async () => {
+      const result = await repo.findAll({
+        classRoomId: seeded.secondClassRoomId,
+      });
+      expect(result.total).toBe(1);
+      expect(result.students[0].student_id).toBe(seeded.students[3].studentId);
+
+      await expect(repo.findAll({ classRoomId: 999999 })).resolves.toEqual({
+        students: [],
+        total: 0,
+      });
+    });
+
+    it('isStaffとisLiveActiveで絞り込む', async () => {
+      const staff = await repo.findAll({ isStaff: true });
+      expect(staff.students.map(student => student.student_id)).toEqual([
+        seeded.students[2].studentId,
+      ]);
+      expect(staff.total).toBe(1);
+
+      const nonStaff = await repo.findAll({ isStaff: false });
+      expect(nonStaff.total).toBe(3);
+      expect(nonStaff.students.every(student => !student.is_staff)).toBe(true);
+
+      const active = await repo.findAll({ isLiveActive: true });
+      expect(active.total).toBe(3);
+      expect(active.students.every(student => student.is_live_active)).toBe(
+        true
+      );
+
+      const inactive = await repo.findAll({ isLiveActive: false });
+      expect(inactive.students.map(student => student.student_id)).toEqual([
+        seeded.students[1].studentId,
+      ]);
+    });
+
+    it.each([
+      'studentId',
+      'studentIdNumber',
+      'displayName',
+      'classCode',
+      'className',
+      'attendanceNumber',
+      'isStaff',
+      'isLiveActive',
+    ] as const)('sortBy=%sは同値時にstudentId ascで安定する', async sortBy => {
+      const baseline = await repo.findAll({ limit: 50, offset: 0 });
+      const valueOf = (student: (typeof baseline.students)[number]) => {
+        switch (sortBy) {
+          case 'studentId':
+            return student.student_id;
+          case 'studentIdNumber':
+            return student.student_id_number;
+          case 'displayName':
+            return student.user_name;
+          case 'classCode':
+            return student.class_room_code;
+          case 'className':
+            return student.class_room_name;
+          case 'attendanceNumber':
+            return student.attendance_number;
+          case 'isStaff':
+            return Number(student.is_staff);
+          case 'isLiveActive':
+            return Number(student.is_live_active);
+        }
+      };
+      const compare = (
+        left: (typeof baseline.students)[number],
+        right: (typeof baseline.students)[number],
+        direction: 1 | -1
+      ) => {
+        const leftValue = valueOf(left);
+        const rightValue = valueOf(right);
+        if (leftValue === rightValue) {
+          return left.student_id - right.student_id;
+        }
+        return (leftValue < rightValue ? -1 : 1) * direction;
+      };
+
+      for (const sortOrder of ['asc', 'desc'] as const) {
+        const result = await repo.findAll({ sortBy, sortOrder });
+        const expected = [...baseline.students].sort((left, right) =>
+          compare(left, right, sortOrder === 'desc' ? -1 : 1)
+        );
+
+        expect(result.students.map(student => student.student_id)).toEqual(
+          expected.map(student => student.student_id)
+        );
+      }
+    });
+
+    it('sortとpaginationの組み合わせでもstudentId ascのtie-breakerを維持する', async () => {
+      const all = await repo.findAll({ sortBy: 'isStaff', sortOrder: 'asc' });
+      const first = await repo.findAll({
+        sortBy: 'isStaff',
+        sortOrder: 'asc',
+        limit: 1,
+        offset: 0,
+      });
+      const second = await repo.findAll({
+        sortBy: 'isStaff',
+        sortOrder: 'asc',
+        limit: 1,
+        offset: 1,
+      });
+
+      expect(first.students[0].student_id).toBe(all.students[0].student_id);
+      expect(second.students[0].student_id).toBe(all.students[1].student_id);
+      expect(first.total).toBe(all.total);
+      expect(second.total).toBe(all.total);
+    });
   });
 
   describe('findById', () => {

@@ -42,7 +42,7 @@ function toManagementDTO(student: StudentEntity): StudentManagementDTO {
     is_staff: student.is_staff,
     class_room: {
       class_room_id: student.class_room_id,
-      class_code: student.class_room_code ?? student.class_room_name,
+      class_code: student.class_room_code,
       class_name: student.class_room_name,
     },
   };

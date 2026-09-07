@@ -1,6 +1,16 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
-import { and, asc, count, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { class_rooms, staffs, students, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
@@ -115,13 +125,28 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       }
       if (filter.isStaff !== undefined) {
         conditions.push(
-          filter.isStaff
-            ? sql`EXISTS (SELECT 1 FROM staffs WHERE staffs.user_id = users.user_id)`
-            : sql`NOT EXISTS (SELECT 1 FROM staffs WHERE staffs.user_id = users.user_id)`
+          filter.isStaff ? isNotNull(staffs.id) : isNull(staffs.id)
         );
       }
       const whereClause =
         conditions.length > 0 ? and(...conditions) : undefined;
+      const countBaseQuery = orm
+        .select({ count: sql<number>`count(*)` })
+        .from(students)
+        .innerJoin(users, eq(students.userId, users.id))
+        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId));
+      const countResult = await (
+        whereClause ? countBaseQuery.where(whereClause) : countBaseQuery
+      ).get();
+      const total = countResult?.count ?? 0;
+
+      const rowsBaseQuery = orm
+        .select()
+        .from(students)
+        .innerJoin(users, eq(students.userId, users.id))
+        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId));
       const sortOrder = filter.sortOrder === 'desc' ? desc : asc;
       const sortColumn =
         filter.sortBy === 'studentIdNumber'
@@ -134,45 +159,22 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
                 ? class_rooms.name
                 : filter.sortBy === 'attendanceNumber'
                   ? students.attendanceNumber
-                  : students.id;
-      const [results, totalResult] = await Promise.all([
-        (whereClause
-          ? orm
-              .select()
-              .from(students)
-              .innerJoin(users, eq(students.userId, users.id))
-              .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
-              .leftJoin(staffs, eq(users.id, staffs.userId))
-              .where(whereClause)
-          : orm
-              .select()
-              .from(students)
-              .innerJoin(users, eq(students.userId, users.id))
-              .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
-              .leftJoin(staffs, eq(users.id, staffs.userId))
-        )
-          .orderBy(sortOrder(sortColumn), asc(students.id))
-          .limit(limit)
-          .offset(offset)
-          .all(),
-        (whereClause
-          ? orm
-              .select({ total: count() })
-              .from(students)
-              .innerJoin(users, eq(students.userId, users.id))
-              .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
-              .where(whereClause)
-          : orm
-              .select({ total: count() })
-              .from(students)
-              .innerJoin(users, eq(students.userId, users.id))
-              .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
-        ).get(),
-      ]);
+                  : filter.sortBy === 'isStaff'
+                    ? sql<number>`CASE WHEN ${staffs.id} IS NULL THEN 0 ELSE 1 END`
+                    : filter.sortBy === 'isLiveActive'
+                      ? users.isLiveActive
+                      : students.id;
+      const results = await (
+        whereClause ? rowsBaseQuery.where(whereClause) : rowsBaseQuery
+      )
+        .orderBy(sortOrder(sortColumn), asc(students.id))
+        .limit(limit)
+        .offset(offset)
+        .all();
 
       return {
         students: results.map(toEntity),
-        total: totalResult?.total ?? 0,
+        total,
       };
     },
 

@@ -130,6 +130,102 @@ describe('StudentController', () => {
       });
     });
 
+    it('一覧Queryを変換してサービスへ渡す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.getAllStudents as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 10, offset: 20 });
+
+      const res = await app.request(
+        '/students?search=山田&classRoomId=3&isStaff=true&isLiveActive=false&sortBy=isLiveActive&sortOrder=desc&limit=10&offset=20'
+      );
+
+      expect(res.status).toBe(200);
+      expect(studentService.getAllStudents).toHaveBeenCalledWith({
+        search: '山田',
+        classRoomId: 3,
+        isStaff: true,
+        isLiveActive: false,
+        sortBy: 'isLiveActive',
+        sortOrder: 'desc',
+        limit: 10,
+        offset: 20,
+      });
+    });
+
+    it('isStaff=allとisLiveActive=allはfilterなしとして扱う', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.getAllStudents as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+      const res = await app.request(
+        '/students?isStaff=all&isLiveActive=all&sortBy=isStaff'
+      );
+
+      expect(res.status).toBe(200);
+      expect(studentService.getAllStudents).toHaveBeenCalledWith({
+        limit: 50,
+        offset: 0,
+        sortBy: 'isStaff',
+        sortOrder: 'asc',
+      });
+    });
+
+    it.each([
+      ['isStaff=true', { isStaff: true }],
+      ['isStaff=false', { isStaff: false }],
+      ['isLiveActive=true', { isLiveActive: true }],
+      ['isLiveActive=false', { isLiveActive: false }],
+    ])('%sをboolean filterへ変換する', async (query, filter) => {
+      const { app, studentService } = setup();
+      (
+        studentService.getAllStudents as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+      const res = await app.request(`/students?${query}`);
+
+      expect(res.status).toBe(200);
+      expect(studentService.getAllStudents).toHaveBeenCalledWith({
+        ...filter,
+        limit: 50,
+        offset: 0,
+        sortBy: 'studentId',
+        sortOrder: 'asc',
+      });
+    });
+
+    it.each([
+      ['sortBy', '/students?sortBy=invalid'],
+      ['isStaff', '/students?isStaff=invalid'],
+      ['isLiveActive', '/students?isLiveActive=invalid'],
+      ['unknown query', '/students?page=2'],
+      ['old studentId query', '/students?studentId=1'],
+      ['old userName query', '/students?userName=%E5%B1%B1%E7%94%B0'],
+    ])('%sはVALIDATION_ERRORを返す', async (_name, path) => {
+      const { app, studentService } = setup();
+
+      const res = await app.request(path);
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+      expect(studentService.getAllStudents).not.toHaveBeenCalled();
+    });
+
+    it('limit=101はVALIDATION_ERRORを返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students?limit=101');
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+      expect(studentService.getAllStudents).not.toHaveBeenCalled();
+    });
+
     it('サービスが例外を投げた場合は 500 を返す（console.error は呼ばれない）', async () => {
       const { app, studentService } = setup();
       (

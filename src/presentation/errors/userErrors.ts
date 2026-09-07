@@ -61,11 +61,6 @@ export const UserErrors = {
     code: 'STUDENT_FETCH_FAILED',
     message: '学生の取得に失敗しました',
   },
-  INVALID_STUDENT_LIST_QUERY: {
-    status: 400,
-    code: 'INVALID_STUDENT_LIST_QUERY',
-    message: '学生一覧の検索条件が正しくありません',
-  },
   STUDENT_LIST_FAILED: {
     status: 500,
     code: 'STUDENT_LIST_FAILED',
