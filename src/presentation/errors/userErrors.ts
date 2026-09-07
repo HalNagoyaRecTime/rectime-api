@@ -26,6 +26,21 @@ export const UserErrors = {
     code: 'STAFF_LIST_FAILED',
     message: 'スタッフ一覧の取得に失敗しました',
   },
+  CANNOT_REVOKE_OWN_STAFF: {
+    status: 400,
+    code: 'CANNOT_REVOKE_OWN_STAFF',
+    message: '自分自身のスタッフ権限を解除することはできません',
+  },
+  STAFF_ROLE_ASSIGN_FAILED: {
+    status: 500,
+    code: 'STAFF_ROLE_ASSIGN_FAILED',
+    message: 'スタッフ権限の付与に失敗しました',
+  },
+  STAFF_ROLE_REVOKE_FAILED: {
+    status: 500,
+    code: 'STAFF_ROLE_REVOKE_FAILED',
+    message: 'スタッフ権限の解除に失敗しました',
+  },
   INVALID_STUDENT_ID: {
     status: 400,
     code: 'INVALID_STUDENT_ID',

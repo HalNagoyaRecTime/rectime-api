@@ -31,6 +31,8 @@ import {
   studentUpdateRoute,
 } from './presentation/openapi/students';
 import {
+  adminUserStaffAssignRoute,
+  adminUserStaffRevokeRoute,
   staffDetailRoute,
   staffListRoute,
 } from './presentation/openapi/staffs';
@@ -233,6 +235,12 @@ apiV1.openapi(staffOnly(staffListRoute), c => {
 });
 apiV1.openapi(staffOnly(staffDetailRoute), c => {
   return c.get('container').staffController.getStaffById(c);
+});
+apiV1.openapi(staffOnly(adminUserStaffAssignRoute), c => {
+  return c.get('container').staffController.assignStaffRole(c);
+});
+apiV1.openapi(staffOnly(adminUserStaffRevokeRoute), c => {
+  return c.get('container').staffController.revokeStaffRole(c);
 });
 
 // Teacher routes

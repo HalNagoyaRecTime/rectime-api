@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createStaffService } from '../../../src/application/services/StaffService';
 import type { IStaffRepository } from '../../../src/domain/interfaces/repositories/IStaffRepository';
 import type { StaffEntity } from '../../../src/domain/entities/Staff';
@@ -83,6 +83,91 @@ describe('StaffService', () => {
       const service = createStaffService(repository);
 
       await expect(service.getAllStaffs()).resolves.toEqual([]);
+    });
+  });
+
+  // 付与・解除で共通のモック。個別のケースで振る舞いを差し替える。
+  function buildRoleRepository(
+    overrides: Partial<IStaffRepository> = {}
+  ): IStaffRepository {
+    return {
+      findById: vi.fn(),
+      findAll: vi.fn(),
+      deleteByUserId: vi.fn().mockResolvedValue(true),
+      addByUserId: vi.fn(),
+      existsActiveUser: vi.fn().mockResolvedValue(true),
+      ...overrides,
+    };
+  }
+
+  describe('assignStaffRole', () => {
+    it('対象Userが存在する場合はstaffs行を追加する', async () => {
+      const repository = buildRoleRepository();
+      const service = createStaffService(repository);
+
+      await service.assignStaffRole(10);
+
+      expect(repository.existsActiveUser).toHaveBeenCalledWith(10);
+      expect(repository.addByUserId).toHaveBeenCalledWith(10);
+    });
+
+    it('対象Userが存在しない場合はエラーを投げ、staffsへ書き込まない', async () => {
+      const repository = buildRoleRepository({
+        existsActiveUser: vi.fn().mockResolvedValue(false),
+      });
+      const service = createStaffService(repository);
+
+      await expect(service.assignStaffRole(999)).rejects.toThrow(
+        'User not found'
+      );
+      expect(repository.addByUserId).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('revokeStaffRole', () => {
+    it('対象Userが存在する場合はstaffs行を削除する', async () => {
+      const repository = buildRoleRepository();
+      const service = createStaffService(repository);
+
+      await service.revokeStaffRole({ operator_user_id: 1, user_id: 10 });
+
+      expect(repository.existsActiveUser).toHaveBeenCalledWith(10);
+      expect(repository.deleteByUserId).toHaveBeenCalledWith(10);
+    });
+
+    it('対象がstaffでなくても(削除0件でも)成功する', async () => {
+      const repository = buildRoleRepository({
+        deleteByUserId: vi.fn().mockResolvedValue(false),
+      });
+      const service = createStaffService(repository);
+
+      await expect(
+        service.revokeStaffRole({ operator_user_id: 1, user_id: 10 })
+      ).resolves.toBeUndefined();
+    });
+
+    it('対象Userが存在しない場合はエラーを投げ、staffsを削除しない', async () => {
+      const repository = buildRoleRepository({
+        existsActiveUser: vi.fn().mockResolvedValue(false),
+      });
+      const service = createStaffService(repository);
+
+      await expect(
+        service.revokeStaffRole({ operator_user_id: 1, user_id: 999 })
+      ).rejects.toThrow('User not found');
+      expect(repository.deleteByUserId).not.toHaveBeenCalled();
+    });
+
+    it('自分自身の解除はエラーを投げ、staffsを削除しない', async () => {
+      const repository = buildRoleRepository();
+      const service = createStaffService(repository);
+
+      await expect(
+        service.revokeStaffRole({ operator_user_id: 6, user_id: 6 })
+      ).rejects.toThrow('Cannot revoke your own staff role');
+      expect(repository.deleteByUserId).not.toHaveBeenCalled();
+      // 存在確認へ進む前に断る。対象は操作者自身なので存在は自明。
+      expect(repository.existsActiveUser).not.toHaveBeenCalled();
     });
   });
 });
