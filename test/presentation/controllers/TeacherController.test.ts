@@ -156,7 +156,7 @@ describe('TeacherController', () => {
   });
 
   describe('getAllTeachers', () => {
-    it('サービスが返した教員一覧をページ情報付きで 200 で返す', async () => {
+    it('Query未指定時は有効Teacherのみの条件で一覧を返す', async () => {
       const { app, teacherService } = setup();
       const page = {
         items: [buildTeacher()],
