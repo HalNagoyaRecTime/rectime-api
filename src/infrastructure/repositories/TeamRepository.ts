@@ -8,7 +8,7 @@ import {
   type TeamWriteInput,
 } from '../../domain/entities/Team';
 import type { ITeamRepository } from '../../domain/interfaces/repositories/ITeamRepository';
-import { CLEANUP_EMPTY_TEAM_SQL } from './teamCleanup';
+import { buildCleanupEmptyTeamStatements } from './teamCleanup';
 
 type RankingRow = {
   team_id: number;
@@ -109,7 +109,7 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
   }
 
   // 付け替え先のteamIdに寄せると同時に、移動元の編成が空になっていれば
-  // 同じbatchの中で(ClassRoomRepositoryのCLEANUP_EMPTY_TEAM_SQLと同条件で)
+  // 同じbatchの中で(ClassRoomRepositoryのbuildCleanupEmptyTeamStatementsと同条件で)
   // 掃除する。移動元をteamIdへ書き換えた後だと元のteam_idが辿れないため、
   // 書き換え前に控えておく。
   async function attachClassRooms(
@@ -135,11 +135,7 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
         .bind(teamId, ...classCodes),
       ...previous.results
         .filter(row => row.team_id !== teamId)
-        .map(row =>
-          db
-            .prepare(CLEANUP_EMPTY_TEAM_SQL)
-            .bind(row.team_id, row.team_id, row.team_id)
-        ),
+        .flatMap(row => buildCleanupEmptyTeamStatements(db, row.team_id)),
     ]);
   }
 
