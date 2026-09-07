@@ -22,7 +22,7 @@ function toDTO(teacher: TeacherEntity): TeacherDTO {
     user_id: teacher.user_id,
     display_name: teacher.user_name,
     is_live_active: teacher.is_live_active,
-    is_staff: Boolean(teacher.is_staff),
+    is_staff: teacher.is_staff,
     class_rooms: teacher.class_rooms,
   };
 }

@@ -9,7 +9,7 @@ export interface TeacherEntity {
   user_id: number;
   user_name: string;
   is_live_active: boolean;
-  is_staff?: boolean;
+  is_staff: boolean;
   class_rooms: TeacherClassRoomEntity[];
 }
 

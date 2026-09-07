@@ -218,6 +218,23 @@ describe('TeacherController', () => {
       });
     });
 
+    it.each([
+      ['sortBy', '/teachers?sortBy=invalid'],
+      ['isStaff', '/teachers?isStaff=invalid'],
+      ['isLiveActive', '/teachers?isLiveActive=invalid'],
+      ['teacherId', '/teachers?teacherId=1'],
+      ['userName', '/teachers?userName=%E5%B1%B1%E7%94%B0'],
+    ])('%s の不正QueryはVALIDATION_ERRORを返す', async (_name, path) => {
+      const { app, teacherService } = setup();
+      const res = await app.request(path);
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+      expect(teacherService.getAllTeachers).not.toHaveBeenCalled();
+    });
+
     it('isStaff=all / isLiveActive=all は絞り込みなしとして扱う', async () => {
       const { app, teacherService } = setup();
       (
