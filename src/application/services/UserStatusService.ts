@@ -1,7 +1,7 @@
-import type { UserStatusEntity } from '../../domain/entities/User';
+import type { UserStatusEntity } from '../../domain/entities/UserStatus';
 import type { IUserStatusRepository } from '../../domain/interfaces/repositories/IUserStatusRepository';
-import type { UserStatusDTO } from '../dto/UserDTO';
-import type { IUserService } from './IUserService';
+import type { UserStatusDTO } from '../dto/UserStatusDTO';
+import type { IUserStatusService } from './IUserStatusService';
 
 // Domainの表現をAPIへ出す形へ明示的に変換する。現時点では同じ形だが、
 // users側にフィールドが増えてもレスポンスが勝手に変わらないよう境界を残す。
@@ -12,9 +12,9 @@ function toDTO(user: UserStatusEntity): UserStatusDTO {
   };
 }
 
-export function createUserService(
+export function createUserStatusService(
   userStatusRepository: IUserStatusRepository
-): IUserService {
+): IUserStatusService {
   return {
     async updateUserStatus(command) {
       // 再有効化できるのは管理権限を持つUserだけなので、管理権限を持つUserが

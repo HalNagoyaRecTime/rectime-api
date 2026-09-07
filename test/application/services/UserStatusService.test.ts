@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createUserService } from '../../../src/application/services/UserService';
+import { createUserStatusService } from '../../../src/application/services/UserStatusService';
 import type { IUserStatusRepository } from '../../../src/domain/interfaces/repositories/IUserStatusRepository';
 
 const OPERATOR_USER_ID = 1;
@@ -19,7 +19,7 @@ function buildUserStatusRepository(
 
 function createService(userStatusRepository = buildUserStatusRepository()) {
   return {
-    service: createUserService(userStatusRepository),
+    service: createUserStatusService(userStatusRepository),
     userStatusRepository,
   };
 }

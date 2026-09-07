@@ -1,4 +1,4 @@
-import type { UserStatusEntity } from '../../entities/User';
+import type { UserStatusEntity } from '../../entities/UserStatus';
 
 // users.is_live_active の更新だけを担う。認証・Microsoft連携を扱う
 // IUserRepository とは責務が異なるため、インターフェースを分けている。

@@ -1,20 +1,20 @@
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
-import type { IUserService } from '../../../src/application/services/IUserService';
+import type { IUserStatusService } from '../../../src/application/services/IUserStatusService';
 import type { Env } from '../../../src/lib/env';
-import { createUserController } from '../../../src/presentation/controllers/UserController';
+import { createUserStatusController } from '../../../src/presentation/controllers/UserStatusController';
 import type { ContainerVariables } from '../../../src/presentation/middleware/diContainer';
 import type { AuthenticationVariables } from '../../../src/presentation/middleware/bearerAuthentication';
 import type { AuthVariables } from '../../../src/presentation/middleware/requireAuth';
 
 const userStatus = { user_id: 10, is_live_active: false };
 
-function setup(overrides: Partial<IUserService> = {}) {
-  const service: IUserService = {
+function setup(overrides: Partial<IUserStatusService> = {}) {
+  const service: IUserStatusService = {
     updateUserStatus: vi.fn().mockResolvedValue(userStatus),
     ...overrides,
   };
-  const controller = createUserController(service);
+  const controller = createUserStatusController(service);
   const app = new Hono<{
     Bindings: Env;
     Variables: ContainerVariables & AuthVariables & AuthenticationVariables;

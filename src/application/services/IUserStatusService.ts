@@ -1,4 +1,4 @@
-import type { UserStatusDTO } from '../dto/UserDTO';
+import type { UserStatusDTO } from '../dto/UserStatusDTO';
 
 export interface UpdateUserStatusCommand {
   // 操作した本人。自分自身の無効化を断るために必要。
@@ -8,6 +8,6 @@ export interface UpdateUserStatusCommand {
   is_live_active: boolean;
 }
 
-export interface IUserService {
+export interface IUserStatusService {
   updateUserStatus(command: UpdateUserStatusCommand): Promise<UserStatusDTO>;
 }

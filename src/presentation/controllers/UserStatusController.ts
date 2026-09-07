@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import { z } from 'zod';
-import type { IUserService } from '../../application/services/IUserService';
+import type { IUserStatusService } from '../../application/services/IUserStatusService';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
@@ -31,7 +31,7 @@ type UserContext = Context<{
 
 // OpenAPIルートのハンドラは、応答をステータスごとの型として推論できる必要がある。
 // そのため以下のヘルパーには戻り値の型を注釈しない（Response と書くと型が合わなくなる）。
-export function createUserController(service: IUserService) {
+export function createUserStatusController(service: IUserStatusService) {
   // staff権限の判定はルート側のrequireStaffが済ませている。ここでは
   // 自分自身の無効化を断るために、操作した本人のuserIdを取り出すだけ。
   // nullはrequireAuthが先に401で弾くため実際には来ないが、型上はnullを
