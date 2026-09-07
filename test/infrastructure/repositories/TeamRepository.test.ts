@@ -211,6 +211,15 @@ describe('TeamRepository', () => {
         .bind(classRoomId)
         .first<{ team_id: number }>();
       expect(classRoom?.team_id).toBe(created.team_id);
+
+      // insertClassRoom('1A')が作った1A専用の暫定チームは、1Aが移動して
+      // 空になった時点で掃除されているはず。
+      const oldPlaceholder = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_name = ?'
+      )
+        .bind('placeholder(1A)')
+        .first();
+      expect(oldPlaceholder).toBeNull();
     });
 
     it('class_codesが空配列でもチームを作成できる', async () => {
@@ -247,6 +256,81 @@ describe('TeamRepository', () => {
         .bind(classRoomId)
         .first<{ team_id: number }>();
       expect(classRoom?.team_id).toBe(teamId);
+
+      // insertClassRoom('2A')が作った2A専用の暫定チームは、2Aが移動して
+      // 空になった時点で掃除されているはず。
+      const oldPlaceholder = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_name = ?'
+      )
+        .bind('placeholder(2A)')
+        .first();
+      expect(oldPlaceholder).toBeNull();
+    });
+
+    it('得点0の移動元チームは、クラスが移動して空になると削除される', async () => {
+      const sourceTeamId = await insertTeam('元のチーム');
+      await insertClassRoom('4A', sourceTeamId);
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 0)'
+      )
+        .bind(sourceTeamId)
+        .run();
+      const destinationTeamId = await insertTeam('移動先チーム');
+
+      await repo.updateTeam(destinationTeamId, {
+        team_name: '移動先チーム',
+        class_codes: ['4A'],
+      });
+
+      const sourceTeam = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(sourceTeamId)
+        .first();
+      expect(sourceTeam).toBeNull();
+    });
+
+    it('加算と減算で得点が0に戻った移動元チームも、クラスが移動して空になると削除される', async () => {
+      const sourceTeamId = await insertTeam('相殺後0点チーム');
+      await insertClassRoom('4B', sourceTeamId);
+      await repo.addScore(sourceTeamId, 100);
+      await repo.addScore(sourceTeamId, -100);
+      const destinationTeamId = await insertTeam('移動先チーム3');
+
+      await repo.updateTeam(destinationTeamId, {
+        team_name: '移動先チーム3',
+        class_codes: ['4B'],
+      });
+
+      const sourceTeam = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(sourceTeamId)
+        .first();
+      expect(sourceTeam).toBeNull();
+    });
+
+    it('得点が残っている移動元チームは、クラスが移動して空になっても削除されない', async () => {
+      const sourceTeamId = await insertTeam('得点ありチーム');
+      await insertClassRoom('5A', sourceTeamId);
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 10)'
+      )
+        .bind(sourceTeamId)
+        .run();
+      const destinationTeamId = await insertTeam('移動先チーム2');
+
+      await repo.updateTeam(destinationTeamId, {
+        team_name: '移動先チーム2',
+        class_codes: ['5A'],
+      });
+
+      const sourceTeam = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(sourceTeamId)
+        .first();
+      expect(sourceTeam).not.toBeNull();
     });
 
     it('class_codesに無いクラスは自分専用のチームへ戻る(完全置換)', async () => {

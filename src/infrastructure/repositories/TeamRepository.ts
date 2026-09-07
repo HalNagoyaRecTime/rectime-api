@@ -8,6 +8,7 @@ import {
   type TeamWriteInput,
 } from '../../domain/entities/Team';
 import type { ITeamRepository } from '../../domain/interfaces/repositories/ITeamRepository';
+import { CLEANUP_EMPTY_TEAM_SQL } from './teamCleanup';
 
 type RankingRow = {
   team_id: number;
@@ -105,6 +106,41 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
           .bind(provisionalName, row.class_room_id),
       ]);
     }
+  }
+
+  // 付け替え先のteamIdに寄せると同時に、移動元の編成が空になっていれば
+  // 同じbatchの中で(ClassRoomRepositoryのCLEANUP_EMPTY_TEAM_SQLと同条件で)
+  // 掃除する。移動元をteamIdへ書き換えた後だと元のteam_idが辿れないため、
+  // 書き換え前に控えておく。
+  async function attachClassRooms(
+    teamId: number,
+    classCodes: string[]
+  ): Promise<void> {
+    if (classCodes.length === 0) return;
+    const placeholders = classCodes.map(() => '?').join(', ');
+
+    const previous = await db
+      .prepare(
+        `SELECT DISTINCT team_id FROM class_rooms WHERE class_code IN (${placeholders})`
+      )
+      .bind(...classCodes)
+      .all<{ team_id: number }>();
+
+    await db.batch([
+      db
+        .prepare(
+          `UPDATE class_rooms SET team_id = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE class_code IN (${placeholders})`
+        )
+        .bind(teamId, ...classCodes),
+      ...previous.results
+        .filter(row => row.team_id !== teamId)
+        .map(row =>
+          db
+            .prepare(CLEANUP_EMPTY_TEAM_SQL)
+            .bind(row.team_id, row.team_id, row.team_id)
+        ),
+    ]);
   }
 
   return {
@@ -205,16 +241,7 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
         .first<{ team_id: number }>();
       if (!created) throw new Error('Failed to create team');
 
-      if (input.class_codes.length > 0) {
-        const placeholders = input.class_codes.map(() => '?').join(', ');
-        await db
-          .prepare(
-            `UPDATE class_rooms SET team_id = ?, updated_at = CURRENT_TIMESTAMP
-             WHERE class_code IN (${placeholders})`
-          )
-          .bind(created.team_id, ...input.class_codes)
-          .run();
-      }
+      await attachClassRooms(created.team_id, input.class_codes);
 
       const team = await fetchTeamById(created.team_id);
       if (!team) throw new Error('Failed to create team');
@@ -234,17 +261,7 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
       if (!updated) return null;
 
       await detachRemovedClassRooms(teamId, input.class_codes);
-
-      if (input.class_codes.length > 0) {
-        const placeholders = input.class_codes.map(() => '?').join(', ');
-        await db
-          .prepare(
-            `UPDATE class_rooms SET team_id = ?, updated_at = CURRENT_TIMESTAMP
-             WHERE class_code IN (${placeholders})`
-          )
-          .bind(teamId, ...input.class_codes)
-          .run();
-      }
+      await attachClassRooms(teamId, input.class_codes);
 
       return fetchTeamById(teamId);
     },
