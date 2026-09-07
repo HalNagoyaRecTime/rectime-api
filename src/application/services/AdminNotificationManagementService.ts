@@ -1,12 +1,10 @@
 import type { IAdminNotificationRepository } from '../../domain/interfaces/repositories/IAdminNotificationRepository';
 import type { IAdminNotificationManagementRepository } from '../../domain/interfaces/repositories/IAdminNotificationManagementRepository';
-import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAdminNotificationManagementService } from './IAdminNotificationManagementService';
 
 export function createAdminNotificationManagementService(
   managementRepository: IAdminNotificationManagementRepository,
-  adminNotificationRepository: IAdminNotificationRepository,
-  userRepository: IUserRepository
+  adminNotificationRepository: IAdminNotificationRepository
 ): IAdminNotificationManagementService {
   const getById = async (notificationId: number) => {
     const notification = await managementRepository.findById(notificationId);
@@ -15,10 +13,6 @@ export function createAdminNotificationManagementService(
   };
 
   return {
-    canManageAdminNotifications(userId) {
-      return userRepository.isStaffOrTeacher(userId);
-    },
-
     getAdminNotifications(options) {
       return managementRepository.findAll(options);
     },

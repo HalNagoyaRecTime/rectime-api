@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { createAdminNotificationManagementService } from '../../../src/application/services/AdminNotificationManagementService';
 import type { IAdminNotificationRepository } from '../../../src/domain/interfaces/repositories/IAdminNotificationRepository';
 import type { IAdminNotificationManagementRepository } from '../../../src/domain/interfaces/repositories/IAdminNotificationManagementRepository';
-import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 
 const draftNotification = {
   notification_id: 10,
@@ -40,38 +39,17 @@ function setup() {
       .mockResolvedValue({ exists: true, active_token_count: 2 }),
     create: vi.fn(),
   };
-  const userRepository: IUserRepository = {
-    exists: vi.fn(),
-    isStaffOrTeacher: vi.fn().mockResolvedValue(true),
-    isStaff: vi.fn().mockResolvedValue(true),
-    getUserCategories: vi.fn(),
-    findUserIdByMicrosoftAccount: vi.fn(),
-    getDeletionStatus: vi.fn(),
-    markAsDeleted: vi.fn(),
-    createUserWithMicrosoftLink: vi.fn(),
-    updateUser: vi.fn(),
-    linkMicrosoftAccount: vi.fn(),
-  };
   return {
     managementRepository,
     adminNotificationRepository,
-    userRepository,
     service: createAdminNotificationManagementService(
       managementRepository,
-      adminNotificationRepository,
-      userRepository
+      adminNotificationRepository
     ),
   };
 }
 
 describe('AdminNotificationManagementService', () => {
-  it('staffsまたはteachersだけを管理者として許可する', async () => {
-    const { service, userRepository } = setup();
-
-    await expect(service.canManageAdminNotifications(1)).resolves.toBe(true);
-    expect(userRepository.isStaffOrTeacher).toHaveBeenCalledWith(1);
-  });
-
   it('一覧条件をRepositoryへ渡す', async () => {
     const { service, managementRepository } = setup();
     const options = {

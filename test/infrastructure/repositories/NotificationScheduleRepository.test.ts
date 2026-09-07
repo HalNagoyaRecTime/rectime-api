@@ -203,4 +203,42 @@ describe('NotificationScheduleRepository', () => {
       )
     ).resolves.toEqual([]);
   });
+
+  describe('anonymizeCreatedUserId', () => {
+    it('created_user_idをNULL化し、通知予定自体は残す', async () => {
+      const { user, schedule } = await createFixture();
+
+      await repository.anonymizeCreatedUserId(user!.user_id);
+
+      const found = await repository.findById(
+        schedule.notification_schedule_id
+      );
+      expect(found).not.toBeNull();
+      expect(found?.created_user_id).toBeNull();
+    });
+
+    it('該当する通知予定が無くてもエラーにならない(冪等)', async () => {
+      await expect(
+        repository.anonymizeCreatedUserId(999999)
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('deleteByFirebaseTokenId', () => {
+    it('指定firebase_token_idに紐づく通知予定を物理削除する', async () => {
+      const { token, schedule } = await createFixture();
+
+      await repository.deleteByFirebaseTokenId(token!.firebase_token_id);
+
+      await expect(
+        repository.findById(schedule.notification_schedule_id)
+      ).resolves.toBeNull();
+    });
+
+    it('該当する通知予定が無くてもエラーにならない(冪等)', async () => {
+      await expect(
+        repository.deleteByFirebaseTokenId(999999)
+      ).resolves.toBeUndefined();
+    });
+  });
 });

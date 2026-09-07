@@ -2,6 +2,8 @@ import { Context } from 'hono';
 import { z } from 'zod';
 import type { UpdateGatheringSpotRequestDTO } from '../../application/dto/UpdateGatheringSpotRequestDTO';
 import { IGatheringSpotService } from '../../application/services/IGatheringSpotService';
+import { errorResponse } from '../errors/errorResponse';
+import { EventErrors } from '../errors/eventErrors';
 
 const createGatheringSpotSchema = z.object({
   gatheringSpotName: z.string().trim().min(1),
@@ -31,12 +33,10 @@ export function createGatheringSpotController(
         sortOrder: c.req.query('sortOrder'),
       });
       if (!parsedQuery.success) {
-        return c.json(
-          {
-            error: 'Invalid gathering spot list query',
-            details: parsedQuery.error.flatten(),
-          },
-          400
+        return errorResponse(
+          c,
+          EventErrors.INVALID_GATHERING_SPOT_LIST_QUERY,
+          parsedQuery.error.flatten()
         );
       }
       try {
@@ -44,26 +44,14 @@ export function createGatheringSpotController(
           await gatheringSpotService.getGatheringSpotPage(parsedQuery.data),
           200
         );
-      } catch (error) {
-        return c.json(
-          {
-            error: 'Failed to fetch gathering spots',
-            details: error instanceof Error ? error.message : String(error),
-          },
-          500
-        );
+      } catch {
+        return errorResponse(c, EventErrors.GATHERING_SPOT_LIST_FAILED);
       }
     }
     try {
       return c.json(await gatheringSpotService.getAllGatheringSpots(), 200);
-    } catch (error) {
-      return c.json(
-        {
-          error: 'Failed to fetch gathering spots',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+    } catch {
+      return errorResponse(c, EventErrors.GATHERING_SPOT_LIST_FAILED);
     }
   };
 
@@ -72,7 +60,7 @@ export function createGatheringSpotController(
       c.req.param('gatheringSpotId')
     );
     if (!parsedId.success) {
-      return c.json({ error: 'Invalid gathering spot ID' }, 400);
+      return errorResponse(c, EventErrors.INVALID_GATHERING_SPOT_ID);
     }
     try {
       return c.json(
@@ -83,15 +71,9 @@ export function createGatheringSpotController(
         error instanceof Error &&
         error.message === 'Gathering spot not found'
       ) {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, EventErrors.GATHERING_SPOT_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to fetch gathering spot',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, EventErrors.GATHERING_SPOT_FETCH_FAILED);
     }
   };
 
@@ -99,12 +81,10 @@ export function createGatheringSpotController(
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createGatheringSpotSchema.safeParse(body);
     if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid gathering spot request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        EventErrors.INVALID_GATHERING_SPOT_REQUEST,
+        parsedBody.error.flatten()
       );
     }
 
@@ -113,14 +93,8 @@ export function createGatheringSpotController(
         parsedBody.data.gatheringSpotName
       );
       return c.json(gatheringSpot, 201);
-    } catch (error) {
-      return c.json(
-        {
-          error: 'Failed to create gathering spot',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+    } catch {
+      return errorResponse(c, EventErrors.GATHERING_SPOT_CREATE_FAILED);
     }
   };
 
@@ -129,18 +103,16 @@ export function createGatheringSpotController(
       c.req.param('gatheringSpotId')
     );
     if (!parsedId.success) {
-      return c.json({ error: 'Invalid gathering spot ID' }, 400);
+      return errorResponse(c, EventErrors.INVALID_GATHERING_SPOT_ID);
     }
 
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createGatheringSpotSchema.safeParse(body);
     if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid gathering spot request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        EventErrors.INVALID_GATHERING_SPOT_REQUEST,
+        parsedBody.error.flatten()
       );
     }
 
@@ -156,15 +128,9 @@ export function createGatheringSpotController(
         error instanceof Error &&
         error.message === 'Gathering spot not found'
       ) {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, EventErrors.GATHERING_SPOT_NOT_FOUND);
       }
-      return c.json(
-        {
-          error: 'Failed to update gathering spot',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, EventErrors.GATHERING_SPOT_UPDATE_FAILED);
     }
   };
 
@@ -173,7 +139,7 @@ export function createGatheringSpotController(
       c.req.param('gatheringSpotId')
     );
     if (!parsedId.success) {
-      return c.json({ error: 'Invalid gathering spot ID' }, 400);
+      return errorResponse(c, EventErrors.INVALID_GATHERING_SPOT_ID);
     }
     try {
       await gatheringSpotService.deleteGatheringSpot(parsedId.data);
@@ -183,21 +149,15 @@ export function createGatheringSpotController(
         error instanceof Error &&
         error.message === 'Gathering spot not found'
       ) {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(c, EventErrors.GATHERING_SPOT_NOT_FOUND);
       }
       if (
         error instanceof Error &&
         error.message === 'Gathering spot is in use'
       ) {
-        return c.json({ error: error.message }, 409);
+        return errorResponse(c, EventErrors.GATHERING_SPOT_IN_USE);
       }
-      return c.json(
-        {
-          error: 'Failed to delete gathering spot',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
-      );
+      return errorResponse(c, EventErrors.GATHERING_SPOT_DELETE_FAILED);
     }
   };
 

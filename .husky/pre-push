@@ -3,6 +3,10 @@ set -eu
 
 has_ref_update=0
 has_non_delete_update=0
+non_delete_ref_count=0
+push_differs_from_head=0
+head_oid=$(git rev-parse HEAD 2>/dev/null || true)
+
 while read -r local_ref local_oid remote_ref remote_oid; do
   has_ref_update=1
   case "$local_ref:$local_oid" in
@@ -10,13 +14,52 @@ while read -r local_ref local_oid remote_ref remote_oid; do
       ;;
     *)
       has_non_delete_update=1
+      non_delete_ref_count=$((non_delete_ref_count + 1))
+      if [ -n "$head_oid" ] && [ "$local_oid" != "$head_oid" ]; then
+        push_differs_from_head=1
+      fi
       ;;
   esac
 done
 
 if [ "$has_ref_update" -eq 1 ] && [ "$has_non_delete_update" -eq 0 ]; then
-  echo "Skipping checks: remote branch deletion only."
+  echo "リモートブランチ削除のみのため、検査をスキップします。"
   exit 0
 fi
 
-npm run check
+if [ "$non_delete_ref_count" -gt 1 ] || [ "$push_differs_from_head" -eq 1 ]; then
+  echo "警告: 現在のHEADとは異なるref、または複数refをpushしています。" >&2
+  echo "pre-pushの関連テストは現在のHEADを基準に実行されます。" >&2
+  echo "push対象すべての最終検証はCIで行います。" >&2
+fi
+
+npm run type-check
+
+if git rev-parse --verify origin/develop >/dev/null 2>&1; then
+  broad_change=0
+
+  # VitestのforceRerunTriggersに依存せず、Gitの差分から全テストが必要な変更を判定する。
+  while IFS= read -r changed_file; do
+    case "$changed_file" in
+      package.json|*/package.json|package-lock.json|*/package-lock.json|tsconfig*.json|*/tsconfig*.json|vitest.config.*|*/vitest.config.*|vite.config.*|*/vite.config.*|wrangler.jsonc|*/wrangler.jsonc|migrations/*|*/migrations/*)
+        broad_change=1
+        break
+        ;;
+    esac
+  done <<EOF
+$(git diff --name-only origin/develop...HEAD)
+EOF
+
+  if [ "$broad_change" -eq 1 ]; then
+    echo "影響範囲が広い変更を検出したため、全テストを実行します。"
+    npm test
+  else
+    # 関連テストは現在チェックアウト中のHEADを基準に選択する。
+    # 別ref指定や複数refのpushでは、実際のpush対象と完全一致しない場合がある。
+    # 最終的な品質保証はCIの全テストで行う。
+    npm exec -- vitest run --changed origin/develop
+  fi
+else
+  echo "origin/develop が見つからないため、全テストを実行します。"
+  npm test
+fi

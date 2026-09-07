@@ -21,7 +21,6 @@ import {
 import type { IStudentService } from './IStudentService';
 import type { IClassRoomService } from './IClassRoomService';
 import type { ITeacherService } from './ITeacherService';
-import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { StudentImportRow } from '../dto/StudentDTO';
 import type { ClassRoomImportRow } from '../dto/ClassRoomDTO';
 import type { TeacherImportRow } from '../dto/TeacherDTO';
@@ -118,8 +117,7 @@ export function createMasterImportService(
   commitLock: DurableObjectNamespace<MasterImportCommitLock>,
   studentService: IStudentService,
   classRoomService: IClassRoomService,
-  teacherService: ITeacherService,
-  userRepository: IUserRepository
+  teacherService: ITeacherService
 ): IMasterImportService {
   async function validateByType(type: MasterImportType, rows: unknown[]) {
     if (type === 'students') {
@@ -154,10 +152,6 @@ export function createMasterImportService(
   }
 
   return {
-    async canManageImports(userId: number): Promise<boolean> {
-      return userRepository.isStaff(userId);
-    },
-
     async createImport(
       input: CreateMasterImportInput
     ): Promise<MasterImportSessionDTO> {

@@ -7,7 +7,6 @@ import {
   type AccessTokenClaims,
 } from '../../../infrastructure/auth/jwt';
 import {
-  errorResponse,
   getClientType,
   getNumberEnv,
   getBearerToken,
@@ -16,49 +15,96 @@ import {
   getStudentInfoOrNull,
   getUserCategories,
 } from '../helpers';
+import { rejectInactiveUser } from '../rejectInactiveUser';
 import {
   type MobileRefreshEntry,
+  type DeletionConfirmationEntry,
   ACCOUNT_PHOTO_PATH,
 } from '../../../domain/auth/types';
 import { GRAPH_ME_PHOTO_URL } from '../../../infrastructure/auth/microsoftClient';
+import { createUserRepository } from '../../../infrastructure/repositories/UserRepository';
+import { AuthErrors } from '../../errors/authErrors';
+import { CommonErrors } from '../../errors/commonErrors';
+import {
+  errorResponse,
+  type ApiErrorDefinition,
+} from '../../errors/errorResponse';
+import type { AppContext } from '../helpers';
 
 const account = new Hono<{
   Bindings: Bindings;
   Variables: ContainerVariables;
 }>();
 
-// GET /auth/me
-account.get('/me', async c => {
-  const { studentService } = c.get('container');
-  const clientType = getClientType(c);
-  if (clientType !== 'web' && clientType !== 'mobile') {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_CLIENT_TYPE',
-      'クライアント種別が不正です。'
-    );
-  }
+type ActiveAuthResult =
+  | { ok: true; claims: AccessTokenClaims }
+  | { ok: false; response: Response };
 
+// Bearer Tokenの署名検証に加え、DB上のdeletion_statusを確認する。
+// JWTは自己完結検証のため、削除開始(deletion_status !== 'active')後も
+// exp到達までは署名だけなら有効であり続けてしまう(#265 PR3)。/me・
+// /me/photo・/logoutはbearerAuthenticationMiddleware(apiV1.use('*', ...))
+// を経由してはいるが、その結果(verifiedAuthUser)を使わずここで
+// verifyAccessTokenを再実行しているため、ミドルウェア側のdeletion_status
+// チェックの効果を受けない。ここで改めて確認することで、削除済み/削除中
+// ユーザーのAccess Tokenでは/meが情報を返さないようにする。
+async function authenticateActiveUser(
+  c: AppContext,
+  clientType: 'web' | 'mobile',
+  invalidTokenError: ApiErrorDefinition = CommonErrors.UNAUTHORIZED,
+  sessionExpiredError: ApiErrorDefinition = invalidTokenError
+): Promise<ActiveAuthResult> {
   const token = getBearerToken(c);
   if (!token) {
-    return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
+    return { ok: false, response: errorResponse(c, CommonErrors.UNAUTHORIZED) };
   }
 
   let claims: AccessTokenClaims;
   try {
     claims = await verifyAccessToken(token, c.env.JWT_SECRET, clientType);
   } catch (error) {
-    const code =
-      error instanceof Error && error.message === 'SESSION_EXPIRED'
-        ? 'SESSION_EXPIRED'
-        : 'INVALID_TOKEN';
-    const message =
-      code === 'SESSION_EXPIRED'
-        ? 'セッションの有効期限が切れました。'
-        : 'トークンが不正です。';
-    return errorResponse(c, 401, code, message);
+    const isSessionExpired =
+      error instanceof Error && error.message === 'SESSION_EXPIRED';
+    return {
+      ok: false,
+      response: errorResponse(
+        c,
+        isSessionExpired ? sessionExpiredError : invalidTokenError
+      ),
+    };
   }
+
+  const userRepository = createUserRepository(c.env.DB);
+  const deletionStatus = await userRepository.getDeletionStatus(claims.sub);
+  if (deletionStatus && deletionStatus !== 'active') {
+    return {
+      ok: false,
+      response: errorResponse(c, AuthErrors.ACCOUNT_DELETION_PENDING),
+    };
+  }
+
+  return { ok: true, claims };
+}
+
+// GET /auth/me
+account.get('/me', async c => {
+  const { studentService } = c.get('container');
+  const clientType = getClientType(c);
+  if (clientType !== 'web' && clientType !== 'mobile') {
+    return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
+  }
+
+  const auth = await authenticateActiveUser(
+    c,
+    clientType,
+    AuthErrors.INVALID_TOKEN,
+    AuthErrors.SESSION_EXPIRED
+  );
+  if (!auth.ok) return auth.response;
+  const { claims } = auth;
+
+  const rejected = await rejectInactiveUser(c, claims.sub);
+  if (rejected) return rejected;
 
   const student = await getStudentInfoOrNull(
     studentService,
@@ -86,25 +132,15 @@ account.get('/me', async c => {
 account.get('/me/photo', async c => {
   const clientType = getClientType(c);
   if (clientType !== 'web' && clientType !== 'mobile') {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_CLIENT_TYPE',
-      '不正なクライアント種別です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
   }
 
-  const token = getBearerToken(c);
-  if (!token) {
-    return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
-  }
+  const auth = await authenticateActiveUser(c, clientType);
+  if (!auth.ok) return auth.response;
+  const { claims } = auth;
 
-  let claims: AccessTokenClaims;
-  try {
-    claims = await verifyAccessToken(token, c.env.JWT_SECRET, clientType);
-  } catch {
-    return errorResponse(c, 401, 'UNAUTHORIZED', '認証が不正です。');
-  }
+  const rejected = await rejectInactiveUser(c, claims.sub);
+  if (rejected) return rejected;
 
   // mobile_refresh KV は mobile/web 共通で使う。Microsoft の refresh_token を
   // sub 単位で保持している(POST /auth/microsoft/token 参照)。
@@ -112,24 +148,14 @@ account.get('/me/photo', async c => {
     `mobile_refresh_by_user:${claims.sub}`
   );
   if (!refreshTokenId) {
-    return errorResponse(
-      c,
-      401,
-      'SESSION_EXPIRED',
-      'セッションが見つかりません。'
-    );
+    return errorResponse(c, AuthErrors.SESSION_EXPIRED);
   }
 
   const refreshRaw = await c.env.AUTH_KV.get(
     `mobile_refresh:${refreshTokenId}`
   );
   if (!refreshRaw) {
-    return errorResponse(
-      c,
-      401,
-      'SESSION_EXPIRED',
-      'セッションの有効期限が切れました。'
-    );
+    return errorResponse(c, AuthErrors.SESSION_EXPIRED);
   }
 
   const refresh = JSON.parse(refreshRaw) as MobileRefreshEntry;
@@ -143,12 +169,7 @@ account.get('/me/photo', async c => {
   );
 
   if (!tokens?.access_token) {
-    return errorResponse(
-      c,
-      401,
-      'GRAPH_TOKEN_EXCHANGE_FAILED',
-      'Microsoft Graph のアクセストークン取得に失敗しました。'
-    );
+    return errorResponse(c, AuthErrors.GRAPH_TOKEN_EXCHANGE_FAILED);
   }
 
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
@@ -168,21 +189,11 @@ account.get('/me/photo', async c => {
   });
 
   if (photoRes.status === 404) {
-    return errorResponse(
-      c,
-      404,
-      'PHOTO_NOT_FOUND',
-      'Microsoft アカウントに写真が登録されていません。'
-    );
+    return errorResponse(c, AuthErrors.PHOTO_NOT_FOUND);
   }
 
   if (!photoRes.ok) {
-    return errorResponse(
-      c,
-      401,
-      'PHOTO_FETCH_FAILED',
-      'Microsoft Graph から写真を取得できませんでした。'
-    );
+    return errorResponse(c, AuthErrors.PHOTO_FETCH_FAILED);
   }
 
   const avatarUpdatedAt = refresh.avatar_updated_at ?? new Date().toISOString();
@@ -213,25 +224,12 @@ account.get('/me/photo', async c => {
 account.post('/logout', async c => {
   const clientType = getClientType(c);
   if (clientType !== 'web' && clientType !== 'mobile') {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_CLIENT_TYPE',
-      'クライアント種別が不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
   }
 
-  const token = getBearerToken(c);
-  if (!token) {
-    return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
-  }
-
-  let claims: AccessTokenClaims;
-  try {
-    claims = await verifyAccessToken(token, c.env.JWT_SECRET, clientType);
-  } catch {
-    return errorResponse(c, 401, 'UNAUTHORIZED', '認証が必要です。');
-  }
+  const auth = await authenticateActiveUser(c, clientType);
+  if (!auth.ok) return auth.response;
+  const { claims } = auth;
 
   const body = (await c.req.json().catch(() => null)) as {
     refresh_token_id?: unknown;
@@ -266,12 +264,7 @@ account.post('/logout', async c => {
 account.post('/refresh', async c => {
   const clientType = getClientType(c);
   if (clientType !== 'web' && clientType !== 'mobile') {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_CLIENT_TYPE',
-      'クライアント種別が不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
   }
 
   const body = (await c.req.json().catch(() => null)) as {
@@ -282,23 +275,13 @@ account.post('/refresh', async c => {
     typeof body.refresh_token_id !== 'string' ||
     body.refresh_token_id.length === 0
   ) {
-    return errorResponse(
-      c,
-      400,
-      'INVALID_REQUEST',
-      'refresh_token_id が必要です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
   }
 
   const refreshKey = `mobile_refresh:${body.refresh_token_id}`;
   const refreshRaw = await c.env.AUTH_KV.get(refreshKey);
   if (!refreshRaw) {
-    return errorResponse(
-      c,
-      401,
-      'SESSION_EXPIRED',
-      'セッションの有効期限が切れました。'
-    );
+    return errorResponse(c, AuthErrors.SESSION_EXPIRED);
   }
 
   const refresh = JSON.parse(refreshRaw) as MobileRefreshEntry;
@@ -306,13 +289,27 @@ account.post('/refresh', async c => {
     // refresh_token_id は発行時のクライアント種別に紐づく。異なる
     // X-Client-Type で再発行しようとした場合は拒否し、なりすましで
     // 別種別のアクセストークンを取得できないようにする。
-    return errorResponse(
-      c,
-      400,
-      'INVALID_REFRESH_CLIENT_TYPE',
-      'refresh_token_id のクライアント種別が不正です。'
-    );
+    return errorResponse(c, AuthErrors.INVALID_REFRESH_CLIENT_TYPE);
   }
+
+  // アカウント削除開始後は、有効なrefresh_token_idを持っていても
+  // 新しいAccess Tokenを発行しない。
+  const userRepository = createUserRepository(c.env.DB);
+  const deletionStatus = await userRepository.getDeletionStatus(
+    refresh.user_id
+  );
+  if (deletionStatus && deletionStatus !== 'active') {
+    return errorResponse(c, AuthErrors.ACCOUNT_DELETION_PENDING);
+  }
+
+  // 無効化されたユーザーの再発行を断る(#255)。deletion_status(本人による削除)
+  // とis_live_active(管理者による無効化)は独立した軸のため、両方を確認する。
+  // 塞がないとmobile_refreshのTTLが再発行のたびに振り直され、無効化後も
+  // 延び続けてしまう。
+  // エントリは削除しない: 一時的な無効化なので、再度有効化されたときに
+  // 元のTTLが切れるまでは同じセッションを再開できるようにする。
+  const rejected = await rejectInactiveUser(c, refresh.user_id);
+  if (rejected) return rejected;
 
   const tokens = await refreshMicrosoftAccessToken(
     c,
@@ -322,12 +319,7 @@ account.post('/refresh', async c => {
     }
   );
   if (!tokens?.refresh_token) {
-    return errorResponse(
-      c,
-      401,
-      'REFRESH_TOKEN_EXPIRED',
-      '再ログインが必要です。'
-    );
+    return errorResponse(c, AuthErrors.REFRESH_TOKEN_EXPIRED);
   }
 
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
@@ -371,6 +363,95 @@ account.post('/refresh', async c => {
     token_type: 'Bearer',
     expires_in: jwtTtl,
   });
+});
+
+// DELETE /auth/me
+// アカウント削除を開始する(#265 PR5)。本人確認は通常のBearer Tokenでは
+// なく、削除確認専用フロー(PR2, POST /auth/microsoft/delete-token)が
+// 発行したdeletion_confirmation_tokenのみで行う。このTokenは一回限り・
+// 短期間(10分)で、消費(KVから読み取り→削除)した時点で無効になる。
+//
+// リクエスト: { "deletion_confirmation_token": string }
+// レスポンス: 202 Accepted, ボディなし(#265 PR1で確定した契約)。
+//   非同期の完了通知は無く、本エンドポイントが202を返した時点で
+//   Access Token・Refresh Session・Push通知は即座に機能しなくなる
+//   (#265 PR3)。関連データの削除・匿名化(#265 PR4)も本エンドポイント
+//   内で完了してから202を返す。
+// エラー:
+//   400 INVALID_REQUEST                       deletion_confirmation_tokenが無い/不正な形式
+//   401 DELETION_CONFIRMATION_TOKEN_INVALID    Tokenが存在しない/期限切れ/使用済み
+//   409 ACCOUNT_DELETION_NOT_STARTED           deleteRelatedData呼び出し前提が崩れている(通常到達しない)
+//   409 ACCOUNT_ALREADY_PURGED                 後片付けが既に完了済み(同一利用者への並行実行等)
+//
+// 注意: このエンドポイントを含む /auth 配下は現状OpenAPI(openapi.json)
+// 未対応(素のHonoハンドラーのため)。この仕様コメントが実質的な契約定義。
+//
+// 処理順序(重要): authService.startAccountDeletion(deletion_statusを
+// 'deleted'にし、Access Token・Refresh Session・Firebase Tokenを無効化
+// する)を必ず先に呼び、その後でaccountDeletionService.deleteRelatedData
+// (関連データの削除・匿名化)を呼ぶ。deleteRelatedData自身もこの順序を
+// 自己確認して強制している(#265 PR4)。
+account.delete('/me', async c => {
+  const { authService, accountDeletionService } = c.get('container');
+
+  const body = (await c.req.json().catch(() => null)) as {
+    deletion_confirmation_token?: unknown;
+  } | null;
+  if (
+    !body ||
+    typeof body.deletion_confirmation_token !== 'string' ||
+    body.deletion_confirmation_token.length === 0
+  ) {
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
+  }
+
+  const key = `deletion_confirmation:${body.deletion_confirmation_token}`;
+  const raw = await c.env.AUTH_KV.get(key);
+  // rawが空文字の場合は、後述のput('')による消費済みマーカー。
+  // 未発行(null)と区別せず同じエラーを返す(呼び出し元からは両者を
+  // 区別する必要が無い)。
+  if (!raw) {
+    return errorResponse(c, AuthErrors.DELETION_CONFIRMATION_TOKEN_INVALID);
+  }
+
+  const { user_id: userId } = JSON.parse(raw) as DeletionConfirmationEntry;
+
+  // get→deleteの2ステップではなく、消費済みマーカー(空文字)へのput
+  // 1回で置き換える。同じTokenでほぼ同時に2回呼ばれた場合、
+  // get→deleteの間にもう一方のリクエストが削除前のTokenを読み取れて
+  // しまい、リプレイ拒否をすり抜けてstartAccountDeletion・
+  // deleteRelatedDataが2回とも走る経路が残っていたため
+  // (どちらも冪等な実装のため実害は無いが、削除完了ログの二重記録に
+  // つながり得る)。KVはread-modify-writeのアトミック性を保証しないため
+  // 根本解決ではないが、putへの一本化で競合窓を狭める。60秒だけ
+  // マーカーを残し、その後はTTLで自然に消える(deletion_confirmation:
+  // キー自体のTTLは10分のため、10分以内の再送は空文字判定で弾ける)。
+  await c.env.AUTH_KV.put(key, '', { expirationTtl: 60 });
+
+  await authService.startAccountDeletion(userId);
+
+  try {
+    await accountDeletionService.deleteRelatedData(userId);
+  } catch (error) {
+    // AccountDeletionService.deleteRelatedDataは、呼び出し順序の前提が
+    // 崩れた場合や後片付けが既に完了済みの場合にError('コード名')を
+    // throwする(#265 PR4)。ここでerr.messageをAuthErrorsのcodeと突き合わせ
+    // APIエラーへ変換する(microsoft.tsのACCOUNT_DELETION_PENDINGと同じ
+    // パターン)。想定外のエラー(DB接続断など)はそのまま再送出し、
+    // 呼び出し元(Honoのデフォルトエラーハンドリング)に委ねる。
+    if (
+      error instanceof Error &&
+      error.message === 'ACCOUNT_DELETION_NOT_STARTED'
+    ) {
+      return errorResponse(c, AuthErrors.ACCOUNT_DELETION_NOT_STARTED);
+    }
+    if (error instanceof Error && error.message === 'ACCOUNT_ALREADY_PURGED') {
+      return errorResponse(c, AuthErrors.ACCOUNT_ALREADY_PURGED);
+    }
+    throw error;
+  }
+
+  return c.body(null, 202);
 });
 
 export { account };

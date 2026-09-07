@@ -7,6 +7,9 @@ import { isEventDate, isValidEventDate } from '../../lib/eventDate';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import type { AuthVariables } from '../middleware/requireAuth';
+import { CommonErrors } from '../errors/commonErrors';
+import { errorResponse } from '../errors/errorResponse';
+import { NotificationErrors } from '../errors/notificationErrors';
 
 const audienceSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('all') }).strict(),
@@ -47,36 +50,22 @@ export function createAdminNotificationController(
 ) {
   const createManualNotification = async (c: AdminNotificationContext) => {
     const userId = c.get('authenticatedUserId');
-    if (userId === null) {
-      return c.json({ error: 'Authentication required' }, 401);
-    }
-    if (!(await adminNotificationService.canCreateManualNotification(userId))) {
-      return c.json({ error: 'Manual notification creation forbidden' }, 403);
-    }
-
+    if (userId === null) return errorResponse(c, CommonErrors.UNAUTHORIZED);
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createManualNotificationSchema.safeParse(body);
     if (!parsedBody.success) {
-      return c.json(
-        {
-          error: 'Invalid manual notification request body',
-          details: parsedBody.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        NotificationErrors.INVALID_MANUAL_NOTIFICATION_REQUEST,
+        parsedBody.error.flatten()
       );
     }
     const eventDate = c.env.EVENT_DATE;
     if (!isValidEventDate(eventDate)) {
-      return c.json({ error: 'EVENT_DATE is not configured correctly' }, 500);
+      return errorResponse(c, CommonErrors.EVENT_DATE_INVALID);
     }
     if (!isEventDate(eventDate, new Date(parsedBody.data.scheduledAt))) {
-      return c.json(
-        {
-          error: 'scheduledAt must be on EVENT_DATE',
-          code: 'INVALID_NOTIFICATION_DATE',
-        },
-        400
-      );
+      return errorResponse(c, NotificationErrors.INVALID_NOTIFICATION_DATE);
     }
 
     try {
@@ -95,20 +84,23 @@ export function createAdminNotificationController(
         error instanceof Error &&
         error.message === 'Notification audience not found'
       ) {
-        return c.json({ error: error.message }, 404);
+        return errorResponse(
+          c,
+          NotificationErrors.NOTIFICATION_AUDIENCE_NOT_FOUND
+        );
       }
       if (
         error instanceof Error &&
         error.message === 'Notification audience has no active Firebase tokens'
       ) {
-        return c.json({ error: error.message }, 409);
+        return errorResponse(
+          c,
+          NotificationErrors.NOTIFICATION_AUDIENCE_HAS_NO_TOKENS
+        );
       }
-      return c.json(
-        {
-          error: 'Failed to create manual notification',
-          details: error instanceof Error ? error.message : String(error),
-        },
-        500
+      return errorResponse(
+        c,
+        NotificationErrors.MANUAL_NOTIFICATION_CREATE_FAILED
       );
     }
   };
@@ -125,10 +117,7 @@ function toAudience(
     case 'class_room':
       return { type: audience.type, class_room_id: audience.classRoomId };
     case 'gathering':
-      return {
-        type: audience.type,
-        gathering_id: audience.gatheringId,
-      };
+      return { type: audience.type, gathering_id: audience.gatheringId };
     case 'event_participants':
       return { type: audience.type, event_id: audience.eventId };
   }

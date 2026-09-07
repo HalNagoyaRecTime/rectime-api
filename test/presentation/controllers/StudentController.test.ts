@@ -59,7 +59,12 @@ describe('StudentController', () => {
       const res = await app.request('/students/abc');
 
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: 'Invalid student ID' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'INVALID_STUDENT_ID',
+          message: '学生IDが正しくありません',
+        },
+      });
     });
 
     it('サービスが Student not found を投げた場合は 404 を返す', async () => {
@@ -71,7 +76,9 @@ describe('StudentController', () => {
       const res = await app.request('/students/999');
 
       expect(res.status).toBe(404);
-      expect(await res.json()).toEqual({ error: 'Student not found' });
+      expect(await res.json()).toEqual({
+        error: { code: 'STUDENT_NOT_FOUND', message: '学生が見つかりません' },
+      });
     });
 
     it('その他の例外の場合は 500 を返す', async () => {
@@ -83,7 +90,12 @@ describe('StudentController', () => {
       const res = await app.request('/students/1');
 
       expect(res.status).toBe(500);
-      expect(await res.json()).toEqual({ error: 'Failed to fetch student' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'STUDENT_FETCH_FAILED',
+          message: '学生の取得に失敗しました',
+        },
+      });
     });
   });
 
@@ -122,7 +134,12 @@ describe('StudentController', () => {
       const res = await app.request('/students');
 
       expect(res.status).toBe(500);
-      expect(await res.json()).toEqual({ error: 'Failed to fetch students' });
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'STUDENT_LIST_FAILED',
+          message: '学生一覧の取得に失敗しました',
+        },
+      });
       expect(consoleErrorSpy).not.toHaveBeenCalled();
       consoleErrorSpy.mockRestore();
     });
@@ -133,9 +150,9 @@ describe('StudentController', () => {
       const res = await app.request('/students?limit=0');
 
       expect(res.status).toBe(400);
-      expect(((await res.json()) as { error: string }).error).toBe(
-        'Invalid student list query'
-      );
+      expect(
+        ((await res.json()) as { error: { message: string } }).error.message
+      ).toBe('学生一覧の検索条件が正しくありません');
     });
   });
 
@@ -177,7 +194,31 @@ describe('StudentController', () => {
 
       expect(res.status).toBe(409);
       expect(await res.json()).toEqual({
-        error: 'Student number already exists',
+        error: {
+          code: 'STUDENT_NUMBER_ALREADY_EXISTS',
+          message: '同じ学籍番号の学生が既に存在します',
+        },
+      });
+    });
+
+    it('存在しないクラスは 404 を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.createStudent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Class room not found'));
+
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'CLASS_ROOM_NOT_FOUND',
+          message: '指定されたクラスが見つかりません',
+        },
       });
     });
 
@@ -205,7 +246,10 @@ describe('StudentController', () => {
 
       expect(res.status).toBe(409);
       expect(await res.json()).toEqual({
-        error: 'Student number already exists',
+        error: {
+          code: 'STUDENT_NUMBER_ALREADY_EXISTS',
+          message: '同じ学籍番号の学生が既に存在します',
+        },
       });
     });
 
@@ -225,7 +269,10 @@ describe('StudentController', () => {
 
       expect(res.status).toBe(500);
       expect(await res.json()).toEqual({
-        error: 'Failed to create student',
+        error: {
+          code: 'STUDENT_CREATE_FAILED',
+          message: '学生の登録に失敗しました',
+        },
       });
     });
   });
@@ -270,7 +317,31 @@ describe('StudentController', () => {
 
       expect(res.status).toBe(409);
       expect(await res.json()).toEqual({
-        error: 'Student number already exists',
+        error: {
+          code: 'STUDENT_NUMBER_ALREADY_EXISTS',
+          message: '同じ学籍番号の学生が既に存在します',
+        },
+      });
+    });
+
+    it('存在しないクラスは 404 を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.updateStudent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Class room not found'));
+
+      const res = await app.request('/students/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'CLASS_ROOM_NOT_FOUND',
+          message: '指定されたクラスが見つかりません',
+        },
       });
     });
   });

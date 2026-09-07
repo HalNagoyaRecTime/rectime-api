@@ -33,10 +33,9 @@ function buildSession(
   };
 }
 
-function setup(options: { authenticated?: boolean; canManage?: boolean } = {}) {
-  const { authenticated = true, canManage = true } = options;
+function setup(options: { authenticated?: boolean } = {}) {
+  const { authenticated = true } = options;
   const masterImportService: IMasterImportService = {
-    canManageImports: vi.fn().mockResolvedValue(canManage),
     createImport: vi.fn(),
     getImport: vi.fn(),
     commitImport: vi.fn(),
@@ -140,8 +139,10 @@ describe('MasterImportController', () => {
 
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({
-        error: 'Failed to parse import file',
-        details: 'bad file',
+        error: {
+          code: 'IMPORT_FILE_INVALID',
+          message: '取込ファイルを読み取れませんでした',
+        },
       });
     });
   });
@@ -175,8 +176,10 @@ describe('MasterImportController', () => {
 
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({
-        error: 'Import not found',
-        error_code: 'IMPORT_NOT_FOUND',
+        error: {
+          code: 'IMPORT_NOT_FOUND',
+          message: '取込データが見つかりません',
+        },
       });
     });
 
@@ -193,8 +196,10 @@ describe('MasterImportController', () => {
 
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({
-        error: 'Import not found',
-        error_code: 'IMPORT_EXPIRED',
+        error: {
+          code: 'IMPORT_EXPIRED',
+          message: '取込データの有効期限が切れています',
+        },
       });
       expect(masterImportService.isExpiredImport).toHaveBeenCalledWith(
         'expired-1',
@@ -275,8 +280,10 @@ describe('MasterImportController', () => {
 
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({
-        error: 'Import not found',
-        error_code: 'IMPORT_NOT_FOUND',
+        error: {
+          code: 'IMPORT_NOT_FOUND',
+          message: '取込データが見つかりません',
+        },
       });
     });
 
@@ -299,8 +306,10 @@ describe('MasterImportController', () => {
       );
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({
-        error: 'Import not found',
-        error_code: 'IMPORT_EXPIRED',
+        error: {
+          code: 'IMPORT_EXPIRED',
+          message: '取込データの有効期限が切れています',
+        },
       });
     });
 
@@ -317,8 +326,10 @@ describe('MasterImportController', () => {
       expect(res.status).toBe(503);
       expect(res.headers.get('Retry-After')).toBe('3');
       expect(await res.json()).toEqual({
-        error: 'Commit is still in progress, please retry',
-        error_code: 'COMMIT_IN_PROGRESS',
+        error: {
+          code: 'COMMIT_IN_PROGRESS',
+          message: '確定処理を実行中です。しばらく待ってから再試行してください',
+        },
       });
     });
   });
@@ -343,40 +354,12 @@ describe('MasterImportController', () => {
       expect(masterImportService.createImport).not.toHaveBeenCalled();
     });
 
-    it('管理者権限がない場合はcreateImportで403を返す', async () => {
-      const { app, masterImportService } = setup({ canManage: false });
-
-      const formData = new FormData();
-      formData.append('type', 'students');
-      formData.append(
-        'file',
-        new File(['a,b\n1,2\n'], 'students.csv', { type: 'text/csv' })
-      );
-
-      const res = await app.request('/master-imports', {
-        method: 'POST',
-        body: formData,
-      });
-
-      expect(res.status).toBe(403);
-      expect(masterImportService.createImport).not.toHaveBeenCalled();
-    });
-
     it('未認証の場合はgetImportで401を返す', async () => {
       const { app, masterImportService } = setup({ authenticated: false });
 
       const res = await app.request('/master-imports/abc-123');
 
       expect(res.status).toBe(401);
-      expect(masterImportService.getImport).not.toHaveBeenCalled();
-    });
-
-    it('管理者権限がない場合はgetImportで403を返す', async () => {
-      const { app, masterImportService } = setup({ canManage: false });
-
-      const res = await app.request('/master-imports/abc-123');
-
-      expect(res.status).toBe(403);
       expect(masterImportService.getImport).not.toHaveBeenCalled();
     });
 
@@ -388,17 +371,6 @@ describe('MasterImportController', () => {
       });
 
       expect(res.status).toBe(401);
-      expect(masterImportService.commitImport).not.toHaveBeenCalled();
-    });
-
-    it('管理者権限がない場合はcommitImportで403を返す', async () => {
-      const { app, masterImportService } = setup({ canManage: false });
-
-      const res = await app.request('/master-imports/abc-123/commit', {
-        method: 'POST',
-      });
-
-      expect(res.status).toBe(403);
       expect(masterImportService.commitImport).not.toHaveBeenCalled();
     });
   });

@@ -14,7 +14,6 @@ export interface UpdateAdminNotificationCommand {
 }
 
 export interface IAdminNotificationManagementService {
-  canManageAdminNotifications(userId: number): Promise<boolean>;
   getAdminNotifications(
     options: AdminNotificationListOptions
   ): Promise<AdminNotificationListResult>;

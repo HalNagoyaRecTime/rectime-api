@@ -148,7 +148,12 @@ describe('NotificationController', () => {
     const response = await app.request('/notifications/999');
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({ error: 'Notification not found' });
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'NOTIFICATION_NOT_FOUND',
+        message: '通知が見つかりません',
+      },
+    });
   });
 
   it('通知内容を部分更新する', async () => {
@@ -221,11 +226,17 @@ describe('NotificationController', () => {
 
       expect(res.status).toBe(400);
       const responseBody = (await res.json()) as {
-        error: string;
-        details: unknown;
+        error: { code: string; message: string; details: unknown };
       };
-      expect(responseBody.error).toBe('Invalid notification request body');
-      expect(responseBody.details).toBeDefined();
+      expect(responseBody.error.message).toBe(
+        '通知の入力内容が正しくありません'
+      );
+      expect(responseBody.error.details).toEqual({
+        fieldErrors: {
+          title: ['String must contain at least 1 character(s)'],
+        },
+        formErrors: [],
+      });
       expect(fcmService.sendTestNotification).not.toHaveBeenCalled();
     });
 
@@ -251,12 +262,16 @@ describe('NotificationController', () => {
       });
 
       expect(res.status).toBe(400);
-      const responseBody = (await res.json()) as { error: string };
-      expect(responseBody.error).toBe('Invalid notification request body');
+      const responseBody = (await res.json()) as {
+        error: { message: string };
+      };
+      expect(responseBody.error.message).toBe(
+        '通知の入力内容が正しくありません'
+      );
       expect(fcmService.sendTestNotification).not.toHaveBeenCalled();
     });
 
-    it('サービスが例外を投げた場合は 500 と details を返す', async () => {
+    it('サービスが例外を投げた場合は内部詳細を含めず500を返す', async () => {
       const { app, fcmService } = setup();
       (
         fcmService.sendTestNotification as ReturnType<typeof vi.fn>
@@ -270,8 +285,10 @@ describe('NotificationController', () => {
 
       expect(res.status).toBe(500);
       expect(await res.json()).toEqual({
-        error: 'Failed to send test notification',
-        details: 'fcm error',
+        error: {
+          code: 'TEST_NOTIFICATION_SEND_FAILED',
+          message: 'テスト通知の送信に失敗しました',
+        },
       });
     });
   });

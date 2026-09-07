@@ -52,5 +52,6 @@ export type DeleteDraftNotificationScheduleResult =
 
 export interface DueNotificationSchedule extends NotificationScheduleEntity {
   fcm_token: string;
+  platform: 1 | 2;
   is_firebase_active: number;
 }

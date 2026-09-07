@@ -82,5 +82,12 @@ export function createGatheringGroupMemberRepository(
         .get();
       return Boolean(row);
     },
+
+    async deleteByUserId(userId: number): Promise<void> {
+      await orm
+        .delete(gathering_group_members)
+        .where(eq(gathering_group_members.userId, userId))
+        .run();
+    },
   };
 }

@@ -176,6 +176,7 @@ export const eventCreateRoute = createRoute({
     201: jsonResponse(eventResponseSchema, '作成したイベント'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -239,6 +240,7 @@ export const eventDeleteRoute = createRoute({
     204: noContentResponse,
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     409: conflictResponse,
     500: internalServerErrorResponse,

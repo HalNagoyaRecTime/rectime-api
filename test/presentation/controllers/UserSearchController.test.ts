@@ -21,7 +21,6 @@ const result = {
 
 function setup() {
   const service: IUserSearchService = {
-    canSearchUsers: vi.fn().mockResolvedValue(true),
     searchUsers: vi.fn().mockImplementation(query =>
       Promise.resolve({
         ...result,
@@ -119,18 +118,6 @@ describe('UserSearchController', () => {
     expect(service.searchUsers).not.toHaveBeenCalled();
   });
 
-  it('検索権限がなければ403を返す', async () => {
-    const { service, request } = setup();
-    (service.canSearchUsers as ReturnType<typeof vi.fn>).mockResolvedValue(
-      false
-    );
-
-    const response = await request('/admin/users');
-
-    expect(response.status).toBe(403);
-    expect(service.searchUsers).not.toHaveBeenCalled();
-  });
-
   it('Repositoryエラーは500を返す', async () => {
     const { service, request } = setup();
     (service.searchUsers as ReturnType<typeof vi.fn>).mockRejectedValue(
@@ -141,8 +128,10 @@ describe('UserSearchController', () => {
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({
-      error: 'Failed to search users',
-      details: 'database failed',
+      error: {
+        code: 'USER_SEARCH_FAILED',
+        message: 'ユーザーの検索に失敗しました',
+      },
     });
   });
 });

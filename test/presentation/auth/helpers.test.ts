@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import {
-  errorResponse,
   getBearerToken,
   getClientType,
   getNumberEnv,
@@ -10,6 +9,8 @@ import {
   userResponse,
   type AppContext,
 } from '../../../src/presentation/auth/helpers';
+import { errorResponse } from '../../../src/presentation/errors/errorResponse';
+import { CommonErrors } from '../../../src/presentation/errors/commonErrors';
 import { toBase64URL } from '../../../src/infrastructure/auth/base64url';
 import { ACCOUNT_PHOTO_PATH } from '../../../src/domain/auth/types';
 
@@ -24,16 +25,38 @@ function buildApp(
 
 describe('presentation/auth/helpers', () => {
   describe('errorResponse', () => {
-    it('指定した status と { error: { code, message } } の body を返す', async () => {
-      const { app, env } = buildApp(c =>
-        errorResponse(c, 400, 'BAD_REQUEST', 'invalid input')
-      );
+    it('定義した status と { error: { code, message } } の body を返す', async () => {
+      const badRequest = {
+        status: 400,
+        code: 'BAD_REQUEST',
+        message: 'invalid input',
+      } as const;
+      const { app, env } = buildApp(c => errorResponse(c, badRequest));
 
       const res = await app.request('/', {}, env);
 
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({
         error: { code: 'BAD_REQUEST', message: 'invalid input' },
+      });
+    });
+
+    it('details を指定した場合は共通形式の error 内に含める', async () => {
+      const { app, env } = buildApp(c =>
+        errorResponse(c, CommonErrors.STAFF_REQUIRED, {
+          requiredRole: 'staff',
+        })
+      );
+
+      const res = await app.request('/', {}, env);
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'STAFF_REQUIRED',
+          message: 'この操作にはスタッフ権限が必要です',
+          details: { requiredRole: 'staff' },
+        },
       });
     });
   });

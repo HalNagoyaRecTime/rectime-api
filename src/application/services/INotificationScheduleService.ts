@@ -6,7 +6,6 @@ import type {
 } from '../../domain/entities/NotificationSchedule';
 
 export interface INotificationScheduleService {
-  canManageNotificationSchedules: (userId: number) => Promise<boolean>;
   getAllNotificationSchedules: (
     options: NotificationScheduleListOptions
   ) => Promise<NotificationScheduleListResult>;

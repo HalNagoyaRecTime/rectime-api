@@ -5,18 +5,12 @@ import type {
   NotificationScheduleListResult,
 } from '../../domain/entities/NotificationSchedule';
 import type { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
-import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { INotificationScheduleService } from './INotificationScheduleService';
 
 export function createNotificationScheduleService(
-  notificationScheduleRepository: INotificationScheduleRepository,
-  userRepository: IUserRepository
+  notificationScheduleRepository: INotificationScheduleRepository
 ): INotificationScheduleService {
   return {
-    canManageNotificationSchedules(userId: number): Promise<boolean> {
-      return userRepository.isStaffOrTeacher(userId);
-    },
-
     getAllNotificationSchedules(
       options: NotificationScheduleListOptions
     ): Promise<NotificationScheduleListResult> {

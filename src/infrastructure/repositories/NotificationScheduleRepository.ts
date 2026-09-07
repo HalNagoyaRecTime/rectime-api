@@ -259,6 +259,7 @@ export function createNotificationScheduleRepository(
         .select({
           ...selection,
           fcm_token: firebase_tokens.fcmToken,
+          platform: firebase_tokens.platform,
           is_firebase_active: firebase_tokens.isFirebaseActive,
         })
         .from(notification_schedules)
@@ -321,6 +322,21 @@ export function createNotificationScheduleRepository(
             eq(notification_schedules.sendStatus, 'sending')
           )
         )
+        .run();
+    },
+
+    async anonymizeCreatedUserId(userId) {
+      await orm
+        .update(notification_schedules)
+        .set({ createdUserId: null, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .where(eq(notification_schedules.createdUserId, userId))
+        .run();
+    },
+
+    async deleteByFirebaseTokenId(firebaseTokenId) {
+      await orm
+        .delete(notification_schedules)
+        .where(eq(notification_schedules.firebaseTokenId, firebaseTokenId))
         .run();
     },
   };

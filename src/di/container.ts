@@ -54,10 +54,13 @@ import { createGatheringController } from '../presentation/controllers/Gathering
 import { createScheduleController } from '../presentation/controllers/ScheduleController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createUserStatusRepository } from '../infrastructure/repositories/UserStatusRepository';
-import { createUserService } from '../application/services/UserService';
-import { createUserController } from '../presentation/controllers/UserController';
+import { createUserStatusService } from '../application/services/UserStatusService';
+import { createUserStatusController } from '../presentation/controllers/UserStatusController';
+import { createUserActivationRepository } from '../infrastructure/repositories/UserActivationRepository';
 import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
+import { createAccountDeletionService } from '../application/services/AccountDeletionService';
+import { createAuthorizationService } from '../application/services/AuthorizationService';
 import { createUserSearchService } from '../application/services/UserSearchService';
 import { createUserSearchController } from '../presentation/controllers/UserSearchController';
 import type { Env } from '../lib/env';
@@ -67,6 +70,7 @@ export function createDIContainer(env: Env) {
 
   // Repositories
   const userRepository = createUserRepository(db);
+  const userActivationRepository = createUserActivationRepository(db);
   const userSearchRepository = createUserSearchRepository(db);
   const studentRepository = createStudentRepository(db);
   const staffRepository = createStaffRepository(db);
@@ -101,16 +105,30 @@ export function createDIContainer(env: Env) {
   const authService = createAuthService(
     userRepository,
     studentRepository,
-    env.STUDENT_EMAIL_DOMAIN
+    env.STUDENT_EMAIL_DOMAIN,
+    env.AUTH_KV,
+    firebaseTokenRepository
   );
-  const userService = createUserService(
-    userRepository,
+  const userStatusService = createUserStatusService(
     createUserStatusRepository(db)
   );
-  const userSearchService = createUserSearchService(
-    userSearchRepository,
-    userRepository
-  );
+  const authorizationService = createAuthorizationService(userRepository);
+  // #265 PR4: 関連データの削除・匿名化(deleteRelatedData)の実装。
+  // 現時点ではこのコンテナに登録して公開しているだけで、実際の削除フロー
+  // (DELETE /auth/me等のHTTPハンドラ)からはまだ呼ばれていない
+  // (authService.startAccountDeletionも同様に未接続)。呼び出しはテスト
+  // (AccountDeletionService.test.ts / .integration.test.ts)のみ。
+  // ハンドラへの接続は別PR(#265 PR5)で行う予定。
+  const accountDeletionService = createAccountDeletionService({
+    userRepository,
+    studentRepository,
+    staffRepository,
+    teacherRepository,
+    gatheringGroupMemberRepository,
+    notificationScheduleRepository,
+    firebaseTokenRepository,
+  });
+  const userSearchService = createUserSearchService(userSearchRepository);
   const studentService = createStudentService(
     studentRepository,
     classRoomRepository
@@ -122,7 +140,6 @@ export function createDIContainer(env: Env) {
     eventRepository,
     eventScheduleRepository,
     notificationScheduleRepository,
-    userRepository,
   });
   const classRoomService = createClassRoomService(classRoomRepository);
   const masterImportService = createMasterImportService(
@@ -130,8 +147,7 @@ export function createDIContainer(env: Env) {
     env.MASTER_IMPORT_COMMIT_LOCK,
     studentService,
     classRoomService,
-    teacherService,
-    userRepository
+    teacherService
   );
   const firebaseTokenService = createFirebaseTokenService(
     firebaseTokenRepository
@@ -149,19 +165,16 @@ export function createDIContainer(env: Env) {
     fcmService,
   });
   const notificationScheduleService = createNotificationScheduleService(
-    notificationScheduleRepository,
-    userRepository
+    notificationScheduleRepository
   );
   const notificationService = createNotificationService(notificationRepository);
   const adminNotificationService = createAdminNotificationService(
-    adminNotificationRepository,
-    userRepository
+    adminNotificationRepository
   );
   const adminNotificationManagementService =
     createAdminNotificationManagementService(
       adminNotificationManagementRepository,
-      adminNotificationRepository,
-      userRepository
+      adminNotificationRepository
     );
   const mobileNotificationService = createMobileNotificationService(
     mobileNotificationRepository
@@ -176,7 +189,7 @@ export function createDIContainer(env: Env) {
   const scheduleService = createScheduleService(scheduleRepository);
 
   // Controllers
-  const userController = createUserController(userService);
+  const userStatusController = createUserStatusController(userStatusService);
   const studentController = createStudentController(studentService);
   const staffController = createStaffController(staffService);
   const teacherController = createTeacherController(teacherService);
@@ -218,8 +231,12 @@ export function createDIContainer(env: Env) {
   const scheduleController = createScheduleController(scheduleService);
 
   return {
+    // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
+    userActivationRepository,
     authService,
-    userController,
+    userStatusController,
+    accountDeletionService,
+    authorizationService,
     studentService,
     studentController,
     staffController,

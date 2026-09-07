@@ -9,7 +9,6 @@ export interface IEventScheduleService {
     input: UpdateEventScheduleInput
   ) => Promise<EventScheduleResult>;
   getEventNotificationSummary: (
-    eventId: number,
-    userId: number
+    eventId: number
   ) => Promise<EventNotificationSummary>;
 }

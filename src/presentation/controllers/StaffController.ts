@@ -1,5 +1,7 @@
 import { Context } from 'hono';
 import { IStaffService } from '../../application/services/IStaffService';
+import { errorResponse } from '../errors/errorResponse';
+import { UserErrors } from '../errors/userErrors';
 
 export function createStaffController(staffService: IStaffService) {
   const getStaffById = async (c: Context) => {
@@ -8,16 +10,16 @@ export function createStaffController(staffService: IStaffService) {
       const staffId = Number(id);
 
       if (!id || Number.isNaN(staffId)) {
-        return c.json({ error: 'Invalid staff ID' }, 400);
+        return errorResponse(c, UserErrors.INVALID_STAFF_ID);
       }
 
       const staff = await staffService.getStaffById(staffId);
       return c.json(staff, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Staff not found') {
-        return c.json({ error: 'Staff not found' }, 404);
+        return errorResponse(c, UserErrors.STAFF_NOT_FOUND);
       }
-      return c.json({ error: 'Failed to fetch staff' }, 500);
+      return errorResponse(c, UserErrors.STAFF_FETCH_FAILED);
     }
   };
 
@@ -26,7 +28,7 @@ export function createStaffController(staffService: IStaffService) {
       const staffs = await staffService.getAllStaffs();
       return c.json(staffs, 200);
     } catch {
-      return c.json({ error: 'Failed to fetch staffs' }, 500);
+      return errorResponse(c, UserErrors.STAFF_LIST_FAILED);
     }
   };
 

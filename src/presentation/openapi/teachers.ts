@@ -2,6 +2,7 @@ import { createRoute } from '@hono/zod-openapi';
 import {
   badRequestResponse,
   bearerAuth,
+  forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
   notFoundResponse,
@@ -74,6 +75,7 @@ export const teacherListRoute = createRoute({
     200: jsonResponse(teacherPageResponseSchema, '教員一覧'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -89,6 +91,7 @@ export const teacherDetailRoute = createRoute({
     200: jsonResponse(teacherResponseSchema, '教員'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     500: internalServerErrorResponse,
   },
@@ -111,6 +114,7 @@ export const teacherUpdateRoute = createRoute({
     200: jsonResponse(teacherResponseSchema, '更新した教員'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     500: internalServerErrorResponse,
   },

@@ -27,7 +27,6 @@ const schedule = {
 
 function setup() {
   const service: INotificationScheduleService = {
-    canManageNotificationSchedules: vi.fn().mockResolvedValue(true),
     getAllNotificationSchedules: vi.fn(),
     getNotificationScheduleById: vi.fn(),
     createNotificationSchedule: vi.fn(),
@@ -193,18 +192,6 @@ describe('NotificationScheduleController', () => {
     expect(service.createNotificationSchedule).not.toHaveBeenCalled();
   });
 
-  it('staffsまたはteachersではないユーザーには403を返す', async () => {
-    const { service, authorizedRequest } = setup();
-    (
-      service.canManageNotificationSchedules as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(false);
-
-    const response = await authorizedRequest('/notification-schedules');
-
-    expect(response.status).toBe(403);
-    expect(service.getAllNotificationSchedules).not.toHaveBeenCalled();
-  });
-
   it('重要度2以外は400を返す', async () => {
     const { service, authorizedRequest } = setup();
 
@@ -249,7 +236,10 @@ describe('NotificationScheduleController', () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({
-      error: 'Notification schedule not found',
+      error: {
+        code: 'NOTIFICATION_SCHEDULE_NOT_FOUND',
+        message: '通知スケジュールが見つかりません',
+      },
     });
   });
 
@@ -268,21 +258,39 @@ describe('NotificationScheduleController', () => {
   });
 
   it.each([
-    ['Notification schedule not found', 404],
-    ['Only draft notification schedules can be deleted', 409],
-  ] as const)('削除エラー%sを%sで返す', async (message, status) => {
-    const { service, authorizedRequest } = setup();
-    (
-      service.deleteNotificationSchedule as ReturnType<typeof vi.fn>
-    ).mockRejectedValue(new Error(message));
+    [
+      'Notification schedule not found',
+      404,
+      'NOTIFICATION_SCHEDULE_NOT_FOUND',
+      '通知スケジュールが見つかりません',
+    ],
+    [
+      'Only draft notification schedules can be deleted',
+      409,
+      'NOTIFICATION_SCHEDULE_NOT_DRAFT',
+      '下書き状態の通知スケジュールのみ削除できます',
+    ],
+  ] as const)(
+    '削除エラー%sを%sで返す',
+    async (message, status, code, responseMessage) => {
+      const { service, authorizedRequest } = setup();
+      (
+        service.deleteNotificationSchedule as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error(message));
 
-    const response = await authorizedRequest('/notification-schedules/1', {
-      method: 'DELETE',
-    });
+      const response = await authorizedRequest('/notification-schedules/1', {
+        method: 'DELETE',
+      });
 
-    expect(response.status).toBe(status);
-    expect(await response.json()).toEqual({ error: message });
-  });
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual({
+        error: {
+          code,
+          message: responseMessage,
+        },
+      });
+    }
+  );
 
   it('不正な通知予定IDは400を返す', async () => {
     const { service, authorizedRequest } = setup();

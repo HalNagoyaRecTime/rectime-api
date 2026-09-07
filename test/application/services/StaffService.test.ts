@@ -19,6 +19,7 @@ describe('StaffService', () => {
       const repository: IStaffRepository = {
         findById: vi.fn().mockResolvedValue(staff),
         findAll: vi.fn(),
+        deleteByUserId: vi.fn(),
       };
       const service = createStaffService(repository);
 
@@ -36,6 +37,7 @@ describe('StaffService', () => {
       const repository: IStaffRepository = {
         findById: vi.fn().mockResolvedValue(null),
         findAll: vi.fn(),
+        deleteByUserId: vi.fn(),
       };
       const service = createStaffService(repository);
 
@@ -54,6 +56,7 @@ describe('StaffService', () => {
       const repository: IStaffRepository = {
         findById: vi.fn(),
         findAll: vi.fn().mockResolvedValue(staffs),
+        deleteByUserId: vi.fn(),
       };
       const service = createStaffService(repository);
 
@@ -67,6 +70,7 @@ describe('StaffService', () => {
       const repository: IStaffRepository = {
         findById: vi.fn(),
         findAll: vi.fn().mockResolvedValue([]),
+        deleteByUserId: vi.fn(),
       };
       const service = createStaffService(repository);
 

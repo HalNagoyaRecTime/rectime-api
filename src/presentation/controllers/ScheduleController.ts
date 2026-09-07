@@ -1,6 +1,8 @@
 import { Context } from 'hono';
 import { z } from 'zod';
 import type { IScheduleService } from '../../application/services/IScheduleService';
+import { errorResponse } from '../errors/errorResponse';
+import { NotificationErrors } from '../errors/notificationErrors';
 
 const notificationIdSchema = z.coerce.number().int().positive();
 
@@ -19,13 +21,13 @@ export function createScheduleController(scheduleService: IScheduleService) {
       c.req.param('notificationId')
     );
     if (!parsedId.success) {
-      return c.json({ error: 'Invalid notification ID' }, 400);
+      return errorResponse(c, NotificationErrors.INVALID_NOTIFICATION_ID);
     }
 
     try {
       const parsedBody = updateScheduleSchema.safeParse(await c.req.json());
       if (!parsedBody.success) {
-        return c.json({ error: 'Invalid schedule data' }, 400);
+        return errorResponse(c, NotificationErrors.INVALID_SCHEDULE_DATA);
       }
 
       const updatedSchedule = await scheduleService.updateSchedule(
@@ -35,15 +37,15 @@ export function createScheduleController(scheduleService: IScheduleService) {
       return c.json(updatedSchedule, 200);
     } catch (error) {
       if (error instanceof SyntaxError) {
-        return c.json({ error: 'Invalid schedule data' }, 400);
+        return errorResponse(c, NotificationErrors.INVALID_SCHEDULE_DATA);
       }
       if (
         error instanceof Error &&
         error.message === 'Only schedules with "draft" status can be updated.'
       ) {
-        return c.json({ error: error.message }, 409);
+        return errorResponse(c, NotificationErrors.SCHEDULE_NOT_DRAFT);
       }
-      return c.json({ error: 'Failed to update schedule' }, 500);
+      return errorResponse(c, NotificationErrors.SCHEDULE_UPDATE_FAILED);
     }
   };
 
