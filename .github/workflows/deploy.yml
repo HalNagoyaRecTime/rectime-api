@@ -220,7 +220,7 @@ jobs:
 
       - name: Comment preview URL on PR
         if: needs.target.outputs.mode == 'pr-preview'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PREVIEW_ALIAS: ${{ needs.target.outputs.preview_alias }}
           PR_NUMBER: ${{ needs.target.outputs.pr_number }}
