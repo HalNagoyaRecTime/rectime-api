@@ -61,6 +61,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/admin/notifications/{notificationId}',
       '/api/v1/admin/users',
       '/api/v1/admin/users/{userId}',
+      '/api/v1/admin/users/{userId}/staff',
       '/api/v1/classrooms',
       '/api/v1/classrooms/{classId}',
       '/api/v1/events',
@@ -104,7 +105,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(58);
+    expect(documentedOperations).toHaveLength(60);
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {
