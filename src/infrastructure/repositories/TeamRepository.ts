@@ -8,7 +8,29 @@ import {
   type TeamWriteInput,
 } from '../../domain/entities/Team';
 import type { ITeamRepository } from '../../domain/interfaces/repositories/ITeamRepository';
+import { chunkArray } from './chunk';
 import { buildCleanupEmptyTeamStatements } from './teamCleanup';
+
+const D1_MAX_BOUND_PARAMETERS = 100;
+const CLASS_CODE_CHUNK_SIZE = D1_MAX_BOUND_PARAMETERS - 1;
+
+async function findTeamIdsByClassCodes(
+  db: D1Database,
+  classCodes: string[]
+): Promise<Set<number>> {
+  const teamIds = new Set<number>();
+  for (const chunk of chunkArray(classCodes, D1_MAX_BOUND_PARAMETERS)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    const result = await db
+      .prepare(
+        `SELECT DISTINCT team_id FROM class_rooms WHERE class_code IN (${placeholders})`
+      )
+      .bind(...chunk)
+      .all<{ team_id: number }>();
+    for (const row of result.results) teamIds.add(row.team_id);
+  }
+  return teamIds;
+}
 
 type RankingRow = {
   team_id: number;
@@ -77,17 +99,16 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     teamId: number,
     keepCodes: string[]
   ): Promise<void> {
-    const keepPlaceholders = keepCodes.map(() => '?').join(', ');
-    const removed = await db
+    const keepSet = new Set(keepCodes);
+    const current = await db
       .prepare(
-        `SELECT class_room_id, class_code, class_name FROM class_rooms
-         WHERE team_id = ?
-         ${keepCodes.length > 0 ? `AND class_code NOT IN (${keepPlaceholders})` : ''}`
+        `SELECT class_room_id, class_code, class_name FROM class_rooms WHERE team_id = ?`
       )
-      .bind(teamId, ...keepCodes)
+      .bind(teamId)
       .all<{ class_room_id: number; class_code: string; class_name: string }>();
+    const removed = current.results.filter(row => !keepSet.has(row.class_code));
 
-    for (const row of removed.results) {
+    for (const row of removed) {
       const provisionalName = buildProvisionalTeamName({
         className: row.class_name,
         classCode: row.class_code,
@@ -117,25 +138,22 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     classCodes: string[]
   ): Promise<void> {
     if (classCodes.length === 0) return;
-    const placeholders = classCodes.map(() => '?').join(', ');
 
-    const previous = await db
-      .prepare(
-        `SELECT DISTINCT team_id FROM class_rooms WHERE class_code IN (${placeholders})`
-      )
-      .bind(...classCodes)
-      .all<{ team_id: number }>();
+    const previousTeamIds = await findTeamIdsByClassCodes(db, classCodes);
 
     await db.batch([
-      db
-        .prepare(
-          `UPDATE class_rooms SET team_id = ?, updated_at = CURRENT_TIMESTAMP
-           WHERE class_code IN (${placeholders})`
-        )
-        .bind(teamId, ...classCodes),
-      ...previous.results
-        .filter(row => row.team_id !== teamId)
-        .flatMap(row => buildCleanupEmptyTeamStatements(db, row.team_id)),
+      ...chunkArray(classCodes, CLASS_CODE_CHUNK_SIZE).map(chunk => {
+        const placeholders = chunk.map(() => '?').join(', ');
+        return db
+          .prepare(
+            `UPDATE class_rooms SET team_id = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE class_code IN (${placeholders})`
+          )
+          .bind(teamId, ...chunk);
+      }),
+      ...Array.from(previousTeamIds)
+        .filter(id => id !== teamId)
+        .flatMap(id => buildCleanupEmptyTeamStatements(db, id)),
     ]);
   }
 
@@ -220,14 +238,19 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
 
     async existsClassCodes(classCodes: string[]): Promise<boolean> {
       if (classCodes.length === 0) return true;
-      const placeholders = classCodes.map(() => '?').join(', ');
-      const row = await db
-        .prepare(
-          `SELECT COUNT(*) AS count FROM class_rooms WHERE class_code IN (${placeholders})`
-        )
-        .bind(...classCodes)
-        .first<{ count: number }>();
-      return (row?.count ?? 0) === new Set(classCodes).size;
+      const unique = Array.from(new Set(classCodes));
+      let matched = 0;
+      for (const chunk of chunkArray(unique, D1_MAX_BOUND_PARAMETERS)) {
+        const placeholders = chunk.map(() => '?').join(', ');
+        const row = await db
+          .prepare(
+            `SELECT COUNT(*) AS count FROM class_rooms WHERE class_code IN (${placeholders})`
+          )
+          .bind(...chunk)
+          .first<{ count: number }>();
+        matched += row?.count ?? 0;
+      }
+      return matched === unique.length;
     },
 
     async createTeam(input: TeamWriteInput): Promise<TeamEntity> {
@@ -243,28 +266,28 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
         return team;
       }
 
-      const placeholders = input.class_codes.map(() => '?').join(', ');
-      const previous = await db
-        .prepare(
-          `SELECT DISTINCT team_id FROM class_rooms WHERE class_code IN (${placeholders})`
-        )
-        .bind(...input.class_codes)
-        .all<{ team_id: number }>();
+      const previousTeamIds = await findTeamIdsByClassCodes(
+        db,
+        input.class_codes
+      );
 
       const [createResult] = await db.batch<{ team_id: number }>([
         db
           .prepare('INSERT INTO teams (team_name) VALUES (?) RETURNING team_id')
           .bind(input.team_name),
-        db
-          .prepare(
-            `UPDATE class_rooms
-             SET team_id = (SELECT team_id FROM teams WHERE team_name = ?),
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE class_code IN (${placeholders})`
-          )
-          .bind(input.team_name, ...input.class_codes),
-        ...previous.results.flatMap(row =>
-          buildCleanupEmptyTeamStatements(db, row.team_id)
+        ...chunkArray(input.class_codes, CLASS_CODE_CHUNK_SIZE).map(chunk => {
+          const placeholders = chunk.map(() => '?').join(', ');
+          return db
+            .prepare(
+              `UPDATE class_rooms
+               SET team_id = (SELECT team_id FROM teams WHERE team_name = ?),
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE class_code IN (${placeholders})`
+            )
+            .bind(input.team_name, ...chunk);
+        }),
+        ...Array.from(previousTeamIds).flatMap(id =>
+          buildCleanupEmptyTeamStatements(db, id)
         ),
       ]);
 
