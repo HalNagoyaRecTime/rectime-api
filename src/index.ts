@@ -509,9 +509,27 @@ app.get(
 
 export { app };
 
+// アカウント削除の後片付け再実行(#345)専用Cron式。通知配信Cron
+// ('* * * * *')とはevent.cronの値で区別する。EVENT_DATE判定には
+// 依存させない(削除の後片付けは開催日に関係なく毎日実行したいため)。
+const ACCOUNT_DELETION_PURGE_RETRY_CRON = '0 18 * * *';
+// 1回のCron実行で処理する上限件数。冪等な再実行のため、上限を超えた
+// 残りは翌日以降のCronで拾われる。
+const ACCOUNT_DELETION_PURGE_RETRY_LIMIT = 100;
+
 export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    if (event.cron === ACCOUNT_DELETION_PURGE_RETRY_CRON) {
+      const container = createDIContainer(env);
+      ctx.waitUntil(
+        container.accountDeletionService.retryPendingPurges(
+          ACCOUNT_DELETION_PURGE_RETRY_LIMIT
+        )
+      );
+      return;
+    }
+
     if (!isValidEventDate(env.EVENT_DATE)) {
       if (!eventDateWarnLogged) {
         console.error(

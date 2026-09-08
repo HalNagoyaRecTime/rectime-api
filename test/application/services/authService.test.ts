@@ -75,6 +75,7 @@ describe('createAuthService', () => {
       markAsPurged: vi.fn(),
       isPurged: vi.fn(),
       anonymizeUser: vi.fn(),
+      findPendingPurgeUserIds: vi.fn(),
     };
     const studentRepository: IStudentRepository = {
       findById: vi.fn(),
@@ -121,6 +122,7 @@ describe('createAuthService', () => {
       markAsPurged: vi.fn(),
       isPurged: vi.fn(),
       anonymizeUser: vi.fn(),
+      findPendingPurgeUserIds: vi.fn(),
     };
     const studentRepository: IStudentRepository = {
       findById: vi.fn(),

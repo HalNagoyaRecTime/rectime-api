@@ -514,4 +514,100 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .first<{ student_id_number: string }>();
     expect(studentRow?.student_id_number).toBe('77004');
   });
+
+  // #345: index.tsのscheduledハンドラ(日次Cron)から呼ばれる
+  // retryPendingPurgesが、実DB上でfindPendingPurgeUserIdsが返す対象と
+  // 噛み合って正しく動作することを確認する(モックだけでは
+  // findPendingPurgeUserIdsのSQL条件とdeleteRelatedDataの自己確認条件が
+  // 噛み合っているかまでは検証できない)。
+  describe('retryPendingPurges (実DB統合テスト)', () => {
+    it('後片付けが未完了の利用者だけを拾って完了させ、既に完了済み・未削除の利用者は対象にしない', async () => {
+      const pending = await workerEnv.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('後片付け未完了太郎') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+        .bind(pending!.user_id)
+        .run();
+      await markAsDeleted(pending!.user_id);
+
+      const alreadyPurged = await workerEnv.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status, purged_at) VALUES ('完了済み太郎', 'deleted', CURRENT_TIMESTAMP) RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      const active = await workerEnv.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('未削除太郎') RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      const service = buildService();
+      const result = await service.retryPendingPurges(100);
+
+      expect(result.targetCount).toBe(1);
+      expect(result.succeededCount).toBe(1);
+      expect(result.failedCount).toBe(0);
+
+      // 未完了だった利用者は後片付けが完了する。
+      const pendingState = await getUserDeletionState(pending!.user_id);
+      expect(pendingState.purged_at).not.toBeNull();
+      const staffRow = await workerEnv.DB.prepare(
+        'SELECT * FROM staffs WHERE user_id = ?'
+      )
+        .bind(pending!.user_id)
+        .first();
+      expect(staffRow).toBeNull();
+
+      // 既に完了済み・未削除の利用者はretryPendingPurgesの対象に含まれず、
+      // 状態が変わらない。
+      const alreadyPurgedState = await getUserDeletionState(
+        alreadyPurged!.user_id
+      );
+      expect(alreadyPurgedState.deletion_status).toBe('deleted');
+      const activeState = await getUserDeletionState(active!.user_id);
+      expect(activeState.deletion_status).toBe('active');
+    });
+
+    it('途中失敗で後片付けが未完了のまま残った利用者を、再度のretryPendingPurges呼び出しで拾い直せる', async () => {
+      const classRoom = await workerEnv.DB.prepare(
+        "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-6', '再実行テストクラス') RETURNING class_room_id"
+      ).first<{ class_room_id: number }>();
+      const user = await workerEnv.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('再実行対象太郎') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await workerEnv.DB.prepare(
+        "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77005')"
+      )
+        .bind(user!.user_id, classRoom!.class_room_id)
+        .run();
+      await markAsDeleted(user!.user_id);
+
+      const db = workerEnv.DB;
+      const failingService = createAccountDeletionService({
+        userRepository: createUserRepository(db),
+        studentRepository: createStudentRepository(db),
+        staffRepository: createStaffRepository(db),
+        teacherRepository: createTeacherRepository(db),
+        gatheringGroupMemberRepository:
+          buildFailingGatheringGroupMemberRepository(),
+        notificationScheduleRepository:
+          createNotificationScheduleRepository(db),
+        firebaseTokenRepository: createFirebaseTokenRepository(db),
+      });
+
+      const firstResult = await failingService.retryPendingPurges(100);
+      expect(firstResult.targetCount).toBe(1);
+      expect(firstResult.succeededCount).toBe(0);
+      expect(firstResult.failedCount).toBe(1);
+      expect((await getUserDeletionState(user!.user_id)).purged_at).toBeNull();
+
+      // 正常なリポジトリ構成で再実行すると、findPendingPurgeUserIdsが
+      // 同じuserIdを再び抽出し、今度は完了する。
+      const recoveringService = buildService();
+      const secondResult = await recoveringService.retryPendingPurges(100);
+      expect(secondResult.targetCount).toBe(1);
+      expect(secondResult.succeededCount).toBe(1);
+      expect(secondResult.failedCount).toBe(0);
+      expect(
+        (await getUserDeletionState(user!.user_id)).purged_at
+      ).not.toBeNull();
+    });
+  });
 });

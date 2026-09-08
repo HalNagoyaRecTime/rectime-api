@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import * as schema from '../database/schema';
@@ -280,6 +280,17 @@ export function createUserRepository(db: D1Database): IUserRepository {
         .where(eq(users.id, Number(userId)))
         .run();
       return result.meta.changes > 0;
+    },
+
+    async findPendingPurgeUserIds(limit) {
+      const rows = await orm
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.deletionStatus, 'deleted'), isNull(users.purgedAt)))
+        .orderBy(asc(users.deletedAt))
+        .limit(limit)
+        .all();
+      return rows.map(row => String(row.id));
     },
   };
 }
