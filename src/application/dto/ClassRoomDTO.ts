@@ -31,8 +31,7 @@ export interface ClassRoomImportInput {
 }
 
 export type ClassRoomImportErrorReason =
-  | 'class_code_duplicate_in_file'
-  | 'class_code_duplicate_in_db';
+  'class_code_duplicate_in_file' | 'class_code_duplicate_in_db';
 
 export interface ClassRoomImportRowError {
   row_index: number;

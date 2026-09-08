@@ -61,12 +61,7 @@ export interface UpdateAdminNotificationInput {
 }
 
 export type UpdateAdminNotificationResult =
-  | 'updated'
-  | 'not_found'
-  | 'not_draft'
-  | 'no_active_tokens';
+  'updated' | 'not_found' | 'not_draft' | 'no_active_tokens';
 
 export type DeleteAdminNotificationResult =
-  | 'deleted'
-  | 'not_found'
-  | 'not_draft';
+  'deleted' | 'not_found' | 'not_draft';

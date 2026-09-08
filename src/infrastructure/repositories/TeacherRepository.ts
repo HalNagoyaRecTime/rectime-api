@@ -278,8 +278,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
 
       const user = userResult.results[0] as ReturnedUserRow | undefined;
       const created = teacherResult.results[0] as
-        | ReturnedTeacherRow
-        | undefined;
+        ReturnedTeacherRow | undefined;
       if (!user || !created) {
         if (hasClassRoomAssignments) {
           throw new Error('Class room not found');
