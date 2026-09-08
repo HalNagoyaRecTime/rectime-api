@@ -6,6 +6,14 @@ import prettier from 'eslint-config-prettier';
 export default [
   eslint.configs.recommended,
   {
+    // ESLint 10でeslint:recommendedに追加されたルール。今回の依存更新では
+    // ESLint 9時点のlint契約を維持し、既存コードの挙動変更は別PRで扱う。
+    rules: {
+      'preserve-caught-error': 'off',
+      'no-useless-assignment': 'off',
+    },
+  },
+  {
     files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parser: tsparser,
