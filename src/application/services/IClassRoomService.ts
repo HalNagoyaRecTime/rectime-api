@@ -9,10 +9,9 @@ import {
 import type { ClassRoomSearchFilter } from '../../domain/entities/ClassRoom';
 
 export interface IClassRoomService {
-  getAllClassrooms: {
-    (filter?: ClassRoomSearchFilter): Promise<ClassRoomPageDTO>;
-    (limit: number, offset: number): Promise<ClassRoomPageDTO>;
-  };
+  getAllClassrooms: (
+    filter?: ClassRoomSearchFilter
+  ) => Promise<ClassRoomPageDTO>;
   getClassroomById: (id: number) => Promise<ClassRoomDTO>;
   createClassroom: (input: ClassRoomRequestDTO) => Promise<ClassRoomDTO>;
   updateClassroom: (

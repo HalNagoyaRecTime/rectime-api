@@ -23,11 +23,13 @@ const paginationSchema = z
     offset: z.coerce.number().int().min(0).default(0),
   })
   .strict();
-const classRoomRequestSchema = z.object({
-  classCode: z.string().trim().min(1),
-  className: z.string().trim().min(1),
-  teacherId: z.number().int().positive().nullable(),
-});
+const classRoomRequestSchema = z
+  .object({
+    classCode: z.string().trim().min(1),
+    className: z.string().trim().min(1),
+    teacherId: z.number().int().positive().nullable(),
+  })
+  .strict();
 
 export function createClassRoomController(classService: IClassRoomService) {
   const getAllClassrooms = async (c: Context) => {
@@ -40,19 +42,10 @@ export function createClassRoomController(classService: IClassRoomService) {
       );
     }
     try {
-      const hasAdvancedQuery =
-        query.data.search !== undefined ||
-        c.req.query('sortBy') !== undefined ||
-        c.req.query('sortOrder') !== undefined;
-      const result = hasAdvancedQuery
-        ? await classService.getAllClassrooms(query.data)
-        : await classService.getAllClassrooms(
-            query.data.limit,
-            query.data.offset
-          );
+      const result = await classService.getAllClassrooms(query.data);
       return c.json(
         {
-          items: result.items ?? result.classrooms ?? [],
+          items: result.items,
           total: result.total,
           limit: result.limit,
           offset: result.offset,
@@ -71,7 +64,7 @@ export function createClassRoomController(classService: IClassRoomService) {
       return c.json(await classService.getClassroomById(id.data), 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
-        return errorResponse(c, UserErrors.CLASSROOM_NOT_FOUND);
+        return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
       }
       return errorResponse(c, UserErrors.CLASS_ROOM_FETCH_FAILED);
     }
@@ -92,14 +85,7 @@ export function createClassRoomController(classService: IClassRoomService) {
       );
     }
     try {
-      return c.json(
-        await classService.createClassroom({
-          class_code: body.data.classCode,
-          class_name: body.data.className,
-          teacher_id: body.data.teacherId,
-        }),
-        201
-      );
+      return c.json(await classService.createClassroom(body.data), 201);
     } catch (error) {
       return handleWriteError(c, error, UserErrors.CLASS_ROOM_CREATE_FAILED);
     }
@@ -118,11 +104,7 @@ export function createClassRoomController(classService: IClassRoomService) {
     }
     try {
       return c.json(
-        await classService.updateClassroom(id.data, {
-          class_code: body.data.classCode,
-          class_name: body.data.className,
-          teacher_id: body.data.teacherId,
-        }),
+        await classService.updateClassroom(id.data, body.data),
         200
       );
     } catch (error) {
@@ -138,7 +120,7 @@ export function createClassRoomController(classService: IClassRoomService) {
       return c.body(null, 204);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
-        return errorResponse(c, UserErrors.CLASSROOM_NOT_FOUND);
+        return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
       }
       if (
         error instanceof Error &&
@@ -170,7 +152,7 @@ function handleWriteError(
     return errorResponse(c, UserErrors.TEACHER_NOT_FOUND);
   }
   if (error instanceof Error && error.message === 'Class not found') {
-    return errorResponse(c, UserErrors.CLASSROOM_NOT_FOUND);
+    return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
   }
   if (error instanceof Error && error.message === 'Class code already exists') {
     return errorResponse(c, UserErrors.CLASS_ROOM_CODE_ALREADY_EXISTS);

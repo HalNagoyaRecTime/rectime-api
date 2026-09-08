@@ -27,7 +27,7 @@ describe('ClassRoomController', () => {
   it('一覧をlimitとoffset付きで返す', async () => {
     const { app, service } = setup();
     (service.getAllClassrooms as ReturnType<typeof vi.fn>).mockResolvedValue({
-      classrooms: [],
+      items: [],
       total: 0,
       limit: 20,
       offset: 0,
@@ -36,12 +36,56 @@ describe('ClassRoomController', () => {
     const response = await app.request('/classrooms?limit=10&offset=20');
 
     expect(response.status).toBe(200);
-    expect(service.getAllClassrooms).toHaveBeenCalledWith(10, 20);
+    expect(service.getAllClassrooms).toHaveBeenCalledWith({
+      sortBy: 'classRoomId',
+      sortOrder: 'asc',
+      limit: 10,
+      offset: 20,
+    });
+    expect(await response.json()).toEqual({
+      items: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+    });
   });
 
-  it('不正な一覧パラメータは400を返す', async () => {
+  it.each([
+    'sortBy=invalid',
+    'sortOrder=invalid',
+    'limit=101',
+    'offset=-1',
+    'page=2',
+    'teacherId=1',
+    'userName=%E5%B1%B1%E7%94%B0',
+  ])('不正な一覧パラメータ(%s)はVALIDATION_ERRORを返す', async query => {
     const { app } = setup();
-    expect((await app.request('/classrooms?offset=-1')).status).toBe(400);
+    const response = await app.request(`/classrooms?${query}`);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'VALIDATION_ERROR' },
+    });
+  });
+
+  it('一覧クエリ未指定時は契約上のデフォルトをサービスへ渡す', async () => {
+    const { app, service } = setup();
+    (service.getAllClassrooms as ReturnType<typeof vi.fn>).mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 50,
+      offset: 0,
+    });
+
+    const response = await app.request('/classrooms');
+
+    expect(response.status).toBe(200);
+    expect(service.getAllClassrooms).toHaveBeenCalledWith({
+      sortBy: 'classRoomId',
+      sortOrder: 'asc',
+      limit: 50,
+      offset: 0,
+    });
   });
 
   it('クラス詳細を返す', async () => {
@@ -92,9 +136,9 @@ describe('ClassRoomController', () => {
 
     expect(response.status).toBe(201);
     expect(service.createClassroom).toHaveBeenCalledWith({
-      class_code: 'IA14A',
-      class_name: '高度情報学科AI開発先行コース',
-      teacher_id: null,
+      classCode: 'IA14A',
+      className: '高度情報学科AI開発先行コース',
+      teacherId: null,
     });
   });
 
@@ -110,6 +154,22 @@ describe('ClassRoomController', () => {
     });
 
     expect(response.status).toBe(400);
+  });
+
+  it('旧snake_case入力は400を返す', async () => {
+    const { app, service } = setup();
+    const response = await app.request('/classrooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        class_code: 'IA14A',
+        class_name: '高度情報学科AI開発先行コース',
+        teacher_id: null,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(service.createClassroom).not.toHaveBeenCalled();
   });
 
   it('登録時の担任未存在は404を返す', async () => {
@@ -172,9 +232,9 @@ describe('ClassRoomController', () => {
 
     expect(response.status).toBe(200);
     expect(service.updateClassroom).toHaveBeenCalledWith(1, {
-      class_code: 'IA14B',
-      class_name: '高度情報学科AI開発先行コースB',
-      teacher_id: null,
+      classCode: 'IA14B',
+      className: '高度情報学科AI開発先行コースB',
+      teacherId: null,
     });
   });
 

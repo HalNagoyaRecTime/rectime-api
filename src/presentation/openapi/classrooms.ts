@@ -74,6 +74,7 @@ export const classRoomWriteSchema = z
     className: z.string().trim().min(1),
     teacherId: z.number().int().positive().nullable(),
   })
+  .strict()
   .openapi('ClassRoomWriteRequest');
 
 export const classRoomListRoute = createRoute({

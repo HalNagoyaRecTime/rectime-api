@@ -6,10 +6,7 @@ import {
 } from '../../entities/ClassRoom';
 
 export interface IClassRoomRepository {
-  findAll: {
-    (filter?: ClassRoomSearchFilter): Promise<ClassRoomPage>;
-    (limit: number, offset: number): Promise<ClassRoomPage>;
-  };
+  findAll: (filter?: ClassRoomSearchFilter) => Promise<ClassRoomPage>;
   findById: (id: number) => Promise<ClassRoomEntity | null>;
   findByCode: (classCode: string) => Promise<ClassRoomEntity | null>;
   findExistingClassCodes: (classCodes: string[]) => Promise<Set<string>>;

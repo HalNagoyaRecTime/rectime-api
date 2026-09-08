@@ -91,7 +91,7 @@ describe('TeacherController', () => {
       expect(res.status).toBe(400);
     });
 
-    it('サービスがクラス未存在エラーを返した場合は400を返す', async () => {
+    it('サービスがクラス未存在エラーを返した場合は404を返す', async () => {
       const { app, teacherService } = setup();
       (
         teacherService.createTeacher as ReturnType<typeof vi.fn>
@@ -103,7 +103,7 @@ describe('TeacherController', () => {
         body: JSON.stringify({ userName: '山田先生', classRoomIds: [999999] }),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(404);
       expect(await res.json()).toEqual({
         error: {
           code: 'CLASS_ROOM_NOT_FOUND',
@@ -505,7 +505,7 @@ describe('TeacherController', () => {
       });
     });
 
-    it('サービスが Class room not found を投げた場合は 400 を返す', async () => {
+    it('サービスが Class room not found を投げた場合は 404 を返す', async () => {
       const { app, teacherService } = setup();
       (
         teacherService.updateTeacher as ReturnType<typeof vi.fn>
@@ -517,7 +517,7 @@ describe('TeacherController', () => {
         body: JSON.stringify(validBody),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(404);
       expect(await res.json()).toEqual({
         error: {
           code: 'CLASS_ROOM_NOT_FOUND',

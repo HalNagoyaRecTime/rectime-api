@@ -13,20 +13,16 @@ export interface ClassRoomDTO {
 }
 
 export interface ClassRoomPageDTO {
-  items?: ClassRoomDTO[];
-  classrooms?: ClassRoomDTO[];
+  items: ClassRoomDTO[];
   total: number;
   limit: number;
   offset: number;
 }
 
 export interface ClassRoomRequestDTO {
-  classCode?: string;
-  className?: string;
-  teacherId?: number | null;
-  class_code?: string;
-  class_name?: string;
-  teacher_id?: number | null;
+  classCode: string;
+  className: string;
+  teacherId: number | null;
 }
 
 export interface ClassRoomImportRow {

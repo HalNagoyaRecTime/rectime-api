@@ -35,10 +35,6 @@ function toEntity(row: ClassRoomRow): ClassRoomEntity {
     classCode: row.classCode,
     className: row.className,
     studentCount: Number(row.studentCount),
-    class_room_id: row.classRoomId,
-    class_code: row.classCode,
-    class_name: row.className,
-    student_count: Number(row.studentCount),
     teacher:
       row.teacherId === null ||
       row.teacherUserId === null ||
@@ -48,9 +44,6 @@ function toEntity(row: ClassRoomRow): ClassRoomEntity {
             teacherId: row.teacherId,
             userId: row.teacherUserId,
             displayName: row.teacherDisplayName,
-            teacher_id: row.teacherId,
-            user_id: row.teacherUserId,
-            display_name: row.teacherDisplayName,
           },
   };
 }
@@ -78,6 +71,7 @@ export function createClassRoomRepository(
         or(
           sql`${class_rooms.classCode} LIKE ${pattern} ESCAPE ${'\\'}`,
           sql`${class_rooms.name} LIKE ${pattern} ESCAPE ${'\\'}`,
+          sql`CAST(${class_rooms.id} AS TEXT) LIKE ${pattern} ESCAPE ${'\\'}`,
           sql`${users.userName} LIKE ${pattern} ESCAPE ${'\\'}`
         )!
       );
@@ -140,18 +134,11 @@ export function createClassRoomRepository(
       .all();
 
     const items = rows.map(toEntity);
-    return { items, classrooms: items, total, limit, offset };
+    return { items, total, limit, offset };
   };
 
   return {
-    async findAll(
-      filterOrLimit: ClassRoomSearchFilter | number = {},
-      legacyOffset: number = 0
-    ) {
-      const filter: ClassRoomSearchFilter =
-        typeof filterOrLimit === 'number'
-          ? { limit: filterOrLimit, offset: legacyOffset }
-          : filterOrLimit;
+    async findAll(filter: ClassRoomSearchFilter = {}) {
       return findPage(filter);
     },
     async findById(id) {
@@ -188,9 +175,9 @@ export function createClassRoomRepository(
         row = await orm
           .insert(class_rooms)
           .values({
-            classCode: input.classCode ?? input.class_code!,
-            name: input.className ?? input.class_name!,
-            teacherId: input.teacherId ?? input.teacher_id ?? null,
+            classCode: input.classCode,
+            name: input.className,
+            teacherId: input.teacherId,
           })
           .returning({ id: class_rooms.id })
           .get();
@@ -205,30 +192,31 @@ export function createClassRoomRepository(
       return created.items[0];
     },
     async createMany(inputs) {
-      for (const chunk of chunkArray(
+      const statements = chunkArray(
         inputs,
         Math.floor(D1_MAX_BOUND_PARAMETERS / 3)
-      )) {
-        if (chunk.length)
-          await orm
-            .insert(class_rooms)
-            .values(
-              chunk.map(input => ({
-                classCode: input.classCode ?? input.class_code!,
-                name: input.className ?? input.class_name!,
-                teacherId: input.teacherId ?? input.teacher_id ?? null,
-              }))
-            )
-            .run();
-      }
+      ).map(chunk => {
+        const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');
+        const values = chunk.flatMap(input => [
+          input.classCode,
+          input.className,
+          input.teacherId,
+        ]);
+        return db
+          .prepare(
+            `INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ${placeholders}`
+          )
+          .bind(...values);
+      });
+      if (statements.length > 0) await db.batch(statements);
     },
     async update(id, input) {
       const row = await orm
         .update(class_rooms)
         .set({
-          classCode: input.classCode ?? input.class_code!,
-          name: input.className ?? input.class_name!,
-          teacherId: input.teacherId ?? input.teacher_id ?? null,
+          classCode: input.classCode,
+          name: input.className,
+          teacherId: input.teacherId,
           updatedAt: new Date().toISOString(),
         })
         .where(eq(class_rooms.id, id))
