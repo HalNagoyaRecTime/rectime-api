@@ -28,6 +28,7 @@ function teamRepository(): ITeamRepository {
     findTeamById: vi.fn(),
     exists: vi.fn(),
     existsClassCodes: vi.fn(),
+    findClassRoomsOwnedByOtherTeam: vi.fn().mockResolvedValue([]),
     createTeam: vi.fn(),
     updateTeam: vi.fn(),
     delete: vi.fn(),

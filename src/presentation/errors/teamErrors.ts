@@ -41,6 +41,11 @@ export const TeamErrors = {
     code: 'TEAM_NAME_ALREADY_EXISTS',
     message: '同じ名前のチームが既に存在します',
   },
+  CLASS_ROOM_ALREADY_ASSIGNED: {
+    status: 409,
+    code: 'CLASS_ROOM_ALREADY_ASSIGNED',
+    message: '指定されたクラスは既に他のチームに所属しています',
+  },
   RANKING_LIST_FAILED: {
     status: 500,
     code: 'RANKING_LIST_FAILED',

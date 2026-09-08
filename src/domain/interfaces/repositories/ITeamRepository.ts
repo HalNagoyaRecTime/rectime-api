@@ -16,6 +16,10 @@ export interface ITeamRepository {
   findTeamById: (teamId: number) => Promise<TeamEntity | null>;
   exists: (teamId: number) => Promise<boolean>;
   existsClassCodes: (classCodes: string[]) => Promise<boolean>;
+  findClassRoomsOwnedByOtherTeam: (
+    classCodes: string[],
+    excludeTeamId?: number
+  ) => Promise<{ class_code: string; team_id: number; team_name: string }[]>;
   createTeam: (input: TeamWriteInput) => Promise<TeamEntity>;
   updateTeam: (
     teamId: number,

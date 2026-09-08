@@ -24,6 +24,7 @@ function createRepository(
     findTeamById: vi.fn(),
     exists: vi.fn(),
     existsClassCodes: vi.fn(),
+    findClassRoomsOwnedByOtherTeam: vi.fn().mockResolvedValue([]),
     createTeam: vi.fn(),
     updateTeam: vi.fn(),
     delete: vi.fn(),
@@ -134,6 +135,24 @@ describe('TeamService', () => {
       await service.createTeam({ team_name: 'テストチーム', class_codes: [] });
 
       expect(repository.existsClassCodes).not.toHaveBeenCalled();
+      expect(repository.findClassRoomsOwnedByOtherTeam).not.toHaveBeenCalled();
+    });
+
+    it('既に他チーム(単独編成以外)に属するclass_codesが含まれる場合は例外を投げ、createTeamを呼ばない', async () => {
+      const repository = createRepository({
+        existsClassCodes: vi.fn().mockResolvedValue(true),
+        findClassRoomsOwnedByOtherTeam: vi
+          .fn()
+          .mockResolvedValue([
+            { class_code: '1A', team_id: 2, team_name: '既存チーム' },
+          ]),
+      });
+      const service = createTeamService(repository);
+
+      await expect(
+        service.createTeam({ team_name: 'テストチーム', class_codes: ['1A'] })
+      ).rejects.toThrow('Class already assigned');
+      expect(repository.createTeam).not.toHaveBeenCalled();
     });
   });
 
@@ -164,6 +183,45 @@ describe('TeamService', () => {
       await expect(
         service.updateTeam(999, { team_name: '更新後チーム', class_codes: [] })
       ).rejects.toThrow('Team not found');
+    });
+
+    it('更新対象のteamIdを除外してclass_codesの所属先を確認する', async () => {
+      const updated = buildTeam({ team_name: '更新後チーム' });
+      const repository = createRepository({
+        existsClassCodes: vi.fn().mockResolvedValue(true),
+        updateTeam: vi.fn().mockResolvedValue(updated),
+      });
+      const service = createTeamService(repository);
+
+      await service.updateTeam(1, {
+        team_name: '更新後チーム',
+        class_codes: ['1A'],
+      });
+
+      expect(repository.findClassRoomsOwnedByOtherTeam).toHaveBeenCalledWith(
+        ['1A'],
+        1
+      );
+    });
+
+    it('既に他チーム(単独編成以外)に属するclass_codesが含まれる場合は例外を投げ、updateTeamを呼ばない', async () => {
+      const repository = createRepository({
+        existsClassCodes: vi.fn().mockResolvedValue(true),
+        findClassRoomsOwnedByOtherTeam: vi
+          .fn()
+          .mockResolvedValue([
+            { class_code: '1A', team_id: 2, team_name: '既存チーム' },
+          ]),
+      });
+      const service = createTeamService(repository);
+
+      await expect(
+        service.updateTeam(1, {
+          team_name: '更新後チーム',
+          class_codes: ['1A'],
+        })
+      ).rejects.toThrow('Class already assigned');
+      expect(repository.updateTeam).not.toHaveBeenCalled();
     });
   });
 });

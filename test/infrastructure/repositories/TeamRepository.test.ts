@@ -191,6 +191,38 @@ describe('TeamRepository', () => {
     });
   });
 
+  describe('findClassRoomsOwnedByOtherTeam', () => {
+    it('単独編成(所属クラス1件)に属するクラスは対象にしない', async () => {
+      await insertClassRoom('1A');
+
+      await expect(
+        repo.findClassRoomsOwnedByOtherTeam(['1A'])
+      ).resolves.toEqual([]);
+    });
+
+    it('既に他の複数編成に属するクラスを返す', async () => {
+      const otherTeamId = await insertTeam('既存チーム');
+      await insertClassRoom('1A', otherTeamId);
+      await insertClassRoom('1B', otherTeamId);
+
+      const result = await repo.findClassRoomsOwnedByOtherTeam(['1A']);
+
+      expect(result).toEqual([
+        { class_code: '1A', team_id: otherTeamId, team_name: '既存チーム' },
+      ]);
+    });
+
+    it('excludeTeamIdで指定したチーム自身への所属は対象にしない', async () => {
+      const teamId = await insertTeam('自分のチーム');
+      await insertClassRoom('1A', teamId);
+      await insertClassRoom('1B', teamId);
+
+      await expect(
+        repo.findClassRoomsOwnedByOtherTeam(['1A'], teamId)
+      ).resolves.toEqual([]);
+    });
+  });
+
   describe('createTeam', () => {
     it('class_codesで指定したクラスを新しいチームへ付け替える', async () => {
       const classRoomId = await insertClassRoom('1A');

@@ -23,6 +23,27 @@ function toTeamDTO(team: TeamEntity): TeamDTO {
   };
 }
 
+async function assertClassCodesAssignable(
+  teamRepository: ITeamRepository,
+  classCodes: string[],
+  teamId?: number
+) {
+  if (classCodes.length === 0) return;
+
+  const classesExist = await teamRepository.existsClassCodes(classCodes);
+  if (!classesExist) {
+    throw new Error('Class not found');
+  }
+
+  const conflicts = await teamRepository.findClassRoomsOwnedByOtherTeam(
+    classCodes,
+    teamId
+  );
+  if (conflicts.length > 0) {
+    throw new Error('Class already assigned');
+  }
+}
+
 export function createTeamService(
   teamRepository: ITeamRepository
 ): ITeamService {
@@ -56,26 +77,16 @@ export function createTeamService(
     },
 
     async createTeam(input: TeamWriteRequestDTO) {
-      if (input.class_codes.length > 0) {
-        const classesExist = await teamRepository.existsClassCodes(
-          input.class_codes
-        );
-        if (!classesExist) {
-          throw new Error('Class not found');
-        }
-      }
+      await assertClassCodesAssignable(teamRepository, input.class_codes);
       return toTeamDTO(await teamRepository.createTeam(input));
     },
 
     async updateTeam(teamId: number, input: TeamWriteRequestDTO) {
-      if (input.class_codes.length > 0) {
-        const classesExist = await teamRepository.existsClassCodes(
-          input.class_codes
-        );
-        if (!classesExist) {
-          throw new Error('Class not found');
-        }
-      }
+      await assertClassCodesAssignable(
+        teamRepository,
+        input.class_codes,
+        teamId
+      );
       const updated = await teamRepository.updateTeam(teamId, input);
       if (!updated) {
         throw new Error('Team not found');

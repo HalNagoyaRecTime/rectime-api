@@ -43,6 +43,9 @@ function teamError(
   if (error instanceof Error && error.message === 'Class not found') {
     return errorResponse(c, TeamErrors.CLASS_ROOM_NOT_FOUND);
   }
+  if (error instanceof Error && error.message === 'Class already assigned') {
+    return errorResponse(c, TeamErrors.CLASS_ROOM_ALREADY_ASSIGNED);
+  }
   if (
     error instanceof Error &&
     error.message.includes('UNIQUE constraint failed') &&

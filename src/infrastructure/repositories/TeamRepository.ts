@@ -32,6 +32,34 @@ async function findTeamIdsByClassCodes(
   return teamIds;
 }
 
+async function findClassRoomsOwnedByOtherTeam(
+  db: D1Database,
+  classCodes: string[],
+  excludeTeamId?: number
+): Promise<{ class_code: string; team_id: number; team_name: string }[]> {
+  const conflicts: {
+    class_code: string;
+    team_id: number;
+    team_name: string;
+  }[] = [];
+  for (const chunk of chunkArray(classCodes, CLASS_CODE_CHUNK_SIZE)) {
+    const placeholders = chunk.map(() => '?').join(', ');
+    const result = await db
+      .prepare(
+        `SELECT c.class_code, c.team_id, t.team_name
+         FROM class_rooms c
+         JOIN teams t ON t.team_id = c.team_id
+         WHERE c.class_code IN (${placeholders})
+         ${excludeTeamId !== undefined ? 'AND c.team_id != ?' : ''}
+         AND (SELECT COUNT(*) FROM class_rooms WHERE team_id = c.team_id) > 1`
+      )
+      .bind(...chunk, ...(excludeTeamId !== undefined ? [excludeTeamId] : []))
+      .all<{ class_code: string; team_id: number; team_name: string }>();
+    conflicts.push(...result.results);
+  }
+  return conflicts;
+}
+
 type RankingRow = {
   team_id: number;
   team_name: string;
@@ -251,6 +279,14 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
         matched += row?.count ?? 0;
       }
       return matched === unique.length;
+    },
+
+    async findClassRoomsOwnedByOtherTeam(
+      classCodes: string[],
+      excludeTeamId?: number
+    ): Promise<{ class_code: string; team_id: number; team_name: string }[]> {
+      if (classCodes.length === 0) return [];
+      return findClassRoomsOwnedByOtherTeam(db, classCodes, excludeTeamId);
     },
 
     async createTeam(input: TeamWriteInput): Promise<TeamEntity> {
