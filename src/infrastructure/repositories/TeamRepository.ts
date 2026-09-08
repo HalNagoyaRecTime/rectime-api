@@ -207,7 +207,7 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
             `${TEAM_SELECT}
              WHERE (? IS NULL OR t.team_name LIKE ?)
              GROUP BY t.team_id
-             ORDER BY ${column} ${direction}
+             ORDER BY ${column} ${direction}, t.team_id ASC
              LIMIT ? OFFSET ?`
           )
           .bind(searchPattern, searchPattern, options.limit, options.offset)
