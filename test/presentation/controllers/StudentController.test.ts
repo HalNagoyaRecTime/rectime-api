@@ -121,6 +121,7 @@ describe('StudentController', () => {
         offset: 0,
         sortBy: 'studentId',
         sortOrder: 'asc',
+        isLiveActive: true,
       });
       expect(await res.json()).toEqual({
         items: students,
@@ -173,8 +174,8 @@ describe('StudentController', () => {
     });
 
     it.each([
-      ['isStaff=true', { isStaff: true }],
-      ['isStaff=false', { isStaff: false }],
+      ['isStaff=true', { isStaff: true, isLiveActive: true }],
+      ['isStaff=false', { isStaff: false, isLiveActive: true }],
       ['isLiveActive=true', { isLiveActive: true }],
       ['isLiveActive=false', { isLiveActive: false }],
     ])('%sをboolean filterへ変換する', async (query, filter) => {

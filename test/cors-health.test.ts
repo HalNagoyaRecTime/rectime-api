@@ -147,7 +147,7 @@ describe('OpenAPI documentation', () => {
     expect(
       studentListParameters?.find(param => param.name === 'isLiveActive')
         ?.schema
-    ).toMatchObject({ default: 'all', enum: ['true', 'false', 'all'] });
+    ).toMatchObject({ default: 'true', enum: ['true', 'false', 'all'] });
     expect(
       studentListParameters?.find(param => param.name === 'sortBy')?.schema
     ).toMatchObject({
