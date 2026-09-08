@@ -131,6 +131,11 @@ export const UserErrors = {
     code: 'CLASS_ROOM_NOT_FOUND',
     message: '指定されたクラスが見つかりません',
   },
+  CLASSROOM_NOT_FOUND: {
+    status: 404,
+    code: 'CLASS_ROOM_NOT_FOUND',
+    message: '指定されたクラスが見つかりません',
+  },
   STUDENT_CLASS_ROOM_NOT_FOUND: {
     status: 404,
     code: 'CLASS_ROOM_NOT_FOUND',
@@ -161,9 +166,19 @@ export const UserErrors = {
     code: 'CLASS_CODE_ALREADY_EXISTS',
     message: '同じクラスコードが既に存在します',
   },
+  CLASS_ROOM_CODE_ALREADY_EXISTS: {
+    status: 409,
+    code: 'CLASS_ROOM_CODE_ALREADY_EXISTS',
+    message: '同じクラスコードが既に存在します',
+  },
   CLASS_REFERENCED_BY_STUDENTS: {
     status: 409,
     code: 'CLASS_REFERENCED_BY_STUDENTS',
+    message: '学生が所属しているクラスは削除できません',
+  },
+  CLASS_ROOM_REFERENCED_BY_STUDENTS: {
+    status: 409,
+    code: 'CLASS_ROOM_REFERENCED_BY_STUDENTS',
     message: '学生が所属しているクラスは削除できません',
   },
   CLASS_LIST_FAILED: {
@@ -189,6 +204,31 @@ export const UserErrors = {
   CLASS_DELETE_FAILED: {
     status: 500,
     code: 'CLASS_DELETE_FAILED',
+    message: 'クラスの削除に失敗しました',
+  },
+  CLASS_ROOM_LIST_FAILED: {
+    status: 500,
+    code: 'CLASS_ROOM_LIST_FAILED',
+    message: 'クラス一覧の取得に失敗しました',
+  },
+  CLASS_ROOM_FETCH_FAILED: {
+    status: 500,
+    code: 'CLASS_ROOM_FETCH_FAILED',
+    message: 'クラスの取得に失敗しました',
+  },
+  CLASS_ROOM_CREATE_FAILED: {
+    status: 500,
+    code: 'CLASS_ROOM_CREATE_FAILED',
+    message: 'クラスの登録に失敗しました',
+  },
+  CLASS_ROOM_UPDATE_FAILED: {
+    status: 500,
+    code: 'CLASS_ROOM_UPDATE_FAILED',
+    message: 'クラスの更新に失敗しました',
+  },
+  CLASS_ROOM_DELETE_FAILED: {
+    status: 500,
+    code: 'CLASS_ROOM_DELETE_FAILED',
     message: 'クラスの削除に失敗しました',
   },
   USER_SEARCH_FORBIDDEN: {

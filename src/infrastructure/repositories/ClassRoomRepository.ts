@@ -1,57 +1,56 @@
-import type {
-  D1Database,
-  D1PreparedStatement,
-} from '@cloudflare/workers-types';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/d1';
+import type { D1Database } from '@cloudflare/workers-types';
+import * as schema from '../database/schema';
+import { class_rooms, students, teachers, users } from '../database/schema';
 import type {
   ClassRoomEntity,
   ClassRoomInput,
   ClassRoomPage,
+  ClassRoomSearchFilter,
 } from '../../domain/entities/ClassRoom';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import { chunkArray } from './chunk';
 
+const DEFAULT_LIMIT = 50;
 const D1_MAX_BOUND_PARAMETERS = 100;
 
-type ClassRoomRow = {
-  class_room_id: number;
-  class_code: string;
-  class_name: string;
-  student_count: number;
-  teacher_id: number | null;
-  teacher_user_id: number | null;
-  teacher_display_name: string | null;
-};
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, char => `\\${char}`);
+}
 
-const classRoomSelect = `
-  SELECT
-    c.class_room_id,
-    c.class_code,
-    c.class_name,
-    COUNT(s.student_id) AS student_count,
-    t.teacher_id,
-    u.user_id AS teacher_user_id,
-    u.user_name AS teacher_display_name
-  FROM class_rooms c
-  LEFT JOIN students s ON s.class_room_id = c.class_room_id
-  LEFT JOIN teachers t ON t.teacher_id = c.teacher_id
-  LEFT JOIN users u ON u.user_id = t.user_id
-`;
+type ClassRoomRow = {
+  classRoomId: number;
+  classCode: string;
+  className: string;
+  studentCount: number;
+  teacherId: number | null;
+  teacherUserId: number | null;
+  teacherDisplayName: string | null;
+};
 
 function toEntity(row: ClassRoomRow): ClassRoomEntity {
   return {
-    class_room_id: row.class_room_id,
-    class_code: row.class_code,
-    class_name: row.class_name,
-    student_count: Number(row.student_count),
+    classRoomId: row.classRoomId,
+    classCode: row.classCode,
+    className: row.className,
+    studentCount: Number(row.studentCount),
+    class_room_id: row.classRoomId,
+    class_code: row.classCode,
+    class_name: row.className,
+    student_count: Number(row.studentCount),
     teacher:
-      row.teacher_id === null ||
-      row.teacher_user_id === null ||
-      row.teacher_display_name === null
+      row.teacherId === null ||
+      row.teacherUserId === null ||
+      row.teacherDisplayName === null
         ? null
         : {
-            teacher_id: row.teacher_id,
-            user_id: row.teacher_user_id,
-            display_name: row.teacher_display_name,
+            teacherId: row.teacherId,
+            userId: row.teacherUserId,
+            displayName: row.teacherDisplayName,
+            teacher_id: row.teacherId,
+            user_id: row.teacherUserId,
+            display_name: row.teacherDisplayName,
           },
   };
 }
@@ -59,146 +58,211 @@ function toEntity(row: ClassRoomRow): ClassRoomEntity {
 export function createClassRoomRepository(
   db: D1Database
 ): IClassRoomRepository {
-  const findById = async (id: number): Promise<ClassRoomEntity | null> => {
-    const row = await db
-      .prepare(
-        `${classRoomSelect} WHERE c.class_room_id = ? GROUP BY c.class_room_id`
+  const orm = drizzle(db, { schema });
+
+  const findPage = async (
+    filter: ClassRoomSearchFilter = {},
+    id?: number
+  ): Promise<ClassRoomPage> => {
+    const limit =
+      filter.limit && filter.limit > 0
+        ? Math.min(filter.limit, 100)
+        : DEFAULT_LIMIT;
+    const offset =
+      filter.offset !== undefined && filter.offset >= 0 ? filter.offset : 0;
+    const conditions = [];
+    if (id !== undefined) conditions.push(eq(class_rooms.id, id));
+    if (filter.search) {
+      const pattern = `%${escapeLikePattern(filter.search)}%`;
+      conditions.push(
+        or(
+          sql`${class_rooms.classCode} LIKE ${pattern} ESCAPE ${'\\'}`,
+          sql`${class_rooms.name} LIKE ${pattern} ESCAPE ${'\\'}`,
+          sql`${users.userName} LIKE ${pattern} ESCAPE ${'\\'}`
+        )!
+      );
+    }
+    const whereClause = conditions.length ? and(...conditions) : undefined;
+
+    const base = orm
+      .select({
+        classRoomId: class_rooms.id,
+        classCode: class_rooms.classCode,
+        className: class_rooms.name,
+        studentCount: sql<number>`count(${students.id})`,
+        teacherId: teachers.id,
+        teacherUserId: users.id,
+        teacherDisplayName: users.userName,
+      })
+      .from(class_rooms)
+      .leftJoin(teachers, eq(teachers.id, class_rooms.teacherId))
+      .leftJoin(users, eq(users.id, teachers.userId))
+      .leftJoin(students, eq(students.classRoomId, class_rooms.id));
+    const countBase = orm
+      .select({ total: sql<number>`count(distinct ${class_rooms.id})` })
+      .from(class_rooms)
+      .leftJoin(teachers, eq(teachers.id, class_rooms.teacherId))
+      .leftJoin(users, eq(users.id, teachers.userId));
+
+    const totalRow = await (
+      whereClause ? countBase.where(whereClause) : countBase
+    ).get();
+    const total = Number(totalRow?.total ?? 0);
+    const order = filter.sortOrder === 'desc' ? desc : asc;
+    const sortColumn =
+      filter.sortBy === 'classCode'
+        ? class_rooms.classCode
+        : filter.sortBy === 'className'
+          ? class_rooms.name
+          : filter.sortBy === 'teacherName'
+            ? users.userName
+            : filter.sortBy === 'studentCount'
+              ? sql<number>`count(${students.id})`
+              : class_rooms.id;
+    const rows = await (whereClause ? base.where(whereClause) : base)
+      .groupBy(
+        class_rooms.id,
+        class_rooms.classCode,
+        class_rooms.name,
+        teachers.id,
+        users.id,
+        users.userName
       )
-      .bind(id)
-      .first<ClassRoomRow>();
-    return row ? toEntity(row) : null;
+      .orderBy(
+        ...(filter.sortBy === 'teacherName'
+          ? [sql<number>`CASE WHEN ${users.userName} IS NULL THEN 1 ELSE 0 END`]
+          : []),
+        order(sortColumn),
+        asc(class_rooms.id)
+      )
+      .limit(limit)
+      .offset(offset)
+      .all();
+
+    const items = rows.map(toEntity);
+    return { items, classrooms: items, total, limit, offset };
   };
 
   return {
-    async findAll(limit: number, offset: number): Promise<ClassRoomPage> {
-      const [rows, count] = await Promise.all([
-        db
-          .prepare(
-            `${classRoomSelect} GROUP BY c.class_room_id ORDER BY c.class_room_id LIMIT ? OFFSET ?`
-          )
-          .bind(limit, offset)
-          .all<ClassRoomRow>(),
-        db
-          .prepare('SELECT COUNT(*) AS total FROM class_rooms')
-          .first<{ total: number }>(),
-      ]);
-      return {
-        classrooms: rows.results.map(toEntity),
-        total: Number(count?.total ?? 0),
-        limit,
-        offset,
-      };
+    async findAll(
+      filterOrLimit: ClassRoomSearchFilter | number = {},
+      legacyOffset: number = 0
+    ) {
+      const filter: ClassRoomSearchFilter =
+        typeof filterOrLimit === 'number'
+          ? { limit: filterOrLimit, offset: legacyOffset }
+          : filterOrLimit;
+      return findPage(filter);
     },
-
-    findById,
-
-    async findByCode(classCode: string): Promise<ClassRoomEntity | null> {
-      const row = await db
-        .prepare(
-          `${classRoomSelect} WHERE c.class_code = ? GROUP BY c.class_room_id`
-        )
-        .bind(classCode)
-        .first<ClassRoomRow>();
-      return row ? toEntity(row) : null;
+    async findById(id) {
+      const page = await findPage({ limit: 1 }, id);
+      return page.items[0] ?? null;
     },
-
-    async findExistingClassCodes(classCodes: string[]): Promise<Set<string>> {
-      const unique = Array.from(new Set(classCodes));
+    async findByCode(classCode) {
+      const row = await orm
+        .select({ id: class_rooms.id })
+        .from(class_rooms)
+        .where(eq(class_rooms.classCode, classCode))
+        .get();
+      return row ? this.findById(row.id) : null;
+    },
+    async findExistingClassCodes(classCodes) {
       const found = new Set<string>();
-
-      for (const chunk of chunkArray(unique, D1_MAX_BOUND_PARAMETERS)) {
-        const placeholders = chunk.map(() => '?').join(', ');
-        const result = await db
-          .prepare(
-            `SELECT class_code FROM class_rooms WHERE class_code IN (${placeholders})`
-          )
-          .bind(...chunk)
-          .all<{ class_code: string }>();
-        for (const row of result.results) {
-          found.add(row.class_code);
-        }
+      for (const chunk of chunkArray(
+        Array.from(new Set(classCodes)),
+        D1_MAX_BOUND_PARAMETERS
+      )) {
+        if (chunk.length === 0) continue;
+        const rows = await orm
+          .select({ classCode: class_rooms.classCode })
+          .from(class_rooms)
+          .where(inArray(class_rooms.classCode, chunk))
+          .all();
+        rows.forEach(row => found.add(row.classCode));
       }
-
       return found;
     },
-
-    async create(input: ClassRoomInput): Promise<ClassRoomEntity> {
-      const row = await db
-        .prepare(
-          'INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES (?, ?, ?) RETURNING class_room_id'
-        )
-        .bind(input.class_code, input.class_name, input.teacher_id)
-        .first<{ class_room_id: number }>();
-      if (!row) throw new Error('Failed to create class');
-      const classroom = await findById(row.class_room_id);
-      if (!classroom) throw new Error('Failed to fetch created class');
-      return classroom;
-    },
-
-    async createMany(inputs: ClassRoomInput[]): Promise<void> {
-      if (inputs.length === 0) {
-        return;
+    async create(input: ClassRoomInput) {
+      let row;
+      try {
+        row = await orm
+          .insert(class_rooms)
+          .values({
+            classCode: input.classCode ?? input.class_code!,
+            name: input.className ?? input.class_name!,
+            teacherId: input.teacherId ?? input.teacher_id ?? null,
+          })
+          .returning({ id: class_rooms.id })
+          .get();
+      } catch (error) {
+        if (error instanceof Error && error.cause instanceof Error)
+          throw error.cause;
+        throw error;
       }
-
-      const statements: D1PreparedStatement[] = [];
+      if (!row) throw new Error('Failed to create class');
+      const created = await findPage({ limit: 1 }, row.id);
+      if (!created.items[0]) throw new Error('Failed to fetch created class');
+      return created.items[0];
+    },
+    async createMany(inputs) {
       for (const chunk of chunkArray(
         inputs,
         Math.floor(D1_MAX_BOUND_PARAMETERS / 3)
       )) {
-        const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');
-        const values = chunk.flatMap(input => [
-          input.class_code,
-          input.class_name,
-          input.teacher_id,
-        ]);
-        statements.push(
-          db
-            .prepare(
-              `INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ${placeholders}`
+        if (chunk.length)
+          await orm
+            .insert(class_rooms)
+            .values(
+              chunk.map(input => ({
+                classCode: input.classCode ?? input.class_code!,
+                name: input.className ?? input.class_name!,
+                teacherId: input.teacherId ?? input.teacher_id ?? null,
+              }))
             )
-            .bind(...values)
-        );
+            .run();
       }
-      await db.batch(statements);
     },
-
-    async update(
-      id: number,
-      input: ClassRoomInput
-    ): Promise<ClassRoomEntity | null> {
-      const row = await db
-        .prepare(
-          'UPDATE class_rooms SET class_code = ?, class_name = ?, teacher_id = ?, updated_at = CURRENT_TIMESTAMP WHERE class_room_id = ? RETURNING class_room_id'
-        )
-        .bind(input.class_code, input.class_name, input.teacher_id, id)
-        .first<{ class_room_id: number }>();
-      return row ? findById(row.class_room_id) : null;
+    async update(id, input) {
+      const row = await orm
+        .update(class_rooms)
+        .set({
+          classCode: input.classCode ?? input.class_code!,
+          name: input.className ?? input.class_name!,
+          teacherId: input.teacherId ?? input.teacher_id ?? null,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(class_rooms.id, id))
+        .returning({ id: class_rooms.id })
+        .get();
+      if (!row) return null;
+      const updated = await findPage({ limit: 1 }, row.id);
+      return updated.items[0] ?? null;
     },
-
-    async delete(id: number): Promise<boolean> {
-      const result = await db
-        .prepare('DELETE FROM class_rooms WHERE class_room_id = ?')
-        .bind(id)
+    async delete(id) {
+      const result = await orm
+        .delete(class_rooms)
+        .where(eq(class_rooms.id, id))
         .run();
-      return (result.meta.changes ?? 0) > 0;
+      return result.meta.changes > 0;
     },
-
-    async teacherExists(id: number): Promise<boolean> {
-      const row = await db
-        .prepare('SELECT teacher_id FROM teachers WHERE teacher_id = ?')
-        .bind(id)
-        .first();
-      return row !== null;
+    async teacherExists(id) {
+      return Boolean(
+        await orm
+          .select({ id: teachers.id })
+          .from(teachers)
+          .where(eq(teachers.id, id))
+          .get()
+      );
     },
-
-    async hasStudents(id: number): Promise<boolean> {
-      const row = await db
-        .prepare(
-          'SELECT 1 AS referenced FROM students WHERE class_room_id = ? LIMIT 1'
-        )
-        .bind(id)
-        .first();
-      return row !== null;
+    async hasStudents(id) {
+      return Boolean(
+        await orm
+          .select({ id: students.id })
+          .from(students)
+          .where(eq(students.classRoomId, id))
+          .limit(1)
+          .get()
+      );
     },
   };
 }

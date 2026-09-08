@@ -10,6 +10,7 @@ import type {
   ClassRoomRequestDTO,
 } from '../dto/ClassRoomDTO';
 import type { ClassRoomEntity } from '../../domain/entities/ClassRoom';
+import type { ClassRoomSearchFilter } from '../../domain/entities/ClassRoom';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import type { IClassRoomService } from './IClassRoomService';
 
@@ -65,7 +66,19 @@ export function createClassRoomService(
   classRoomRepository: IClassRoomRepository
 ): IClassRoomService {
   const toDTO = (classroom: ClassRoomEntity): ClassRoomDTO => ({
-    ...classroom,
+    class_room_id: classroom.classRoomId ?? classroom.class_room_id,
+    class_code: classroom.classCode ?? classroom.class_code,
+    class_name: classroom.className ?? classroom.class_name,
+    student_count: classroom.studentCount ?? classroom.student_count,
+    teacher: classroom.teacher
+      ? {
+          teacher_id:
+            classroom.teacher.teacherId ?? classroom.teacher.teacher_id,
+          user_id: classroom.teacher.userId ?? classroom.teacher.user_id,
+          display_name:
+            classroom.teacher.displayName ?? classroom.teacher.display_name,
+        }
+      : null,
   });
 
   const ensureTeacherExists = async (teacherId: number | null) => {
@@ -79,12 +92,19 @@ export function createClassRoomService(
 
   return {
     async getAllClassrooms(
-      limit: number,
-      offset: number
+      filterOrLimit: ClassRoomSearchFilter | number = {},
+      legacyOffset?: number
     ): Promise<ClassRoomPageDTO> {
-      const result = await classRoomRepository.findAll(limit, offset);
+      const legacyCall = typeof filterOrLimit === 'number';
+      const filter: ClassRoomSearchFilter =
+        typeof filterOrLimit === 'number'
+          ? { limit: filterOrLimit, offset: legacyOffset ?? 0 }
+          : filterOrLimit;
+      const result = await classRoomRepository.findAll(filter);
+      const items = result.items ?? result.classrooms;
+      const mapped = items.map(toDTO);
       return {
-        classrooms: result.classrooms.map(toDTO),
+        ...(legacyCall ? { classrooms: mapped } : { items: mapped }),
         total: result.total,
         limit: result.limit,
         offset: result.offset,
@@ -98,9 +118,25 @@ export function createClassRoomService(
     },
 
     async createClassroom(input: ClassRoomRequestDTO): Promise<ClassRoomDTO> {
-      await ensureTeacherExists(input.teacher_id);
+      const normalized = {
+        classCode: input.classCode ?? input.class_code!,
+        className: input.className ?? input.class_name!,
+        teacherId: input.teacherId ?? input.teacher_id ?? null,
+        class_code: input.classCode ?? input.class_code!,
+        class_name: input.className ?? input.class_name!,
+        teacher_id: input.teacherId ?? input.teacher_id ?? null,
+      };
+      await ensureTeacherExists(normalized.teacherId);
       try {
-        return toDTO(await classRoomRepository.create(input));
+        return toDTO(
+          await classRoomRepository.create(
+            input as ClassRoomRequestDTO & {
+              class_code: string;
+              class_name: string;
+              teacher_id: number | null;
+            }
+          )
+        );
       } catch (error) {
         if (error instanceof Error && error.message.includes('UNIQUE')) {
           throw new Error('Class code already exists');
@@ -113,9 +149,24 @@ export function createClassRoomService(
       id: number,
       input: ClassRoomRequestDTO
     ): Promise<ClassRoomDTO> {
-      await ensureTeacherExists(input.teacher_id);
+      const normalized = {
+        classCode: input.classCode ?? input.class_code!,
+        className: input.className ?? input.class_name!,
+        teacherId: input.teacherId ?? input.teacher_id ?? null,
+        class_code: input.classCode ?? input.class_code!,
+        class_name: input.className ?? input.class_name!,
+        teacher_id: input.teacherId ?? input.teacher_id ?? null,
+      };
+      await ensureTeacherExists(normalized.teacherId);
       try {
-        const classroom = await classRoomRepository.update(id, input);
+        const classroom = await classRoomRepository.update(
+          id,
+          input as ClassRoomRequestDTO & {
+            class_code: string;
+            class_name: string;
+            teacher_id: number | null;
+          }
+        );
         if (!classroom) throw new Error('Class not found');
         return toDTO(classroom);
       } catch (error) {

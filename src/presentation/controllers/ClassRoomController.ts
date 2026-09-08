@@ -3,12 +3,26 @@ import { z } from 'zod';
 import type { IClassRoomService } from '../../application/services/IClassRoomService';
 import { errorResponse } from '../errors/errorResponse';
 import { UserErrors } from '../errors/userErrors';
+import { CommonErrors } from '../errors/commonErrors';
 
 const classIdSchema = z.coerce.number().int().positive();
-const paginationSchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  offset: z.coerce.number().int().min(0).default(0),
-});
+const paginationSchema = z
+  .object({
+    search: z.string().trim().min(1).optional(),
+    sortBy: z
+      .enum([
+        'classRoomId',
+        'classCode',
+        'className',
+        'teacherName',
+        'studentCount',
+      ])
+      .default('classRoomId'),
+    sortOrder: z.enum(['asc', 'desc']).default('asc'),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+    offset: z.coerce.number().int().min(0).default(0),
+  })
+  .strict();
 const classRoomRequestSchema = z.object({
   classCode: z.string().trim().min(1),
   className: z.string().trim().min(1),
@@ -17,27 +31,36 @@ const classRoomRequestSchema = z.object({
 
 export function createClassRoomController(classService: IClassRoomService) {
   const getAllClassrooms = async (c: Context) => {
-    const query = paginationSchema.safeParse({
-      limit: c.req.query('limit'),
-      offset: c.req.query('offset'),
-    });
+    const query = paginationSchema.safeParse(c.req.query());
     if (!query.success) {
       return errorResponse(
         c,
-        UserErrors.INVALID_CLASS_LIST_QUERY,
+        CommonErrors.VALIDATION_ERROR,
         query.error.flatten()
       );
     }
     try {
+      const hasAdvancedQuery =
+        query.data.search !== undefined ||
+        c.req.query('sortBy') !== undefined ||
+        c.req.query('sortOrder') !== undefined;
+      const result = hasAdvancedQuery
+        ? await classService.getAllClassrooms(query.data)
+        : await classService.getAllClassrooms(
+            query.data.limit,
+            query.data.offset
+          );
       return c.json(
-        await classService.getAllClassrooms(
-          query.data.limit,
-          query.data.offset
-        ),
+        {
+          items: result.items ?? result.classrooms ?? [],
+          total: result.total,
+          limit: result.limit,
+          offset: result.offset,
+        },
         200
       );
     } catch {
-      return errorResponse(c, UserErrors.CLASS_LIST_FAILED);
+      return errorResponse(c, UserErrors.CLASS_ROOM_LIST_FAILED);
     }
   };
 
@@ -48,9 +71,9 @@ export function createClassRoomController(classService: IClassRoomService) {
       return c.json(await classService.getClassroomById(id.data), 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
-        return errorResponse(c, UserErrors.CLASS_NOT_FOUND);
+        return errorResponse(c, UserErrors.CLASSROOM_NOT_FOUND);
       }
-      return errorResponse(c, UserErrors.CLASS_FETCH_FAILED);
+      return errorResponse(c, UserErrors.CLASS_ROOM_FETCH_FAILED);
     }
   };
 
@@ -78,7 +101,7 @@ export function createClassRoomController(classService: IClassRoomService) {
         201
       );
     } catch (error) {
-      return handleWriteError(c, error, UserErrors.CLASS_CREATE_FAILED);
+      return handleWriteError(c, error, UserErrors.CLASS_ROOM_CREATE_FAILED);
     }
   };
 
@@ -103,7 +126,7 @@ export function createClassRoomController(classService: IClassRoomService) {
         200
       );
     } catch (error) {
-      return handleWriteError(c, error, UserErrors.CLASS_UPDATE_FAILED);
+      return handleWriteError(c, error, UserErrors.CLASS_ROOM_UPDATE_FAILED);
     }
   };
 
@@ -115,15 +138,15 @@ export function createClassRoomController(classService: IClassRoomService) {
       return c.body(null, 204);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
-        return errorResponse(c, UserErrors.CLASS_NOT_FOUND);
+        return errorResponse(c, UserErrors.CLASSROOM_NOT_FOUND);
       }
       if (
         error instanceof Error &&
         error.message === 'Class is referenced by students'
       ) {
-        return errorResponse(c, UserErrors.CLASS_REFERENCED_BY_STUDENTS);
+        return errorResponse(c, UserErrors.CLASS_ROOM_REFERENCED_BY_STUDENTS);
       }
-      return errorResponse(c, UserErrors.CLASS_DELETE_FAILED);
+      return errorResponse(c, UserErrors.CLASS_ROOM_DELETE_FAILED);
     }
   };
 
@@ -140,17 +163,17 @@ function handleWriteError(
   c: Context,
   error: unknown,
   fallbackError:
-    | typeof UserErrors.CLASS_CREATE_FAILED
-    | typeof UserErrors.CLASS_UPDATE_FAILED
+    | typeof UserErrors.CLASS_ROOM_CREATE_FAILED
+    | typeof UserErrors.CLASS_ROOM_UPDATE_FAILED
 ) {
   if (error instanceof Error && error.message === 'Teacher not found') {
     return errorResponse(c, UserErrors.TEACHER_NOT_FOUND);
   }
   if (error instanceof Error && error.message === 'Class not found') {
-    return errorResponse(c, UserErrors.CLASS_NOT_FOUND);
+    return errorResponse(c, UserErrors.CLASSROOM_NOT_FOUND);
   }
   if (error instanceof Error && error.message === 'Class code already exists') {
-    return errorResponse(c, UserErrors.CLASS_CODE_ALREADY_EXISTS);
+    return errorResponse(c, UserErrors.CLASS_ROOM_CODE_ALREADY_EXISTS);
   }
   return errorResponse(c, fallbackError);
 }

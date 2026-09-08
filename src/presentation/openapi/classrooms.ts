@@ -9,7 +9,6 @@ import {
   noContentResponse,
   notFoundResponse,
   paginationFields,
-  paginationQuery,
   positivePathParam,
   unauthorizedResponse,
   z,
@@ -37,7 +36,7 @@ export type ClassRoomResponseDTO = z.infer<typeof classRoomResponseSchema>;
 
 export const classRoomPageResponseSchema = z
   .object({
-    classrooms: z.array(classRoomResponseSchema),
+    items: z.array(classRoomResponseSchema),
     ...paginationFields,
   })
   .openapi('ClassRoomPage');
@@ -50,7 +49,24 @@ export const classIdParams = z.object({
   classId: positivePathParam('classId', '教室ID'),
 });
 
-export const classRoomListQuery = paginationQuery(100, 20);
+export const classRoomListQuery = z
+  .object({
+    search: z.string().trim().min(1).optional(),
+    sortBy: z
+      .enum([
+        'classRoomId',
+        'classCode',
+        'className',
+        'teacherName',
+        'studentCount',
+      ])
+      .default('classRoomId')
+      .optional(),
+    sortOrder: z.enum(['asc', 'desc']).default('asc').optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50).optional(),
+    offset: z.coerce.number().int().min(0).default(0).optional(),
+  })
+  .strict();
 
 export const classRoomWriteSchema = z
   .object({
