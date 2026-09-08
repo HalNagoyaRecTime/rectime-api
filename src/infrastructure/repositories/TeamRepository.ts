@@ -231,13 +231,45 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     },
 
     async createTeam(input: TeamWriteInput): Promise<TeamEntity> {
-      const created = await db
-        .prepare('INSERT INTO teams (team_name) VALUES (?) RETURNING team_id')
-        .bind(input.team_name)
-        .first<{ team_id: number }>();
-      if (!created) throw new Error('Failed to create team');
+      if (input.class_codes.length === 0) {
+        const created = await db
+          .prepare('INSERT INTO teams (team_name) VALUES (?) RETURNING team_id')
+          .bind(input.team_name)
+          .first<{ team_id: number }>();
+        if (!created) throw new Error('Failed to create team');
 
-      await attachClassRooms(created.team_id, input.class_codes);
+        const team = await fetchTeamById(created.team_id);
+        if (!team) throw new Error('Failed to create team');
+        return team;
+      }
+
+      const placeholders = input.class_codes.map(() => '?').join(', ');
+      const previous = await db
+        .prepare(
+          `SELECT DISTINCT team_id FROM class_rooms WHERE class_code IN (${placeholders})`
+        )
+        .bind(...input.class_codes)
+        .all<{ team_id: number }>();
+
+      const [createResult] = await db.batch<{ team_id: number }>([
+        db
+          .prepare('INSERT INTO teams (team_name) VALUES (?) RETURNING team_id')
+          .bind(input.team_name),
+        db
+          .prepare(
+            `UPDATE class_rooms
+             SET team_id = (SELECT team_id FROM teams WHERE team_name = ?),
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE class_code IN (${placeholders})`
+          )
+          .bind(input.team_name, ...input.class_codes),
+        ...previous.results.flatMap(row =>
+          buildCleanupEmptyTeamStatements(db, row.team_id)
+        ),
+      ]);
+
+      const created = createResult.results[0];
+      if (!created) throw new Error('Failed to create team');
 
       const team = await fetchTeamById(created.team_id);
       if (!team) throw new Error('Failed to create team');
