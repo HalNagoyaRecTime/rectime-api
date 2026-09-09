@@ -83,6 +83,7 @@ function toEntity(
     teacher_id: row.teachers.id,
     user_id: row.users.id,
     user_name: row.users.userName,
+    email: row.teachers.email ?? null,
     is_live_active: Boolean(row.users.isLiveActive),
     class_rooms: classRooms,
   };
@@ -198,6 +199,26 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       return { items, total, limit, offset };
     },
 
+    async findExistingEmails(emails: string[]): Promise<Set<string>> {
+      const unique = Array.from(new Set(emails));
+      const found = new Set<string>();
+
+      for (const chunk of chunkArray(unique, D1_MAX_BOUND_PARAMETERS)) {
+        const placeholders = chunk.map(() => '?').join(', ');
+        const result = await db
+          .prepare(
+            `SELECT email FROM teachers WHERE email IN (${placeholders})`
+          )
+          .bind(...chunk)
+          .all<{ email: string }>();
+        for (const row of result.results) {
+          found.add(row.email);
+        }
+      }
+
+      return found;
+    },
+
     async existsClassRooms(classRoomIds: number[]): Promise<boolean> {
       if (classRoomIds.length === 0) return true;
       const rows = await orm
@@ -213,6 +234,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
     ): Promise<TeacherEntity> {
       const displayName =
         'userName' in input ? input.userName : input.displayName;
+      const email = input.email;
       const classRoomIds = 'userName' in input ? input.classRoomIds : [];
       const hasClassRoomAssignments = classRoomIds.length > 0;
 
@@ -242,12 +264,12 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
               .bind(displayName, ...classRoomIds, classRoomIds.length),
             db
               .prepare(
-                `INSERT INTO teachers (user_id, updated_at)
-                 SELECT last_insert_rowid(), CURRENT_TIMESTAMP
+                `INSERT INTO teachers (user_id, email, updated_at)
+                 SELECT last_insert_rowid(), ?, CURRENT_TIMESTAMP
                  WHERE ${classRoomsExistCondition}
                  RETURNING teacher_id, user_id`
               )
-              .bind(...classRoomIds, classRoomIds.length),
+              .bind(email, ...classRoomIds, classRoomIds.length),
             db
               .prepare(
                 `UPDATE class_rooms
@@ -267,11 +289,13 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
                  RETURNING user_id, user_name, is_live_active`
               )
               .bind(displayName),
-            db.prepare(
-              `INSERT INTO teachers (user_id, updated_at)
-               VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
-               RETURNING teacher_id, user_id`
-            ),
+            db
+              .prepare(
+                `INSERT INTO teachers (user_id, email, updated_at)
+                 VALUES (last_insert_rowid(), ?, CURRENT_TIMESTAMP)
+                 RETURNING teacher_id, user_id`
+              )
+              .bind(email),
           ]);
 
       const [userResult, teacherResult] = batchResults;
@@ -339,17 +363,27 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       }
 
       try {
+        const teacherRows = userIds.map((userId, index) => ({
+          userId,
+          email: inputs[index].email,
+        }));
         const teacherStatements: D1PreparedStatement[] = [];
-        for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
+        // 1行あたり user_id と email の2つをbindするため、行数の上限は
+        // D1のbind上限の半分になる。
+        for (const chunk of chunkArray(
+          teacherRows,
+          Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
+        )) {
           const placeholders = chunk
-            .map(() => '(?, CURRENT_TIMESTAMP)')
+            .map(() => '(?, ?, CURRENT_TIMESTAMP)')
             .join(', ');
+          const values = chunk.flatMap(row => [row.userId, row.email]);
           teacherStatements.push(
             db
               .prepare(
-                `INSERT INTO teachers (user_id, updated_at) VALUES ${placeholders}`
+                `INSERT INTO teachers (user_id, email, updated_at) VALUES ${placeholders}`
               )
-              .bind(...chunk)
+              .bind(...values)
           );
         }
         await db.batch(teacherStatements);
@@ -388,6 +422,11 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         })
         .where(eq(users.id, existing.users.id));
 
+      const updateTeacherStatement = orm
+        .update(teachers)
+        .set({ email: input.email, updatedAt: now })
+        .where(eq(teachers.id, id));
+
       // 1クラスの担当教員は最大1人のため、担当クラスの入れ替えは
       // class_rooms.teacher_id の付け替えで表現する。
       // まずこの教員が現在担当している全クラスを teacher_id = NULL に戻し、
@@ -420,17 +459,26 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           .where(inArray(class_rooms.id, input.classRoomIds));
         await orm.batch([
           updateUserStatement,
+          updateTeacherStatement,
           clearAssignmentsStatement,
           setAssignmentsStatement,
         ]);
       } else {
-        await orm.batch([updateUserStatement, clearAssignmentsStatement]);
+        await orm.batch([
+          updateUserStatement,
+          updateTeacherStatement,
+          clearAssignmentsStatement,
+        ]);
       }
 
       const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [id]);
       return toEntity(
         {
-          teachers: existing.teachers,
+          teachers: {
+            ...existing.teachers,
+            email: input.email,
+            updatedAt: now,
+          },
           users: {
             ...existing.users,
             userName: input.userName,

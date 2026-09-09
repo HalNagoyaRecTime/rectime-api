@@ -448,7 +448,10 @@ describe('MasterImportService', () => {
         errors: [{ row_index: 0, reason: 'dummy' }],
       });
 
-      const file = csvFile('last_name,first_name\n田中,太郎\n', 't.csv');
+      const file = csvFile(
+        'last_name,first_name,email\n田中,太郎,tanaka@example.ac.jp\n',
+        't.csv'
+      );
       const created = await service.createImport({
         createUserId: OWNER_USER_ID,
         type: 'teachers',

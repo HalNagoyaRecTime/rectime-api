@@ -228,6 +228,7 @@ describe('TeacherRepository', () => {
       const target = seeded.teachers[1];
       const updated = await repo.update(target.teacherId, {
         userName: '更新済み先生',
+        email: null,
         classRoomIds: [seeded.classRooms[1].classRoomId],
       });
 
@@ -252,6 +253,7 @@ describe('TeacherRepository', () => {
       const target = seeded.teachers[0];
       const updated = await repo.update(target.teacherId, {
         userName: target.displayName,
+        email: null,
         classRoomIds: [],
       });
 
@@ -261,6 +263,7 @@ describe('TeacherRepository', () => {
     it('存在しない教員IDの場合は null を返す', async () => {
       const updated = await repo.update(999999, {
         userName: 'x',
+        email: null,
         classRoomIds: [],
       });
       expect(updated).toBeNull();
@@ -272,6 +275,7 @@ describe('TeacherRepository', () => {
 
       const updated = await repo.update(target.teacherId, {
         userName: '更新不可先生',
+        email: null,
         classRoomIds: [],
       });
       expect(updated).toBeNull();
@@ -291,6 +295,7 @@ describe('TeacherRepository', () => {
       await expect(
         repo.update(target.teacherId, {
           userName: '更新失敗するはずの先生',
+          email: null,
           classRoomIds: [999999],
         })
       ).rejects.toThrow();
@@ -335,7 +340,10 @@ describe('TeacherRepository', () => {
 
   describe('create', () => {
     it('教官を作成し、作成したエンティティを返す', async () => {
-      const created = await repo.create({ displayName: '新規教官' });
+      const created = await repo.create({
+        displayName: '新規教官',
+        email: null,
+      });
 
       expect(created).toMatchObject({
         user_name: '新規教官',
@@ -350,6 +358,7 @@ describe('TeacherRepository', () => {
       const classRoomId = seeded.classRooms[1].classRoomId;
       const created = await repo.create({
         userName: 'クラス担当教官',
+        email: null,
         classRoomIds: [classRoomId],
       });
 
@@ -369,6 +378,7 @@ describe('TeacherRepository', () => {
 
       const created = await repo.create({
         userName: '複数クラス担当教官',
+        email: null,
         classRoomIds,
       });
 
@@ -397,6 +407,7 @@ describe('TeacherRepository', () => {
       await expect(
         repo.create({
           userName,
+          email: null,
           classRoomIds: [targetClassRoomId, 999999],
         })
       ).rejects.toThrow('Class room not found');
@@ -420,8 +431,8 @@ describe('TeacherRepository', () => {
   describe('createMany', () => {
     it('複数の教官をまとめて作成する', async () => {
       await repo.createMany([
-        { displayName: '一括教官A' },
-        { displayName: '一括教官B' },
+        { displayName: '一括教官A', email: null },
+        { displayName: '一括教官B', email: null },
       ]);
 
       const result = await repo.findAll({ userName: '一括教官' });
@@ -441,6 +452,7 @@ describe('TeacherRepository', () => {
     it('2,000件の教官をまとめて作成できる', async () => {
       const inputs = Array.from({ length: 2000 }, (_, i) => ({
         displayName: `一括教官BULK2K${i}`,
+        email: null,
       }));
 
       await repo.createMany(inputs);
@@ -465,7 +477,7 @@ describe('TeacherRepository', () => {
 
       let thrown: unknown;
       try {
-        await repo.createMany([{ displayName: '再現用教官' }]);
+        await repo.createMany([{ displayName: '再現用教官', email: null }]);
       } catch (error) {
         thrown = error;
       }
@@ -524,6 +536,114 @@ describe('TeacherRepository', () => {
       ).first<{ user_id: number }>();
 
       await expect(repo.deleteByUserId(user!.user_id)).resolves.toBe(false);
+    });
+  });
+
+  describe('email', () => {
+    it('findById/findAll がemailを返す（未登録はnull）', async () => {
+      const withEmail = await repo.findById(seeded.teachers[0].teacherId);
+      const withoutEmail = await repo.findById(seeded.teachers[1].teacherId);
+
+      expect(withEmail?.email).toBe(seeded.teachers[0].email);
+      expect(withoutEmail?.email).toBeNull();
+    });
+
+    it('createでemailを保存する', async () => {
+      const created = await repo.create({
+        userName: '新任先生',
+        email: 'shinnin@example.ac.jp',
+        classRoomIds: [],
+      });
+
+      expect(created.email).toBe('shinnin@example.ac.jp');
+      const refetched = await repo.findById(created.teacher_id);
+      expect(refetched?.email).toBe('shinnin@example.ac.jp');
+    });
+
+    it('担当クラス付きのcreateでもemailを保存する', async () => {
+      const created = await repo.create({
+        userName: '担任付き先生',
+        email: 'tannin@example.ac.jp',
+        classRoomIds: [seeded.classRooms[1].classRoomId],
+      });
+
+      const refetched = await repo.findById(created.teacher_id);
+      expect(refetched?.email).toBe('tannin@example.ac.jp');
+      expect(refetched?.class_rooms).toHaveLength(1);
+    });
+
+    it('createManyで行ごとのemailを保存する', async () => {
+      await repo.createMany([
+        { displayName: '一括1', email: 'bulk1@example.ac.jp' },
+        { displayName: '一括2', email: null },
+        { displayName: '一括3', email: 'bulk3@example.ac.jp' },
+      ]);
+
+      const result = await repo.findAll({ limit: 100 });
+      const byName = new Map(result.items.map(t => [t.user_name, t.email]));
+      expect(byName.get('一括1')).toBe('bulk1@example.ac.jp');
+      expect(byName.get('一括2')).toBeNull();
+      expect(byName.get('一括3')).toBe('bulk3@example.ac.jp');
+    });
+
+    // createManyは1行あたりuser_idとemailの2つをbindするため、
+    // bind上限に基づくチャンク分割の境界を跨ぐ件数で検証する。
+    it('createManyがチャンク境界を跨いでも全行を正しく保存する', async () => {
+      const inputs = Array.from({ length: 120 }, (_, index) => ({
+        displayName: `大量${index}`,
+        email: `bulk-many-${index}@example.ac.jp`,
+      }));
+
+      await repo.createMany(inputs);
+
+      const stored = await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM teachers WHERE email LIKE 'bulk-many-%'"
+      ).first<{ count: number }>();
+      expect(stored?.count).toBe(120);
+
+      const sample = await env.DB.prepare(
+        'SELECT email FROM teachers WHERE email = ?'
+      )
+        .bind('bulk-many-119@example.ac.jp')
+        .first<{ email: string }>();
+      expect(sample?.email).toBe('bulk-many-119@example.ac.jp');
+    });
+
+    it('updateでemailを変更・null化できる', async () => {
+      const target = seeded.teachers[0];
+
+      const updated = await repo.update(target.teacherId, {
+        userName: target.displayName,
+        email: 'changed@example.ac.jp',
+        classRoomIds: [],
+      });
+      expect(updated?.email).toBe('changed@example.ac.jp');
+      expect((await repo.findById(target.teacherId))?.email).toBe(
+        'changed@example.ac.jp'
+      );
+
+      const cleared = await repo.update(target.teacherId, {
+        userName: target.displayName,
+        email: null,
+        classRoomIds: [],
+      });
+      expect(cleared?.email).toBeNull();
+      expect((await repo.findById(target.teacherId))?.email).toBeNull();
+    });
+
+    describe('findExistingEmails', () => {
+      it('DBに存在するものだけを返す', async () => {
+        const found = await repo.findExistingEmails([
+          'yamada@example.ac.jp',
+          'notfound@example.ac.jp',
+        ]);
+
+        expect(found).toEqual(new Set(['yamada@example.ac.jp']));
+      });
+
+      it('空配列を渡した場合は空のSetを返す', async () => {
+        expect(await repo.findExistingEmails([])).toEqual(new Set());
+      });
     });
   });
 });

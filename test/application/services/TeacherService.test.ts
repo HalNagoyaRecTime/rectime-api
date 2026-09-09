@@ -8,6 +8,7 @@ function buildTeacher(overrides: Partial<TeacherEntity> = {}): TeacherEntity {
     teacher_id: 1,
     user_id: 10,
     user_name: '山田先生',
+    email: 'yamada@example.ac.jp',
     is_live_active: true,
     class_rooms: [],
     ...overrides,
@@ -20,6 +21,7 @@ function buildRepository(
   return {
     findById: vi.fn(),
     findAll: vi.fn(),
+    findExistingEmails: vi.fn().mockResolvedValue(new Set<string>()),
     existsClassRooms: vi.fn(),
     create: vi.fn(),
     createMany: vi.fn(),
@@ -45,6 +47,7 @@ describe('TeacherService', () => {
         teacher_id: 1,
         user_id: 10,
         display_name: '山田先生',
+        email: 'yamada@example.ac.jp',
         is_live_active: true,
         class_rooms: [],
       });
@@ -76,6 +79,7 @@ describe('TeacherService', () => {
         teacher_id: teacher.teacher_id,
         user_id: teacher.user_id,
         display_name: teacher.user_name,
+        email: teacher.email,
         is_live_active: teacher.is_live_active,
         class_rooms: teacher.class_rooms,
       });
@@ -177,12 +181,14 @@ describe('TeacherService', () => {
 
       const dto = await service.updateTeacher(1, {
         userName: '更新済み先生',
+        email: null,
         classRoomIds: [1],
       });
 
       expect(repository.existsClassRooms).toHaveBeenCalledWith([1]);
       expect(repository.update).toHaveBeenCalledWith(1, {
         userName: '更新済み先生',
+        email: null,
         classRoomIds: [1],
       });
       expect(dto.display_name).toBe('更新済み先生');
@@ -198,6 +204,7 @@ describe('TeacherService', () => {
       await expect(
         service.updateTeacher(1, {
           userName: 'x',
+          email: null,
           classRoomIds: [999],
         })
       ).rejects.toThrow('Class room not found');
@@ -215,6 +222,7 @@ describe('TeacherService', () => {
 
       await service.updateTeacher(1, {
         userName: 'x',
+        email: null,
         classRoomIds: [],
       });
 
@@ -232,6 +240,7 @@ describe('TeacherService', () => {
       await expect(
         service.updateTeacher(999, {
           userName: 'x',
+          email: null,
           classRoomIds: [1],
         })
       ).rejects.toThrow('Teacher not found');
@@ -248,7 +257,11 @@ describe('TeacherService', () => {
       const service = createTeacherService(repository);
 
       await expect(
-        service.updateTeacher(1, { userName: 'x', classRoomIds: [1] })
+        service.updateTeacher(1, {
+          userName: 'x',
+          email: null,
+          classRoomIds: [1],
+        })
       ).rejects.toThrow('Teacher not found');
     });
   });
@@ -288,15 +301,23 @@ describe('TeacherService', () => {
   });
 
   describe('validateTeacherImport', () => {
-    it('重複チェックを行わず、常にerrorsが空の結果を返す(DBへの書き込みは行わない)', async () => {
+    it('重複が無ければ全行を成功として返す(DBへの書き込みは行わない)', async () => {
       const createMany = vi.fn();
       const repository = buildRepository({ createMany });
       const service = createTeacherService(repository);
 
       const result = await service.validateTeacherImport({
         rows: [
-          { last_name: '田中', first_name: '太郎' },
-          { last_name: '佐藤', first_name: '花子' },
+          {
+            last_name: '田中',
+            first_name: '太郎',
+            email: 'tanaka@example.ac.jp',
+          },
+          {
+            last_name: '佐藤',
+            first_name: '花子',
+            email: 'sato@example.ac.jp',
+          },
         ],
       });
 
@@ -308,6 +329,59 @@ describe('TeacherService', () => {
       });
       expect(createMany).not.toHaveBeenCalled();
     });
+
+    it('ファイル内でメールアドレスが重複した行をエラーにする', async () => {
+      const service = createTeacherService(buildRepository());
+
+      const result = await service.validateTeacherImport({
+        rows: [
+          { last_name: '田中', first_name: '太郎', email: 'dup@example.ac.jp' },
+          { last_name: '佐藤', first_name: '花子', email: 'dup@example.ac.jp' },
+        ],
+      });
+
+      expect(result.success_count).toBe(1);
+      expect(result.errors).toEqual([
+        {
+          row_index: 2,
+          last_name: '佐藤',
+          first_name: '花子',
+          email: 'dup@example.ac.jp',
+          reason: 'email_duplicate_in_file',
+        },
+      ]);
+    });
+
+    it('既にDBに存在するメールアドレスの行をエラーにする', async () => {
+      const repository = buildRepository({
+        findExistingEmails: vi
+          .fn()
+          .mockResolvedValue(new Set(['exists@example.ac.jp'])),
+      });
+      const service = createTeacherService(repository);
+
+      const result = await service.validateTeacherImport({
+        rows: [
+          { last_name: '田中', first_name: '太郎', email: 'new@example.ac.jp' },
+          {
+            last_name: '佐藤',
+            first_name: '花子',
+            email: 'exists@example.ac.jp',
+          },
+        ],
+      });
+
+      expect(result.success_count).toBe(1);
+      expect(result.errors).toEqual([
+        {
+          row_index: 2,
+          last_name: '佐藤',
+          first_name: '花子',
+          email: 'exists@example.ac.jp',
+          reason: 'email_duplicate_in_db',
+        },
+      ]);
+    });
   });
 
   describe('commitTeacherImport', () => {
@@ -318,8 +392,16 @@ describe('TeacherService', () => {
 
       const result = await service.commitTeacherImport({
         rows: [
-          { last_name: '田中', first_name: '太郎' },
-          { last_name: '佐藤', first_name: '花子' },
+          {
+            last_name: '田中',
+            first_name: '太郎',
+            email: 'tanaka@example.ac.jp',
+          },
+          {
+            last_name: '佐藤',
+            first_name: '花子',
+            email: 'sato@example.ac.jp',
+          },
         ],
       });
 
@@ -331,9 +413,35 @@ describe('TeacherService', () => {
       });
       expect(createMany).toHaveBeenCalledTimes(1);
       expect(createMany).toHaveBeenCalledWith([
-        { displayName: '田中太郎' },
-        { displayName: '佐藤花子' },
+        { displayName: '田中太郎', email: 'tanaka@example.ac.jp' },
+        { displayName: '佐藤花子', email: 'sato@example.ac.jp' },
       ]);
+    });
+
+    it('エラー行がある場合は1件も取り込まず、createManyを呼ばない', async () => {
+      const createMany = vi.fn();
+      const repository = buildRepository({
+        createMany,
+        findExistingEmails: vi
+          .fn()
+          .mockResolvedValue(new Set(['exists@example.ac.jp'])),
+      });
+      const service = createTeacherService(repository);
+
+      const result = await service.commitTeacherImport({
+        rows: [
+          { last_name: '田中', first_name: '太郎', email: 'new@example.ac.jp' },
+          {
+            last_name: '佐藤',
+            first_name: '花子',
+            email: 'exists@example.ac.jp',
+          },
+        ],
+      });
+
+      expect(result.imported).toBe(0);
+      expect(result.error_count).toBe(1);
+      expect(createMany).not.toHaveBeenCalled();
     });
   });
 });

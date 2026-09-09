@@ -9,6 +9,7 @@ function buildTeacher(overrides: Partial<TeacherDTO> = {}): TeacherDTO {
     teacher_id: 1,
     user_id: 10,
     display_name: '山田先生',
+    email: 'yamada@example.ac.jp',
     is_live_active: true,
     class_rooms: [],
     ...overrides,
@@ -240,6 +241,7 @@ describe('TeacherController', () => {
   describe('updateTeacher', () => {
     const validBody = {
       userName: '更新済み先生',
+      email: 'koushin@example.ac.jp',
       classRoomIds: [1, 2],
     };
 
@@ -288,6 +290,74 @@ describe('TeacherController', () => {
       });
       expect(res.status).toBe(400);
       expect(teacherService.updateTeacher).not.toHaveBeenCalled();
+    });
+
+    it('emailを省略した場合は 400 を返す（PUTは全置換のため明示が必要）', async () => {
+      const { app, teacherService } = setup();
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userName: '更新済み先生',
+          classRoomIds: [1, 2],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(teacherService.updateTeacher).not.toHaveBeenCalled();
+    });
+
+    it('email形式でない場合は 400 を返す', async () => {
+      const { app, teacherService } = setup();
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...validBody, email: 'not-an-email' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(teacherService.updateTeacher).not.toHaveBeenCalled();
+    });
+
+    it('emailをnullにして未登録へ戻せる', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.updateTeacher as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(buildTeacher({ email: null }));
+
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...validBody, email: null }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(teacherService.updateTeacher).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ email: null })
+      );
+    });
+
+    it('emailを小文字へ正規化して渡す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.updateTeacher as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(buildTeacher());
+
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...validBody,
+          email: ' Koushin@Example.AC.JP ',
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(teacherService.updateTeacher).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ email: 'koushin@example.ac.jp' })
+      );
     });
 
     it('不正なリクエストボディの場合は 400 を返す', async () => {
