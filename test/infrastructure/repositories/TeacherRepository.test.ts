@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { D1PreparedStatement } from '@cloudflare/workers-types';
 import { createTeacherRepository } from '../../../src/infrastructure/repositories/TeacherRepository';
 import { createUserStatusRepository } from '../../../src/infrastructure/repositories/UserStatusRepository';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
@@ -657,6 +658,42 @@ describe('TeacherRepository', () => {
       expect(refetched?.email).toBe(target.email);
       expect(refetched?.user_name).toBe(target.displayName);
       expect(refetched?.class_rooms).toEqual(beforeClassRooms);
+    });
+
+    // レビュー指摘(#376): usersのRETURNINGは行順が保証されないため、
+    // 配列の位置で対応付けると別人のメールアドレスが保存され得る。
+    it('usersのRETURNINGが入力と違う順で返ってもemailを取り違えない', async () => {
+      const originalBatch = env.DB.batch.bind(env.DB);
+      let batchCall = 0;
+      const shuffledDb = new Proxy(env.DB, {
+        get(target, prop, receiver) {
+          if (prop === 'batch') {
+            return async (statements: D1PreparedStatement[]) => {
+              const results = await originalBatch(statements);
+              batchCall += 1;
+              // 1回目はusersのINSERT。RETURNINGを逆順で返して再現する。
+              if (batchCall === 1) {
+                return results.map(result => ({
+                  ...result,
+                  results: [...result.results].reverse(),
+                }));
+              }
+              return results;
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      }) as typeof env.DB;
+
+      await createTeacherRepository(shuffledDb).createMany([
+        { displayName: 'A先生', email: 'a-sensei@example.ac.jp' },
+        { displayName: 'B先生', email: 'b-sensei@example.ac.jp' },
+      ]);
+
+      const page = await repo.findAll({ limit: 100 });
+      const byName = new Map(page.items.map(t => [t.user_name, t.email]));
+      expect(byName.get('A先生')).toBe('a-sensei@example.ac.jp');
+      expect(byName.get('B先生')).toBe('b-sensei@example.ac.jp');
     });
 
     describe('findExistingEmails', () => {

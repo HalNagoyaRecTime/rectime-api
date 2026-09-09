@@ -25,6 +25,11 @@ type ReturnedUserRow = {
   is_live_active: number;
 };
 
+type ReturnedBulkUserRow = {
+  user_id: number;
+  user_name: string;
+};
+
 type ReturnedTeacherRow = {
   teacher_id: number;
   user_id: number;
@@ -348,25 +353,23 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         userStatements.push(
           db
             .prepare(
-              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id`
+              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id, user_name`
             )
             .bind(...values)
         );
       }
 
-      const userResults = await db.batch<{ user_id: number }>(userStatements);
-      const userIds: number[] = [];
+      const userResults = await db.batch<ReturnedBulkUserRow>(userStatements);
+      const returnedUsers: ReturnedBulkUserRow[] = [];
       for (const result of userResults) {
         for (const row of result.results) {
-          userIds.push(row.user_id);
+          returnedUsers.push(row);
         }
       }
+      const userIds = returnedUsers.map(row => row.user_id);
 
       try {
-        const teacherRows = userIds.map((userId, index) => ({
-          userId,
-          email: inputs[index].email,
-        }));
+        const teacherRows = pairTeachersWithCreatedUsers(inputs, returnedUsers);
         const teacherStatements: D1PreparedStatement[] = [];
         // 1行あたり user_id と email の2つをbindするため、行数の上限は
         // D1のbind上限の半分になる。
@@ -509,6 +512,35 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       return true;
     },
   };
+}
+
+function pairTeachersWithCreatedUsers(
+  inputs: NewTeacherInput[],
+  returnedUsers: ReturnedBulkUserRow[]
+) {
+  if (returnedUsers.length !== inputs.length) {
+    throw new Error(
+      `Created user count does not match teacher input count: expected ${inputs.length}, received ${returnedUsers.length}`
+    );
+  }
+
+  // SQLiteは複数行をRETURNINGした際の行順を保証しない。
+  // https://sqlite.org/lang_returning.html
+  // 一方でuser_idはAUTOINCREMENTでVALUESの並び順に採番され、batch内の各文も
+  // 順に実行されるため、返ってきた行をuser_idの昇順に並べ直すと入力の並びに戻る。
+  // emailはログイン時の本人確認に使うキーで、取り違えると別人として紐付くため、
+  // 表示名がその並びと一致することも検証してから対応付ける。
+  const sorted = [...returnedUsers].sort((a, b) => a.user_id - b.user_id);
+
+  return inputs.map((input, index) => {
+    const user = sorted[index];
+    if (user.user_name !== input.displayName) {
+      throw new Error(
+        `Created user order does not match teacher input order at index ${index}`
+      );
+    }
+    return { userId: user.user_id, email: input.email };
+  });
 }
 
 async function deleteUsersByIds(db: D1Database, userIds: number[]) {
