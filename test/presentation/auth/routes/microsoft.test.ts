@@ -86,6 +86,9 @@ beforeEach(async () => {
   await workerEnv.DB.prepare('DELETE FROM events').run();
   await workerEnv.DB.prepare('DELETE FROM microsoft_account_links').run();
   await workerEnv.DB.prepare('DELETE FROM staffs').run();
+  await workerEnv.DB.prepare(
+    'UPDATE class_rooms SET teacher_id = NULL WHERE teacher_id IS NOT NULL'
+  ).run();
   await workerEnv.DB.prepare('DELETE FROM teachers').run();
   await workerEnv.DB.prepare('DELETE FROM students').run();
   await workerEnv.DB.prepare('DELETE FROM users').run();
@@ -176,6 +179,73 @@ function stubMicrosoftFetch(idToken: string) {
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
+}
+
+interface LoginRequestInput {
+  attemptId: string;
+  oid: string;
+  sub: string;
+  name: string;
+  email: string;
+}
+
+async function requestMicrosoftLogin(
+  env: Env,
+  input: LoginRequestInput,
+  clientType: 'web' | 'mobile'
+) {
+  const nonce = `nonce-${input.attemptId}`;
+  const state = `state-${input.attemptId}`;
+  const codeVerifier = generateRandom(32);
+  const now = Math.floor(Date.now() / 1000);
+  const idToken = await signIdToken({
+    sub: input.sub,
+    oid: input.oid,
+    tid: 'tid-1',
+    name: input.name,
+    preferred_username: input.email,
+    nonce,
+    iss: 'https://login.microsoftonline.com/tid-1/v2.0',
+    aud: CLIENT_ID,
+    exp: now + 3600,
+    iat: now - 10,
+  });
+  await env.AUTH_KV.put(
+    `pkce:${state}`,
+    JSON.stringify({
+      ...(clientType === 'web' ? { code_verifier: codeVerifier } : {}),
+      nonce,
+      client_type: clientType,
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    } satisfies PkceEntry)
+  );
+  stubMicrosoftFetch(idToken);
+
+  return buildApp().request(
+    '/token',
+    {
+      method: 'POST',
+      headers: {
+        'X-Client-Type': clientType,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        code: `auth-code-${input.attemptId}`,
+        state,
+        ...(clientType === 'mobile' ? { code_verifier: codeVerifier } : {}),
+      }),
+    },
+    env
+  );
+}
+
+function requestWebLogin(env: Env, input: LoginRequestInput) {
+  return requestMicrosoftLogin(env, input, 'web');
+}
+
+function requestMobileLogin(env: Env, input: LoginRequestInput) {
+  return requestMicrosoftLogin(env, input, 'mobile');
 }
 
 describe('GET /auth/microsoft/login', () => {
@@ -886,6 +956,215 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.user.id).toBe(String(user!.user_id));
     expect(body.user.student_id_number).toBe('60001');
     expect(body.user.class_room_name).toBe('3年B組');
+  });
+
+  it('事前登録済み教員はmobile初回ログインとwebログインで同じuser_id・担当クラスを維持する', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('教師三郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const teacher = await workerEnv.DB.prepare(
+      'INSERT INTO teachers (user_id) VALUES (?) RETURNING teacher_id'
+    )
+      .bind(user!.user_id)
+      .first<{ teacher_id: number }>();
+    // Webログインのstaff必須化(#288)の導入後もこの回帰テストが
+    // 本来の「教員のuser_id紐付け」を検証し続けられるよう、同じuserを
+    // teacher + staffとして事前登録する。
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+    const classRoom = await workerEnv.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ('TEACHER-LINK', '教員紐付け確認', ?) RETURNING class_room_id"
+    )
+      .bind(teacher!.teacher_id)
+      .first<{ class_room_id: number }>();
+
+    const firstResponse = await requestMobileLogin(env, {
+      attemptId: 'teacher-link-1',
+      oid: 'oid-teacher-link',
+      sub: 'sub-teacher-link',
+      name: '教師三郎',
+      email: 'sensei@example.com',
+    });
+
+    expect(firstResponse.status).toBe(200);
+    const firstBody = (await firstResponse.json()) as {
+      user: { id: string; is_staff: boolean; is_teacher: boolean };
+    };
+    expect(firstBody.user.id).toBe(String(user!.user_id));
+    expect(firstBody.user.is_staff).toBe(true);
+    expect(firstBody.user.is_teacher).toBe(true);
+
+    const usersAfterFirstLogin = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM users'
+    ).first<{ count: number }>();
+    expect(usersAfterFirstLogin?.count).toBe(1);
+
+    const link = await workerEnv.DB.prepare(
+      'SELECT user_id, oid, tid FROM microsoft_account_links WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first<{ user_id: number; oid: string; tid: string }>();
+    expect(link).toEqual({
+      user_id: user!.user_id,
+      oid: 'oid-teacher-link',
+      tid: 'tid-1',
+    });
+
+    const assignedClassRoom = await workerEnv.DB.prepare(
+      'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+    )
+      .bind(classRoom!.class_room_id)
+      .first<{ teacher_id: number | null }>();
+    expect(assignedClassRoom?.teacher_id).toBe(teacher!.teacher_id);
+
+    const secondResponse = await requestWebLogin(env, {
+      attemptId: 'teacher-link-2',
+      oid: 'oid-teacher-link',
+      sub: 'sub-teacher-link',
+      name: '教師三郎',
+      email: 'sensei@example.com',
+    });
+
+    expect(secondResponse.status).toBe(200);
+    const secondBody = (await secondResponse.json()) as {
+      user: { id: string; is_staff: boolean; is_teacher: boolean };
+    };
+    expect(secondBody.user.id).toBe(String(user!.user_id));
+    expect(secondBody.user.is_staff).toBe(true);
+    expect(secondBody.user.is_teacher).toBe(true);
+
+    const usersAfterSecondLogin = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM users'
+    ).first<{ count: number }>();
+    expect(usersAfterSecondLogin?.count).toBe(1);
+
+    const linksAfterSecondLogin = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM microsoft_account_links'
+    ).first<{ count: number }>();
+    expect(linksAfterSecondLogin?.count).toBe(1);
+
+    const classRoomAfterSecondLogin = await workerEnv.DB.prepare(
+      'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+    )
+      .bind(classRoom!.class_room_id)
+      .first<{ teacher_id: number | null }>();
+    expect(classRoomAfterSecondLogin?.teacher_id).toBe(teacher!.teacher_id);
+  });
+
+  it('同名の事前登録済み教員が複数いる場合は409 TEACHER_LINK_AMBIGUOUSを返し、何も紐付けない', async () => {
+    const env = buildEnv();
+
+    const firstUser = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('同名先生') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const secondUser = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('同名先生') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+      .bind(firstUser!.user_id)
+      .run();
+    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+      .bind(secondUser!.user_id)
+      .run();
+
+    const response = await requestWebLogin(env, {
+      attemptId: 'teacher-ambiguous',
+      oid: 'oid-teacher-ambiguous',
+      sub: 'sub-teacher-ambiguous',
+      name: '同名先生',
+      email: 'ambiguous@example.com',
+    });
+
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('TEACHER_LINK_AMBIGUOUS');
+
+    const userCount = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM users'
+    ).first<{ count: number }>();
+    const linkCount = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM microsoft_account_links'
+    ).first<{ count: number }>();
+    expect(userCount?.count).toBe(2);
+    expect(linkCount?.count).toBe(0);
+  });
+
+  it('同名の事前登録済み教員が別のMicrosoftアカウントと連携済みの場合は409 TEACHER_ALREADY_LINKEDを返す', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('連携済み先生') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-existing-teacher', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+
+    const response = await requestWebLogin(env, {
+      attemptId: 'teacher-already-linked',
+      oid: 'oid-new-teacher',
+      sub: 'sub-new-teacher',
+      name: '連携済み先生',
+      email: 'linked@example.com',
+    });
+
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('TEACHER_ALREADY_LINKED');
+
+    const userCount = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM users'
+    ).first<{ count: number }>();
+    const links = await workerEnv.DB.prepare(
+      'SELECT user_id, oid, tid FROM microsoft_account_links'
+    ).all<{ user_id: number; oid: string; tid: string }>();
+    expect(userCount?.count).toBe(1);
+    expect(links.results).toEqual([
+      {
+        user_id: user!.user_id,
+        oid: 'oid-existing-teacher',
+        tid: 'tid-1',
+      },
+    ]);
+  });
+
+  it('無効化された事前登録済み教員は401 USER_DEACTIVATEDとなり、新規ユーザーもリンクも作らない', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, is_live_active) VALUES ('無効化教員', 0) RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+
+    const response = await requestWebLogin(env, {
+      attemptId: 'teacher-deactivated',
+      oid: 'oid-teacher-deactivated',
+      sub: 'sub-teacher-deactivated',
+      name: '無効化教員',
+      email: 'deactivated@example.com',
+    });
+
+    expect(response.status).toBe(401);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('USER_DEACTIVATED');
+
+    const userCount = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM users'
+    ).first<{ count: number }>();
+    const linkCount = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM microsoft_account_links'
+    ).first<{ count: number }>();
+    expect(userCount?.count).toBe(1);
+    expect(linkCount?.count).toBe(0);
   });
 
   it('学生でないユーザーがログインした場合、エラーにならずstudent_id_number/class_room_nameがnullで返る', async () => {
