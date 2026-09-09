@@ -3,19 +3,29 @@ import type { IUserRepository } from '../../domain/interfaces/repositories/IUser
 import type { IAuthService, MicrosoftClaims } from './IAuthService';
 import type { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
+import type { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
+
+function getEmailDomain(email: string): string | null {
+  const parts = email.trim().split('@');
+  if (
+    parts.length !== 2 ||
+    !parts[0] ||
+    !parts[1] ||
+    parts.some(part => /\s/u.test(part))
+  ) {
+    return null;
+  }
+  return parts[1].toLowerCase();
+}
 
 function extractStudentIdNumber(
   email: string,
   studentEmailDomain: string
 ): string | null {
-  const [localPart, domain] = email.split('@');
-  // emailが空文字の場合(claims.preferred_username/emailが
-  // どちらも無い場合)、localPartも空文字になるためガードする。
-  // (@が無い場合のガードではない)
-  if (!localPart || !domain) return null;
-
-  //ドメインが学生用のものと一致しない場合、対象外とする
-  if (domain !== studentEmailDomain) return null;
+  const parts = email.split('@');
+  if (parts.length !== 2) return null;
+  const [localPart, domain] = parts;
+  if (!localPart || domain !== studentEmailDomain) return null;
 
   //"nhs"+ 数値 の形式に当てはまらない場合、学籍番号とみなさない
   // 抽出した数字列は、students.student_id_number(text型)の値と
@@ -29,6 +39,7 @@ function extractStudentIdNumber(
 export function createAuthService(
   userRepository: IUserRepository,
   studentRepository: IStudentRepository,
+  teacherRepository: ITeacherRepository,
   studentEmailDomain: string,
   authKv: KVNamespace,
   firebaseTokenRepository: IFirebaseTokenRepository
@@ -36,11 +47,14 @@ export function createAuthService(
   if (!studentEmailDomain) {
     throw new Error('STUDENT_EMAIL_DOMAIN is not configured');
   }
+  const normalizedStudentEmailDomain = studentEmailDomain.trim().toLowerCase();
 
   return {
     async upsertUser(claims: MicrosoftClaims) {
       const email = claims.preferred_username ?? claims.email ?? '';
-      const displayName = claims.name ?? email;
+      const claimName =
+        typeof claims.name === 'string' ? claims.name : undefined;
+      const displayName = claimName ?? email;
 
       const existingUserId = await userRepository.findUserIdByMicrosoftAccount(
         claims.oid,
@@ -152,6 +166,119 @@ export function createAuthService(
                   display_name: student.userName,
                 };
               }
+            }
+          }
+        }
+      }
+
+      // 教員は学生のような学籍番号を持たず、現行の事前登録情報で
+      // Microsoft側と照合できるのは氏名だけである。学生用メールの
+      // 利用者を同名の教員へ誤って紐付けないよう、形式が不正なものも含め
+      // 学生用ドメインは教員照合の対象外にする。また、emailへフォール
+      // バックしたdisplayNameではなく、ID Tokenのnameが実際に存在する
+      // 場合だけ照合する。
+      const emailDomain = getEmailDomain(email);
+      const teacherDisplayName = claimName?.trim() ?? '';
+      if (
+        emailDomain &&
+        emailDomain !== normalizedStudentEmailDomain &&
+        teacherDisplayName
+      ) {
+        const candidates =
+          await teacherRepository.findMicrosoftLinkCandidatesByDisplayName(
+            teacherDisplayName
+          );
+
+        // users.user_nameにはUNIQUE制約がない。同姓同名が複数いる場合に
+        // 先頭の1人を選ぶと別人の担当クラス・権限を奪うため、書き込みを
+        // 一切せず明示的に拒否する。
+        if (candidates.length > 1) {
+          throw new Error('TEACHER_LINK_AMBIGUOUS');
+        }
+
+        const teacher = candidates[0];
+        if (teacher) {
+          const teacherDeletionStatus = await userRepository.getDeletionStatus(
+            String(teacher.userId)
+          );
+          if (teacherDeletionStatus === 'deletion_pending') {
+            throw new Error('ACCOUNT_DELETION_PENDING');
+          }
+
+          // 学生の既存処理と同じく、削除済みユーザーは復元しない。
+          // 状態確認時点でdeletedなら古いuser_idへは結ばず、後続の新規
+          // 作成へ進める。状態確認後に削除された場合は、linkMicrosoftAccount
+          // 側の条件付きINSERTがACCOUNT_DELETION_PENDINGとして拒否する。
+          if (teacherDeletionStatus !== 'deleted') {
+            // 無効化された教員を「候補なし」として新規ユーザー化すると
+            // 管理者による無効化を迂回できるため、既存IDのまま拒否する。
+            if (!teacher.isLiveActive) {
+              throw new Error('USER_DEACTIVATED');
+            }
+            try {
+              await userRepository.linkMicrosoftAccount({
+                userId: String(teacher.userId),
+                oid: claims.oid,
+                tid: claims.tid,
+                requireLiveActive: true,
+              });
+              return {
+                id: String(teacher.userId),
+                oid: claims.oid,
+                tid: claims.tid,
+                sub: claims.sub,
+                email,
+                display_name: teacher.userName,
+              };
+            } catch (err) {
+              if (!(err instanceof Error)) throw err;
+
+              if (err.message === 'ACCOUNT_DELETION_PENDING') {
+                throw err;
+              }
+
+              if (err.message === 'USER_DEACTIVATED') {
+                throw err;
+              }
+
+              if (
+                err.message.includes('UNIQUE constraint failed') &&
+                err.message.includes('microsoft_account_links')
+              ) {
+                // SQLiteが複数のUNIQUE制約のどれを先に報告するかには依存
+                // しない。同一Microsoftアカウントによる同時初回ログイン
+                // なら、先に作られたリンクがこの教員を指している場合だけ
+                // 冪等な成功として扱う。
+                const racedUserId =
+                  await userRepository.findUserIdByMicrosoftAccount(
+                    claims.oid,
+                    claims.tid
+                  );
+                if (racedUserId === String(teacher.userId)) {
+                  return {
+                    id: racedUserId,
+                    oid: claims.oid,
+                    tid: claims.tid,
+                    sub: claims.sub,
+                    email,
+                    display_name: teacher.userName,
+                  };
+                }
+
+                // 現在のMicrosoftアカウントが別user_idへ結ばれた競合、
+                // または対象教員が別Microsoftアカウントと既に連携済みの
+                // いずれも、この教員への新規リンクは安全に作れない。
+                if (
+                  racedUserId ||
+                  err.message.includes('microsoft_account_links.user_id')
+                ) {
+                  throw new Error('TEACHER_ALREADY_LINKED');
+                }
+              }
+
+              // DB障害などを「候補なし」とみなして新しいusers行を作ると、
+              // 元の教員user_idと分裂するため、想定外エラーは必ず伝播する。
+              throw err;
             }
           }
         }
