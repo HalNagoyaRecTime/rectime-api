@@ -37,7 +37,6 @@ import {
   staffListRoute,
 } from './presentation/openapi/staffs';
 import {
-  teacherDeleteRoute,
   teacherDetailRoute,
   teacherListRoute,
   teacherUpdateRoute,
@@ -263,9 +262,6 @@ apiV1.openapi(staffOnly(teacherDetailRoute), c => {
 });
 apiV1.openapi(staffOnly(teacherUpdateRoute), c => {
   return c.get('container').teacherController.updateTeacher(c);
-});
-apiV1.openapi(staffOnly(teacherDeleteRoute), c => {
-  return c.get('container').teacherController.deleteTeacher(c);
 });
 
 // Event routes

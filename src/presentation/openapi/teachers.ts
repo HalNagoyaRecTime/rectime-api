@@ -2,11 +2,9 @@ import { createRoute } from '@hono/zod-openapi';
 import {
   badRequestResponse,
   bearerAuth,
-  conflictResponse,
   forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
-  noContentResponse,
   notFoundResponse,
   paginationFields,
   positivePathParam,
@@ -118,24 +116,6 @@ export const teacherUpdateRoute = createRoute({
     401: unauthorizedResponse,
     403: forbiddenResponse,
     404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const teacherDeleteRoute = createRoute({
-  method: 'delete',
-  path: '/teachers/{teacherId}',
-  tags: ['Teachers'],
-  summary: '教員を削除する',
-  security: bearerAuth,
-  request: { params: teacherIdParams },
-  responses: {
-    204: noContentResponse,
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    409: conflictResponse,
     500: internalServerErrorResponse,
   },
 });

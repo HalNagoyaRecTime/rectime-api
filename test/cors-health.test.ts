@@ -105,7 +105,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(60);
+    expect(documentedOperations).toHaveLength(59);
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {
