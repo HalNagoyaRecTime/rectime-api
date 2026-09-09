@@ -124,6 +124,7 @@ export const teacherUpdateRoute = createRoute({
     401: unauthorizedResponse,
     403: forbiddenResponse,
     404: notFoundResponse,
+    409: conflictResponse,
     500: internalServerErrorResponse,
   },
 });

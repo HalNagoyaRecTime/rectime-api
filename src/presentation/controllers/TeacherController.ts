@@ -93,6 +93,12 @@ export function createTeacherController(teacherService: ITeacherService) {
       if (error instanceof Error && error.message === 'Class room not found') {
         return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
       }
+      if (
+        error instanceof Error &&
+        error.message === 'Teacher email already exists'
+      ) {
+        return errorResponse(c, UserErrors.TEACHER_EMAIL_ALREADY_EXISTS);
+      }
       return errorResponse(c, UserErrors.TEACHER_CREATE_FAILED);
     }
   };
@@ -159,6 +165,12 @@ export function createTeacherController(teacherService: ITeacherService) {
       }
       if (error instanceof Error && error.message === 'Class room not found') {
         return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'Teacher email already exists'
+      ) {
+        return errorResponse(c, UserErrors.TEACHER_EMAIL_ALREADY_EXISTS);
       }
       return errorResponse(c, UserErrors.TEACHER_UPDATE_FAILED);
     }

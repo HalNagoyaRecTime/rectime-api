@@ -637,18 +637,23 @@ describe('TeacherRepository', () => {
       );
     });
 
-    it('updateで他の教員と同じemailにはできない', async () => {
+    it('updateで他の教員と同じemailにはできない（氏名・担当クラスも巻き戻る）', async () => {
       const target = seeded.teachers[0];
+      const beforeClassRooms = (await repo.findById(target.teacherId))
+        ?.class_rooms;
 
       await expect(
         repo.update(target.teacherId, {
-          userName: target.displayName,
+          userName: '衝突して反映されないはずの名前',
           email: seeded.teachers[1].email,
           classRoomIds: [],
         })
-      ).rejects.toThrow(/UNIQUE/);
+      ).rejects.toThrow('UNIQUE constraint failed: teachers.email');
 
-      expect((await repo.findById(target.teacherId))?.email).toBe(target.email);
+      const refetched = await repo.findById(target.teacherId);
+      expect(refetched?.email).toBe(target.email);
+      expect(refetched?.user_name).toBe(target.displayName);
+      expect(refetched?.class_rooms).toEqual(beforeClassRooms);
     });
 
     describe('findExistingEmails', () => {

@@ -126,6 +126,11 @@ export const UserErrors = {
     code: 'TEACHER_LIST_FAILED',
     message: '教員一覧の取得に失敗しました',
   },
+  TEACHER_EMAIL_ALREADY_EXISTS: {
+    status: 409,
+    code: 'TEACHER_EMAIL_ALREADY_EXISTS',
+    message: 'このメールアドレスは既に別の教員に登録されています',
+  },
   TEACHER_CREATE_FAILED: {
     status: 500,
     code: 'TEACHER_CREATE_FAILED',

@@ -64,6 +64,31 @@ describe('TeacherController', () => {
       });
     });
 
+    it('メールアドレスが既に使われている場合は 409 を返す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.createTeacher as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Teacher email already exists'));
+
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userName: '山田先生',
+          email: 'dup@example.ac.jp',
+          classRoomIds: [],
+        }),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'TEACHER_EMAIL_ALREADY_EXISTS',
+          message: 'このメールアドレスは既に別の教員に登録されています',
+        },
+      });
+    });
+
     it('emailを省略した場合は 400 を返す', async () => {
       const { app, teacherService } = setup();
       const res = await app.request('/teachers', {
@@ -442,6 +467,27 @@ describe('TeacherController', () => {
         error: {
           code: 'CLASS_ROOM_NOT_FOUND',
           message: '指定されたクラスが見つかりません',
+        },
+      });
+    });
+
+    it('メールアドレスが既に使われている場合は 409 を返す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.updateTeacher as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Teacher email already exists'));
+
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validBody),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'TEACHER_EMAIL_ALREADY_EXISTS',
+          message: 'このメールアドレスは既に別の教員に登録されています',
         },
       });
     });

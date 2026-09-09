@@ -35,6 +35,17 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+function rethrowDuplicateEmail(error: unknown): never {
+  if (
+    error instanceof Error &&
+    error.message.includes('UNIQUE') &&
+    error.message.includes('teachers.email')
+  ) {
+    throw new Error('Teacher email already exists');
+  }
+  throw error;
+}
+
 async function findImportErrors(
   rows: TeacherImportRow[],
   teacherRepository: ITeacherRepository
@@ -97,12 +108,16 @@ export function createTeacherService(
           throw new Error('Class room not found');
         }
       }
-      return toDTO(
-        await teacherRepository.create({
-          ...input,
-          email: normalizeEmail(input.email),
-        })
-      );
+      try {
+        return toDTO(
+          await teacherRepository.create({
+            ...input,
+            email: normalizeEmail(input.email),
+          })
+        );
+      } catch (error) {
+        rethrowDuplicateEmail(error);
+      }
     },
     async getTeacherById(id: number): Promise<TeacherDTO> {
       const teacher = await teacherRepository.findById(id);
@@ -143,10 +158,15 @@ export function createTeacherService(
           throw new Error('Class room not found');
         }
       }
-      const updated = await teacherRepository.update(id, {
-        ...input,
-        email: normalizeEmail(input.email),
-      });
+      let updated;
+      try {
+        updated = await teacherRepository.update(id, {
+          ...input,
+          email: normalizeEmail(input.email),
+        });
+      } catch (error) {
+        rethrowDuplicateEmail(error);
+      }
       if (!updated) {
         throw new Error('Teacher not found');
       }

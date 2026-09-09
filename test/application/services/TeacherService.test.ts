@@ -308,6 +308,64 @@ describe('TeacherService', () => {
     });
   });
 
+  describe('メールアドレスの重複', () => {
+    const uniqueError = new Error(
+      'D1_ERROR: UNIQUE constraint failed: teachers.email: SQLITE_CONSTRAINT'
+    );
+
+    it('createTeacherは重複を専用のエラーへ変換する', async () => {
+      const repository = buildRepository({
+        existsClassRooms: vi.fn().mockResolvedValue(true),
+        create: vi.fn().mockRejectedValue(uniqueError),
+      });
+      const service = createTeacherService(repository);
+
+      await expect(
+        service.createTeacher({
+          userName: '山田先生',
+          email: 'dup@example.ac.jp',
+          classRoomIds: [],
+        })
+      ).rejects.toThrow('Teacher email already exists');
+    });
+
+    it('updateTeacherは重複を専用のエラーへ変換する', async () => {
+      const repository = buildRepository({
+        findById: vi.fn().mockResolvedValue(buildTeacher()),
+        existsClassRooms: vi.fn().mockResolvedValue(true),
+        update: vi.fn().mockRejectedValue(uniqueError),
+      });
+      const service = createTeacherService(repository);
+
+      await expect(
+        service.updateTeacher(1, {
+          userName: '山田先生',
+          email: 'dup@example.ac.jp',
+          classRoomIds: [],
+        })
+      ).rejects.toThrow('Teacher email already exists');
+    });
+
+    it('email以外のUNIQUE違反はそのまま伝播する', async () => {
+      const otherError = new Error(
+        'D1_ERROR: UNIQUE constraint failed: teachers.user_id: SQLITE_CONSTRAINT'
+      );
+      const repository = buildRepository({
+        existsClassRooms: vi.fn().mockResolvedValue(true),
+        create: vi.fn().mockRejectedValue(otherError),
+      });
+      const service = createTeacherService(repository);
+
+      await expect(
+        service.createTeacher({
+          userName: '山田先生',
+          email: 'ok@example.ac.jp',
+          classRoomIds: [],
+        })
+      ).rejects.toThrow('teachers.user_id');
+    });
+  });
+
   describe('validateTeacherImport', () => {
     it('重複が無ければ全行を成功として返す(DBへの書き込みは行わない)', async () => {
       const createMany = vi.fn();
