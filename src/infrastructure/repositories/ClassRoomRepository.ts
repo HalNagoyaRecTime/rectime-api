@@ -34,7 +34,9 @@ const classRoomSelect = `
   FROM class_rooms c
   LEFT JOIN students s ON s.class_room_id = c.class_room_id
   LEFT JOIN teachers t ON t.teacher_id = c.teacher_id
-  LEFT JOIN users u ON u.user_id = t.user_id
+  -- 無効化された教員は担任として扱わない。class_rooms.teacher_id は残すので、
+  -- 再有効化すれば元の担任に戻る。
+  LEFT JOIN users u ON u.user_id = t.user_id AND u.is_live_active = 1
 `;
 
 function toEntity(row: ClassRoomRow): ClassRoomEntity {
