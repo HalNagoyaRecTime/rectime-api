@@ -9,6 +9,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -27,6 +28,7 @@ import {
 import {
   ITeacherRepository,
   NewTeacherInput,
+  TeacherMicrosoftLinkCandidate,
 } from '../../domain/interfaces/repositories/ITeacherRepository';
 import { chunkArray } from './chunk';
 import { escapeLikePattern } from '../helpers/escapeLikePattern';
@@ -51,6 +53,14 @@ type ReturnedTeacherRow = {
 
 const DEFAULT_OFFSET = 0;
 const DEFAULT_LIMIT = 50;
+
+// 教員の事前登録では氏名をMicrosoftアカウントとの照合に使う。
+// 管理画面からの手入力とMicrosoftの表示名で空白表記が異なる場合があるため、
+// ASCII空白と全角空白だけを除いて比較する。大文字・小文字など、それ以外の
+// 文字は同一視しない。
+function normalizeMicrosoftDisplayName(displayName: string): string {
+  return displayName.replace(/[ \u3000]/g, '');
+}
 
 type TeacherJoinRow = {
   teachers: typeof teachers.$inferSelect;
@@ -277,14 +287,34 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       return found;
     },
 
-    async existsClassRooms(classRoomIds: number[]): Promise<boolean> {
-      if (classRoomIds.length === 0) return true;
+    async findMicrosoftLinkCandidatesByDisplayName(
+      displayName: string
+    ): Promise<TeacherMicrosoftLinkCandidate[]> {
+      const normalizedDisplayName = normalizeMicrosoftDisplayName(displayName);
+      if (!normalizedDisplayName) return [];
+
       const rows = await orm
-        .select({ id: class_rooms.id })
-        .from(class_rooms)
-        .where(inArray(class_rooms.id, classRoomIds))
+        .select({
+          userId: users.id,
+          userName: users.userName,
+          isLiveActive: users.isLiveActive,
+        })
+        .from(teachers)
+        .innerJoin(users, eq(teachers.userId, users.id))
+        .where(
+          and(
+            sql`replace(replace(${users.userName}, ' ', ''), ${'\u3000'}, '') = ${normalizedDisplayName}`,
+            ne(users.deletionStatus, 'deleted')
+          )
+        )
+        .orderBy(asc(users.id))
         .all();
-      return rows.length === classRoomIds.length;
+
+      return rows.map(row => ({
+        userId: row.userId,
+        userName: row.userName,
+        isLiveActive: Boolean(row.isLiveActive),
+      }));
     },
 
     async create(

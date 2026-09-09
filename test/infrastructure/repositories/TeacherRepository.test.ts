@@ -21,9 +21,45 @@ describe('TeacherRepository', () => {
   let seeded: SeededData;
 
   beforeEach(async () => {
+    await env.DB.prepare('DELETE FROM microsoft_account_links').run();
     seeded = await seedStaffsTeachers(env.DB);
     repo = createTeacherRepository(env.DB);
   });
+
+  async function insertTeacherCandidate({
+    userName,
+    isLiveActive = 1,
+    deletionStatus = 'active',
+    linked = false,
+  }: {
+    userName: string;
+    isLiveActive?: number;
+    deletionStatus?: 'active' | 'deletion_pending' | 'deleted';
+    linked?: boolean;
+  }): Promise<number> {
+    const user = await env.DB.prepare(
+      `INSERT INTO users (user_name, is_live_active, deletion_status)
+       VALUES (?, ?, ?)
+       RETURNING user_id`
+    )
+      .bind(userName, isLiveActive, deletionStatus)
+      .first<{ user_id: number }>();
+    if (!user) throw new Error('テスト用ユーザーの作成に失敗しました');
+
+    await env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+      .bind(user.user_id)
+      .run();
+
+    if (linked) {
+      await env.DB.prepare(
+        'INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, ?, ?)'
+      )
+        .bind(user.user_id, `oid-${user.user_id}`, `tid-${user.user_id}`)
+        .run();
+    }
+
+    return user.user_id;
+  }
 
   describe('findAll', () => {
     it('teachers に登録されている教員を全件返す', async () => {
@@ -300,6 +336,94 @@ describe('TeacherRepository', () => {
 
     it('存在しない id の場合は null を返す', async () => {
       expect(await repo.findById(999999)).toBeNull();
+    });
+  });
+
+  describe('findMicrosoftLinkCandidatesByDisplayName', () => {
+    it('半角空白と全角空白を無視して氏名が一致する候補を返す', async () => {
+      const userId = await insertTeacherCandidate({
+        userName: '山田　太 郎',
+      });
+
+      await expect(
+        repo.findMicrosoftLinkCandidatesByDisplayName('山 田太郎')
+      ).resolves.toEqual([
+        {
+          userId,
+          userName: '山田　太 郎',
+          isLiveActive: true,
+        },
+      ]);
+    });
+
+    it('inactive・Microsoft連携済み・削除処理中の候補も返し、deletedのみ除外する', async () => {
+      const activeUserId = await insertTeacherCandidate({
+        userName: '照合 対象',
+      });
+      const inactiveLinkedUserId = await insertTeacherCandidate({
+        userName: '照合　対象',
+        isLiveActive: 0,
+        linked: true,
+      });
+      const deletionPendingUserId = await insertTeacherCandidate({
+        userName: '照 合対象',
+        deletionStatus: 'deletion_pending',
+      });
+      await insertTeacherCandidate({
+        userName: '照合対 象',
+        deletionStatus: 'deleted',
+      });
+
+      const result =
+        await repo.findMicrosoftLinkCandidatesByDisplayName('照合対象');
+
+      expect(result).toEqual([
+        {
+          userId: activeUserId,
+          userName: '照合 対象',
+          isLiveActive: true,
+        },
+        {
+          userId: inactiveLinkedUserId,
+          userName: '照合　対象',
+          isLiveActive: false,
+        },
+        {
+          userId: deletionPendingUserId,
+          userName: '照 合対象',
+          isLiveActive: true,
+        },
+      ]);
+    });
+
+    it('教員ではない同名Userを候補に含めない', async () => {
+      await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('教員ではない 同名User')"
+      ).run();
+
+      await expect(
+        repo.findMicrosoftLinkCandidatesByDisplayName('教員ではない同名User')
+      ).resolves.toEqual([]);
+    });
+
+    it('空白以外の文字は完全一致で比較し、大文字・小文字を同一視しない', async () => {
+      await insertTeacherCandidate({ userName: 'Case Teacher' });
+      await insertTeacherCandidate({ userName: '山田太郎' });
+
+      await expect(
+        repo.findMicrosoftLinkCandidatesByDisplayName('case teacher')
+      ).resolves.toEqual([]);
+      await expect(
+        repo.findMicrosoftLinkCandidatesByDisplayName('山田')
+      ).resolves.toEqual([]);
+    });
+
+    it('空白を除くと空になる表示名では照合しない', async () => {
+      await insertTeacherCandidate({ userName: ' 　 ' });
+
+      await expect(
+        repo.findMicrosoftLinkCandidatesByDisplayName(' 　 ')
+      ).resolves.toEqual([]);
     });
   });
 
