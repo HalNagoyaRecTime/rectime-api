@@ -613,17 +613,22 @@ describe('TeacherRepository', () => {
 
       await repo.createMany(inputs);
 
+      // usersは100件ずつ、teachersは50件ずつの別チャンクに分かれるため、
+      // 件数だけでなく全行の氏名とemailの対応も確認する。
       const stored = await env.DB.prepare(
-        "SELECT COUNT(*) AS count FROM teachers WHERE email LIKE 'bulk-many-%'"
-      ).first<{ count: number }>();
-      expect(stored?.count).toBe(120);
+        `SELECT u.user_name AS user_name, t.email AS email
+         FROM teachers t
+         INNER JOIN users u ON u.user_id = t.user_id
+         WHERE t.email LIKE 'bulk-many-%'`
+      ).all<{ user_name: string; email: string }>();
 
-      const sample = await env.DB.prepare(
-        'SELECT email FROM teachers WHERE email = ?'
-      )
-        .bind('bulk-many-119@example.ac.jp')
-        .first<{ email: string }>();
-      expect(sample?.email).toBe('bulk-many-119@example.ac.jp');
+      expect(stored.results).toHaveLength(120);
+      const byName = new Map(
+        stored.results.map(row => [row.user_name, row.email])
+      );
+      for (const input of inputs) {
+        expect(byName.get(input.displayName)).toBe(input.email);
+      }
     });
 
     it('updateでemailを変更できる', async () => {

@@ -530,6 +530,8 @@ function pairTeachersWithCreatedUsers(
   // 順に実行されるため、返ってきた行をuser_idの昇順に並べ直すと入力の並びに戻る。
   // emailはログイン時の本人確認に使うキーで、取り違えると別人として紐付くため、
   // 表示名がその並びと一致することも検証してから対応付ける。
+  // (同姓同名が同じ取り込みに複数いる場合、この検証では並びの入れ替わりを
+  //  検出できない。対応付けの正しさ自体はuser_idの採番順が担保する。)
   const sorted = [...returnedUsers].sort((a, b) => a.user_id - b.user_id);
 
   return inputs.map((input, index) => {
