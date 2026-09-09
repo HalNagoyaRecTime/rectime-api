@@ -71,8 +71,10 @@ describe('FirebaseTokenRepository', () => {
           .bind(userId)
           .run();
       } else {
-        await env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
-          .bind(userId)
+        await env.DB.prepare(
+          'INSERT INTO teachers (user_id, email) VALUES (?, ?)'
+        )
+          .bind(userId, `teacher-${userId}@example.test`)
           .run();
       }
 

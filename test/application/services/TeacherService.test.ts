@@ -42,7 +42,11 @@ describe('TeacherService', () => {
       const service = createTeacherService(repository);
 
       await expect(
-        service.createTeacher({ userName: '山田先生', classRoomIds: [] })
+        service.createTeacher({
+          userName: '山田先生',
+          email: 'yamada@example.ac.jp',
+          classRoomIds: [],
+        })
       ).resolves.toEqual({
         teacher_id: 1,
         user_id: 10,
@@ -60,7 +64,11 @@ describe('TeacherService', () => {
       });
       const service = createTeacherService(repository);
       await expect(
-        service.createTeacher({ userName: '山田先生', classRoomIds: [999] })
+        service.createTeacher({
+          userName: '山田先生',
+          email: 'yamada@example.ac.jp',
+          classRoomIds: [999],
+        })
       ).rejects.toThrow('Class room not found');
       expect(repository.create).not.toHaveBeenCalled();
     });
@@ -181,14 +189,14 @@ describe('TeacherService', () => {
 
       const dto = await service.updateTeacher(1, {
         userName: '更新済み先生',
-        email: null,
+        email: 'svc-1@example.ac.jp',
         classRoomIds: [1],
       });
 
       expect(repository.existsClassRooms).toHaveBeenCalledWith([1]);
       expect(repository.update).toHaveBeenCalledWith(1, {
         userName: '更新済み先生',
-        email: null,
+        email: 'svc-1@example.ac.jp',
         classRoomIds: [1],
       });
       expect(dto.display_name).toBe('更新済み先生');
@@ -204,7 +212,7 @@ describe('TeacherService', () => {
       await expect(
         service.updateTeacher(1, {
           userName: 'x',
-          email: null,
+          email: 'svc-3@example.ac.jp',
           classRoomIds: [999],
         })
       ).rejects.toThrow('Class room not found');
@@ -222,7 +230,7 @@ describe('TeacherService', () => {
 
       await service.updateTeacher(1, {
         userName: 'x',
-        email: null,
+        email: 'svc-4@example.ac.jp',
         classRoomIds: [],
       });
 
@@ -240,7 +248,7 @@ describe('TeacherService', () => {
       await expect(
         service.updateTeacher(999, {
           userName: 'x',
-          email: null,
+          email: 'svc-5@example.ac.jp',
           classRoomIds: [1],
         })
       ).rejects.toThrow('Teacher not found');
@@ -259,7 +267,7 @@ describe('TeacherService', () => {
       await expect(
         service.updateTeacher(1, {
           userName: 'x',
-          email: null,
+          email: 'svc-6@example.ac.jp',
           classRoomIds: [1],
         })
       ).rejects.toThrow('Teacher not found');

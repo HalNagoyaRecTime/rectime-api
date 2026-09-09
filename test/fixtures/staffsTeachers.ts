@@ -15,10 +15,9 @@ const STAFFS = [
   { displayName: '伊藤職員' },
 ] as const;
 
-// teachers[1] はメールアドレス未登録（NULL）のケース検証用。
 const TEACHERS = [
   { displayName: '山田先生', email: 'yamada@example.ac.jp' },
-  { displayName: '中村先生', email: null },
+  { displayName: '中村先生', email: 'nakamura@example.ac.jp' },
 ] as const;
 
 const CLASS_ROOMS = [
@@ -35,7 +34,7 @@ export type SeededTeacher = {
   teacherId: number;
   userId: number;
   displayName: string;
-  email: string | null;
+  email: string;
 };
 export type SeededClassRoom = {
   classRoomId: number;

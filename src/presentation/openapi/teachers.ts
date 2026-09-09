@@ -27,9 +27,8 @@ export const teacherResponseSchema = z
     teacher_id: z.number().int(),
     user_id: z.number().int(),
     display_name: z.string(),
-    email: z.string().nullable().openapi({
-      description:
-        'Microsoftアカウントとの突合に使うサインイン用アドレス。未登録の場合はnull。',
+    email: z.string().openapi({
+      description: 'Microsoftアカウントとの突合に使うサインイン用アドレス。',
     }),
     is_live_active: z.boolean(),
     class_rooms: z.array(teacherClassRoomSchema),
@@ -63,9 +62,8 @@ export const teacherListQuery = z.object({
 export const teacherUpdateSchema = z
   .object({
     userName: z.string().min(1),
-    email: z.string().email().nullable().openapi({
-      description:
-        'Microsoftアカウントとの突合に使うサインイン用アドレス。未登録にする場合はnullを指定する。',
+    email: z.string().email().openapi({
+      description: 'Microsoftアカウントとの突合に使うサインイン用アドレス。',
     }),
     isLiveActive: z.boolean(),
     classRoomIds: z.array(z.number().int().positive()).openapi({

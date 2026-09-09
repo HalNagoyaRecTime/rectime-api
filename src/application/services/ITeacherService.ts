@@ -9,13 +9,13 @@ import { TeacherSearchFilter } from '../../domain/entities/Teacher';
 
 export interface TeacherCreateRequest {
   userName: string;
-  email?: string | null;
+  email: string;
   classRoomIds: number[];
 }
 
 export interface TeacherUpdateRequest {
   userName: string;
-  email: string | null;
+  email: string;
   classRoomIds: number[];
 }
 

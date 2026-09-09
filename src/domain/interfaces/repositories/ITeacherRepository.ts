@@ -8,7 +8,7 @@ import {
 
 export interface NewTeacherInput {
   displayName: string;
-  email: string | null;
+  email: string;
 }
 
 export interface ITeacherRepository {

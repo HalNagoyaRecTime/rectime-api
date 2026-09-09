@@ -111,8 +111,8 @@ export const teachers = sqliteTable(
       .notNull()
       .references(() => users.id)
       .unique(),
-    // Microsoftアカウントとの突合キー。収集できていない教員のためNULLを許容する。
-    email: text('email'),
+    // Microsoftアカウントとの突合キー。
+    email: text('email').notNull(),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),

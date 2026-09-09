@@ -31,12 +31,8 @@ function toDTO(teacher: TeacherEntity): TeacherDTO {
 }
 
 // メールアドレスは大文字・小文字を区別しないため、保存前に小文字へ正規化する。
-// 空文字は「未登録」と同じ意味なのでNULLへ寄せ、UNIQUE制約が空文字同士を
-// 衝突させないようにする。
-function normalizeEmail(email: string | null | undefined): string | null {
-  if (email === null || email === undefined) return null;
-  const normalized = email.trim().toLowerCase();
-  return normalized === '' ? null : normalized;
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
 async function findImportErrors(

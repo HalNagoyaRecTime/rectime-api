@@ -83,7 +83,7 @@ function toEntity(
     teacher_id: row.teachers.id,
     user_id: row.users.id,
     user_name: row.users.userName,
-    email: row.teachers.email ?? null,
+    email: row.teachers.email,
     is_live_active: Boolean(row.users.isLiveActive),
     class_rooms: classRooms,
   };

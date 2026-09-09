@@ -40,7 +40,7 @@ const emailSchema = z.string().trim().toLowerCase().email().max(255);
 const createTeacherSchema = z
   .object({
     userName: z.string().min(1),
-    email: emailSchema.nullish(),
+    email: emailSchema,
     classRoomIds: z
       .array(z.number().int().positive())
       .refine(ids => new Set(ids).size === ids.length, {
@@ -52,7 +52,7 @@ const createTeacherSchema = z
 const updateTeacherSchema = z
   .object({
     userName: z.string().min(1),
-    email: emailSchema.nullable(),
+    email: emailSchema,
     classRoomIds: z
       .array(z.number().int().positive())
       .refine(ids => new Set(ids).size === ids.length, {

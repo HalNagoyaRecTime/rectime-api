@@ -8,7 +8,7 @@ export interface TeacherDTO {
   teacher_id: number;
   user_id: number;
   display_name: string;
-  email: string | null;
+  email: string;
   is_live_active: boolean;
   class_rooms: TeacherClassRoomDTO[];
 }

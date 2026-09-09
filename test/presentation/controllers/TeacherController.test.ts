@@ -48,15 +48,32 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userName: '山田先生', classRoomIds: [] }),
+        body: JSON.stringify({
+          userName: '山田先生',
+          email: 'yamada@example.ac.jp',
+          classRoomIds: [],
+        }),
       });
 
       expect(res.status).toBe(201);
       expect(await res.json()).toEqual(teacher);
       expect(teacherService.createTeacher).toHaveBeenCalledWith({
         userName: '山田先生',
+        email: 'yamada@example.ac.jp',
         classRoomIds: [],
       });
+    });
+
+    it('emailを省略した場合は 400 を返す', async () => {
+      const { app, teacherService } = setup();
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName: '山田先生', classRoomIds: [] }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(teacherService.createTeacher).not.toHaveBeenCalled();
     });
 
     it('未知フィールドを400で拒否する', async () => {
@@ -66,6 +83,7 @@ describe('TeacherController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userName: '山田先生',
+          email: 'yamada@example.ac.jp',
           classRoomIds: [],
           isLiveActive: false,
         }),
@@ -82,7 +100,11 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userName: '山田先生', classRoomIds: [999999] }),
+        body: JSON.stringify({
+          userName: '山田先生',
+          email: 'yamada@example.ac.jp',
+          classRoomIds: [999999],
+        }),
       });
 
       expect(res.status).toBe(400);
@@ -292,7 +314,7 @@ describe('TeacherController', () => {
       expect(teacherService.updateTeacher).not.toHaveBeenCalled();
     });
 
-    it('emailを省略した場合は 400 を返す（PUTは全置換のため明示が必要）', async () => {
+    it('emailを省略した場合は 400 を返す', async () => {
       const { app, teacherService } = setup();
       const res = await app.request('/teachers/1', {
         method: 'PUT',
@@ -319,23 +341,16 @@ describe('TeacherController', () => {
       expect(teacherService.updateTeacher).not.toHaveBeenCalled();
     });
 
-    it('emailをnullにして未登録へ戻せる', async () => {
+    it('emailにnullを指定した場合は 400 を返す', async () => {
       const { app, teacherService } = setup();
-      (
-        teacherService.updateTeacher as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(buildTeacher({ email: null }));
-
       const res = await app.request('/teachers/1', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...validBody, email: null }),
       });
 
-      expect(res.status).toBe(200);
-      expect(teacherService.updateTeacher).toHaveBeenCalledWith(
-        1,
-        expect.objectContaining({ email: null })
-      );
+      expect(res.status).toBe(400);
+      expect(teacherService.updateTeacher).not.toHaveBeenCalled();
     });
 
     it('emailを小文字へ正規化して渡す', async () => {
