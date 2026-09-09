@@ -53,7 +53,6 @@ function buildDeps() {
     create: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),
-    deactivate: vi.fn(),
     deleteByUserId: vi.fn().mockResolvedValue(true),
   };
   const gatheringGroupMemberRepository: IGatheringGroupMemberRepository = {

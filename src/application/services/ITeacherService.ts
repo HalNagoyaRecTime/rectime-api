@@ -27,7 +27,6 @@ export interface ITeacherService {
     id: number,
     input: TeacherUpdateRequest
   ) => Promise<TeacherDTO>;
-  deleteTeacher: (id: number) => Promise<void>;
   validateTeacherImport: (
     input: TeacherImportInput
   ) => Promise<TeacherImportValidationResult>;
