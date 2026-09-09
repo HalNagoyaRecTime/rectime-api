@@ -322,6 +322,25 @@ describe('UserRepository', () => {
         repo.findUserIdByMicrosoftAccount('oid-inactive', 'tid-inactive')
       ).resolves.toBeNull();
     });
+
+    it('requireLiveActive指定時は無効ユーザーへ紐付けず、USER_DEACTIVATEDを投げる', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name, is_live_active) VALUES ('無効教員', 0) RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(
+        repo.linkMicrosoftAccount({
+          userId: String(user!.user_id),
+          oid: 'oid-deactivated',
+          tid: 'tid-deactivated',
+          requireLiveActive: true,
+        })
+      ).rejects.toThrow('USER_DEACTIVATED');
+
+      await expect(
+        repo.findUserIdByMicrosoftAccount('oid-deactivated', 'tid-deactivated')
+      ).resolves.toBeNull();
+    });
   });
 
   describe('updateUser', () => {
