@@ -26,6 +26,26 @@ export const UserErrors = {
     code: 'STAFF_LIST_FAILED',
     message: 'スタッフ一覧の取得に失敗しました',
   },
+  CANNOT_REVOKE_OWN_STAFF: {
+    status: 400,
+    code: 'CANNOT_REVOKE_OWN_STAFF',
+    message: '自分自身のスタッフ権限を解除することはできません',
+  },
+  CANNOT_REVOKE_LAST_STAFF: {
+    status: 400,
+    code: 'CANNOT_REVOKE_LAST_STAFF',
+    message: '有効なスタッフが0人になるため解除できません',
+  },
+  STAFF_ROLE_ASSIGN_FAILED: {
+    status: 500,
+    code: 'STAFF_ROLE_ASSIGN_FAILED',
+    message: 'スタッフ権限の付与に失敗しました',
+  },
+  STAFF_ROLE_REVOKE_FAILED: {
+    status: 500,
+    code: 'STAFF_ROLE_REVOKE_FAILED',
+    message: 'スタッフ権限の解除に失敗しました',
+  },
   INVALID_STUDENT_ID: {
     status: 400,
     code: 'INVALID_STUDENT_ID',
@@ -210,5 +230,20 @@ export const UserErrors = {
     status: 500,
     code: 'USER_SEARCH_FAILED',
     message: 'ユーザーの検索に失敗しました',
+  },
+  CANNOT_DEACTIVATE_SELF: {
+    status: 400,
+    code: 'CANNOT_DEACTIVATE_SELF',
+    message: '自分自身を無効化することはできません',
+  },
+  CANNOT_DEACTIVATE_LAST_STAFF: {
+    status: 400,
+    code: 'CANNOT_DEACTIVATE_LAST_STAFF',
+    message: '有効な管理権限保持者が0人になるため無効化できません',
+  },
+  USER_STATUS_UPDATE_FAILED: {
+    status: 500,
+    code: 'USER_STATUS_UPDATE_FAILED',
+    message: 'ユーザー状態の更新に失敗しました',
   },
 } as const satisfies Record<string, ApiErrorDefinition>;

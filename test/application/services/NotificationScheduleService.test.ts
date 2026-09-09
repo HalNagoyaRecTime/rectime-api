@@ -19,6 +19,8 @@ describe('NotificationScheduleService', () => {
       claimForDelivery: vi.fn(),
       markSent: vi.fn(),
       markFailed: vi.fn(),
+      anonymizeCreatedUserId: vi.fn(),
+      deleteByFirebaseTokenId: vi.fn(),
     };
     return {
       repository,

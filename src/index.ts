@@ -31,11 +31,12 @@ import {
   studentUpdateRoute,
 } from './presentation/openapi/students';
 import {
+  adminUserStaffAssignRoute,
+  adminUserStaffRevokeRoute,
   staffDetailRoute,
   staffListRoute,
 } from './presentation/openapi/staffs';
 import {
-  teacherDeleteRoute,
   teacherDetailRoute,
   teacherListRoute,
   teacherUpdateRoute,
@@ -94,7 +95,10 @@ import {
   scheduleUpdateRoute,
   testNotificationRoute,
 } from './presentation/openapi/notifications';
-import { adminUserSearchRoute } from './presentation/openapi/adminUsers';
+import {
+  adminUserSearchRoute,
+  adminUserStatusUpdateRoute,
+} from './presentation/openapi/adminUsers';
 
 const app = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationDefaultHook,
@@ -213,6 +217,11 @@ const staffOnly = <R extends RouteConfig>(route: R) => ({
   middleware: [requireAuth, requireStaff],
 });
 
+// Admin user routes
+apiV1.openapi(staffOnly(adminUserStatusUpdateRoute), c => {
+  return c.get('container').userStatusController.updateUserStatus(c);
+});
+
 // Student routes
 apiV1.openapi(staffOnly(studentListRoute), c => {
   return c.get('container').studentController.getAllStudent(c);
@@ -234,6 +243,12 @@ apiV1.openapi(staffOnly(staffListRoute), c => {
 apiV1.openapi(staffOnly(staffDetailRoute), c => {
   return c.get('container').staffController.getStaffById(c);
 });
+apiV1.openapi(staffOnly(adminUserStaffAssignRoute), c => {
+  return c.get('container').staffController.assignStaffRole(c);
+});
+apiV1.openapi(staffOnly(adminUserStaffRevokeRoute), c => {
+  return c.get('container').staffController.revokeStaffRole(c);
+});
 
 // Teacher routes
 apiV1.post('/teachers', requireAuth, requireStaff, c => {
@@ -247,9 +262,6 @@ apiV1.openapi(staffOnly(teacherDetailRoute), c => {
 });
 apiV1.openapi(staffOnly(teacherUpdateRoute), c => {
   return c.get('container').teacherController.updateTeacher(c);
-});
-apiV1.openapi(staffOnly(teacherDeleteRoute), c => {
-  return c.get('container').teacherController.deleteTeacher(c);
 });
 
 // Event routes
@@ -493,9 +505,27 @@ app.get(
 
 export { app };
 
+// アカウント削除の後片付け再実行(#345)専用Cron式。通知配信Cron
+// ('* * * * *')とはevent.cronの値で区別する。EVENT_DATE判定には
+// 依存させない(削除の後片付けは開催日に関係なく毎日実行したいため)。
+const ACCOUNT_DELETION_PURGE_RETRY_CRON = '0 18 * * *';
+// 1回のCron実行で処理する上限件数。冪等な再実行のため、上限を超えた
+// 残りは翌日以降のCronで拾われる。
+const ACCOUNT_DELETION_PURGE_RETRY_LIMIT = 100;
+
 export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    if (event.cron === ACCOUNT_DELETION_PURGE_RETRY_CRON) {
+      const container = createDIContainer(env);
+      ctx.waitUntil(
+        container.accountDeletionService.retryPendingPurges(
+          ACCOUNT_DELETION_PURGE_RETRY_LIMIT
+        )
+      );
+      return;
+    }
+
     if (!isValidEventDate(env.EVENT_DATE)) {
       if (!eventDateWarnLogged) {
         console.error(

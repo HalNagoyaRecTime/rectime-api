@@ -41,14 +41,25 @@ export const users = sqliteTable(
     userName: text('user_name').notNull(),
     isLiveActive: integer('is_live_active').notNull().default(1),
     // 本人によるアカウント削除(#265)の状態。管理上の一時無効化を表す
-    // isLiveActiveとは独立した軸で、'deleted'になったユーザーは
+    // isLiveActiveとは独立した軸で、'active'以外になったユーザーは
     // 学生の再登録復元(#262)の対象から除外する。
     deletionStatus: text('deletion_status')
       .notNull()
       .default('active')
       .$type<'active' | 'deletion_pending' | 'deleted'>(),
     deletionRequestedAt: text('deletion_requested_at'),
+    // 削除を受け付けた時刻。deletionStatusが'deleted'になった時点で
+    // セットされる(＝関連データの削除・匿名化はまだ完了していないかも
+    // しれない)。
     deletedAt: text('deleted_at'),
+    // 関連データの削除・匿名化(後片付け)が完了した時刻。deletedAtとの
+    // 差分がこの2軸の意味: deletedAtは「削除を受け付けた」時刻、purgedAtは
+    // 「後片付けまで完了した」時刻。後片付けはFirebase Token・通知・
+    // ロール・所属など複数テーブルへの個別の書き込みで構成され、単一の
+    // トランザクションにはできないため、`deletionStatus = 'deleted' AND
+    // purgedAt IS NULL`で途中失敗した利用者を機械的に抽出・再実行できる
+    // ようにする(AccountDeletionService.deleteRelatedData参照)。
+    purgedAt: text('purged_at'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),

@@ -66,6 +66,8 @@ function setup() {
     claimForDelivery: vi.fn(),
     markSent: vi.fn(),
     markFailed: vi.fn(),
+    anonymizeCreatedUserId: vi.fn(),
+    deleteByFirebaseTokenId: vi.fn(),
   };
   return {
     eventRepository,

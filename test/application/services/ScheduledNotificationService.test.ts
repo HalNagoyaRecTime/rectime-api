@@ -58,12 +58,16 @@ describe('ScheduledNotificationService', () => {
       claimForDelivery: vi.fn().mockResolvedValue(options?.schedules ?? []),
       markSent: vi.fn(),
       markFailed: vi.fn(),
+      anonymizeCreatedUserId: vi.fn(),
+      deleteByFirebaseTokenId: vi.fn(),
     };
     const firebaseTokenRepository: IFirebaseTokenRepository = {
       register: vi.fn(),
       findActiveTokens: vi.fn(),
       deactivate: vi.fn(),
       deactivateByUserId: vi.fn(),
+      findByUserId: vi.fn(),
+      deleteByUserId: vi.fn(),
     };
     const notificationDeliveryQueue: INotificationDeliveryQueue = {
       enqueueMany: vi.fn(),

@@ -86,12 +86,6 @@ export function createTeacherService(
       }
       return toDTO(updated);
     },
-    async deleteTeacher(id: number): Promise<void> {
-      const deactivated = await teacherRepository.deactivate(id);
-      if (!deactivated) {
-        throw new Error('Teacher not found');
-      }
-    },
     async validateTeacherImport(
       input: TeacherImportInput
     ): Promise<TeacherImportValidationResult> {

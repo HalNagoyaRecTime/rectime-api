@@ -12,7 +12,10 @@ import {
 import type { KVNamespace } from '@cloudflare/workers-types';
 import { account } from '../../../../src/presentation/auth/routes/account';
 import { signAccessToken } from '../../../../src/infrastructure/auth/jwt';
-import type { MobileRefreshEntry } from '../../../../src/domain/auth/types';
+import type {
+  MobileRefreshEntry,
+  DeletionConfirmationEntry,
+} from '../../../../src/domain/auth/types';
 import type { Env } from '../../../../src/lib/env';
 import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
 import { insertClassRoomWithTeam } from '../../../fixtures/classRooms';
@@ -53,6 +56,10 @@ afterEach(() => {
 });
 
 beforeEach(async () => {
+  await workerEnv.DB.prepare('DELETE FROM gathering_group_members').run();
+  await workerEnv.DB.prepare('DELETE FROM notification_schedules').run();
+  await workerEnv.DB.prepare('DELETE FROM firebase_tokens').run();
+  await workerEnv.DB.prepare('DELETE FROM microsoft_account_links').run();
   await workerEnv.DB.prepare('DELETE FROM staffs').run();
   await workerEnv.DB.prepare('DELETE FROM teachers').run();
   await workerEnv.DB.prepare('DELETE FROM students').run();
@@ -103,6 +110,17 @@ function buildApp() {
   app.use('*', diContainerMiddleware);
   app.route('/', account);
   return app;
+}
+
+// /auth/refresh は users.is_live_active を確認するため(#255)、
+// 実際のユーザー行が必要になる。
+async function insertUser(isLiveActive = 1): Promise<string> {
+  const row = await workerEnv.DB.prepare(
+    'INSERT INTO users (user_name, is_live_active) VALUES (?, ?) RETURNING user_id'
+  )
+    .bind('田中太郎', isLiveActive)
+    .first<{ user_id: number }>();
+  return String(row!.user_id);
 }
 
 async function buildWebToken(): Promise<string> {
@@ -349,6 +367,33 @@ describe('GET /auth/me', () => {
     expect(bodyText).not.toContain('削除済み太郎');
     expect(bodyText).not.toContain('tanaka@example.com');
   });
+
+  it('無効化されたユーザーの場合は401を返す (#255)', async () => {
+    const env = buildEnv();
+    const userId = await insertUser(0);
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('USER_DEACTIVATED');
+  });
 });
 
 describe('GET /auth/me/photo (削除状態)', () => {
@@ -380,6 +425,55 @@ describe('GET /auth/me/photo (削除状態)', () => {
     expect(res.status).toBe(410);
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
+  });
+});
+
+describe('GET /auth/me/photo', () => {
+  it('無効化されたユーザーの場合は401を返し、Microsoftへ問い合わせない (#255)', async () => {
+    const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser(0);
+    // 無効化の確認がKV参照・Microsoft問い合わせより前に行われることを示すため、
+    // セッションは有効な状態で用意しておく。
+    await env.AUTH_KV.put(`mobile_refresh_by_user:${userId}`, 'refresh-1');
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-1',
+      JSON.stringify({
+        user_id: userId,
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+    const token = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me/photo',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('USER_DEACTIVATED');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -583,10 +677,11 @@ describe('POST /auth/refresh', () => {
 
   it('webは有効なrefresh_token_idを指定すると新しいアクセストークンを発行しIDをローテーションする', async () => {
     const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser();
     await env.AUTH_KV.put(
       'mobile_refresh:refresh-1',
       JSON.stringify({
-        user_id: 'user-1',
+        user_id: userId,
         oid: 'oid-1',
         tid: 'tid-1',
         sub: 'sub-1',
@@ -640,10 +735,11 @@ describe('POST /auth/refresh', () => {
 
   it('Microsoftのリフレッシュに失敗した場合は401を返す', async () => {
     const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser();
     await env.AUTH_KV.put(
       'mobile_refresh:refresh-1',
       JSON.stringify({
-        user_id: 'user-1',
+        user_id: userId,
         oid: 'oid-1',
         tid: 'tid-1',
         sub: 'sub-1',
@@ -759,5 +855,357 @@ describe('POST /auth/refresh', () => {
     expect(res.status).toBe(410);
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
+  });
+
+  it('無効化されたユーザーの場合は401を返し、Microsoftへ問い合わせない (#255)', async () => {
+    const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser(0);
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-1',
+      JSON.stringify({
+        user_id: userId,
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const app = buildApp();
+    const res = await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('USER_DEACTIVATED');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('無効化されたユーザーの場合はrefresh_token_idをローテーションせず、TTLを延長しない (#255)', async () => {
+    const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser(0);
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-1',
+      JSON.stringify({
+        user_id: userId,
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+    vi.stubGlobal('fetch', vi.fn());
+
+    const app = buildApp();
+    await app.request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-1' }),
+      },
+      env
+    );
+
+    // 既存エントリは消さない（再度有効化されたときに同じセッションを
+    // 再開できるようにするため）が、新しいIDの発行は行わない。
+    // ローテーションが起きていれば mobile_refresh_by_user が書かれるため、
+    // それが無いことで「TTLの振り直しが起きていない」ことを確認する。
+    expect(await env.AUTH_KV.get('mobile_refresh:refresh-1')).not.toBeNull();
+    expect(
+      await env.AUTH_KV.get(`mobile_refresh_by_user:${userId}`)
+    ).toBeNull();
+  });
+});
+
+describe('DELETE /auth/me', () => {
+  it('deletion_confirmation_tokenが無い場合は400を返す', async () => {
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+      buildEnv()
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_REQUEST');
+  });
+
+  it('存在しないdeletion_confirmation_tokenの場合は401を返す', async () => {
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deletion_confirmation_token: 'unknown' }),
+      },
+      buildEnv()
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('DELETION_CONFIRMATION_TOKEN_INVALID');
+  });
+
+  it('有効なdeletion_confirmation_tokenで削除を実行し202を返す。全Session・関連データが削除される', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('削除対象太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const userId = String(user!.user_id);
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-1', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, 'fcm-token-delete-me')"
+    )
+      .bind(user!.user_id)
+      .run();
+    await env.AUTH_KV.put(
+      'mobile_refresh:refresh-delete-me',
+      JSON.stringify({
+        user_id: userId,
+        oid: 'oid-1',
+        tid: 'tid-1',
+        sub: 'sub-1',
+        email: 'tanaka@example.com',
+        display_name: '削除対象太郎',
+        client_type: 'web',
+        ms_refresh_token: 'ms-refresh-1',
+        created_at: new Date().toISOString(),
+      } satisfies MobileRefreshEntry)
+    );
+    await env.AUTH_KV.put(
+      `mobile_refresh_by_user:${userId}`,
+      'refresh-delete-me'
+    );
+
+    const deletionToken = 'deletion-token-1';
+    await env.AUTH_KV.put(
+      `deletion_confirmation:${deletionToken}`,
+      JSON.stringify({
+        user_id: userId,
+        created_at: new Date().toISOString(),
+      } satisfies DeletionConfirmationEntry)
+    );
+
+    const app = buildApp();
+    const res = await app.request(
+      '/me',
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deletion_confirmation_token: deletionToken }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(202);
+    expect(await res.text()).toBe('');
+
+    // deletion_confirmation_tokenは消費され、リプレイできない
+    // (削除ではなく空文字への置き換えで消費済みマーカーにする)
+    expect(
+      await env.AUTH_KV.get(`deletion_confirmation:${deletionToken}`)
+    ).toBe('');
+
+    // DB: deletion_status: deleted、Microsoft連携解除
+    const userRow = await workerEnv.DB.prepare(
+      'SELECT deletion_status FROM users WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first<{ deletion_status: string }>();
+    expect(userRow?.deletion_status).toBe('deleted');
+    const linkRow = await workerEnv.DB.prepare(
+      'SELECT * FROM microsoft_account_links WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(linkRow).toBeNull();
+
+    // KV: 全Refresh Sessionが失効
+    expect(
+      await env.AUTH_KV.get('mobile_refresh:refresh-delete-me')
+    ).toBeNull();
+    expect(
+      await env.AUTH_KV.get(`mobile_refresh_by_user:${userId}`)
+    ).toBeNull();
+
+    // Firebase Token: 物理削除(Push通知対象から除外)
+    const tokenRow = await workerEnv.DB.prepare(
+      'SELECT * FROM firebase_tokens WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(tokenRow).toBeNull();
+
+    // 関連データ: staffs解除
+    const staffRow = await workerEnv.DB.prepare(
+      'SELECT * FROM staffs WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(staffRow).toBeNull();
+  });
+
+  it('同じdeletion_confirmation_tokenを2回使うと2回目は401を返す(リプレイ拒否)', async () => {
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('リプレイ太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const deletionToken = 'deletion-token-replay';
+    await env.AUTH_KV.put(
+      `deletion_confirmation:${deletionToken}`,
+      JSON.stringify({
+        user_id: String(user!.user_id),
+        created_at: new Date().toISOString(),
+      } satisfies DeletionConfirmationEntry)
+    );
+    const app = buildApp();
+
+    const firstRes = await app.request(
+      '/me',
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deletion_confirmation_token: deletionToken }),
+      },
+      env
+    );
+    expect(firstRes.status).toBe(202);
+
+    const secondRes = await app.request(
+      '/me',
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deletion_confirmation_token: deletionToken }),
+      },
+      env
+    );
+
+    expect(secondRes.status).toBe(401);
+    const body = (await secondRes.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('DELETION_CONFIRMATION_TOKEN_INVALID');
+  });
+
+  it('削除後、同じユーザーのAccess Tokenで/auth/meを呼ぶと410を返す', async () => {
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('削除後確認太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const userId = String(user!.user_id);
+    const deletionToken = 'deletion-token-verify-me';
+    await env.AUTH_KV.put(
+      `deletion_confirmation:${deletionToken}`,
+      JSON.stringify({
+        user_id: userId,
+        created_at: new Date().toISOString(),
+      } satisfies DeletionConfirmationEntry)
+    );
+    const app = buildApp();
+
+    await app.request(
+      '/me',
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deletion_confirmation_token: deletionToken }),
+      },
+      env
+    );
+
+    const accessToken = await signAccessToken(
+      {
+        sub: userId,
+        oid: 'oid-1',
+        email: 'tanaka@example.com',
+        display_name: '削除後確認太郎',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const meRes = await app.request(
+      '/me',
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+      env
+    );
+
+    expect(meRes.status).toBe(410);
+  });
+
+  it('後片付けが既に完了済みの利用者に対して呼ぶと409 ACCOUNT_ALREADY_PURGEDを返す', async () => {
+    // 通常フローでは起こらないが、同一利用者に対して複数の
+    // deletion_confirmation_tokenが発行され、片方が先に処理を完了させた
+    // 後にもう片方のDELETEが実行される、といった並行実行時に
+    // AccountDeletionService.deleteRelatedDataがACCOUNT_ALREADY_PURGEDを
+    // throwする(#265 PR4)。account.ts側でこれをAPIエラーへ変換できて
+    // いることを確認する。
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status, purged_at) VALUES ('後片付け完了済み太郎', 'deleted', CURRENT_TIMESTAMP) RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const deletionToken = 'deletion-token-already-purged';
+    await env.AUTH_KV.put(
+      `deletion_confirmation:${deletionToken}`,
+      JSON.stringify({
+        user_id: String(user!.user_id),
+        created_at: new Date().toISOString(),
+      } satisfies DeletionConfirmationEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deletion_confirmation_token: deletionToken }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('ACCOUNT_ALREADY_PURGED');
   });
 });

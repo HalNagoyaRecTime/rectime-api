@@ -31,6 +31,7 @@ function createRepository(
     create: vi.fn(),
     update: vi.fn(),
     createMany: vi.fn(),
+    anonymizeByUserId: vi.fn(),
     ...overrides,
   };
 }

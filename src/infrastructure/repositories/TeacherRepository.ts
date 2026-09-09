@@ -441,24 +441,22 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       );
     },
 
-    async deactivate(id: number): Promise<boolean> {
+    async deleteByUserId(userId: number): Promise<boolean> {
       const existing = await orm
-        .select({ userId: teachers.userId })
+        .select({ id: teachers.id })
         .from(teachers)
-        .where(eq(teachers.id, id))
+        .where(eq(teachers.userId, userId))
         .get();
       if (!existing) return false;
 
-      const now = new Date().toISOString();
+      // class_rooms.teacher_idはON DELETE句を持たない外部キーのため、
+      // teachers行を削除する前に必ずNULL化する(削除後のNULL化はFK違反)。
       await orm.batch([
         orm
-          .update(users)
-          .set({ isLiveActive: 0, updatedAt: now })
-          .where(eq(users.id, existing.userId)),
-        orm
           .update(class_rooms)
-          .set({ teacherId: null, updatedAt: now })
-          .where(eq(class_rooms.teacherId, id)),
+          .set({ teacherId: null, updatedAt: new Date().toISOString() })
+          .where(eq(class_rooms.teacherId, existing.id)),
+        orm.delete(teachers).where(eq(teachers.id, existing.id)),
       ]);
       return true;
     },
