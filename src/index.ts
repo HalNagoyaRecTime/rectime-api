@@ -65,6 +65,7 @@ import {
   teamListRoute,
   teamScoreAddRoute,
   teamUpdateRoute,
+  teamDeleteRoute,
 } from './presentation/openapi/ranking';
 import {
   masterImportCommitRoute,
@@ -331,6 +332,9 @@ apiV1.openapi(staffOnly(teamCreateRoute), c => {
 });
 apiV1.openapi(staffOnly(teamUpdateRoute), c => {
   return c.get('container').teamController.updateTeam(c);
+});
+apiV1.openapi(staffOnly(teamDeleteRoute), c => {
+  return c.get('container').teamController.deleteTeam(c);
 });
 
 // Master import routes
