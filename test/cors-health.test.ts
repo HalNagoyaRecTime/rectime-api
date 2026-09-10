@@ -100,12 +100,45 @@ describe('OpenAPI documentation', () => {
       nullable: true,
     });
 
+    const teacherListParameters = (
+      document.paths['/api/v1/teachers'].get as {
+        parameters?: Array<{
+          name: string;
+          schema?: { default?: unknown; enum?: unknown[] };
+        }>;
+      }
+    ).parameters;
+    expect(
+      teacherListParameters?.find(param => param.name === 'isStaff')?.schema
+    ).toMatchObject({ default: 'all', enum: ['true', 'false', 'all'] });
+    expect(
+      teacherListParameters?.find(param => param.name === 'isLiveActive')
+        ?.schema
+    ).toMatchObject({ default: 'true', enum: ['true', 'false', 'all'] });
+    expect(
+      teacherListParameters?.find(param => param.name === 'sortBy')?.schema
+    ).toMatchObject({
+      default: 'teacherId',
+      enum: [
+        'teacherId',
+        'displayName',
+        'classCode',
+        'className',
+        'isStaff',
+        'isLiveActive',
+      ],
+    });
+
+    expect(document.paths['/api/v1/teachers/{teacherId}']).not.toHaveProperty(
+      'delete'
+    );
+
     const documentedOperations = Object.values(document.paths).flatMap(path =>
       Object.keys(path).filter(method =>
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(59);
+    expect(documentedOperations).toHaveLength(60);
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {

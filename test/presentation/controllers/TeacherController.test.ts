@@ -10,6 +10,7 @@ function buildTeacher(overrides: Partial<TeacherDTO> = {}): TeacherDTO {
     user_id: 10,
     display_name: '山田先生',
     is_live_active: true,
+    is_staff: false,
     class_rooms: [],
     ...overrides,
   };
@@ -30,6 +31,7 @@ function setup() {
   app.get('/teachers', c => controller.getAllTeachers(c));
   app.get('/teachers/:teacherId', c => controller.getTeacherById(c));
   app.put('/teachers/:teacherId', c => controller.updateTeacher(c));
+  app.get('/teachers-by-id/:id', c => controller.getTeacherById(c));
   return { app, teacherService };
 }
 
@@ -50,6 +52,25 @@ describe('TeacherController', () => {
 
       expect(res.status).toBe(201);
       expect(await res.json()).toEqual(teacher);
+      expect(teacherService.createTeacher).toHaveBeenCalledWith({
+        userName: '山田先生',
+        classRoomIds: [],
+      });
+    });
+
+    it('userNameをtrimしてサービスに渡す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.createTeacher as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(buildTeacher());
+
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName: '  山田先生  ', classRoomIds: [] }),
+      });
+
+      expect(res.status).toBe(201);
       expect(teacherService.createTeacher).toHaveBeenCalledWith({
         userName: '山田先生',
         classRoomIds: [],
@@ -120,6 +141,27 @@ describe('TeacherController', () => {
       });
     });
 
+    it.each(['/teachers/0', '/teachers/01', '/teachers/1.0', '/teachers/1e2'])(
+      '正のdigits-onlyでない teacherId(%s) は400を返す',
+      async path => {
+        const { app, teacherService } = setup();
+
+        const res = await app.request(path);
+
+        expect(res.status).toBe(400);
+        expect(teacherService.getTeacherById).not.toHaveBeenCalled();
+      }
+    );
+
+    it("旧'id' path paramだけでは受理しない", async () => {
+      const { app, teacherService } = setup();
+
+      const res = await app.request('/teachers-by-id/1');
+
+      expect(res.status).toBe(400);
+      expect(teacherService.getTeacherById).not.toHaveBeenCalled();
+    });
+
     it('サービスが Teacher not found を投げた場合は 404 を返す', async () => {
       const { app, teacherService } = setup();
       (
@@ -153,7 +195,7 @@ describe('TeacherController', () => {
   });
 
   describe('getAllTeachers', () => {
-    it('サービスが返した教員一覧をページ情報付きで 200 で返す', async () => {
+    it('Query未指定時は有効Teacherのみの条件で一覧を返す', async () => {
       const { app, teacherService } = setup();
       const page = {
         items: [buildTeacher()],
@@ -174,6 +216,7 @@ describe('TeacherController', () => {
         offset: 0,
         sortBy: 'teacherId',
         sortOrder: 'asc',
+        isLiveActive: true,
       });
     });
 
@@ -189,18 +232,18 @@ describe('TeacherController', () => {
       });
 
       await app.request(
-        '/teachers?teacherId=1&userName=%E5%B1%B1%E7%94%B0&classRoomId=2&isLiveActive=false&offset=5&limit=5'
+        '/teachers?search=%E5%B1%B1%E7%94%B0&classRoomId=2&isStaff=false&isLiveActive=true&sortBy=className&sortOrder=desc&offset=5&limit=5'
       );
 
       expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
-        teacherId: 1,
-        userName: '山田',
+        search: '山田',
         classRoomId: 2,
-        isLiveActive: false,
+        isStaff: false,
+        isLiveActive: true,
         offset: 5,
         limit: 5,
-        sortBy: 'teacherId',
-        sortOrder: 'asc',
+        sortBy: 'className',
+        sortOrder: 'desc',
       });
     });
 
@@ -209,12 +252,120 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers?limit=101');
       expect(res.status).toBe(400);
       expect(teacherService.getAllTeachers).not.toHaveBeenCalled();
+      expect(await res.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+    });
+
+    it.each([
+      '/teachers?limit=1.0',
+      '/teachers?offset=-1',
+      '/teachers?classRoomId=1e2',
+    ])('digits-onlyでない数値Queryは400を返す', async path => {
+      const { app, teacherService } = setup();
+      const res = await app.request(path);
+
+      expect(res.status).toBe(400);
+      expect(teacherService.getAllTeachers).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['sortBy', '/teachers?sortBy=invalid'],
+      ['isStaff', '/teachers?isStaff=invalid'],
+      ['isLiveActive', '/teachers?isLiveActive=invalid'],
+      ['teacherId', '/teachers?teacherId=1'],
+      ['userName', '/teachers?userName=%E5%B1%B1%E7%94%B0'],
+    ])('%s の不正QueryはVALIDATION_ERRORを返す', async (_name, path) => {
+      const { app, teacherService } = setup();
+      const res = await app.request(path);
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+      expect(teacherService.getAllTeachers).not.toHaveBeenCalled();
+    });
+
+    it('isStaff=all / isLiveActive=all は絞り込みなしとして扱う', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.getAllTeachers as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+      const res = await app.request('/teachers?isStaff=all&isLiveActive=all');
+
+      expect(res.status).toBe(200);
+      expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
+        sortBy: 'teacherId',
+        sortOrder: 'asc',
+        limit: 50,
+        offset: 0,
+      });
+    });
+
+    it('isLiveActive=false は無効Teacherだけを指定する', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.getAllTeachers as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+      const res = await app.request('/teachers?isLiveActive=false');
+
+      expect(res.status).toBe(200);
+      expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
+        sortBy: 'teacherId',
+        sortOrder: 'asc',
+        limit: 50,
+        offset: 0,
+        isLiveActive: false,
+      });
+    });
+
+    it('isStaff をソート条件としてサービスに渡す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.getAllTeachers as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+      const res = await app.request(
+        '/teachers?isStaff=all&isLiveActive=all&sortBy=isStaff&sortOrder=desc'
+      );
+
+      expect(res.status).toBe(200);
+      expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
+        sortBy: 'isStaff',
+        sortOrder: 'desc',
+        limit: 50,
+        offset: 0,
+      });
+    });
+
+    it('isLiveActive をソート条件としてサービスに渡す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.getAllTeachers as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+      const res = await app.request(
+        '/teachers?isLiveActive=all&sortBy=isLiveActive&sortOrder=asc'
+      );
+
+      expect(res.status).toBe(200);
+      expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
+        sortBy: 'isLiveActive',
+        sortOrder: 'asc',
+        limit: 50,
+        offset: 0,
+      });
     });
 
     it('未知のクエリパラメータは400を返す', async () => {
       const { app } = setup();
       const res = await app.request('/teachers?page=2');
       expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
     });
 
     it('サービスが例外を投げた場合は 500 を返す', async () => {
@@ -276,6 +427,22 @@ describe('TeacherController', () => {
         },
       });
     });
+
+    it.each(['/teachers/0', '/teachers/01', '/teachers/1.0', '/teachers/1e2'])(
+      '正のdigits-onlyでない teacherId(%s) は400を返す',
+      async path => {
+        const { app, teacherService } = setup();
+
+        const res = await app.request(path, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validBody),
+        });
+
+        expect(res.status).toBe(400);
+        expect(teacherService.updateTeacher).not.toHaveBeenCalled();
+      }
+    );
 
     it('isLiveActive を送信した場合は400を返す', async () => {
       const { app, teacherService } = setup();
