@@ -9,7 +9,8 @@ import {
 } from '../../fixtures/staffsTeachers';
 
 // User の無効化は PATCH /api/v1/admin/users/:userId が使う UserStatusRepository で行う。
-// Teacher 固有データや所属情報を変更しないことを実運用と同じ経路で検証する。
+// テスト用の直接SQLではなく実運用と同じ経路を通すことで、
+// この経路が Teacher 固有データ・所属情報に影響しないことを検証できる。
 async function deactivateUser(userId: number): Promise<void> {
   await createUserStatusRepository(env.DB).updateLiveActive(userId, false);
 }
@@ -412,6 +413,13 @@ describe('TeacherRepository', () => {
           class_name: assigned.className,
         },
       ]);
+
+      const classRoom = await env.DB.prepare(
+        'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+      )
+        .bind(assigned.classRoomId)
+        .first<{ teacher_id: number | null }>();
+      expect(classRoom?.teacher_id).toBe(target.teacherId);
     });
   });
 
