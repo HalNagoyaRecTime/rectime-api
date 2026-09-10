@@ -31,6 +31,7 @@ function setup() {
   app.get('/teachers', c => controller.getAllTeachers(c));
   app.get('/teachers/:teacherId', c => controller.getTeacherById(c));
   app.put('/teachers/:teacherId', c => controller.updateTeacher(c));
+  app.get('/teachers-by-id/:id', c => controller.getTeacherById(c));
   return { app, teacherService };
 }
 
@@ -138,6 +139,27 @@ describe('TeacherController', () => {
           message: '教員IDが正しくありません',
         },
       });
+    });
+
+    it.each(['/teachers/0', '/teachers/01', '/teachers/1.0', '/teachers/1e2'])(
+      '正のdigits-onlyでない teacherId(%s) は400を返す',
+      async path => {
+        const { app, teacherService } = setup();
+
+        const res = await app.request(path);
+
+        expect(res.status).toBe(400);
+        expect(teacherService.getTeacherById).not.toHaveBeenCalled();
+      }
+    );
+
+    it("旧'id' path paramだけでは受理しない", async () => {
+      const { app, teacherService } = setup();
+
+      const res = await app.request('/teachers-by-id/1');
+
+      expect(res.status).toBe(400);
+      expect(teacherService.getTeacherById).not.toHaveBeenCalled();
     });
 
     it('サービスが Teacher not found を投げた場合は 404 を返す', async () => {
@@ -405,6 +427,22 @@ describe('TeacherController', () => {
         },
       });
     });
+
+    it.each(['/teachers/0', '/teachers/01', '/teachers/1.0', '/teachers/1e2'])(
+      '正のdigits-onlyでない teacherId(%s) は400を返す',
+      async path => {
+        const { app, teacherService } = setup();
+
+        const res = await app.request(path, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validBody),
+        });
+
+        expect(res.status).toBe(400);
+        expect(teacherService.updateTeacher).not.toHaveBeenCalled();
+      }
+    );
 
     it('isLiveActive を送信した場合は400を返す', async () => {
       const { app, teacherService } = setup();

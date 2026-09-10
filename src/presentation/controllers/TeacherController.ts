@@ -5,13 +5,16 @@ import { errorResponse } from '../errors/errorResponse';
 import { UserErrors } from '../errors/userErrors';
 import {
   teacherCreateSchema,
+  teacherIdParams,
   teacherListQuery,
   teacherUpdateSchema,
 } from '../openapi/teachers';
 
 function getTeacherId(c: Context): number | null {
-  const id = Number(c.req.param('teacherId') || c.req.param('id'));
-  return Number.isInteger(id) && id > 0 ? id : null;
+  const parsed = teacherIdParams.safeParse({
+    teacherId: c.req.param('teacherId'),
+  });
+  return parsed.success ? Number(parsed.data.teacherId) : null;
 }
 
 export function createTeacherController(teacherService: ITeacherService) {
