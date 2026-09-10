@@ -6,16 +6,16 @@ import type { StudentEntity } from '../../../src/domain/entities/Student';
 
 function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
   return {
-    student_id: 1,
-    user_id: 10,
-    user_name: '田中太郎',
-    class_room_id: 100,
-    class_room_code: '1A',
-    class_room_name: '1年A組',
-    attendance_number: 5,
-    student_id_number: '10000',
-    is_live_active: true,
-    is_staff: false,
+    studentId: 1,
+    userId: 10,
+    userName: '田中太郎',
+    classRoomId: 100,
+    classRoomCode: '1A',
+    classRoomName: '1年A組',
+    attendanceNumber: 5,
+    studentIdNumber: '10000',
+    isLiveActive: true,
+    isStaff: false,
     ...overrides,
   };
 }
@@ -29,7 +29,6 @@ function createRepository(
     findAll: vi.fn(),
     findByStudentNum: vi.fn(),
     findExistingStudentNumbers: vi.fn().mockResolvedValue(new Set()),
-    classRoomExists: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     createMany: vi.fn(),
@@ -43,7 +42,7 @@ function createClassRoomRepository(
 ): IClassRoomRepository {
   return {
     findAll: vi.fn(),
-    findById: vi.fn(),
+    findById: vi.fn().mockResolvedValue({}),
     findByCode: vi.fn().mockResolvedValue(null),
     findExistingClassCodes: vi.fn().mockResolvedValue(new Set()),
     create: vi.fn(),
@@ -71,17 +70,17 @@ describe('StudentService', () => {
       const dto = await service.getStudentById(1);
 
       expect(dto).toEqual({
-        student_id: student.student_id,
-        user_id: student.user_id,
-        display_name: student.user_name,
-        attendance_number: student.attendance_number,
-        student_id_number: student.student_id_number,
+        student_id: student.studentId,
+        user_id: student.userId,
+        display_name: student.userName,
+        attendance_number: student.attendanceNumber,
+        student_id_number: student.studentIdNumber,
         is_live_active: true,
         is_staff: false,
         class_room: {
-          class_room_id: student.class_room_id,
+          class_room_id: student.classRoomId,
           class_code: '1A',
-          class_name: student.class_room_name,
+          class_name: student.classRoomName,
         },
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
@@ -114,13 +113,13 @@ describe('StudentService', () => {
       const dto = await service.getByUserId(10);
 
       expect(dto).toEqual({
-        student_id: student.student_id,
-        user_id: student.user_id,
-        display_name: student.user_name,
-        class_room_id: student.class_room_id,
-        class_room_name: student.class_room_name,
-        attendance_number: student.attendance_number,
-        student_id_number: student.student_id_number,
+        student_id: student.studentId,
+        user_id: student.userId,
+        display_name: student.userName,
+        class_room_id: student.classRoomId,
+        class_room_name: student.classRoomName,
+        attendance_number: student.attendanceNumber,
+        student_id_number: student.studentIdNumber,
         is_live_active: true,
       });
       expect(repository.findByUserId).toHaveBeenCalledWith(10);
@@ -142,8 +141,8 @@ describe('StudentService', () => {
   describe('getAllStudents', () => {
     it('全件を StudentDTO の配列にマッピングして返す', async () => {
       const students = [
-        buildStudent({ student_id: 1, student_id_number: '10000' }),
-        buildStudent({ student_id: 2, student_id_number: '10001' }),
+        buildStudent({ studentId: 1, studentIdNumber: '10000' }),
+        buildStudent({ studentId: 2, studentIdNumber: '10001' }),
       ];
       const repository = createRepository({
         findAll: vi.fn().mockResolvedValue({ students, total: 2 }),
@@ -182,7 +181,6 @@ describe('StudentService', () => {
     it('クラスと学籍番号を検証して学生を作成する', async () => {
       const student = buildStudent();
       const repository = createRepository({
-        classRoomExists: vi.fn().mockResolvedValue(true),
         findByStudentNum: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue(student),
       });
@@ -191,26 +189,50 @@ describe('StudentService', () => {
         createClassRoomRepository()
       );
       const input = {
-        display_name: student.user_name,
-        class_room_id: student.class_room_id,
-        attendance_number: student.attendance_number,
-        student_id_number: student.student_id_number,
+        display_name: student.userName,
+        class_room_id: student.classRoomId,
+        attendance_number: student.attendanceNumber,
+        student_id_number: student.studentIdNumber,
       };
 
       await expect(service.createStudent(input)).resolves.toMatchObject({
-        student_id: student.student_id,
+        student_id: student.studentId,
         class_room: {
-          class_room_id: student.class_room_id,
-          class_code: student.class_room_code,
-          class_name: student.class_room_name,
+          class_room_id: student.classRoomId,
+          class_code: student.classRoomCode,
+          class_name: student.classRoomName,
         },
       });
-      expect(repository.create).toHaveBeenCalledWith(input);
+      expect(repository.create).toHaveBeenCalledWith({
+        displayName: input.display_name,
+        classRoomId: input.class_room_id,
+        attendanceNumber: input.attendance_number,
+        studentIdNumber: input.student_id_number,
+      });
+    });
+
+    it('クラスの存在確認はClassRoomRepositoryへ委譲する', async () => {
+      const repository = createRepository();
+      const classRoomRepository = createClassRoomRepository({
+        findById: vi.fn().mockResolvedValue(null),
+      });
+      const service = createStudentService(repository, classRoomRepository);
+
+      await expect(
+        service.createStudent({
+          display_name: '新規学生',
+          class_room_id: 999,
+          attendance_number: 1,
+          student_id_number: '10001',
+        })
+      ).rejects.toThrow('Class room not found');
+
+      expect(classRoomRepository.findById).toHaveBeenCalledWith(999);
+      expect(repository.create).not.toHaveBeenCalled();
     });
 
     it('重複した学籍番号は拒否する', async () => {
       const repository = createRepository({
-        classRoomExists: vi.fn().mockResolvedValue(true),
         findByStudentNum: vi.fn().mockResolvedValue(buildStudent()),
       });
       const service = createStudentService(
@@ -232,10 +254,9 @@ describe('StudentService', () => {
   describe('updateStudent', () => {
     it('学生を更新する', async () => {
       const existing = buildStudent();
-      const updated = buildStudent({ user_name: '更新後学生' });
+      const updated = buildStudent({ userName: '更新後学生' });
       const repository = createRepository({
         findById: vi.fn().mockResolvedValue(existing),
-        classRoomExists: vi.fn().mockResolvedValue(true),
         findByStudentNum: vi.fn().mockResolvedValue(null),
         update: vi.fn().mockResolvedValue(updated),
       });
@@ -252,6 +273,12 @@ describe('StudentService', () => {
           student_id_number: '10000',
         })
       ).resolves.toMatchObject({ display_name: '更新後学生' });
+      expect(repository.update).toHaveBeenCalledWith(1, {
+        displayName: '更新後学生',
+        classRoomId: 100,
+        attendanceNumber: 5,
+        studentIdNumber: '10000',
+      });
     });
   });
 

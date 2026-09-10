@@ -84,7 +84,7 @@ export function createAuthService(
           await studentRepository.findByStudentNum(studentIdNumber);
         if (student) {
           const studentDeletionStatus = await userRepository.getDeletionStatus(
-            String(student.user_id)
+            String(student.userId)
           );
           if (studentDeletionStatus === 'deletion_pending') {
             throw new Error('ACCOUNT_DELETION_PENDING');
@@ -103,17 +103,17 @@ export function createAuthService(
               // このINSERTの間にmarkAsDeletedが割り込んだ場合(TOCTOU)は
               // ACCOUNT_DELETION_PENDINGがthrowされる。
               await userRepository.linkMicrosoftAccount({
-                userId: String(student.user_id),
+                userId: String(student.userId),
                 oid: claims.oid,
                 tid: claims.tid,
               });
               return {
-                id: String(student.user_id),
+                id: String(student.userId),
                 oid: claims.oid,
                 tid: claims.tid,
                 sub: claims.sub,
                 email,
-                display_name: student.user_name,
+                display_name: student.userName,
               };
             } catch (err) {
               if (!(err instanceof Error)) throw err;
@@ -149,7 +149,7 @@ export function createAuthService(
                   tid: claims.tid,
                   sub: claims.sub,
                   email,
-                  display_name: student.user_name,
+                  display_name: student.userName,
                 };
               }
             }

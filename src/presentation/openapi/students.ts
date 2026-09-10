@@ -45,12 +45,26 @@ export const studentIdParams = z.object({
   studentId: positivePathParam('studentId', '学生ID'),
 });
 
+// QueryはHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
+// OpenAPIとControllerが同じschemaをsafeParseすることで、受理範囲を一致させる。
+const digitsOnlyQuery = (minimum: number) =>
+  z.preprocess(
+    value =>
+      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
+    z.number().int().min(minimum)
+  );
+
+const limitedDigitsOnlyQuery = (minimum: number, maximum: number) =>
+  digitsOnlyQuery(minimum).refine(value => value <= maximum, {
+    message: `値は${minimum}から${maximum}の範囲で指定してください`,
+  });
+
 export const studentListQuery = z
   .object({
     search: z.string().trim().min(1).optional(),
-    classRoomId: z.coerce.number().int().positive().optional(),
-    isStaff: z.enum(['true', 'false', 'all']).default('all').optional(),
-    isLiveActive: z.enum(['true', 'false', 'all']).default('true').optional(),
+    classRoomId: digitsOnlyQuery(1).optional(),
+    isStaff: z.enum(['true', 'false', 'all']).default('all'),
+    isLiveActive: z.enum(['true', 'false', 'all']).default('true'),
     sortBy: z
       .enum([
         'studentId',
@@ -62,13 +76,19 @@ export const studentListQuery = z
         'isStaff',
         'isLiveActive',
       ])
-      .default('studentId')
-      .optional(),
-    sortOrder: z.enum(['asc', 'desc']).default('asc').optional(),
-    offset: z.coerce.number().int().min(0).default(0).optional(),
-    limit: z.coerce.number().int().min(1).max(100).default(50).optional(),
+      .default('studentId'),
+    sortOrder: z.enum(['asc', 'desc']).default('asc'),
+    offset: digitsOnlyQuery(0).default(0),
+    limit: limitedDigitsOnlyQuery(1, 100).default(50),
   })
-  .strict();
+  .strict()
+  .transform(({ isStaff, isLiveActive, ...query }) => ({
+    ...query,
+    ...(isStaff === 'all' ? {} : { isStaff: isStaff === 'true' }),
+    ...(isLiveActive === 'all'
+      ? {}
+      : { isLiveActive: isLiveActive === 'true' }),
+  }));
 
 export const studentWriteSchema = z
   .object({
@@ -77,6 +97,7 @@ export const studentWriteSchema = z
     attendance_number: z.number().int().positive(),
     student_id_number: z.string().trim().min(1).max(100),
   })
+  .strict()
   .openapi('StudentWriteRequest');
 
 export const studentListRoute = createRoute({

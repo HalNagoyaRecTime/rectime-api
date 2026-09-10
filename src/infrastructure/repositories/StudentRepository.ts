@@ -14,12 +14,14 @@ import {
 import { class_rooms, staffs, students, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
-import { StudentEntity } from '../../domain/entities/Student';
+import type {
+  StudentEntity,
+  StudentWriteInput,
+} from '../../domain/entities/Student';
 import {
   BulkCreateStudentsInput,
   IStudentRepository,
 } from '../../domain/interfaces/repositories/IStudentRepository';
-import { StudentWriteDTO } from '../../application/dto/StudentDTO';
 import { chunkArray } from './chunk';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
@@ -55,18 +57,18 @@ function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, char => `\\${char}`);
 }
 
-function toEntity(row: StudentJoinRow): StudentEntity {
+function toDomain(row: StudentJoinRow): StudentEntity {
   return {
-    student_id: row.students.id,
-    user_id: row.users.id,
-    user_name: row.users.userName,
-    class_room_id: row.students.classRoomId,
-    class_room_code: row.class_rooms.classCode,
-    class_room_name: row.class_rooms.name,
-    attendance_number: row.students.attendanceNumber,
-    student_id_number: row.students.studentIdNumber,
-    is_live_active: row.users.isLiveActive === 1,
-    is_staff: Boolean(row.staffs),
+    studentId: row.students.id,
+    userId: row.users.id,
+    userName: row.users.userName,
+    classRoomId: row.students.classRoomId,
+    classRoomCode: row.class_rooms.classCode,
+    classRoomName: row.class_rooms.name,
+    attendanceNumber: row.students.attendanceNumber,
+    studentIdNumber: row.students.studentIdNumber,
+    isLiveActive: row.users.isLiveActive === 1,
+    isStaff: Boolean(row.staffs),
   };
 }
 
@@ -83,7 +85,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .where(eq(students.id, id))
         .get();
 
-      return result ? toEntity(result) : null;
+      return result ? toDomain(result) : null;
     },
 
     async findByUserId(userId: number): Promise<StudentEntity | null> {
@@ -96,7 +98,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .where(eq(students.userId, userId))
         .get();
 
-      return result ? toEntity(result) : null;
+      return result ? toDomain(result) : null;
     },
 
     async findAll(
@@ -173,7 +175,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .all();
 
       return {
-        students: results.map(toEntity),
+        students: results.map(toDomain),
         total,
       };
     },
@@ -188,7 +190,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .where(eq(students.studentIdNumber, studentNum))
         .get();
 
-      return result ? toEntity(result) : null;
+      return result ? toDomain(result) : null;
     },
 
     async findExistingStudentNumbers(
@@ -211,16 +213,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       return found;
     },
 
-    async classRoomExists(classRoomId: number): Promise<boolean> {
-      const classRoom = await orm
-        .select({ id: class_rooms.id })
-        .from(class_rooms)
-        .where(eq(class_rooms.id, classRoomId))
-        .get();
-      return Boolean(classRoom);
-    },
-
-    async create(student: StudentWriteDTO): Promise<StudentEntity> {
+    async create(student: StudentWriteInput): Promise<StudentEntity> {
       const [userResult, studentResult] = await db.batch<
         ReturnedUserRow | ReturnedStudentRow
       >([
@@ -230,7 +223,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
              VALUES (?, CURRENT_TIMESTAMP)
              RETURNING user_id, user_name, is_live_active`
           )
-          .bind(student.display_name),
+          .bind(student.displayName),
         db
           .prepare(
             `INSERT INTO students (
@@ -253,10 +246,10 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
               ) AS class_room_name`
           )
           .bind(
-            student.class_room_id,
-            student.attendance_number,
-            student.student_id_number,
-            student.class_room_id
+            student.classRoomId,
+            student.attendanceNumber,
+            student.studentIdNumber,
+            student.classRoomId
           ),
       ]);
 
@@ -276,12 +269,12 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .where(eq(students.id, created.student_id))
         .get();
       if (!result) throw new Error('Failed to create student');
-      return toEntity(result);
+      return toDomain(result);
     },
 
     async update(
       id: number,
-      student: StudentWriteDTO
+      student: StudentWriteInput
     ): Promise<StudentEntity | null> {
       const [userResult, studentResult] = await db.batch<
         ReturnedUserRow | ReturnedStudentRow
@@ -295,7 +288,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
              )
              RETURNING user_id, user_name, is_live_active`
           )
-          .bind(student.display_name, id),
+          .bind(student.displayName, id),
         db
           .prepare(
             `UPDATE students
@@ -314,11 +307,11 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
                ) AS class_room_name`
           )
           .bind(
-            student.class_room_id,
-            student.attendance_number,
-            student.student_id_number,
+            student.classRoomId,
+            student.attendanceNumber,
+            student.studentIdNumber,
             id,
-            student.class_room_id
+            student.classRoomId
           ),
       ]);
 
@@ -335,7 +328,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .leftJoin(staffs, eq(users.id, staffs.userId))
         .where(eq(students.id, id))
         .get();
-      return result ? toEntity(result) : null;
+      return result ? toDomain(result) : null;
     },
 
     async createMany(input: BulkCreateStudentsInput): Promise<void> {
