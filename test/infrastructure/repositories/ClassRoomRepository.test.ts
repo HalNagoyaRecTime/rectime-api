@@ -225,4 +225,89 @@ describe('ClassRoomRepository', () => {
       });
     });
   });
+
+  describe('担任の稼働状態', () => {
+    it('無効化された教員は担任として返さないが、割り当ては残り再有効化で戻る', async () => {
+      const target = (await repo.findAll(100, 0)).classrooms.find(
+        c => c.class_code === '12B'
+      );
+
+      await env.DB.prepare(
+        "UPDATE users SET is_live_active = 0 WHERE user_name = '担任教員'"
+      ).run();
+
+      await expect(repo.findById(target!.class_room_id)).resolves.toMatchObject(
+        { teacher: null }
+      );
+
+      // 表示から外れるだけで、担任の割り当て自体は残っている
+      const row = await env.DB.prepare(
+        'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+      )
+        .bind(target!.class_room_id)
+        .first<{ teacher_id: number | null }>();
+      expect(row?.teacher_id).not.toBeNull();
+
+      await env.DB.prepare(
+        "UPDATE users SET is_live_active = 1 WHERE user_name = '担任教員'"
+      ).run();
+
+      await expect(repo.findById(target!.class_room_id)).resolves.toMatchObject(
+        { teacher: { display_name: '担任教員' } }
+      );
+    });
+
+    it('停止中の担任がいるクラスをクラス名だけ変更しても、再有効化で担任に戻る', async () => {
+      const target = (await repo.findAll(100, 0)).classrooms.find(
+        c => c.class_code === '12B'
+      );
+
+      await env.DB.prepare(
+        "UPDATE users SET is_live_active = 0 WHERE user_name = '担任教員'"
+      ).run();
+
+      // 管理画面は担任なしとして受け取った教室をそのまま送り返すため、
+      // クラス名だけを変えた保存でも teacher_id は null で届く
+      const updated = await repo.update(target!.class_room_id, {
+        class_code: '12B',
+        class_name: '2年Bクラス（改称）',
+        teacher_id: null,
+      });
+      expect(updated).toMatchObject({
+        class_name: '2年Bクラス（改称）',
+        teacher: null,
+      });
+
+      await env.DB.prepare(
+        "UPDATE users SET is_live_active = 1 WHERE user_name = '担任教員'"
+      ).run();
+
+      await expect(repo.findById(target!.class_room_id)).resolves.toMatchObject(
+        {
+          class_name: '2年Bクラス（改称）',
+          teacher: { display_name: '担任教員' },
+        }
+      );
+    });
+
+    it('稼働中の担任はteacher_id: nullで外せる', async () => {
+      const target = (await repo.findAll(100, 0)).classrooms.find(
+        c => c.class_code === '12B'
+      );
+
+      const updated = await repo.update(target!.class_room_id, {
+        class_code: '12B',
+        class_name: '2年Bクラス',
+        teacher_id: null,
+      });
+
+      expect(updated).toMatchObject({ teacher: null });
+      const row = await env.DB.prepare(
+        'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+      )
+        .bind(target!.class_room_id)
+        .first<{ teacher_id: number | null }>();
+      expect(row?.teacher_id).toBeNull();
+    });
+  });
 });
