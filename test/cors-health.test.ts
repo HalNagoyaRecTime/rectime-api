@@ -85,12 +85,16 @@ describe('OpenAPI documentation', () => {
       '/api/v1/notifications',
       '/api/v1/notifications/test',
       '/api/v1/notifications/{id}',
+      '/api/v1/ranking',
       '/api/v1/staffs',
       '/api/v1/staffs/{staffId}',
       '/api/v1/students',
       '/api/v1/students/{studentId}',
       '/api/v1/teachers',
       '/api/v1/teachers/{teacherId}',
+      '/api/v1/teams',
+      '/api/v1/teams/{teamId}',
+      '/api/v1/teams/{teamId}/score',
       '/health',
     ]);
     expect(document.components.schemas.Event.properties?.rule_text).toEqual({
@@ -103,7 +107,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(57);
+    expect(documentedOperations).toHaveLength(63);
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {

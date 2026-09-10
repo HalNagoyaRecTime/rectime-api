@@ -10,15 +10,9 @@ import type {
 import { buildProvisionalTeamName } from '../../domain/entities/Team';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import { chunkArray } from './chunk';
+import { buildCleanupEmptyTeamStatements } from './teamCleanup';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
-
-const CLEANUP_TEAM_SQL = `
-      DELETE FROM teams 
-      WHERE team_id = ? 
-      AND NOT EXISTS (SELECT 1 FROM class_rooms WHERE team_id = ?)
-      AND NOT EXISTS (SELECT 1 FROM team_scores WHERE team_id = ?)
-    `;
 
 type ClassRoomRow = {
   class_room_id: number;
@@ -290,9 +284,7 @@ export function createClassRoomRepository(
             input.team_id ?? null,
             id
           ),
-        db
-          .prepare(CLEANUP_TEAM_SQL)
-          .bind(previousTeamId, previousTeamId, previousTeamId),
+        ...buildCleanupEmptyTeamStatements(db, previousTeamId),
       ]);
       const row = updateResult.results[0] as
         | { class_room_id: number }
@@ -311,7 +303,7 @@ export function createClassRoomRepository(
     async deleteAndCleanupTeam(id: number, teamId: number): Promise<boolean> {
       const [deleteResult] = await db.batch<unknown>([
         db.prepare('DELETE FROM class_rooms WHERE class_room_id = ?').bind(id),
-        db.prepare(CLEANUP_TEAM_SQL).bind(teamId, teamId, teamId),
+        ...buildCleanupEmptyTeamStatements(db, teamId),
       ]);
       return (deleteResult.meta?.changes ?? 0) > 0;
     },

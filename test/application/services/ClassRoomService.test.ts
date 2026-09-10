@@ -23,9 +23,16 @@ function repository(): IClassRoomRepository {
 
 function teamRepository(): ITeamRepository {
   return {
-    create: vi.fn(),
+    findRanking: vi.fn(),
+    findAllTeams: vi.fn(),
+    findTeamById: vi.fn(),
     exists: vi.fn(),
+    existsClassCodes: vi.fn(),
+    findClassRoomsOwnedByOtherTeam: vi.fn().mockResolvedValue([]),
+    createTeam: vi.fn(),
+    updateTeam: vi.fn(),
     delete: vi.fn(),
+    addScore: vi.fn(),
   };
 }
 

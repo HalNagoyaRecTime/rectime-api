@@ -297,7 +297,7 @@ describe('ClassRoomRepository', () => {
         .first();
       expect(teamRow).not.toBeNull();
 
-      // team_scoresを残したteamはCLEANUP_TEAM_SQLでは消えないため、
+      // team_scoresを残したteamはCLEANUP_EMPTY_TEAM_SQLでは消えないため、
       // 他ファイルの無条件DELETE FROM teamsがFK違反で壊れないよう明示的に後始末する。
       await env.DB.prepare('DELETE FROM team_scores WHERE team_id = ?')
         .bind(base.team_id)
@@ -305,6 +305,31 @@ describe('ClassRoomRepository', () => {
       await env.DB.prepare('DELETE FROM teams WHERE team_id = ?')
         .bind(base.team_id)
         .run();
+    });
+
+    it('team_scoresの行があっても得点が0ならteamを削除する', async () => {
+      const base = await repo.create({
+        class_code: '21E',
+        class_name: '1年Eクラス',
+        teacher_id: null,
+        team_id: null,
+      });
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 0)'
+      )
+        .bind(base.team_id)
+        .run();
+
+      await expect(
+        repo.deleteAndCleanupTeam(base.class_room_id, base.team_id)
+      ).resolves.toBe(true);
+
+      const teamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.team_id)
+        .first();
+      expect(teamRow).toBeNull();
     });
   });
 
@@ -423,7 +448,7 @@ describe('ClassRoomRepository', () => {
         .first();
       expect(oldTeamRow).not.toBeNull();
 
-      // team_scoresを残したteamはCLEANUP_TEAM_SQLでは消えないため、
+      // team_scoresを残したteamはCLEANUP_EMPTY_TEAM_SQLでは消えないため、
       // 他ファイルの無条件DELETE FROM teamsがFK違反で壊れないよう明示的に後始末する。
       await env.DB.prepare('DELETE FROM team_scores WHERE team_id = ?')
         .bind(base.team_id)
