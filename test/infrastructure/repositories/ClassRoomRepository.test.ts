@@ -283,6 +283,30 @@ describe('ClassRoomRepository', () => {
     });
   });
 
+  describe('findExistingClassRoomIds', () => {
+    it('候補からDBに実在するクラスIDだけを返す', async () => {
+      const ids = (await repo.findAll({ limit: 20, offset: 0 })).items.map(
+        classroom => classroom.classRoomId
+      );
+      const candidates = Array.from(
+        { length: 2000 },
+        (_, index) => index + 1000
+      );
+      candidates[0] = ids[0];
+      candidates[150] = ids[1];
+
+      await expect(repo.findExistingClassRoomIds(candidates)).resolves.toEqual(
+        new Set([ids[0], ids[1]])
+      );
+    });
+
+    it('候補が空配列の場合は空集合を返す', async () => {
+      await expect(repo.findExistingClassRoomIds([])).resolves.toEqual(
+        new Set()
+      );
+    });
+  });
+
   describe('createMany', () => {
     it('複数のクラスをまとめて作成する', async () => {
       await repo.createMany([

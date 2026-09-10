@@ -20,6 +20,7 @@ import type {
   UserSearchResult,
 } from '../../domain/entities/UserSearch';
 import type { IUserSearchRepository } from '../../domain/interfaces/repositories/IUserSearchRepository';
+import { escapeLikePattern } from '../helpers/escapeLikePattern';
 
 type UserSearchRow = {
   user_id: number;
@@ -131,10 +132,6 @@ function parseNumericUserId(value: string): number | null {
   if (!/^\d+$/.test(value)) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) ? parsed : null;
-}
-
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, char => `\\${char}`);
 }
 
 function toItem(row: UserSearchRow): UserSearchItem {

@@ -11,6 +11,7 @@ import type {
   TeacherSearchFilter,
 } from '../../domain/entities/Teacher';
 import { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
+import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import {
   ITeacherService,
   TeacherCreateRequest,
@@ -39,18 +40,21 @@ function toDTO(teacher: TeacherEntity): TeacherDTO {
 }
 
 export function createTeacherService(
-  teacherRepository: ITeacherRepository
+  teacherRepository: ITeacherRepository,
+  classRoomRepository: IClassRoomRepository
 ): ITeacherService {
+  const ensureClassRoomsExist = async (classRoomIds: number[]) => {
+    if (classRoomIds.length === 0) return;
+    const existingIds =
+      await classRoomRepository.findExistingClassRoomIds(classRoomIds);
+    if (existingIds.size !== classRoomIds.length) {
+      throw new Error('Class room not found');
+    }
+  };
+
   return {
     async createTeacher(input: TeacherCreateRequest): Promise<TeacherDTO> {
-      if (input.classRoomIds.length > 0) {
-        const classRoomsExist = await teacherRepository.existsClassRooms(
-          input.classRoomIds
-        );
-        if (!classRoomsExist) {
-          throw new Error('Class room not found');
-        }
-      }
+      await ensureClassRoomsExist(input.classRoomIds);
       return toDTO(await teacherRepository.create(input));
     },
     async getTeacherById(id: number): Promise<TeacherDTO> {
@@ -84,14 +88,7 @@ export function createTeacherService(
       if (!teacher) {
         throw new Error('Teacher not found');
       }
-      if (input.classRoomIds.length > 0) {
-        const classRoomsExist = await teacherRepository.existsClassRooms(
-          input.classRoomIds
-        );
-        if (!classRoomsExist) {
-          throw new Error('Class room not found');
-        }
-      }
+      await ensureClassRoomsExist(input.classRoomIds);
       const updated = await teacherRepository.update(id, input);
       if (!updated) {
         throw new Error('Teacher not found');

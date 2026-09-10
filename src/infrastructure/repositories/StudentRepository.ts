@@ -24,6 +24,7 @@ import {
   IStudentRepository,
 } from '../../domain/interfaces/repositories/IStudentRepository';
 import { chunkArray } from './chunk';
+import { escapeLikePattern } from '../helpers/escapeLikePattern';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
 
@@ -53,10 +54,6 @@ type ReturnedBulkUserRow = {
   user_id: number;
   user_name: string;
 };
-
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, char => `\\${char}`);
-}
 
 function toDomain(row: StudentJoinRow): StudentEntity {
   return {

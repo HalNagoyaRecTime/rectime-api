@@ -297,18 +297,13 @@ describe('TeacherRepository', () => {
     });
   });
 
-  describe('existsClassRooms', () => {
-    it('すべて存在する場合は true を返す', async () => {
-      const ids = seeded.classRooms.map(c => c.classRoomId);
-      expect(await repo.existsClassRooms(ids)).toBe(true);
+  describe('existsById', () => {
+    it('存在する教員の場合は true を返す', async () => {
+      expect(await repo.existsById(seeded.teachers[0].teacherId)).toBe(true);
     });
 
-    it('存在しないクラスが含まれる場合は false を返す', async () => {
-      expect(await repo.existsClassRooms([999999])).toBe(false);
-    });
-
-    it('空配列の場合は true を返す', async () => {
-      expect(await repo.existsClassRooms([])).toBe(true);
+    it('存在しない教員の場合は false を返す', async () => {
+      expect(await repo.existsById(999999)).toBe(false);
     });
   });
 

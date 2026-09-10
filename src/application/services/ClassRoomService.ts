@@ -12,6 +12,7 @@ import type {
 import type { ClassRoomEntity } from '../../domain/entities/ClassRoom';
 import type { ClassRoomSearchFilter } from '../../domain/entities/ClassRoom';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
+import type { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
 import type { IClassRoomService } from './IClassRoomService';
 
 async function findImportErrors(
@@ -84,7 +85,8 @@ function isClassCodeUniqueError(error: unknown): boolean {
 }
 
 export function createClassRoomService(
-  classRoomRepository: IClassRoomRepository
+  classRoomRepository: IClassRoomRepository,
+  teacherRepository: ITeacherRepository
 ): IClassRoomService {
   const toDTO = (classroom: ClassRoomEntity): ClassRoomDTO => ({
     class_room_id: classroom.classRoomId,
@@ -103,7 +105,7 @@ export function createClassRoomService(
   const ensureTeacherExists = async (teacherId: number | null) => {
     if (
       teacherId !== null &&
-      !(await classRoomRepository.teacherExists(teacherId))
+      !(await teacherRepository.existsById(teacherId))
     ) {
       throw new Error('Teacher not found');
     }
