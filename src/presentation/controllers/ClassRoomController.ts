@@ -10,7 +10,7 @@ import {
 } from '../openapi/classrooms';
 
 export function createClassRoomController(classService: IClassRoomService) {
-  const getAllClassrooms = async (c: Context) => {
+  const getAllClassRooms = async (c: Context) => {
     const query = classRoomListQuery.safeParse(c.req.query());
     if (!query.success) {
       return errorResponse(
@@ -20,7 +20,7 @@ export function createClassRoomController(classService: IClassRoomService) {
       );
     }
     try {
-      const result = await classService.getAllClassrooms(query.data);
+      const result = await classService.getAllClassRooms(query.data);
       return c.json(
         {
           items: result.items,
@@ -35,11 +35,11 @@ export function createClassRoomController(classService: IClassRoomService) {
     }
   };
 
-  const getClassroomById = async (c: Context) => {
+  const getClassRoomById = async (c: Context) => {
     const id = parseClassRoomId(c);
     if (id === null) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
     try {
-      return c.json(await classService.getClassroomById(id), 200);
+      return c.json(await classService.getClassRoomById(id), 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
         return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
@@ -53,7 +53,7 @@ export function createClassRoomController(classService: IClassRoomService) {
     return classRoomWriteSchema.safeParse(body);
   };
 
-  const createClassroom = async (c: Context) => {
+  const createClassRoom = async (c: Context) => {
     const body = await parseBody(c);
     if (!body.success) {
       return errorResponse(
@@ -63,13 +63,13 @@ export function createClassRoomController(classService: IClassRoomService) {
       );
     }
     try {
-      return c.json(await classService.createClassroom(body.data), 201);
+      return c.json(await classService.createClassRoom(body.data), 201);
     } catch (error) {
       return handleWriteError(c, error, UserErrors.CLASS_ROOM_CREATE_FAILED);
     }
   };
 
-  const updateClassroom = async (c: Context) => {
+  const updateClassRoom = async (c: Context) => {
     const id = parseClassRoomId(c);
     if (id === null) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
     const body = await parseBody(c);
@@ -81,17 +81,17 @@ export function createClassRoomController(classService: IClassRoomService) {
       );
     }
     try {
-      return c.json(await classService.updateClassroom(id, body.data), 200);
+      return c.json(await classService.updateClassRoom(id, body.data), 200);
     } catch (error) {
       return handleWriteError(c, error, UserErrors.CLASS_ROOM_UPDATE_FAILED);
     }
   };
 
-  const deleteClassroom = async (c: Context) => {
+  const deleteClassRoom = async (c: Context) => {
     const id = parseClassRoomId(c);
     if (id === null) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
     try {
-      await classService.deleteClassroom(id);
+      await classService.deleteClassRoom(id);
       return c.body(null, 204);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
@@ -108,11 +108,11 @@ export function createClassRoomController(classService: IClassRoomService) {
   };
 
   return {
-    getAllClassrooms,
-    getClassroomById,
-    createClassroom,
-    updateClassroom,
-    deleteClassroom,
+    getAllClassRooms,
+    getClassRoomById,
+    createClassRoom,
+    updateClassRoom,
+    deleteClassRoom,
   };
 }
 

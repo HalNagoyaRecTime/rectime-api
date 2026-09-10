@@ -110,7 +110,7 @@ export function createClassRoomService(
   };
 
   return {
-    async getAllClassrooms(
+    async getAllClassRooms(
       filter: ClassRoomSearchFilter = {}
     ): Promise<ClassRoomPageDTO> {
       const result = await classRoomRepository.findAll(filter);
@@ -122,13 +122,13 @@ export function createClassRoomService(
       };
     },
 
-    async getClassroomById(id: number): Promise<ClassRoomDTO> {
+    async getClassRoomById(id: number): Promise<ClassRoomDTO> {
       const classroom = await classRoomRepository.findById(id);
       if (!classroom) throw new Error('Class not found');
       return toDTO(classroom);
     },
 
-    async createClassroom(input: ClassRoomRequestDTO): Promise<ClassRoomDTO> {
+    async createClassRoom(input: ClassRoomRequestDTO): Promise<ClassRoomDTO> {
       await ensureTeacherExists(input.teacherId);
       try {
         return toDTO(await classRoomRepository.create(input));
@@ -140,7 +140,7 @@ export function createClassRoomService(
       }
     },
 
-    async updateClassroom(
+    async updateClassRoom(
       id: number,
       input: ClassRoomRequestDTO
     ): Promise<ClassRoomDTO> {
@@ -159,7 +159,7 @@ export function createClassRoomService(
       }
     },
 
-    async deleteClassroom(id: number): Promise<void> {
+    async deleteClassRoom(id: number): Promise<void> {
       if (await classRoomRepository.hasStudents(id)) {
         throw new Error('Class is referenced by students');
       }

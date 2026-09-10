@@ -36,7 +36,7 @@ describe('ClassRoomService', () => {
     });
 
     await expect(
-      createClassRoomService(repo).getAllClassrooms({ limit: 20, offset: 0 })
+      createClassRoomService(repo).getAllClassRooms({ limit: 20, offset: 0 })
     ).resolves.toEqual({
       items: [
         {
@@ -58,7 +58,7 @@ describe('ClassRoomService', () => {
     (repo.teacherExists as ReturnType<typeof vi.fn>).mockResolvedValue(false);
 
     await expect(
-      createClassRoomService(repo).createClassroom({
+      createClassRoomService(repo).createClassRoom({
         classCode: 'IA14A',
         className: '高度情報学科AI開発先行コース',
         teacherId: 1,
@@ -84,7 +84,7 @@ describe('ClassRoomService', () => {
     (repo.create as ReturnType<typeof vi.fn>).mockResolvedValue(classroom);
 
     await expect(
-      createClassRoomService(repo).createClassroom(input)
+      createClassRoomService(repo).createClassRoom(input)
     ).resolves.toEqual({
       class_room_id: 1,
       class_code: 'IA14A',
@@ -106,7 +106,7 @@ describe('ClassRoomService', () => {
     );
 
     await expect(
-      createClassRoomService(repo).createClassroom({
+      createClassRoomService(repo).createClassRoom({
         classCode: 'IA14A',
         className: '高度情報学科AI開発先行コース',
         teacherId: null,
@@ -123,7 +123,7 @@ describe('ClassRoomService', () => {
     );
 
     await expect(
-      createClassRoomService(repo).createClassroom({
+      createClassRoomService(repo).createClassRoom({
         classCode: 'IA14A',
         className: '高度情報学科AI開発先行コース',
         teacherId: null,
@@ -136,7 +136,7 @@ describe('ClassRoomService', () => {
     (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
     await expect(
-      createClassRoomService(repo).updateClassroom(999, {
+      createClassRoomService(repo).updateClassRoom(999, {
         classCode: 'IA14A',
         className: '高度情報学科AI開発先行コース',
         teacherId: null,
@@ -150,7 +150,7 @@ describe('ClassRoomService', () => {
     (repo.teacherExists as ReturnType<typeof vi.fn>).mockResolvedValue(false);
 
     await expect(
-      createClassRoomService(repo).updateClassroom(999, {
+      createClassRoomService(repo).updateClassRoom(999, {
         classCode: 'IA14A',
         className: '高度情報学科AI開発先行コース',
         teacherId: 999,
@@ -176,7 +176,7 @@ describe('ClassRoomService', () => {
     );
 
     await expect(
-      createClassRoomService(repo).updateClassroom(1, {
+      createClassRoomService(repo).updateClassRoom(1, {
         classCode: 'IA14A',
         className: '高度情報学科AI開発先行コース',
         teacherId: null,
@@ -189,7 +189,7 @@ describe('ClassRoomService', () => {
     (repo.hasStudents as ReturnType<typeof vi.fn>).mockResolvedValue(true);
 
     await expect(
-      createClassRoomService(repo).deleteClassroom(1)
+      createClassRoomService(repo).deleteClassRoom(1)
     ).rejects.toThrow('Class is referenced by students');
     expect(repo.delete).not.toHaveBeenCalled();
   });
@@ -200,7 +200,7 @@ describe('ClassRoomService', () => {
     (repo.delete as ReturnType<typeof vi.fn>).mockResolvedValue(false);
 
     await expect(
-      createClassRoomService(repo).deleteClassroom(999)
+      createClassRoomService(repo).deleteClassRoom(999)
     ).rejects.toThrow('Class not found');
   });
 

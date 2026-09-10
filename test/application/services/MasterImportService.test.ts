@@ -74,11 +74,11 @@ function buildClassRoomService(
   overrides: Partial<IClassRoomService> = {}
 ): IClassRoomService {
   return {
-    getAllClassrooms: vi.fn(),
-    getClassroomById: vi.fn(),
-    createClassroom: vi.fn(),
-    updateClassroom: vi.fn(),
-    deleteClassroom: vi.fn(),
+    getAllClassRooms: vi.fn(),
+    getClassRoomById: vi.fn(),
+    createClassRoom: vi.fn(),
+    updateClassRoom: vi.fn(),
+    deleteClassRoom: vi.fn(),
     validateClassRoomImport: vi.fn(),
     commitClassRoomImport: vi.fn(),
     ...overrides,

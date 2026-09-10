@@ -11,28 +11,28 @@ import { UserErrors } from '../../../src/presentation/errors/userErrors';
 
 function setup() {
   const service: IClassRoomService = {
-    getAllClassrooms: vi.fn(),
-    getClassroomById: vi.fn(),
-    createClassroom: vi.fn(),
-    updateClassroom: vi.fn(),
-    deleteClassroom: vi.fn(),
+    getAllClassRooms: vi.fn(),
+    getClassRoomById: vi.fn(),
+    createClassRoom: vi.fn(),
+    updateClassRoom: vi.fn(),
+    deleteClassRoom: vi.fn(),
     validateClassRoomImport: vi.fn(),
     commitClassRoomImport: vi.fn(),
   };
   const controller = createClassRoomController(service);
   const app = new Hono();
-  app.get('/classrooms', c => controller.getAllClassrooms(c));
-  app.get('/classrooms/:classId', c => controller.getClassroomById(c));
-  app.post('/classrooms', c => controller.createClassroom(c));
-  app.put('/classrooms/:classId', c => controller.updateClassroom(c));
-  app.delete('/classrooms/:classId', c => controller.deleteClassroom(c));
+  app.get('/classrooms', c => controller.getAllClassRooms(c));
+  app.get('/classrooms/:classId', c => controller.getClassRoomById(c));
+  app.post('/classrooms', c => controller.createClassRoom(c));
+  app.put('/classrooms/:classId', c => controller.updateClassRoom(c));
+  app.delete('/classrooms/:classId', c => controller.deleteClassRoom(c));
   return { app, service };
 }
 
 describe('ClassRoomController', () => {
   it('一覧をlimitとoffset付きで返す', async () => {
     const { app, service } = setup();
-    (service.getAllClassrooms as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (service.getAllClassRooms as ReturnType<typeof vi.fn>).mockResolvedValue({
       items: [],
       total: 0,
       limit: 20,
@@ -42,7 +42,7 @@ describe('ClassRoomController', () => {
     const response = await app.request('/classrooms?limit=10&offset=20');
 
     expect(response.status).toBe(200);
-    expect(service.getAllClassrooms).toHaveBeenCalledWith({
+    expect(service.getAllClassRooms).toHaveBeenCalledWith({
       sortBy: 'classRoomId',
       sortOrder: 'asc',
       limit: 10,
@@ -79,7 +79,7 @@ describe('ClassRoomController', () => {
 
   it('一覧クエリ未指定時は契約上のデフォルトをサービスへ渡す', async () => {
     const { app, service } = setup();
-    (service.getAllClassrooms as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (service.getAllClassRooms as ReturnType<typeof vi.fn>).mockResolvedValue({
       items: [],
       total: 0,
       limit: 50,
@@ -89,7 +89,7 @@ describe('ClassRoomController', () => {
     const response = await app.request('/classrooms');
 
     expect(response.status).toBe(200);
-    expect(service.getAllClassrooms).toHaveBeenCalledWith({
+    expect(service.getAllClassRooms).toHaveBeenCalledWith({
       sortBy: 'classRoomId',
       sortOrder: 'asc',
       limit: 50,
@@ -99,7 +99,7 @@ describe('ClassRoomController', () => {
 
   it('クラス詳細を返す', async () => {
     const { app, service } = setup();
-    (service.getClassroomById as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (service.getClassRoomById as ReturnType<typeof vi.fn>).mockResolvedValue({
       class_room_id: 1,
       class_code: 'IA14A',
       class_name: '高度情報学科AI開発先行コース',
@@ -110,12 +110,12 @@ describe('ClassRoomController', () => {
     const response = await app.request('/classrooms/1');
 
     expect(response.status).toBe(200);
-    expect(service.getClassroomById).toHaveBeenCalledWith(1);
+    expect(service.getClassRoomById).toHaveBeenCalledWith(1);
   });
 
   it('存在しないクラス詳細は404を返す', async () => {
     const { app, service } = setup();
-    (service.getClassroomById as ReturnType<typeof vi.fn>).mockRejectedValue(
+    (service.getClassRoomById as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Class not found')
     );
 
@@ -132,7 +132,7 @@ describe('ClassRoomController', () => {
 
   it('担任未設定でクラスを登録できる', async () => {
     const { app, service } = setup();
-    (service.createClassroom as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (service.createClassRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
       class_room_id: 1,
       class_code: 'IA14A',
       class_name: '高度情報学科AI開発先行コース',
@@ -150,7 +150,7 @@ describe('ClassRoomController', () => {
     });
 
     expect(response.status).toBe(201);
-    expect(service.createClassroom).toHaveBeenCalledWith({
+    expect(service.createClassRoom).toHaveBeenCalledWith({
       classCode: 'IA14A',
       className: '高度情報学科AI開発先行コース',
       teacherId: null,
@@ -184,12 +184,12 @@ describe('ClassRoomController', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(service.createClassroom).not.toHaveBeenCalled();
+    expect(service.createClassRoom).not.toHaveBeenCalled();
   });
 
   it('登録時の担任未存在は404を返す', async () => {
     const { app, service } = setup();
-    (service.createClassroom as ReturnType<typeof vi.fn>).mockRejectedValue(
+    (service.createClassRoom as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Teacher not found')
     );
 
@@ -208,7 +208,7 @@ describe('ClassRoomController', () => {
 
   it('登録時のクラスコード重複は409を返す', async () => {
     const { app, service } = setup();
-    (service.createClassroom as ReturnType<typeof vi.fn>).mockRejectedValue(
+    (service.createClassRoom as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Class code already exists')
     );
 
@@ -227,7 +227,7 @@ describe('ClassRoomController', () => {
 
   it('クラスを更新できる', async () => {
     const { app, service } = setup();
-    (service.updateClassroom as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (service.updateClassRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
       class_room_id: 1,
       class_code: 'IA14B',
       class_name: '高度情報学科AI開発先行コースB',
@@ -246,7 +246,7 @@ describe('ClassRoomController', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(service.updateClassroom).toHaveBeenCalledWith(1, {
+    expect(service.updateClassRoom).toHaveBeenCalledWith(1, {
       classCode: 'IA14B',
       className: '高度情報学科AI開発先行コースB',
       teacherId: null,
@@ -255,7 +255,7 @@ describe('ClassRoomController', () => {
 
   it('存在しないクラスの更新は404を返す', async () => {
     const { app, service } = setup();
-    (service.updateClassroom as ReturnType<typeof vi.fn>).mockRejectedValue(
+    (service.updateClassRoom as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Class not found')
     );
 
@@ -299,7 +299,7 @@ describe('ClassRoomController', () => {
 
   it('更新時のクラスコード重複は409を返す', async () => {
     const { app, service } = setup();
-    (service.updateClassroom as ReturnType<typeof vi.fn>).mockRejectedValue(
+    (service.updateClassRoom as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Class code already exists')
     );
 
@@ -321,12 +321,12 @@ describe('ClassRoomController', () => {
     const response = await app.request('/classrooms/1', { method: 'DELETE' });
 
     expect(response.status).toBe(204);
-    expect(service.deleteClassroom).toHaveBeenCalledWith(1);
+    expect(service.deleteClassRoom).toHaveBeenCalledWith(1);
   });
 
   it('学生が所属するクラスの削除は409を返す', async () => {
     const { app, service } = setup();
-    (service.deleteClassroom as ReturnType<typeof vi.fn>).mockRejectedValue(
+    (service.deleteClassRoom as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Class is referenced by students')
     );
 
@@ -337,7 +337,7 @@ describe('ClassRoomController', () => {
 
   it('存在しないクラスの削除は404を返す', async () => {
     const { app, service } = setup();
-    (service.deleteClassroom as ReturnType<typeof vi.fn>).mockRejectedValue(
+    (service.deleteClassRoom as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Class not found')
     );
 
