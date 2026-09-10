@@ -54,8 +54,7 @@ export const errorResponseSchema = z
 export type ErrorResponseDTO = z.infer<typeof errorResponseSchema>;
 
 type ValidationHookResult =
-  | { success: true }
-  | { success: false; error: ZodError };
+  { success: true } | { success: false; error: ZodError };
 
 /**
  * OpenAPI側のZodスキーマがリクエストを弾いたときの400応答。
