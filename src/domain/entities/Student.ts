@@ -11,6 +11,13 @@ export interface StudentEntity {
   isStaff: boolean;
 }
 
+export interface StudentPage {
+  items: StudentEntity[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface StudentWriteInput {
   displayName: string;
   classRoomId: number;

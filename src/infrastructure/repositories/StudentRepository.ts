@@ -16,6 +16,7 @@ import { class_rooms, staffs, students, users } from '../database/schema';
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import type {
   StudentEntity,
+  StudentPage,
   StudentWriteInput,
 } from '../../domain/entities/Student';
 import {
@@ -101,9 +102,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       return result ? toDomain(result) : null;
     },
 
-    async findAll(
-      filter = {}
-    ): Promise<{ students: StudentEntity[]; total: number }> {
+    async findAll(filter = {}): Promise<StudentPage> {
       const limit = filter.limit ?? 50;
       const offset = filter.offset ?? 0;
       const conditions = [];
@@ -175,8 +174,10 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .all();
 
       return {
-        students: results.map(toDomain),
+        items: results.map(toDomain),
         total,
+        limit,
+        offset,
       };
     },
 
