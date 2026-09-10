@@ -22,6 +22,7 @@ function setup() {
     getTeamById: vi.fn(),
     createTeam: vi.fn(),
     updateTeam: vi.fn(),
+    deleteTeam: vi.fn(),
   };
   const controller = createTeamController(teamService);
   const app = new Hono();
@@ -29,6 +30,7 @@ function setup() {
   app.get('/teams/:teamId', c => controller.getTeamById(c));
   app.post('/teams', c => controller.createTeam(c));
   app.put('/teams/:teamId', c => controller.updateTeam(c));
+  app.delete('/teams/:teamId', c => controller.deleteTeam(c));
   return { app, teamService };
 }
 
@@ -231,6 +233,51 @@ describe('TeamController', () => {
       });
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe('deleteTeam', () => {
+    it('チームを削除して204を返す', async () => {
+      const { app, teamService } = setup();
+      (teamService.deleteTeam as ReturnType<typeof vi.fn>).mockResolvedValue(
+        true
+      );
+
+      const response = await app.request('/teams/1', { method: 'DELETE' });
+
+      expect(teamService.deleteTeam).toHaveBeenCalledWith(1);
+      expect(response.status).toBe(204);
+    });
+
+    it('teamIdが不正な場合は400を返す', async () => {
+      const { app, teamService } = setup();
+
+      const response = await app.request('/teams/abc', { method: 'DELETE' });
+
+      expect(response.status).toBe(400);
+      expect(teamService.deleteTeam).not.toHaveBeenCalled();
+    });
+
+    it('存在しないチームの場合は404を返す', async () => {
+      const { app, teamService } = setup();
+      (teamService.deleteTeam as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Team not found')
+      );
+
+      const response = await app.request('/teams/999', { method: 'DELETE' });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('得点が登録されているチームの場合は409を返す', async () => {
+      const { app, teamService } = setup();
+      (teamService.deleteTeam as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Team has scores')
+      );
+
+      const response = await app.request('/teams/1', { method: 'DELETE' });
+
+      expect(response.status).toBe(409);
     });
   });
 });

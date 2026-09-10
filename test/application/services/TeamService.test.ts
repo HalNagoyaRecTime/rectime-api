@@ -224,4 +224,37 @@ describe('TeamService', () => {
       expect(repository.updateTeam).not.toHaveBeenCalled();
     });
   });
+
+  describe('deleteTeam', () => {
+    it('得点が0のチームは削除する', async () => {
+      const repository = createRepository({
+        findTeamById: vi.fn().mockResolvedValue(buildTeam({ scores: 0 })),
+        delete: vi.fn().mockResolvedValue(true),
+      });
+      const service = createTeamService(repository);
+
+      await expect(service.deleteTeam(1)).resolves.toBe(true);
+      expect(repository.delete).toHaveBeenCalledWith(1);
+    });
+
+    it('存在しないチームの場合は例外を投げ、deleteを呼ばない', async () => {
+      const repository = createRepository({
+        findTeamById: vi.fn().mockResolvedValue(null),
+      });
+      const service = createTeamService(repository);
+
+      await expect(service.deleteTeam(999)).rejects.toThrow('Team not found');
+      expect(repository.delete).not.toHaveBeenCalled();
+    });
+
+    it('得点が残っているチームは例外を投げ、deleteを呼ばない', async () => {
+      const repository = createRepository({
+        findTeamById: vi.fn().mockResolvedValue(buildTeam({ scores: 10 })),
+      });
+      const service = createTeamService(repository);
+
+      await expect(service.deleteTeam(1)).rejects.toThrow('Team has scores');
+      expect(repository.delete).not.toHaveBeenCalled();
+    });
+  });
 });

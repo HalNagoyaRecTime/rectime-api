@@ -420,6 +420,26 @@ describe('TeamRepository', () => {
     it('存在しないチームの場合はfalseを返す', async () => {
       await expect(repo.delete(999999)).resolves.toBe(false);
     });
+
+    it('所属クラスは自分専用の単独編成へ戻してから削除する', async () => {
+      const teamId = await insertTeam('削除対象(複数編成)');
+      await insertClassRoom('1A', teamId);
+      await insertClassRoom('1B', teamId);
+
+      await expect(repo.delete(teamId)).resolves.toBe(true);
+      await expect(repo.exists(teamId)).resolves.toBe(false);
+
+      const detached = await env.DB.prepare(
+        `SELECT t.team_name, t.team_id
+         FROM class_rooms c
+         JOIN teams t ON t.team_id = c.team_id
+         WHERE c.class_code IN ('1A', '1B')`
+      ).all<{ team_name: string; team_id: number }>();
+      expect(detached.results).toHaveLength(2);
+      for (const row of detached.results) {
+        expect(row.team_id).not.toBe(teamId);
+      }
+    });
   });
 
   describe('addScore', () => {
