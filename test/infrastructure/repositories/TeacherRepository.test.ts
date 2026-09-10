@@ -1,11 +1,18 @@
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTeacherRepository } from '../../../src/infrastructure/repositories/TeacherRepository';
+import { createUserStatusRepository } from '../../../src/infrastructure/repositories/UserStatusRepository';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
 import {
   seedStaffsTeachers,
   type SeededData,
 } from '../../fixtures/staffsTeachers';
+
+// User の無効化は PATCH /api/v1/admin/users/:userId が使う UserStatusRepository で行う。
+// Teacher 固有データや所属情報を変更しないことを実運用と同じ経路で検証する。
+async function deactivateUser(userId: number): Promise<void> {
+  await createUserStatusRepository(env.DB).updateLiveActive(userId, false);
+}
 
 describe('TeacherRepository', () => {
   let repo: ITeacherRepository;
@@ -85,7 +92,7 @@ describe('TeacherRepository', () => {
 
     it('デフォルトでは有効・無効を問わず教員を返す', async () => {
       const target = seeded.teachers[0];
-      await repo.deactivate(target.teacherId);
+      await deactivateUser(target.userId);
 
       const all = await repo.findAll();
       const active = await repo.findAll({ isLiveActive: true });
@@ -227,7 +234,7 @@ describe('TeacherRepository', () => {
         initiallySortedByActive.items.map(item => item.teacher_id)
       ).toEqual(seeded.teachers.map(teacher => teacher.teacherId));
 
-      await repo.deactivate(seeded.teachers[1].teacherId);
+      await deactivateUser(seeded.teachers[1].userId);
 
       const activeAsc = await repo.findAll({
         sortBy: 'isLiveActive',
@@ -351,7 +358,7 @@ describe('TeacherRepository', () => {
 
     it('論理削除済み教員も更新できる', async () => {
       const target = seeded.teachers[0];
-      await repo.deactivate(target.teacherId);
+      await deactivateUser(target.userId);
 
       const updated = await repo.update(target.teacherId, {
         userName: '更新不可先生',
@@ -389,34 +396,22 @@ describe('TeacherRepository', () => {
     });
   });
 
-  describe('deactivate', () => {
-    it('教員を論理削除し、担当クラスを解除する', async () => {
+  describe('User の無効化', () => {
+    it('User を無効化しても担当クラスの割り当てが保持される', async () => {
       const target = seeded.teachers[0];
-      expect(await repo.deactivate(target.teacherId)).toBe(true);
+      const assigned = seeded.classRooms[0];
+
+      await deactivateUser(target.userId);
 
       const teacher = await repo.findById(target.teacherId);
-      expect(teacher).toMatchObject({
-        teacher_id: target.teacherId,
-        is_live_active: false,
-      });
-      expect(teacher?.class_rooms).toEqual([]);
-      const user = await env.DB.prepare(
-        'SELECT is_live_active FROM users WHERE user_id = ?'
-      )
-        .bind(target.userId)
-        .first<{ is_live_active: number }>();
-      expect(user?.is_live_active).toBe(0);
-    });
-
-    it('削除済み教員を再度論理削除しても成功する', async () => {
-      const target = seeded.teachers[1];
-      expect(await repo.deactivate(target.teacherId)).toBe(true);
-      expect(await repo.deactivate(target.teacherId)).toBe(true);
-      expect(await repo.findById(target.teacherId)).not.toBeNull();
-    });
-
-    it('存在しない教員IDの場合は false を返す', async () => {
-      expect(await repo.deactivate(999999)).toBe(false);
+      expect(teacher?.is_live_active).toBe(false);
+      expect(teacher?.class_rooms).toEqual([
+        {
+          class_room_id: assigned.classRoomId,
+          class_code: assigned.classCode,
+          class_name: assigned.className,
+        },
+      ]);
     });
   });
 

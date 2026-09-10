@@ -166,28 +166,10 @@ export function createTeacherController(teacherService: ITeacherService) {
     }
   };
 
-  const deleteTeacher = async (c: Context) => {
-    const teacherId = getTeacherId(c);
-    if (teacherId === null) {
-      return errorResponse(c, UserErrors.INVALID_TEACHER_ID);
-    }
-
-    try {
-      await teacherService.deleteTeacher(teacherId);
-      return c.body(null, 204);
-    } catch (error) {
-      if (error instanceof Error && error.message === 'Teacher not found') {
-        return errorResponse(c, UserErrors.TEACHER_NOT_FOUND);
-      }
-      return errorResponse(c, UserErrors.TEACHER_DELETE_FAILED);
-    }
-  };
-
   return {
     createTeacher,
     getTeacherById,
     getAllTeachers,
     updateTeacher,
-    deleteTeacher,
   };
 }

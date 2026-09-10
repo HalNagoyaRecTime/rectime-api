@@ -69,4 +69,12 @@ export interface IUserRepository {
   // AccountDeletionService.deleteRelatedData)。該当するuserIdが
   // 存在しない場合は何もせずfalseを返す(冪等)。
   anonymizeUser(userId: string): Promise<boolean>;
+  // アカウント削除の後片付け再実行(#345)専用。
+  // `deletion_status = 'deleted' AND purged_at IS NULL`の利用者、つまり
+  // markAsDeletedは完了したがdeleteRelatedDataが途中で失敗し
+  // markAsPurgedまで到達しなかった利用者のuser_idを、deletedAtが古い順に
+  // 最大limit件返す。AccountDeletionService.retryPendingPurgesが
+  // このメソッドで抽出した各userIdに対してdeleteRelatedDataを
+  // 再実行することで、途中失敗を機械的に拾い直す。
+  findPendingPurgeUserIds(limit: number): Promise<string[]>;
 }

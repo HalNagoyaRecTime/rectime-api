@@ -513,6 +513,46 @@ describe('UserRepository', () => {
     });
   });
 
+  describe('findPendingPurgeUserIds', () => {
+    it('deletion_status = "deleted" かつ purged_at IS NULL の利用者だけをdeletedAtの古い順に返す', async () => {
+      const pendingOld = await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status, deleted_at) VALUES ('未完了古い太郎', 'deleted', '2026-01-01T00:00:00.000Z') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const pendingNew = await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status, deleted_at) VALUES ('未完了新しい太郎', 'deleted', '2026-06-01T00:00:00.000Z') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      // 後片付け完了済み(purged_atあり)は対象外。
+      await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status, deleted_at, purged_at) VALUES ('完了済み太郎', 'deleted', '2025-01-01T00:00:00.000Z', '2025-01-02T00:00:00.000Z')"
+      ).run();
+      // 削除未受付(active)は対象外。
+      await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status) VALUES ('未削除太郎', 'active')"
+      ).run();
+
+      await expect(repo.findPendingPurgeUserIds(100)).resolves.toEqual([
+        String(pendingOld!.user_id),
+        String(pendingNew!.user_id),
+      ]);
+    });
+
+    it('limitを超える件数がある場合、上限までしか返さない', async () => {
+      for (let i = 0; i < 3; i += 1) {
+        await env.DB.prepare(
+          `INSERT INTO users (user_name, deletion_status, deleted_at) VALUES ('limit確認${i}', 'deleted', '2026-0${i + 1}-01T00:00:00.000Z')`
+        ).run();
+      }
+
+      const result = await repo.findPendingPurgeUserIds(2);
+
+      expect(result).toHaveLength(2);
+    });
+
+    it('対象が無い場合は空配列を返す', async () => {
+      await expect(repo.findPendingPurgeUserIds(100)).resolves.toEqual([]);
+    });
+  });
+
   describe('anonymizeUser', () => {
     it('user_nameを固定文字列に書き換える', async () => {
       const user = await env.DB.prepare(
