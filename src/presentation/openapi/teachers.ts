@@ -45,32 +45,58 @@ export type TeacherPageResponseDTO = z.infer<typeof teacherPageResponseSchema>;
 export const teacherIdParams = z.object({
   teacherId: positivePathParam('teacherId', '教員ID'),
 });
-export const teacherListQuery = z.object({
-  search: z.string().trim().min(1).optional(),
-  classRoomId: z.coerce.number().int().positive().optional(),
-  isStaff: z.enum(['true', 'false', 'all']).default('all').optional(),
-  isLiveActive: z.enum(['true', 'false', 'all']).default('true').optional(),
-  sortBy: z
-    .enum([
-      'teacherId',
-      'displayName',
-      'classCode',
-      'className',
-      'isStaff',
-      'isLiveActive',
-    ])
-    .default('teacherId')
-    .optional(),
-  sortOrder: z.enum(['asc', 'desc']).default('asc').optional(),
-  offset: z.coerce.number().int().min(0).default(0).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50).optional(),
-});
+// Query はHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
+// OpenAPIとControllerが同じschemaをsafeParseすることで、受理範囲を一致させる。
+const digitsOnlyQuery = (minimum: number) =>
+  z.preprocess(
+    value =>
+      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
+    z.number().int().min(minimum)
+  );
+
+const limitedDigitsOnlyQuery = (minimum: number, maximum: number) =>
+  digitsOnlyQuery(minimum).refine(value => value <= maximum, {
+    message: `値は${minimum}から${maximum}の範囲で指定してください`,
+  });
+
+const classRoomIdsSchema = z
+  .array(z.number().int().positive())
+  .openapi({
+    description: '正の整数。重複した値を含められない。',
+    uniqueItems: true,
+  })
+  .refine(ids => new Set(ids).size === ids.length, {
+    message: 'classRoomIds must not contain duplicate values',
+  });
+
+export const teacherListQuery = z
+  .object({
+    search: z.string().trim().min(1).optional(),
+    classRoomId: digitsOnlyQuery(1).optional(),
+    isStaff: z.enum(['true', 'false', 'all']).default('all'),
+    isLiveActive: z.enum(['true', 'false', 'all']).default('true'),
+    sortBy: z
+      .enum([
+        'teacherId',
+        'displayName',
+        'classCode',
+        'className',
+        'isStaff',
+        'isLiveActive',
+      ])
+      .default('teacherId'),
+    sortOrder: z.enum(['asc', 'desc']).default('asc'),
+    offset: digitsOnlyQuery(0).default(0),
+    limit: limitedDigitsOnlyQuery(1, 100).default(50),
+  })
+  .strict();
 
 export const teacherCreateSchema = z
   .object({
     userName: z.string().trim().min(1),
-    classRoomIds: z.array(z.number().int().positive()),
+    classRoomIds: classRoomIdsSchema,
   })
+  .strict()
   .openapi('TeacherCreateRequest');
 
 export const teacherCreateRoute = createRoute({
@@ -96,11 +122,10 @@ export const teacherCreateRoute = createRoute({
 
 export const teacherUpdateSchema = z
   .object({
-    userName: z.string().min(1),
-    classRoomIds: z.array(z.number().int().positive()).openapi({
-      description: '重複した値を含められない。',
-    }),
+    userName: z.string().trim().min(1),
+    classRoomIds: classRoomIdsSchema,
   })
+  .strict()
   .openapi('TeacherUpdateRequest');
 
 export const teacherListRoute = createRoute({

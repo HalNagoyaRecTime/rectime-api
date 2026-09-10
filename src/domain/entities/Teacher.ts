@@ -1,16 +1,16 @@
 export interface TeacherClassRoomEntity {
-  class_room_id: number;
-  class_code: string;
-  class_name: string;
+  classRoomId: number;
+  classCode: string;
+  className: string;
 }
 
 export interface TeacherEntity {
-  teacher_id: number;
-  user_id: number;
-  user_name: string;
-  is_live_active: boolean;
-  is_staff: boolean;
-  class_rooms: TeacherClassRoomEntity[];
+  teacherId: number;
+  userId: number;
+  userName: string;
+  isLiveActive: boolean;
+  isStaff: boolean;
+  classRooms: TeacherClassRoomEntity[];
 }
 
 export interface TeacherSearchFilter {

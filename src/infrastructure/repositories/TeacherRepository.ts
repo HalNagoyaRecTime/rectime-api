@@ -17,6 +17,7 @@ import { class_rooms, staffs, teachers, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import {
+  TeacherClassRoomEntity,
   TeacherEntity,
   TeacherPage,
   TeacherSearchFilter,
@@ -57,11 +58,13 @@ type TeacherJoinRow = {
   staffs: typeof staffs.$inferSelect | null;
 };
 
-function toClassRoom(row: typeof class_rooms.$inferSelect) {
+function toClassRoom(
+  row: typeof class_rooms.$inferSelect
+): TeacherClassRoomEntity {
   return {
-    class_room_id: row.id,
-    class_code: row.classCode,
-    class_name: row.name,
+    classRoomId: row.id,
+    classCode: row.classCode,
+    className: row.name,
   };
 }
 
@@ -90,15 +93,15 @@ async function loadClassRoomsByTeacherIds(
 
 function toEntity(
   row: TeacherJoinRow,
-  classRooms: ReturnType<typeof toClassRoom>[]
+  classRooms: TeacherClassRoomEntity[]
 ): TeacherEntity {
   return {
-    teacher_id: row.teachers.id,
-    user_id: row.users.id,
-    user_name: row.users.userName,
-    is_live_active: Boolean(row.users.isLiveActive),
-    is_staff: Boolean(row.staffs),
-    class_rooms: classRooms,
+    teacherId: row.teachers.id,
+    userId: row.users.id,
+    userName: row.users.userName,
+    isLiveActive: Boolean(row.users.isLiveActive),
+    isStaff: Boolean(row.staffs),
+    classRooms,
   };
 }
 

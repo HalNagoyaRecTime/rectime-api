@@ -131,11 +131,6 @@ export const UserErrors = {
     code: 'TEACHER_UPDATE_FAILED',
     message: '教員の更新に失敗しました',
   },
-  TEACHER_DELETE_FAILED: {
-    status: 500,
-    code: 'TEACHER_DELETE_FAILED',
-    message: '教員の削除に失敗しました',
-  },
   CLASS_ROOM_NOT_FOUND: {
     status: 400,
     code: 'CLASS_ROOM_NOT_FOUND',

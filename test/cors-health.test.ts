@@ -129,6 +129,10 @@ describe('OpenAPI documentation', () => {
       ],
     });
 
+    expect(document.paths['/api/v1/teachers/{teacherId}']).not.toHaveProperty(
+      'delete'
+    );
+
     const documentedOperations = Object.values(document.paths).flatMap(path =>
       Object.keys(path).filter(method =>
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)

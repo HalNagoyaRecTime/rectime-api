@@ -57,6 +57,25 @@ describe('TeacherController', () => {
       });
     });
 
+    it('userNameをtrimしてサービスに渡す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.createTeacher as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(buildTeacher());
+
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName: '  山田先生  ', classRoomIds: [] }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(teacherService.createTeacher).toHaveBeenCalledWith({
+        userName: '山田先生',
+        classRoomIds: [],
+      });
+    });
+
     it('未知フィールドを400で拒否する', async () => {
       const { app } = setup();
       const res = await app.request('/teachers', {
@@ -214,6 +233,18 @@ describe('TeacherController', () => {
       expect(await res.json()).toMatchObject({
         error: { code: 'VALIDATION_ERROR' },
       });
+    });
+
+    it.each([
+      '/teachers?limit=1.0',
+      '/teachers?offset=-1',
+      '/teachers?classRoomId=1e2',
+    ])('digits-onlyでない数値Queryは400を返す', async path => {
+      const { app, teacherService } = setup();
+      const res = await app.request(path);
+
+      expect(res.status).toBe(400);
+      expect(teacherService.getAllTeachers).not.toHaveBeenCalled();
     });
 
     it.each([

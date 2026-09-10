@@ -6,6 +6,7 @@ import {
   TeacherPageDTO,
 } from '../dto/TeacherDTO';
 import type {
+  TeacherClassRoomEntity,
   TeacherEntity,
   TeacherSearchFilter,
 } from '../../domain/entities/Teacher';
@@ -16,14 +17,24 @@ import {
   TeacherUpdateRequest,
 } from './ITeacherService';
 
+function toClassRoomDTO(
+  classRoom: TeacherClassRoomEntity
+): TeacherDTO['class_rooms'][number] {
+  return {
+    class_room_id: classRoom.classRoomId,
+    class_code: classRoom.classCode,
+    class_name: classRoom.className,
+  };
+}
+
 function toDTO(teacher: TeacherEntity): TeacherDTO {
   return {
-    teacher_id: teacher.teacher_id,
-    user_id: teacher.user_id,
-    display_name: teacher.user_name,
-    is_live_active: teacher.is_live_active,
-    is_staff: teacher.is_staff,
-    class_rooms: teacher.class_rooms,
+    teacher_id: teacher.teacherId,
+    user_id: teacher.userId,
+    display_name: teacher.userName,
+    is_live_active: teacher.isLiveActive,
+    is_staff: teacher.isStaff,
+    class_rooms: teacher.classRooms.map(toClassRoomDTO),
   };
 }
 

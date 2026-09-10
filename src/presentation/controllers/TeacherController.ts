@@ -1,73 +1,13 @@
 import { Context } from 'hono';
-import { z } from 'zod';
 import { ITeacherService } from '../../application/services/ITeacherService';
 import { CommonErrors } from '../errors/commonErrors';
 import { errorResponse } from '../errors/errorResponse';
 import { UserErrors } from '../errors/userErrors';
-
-const MAX_LIMIT = 100;
-
-const integerQuery = (minimum: number) =>
-  z.preprocess(
-    value =>
-      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
-    z.number().int().min(minimum)
-  );
-
-const teacherListQuerySchema = z
-  .object({
-    search: z.string().trim().min(1).optional(),
-    classRoomId: integerQuery(1).optional(),
-    isStaff: z.enum(['true', 'false', 'all']).default('all'),
-    isLiveActive: z.enum(['true', 'false', 'all']).default('true'),
-    sortBy: z
-      .enum([
-        'teacherId',
-        'displayName',
-        'classCode',
-        'className',
-        'isStaff',
-        'isLiveActive',
-      ])
-      .default('teacherId'),
-    sortOrder: z.enum(['asc', 'desc']).default('asc'),
-    limit: integerQuery(1)
-      .refine(value => value <= MAX_LIMIT, {
-        message: 'limit must be between 1 and 100',
-      })
-      .default(50),
-    offset: integerQuery(0).default(0),
-  })
-  .strict()
-  .transform(({ isStaff, isLiveActive, ...query }) => ({
-    ...query,
-    ...(isStaff === 'all' ? {} : { isStaff: isStaff === 'true' }),
-    ...(isLiveActive === 'all'
-      ? {}
-      : { isLiveActive: isLiveActive === 'true' }),
-  }));
-
-const createTeacherSchema = z
-  .object({
-    userName: z.string().min(1),
-    classRoomIds: z
-      .array(z.number().int().positive())
-      .refine(ids => new Set(ids).size === ids.length, {
-        message: 'classRoomIds must not contain duplicate values',
-      }),
-  })
-  .strict();
-
-const updateTeacherSchema = z
-  .object({
-    userName: z.string().min(1),
-    classRoomIds: z
-      .array(z.number().int().positive())
-      .refine(ids => new Set(ids).size === ids.length, {
-        message: 'classRoomIds must not contain duplicate values',
-      }),
-  })
-  .strict();
+import {
+  teacherCreateSchema,
+  teacherListQuery,
+  teacherUpdateSchema,
+} from '../openapi/teachers';
 
 function getTeacherId(c: Context): number | null {
   const id = Number(c.req.param('teacherId') || c.req.param('id'));
@@ -77,7 +17,7 @@ function getTeacherId(c: Context): number | null {
 export function createTeacherController(teacherService: ITeacherService) {
   const createTeacher = async (c: Context) => {
     const body = await c.req.json().catch(() => undefined);
-    const parsedBody = createTeacherSchema.safeParse(body);
+    const parsedBody = teacherCreateSchema.safeParse(body);
     if (!parsedBody.success) {
       return errorResponse(
         c,
@@ -116,7 +56,7 @@ export function createTeacherController(teacherService: ITeacherService) {
   };
 
   const getAllTeachers = async (c: Context) => {
-    const parsedQuery = teacherListQuerySchema.safeParse(c.req.query());
+    const parsedQuery = teacherListQuery.safeParse(c.req.query());
     if (!parsedQuery.success) {
       return errorResponse(
         c,
@@ -126,7 +66,15 @@ export function createTeacherController(teacherService: ITeacherService) {
     }
 
     try {
-      const teachers = await teacherService.getAllTeachers(parsedQuery.data);
+      const { isStaff, isLiveActive, ...query } = parsedQuery.data;
+      const filter = {
+        ...query,
+        ...(isStaff === 'all' ? {} : { isStaff: isStaff === 'true' }),
+        ...(isLiveActive === 'all'
+          ? {}
+          : { isLiveActive: isLiveActive === 'true' }),
+      };
+      const teachers = await teacherService.getAllTeachers(filter);
       return c.json(teachers, 200);
     } catch {
       return errorResponse(c, UserErrors.TEACHER_LIST_FAILED);
@@ -140,7 +88,7 @@ export function createTeacherController(teacherService: ITeacherService) {
     }
 
     const body = await c.req.json().catch(() => undefined);
-    const parsedBody = updateTeacherSchema.safeParse(body);
+    const parsedBody = teacherUpdateSchema.safeParse(body);
     if (!parsedBody.success) {
       return errorResponse(
         c,
