@@ -139,6 +139,35 @@ export const positivePathParam = (name: string, description: string) =>
     .regex(/^[1-9]\d*$/)
     .openapi({ param: { name, in: 'path' }, description, example: '1' });
 
+/** クエリ文字列をdigits-onlyの整数へ変換して検証する。 */
+const digitsOnlyNumber = (minimum: number, maximum?: number) => {
+  const numberSchema = z.number().int().min(minimum);
+  const boundedSchema =
+    maximum === undefined ? numberSchema : numberSchema.max(maximum);
+
+  return z.preprocess(
+    value =>
+      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
+    boundedSchema
+  );
+};
+
+/** 最小値だけを持つdigits-onlyクエリ。 */
+export const digitsOnlyQuery = (minimum: number) => digitsOnlyNumber(minimum);
+
+/** 最小値・最大値を持つdigits-onlyクエリ。上限エラーの文言を維持する。 */
+export const limitedDigitsOnlyQuery = (minimum: number, maximum: number) =>
+  digitsOnlyQuery(minimum).refine(value => value <= maximum, {
+    message: `値は${minimum}から${maximum}の範囲で指定してください`,
+  });
+
+/** default付きのdigits-only整数。ClassRoomの既存エラー契約を維持する。 */
+export const digitsOnlyInteger = (
+  minimum: number,
+  maximum: number | undefined,
+  defaultValue: number
+) => digitsOnlyNumber(minimum, maximum).default(defaultValue);
+
 /** 件数指定のクエリ。上限と既定値はエンドポイントごとに異なる。 */
 export const paginationQuery = (limitMax: number, limitDefault: number) =>
   z.object({

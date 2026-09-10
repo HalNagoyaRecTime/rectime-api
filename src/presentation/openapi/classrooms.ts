@@ -3,6 +3,7 @@ import {
   badRequestResponse,
   bearerAuth,
   conflictResponse,
+  digitsOnlyInteger,
   forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
@@ -189,18 +190,3 @@ export const classRoomDeleteRoute = createRoute({
     500: internalServerErrorResponse,
   },
 });
-
-function digitsOnlyInteger(
-  minimum: number,
-  maximum: number | undefined,
-  defaultValue: number
-) {
-  const schema = z.preprocess(
-    value =>
-      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
-    maximum === undefined
-      ? z.number().int().min(minimum)
-      : z.number().int().min(minimum).max(maximum)
-  );
-  return schema.default(defaultValue);
-}

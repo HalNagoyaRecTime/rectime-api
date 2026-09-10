@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { createTeacherController } from '../../../src/presentation/controllers/TeacherController';
 import type { ITeacherService } from '../../../src/application/services/ITeacherService';
 import type { TeacherDTO } from '../../../src/application/dto/TeacherDTO';
+import {
+  teacherListQuery,
+  teacherListRoute,
+} from '../../../src/presentation/openapi/teachers';
 
 function buildTeacher(overrides: Partial<TeacherDTO> = {}): TeacherDTO {
   return {
@@ -255,6 +259,16 @@ describe('TeacherController', () => {
       expect(await res.json()).toMatchObject({
         error: { code: 'VALIDATION_ERROR' },
       });
+    });
+
+    it('OpenAPIとControllerは共通Query schemaのdigits-only契約を使う', () => {
+      expect(teacherListRoute.request?.query).toBe(teacherListQuery);
+      expect(teacherListQuery.safeParse({}).data).toMatchObject({
+        limit: 50,
+        offset: 0,
+      });
+      expect(teacherListQuery.safeParse({ limit: '1e2' }).success).toBe(false);
+      expect(teacherListQuery.safeParse({ offset: '1.0' }).success).toBe(false);
     });
 
     it.each([

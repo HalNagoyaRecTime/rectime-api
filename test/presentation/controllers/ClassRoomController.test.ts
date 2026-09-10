@@ -5,6 +5,7 @@ import type { IClassRoomService } from '../../../src/application/services/IClass
 import {
   classIdParams,
   classRoomListQuery,
+  classRoomListRoute,
   classRoomWriteSchema,
 } from '../../../src/presentation/openapi/classrooms';
 import { UserErrors } from '../../../src/presentation/errors/userErrors';
@@ -279,6 +280,7 @@ describe('ClassRoomController', () => {
   });
 
   it('OpenAPI request schemaはstrict/default/digits-only契約を共有する', () => {
+    expect(classRoomListRoute.request?.query).toBe(classRoomListQuery);
     expect(classRoomListQuery.parse({})).toEqual({
       sortBy: 'classRoomId',
       sortOrder: 'asc',

@@ -2,9 +2,11 @@ import { createRoute } from '@hono/zod-openapi';
 import {
   badRequestResponse,
   bearerAuth,
+  digitsOnlyQuery,
   forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
+  limitedDigitsOnlyQuery,
   notFoundResponse,
   paginationFields,
   positivePathParam,
@@ -45,20 +47,6 @@ export type TeacherPageResponseDTO = z.infer<typeof teacherPageResponseSchema>;
 export const teacherIdParams = z.object({
   teacherId: positivePathParam('teacherId', '教員ID'),
 });
-// Query はHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
-// OpenAPIとControllerが同じschemaをsafeParseすることで、受理範囲を一致させる。
-const digitsOnlyQuery = (minimum: number) =>
-  z.preprocess(
-    value =>
-      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
-    z.number().int().min(minimum)
-  );
-
-const limitedDigitsOnlyQuery = (minimum: number, maximum: number) =>
-  digitsOnlyQuery(minimum).refine(value => value <= maximum, {
-    message: `値は${minimum}から${maximum}の範囲で指定してください`,
-  });
-
 const classRoomIdsSchema = z
   .array(z.number().int().positive())
   .openapi({
