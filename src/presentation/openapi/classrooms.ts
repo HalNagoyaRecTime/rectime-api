@@ -61,10 +61,25 @@ export const classRoomListQuery = z
         'studentCount',
       ])
       .default('classRoomId')
-      .optional(),
-    sortOrder: z.enum(['asc', 'desc']).default('asc').optional(),
-    limit: z.coerce.number().int().min(1).max(100).default(50).optional(),
-    offset: z.coerce.number().int().min(0).default(0).optional(),
+      .openapi({
+        param: { name: 'sortBy', in: 'query' },
+        example: 'classRoomId',
+      }),
+    sortOrder: z
+      .enum(['asc', 'desc'])
+      .default('asc')
+      .openapi({
+        param: { name: 'sortOrder', in: 'query' },
+        example: 'asc',
+      }),
+    limit: digitsOnlyInteger(1, 100, 50).openapi({
+      param: { name: 'limit', in: 'query' },
+      example: 50,
+    }),
+    offset: digitsOnlyInteger(0, undefined, 0).openapi({
+      param: { name: 'offset', in: 'query' },
+      example: 0,
+    }),
   })
   .strict();
 
@@ -174,3 +189,18 @@ export const classRoomDeleteRoute = createRoute({
     500: internalServerErrorResponse,
   },
 });
+
+function digitsOnlyInteger(
+  minimum: number,
+  maximum: number | undefined,
+  defaultValue: number
+) {
+  const schema = z.preprocess(
+    value =>
+      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
+    maximum === undefined
+      ? z.number().int().min(minimum)
+      : z.number().int().min(minimum).max(maximum)
+  );
+  return schema.default(defaultValue);
+}

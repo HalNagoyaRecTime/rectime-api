@@ -224,6 +224,23 @@ describe('ClassRoomRepository', () => {
     ).rejects.toThrow(/UNIQUE/);
   });
 
+  it('class_codeの一意制約を更新にも適用する', async () => {
+    const target = await repo.findByCode('12B');
+    expect(target).not.toBeNull();
+
+    await expect(
+      repo.update(target!.classRoomId, {
+        classCode: 'IA14A',
+        className: '重複クラス',
+        teacherId: null,
+      })
+    ).rejects.toThrow(/UNIQUE/);
+
+    await expect(repo.findByCode('12B')).resolves.toMatchObject({
+      className: '2年Bクラス',
+    });
+  });
+
   it('学生の所属有無を返す', async () => {
     const classrooms = (await repo.findAll({ limit: 20, offset: 0 })).items;
     const assigned = classrooms.find(c => c.classCode === '12B');

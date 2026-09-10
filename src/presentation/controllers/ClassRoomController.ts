@@ -1,39 +1,17 @@
 import type { Context } from 'hono';
-import { z } from 'zod';
 import type { IClassRoomService } from '../../application/services/IClassRoomService';
 import { errorResponse } from '../errors/errorResponse';
 import { UserErrors } from '../errors/userErrors';
 import { CommonErrors } from '../errors/commonErrors';
-
-const classIdSchema = z.coerce.number().int().positive();
-const paginationSchema = z
-  .object({
-    search: z.string().trim().min(1).optional(),
-    sortBy: z
-      .enum([
-        'classRoomId',
-        'classCode',
-        'className',
-        'teacherName',
-        'studentCount',
-      ])
-      .default('classRoomId'),
-    sortOrder: z.enum(['asc', 'desc']).default('asc'),
-    limit: z.coerce.number().int().min(1).max(100).default(50),
-    offset: z.coerce.number().int().min(0).default(0),
-  })
-  .strict();
-const classRoomRequestSchema = z
-  .object({
-    classCode: z.string().trim().min(1),
-    className: z.string().trim().min(1),
-    teacherId: z.number().int().positive().nullable(),
-  })
-  .strict();
+import {
+  classIdParams,
+  classRoomListQuery,
+  classRoomWriteSchema,
+} from '../openapi/classrooms';
 
 export function createClassRoomController(classService: IClassRoomService) {
   const getAllClassrooms = async (c: Context) => {
-    const query = paginationSchema.safeParse(c.req.query());
+    const query = classRoomListQuery.safeParse(c.req.query());
     if (!query.success) {
       return errorResponse(
         c,
@@ -58,10 +36,10 @@ export function createClassRoomController(classService: IClassRoomService) {
   };
 
   const getClassroomById = async (c: Context) => {
-    const id = classIdSchema.safeParse(c.req.param('classId'));
-    if (!id.success) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
+    const id = parseClassRoomId(c);
+    if (id === null) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
     try {
-      return c.json(await classService.getClassroomById(id.data), 200);
+      return c.json(await classService.getClassroomById(id), 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
         return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
@@ -72,7 +50,7 @@ export function createClassRoomController(classService: IClassRoomService) {
 
   const parseBody = async (c: Context) => {
     const body = await c.req.json().catch(() => undefined);
-    return classRoomRequestSchema.safeParse(body);
+    return classRoomWriteSchema.safeParse(body);
   };
 
   const createClassroom = async (c: Context) => {
@@ -92,8 +70,8 @@ export function createClassRoomController(classService: IClassRoomService) {
   };
 
   const updateClassroom = async (c: Context) => {
-    const id = classIdSchema.safeParse(c.req.param('classId'));
-    if (!id.success) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
+    const id = parseClassRoomId(c);
+    if (id === null) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
     const body = await parseBody(c);
     if (!body.success) {
       return errorResponse(
@@ -103,20 +81,17 @@ export function createClassRoomController(classService: IClassRoomService) {
       );
     }
     try {
-      return c.json(
-        await classService.updateClassroom(id.data, body.data),
-        200
-      );
+      return c.json(await classService.updateClassroom(id, body.data), 200);
     } catch (error) {
       return handleWriteError(c, error, UserErrors.CLASS_ROOM_UPDATE_FAILED);
     }
   };
 
   const deleteClassroom = async (c: Context) => {
-    const id = classIdSchema.safeParse(c.req.param('classId'));
-    if (!id.success) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
+    const id = parseClassRoomId(c);
+    if (id === null) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
     try {
-      await classService.deleteClassroom(id.data);
+      await classService.deleteClassroom(id);
       return c.body(null, 204);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
@@ -139,6 +114,11 @@ export function createClassRoomController(classService: IClassRoomService) {
     updateClassroom,
     deleteClassroom,
   };
+}
+
+function parseClassRoomId(c: Context): number | null {
+  const parsed = classIdParams.safeParse({ classId: c.req.param('classId') });
+  return parsed.success ? Number(parsed.data.classId) : null;
 }
 
 function handleWriteError(

@@ -62,6 +62,27 @@ async function findImportErrors(
   return errors;
 }
 
+function getErrorChainMessage(error: unknown): string {
+  const messages: string[] = [];
+  const visited = new Set<Error>();
+  let current = error;
+
+  while (current instanceof Error && !visited.has(current)) {
+    visited.add(current);
+    messages.push(current.message);
+    current = current.cause;
+  }
+
+  return messages.join(' ');
+}
+
+function isClassCodeUniqueError(error: unknown): boolean {
+  const message = getErrorChainMessage(error);
+  return (
+    message.includes('UNIQUE') && message.includes('class_rooms.class_code')
+  );
+}
+
 export function createClassRoomService(
   classRoomRepository: IClassRoomRepository
 ): IClassRoomService {
@@ -112,7 +133,7 @@ export function createClassRoomService(
       try {
         return toDTO(await classRoomRepository.create(input));
       } catch (error) {
-        if (error instanceof Error && error.message.includes('UNIQUE')) {
+        if (isClassCodeUniqueError(error)) {
           throw new Error('Class code already exists');
         }
         throw error;
@@ -123,13 +144,15 @@ export function createClassRoomService(
       id: number,
       input: ClassRoomRequestDTO
     ): Promise<ClassRoomDTO> {
+      const existing = await classRoomRepository.findById(id);
+      if (!existing) throw new Error('Class not found');
       await ensureTeacherExists(input.teacherId);
       try {
         const classroom = await classRoomRepository.update(id, input);
         if (!classroom) throw new Error('Class not found');
         return toDTO(classroom);
       } catch (error) {
-        if (error instanceof Error && error.message.includes('UNIQUE')) {
+        if (isClassCodeUniqueError(error)) {
           throw new Error('Class code already exists');
         }
         throw error;

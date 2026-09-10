@@ -114,6 +114,23 @@ describe('ClassRoomService', () => {
     ).rejects.toThrow('Class code already exists');
   });
 
+  it('createのwrapped UNIQUEエラーも重複クラスコードとして扱う', async () => {
+    const repo = repository();
+    (repo.create as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('D1 query failed', {
+        cause: new Error('UNIQUE constraint failed: class_rooms.class_code'),
+      })
+    );
+
+    await expect(
+      createClassRoomService(repo).createClassroom({
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+        teacherId: null,
+      })
+    ).rejects.toThrow('Class code already exists');
+  });
+
   it('存在しないクラスを更新すると404用エラーにする', async () => {
     const repo = repository();
     (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
@@ -125,6 +142,46 @@ describe('ClassRoomService', () => {
         teacherId: null,
       })
     ).rejects.toThrow('Class not found');
+  });
+
+  it('更新対象を先に確認し、対象が無ければteacher確認を行わない', async () => {
+    const repo = repository();
+    (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (repo.teacherExists as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+    await expect(
+      createClassRoomService(repo).updateClassroom(999, {
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+        teacherId: 999,
+      })
+    ).rejects.toThrow('Class not found');
+    expect(repo.teacherExists).not.toHaveBeenCalled();
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('updateのwrapped UNIQUEエラーも重複クラスコードとして扱う', async () => {
+    const repo = repository();
+    (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      classRoomId: 1,
+      classCode: 'OLD',
+      className: '旧クラス',
+      studentCount: 0,
+      teacher: null,
+    });
+    (repo.update as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('D1 query failed', {
+        cause: new Error('UNIQUE constraint failed: class_rooms.class_code'),
+      })
+    );
+
+    await expect(
+      createClassRoomService(repo).updateClassroom(1, {
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+        teacherId: null,
+      })
+    ).rejects.toThrow('Class code already exists');
   });
 
   it('学生が所属するクラスの削除を拒否する', async () => {

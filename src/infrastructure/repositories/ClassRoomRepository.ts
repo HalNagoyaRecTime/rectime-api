@@ -19,6 +19,17 @@ function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, char => `\\${char}`);
 }
 
+function unwrapDatabaseError(error: unknown): unknown {
+  const visited = new Set<Error>();
+  let current = error;
+  while (current instanceof Error && !visited.has(current)) {
+    visited.add(current);
+    if (!(current.cause instanceof Error)) return current;
+    current = current.cause;
+  }
+  return current;
+}
+
 type ClassRoomRow = {
   classRoomId: number;
   classCode: string;
@@ -182,9 +193,7 @@ export function createClassRoomRepository(
           .returning({ id: class_rooms.id })
           .get();
       } catch (error) {
-        if (error instanceof Error && error.cause instanceof Error)
-          throw error.cause;
-        throw error;
+        throw unwrapDatabaseError(error);
       }
       if (!row) throw new Error('Failed to create class');
       const created = await findPage({ limit: 1 }, row.id);
@@ -211,17 +220,22 @@ export function createClassRoomRepository(
       if (statements.length > 0) await db.batch(statements);
     },
     async update(id, input) {
-      const row = await orm
-        .update(class_rooms)
-        .set({
-          classCode: input.classCode,
-          name: input.className,
-          teacherId: input.teacherId,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(class_rooms.id, id))
-        .returning({ id: class_rooms.id })
-        .get();
+      let row;
+      try {
+        row = await orm
+          .update(class_rooms)
+          .set({
+            classCode: input.classCode,
+            name: input.className,
+            teacherId: input.teacherId,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(class_rooms.id, id))
+          .returning({ id: class_rooms.id })
+          .get();
+      } catch (error) {
+        throw unwrapDatabaseError(error);
+      }
       if (!row) return null;
       const updated = await findPage({ limit: 1 }, row.id);
       return updated.items[0] ?? null;
