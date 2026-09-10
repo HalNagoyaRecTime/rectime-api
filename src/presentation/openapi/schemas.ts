@@ -139,7 +139,10 @@ export const positivePathParam = (name: string, description: string) =>
     .regex(/^[1-9]\d*$/)
     .openapi({ param: { name, in: 'path' }, description, example: '1' });
 
-/** クエリ文字列をdigits-onlyの整数へ変換して検証する。 */
+/**
+ * QueryはHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
+ * OpenAPIとControllerが同じschemaをsafeParseすることで、受理範囲を一致させる。
+ */
 const digitsOnlyNumber = (minimum: number, maximum?: number) => {
   const numberSchema = z.number().int().min(minimum);
   const boundedSchema =
