@@ -440,6 +440,28 @@ describe('TeamRepository', () => {
         expect(row.team_id).not.toBe(teamId);
       }
     });
+
+    it('加算と減算で合計0に戻ったが行が残っているチームもFK違反なく削除できる', async () => {
+      const teamId = await insertTeam('得点0だが行が残る');
+      await repo.addScore(teamId, 100);
+      await repo.addScore(teamId, -100);
+
+      const before = await env.DB.prepare(
+        'SELECT scores FROM team_scores WHERE team_id = ?'
+      )
+        .bind(teamId)
+        .first<{ scores: number }>();
+      expect(before?.scores).toBe(0);
+
+      await expect(repo.delete(teamId)).resolves.toBe(true);
+      await expect(repo.exists(teamId)).resolves.toBe(false);
+      const after = await env.DB.prepare(
+        'SELECT COUNT(*) AS count FROM team_scores WHERE team_id = ?'
+      )
+        .bind(teamId)
+        .first<{ count: number }>();
+      expect(after?.count).toBe(0);
+    });
   });
 
   describe('addScore', () => {

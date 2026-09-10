@@ -354,12 +354,14 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     },
 
     async delete(teamId: number): Promise<boolean> {
+      // 所属クラスを単独編成へ戻したうえで、0点でも残っている
+      // team_scores行を先に消してからteamsを削除する。
+      // (team_scores.team_idはteamsへの外部キーのためFK違反を避ける)
       await detachRemovedClassRooms(teamId, []);
-      const result = await db
-        .prepare('DELETE FROM teams WHERE team_id = ?')
-        .bind(teamId)
-        .run();
-      return (result.meta.changes ?? 0) > 0;
+      const statements = buildCleanupEmptyTeamStatements(db, teamId);
+      const results = await db.batch(statements);
+      const teamDeleteResult = results[results.length - 1];
+      return (teamDeleteResult.meta.changes ?? 0) > 0;
     },
 
     async addScore(teamId: number, points: number): Promise<TeamEntity> {
