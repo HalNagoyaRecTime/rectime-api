@@ -131,18 +131,13 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       }
       const whereClause =
         conditions.length > 0 ? and(...conditions) : undefined;
-      const countBaseQuery = orm
+      const countQuery = orm
         .select({ count: sql<number>`count(*)` })
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
         .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
         .leftJoin(staffs, eq(users.id, staffs.userId));
-      const countResult = await (
-        whereClause ? countBaseQuery.where(whereClause) : countBaseQuery
-      ).get();
-      const total = countResult?.count ?? 0;
-
-      const rowsBaseQuery = orm
+      const rowsQuery = orm
         .select()
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
@@ -165,13 +160,15 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
                     : filter.sortBy === 'isLiveActive'
                       ? users.isLiveActive
                       : students.id;
-      const results = await (
-        whereClause ? rowsBaseQuery.where(whereClause) : rowsBaseQuery
-      )
-        .orderBy(sortOrder(sortColumn), asc(students.id))
-        .limit(limit)
-        .offset(offset)
-        .all();
+      const [countResult, results] = await Promise.all([
+        (whereClause ? countQuery.where(whereClause) : countQuery).get(),
+        (whereClause ? rowsQuery.where(whereClause) : rowsQuery)
+          .orderBy(sortOrder(sortColumn), asc(students.id))
+          .limit(limit)
+          .offset(offset)
+          .all(),
+      ]);
+      const total = countResult?.count ?? 0;
 
       return {
         items: results.map(toDomain),
