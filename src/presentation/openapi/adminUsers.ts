@@ -58,6 +58,8 @@ export const adminUserStatusUpdateRoute = createRoute({
     'Teacherを無効化しても `class_rooms.teacher_id` は保持するが、',
     '教室の取得では担任として返さないため、表示上は担任なしになる。',
     '再有効化すると元の担任に戻る。',
+    '割り当て自体を解除するには、有効な状態で `PUT /teachers/{teacherId}` へ',
+    '`classRoomIds: []` を指定する。',
     '',
     '一覧取得での扱いも対象によって異なる。`GET /teachers` は既定で稼働中のみを',
     '返すため無効化すると一覧から消えるが、`GET /students` は稼働状態で',
