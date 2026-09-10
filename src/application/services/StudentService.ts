@@ -13,6 +13,7 @@ import {
 import type {
   StudentEntity,
   StudentSearchFilter,
+  StudentWriteInput,
 } from '../../domain/entities/Student';
 import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 import { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
@@ -20,31 +21,40 @@ import { IStudentService } from './IStudentService';
 
 function toDTO(student: StudentEntity): StudentDTO {
   return {
-    student_id: student.student_id,
-    user_id: student.user_id,
-    display_name: student.user_name,
-    class_room_id: student.class_room_id,
-    class_room_name: student.class_room_name,
-    attendance_number: student.attendance_number,
-    student_id_number: student.student_id_number,
-    is_live_active: student.is_live_active,
+    student_id: student.studentId,
+    user_id: student.userId,
+    display_name: student.userName,
+    class_room_id: student.classRoomId,
+    class_room_name: student.classRoomName,
+    attendance_number: student.attendanceNumber,
+    student_id_number: student.studentIdNumber,
+    is_live_active: student.isLiveActive,
   };
 }
 
 function toManagementDTO(student: StudentEntity): StudentManagementDTO {
   return {
-    student_id: student.student_id,
-    user_id: student.user_id,
-    display_name: student.user_name,
-    student_id_number: student.student_id_number,
-    attendance_number: student.attendance_number,
-    is_live_active: student.is_live_active,
-    is_staff: student.is_staff,
+    student_id: student.studentId,
+    user_id: student.userId,
+    display_name: student.userName,
+    student_id_number: student.studentIdNumber,
+    attendance_number: student.attendanceNumber,
+    is_live_active: student.isLiveActive,
+    is_staff: student.isStaff,
     class_room: {
-      class_room_id: student.class_room_id,
-      class_code: student.class_room_code,
-      class_name: student.class_room_name,
+      class_room_id: student.classRoomId,
+      class_code: student.classRoomCode,
+      class_name: student.classRoomName,
     },
+  };
+}
+
+function toDomainWriteInput(student: StudentWriteDTO): StudentWriteInput {
+  return {
+    displayName: student.display_name,
+    classRoomId: student.class_room_id,
+    attendanceNumber: student.attendance_number,
+    studentIdNumber: student.student_id_number,
   };
 }
 
@@ -134,29 +144,31 @@ export function createStudentService(
     async createStudent(
       student: StudentWriteDTO
     ): Promise<StudentManagementDTO> {
-      await ensureClassRoomExists(student.class_room_id);
-      await ensureStudentNumberAvailable(student.student_id_number);
-      return toManagementDTO(await studentRepository.create(student));
+      const input = toDomainWriteInput(student);
+      await ensureClassRoomExists(input.classRoomId);
+      await ensureStudentNumberAvailable(input.studentIdNumber);
+      return toManagementDTO(await studentRepository.create(input));
     },
 
     async updateStudent(
       id: number,
       student: StudentWriteDTO
     ): Promise<StudentManagementDTO> {
+      const input = toDomainWriteInput(student);
       const existing = await studentRepository.findById(id);
       if (!existing) {
         throw new Error('Student not found');
       }
 
-      await ensureClassRoomExists(student.class_room_id);
+      await ensureClassRoomExists(input.classRoomId);
       const duplicate = await studentRepository.findByStudentNum(
-        student.student_id_number
+        input.studentIdNumber
       );
-      if (duplicate && duplicate.student_id !== id) {
+      if (duplicate && duplicate.studentId !== id) {
         throw new Error('Student number already exists');
       }
 
-      const updated = await studentRepository.update(id, student);
+      const updated = await studentRepository.update(id, input);
       if (!updated) {
         throw new Error('Student not found');
       }
@@ -217,7 +229,7 @@ export function createStudentService(
   };
 
   async function ensureClassRoomExists(classRoomId: number): Promise<void> {
-    if (!(await studentRepository.classRoomExists(classRoomId))) {
+    if (!(await classRoomRepository.findById(classRoomId))) {
       throw new Error('Class room not found');
     }
   }

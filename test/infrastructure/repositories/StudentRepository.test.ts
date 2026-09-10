@@ -68,7 +68,7 @@ describe('StudentRepository', () => {
 
       expect(students).toHaveLength(seeded.students.length);
       expect(result.total).toBe(seeded.students.length);
-      const numbers = students.map(s => s.student_id_number).sort();
+      const numbers = students.map(s => s.studentIdNumber).sort();
       const expected = seeded.students.map(s => s.studentIdNumber).sort();
       expect(numbers).toEqual(expected);
     });
@@ -86,7 +86,7 @@ describe('StudentRepository', () => {
         const result = await repo.findAll({ search });
 
         expect(result.total).toBe(1);
-        expect(result.students.map(student => student.student_id)).toEqual([
+        expect(result.students.map(student => student.studentId)).toEqual([
           studentId,
         ]);
       }
@@ -97,7 +97,7 @@ describe('StudentRepository', () => {
         classRoomId: seeded.secondClassRoomId,
       });
       expect(result.total).toBe(1);
-      expect(result.students[0].student_id).toBe(seeded.students[3].studentId);
+      expect(result.students[0].studentId).toBe(seeded.students[3].studentId);
 
       await expect(repo.findAll({ classRoomId: 999999 })).resolves.toEqual({
         students: [],
@@ -107,23 +107,21 @@ describe('StudentRepository', () => {
 
     it('isStaffとisLiveActiveで絞り込む', async () => {
       const staff = await repo.findAll({ isStaff: true });
-      expect(staff.students.map(student => student.student_id)).toEqual([
+      expect(staff.students.map(student => student.studentId)).toEqual([
         seeded.students[2].studentId,
       ]);
       expect(staff.total).toBe(1);
 
       const nonStaff = await repo.findAll({ isStaff: false });
       expect(nonStaff.total).toBe(3);
-      expect(nonStaff.students.every(student => !student.is_staff)).toBe(true);
+      expect(nonStaff.students.every(student => !student.isStaff)).toBe(true);
 
       const active = await repo.findAll({ isLiveActive: true });
       expect(active.total).toBe(3);
-      expect(active.students.every(student => student.is_live_active)).toBe(
-        true
-      );
+      expect(active.students.every(student => student.isLiveActive)).toBe(true);
 
       const inactive = await repo.findAll({ isLiveActive: false });
-      expect(inactive.students.map(student => student.student_id)).toEqual([
+      expect(inactive.students.map(student => student.studentId)).toEqual([
         seeded.students[1].studentId,
       ]);
     });
@@ -142,21 +140,21 @@ describe('StudentRepository', () => {
       const valueOf = (student: (typeof baseline.students)[number]) => {
         switch (sortBy) {
           case 'studentId':
-            return student.student_id;
+            return student.studentId;
           case 'studentIdNumber':
-            return student.student_id_number;
+            return student.studentIdNumber;
           case 'displayName':
-            return student.user_name;
+            return student.userName;
           case 'classCode':
-            return student.class_room_code;
+            return student.classRoomCode;
           case 'className':
-            return student.class_room_name;
+            return student.classRoomName;
           case 'attendanceNumber':
-            return student.attendance_number;
+            return student.attendanceNumber;
           case 'isStaff':
-            return Number(student.is_staff);
+            return Number(student.isStaff);
           case 'isLiveActive':
-            return Number(student.is_live_active);
+            return Number(student.isLiveActive);
         }
       };
       const compare = (
@@ -167,7 +165,7 @@ describe('StudentRepository', () => {
         const leftValue = valueOf(left);
         const rightValue = valueOf(right);
         if (leftValue === rightValue) {
-          return left.student_id - right.student_id;
+          return left.studentId - right.studentId;
         }
         return (leftValue < rightValue ? -1 : 1) * direction;
       };
@@ -178,8 +176,8 @@ describe('StudentRepository', () => {
           compare(left, right, sortOrder === 'desc' ? -1 : 1)
         );
 
-        expect(result.students.map(student => student.student_id)).toEqual(
-          expected.map(student => student.student_id)
+        expect(result.students.map(student => student.studentId)).toEqual(
+          expected.map(student => student.studentId)
         );
       }
     });
@@ -199,8 +197,8 @@ describe('StudentRepository', () => {
         offset: 1,
       });
 
-      expect(first.students[0].student_id).toBe(all.students[0].student_id);
-      expect(second.students[0].student_id).toBe(all.students[1].student_id);
+      expect(first.students[0].studentId).toBe(all.students[0].studentId);
+      expect(second.students[0].studentId).toBe(all.students[1].studentId);
       expect(first.total).toBe(all.total);
       expect(second.total).toBe(all.total);
     });
@@ -212,14 +210,16 @@ describe('StudentRepository', () => {
       const student = await repo.findById(target.studentId);
 
       expect(student).toMatchObject({
-        student_id: target.studentId,
-        user_id: target.userId,
-        user_name: target.displayName,
-        attendance_number: target.attendanceNumber,
-        student_id_number: target.studentIdNumber,
-        class_room_id: target.classRoomId,
-        class_room_name: 'テスト教室',
-        is_live_active: true,
+        studentId: target.studentId,
+        userId: target.userId,
+        userName: target.displayName,
+        attendanceNumber: target.attendanceNumber,
+        studentIdNumber: target.studentIdNumber,
+        classRoomId: target.classRoomId,
+        classRoomCode: 'TEST-1',
+        classRoomName: 'テスト教室',
+        isLiveActive: true,
+        isStaff: false,
       });
     });
 
@@ -234,14 +234,16 @@ describe('StudentRepository', () => {
       const student = await repo.findByUserId(target.userId);
 
       expect(student).toMatchObject({
-        student_id: target.studentId,
-        user_id: target.userId,
-        user_name: target.displayName,
-        attendance_number: target.attendanceNumber,
-        student_id_number: target.studentIdNumber,
-        class_room_id: target.classRoomId,
-        class_room_name: 'テスト教室',
-        is_live_active: true,
+        studentId: target.studentId,
+        userId: target.userId,
+        userName: target.displayName,
+        attendanceNumber: target.attendanceNumber,
+        studentIdNumber: target.studentIdNumber,
+        classRoomId: target.classRoomId,
+        classRoomCode: 'TEST-1',
+        classRoomName: 'テスト教室',
+        isLiveActive: true,
+        isStaff: false,
       });
     });
 
@@ -255,9 +257,9 @@ describe('StudentRepository', () => {
       const target = seeded.students[2];
       const student = await repo.findByStudentNum(target.studentIdNumber);
 
-      expect(student?.user_name).toBe(target.displayName);
-      expect(student?.user_id).toBe(target.userId);
-      expect(student?.student_id_number).toBe(target.studentIdNumber);
+      expect(student?.userName).toBe(target.displayName);
+      expect(student?.userId).toBe(target.userId);
+      expect(student?.studentIdNumber).toBe(target.studentIdNumber);
     });
 
     it('存在しない学籍番号の場合は null を返す', async () => {
@@ -268,30 +270,32 @@ describe('StudentRepository', () => {
   describe('create / update', () => {
     it('学生を作成、更新できる', async () => {
       const input = {
-        display_name: '新規学生',
-        class_room_id: seeded.classRoomId,
-        attendance_number: 10,
-        student_id_number: '10010',
+        displayName: '新規学生',
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 10,
+        studentIdNumber: '10010',
       };
       const findByStudentNumSpy = vi.spyOn(repo, 'findByStudentNum');
       const created = await repo.create(input);
 
       expect(created).toMatchObject({
-        user_name: input.display_name,
-        class_room_name: 'テスト教室',
-        is_live_active: true,
+        userName: input.displayName,
+        classRoomCode: 'TEST-1',
+        classRoomName: 'テスト教室',
+        isLiveActive: true,
+        isStaff: false,
       });
       expect(findByStudentNumSpy).not.toHaveBeenCalled();
 
       const findByIdSpy = vi.spyOn(repo, 'findById');
-      const updated = await repo.update(created.student_id, {
+      const updated = await repo.update(created.studentId, {
         ...input,
-        display_name: '更新学生',
-        attendance_number: 11,
+        displayName: '更新学生',
+        attendanceNumber: 11,
       });
       expect(updated).toMatchObject({
-        user_name: '更新学生',
-        attendance_number: 11,
+        userName: '更新学生',
+        attendanceNumber: 11,
       });
       expect(findByIdSpy).not.toHaveBeenCalled();
     });
@@ -299,10 +303,10 @@ describe('StudentRepository', () => {
     it('存在しない学生の更新は null を返す', async () => {
       await expect(
         repo.update(999999, {
-          display_name: '存在しない学生',
-          class_room_id: seeded.classRoomId,
-          attendance_number: 99,
-          student_id_number: '19999',
+          displayName: '存在しない学生',
+          classRoomId: seeded.classRoomId,
+          attendanceNumber: 99,
+          studentIdNumber: '19999',
         })
       ).resolves.toBeNull();
     });
@@ -359,12 +363,12 @@ describe('StudentRepository', () => {
       });
 
       expect(await repo.findByStudentNum('ORDER-20000')).toMatchObject({
-        user_name: '逆順生徒A',
-        attendance_number: 18,
+        userName: '逆順生徒A',
+        attendanceNumber: 18,
       });
       expect(await repo.findByStudentNum('ORDER-20001')).toMatchObject({
-        user_name: '逆順生徒B',
-        attendance_number: 19,
+        userName: '逆順生徒B',
+        attendanceNumber: 19,
       });
     });
 
@@ -390,14 +394,14 @@ describe('StudentRepository', () => {
       const first = await repo.findByStudentNum('SAME-NAME-20000');
       const second = await repo.findByStudentNum('SAME-NAME-20001');
       expect(first).toMatchObject({
-        user_name: '同姓同名生徒',
-        attendance_number: 22,
+        userName: '同姓同名生徒',
+        attendanceNumber: 22,
       });
       expect(second).toMatchObject({
-        user_name: '同姓同名生徒',
-        attendance_number: 23,
+        userName: '同姓同名生徒',
+        attendanceNumber: 23,
       });
-      expect(first?.user_id).not.toBe(second?.user_id);
+      expect(first?.userId).not.toBe(second?.userId);
     });
 
     it('作成したuserとの対応付けに失敗した場合、userとnewClassRoomsを後片付けする', async () => {
@@ -461,12 +465,12 @@ describe('StudentRepository', () => {
       const a = await repo.findByStudentNum('20000');
       const b = await repo.findByStudentNum('20001');
       expect(a).toMatchObject({
-        user_name: '一括生徒A',
-        class_room_name: 'テスト教室',
+        userName: '一括生徒A',
+        classRoomName: 'テスト教室',
       });
       expect(b).toMatchObject({
-        user_name: '一括生徒B',
-        class_room_name: 'テスト教室',
+        userName: '一括生徒B',
+        classRoomName: 'テスト教室',
       });
     });
 
@@ -485,8 +489,8 @@ describe('StudentRepository', () => {
 
       const created = await repo.findByStudentNum('20002');
       expect(created).toMatchObject({
-        user_name: '一括生徒C',
-        class_room_name: 'BULK-NEW',
+        userName: '一括生徒C',
+        classRoomName: 'BULK-NEW',
       });
     });
 
@@ -623,17 +627,17 @@ describe('StudentRepository', () => {
       const middle = await repo.findByStudentNum('BULK2K01000');
       const last = await repo.findByStudentNum('BULK2K01999');
       expect(first).toMatchObject({
-        user_name: '一括生徒0',
-        class_room_name: 'BULK2K-0',
-        attendance_number: 1,
+        userName: '一括生徒0',
+        classRoomName: 'BULK2K-0',
+        attendanceNumber: 1,
       });
       expect(middle).toMatchObject({
-        user_name: '一括生徒1000',
-        class_room_name: 'BULK2K-0',
+        userName: '一括生徒1000',
+        classRoomName: 'BULK2K-0',
       });
       expect(last).toMatchObject({
-        user_name: '一括生徒1999',
-        class_room_name: 'BULK2K-39',
+        userName: '一括生徒1999',
+        classRoomName: 'BULK2K-39',
       });
     });
   });
@@ -654,15 +658,15 @@ describe('StudentRepository', () => {
 
       const result = await repo.findById(student!.student_id);
       expect(result).toMatchObject({
-        student_id_number: `deleted-${user!.user_id}`,
-        class_room_id: classRoomId,
-        attendance_number: 99,
+        studentIdNumber: `deleted-${user!.user_id}`,
+        classRoomId,
+        attendanceNumber: 99,
       });
       // user_nameの匿名化はUserRepository.anonymizeUserの責務であり、
       // StudentRepository.anonymizeByUserIdはstudents固有のカラムのみを
       // 扱う(#265 PR4のレビュー指摘: students行の有無に関わらず
       // user_nameを匿名化できるようにするための責務分離)。
-      expect(result?.user_name).toBe('匿名化対象太郎');
+      expect(result?.userName).toBe('匿名化対象太郎');
     });
 
     it('該当する学生が存在しない場合はfalseを返す(冪等)', async () => {

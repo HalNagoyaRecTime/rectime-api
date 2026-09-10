@@ -1,6 +1,8 @@
-import { StudentEntity } from '../../entities/Student';
-import { StudentWriteDTO } from '../../../application/dto/StudentDTO';
-import type { StudentSearchFilter } from '../../entities/Student';
+import type {
+  StudentEntity,
+  StudentSearchFilter,
+  StudentWriteInput,
+} from '../../entities/Student';
 
 export interface NewStudentWithClassCodeInput {
   displayName: string;
@@ -24,11 +26,10 @@ export interface IStudentRepository {
   findExistingStudentNumbers: (
     studentNumbers: string[]
   ) => Promise<Set<string>>;
-  classRoomExists: (classRoomId: number) => Promise<boolean>;
-  create: (student: StudentWriteDTO) => Promise<StudentEntity>;
+  create: (student: StudentWriteInput) => Promise<StudentEntity>;
   update: (
     id: number,
-    student: StudentWriteDTO
+    student: StudentWriteInput
   ) => Promise<StudentEntity | null>;
   createMany: (input: BulkCreateStudentsInput) => Promise<void>;
   // アカウント削除(#265 PR4)専用。student_id_numberはUNIQUE制約付きで、

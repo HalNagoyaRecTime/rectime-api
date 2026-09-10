@@ -30,7 +30,6 @@ function buildDeps() {
     findAll: vi.fn(),
     findByStudentNum: vi.fn(),
     findExistingStudentNumbers: vi.fn(),
-    classRoomExists: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     createMany: vi.fn(),
