@@ -96,7 +96,12 @@ describe('createAuthService', () => {
     };
     const studentRepository: IStudentRepository = {
       findById: vi.fn(),
-      findAll: vi.fn(),
+      findAll: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      }),
       findByStudentNum: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -142,7 +147,12 @@ describe('createAuthService', () => {
     };
     const studentRepository: IStudentRepository = {
       findById: vi.fn(),
-      findAll: vi.fn(),
+      findAll: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      }),
       findByStudentNum: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),

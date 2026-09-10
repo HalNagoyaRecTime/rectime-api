@@ -1,5 +1,6 @@
 import type {
   StudentEntity,
+  StudentPage,
   StudentSearchFilter,
   StudentWriteInput,
 } from '../../entities/Student';
@@ -19,9 +20,7 @@ export interface BulkCreateStudentsInput {
 export interface IStudentRepository {
   findById: (id: number) => Promise<StudentEntity | null>;
   findByUserId: (userId: number) => Promise<StudentEntity | null>;
-  findAll: (
-    options: StudentSearchFilter
-  ) => Promise<{ students: StudentEntity[]; total: number }>;
+  findAll: (options: StudentSearchFilter) => Promise<StudentPage>;
   findByStudentNum: (studentNum: string) => Promise<StudentEntity | null>;
   findExistingStudentNumbers: (
     studentNumbers: string[]

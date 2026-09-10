@@ -145,7 +145,12 @@ describe('StudentService', () => {
         buildStudent({ studentId: 2, studentIdNumber: '10001' }),
       ];
       const repository = createRepository({
-        findAll: vi.fn().mockResolvedValue({ students, total: 2 }),
+        findAll: vi.fn().mockResolvedValue({
+          items: students,
+          total: 2,
+          limit: 25,
+          offset: 10,
+        }),
       });
       const service = createStudentService(
         repository,
@@ -159,12 +164,21 @@ describe('StudentService', () => {
         '10000',
         '10001',
       ]);
-      expect(result).toMatchObject({ total: 2, limit: 50, offset: 0 });
+      expect(result).toMatchObject({ total: 2, limit: 25, offset: 10 });
+      expect(repository.findAll).toHaveBeenCalledWith({
+        limit: 50,
+        offset: 0,
+      });
     });
 
     it('リポジトリが空配列を返す場合は空配列を返す（null 扱いにしない）', async () => {
       const repository = createRepository({
-        findAll: vi.fn().mockResolvedValue({ students: [], total: 0 }),
+        findAll: vi.fn().mockResolvedValue({
+          items: [],
+          total: 0,
+          limit: 50,
+          offset: 0,
+        }),
       });
       const service = createStudentService(
         repository,

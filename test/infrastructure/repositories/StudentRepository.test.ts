@@ -64,13 +64,23 @@ describe('StudentRepository', () => {
   describe('findAll', () => {
     it('students に登録されている学生を全件返す', async () => {
       const result = await repo.findAll({ limit: 50, offset: 0 });
-      const students = result.students;
+      const students = result.items;
 
       expect(students).toHaveLength(seeded.students.length);
       expect(result.total).toBe(seeded.students.length);
+      expect(result.limit).toBe(50);
+      expect(result.offset).toBe(0);
       const numbers = students.map(s => s.studentIdNumber).sort();
       const expected = seeded.students.map(s => s.studentIdNumber).sort();
       expect(numbers).toEqual(expected);
+    });
+
+    it('limitとoffset未指定時はRepositoryのdefaultを返す', async () => {
+      const result = await repo.findAll({});
+
+      expect(result.limit).toBe(50);
+      expect(result.offset).toBe(0);
+      expect(result.items).toHaveLength(seeded.students.length);
     });
 
     it('氏名・学籍番号・出席番号・クラスコード・クラス名を検索できる', async () => {
@@ -86,7 +96,7 @@ describe('StudentRepository', () => {
         const result = await repo.findAll({ search });
 
         expect(result.total).toBe(1);
-        expect(result.students.map(student => student.studentId)).toEqual([
+        expect(result.items.map(student => student.studentId)).toEqual([
           studentId,
         ]);
       }
@@ -97,31 +107,33 @@ describe('StudentRepository', () => {
         classRoomId: seeded.secondClassRoomId,
       });
       expect(result.total).toBe(1);
-      expect(result.students[0].studentId).toBe(seeded.students[3].studentId);
+      expect(result.items[0].studentId).toBe(seeded.students[3].studentId);
 
       await expect(repo.findAll({ classRoomId: 999999 })).resolves.toEqual({
-        students: [],
+        items: [],
         total: 0,
+        limit: 50,
+        offset: 0,
       });
     });
 
     it('isStaffとisLiveActiveで絞り込む', async () => {
       const staff = await repo.findAll({ isStaff: true });
-      expect(staff.students.map(student => student.studentId)).toEqual([
+      expect(staff.items.map(student => student.studentId)).toEqual([
         seeded.students[2].studentId,
       ]);
       expect(staff.total).toBe(1);
 
       const nonStaff = await repo.findAll({ isStaff: false });
       expect(nonStaff.total).toBe(3);
-      expect(nonStaff.students.every(student => !student.isStaff)).toBe(true);
+      expect(nonStaff.items.every(student => !student.isStaff)).toBe(true);
 
       const active = await repo.findAll({ isLiveActive: true });
       expect(active.total).toBe(3);
-      expect(active.students.every(student => student.isLiveActive)).toBe(true);
+      expect(active.items.every(student => student.isLiveActive)).toBe(true);
 
       const inactive = await repo.findAll({ isLiveActive: false });
-      expect(inactive.students.map(student => student.studentId)).toEqual([
+      expect(inactive.items.map(student => student.studentId)).toEqual([
         seeded.students[1].studentId,
       ]);
     });
@@ -137,7 +149,7 @@ describe('StudentRepository', () => {
       'isLiveActive',
     ] as const)('sortBy=%sは同値時にstudentId ascで安定する', async sortBy => {
       const baseline = await repo.findAll({ limit: 50, offset: 0 });
-      const valueOf = (student: (typeof baseline.students)[number]) => {
+      const valueOf = (student: (typeof baseline.items)[number]) => {
         switch (sortBy) {
           case 'studentId':
             return student.studentId;
@@ -158,8 +170,8 @@ describe('StudentRepository', () => {
         }
       };
       const compare = (
-        left: (typeof baseline.students)[number],
-        right: (typeof baseline.students)[number],
+        left: (typeof baseline.items)[number],
+        right: (typeof baseline.items)[number],
         direction: 1 | -1
       ) => {
         const leftValue = valueOf(left);
@@ -172,11 +184,11 @@ describe('StudentRepository', () => {
 
       for (const sortOrder of ['asc', 'desc'] as const) {
         const result = await repo.findAll({ sortBy, sortOrder });
-        const expected = [...baseline.students].sort((left, right) =>
+        const expected = [...baseline.items].sort((left, right) =>
           compare(left, right, sortOrder === 'desc' ? -1 : 1)
         );
 
-        expect(result.students.map(student => student.studentId)).toEqual(
+        expect(result.items.map(student => student.studentId)).toEqual(
           expected.map(student => student.studentId)
         );
       }
@@ -197,8 +209,8 @@ describe('StudentRepository', () => {
         offset: 1,
       });
 
-      expect(first.students[0].studentId).toBe(all.students[0].studentId);
-      expect(second.students[0].studentId).toBe(all.students[1].studentId);
+      expect(first.items[0].studentId).toBe(all.items[0].studentId);
+      expect(second.items[0].studentId).toBe(all.items[1].studentId);
       expect(first.total).toBe(all.total);
       expect(second.total).toBe(all.total);
     });

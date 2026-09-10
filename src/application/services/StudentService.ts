@@ -134,10 +134,10 @@ export function createStudentService(
     ): Promise<StudentPageDTO> {
       const result = await studentRepository.findAll(options);
       return {
-        items: result.students.map(toManagementDTO),
+        items: result.items.map(toManagementDTO),
         total: result.total,
-        limit: options.limit ?? 50,
-        offset: options.offset ?? 0,
+        limit: result.limit,
+        offset: result.offset,
       };
     },
 
