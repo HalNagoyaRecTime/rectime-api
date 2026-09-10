@@ -40,6 +40,9 @@ function teamError(
   if (error instanceof Error && error.message === 'Team not found') {
     return errorResponse(c, TeamErrors.TEAM_NOT_FOUND);
   }
+  if (error instanceof Error && error.message === 'Team has scores') {
+    return errorResponse(c, TeamErrors.TEAM_HAS_SCORES);
+  }
   if (error instanceof Error && error.message === 'Class not found') {
     return errorResponse(c, TeamErrors.CLASS_ROOM_NOT_FOUND);
   }
@@ -135,10 +138,25 @@ export function createTeamController(teamService: ITeamService) {
     }
   };
 
+  const deleteTeam = async (c: Context) => {
+    const parsedId = teamIdSchema.safeParse(c.req.param('teamId'));
+    if (!parsedId.success) {
+      return errorResponse(c, TeamErrors.INVALID_TEAM_ID);
+    }
+
+    try {
+      await teamService.deleteTeam(parsedId.data);
+      return c.body(null, 204);
+    } catch (error) {
+      return teamError(c, error, TeamErrors.TEAM_DELETE_FAILED);
+    }
+  };
+
   return {
     getAllTeams,
     getTeamById,
     createTeam,
     updateTeam,
+    deleteTeam,
   };
 }

@@ -354,6 +354,7 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     },
 
     async delete(teamId: number): Promise<boolean> {
+      await detachRemovedClassRooms(teamId, []);
       const result = await db
         .prepare('DELETE FROM teams WHERE team_id = ?')
         .bind(teamId)
