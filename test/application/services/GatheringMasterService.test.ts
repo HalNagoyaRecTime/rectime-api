@@ -14,6 +14,7 @@ describe('Gathering master services', () => {
     };
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
+      findExistingIds: vi.fn(),
       findAll: vi.fn().mockResolvedValue([spot]),
       findPage: vi.fn(),
       findById: vi.fn(),
@@ -37,6 +38,7 @@ describe('Gathering master services', () => {
     };
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
+      findExistingIds: vi.fn(),
       findAll: vi.fn(),
       findPage: vi.fn(),
       findById: vi.fn(),
@@ -57,6 +59,7 @@ describe('Gathering master services', () => {
   it('集合場所の更新対象が存在しない場合はエラーにする', async () => {
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
+      findExistingIds: vi.fn(),
       findAll: vi.fn(),
       findPage: vi.fn(),
       findById: vi.fn(),
@@ -77,6 +80,7 @@ describe('Gathering master services', () => {
   it('集合場所をIDで取得し、存在しない場合はエラーにする', async () => {
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
+      findExistingIds: vi.fn(),
       findAll: vi.fn(),
       findPage: vi.fn(),
       findById: vi.fn().mockResolvedValue(null),
@@ -95,6 +99,7 @@ describe('Gathering master services', () => {
   it('未使用の集合場所を削除する', async () => {
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
+      findExistingIds: vi.fn(),
       findAll: vi.fn(),
       findPage: vi.fn(),
       findById: vi.fn(),
@@ -112,6 +117,7 @@ describe('Gathering master services', () => {
   it('利用中の集合場所は削除せず409用エラーにする', async () => {
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
+      findExistingIds: vi.fn(),
       findAll: vi.fn(),
       findPage: vi.fn(),
       findById: vi.fn(),

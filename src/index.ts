@@ -53,6 +53,7 @@ import {
   eventScheduleUpdateRoute,
   eventUpdateRoute,
 } from './presentation/openapi/events';
+import { eventGatheringSettingsUpdateRoute } from './presentation/openapi/eventGatheringSettings';
 import {
   classRoomCreateRoute,
   classRoomDeleteRoute,
@@ -277,6 +278,11 @@ apiV1.get('/me/events', requireAuth, c => {
 });
 apiV1.openapi(authed(eventGatheringListRoute), c => {
   return c.get('container').gatheringController.getGatheringsByEventId(c);
+});
+apiV1.openapi(staffOnly(eventGatheringSettingsUpdateRoute), c => {
+  return c
+    .get('container')
+    .eventGatheringSettingsController.saveEventGatheringSettings(c);
 });
 apiV1.openapi(staffOnly(eventCreateRoute), c => {
   return c.get('container').eventController.createEvent(c);
