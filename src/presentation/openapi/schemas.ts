@@ -139,21 +139,41 @@ export const positivePathParam = (name: string, description: string) =>
     .regex(/^[1-9]\d*$/)
     .openapi({ param: { name, in: 'path' }, description, example: '1' });
 
-// Query はHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
-// OpenAPIとControllerが同じschemaをsafeParseすることで、受理範囲を一致させる。
-export const digitsOnlyIntegerQuery = (minimum: number, maximum?: number) => {
-  const base = z.preprocess(
+/**
+ * QueryはHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
+ * OpenAPIとControllerが同じschemaをsafeParseすることで、受理範囲を一致させる。
+ */
+const digitsOnlyNumber = (minimum: number, maximum?: number) => {
+  const numberSchema = z.number().int().min(minimum);
+  const boundedSchema =
+    maximum === undefined ? numberSchema : numberSchema.max(maximum);
+
+  return z.preprocess(
     value =>
       typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
-    z.number().int().min(minimum)
+    boundedSchema
   );
-  return maximum === undefined
-    ? base
-    : base.refine(value => value <= maximum, {
-        message: `値は${minimum}から${maximum}の範囲で指定してください`,
-      });
 };
 
+/** 最小値だけを持つdigits-onlyクエリ。 */
+export const digitsOnlyQuery = (minimum: number) => digitsOnlyNumber(minimum);
+
+/** 最小値・最大値を持つdigits-onlyクエリ。上限エラーの文言を維持する。 */
+export const limitedDigitsOnlyQuery = (minimum: number, maximum: number) =>
+  digitsOnlyQuery(minimum).refine(value => value <= maximum, {
+    message: `値は${minimum}から${maximum}の範囲で指定してください`,
+  });
+
+/** default付きのdigits-only整数。ClassRoomの既存エラー契約を維持する。 */
+export const digitsOnlyInteger = (
+  minimum: number,
+  maximum: number | undefined,
+  defaultValue: number
+) => digitsOnlyNumber(minimum, maximum).default(defaultValue);
+
+/** digits-only整数クエリ。既存の共通名と互換性のある別名。 */
+export const digitsOnlyIntegerQuery = (minimum: number, maximum?: number) =>
+  digitsOnlyNumber(minimum, maximum);
 /** 件数指定のクエリ。上限と既定値はエンドポイントごとに異なる。 */
 export const paginationQuery = (limitMax: number, limitDefault: number) =>
   z.object({

@@ -44,12 +44,12 @@ function createClassRoomRepository(
     findAll: vi.fn(),
     findById: vi.fn().mockResolvedValue({}),
     findByCode: vi.fn().mockResolvedValue(null),
+    findExistingClassRoomIds: vi.fn().mockResolvedValue(new Set()),
     findExistingClassCodes: vi.fn().mockResolvedValue(new Set()),
     create: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-    teacherExists: vi.fn(),
     hasStudents: vi.fn(),
     ...overrides,
   };

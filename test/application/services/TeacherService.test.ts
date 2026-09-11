@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTeacherService } from '../../../src/application/services/TeacherService';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
+import type { IClassRoomRepository } from '../../../src/domain/interfaces/repositories/IClassRoomRepository';
 import type { TeacherEntity } from '../../../src/domain/entities/Teacher';
 
 function buildTeacher(overrides: Partial<TeacherEntity> = {}): TeacherEntity {
@@ -22,12 +23,31 @@ function buildRepository(
   return {
     findById: vi.fn(),
     findAll: vi.fn(),
+    existsById: vi.fn(),
     findExistingEmails: vi.fn().mockResolvedValue(new Set<string>()),
     existsClassRooms: vi.fn(),
     create: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),
     deleteByUserId: vi.fn(),
+    ...overrides,
+  };
+}
+
+function buildClassRoomRepository(
+  overrides: Partial<IClassRoomRepository> = {}
+): IClassRoomRepository {
+  return {
+    findAll: vi.fn(),
+    findById: vi.fn(),
+    findByCode: vi.fn(),
+    findExistingClassRoomIds: vi.fn().mockResolvedValue(new Set([1])),
+    findExistingClassCodes: vi.fn(),
+    create: vi.fn(),
+    createMany: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    hasStudents: vi.fn(),
     ...overrides,
   };
 }
@@ -39,7 +59,8 @@ describe('TeacherService', () => {
       const repository = buildRepository({
         create: vi.fn().mockResolvedValue(teacher),
       });
-      const service = createTeacherService(repository);
+      const classRoomRepository = buildClassRoomRepository();
+      const service = createTeacherService(repository, classRoomRepository);
 
       await expect(
         service.createTeacher({
@@ -56,14 +77,17 @@ describe('TeacherService', () => {
         is_staff: false,
         class_rooms: [],
       });
-      expect(repository.existsClassRooms).not.toHaveBeenCalled();
+      expect(
+        classRoomRepository.findExistingClassRoomIds
+      ).not.toHaveBeenCalled();
     });
 
     it('存在しないクラスを400相当のエラーとして拒否する', async () => {
-      const repository = buildRepository({
-        existsClassRooms: vi.fn().mockResolvedValue(false),
+      const repository = buildRepository();
+      const classRoomRepository = buildClassRoomRepository({
+        findExistingClassRoomIds: vi.fn().mockResolvedValue(new Set()),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(repository, classRoomRepository);
       await expect(
         service.createTeacher({
           userName: '山田先生',
@@ -80,7 +104,10 @@ describe('TeacherService', () => {
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(teacher),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       const dto = await service.getTeacherById(1);
 
@@ -104,7 +131,10 @@ describe('TeacherService', () => {
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(null),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       await expect(service.getTeacherById(999)).rejects.toThrow(
         'Teacher not found'
@@ -117,7 +147,10 @@ describe('TeacherService', () => {
           .fn()
           .mockResolvedValue(buildTeacher({ isLiveActive: false })),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       await expect(service.getTeacherById(1)).resolves.toMatchObject({
         teacher_id: 1,
@@ -140,7 +173,10 @@ describe('TeacherService', () => {
           offset: 0,
         }),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       const result = await service.getAllTeachers();
 
@@ -160,7 +196,10 @@ describe('TeacherService', () => {
           .fn()
           .mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       await service.getAllTeachers({
         search: '山田',
@@ -189,7 +228,10 @@ describe('TeacherService', () => {
           .fn()
           .mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       const result = await service.getAllTeachers();
       expect(result.items).toEqual([]);
@@ -205,10 +247,10 @@ describe('TeacherService', () => {
       });
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(buildTeacher()),
-        existsClassRooms: vi.fn().mockResolvedValue(true),
         update: vi.fn().mockResolvedValue(updated),
       });
-      const service = createTeacherService(repository);
+      const classRoomRepository = buildClassRoomRepository();
+      const service = createTeacherService(repository, classRoomRepository);
 
       const dto = await service.updateTeacher(1, {
         userName: '更新済み先生',
@@ -216,7 +258,9 @@ describe('TeacherService', () => {
         classRoomIds: [1],
       });
 
-      expect(repository.existsClassRooms).toHaveBeenCalledWith([1]);
+      expect(classRoomRepository.findExistingClassRoomIds).toHaveBeenCalledWith(
+        [1]
+      );
       expect(repository.update).toHaveBeenCalledWith(1, {
         userName: '更新済み先生',
         email: 'svc-1@example.ac.jp',
@@ -228,9 +272,11 @@ describe('TeacherService', () => {
     it('存在しないクラスIDが含まれる場合はエラーを投げる', async () => {
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(buildTeacher()),
-        existsClassRooms: vi.fn().mockResolvedValue(false),
       });
-      const service = createTeacherService(repository);
+      const classRoomRepository = buildClassRoomRepository({
+        findExistingClassRoomIds: vi.fn().mockResolvedValue(new Set()),
+      });
+      const service = createTeacherService(repository, classRoomRepository);
 
       await expect(
         service.updateTeacher(1, {
@@ -246,10 +292,10 @@ describe('TeacherService', () => {
       const updated = buildTeacher();
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(buildTeacher()),
-        existsClassRooms: vi.fn(),
         update: vi.fn().mockResolvedValue(updated),
       });
-      const service = createTeacherService(repository);
+      const classRoomRepository = buildClassRoomRepository();
+      const service = createTeacherService(repository, classRoomRepository);
 
       await service.updateTeacher(1, {
         userName: 'x',
@@ -257,16 +303,20 @@ describe('TeacherService', () => {
         classRoomIds: [],
       });
 
-      expect(repository.existsClassRooms).not.toHaveBeenCalled();
+      expect(
+        classRoomRepository.findExistingClassRoomIds
+      ).not.toHaveBeenCalled();
     });
 
     it('教員が存在しない場合はエラーを投げる', async () => {
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(null),
-        existsClassRooms: vi.fn().mockResolvedValue(true),
         update: vi.fn().mockResolvedValue(null),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       await expect(
         service.updateTeacher(999, {
@@ -282,12 +332,14 @@ describe('TeacherService', () => {
         findById: vi
           .fn()
           .mockResolvedValue(buildTeacher({ isLiveActive: false })),
-        existsClassRooms: vi.fn().mockResolvedValue(true),
         update: vi
           .fn()
           .mockResolvedValue(buildTeacher({ isLiveActive: false })),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       await expect(
         service.updateTeacher(1, {
@@ -309,7 +361,10 @@ describe('TeacherService', () => {
         existsClassRooms: vi.fn().mockResolvedValue(true),
         create: vi.fn().mockRejectedValue(uniqueError),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       await expect(
         service.createTeacher({
@@ -326,7 +381,10 @@ describe('TeacherService', () => {
         existsClassRooms: vi.fn().mockResolvedValue(true),
         update: vi.fn().mockRejectedValue(uniqueError),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       await expect(
         service.updateTeacher(1, {
@@ -345,7 +403,10 @@ describe('TeacherService', () => {
         existsClassRooms: vi.fn().mockResolvedValue(true),
         create: vi.fn().mockRejectedValue(otherError),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       await expect(
         service.createTeacher({
@@ -361,7 +422,10 @@ describe('TeacherService', () => {
     it('重複が無ければ全行を成功として返す(DBへの書き込みは行わない)', async () => {
       const createMany = vi.fn();
       const repository = buildRepository({ createMany });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       const result = await service.validateTeacherImport({
         rows: [
@@ -388,7 +452,10 @@ describe('TeacherService', () => {
     });
 
     it('ファイル内でメールアドレスが重複した行をエラーにする', async () => {
-      const service = createTeacherService(buildRepository());
+      const service = createTeacherService(
+        buildRepository(),
+        buildClassRoomRepository()
+      );
 
       const result = await service.validateTeacherImport({
         rows: [
@@ -415,7 +482,10 @@ describe('TeacherService', () => {
           .fn()
           .mockResolvedValue(new Set(['exists@example.ac.jp'])),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       const result = await service.validateTeacherImport({
         rows: [
@@ -445,7 +515,10 @@ describe('TeacherService', () => {
     it('全行分をまとめてcreateManyに渡す', async () => {
       const createMany = vi.fn();
       const repository = buildRepository({ createMany });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       const result = await service.commitTeacherImport({
         rows: [
@@ -483,7 +556,10 @@ describe('TeacherService', () => {
           .fn()
           .mockResolvedValue(new Set(['exists@example.ac.jp'])),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       const result = await service.commitTeacherImport({
         rows: [

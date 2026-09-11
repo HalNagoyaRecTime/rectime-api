@@ -14,6 +14,7 @@ export interface NewTeacherInput {
 export interface ITeacherRepository {
   findById: (id: number) => Promise<TeacherEntity | null>;
   findAll: (filter?: TeacherSearchFilter) => Promise<TeacherPage>;
+  existsById: (id: number) => Promise<boolean>;
   findExistingEmails: (emails: string[]) => Promise<Set<string>>;
   existsClassRooms: (classRoomIds: number[]) => Promise<boolean>;
   create: (

@@ -29,6 +29,7 @@ import {
   NewTeacherInput,
 } from '../../domain/interfaces/repositories/ITeacherRepository';
 import { chunkArray } from './chunk';
+import { escapeLikePattern } from '../helpers/escapeLikePattern';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
 
@@ -50,12 +51,6 @@ type ReturnedTeacherRow = {
 
 const DEFAULT_OFFSET = 0;
 const DEFAULT_LIMIT = 50;
-
-// LIKE検索の対象文字列に % や _ そのものが含まれていても、ワイルドカードとして
-// 展開されず文字通りに一致するよう、SQLiteの ESCAPE 句と組み合わせて使う。
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, char => `\\${char}`);
-}
 
 type TeacherJoinRow = {
   teachers: typeof teachers.$inferSelect;
@@ -250,6 +245,16 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       );
 
       return { items, total, limit, offset };
+    },
+
+    async existsById(id: number): Promise<boolean> {
+      return Boolean(
+        await orm
+          .select({ id: teachers.id })
+          .from(teachers)
+          .where(eq(teachers.id, id))
+          .get()
+      );
     },
 
     async findExistingEmails(emails: string[]): Promise<Set<string>> {

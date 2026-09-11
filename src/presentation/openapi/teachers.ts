@@ -2,11 +2,12 @@ import { createRoute } from '@hono/zod-openapi';
 import {
   badRequestResponse,
   bearerAuth,
+  digitsOnlyQuery,
   conflictResponse,
-  digitsOnlyIntegerQuery,
   forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
+  limitedDigitsOnlyQuery,
   notFoundResponse,
   paginationFields,
   positivePathParam,
@@ -50,7 +51,6 @@ export type TeacherPageResponseDTO = z.infer<typeof teacherPageResponseSchema>;
 export const teacherIdParams = z.object({
   teacherId: positivePathParam('teacherId', '教員ID'),
 });
-
 const classRoomIdsSchema = z
   .array(z.number().int().positive())
   .openapi({
@@ -64,7 +64,7 @@ const classRoomIdsSchema = z
 export const teacherListQuery = z
   .object({
     search: z.string().trim().min(1).optional(),
-    classRoomId: digitsOnlyIntegerQuery(1).optional(),
+    classRoomId: digitsOnlyQuery(1).optional(),
     isStaff: z.enum(['true', 'false', 'all']).default('all'),
     isLiveActive: z.enum(['true', 'false', 'all']).default('true'),
     sortBy: z
@@ -78,8 +78,8 @@ export const teacherListQuery = z
       ])
       .default('teacherId'),
     sortOrder: z.enum(['asc', 'desc']).default('asc'),
-    offset: digitsOnlyIntegerQuery(0).default(0),
-    limit: digitsOnlyIntegerQuery(1, 100).default(50),
+    offset: digitsOnlyQuery(0).default(0),
+    limit: limitedDigitsOnlyQuery(1, 100).default(50),
   })
   .strict();
 

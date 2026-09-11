@@ -132,14 +132,20 @@ export function createDIContainer(env: Env) {
     classRoomRepository
   );
   const staffService = createStaffService(staffRepository);
-  const teacherService = createTeacherService(teacherRepository);
+  const teacherService = createTeacherService(
+    teacherRepository,
+    classRoomRepository
+  );
   const eventService = createEventService(eventRepository);
   const eventScheduleService = createEventScheduleService({
     eventRepository,
     eventScheduleRepository,
     notificationScheduleRepository,
   });
-  const classRoomService = createClassRoomService(classRoomRepository);
+  const classRoomService = createClassRoomService(
+    classRoomRepository,
+    teacherRepository
+  );
   const masterImportService = createMasterImportService(
     env.AUTH_KV,
     env.MASTER_IMPORT_COMMIT_LOCK,

@@ -12,13 +12,10 @@ import type {
 } from '../../domain/entities/ClassRoom';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import { chunkArray } from './chunk';
+import { escapeLikePattern } from '../helpers/escapeLikePattern';
 
 const DEFAULT_LIMIT = 50;
 const D1_MAX_BOUND_PARAMETERS = 100;
-
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, char => `\\${char}`);
-}
 
 function unwrapDatabaseError(error: unknown): unknown {
   const visited = new Set<Error>();
@@ -207,6 +204,22 @@ export function createClassRoomRepository(
     async findByCode(classCode) {
       return findOne(eq(class_rooms.classCode, classCode));
     },
+    async findExistingClassRoomIds(classRoomIds) {
+      const found = new Set<number>();
+      for (const chunk of chunkArray(
+        Array.from(new Set(classRoomIds)),
+        D1_MAX_BOUND_PARAMETERS
+      )) {
+        if (chunk.length === 0) continue;
+        const rows = await orm
+          .select({ id: class_rooms.id })
+          .from(class_rooms)
+          .where(inArray(class_rooms.id, chunk))
+          .all();
+        rows.forEach(row => found.add(row.id));
+      }
+      return found;
+    },
     async findExistingClassCodes(classCodes) {
       const found = new Set<string>();
       for (const chunk of chunkArray(
@@ -314,15 +327,7 @@ export function createClassRoomRepository(
         .run();
       return result.meta.changes > 0;
     },
-    async teacherExists(id) {
-      return Boolean(
-        await orm
-          .select({ id: teachers.id })
-          .from(teachers)
-          .where(eq(teachers.id, id))
-          .get()
-      );
-    },
+
     async hasStudents(id) {
       return Boolean(
         await orm

@@ -3,7 +3,7 @@ import {
   badRequestResponse,
   bearerAuth,
   conflictResponse,
-  digitsOnlyIntegerQuery,
+  digitsOnlyInteger,
   forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
@@ -73,18 +73,14 @@ export const classRoomListQuery = z
         param: { name: 'sortOrder', in: 'query' },
         example: 'asc',
       }),
-    limit: digitsOnlyIntegerQuery(1, 100)
-      .default(50)
-      .openapi({
-        param: { name: 'limit', in: 'query' },
-        example: 50,
-      }),
-    offset: digitsOnlyIntegerQuery(0)
-      .default(0)
-      .openapi({
-        param: { name: 'offset', in: 'query' },
-        example: 0,
-      }),
+    limit: digitsOnlyInteger(1, 100, 50).openapi({
+      param: { name: 'limit', in: 'query' },
+      example: 50,
+    }),
+    offset: digitsOnlyInteger(0, undefined, 0).openapi({
+      param: { name: 'offset', in: 'query' },
+      example: 0,
+    }),
   })
   .strict();
 
