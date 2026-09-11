@@ -133,6 +133,37 @@ describe('OpenAPI documentation', () => {
       'delete'
     );
 
+    const studentListParameters = (
+      document.paths['/api/v1/students'].get as {
+        parameters?: Array<{
+          name: string;
+          schema?: { default?: unknown; enum?: unknown[] };
+        }>;
+      }
+    ).parameters;
+    expect(
+      studentListParameters?.find(param => param.name === 'isStaff')?.schema
+    ).toMatchObject({ default: 'all', enum: ['true', 'false', 'all'] });
+    expect(
+      studentListParameters?.find(param => param.name === 'isLiveActive')
+        ?.schema
+    ).toMatchObject({ default: 'true', enum: ['true', 'false', 'all'] });
+    expect(
+      studentListParameters?.find(param => param.name === 'sortBy')?.schema
+    ).toMatchObject({
+      default: 'studentId',
+      enum: [
+        'studentId',
+        'studentIdNumber',
+        'displayName',
+        'classCode',
+        'className',
+        'attendanceNumber',
+        'isStaff',
+        'isLiveActive',
+      ],
+    });
+
     const documentedOperations = Object.values(document.paths).flatMap(path =>
       Object.keys(path).filter(method =>
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)

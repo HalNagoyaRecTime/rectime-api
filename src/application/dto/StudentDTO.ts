@@ -9,6 +9,21 @@ export interface StudentDTO {
   is_live_active: boolean;
 }
 
+export interface StudentManagementDTO {
+  student_id: number;
+  user_id: number;
+  display_name: string;
+  student_id_number: string;
+  attendance_number: number;
+  is_live_active: boolean;
+  is_staff: boolean;
+  class_room: {
+    class_room_id: number;
+    class_code: string;
+    class_name: string;
+  };
+}
+
 export interface StudentWriteDTO {
   display_name: string;
   class_room_id: number;
@@ -17,7 +32,7 @@ export interface StudentWriteDTO {
 }
 
 export interface StudentPageDTO {
-  students: StudentDTO[];
+  items: StudentManagementDTO[];
   total: number;
   limit: number;
   offset: number;

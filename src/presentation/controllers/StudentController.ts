@@ -1,20 +1,18 @@
 import { Context } from 'hono';
-import { z } from 'zod';
 import { IStudentService } from '../../application/services/IStudentService';
 import { errorResponse } from '../errors/errorResponse';
+import { CommonErrors } from '../errors/commonErrors';
 import { UserErrors } from '../errors/userErrors';
+import {
+  studentIdParams,
+  studentListQuery,
+  studentWriteSchema,
+} from '../openapi/students';
 
-const studentIdSchema = z.coerce.number().int().positive();
-const studentListQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-});
-const studentWriteSchema = z.object({
-  display_name: z.string().trim().min(1).max(100),
-  class_room_id: z.number().int().positive(),
-  attendance_number: z.number().int().positive(),
-  student_id_number: z.string().trim().min(1).max(100),
-});
+function parseStudentId(value: string | undefined): number | null {
+  const parsed = studentIdParams.shape.studentId.safeParse(value);
+  return parsed.success ? Number(parsed.data) : null;
+}
 
 function getErrorChainMessage(error: unknown): string {
   const messages: string[] = [];
@@ -41,12 +39,12 @@ function isStudentNumberUniqueConstraintError(error: unknown): boolean {
 export function createStudentController(studentService: IStudentService) {
   const getStudentById = async (c: Context) => {
     try {
-      const parsedId = studentIdSchema.safeParse(c.req.param('studentId'));
-      if (!parsedId.success) {
+      const studentId = parseStudentId(c.req.param('studentId'));
+      if (studentId === null) {
         return errorResponse(c, UserErrors.INVALID_STUDENT_ID);
       }
 
-      const student = await studentService.getStudentById(parsedId.data);
+      const student = await studentService.getStudentById(studentId);
       return c.json(student, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Student not found') {
@@ -57,14 +55,11 @@ export function createStudentController(studentService: IStudentService) {
   };
 
   const getAllStudent = async (c: Context) => {
-    const parsedQuery = studentListQuerySchema.safeParse({
-      limit: c.req.query('limit'),
-      offset: c.req.query('offset'),
-    });
+    const parsedQuery = studentListQuery.safeParse(c.req.query());
     if (!parsedQuery.success) {
       return errorResponse(
         c,
-        UserErrors.INVALID_STUDENT_LIST_QUERY,
+        CommonErrors.VALIDATION_ERROR,
         parsedQuery.error.flatten()
       );
     }
@@ -88,8 +83,8 @@ export function createStudentController(studentService: IStudentService) {
   };
 
   const updateStudent = async (c: Context) => {
-    const parsedId = studentIdSchema.safeParse(c.req.param('studentId'));
-    if (!parsedId.success) {
+    const studentId = parseStudentId(c.req.param('studentId'));
+    if (studentId === null) {
       return errorResponse(c, UserErrors.INVALID_STUDENT_ID);
     }
     const parsedBody = await parseStudentBody(c);
@@ -97,7 +92,7 @@ export function createStudentController(studentService: IStudentService) {
 
     try {
       return c.json(
-        await studentService.updateStudent(parsedId.data, parsedBody.data),
+        await studentService.updateStudent(studentId, parsedBody.data),
         200
       );
     } catch (error) {

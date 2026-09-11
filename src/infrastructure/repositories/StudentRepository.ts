@@ -1,15 +1,28 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
-import { asc, count, eq, inArray } from 'drizzle-orm';
-import { class_rooms, students, users } from '../database/schema';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from 'drizzle-orm';
+import { class_rooms, staffs, students, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
-import { StudentEntity } from '../../domain/entities/Student';
+import type {
+  StudentEntity,
+  StudentPage,
+  StudentWriteInput,
+} from '../../domain/entities/Student';
 import {
   BulkCreateStudentsInput,
   IStudentRepository,
 } from '../../domain/interfaces/repositories/IStudentRepository';
-import { StudentWriteDTO } from '../../application/dto/StudentDTO';
 import { chunkArray } from './chunk';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
@@ -18,6 +31,7 @@ type StudentJoinRow = {
   students: typeof students.$inferSelect;
   users: typeof users.$inferSelect;
   class_rooms: typeof class_rooms.$inferSelect;
+  staffs: typeof staffs.$inferSelect | null;
 };
 
 type ReturnedUserRow = {
@@ -40,32 +54,22 @@ type ReturnedBulkUserRow = {
   user_name: string;
 };
 
-function toEntity(row: StudentJoinRow): StudentEntity {
-  return {
-    student_id: row.students.id,
-    user_id: row.users.id,
-    user_name: row.users.userName,
-    class_room_id: row.students.classRoomId,
-    class_room_name: row.class_rooms.name,
-    attendance_number: row.students.attendanceNumber,
-    student_id_number: row.students.studentIdNumber,
-    is_live_active: row.users.isLiveActive === 1,
-  };
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, char => `\\${char}`);
 }
 
-function toWrittenEntity(
-  user: ReturnedUserRow,
-  student: ReturnedStudentRow
-): StudentEntity {
+function toDomain(row: StudentJoinRow): StudentEntity {
   return {
-    student_id: student.student_id,
-    user_id: user.user_id,
-    user_name: user.user_name,
-    class_room_id: student.class_room_id,
-    class_room_name: student.class_room_name,
-    attendance_number: student.attendance_number,
-    student_id_number: student.student_id_number,
-    is_live_active: user.is_live_active === 1,
+    studentId: row.students.id,
+    userId: row.users.id,
+    userName: row.users.userName,
+    classRoomId: row.students.classRoomId,
+    classRoomCode: row.class_rooms.classCode,
+    classRoomName: row.class_rooms.name,
+    attendanceNumber: row.students.attendanceNumber,
+    studentIdNumber: row.students.studentIdNumber,
+    isLiveActive: row.users.isLiveActive === 1,
+    isStaff: Boolean(row.staffs),
   };
 }
 
@@ -78,10 +82,11 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
         .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
         .where(eq(students.id, id))
         .get();
 
-      return result ? toEntity(result) : null;
+      return result ? toDomain(result) : null;
     },
 
     async findByUserId(userId: number): Promise<StudentEntity | null> {
@@ -90,35 +95,86 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
         .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
         .where(eq(students.userId, userId))
         .get();
 
-      return result ? toEntity(result) : null;
+      return result ? toDomain(result) : null;
     },
 
-    async findAll({
-      limit,
-      offset,
-    }: {
-      limit: number;
-      offset: number;
-    }): Promise<{ students: StudentEntity[]; total: number }> {
-      const [results, totalResult] = await Promise.all([
-        orm
-          .select()
-          .from(students)
-          .innerJoin(users, eq(students.userId, users.id))
-          .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
-          .orderBy(asc(students.id))
+    async findAll(filter = {}): Promise<StudentPage> {
+      const limit = filter.limit ?? 50;
+      const offset = filter.offset ?? 0;
+      const conditions = [];
+      if (filter.search) {
+        const escapedPattern = `%${escapeLikePattern(filter.search)}%`;
+        conditions.push(
+          or(
+            sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
+            sql`${students.studentIdNumber} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
+            sql`CAST(${students.attendanceNumber} AS TEXT) LIKE ${escapedPattern} ESCAPE ${'\\'}`,
+            sql`${class_rooms.classCode} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
+            sql`${class_rooms.name} LIKE ${escapedPattern} ESCAPE ${'\\'}`
+          )!
+        );
+      }
+      if (filter.classRoomId !== undefined) {
+        conditions.push(eq(students.classRoomId, filter.classRoomId));
+      }
+      if (filter.isLiveActive !== undefined) {
+        conditions.push(eq(users.isLiveActive, filter.isLiveActive ? 1 : 0));
+      }
+      if (filter.isStaff !== undefined) {
+        conditions.push(
+          filter.isStaff ? isNotNull(staffs.id) : isNull(staffs.id)
+        );
+      }
+      const whereClause =
+        conditions.length > 0 ? and(...conditions) : undefined;
+      const countQuery = orm
+        .select({ count: sql<number>`count(*)` })
+        .from(students)
+        .innerJoin(users, eq(students.userId, users.id))
+        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId));
+      const rowsQuery = orm
+        .select()
+        .from(students)
+        .innerJoin(users, eq(students.userId, users.id))
+        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId));
+      const sortOrder = filter.sortOrder === 'desc' ? desc : asc;
+      const sortColumn =
+        filter.sortBy === 'studentIdNumber'
+          ? students.studentIdNumber
+          : filter.sortBy === 'displayName'
+            ? users.userName
+            : filter.sortBy === 'classCode'
+              ? class_rooms.classCode
+              : filter.sortBy === 'className'
+                ? class_rooms.name
+                : filter.sortBy === 'attendanceNumber'
+                  ? students.attendanceNumber
+                  : filter.sortBy === 'isStaff'
+                    ? sql<number>`CASE WHEN ${staffs.id} IS NULL THEN 0 ELSE 1 END`
+                    : filter.sortBy === 'isLiveActive'
+                      ? users.isLiveActive
+                      : students.id;
+      const [countResult, results] = await Promise.all([
+        (whereClause ? countQuery.where(whereClause) : countQuery).get(),
+        (whereClause ? rowsQuery.where(whereClause) : rowsQuery)
+          .orderBy(sortOrder(sortColumn), asc(students.id))
           .limit(limit)
           .offset(offset)
           .all(),
-        orm.select({ total: count() }).from(students).get(),
       ]);
+      const total = countResult?.count ?? 0;
 
       return {
-        students: results.map(toEntity),
-        total: totalResult?.total ?? 0,
+        items: results.map(toDomain),
+        total,
+        limit,
+        offset,
       };
     },
 
@@ -128,10 +184,11 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
         .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
         .where(eq(students.studentIdNumber, studentNum))
         .get();
 
-      return result ? toEntity(result) : null;
+      return result ? toDomain(result) : null;
     },
 
     async findExistingStudentNumbers(
@@ -154,16 +211,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       return found;
     },
 
-    async classRoomExists(classRoomId: number): Promise<boolean> {
-      const classRoom = await orm
-        .select({ id: class_rooms.id })
-        .from(class_rooms)
-        .where(eq(class_rooms.id, classRoomId))
-        .get();
-      return Boolean(classRoom);
-    },
-
-    async create(student: StudentWriteDTO): Promise<StudentEntity> {
+    async create(student: StudentWriteInput): Promise<StudentEntity> {
       const [userResult, studentResult] = await db.batch<
         ReturnedUserRow | ReturnedStudentRow
       >([
@@ -173,7 +221,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
              VALUES (?, CURRENT_TIMESTAMP)
              RETURNING user_id, user_name, is_live_active`
           )
-          .bind(student.display_name),
+          .bind(student.displayName),
         db
           .prepare(
             `INSERT INTO students (
@@ -196,10 +244,10 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
               ) AS class_room_name`
           )
           .bind(
-            student.class_room_id,
-            student.attendance_number,
-            student.student_id_number,
-            student.class_room_id
+            student.classRoomId,
+            student.attendanceNumber,
+            student.studentIdNumber,
+            student.classRoomId
           ),
       ]);
 
@@ -210,12 +258,21 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       if (!user || !created) {
         throw new Error('Failed to create student');
       }
-      return toWrittenEntity(user, created);
+      const result = await orm
+        .select()
+        .from(students)
+        .innerJoin(users, eq(students.userId, users.id))
+        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
+        .where(eq(students.id, created.student_id))
+        .get();
+      if (!result) throw new Error('Failed to create student');
+      return toDomain(result);
     },
 
     async update(
       id: number,
-      student: StudentWriteDTO
+      student: StudentWriteInput
     ): Promise<StudentEntity | null> {
       const [userResult, studentResult] = await db.batch<
         ReturnedUserRow | ReturnedStudentRow
@@ -229,7 +286,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
              )
              RETURNING user_id, user_name, is_live_active`
           )
-          .bind(student.display_name, id),
+          .bind(student.displayName, id),
         db
           .prepare(
             `UPDATE students
@@ -248,11 +305,11 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
                ) AS class_room_name`
           )
           .bind(
-            student.class_room_id,
-            student.attendance_number,
-            student.student_id_number,
+            student.classRoomId,
+            student.attendanceNumber,
+            student.studentIdNumber,
             id,
-            student.class_room_id
+            student.classRoomId
           ),
       ]);
 
@@ -260,7 +317,16 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       const updated = studentResult.results[0] as
         | ReturnedStudentRow
         | undefined;
-      return user && updated ? toWrittenEntity(user, updated) : null;
+      if (!user || !updated) return null;
+      const result = await orm
+        .select()
+        .from(students)
+        .innerJoin(users, eq(students.userId, users.id))
+        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
+        .where(eq(students.id, id))
+        .get();
+      return result ? toDomain(result) : null;
     },
 
     async createMany(input: BulkCreateStudentsInput): Promise<void> {

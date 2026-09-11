@@ -1,5 +1,6 @@
 import {
   StudentDTO,
+  StudentManagementDTO,
   StudentImportCommitResult,
   StudentImportErrorReason,
   StudentImportInput,
@@ -9,21 +10,51 @@ import {
   StudentPageDTO,
   StudentWriteDTO,
 } from '../dto/StudentDTO';
-import type { StudentEntity } from '../../domain/entities/Student';
+import type {
+  StudentEntity,
+  StudentSearchFilter,
+  StudentWriteInput,
+} from '../../domain/entities/Student';
 import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 import { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import { IStudentService } from './IStudentService';
 
 function toDTO(student: StudentEntity): StudentDTO {
   return {
-    student_id: student.student_id,
-    user_id: student.user_id,
-    display_name: student.user_name,
-    class_room_id: student.class_room_id,
-    class_room_name: student.class_room_name,
-    attendance_number: student.attendance_number,
-    student_id_number: student.student_id_number,
-    is_live_active: student.is_live_active,
+    student_id: student.studentId,
+    user_id: student.userId,
+    display_name: student.userName,
+    class_room_id: student.classRoomId,
+    class_room_name: student.classRoomName,
+    attendance_number: student.attendanceNumber,
+    student_id_number: student.studentIdNumber,
+    is_live_active: student.isLiveActive,
+  };
+}
+
+function toManagementDTO(student: StudentEntity): StudentManagementDTO {
+  return {
+    student_id: student.studentId,
+    user_id: student.userId,
+    display_name: student.userName,
+    student_id_number: student.studentIdNumber,
+    attendance_number: student.attendanceNumber,
+    is_live_active: student.isLiveActive,
+    is_staff: student.isStaff,
+    class_room: {
+      class_room_id: student.classRoomId,
+      class_code: student.classRoomCode,
+      class_name: student.classRoomName,
+    },
+  };
+}
+
+function toDomainWriteInput(student: StudentWriteDTO): StudentWriteInput {
+  return {
+    displayName: student.display_name,
+    classRoomId: student.class_room_id,
+    attendanceNumber: student.attendance_number,
+    studentIdNumber: student.student_id_number,
   };
 }
 
@@ -82,13 +113,13 @@ export function createStudentService(
   classRoomRepository: IClassRoomRepository
 ): IStudentService {
   return {
-    async getStudentById(id: number): Promise<StudentDTO> {
+    async getStudentById(id: number): Promise<StudentManagementDTO> {
       const student = await studentRepository.findById(id);
       if (!student) {
         throw new Error('Student not found');
       }
 
-      return toDTO(student);
+      return toManagementDTO(student);
     },
     async getByUserId(userId: number): Promise<StudentDTO> {
       const student = await studentRepository.findByUserId(userId);
@@ -98,50 +129,50 @@ export function createStudentService(
 
       return toDTO(student);
     },
-    async getAllStudents({
-      limit,
-      offset,
-    }: {
-      limit: number;
-      offset: number;
-    }): Promise<StudentPageDTO> {
-      const result = await studentRepository.findAll({ limit, offset });
+    async getAllStudents(
+      options: StudentSearchFilter
+    ): Promise<StudentPageDTO> {
+      const result = await studentRepository.findAll(options);
       return {
-        students: result.students.map(toDTO),
+        items: result.items.map(toManagementDTO),
         total: result.total,
-        limit,
-        offset,
+        limit: result.limit,
+        offset: result.offset,
       };
     },
 
-    async createStudent(student: StudentWriteDTO): Promise<StudentDTO> {
-      await ensureClassRoomExists(student.class_room_id);
-      await ensureStudentNumberAvailable(student.student_id_number);
-      return toDTO(await studentRepository.create(student));
+    async createStudent(
+      student: StudentWriteDTO
+    ): Promise<StudentManagementDTO> {
+      const input = toDomainWriteInput(student);
+      await ensureClassRoomExists(input.classRoomId);
+      await ensureStudentNumberAvailable(input.studentIdNumber);
+      return toManagementDTO(await studentRepository.create(input));
     },
 
     async updateStudent(
       id: number,
       student: StudentWriteDTO
-    ): Promise<StudentDTO> {
+    ): Promise<StudentManagementDTO> {
+      const input = toDomainWriteInput(student);
       const existing = await studentRepository.findById(id);
       if (!existing) {
         throw new Error('Student not found');
       }
 
-      await ensureClassRoomExists(student.class_room_id);
+      await ensureClassRoomExists(input.classRoomId);
       const duplicate = await studentRepository.findByStudentNum(
-        student.student_id_number
+        input.studentIdNumber
       );
-      if (duplicate && duplicate.student_id !== id) {
+      if (duplicate && duplicate.studentId !== id) {
         throw new Error('Student number already exists');
       }
 
-      const updated = await studentRepository.update(id, student);
+      const updated = await studentRepository.update(id, input);
       if (!updated) {
         throw new Error('Student not found');
       }
-      return toDTO(updated);
+      return toManagementDTO(updated);
     },
 
     async validateStudentImport(
@@ -198,7 +229,7 @@ export function createStudentService(
   };
 
   async function ensureClassRoomExists(classRoomId: number): Promise<void> {
-    if (!(await studentRepository.classRoomExists(classRoomId))) {
+    if (!(await classRoomRepository.findById(classRoomId))) {
       throw new Error('Class room not found');
     }
   }

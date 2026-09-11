@@ -9,6 +9,7 @@ import type { IUserRepository } from '../../../src/domain/interfaces/repositorie
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
 import type { AppUser } from '../../../src/domain/auth/types';
+import type { StudentEntity } from '../../../src/domain/entities/Student';
 import type { MicrosoftClaims } from '../../../src/application/services/IAuthService';
 
 function buildFirebaseTokenRepository(): IFirebaseTokenRepository {
@@ -60,6 +61,22 @@ function buildAppUser(overrides: Partial<AppUser> = {}): AppUser {
   };
 }
 
+function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
+  return {
+    studentId: 1,
+    userId: 100,
+    userName: '田中太郎',
+    classRoomId: 1,
+    classRoomCode: '3A',
+    classRoomName: '3年A組',
+    attendanceNumber: 5,
+    studentIdNumber: '50000',
+    isLiveActive: true,
+    isStaff: false,
+    ...overrides,
+  };
+}
+
 describe('createAuthService', () => {
   function setup() {
     const userRepository: IUserRepository = {
@@ -79,9 +96,13 @@ describe('createAuthService', () => {
     };
     const studentRepository: IStudentRepository = {
       findById: vi.fn(),
-      findAll: vi.fn(),
+      findAll: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      }),
       findByStudentNum: vi.fn(),
-      classRoomExists: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       findExistingStudentNumbers: vi.fn(),
@@ -126,9 +147,13 @@ describe('createAuthService', () => {
     };
     const studentRepository: IStudentRepository = {
       findById: vi.fn(),
-      findAll: vi.fn(),
+      findAll: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      }),
       findByStudentNum: vi.fn(),
-      classRoomExists: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       findExistingStudentNumbers: vi.fn(),
@@ -367,16 +392,7 @@ describe('createAuthService', () => {
       ).mockResolvedValue(null);
       (
         studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        student_id: 1,
-        user_id: 100,
-        user_name: '田中太郎',
-        class_room_id: 1,
-        class_room_name: '3年A組',
-        attendance_number: 5,
-        student_id_number: '50000',
-        is_live_active: true,
-      });
+      ).mockResolvedValue(buildStudent());
 
       const result = await service.upsertUser(claims);
 
@@ -407,16 +423,7 @@ describe('createAuthService', () => {
       ).mockResolvedValue(null);
       (
         studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        student_id: 1,
-        user_id: 100,
-        user_name: '田中太郎',
-        class_room_id: 1,
-        class_room_name: '3年A組',
-        attendance_number: 5,
-        student_id_number: '50000',
-        is_live_active: true,
-      });
+      ).mockResolvedValue(buildStudent());
       (
         userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
       ).mockResolvedValue('deletion_pending');
@@ -438,16 +445,7 @@ describe('createAuthService', () => {
       ).mockResolvedValue(null);
       (
         studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        student_id: 1,
-        user_id: 100,
-        user_name: '田中太郎(削除済み)',
-        class_room_id: 1,
-        class_room_name: '3年A組',
-        attendance_number: 5,
-        student_id_number: '50000',
-        is_live_active: true,
-      });
+      ).mockResolvedValue(buildStudent({ userName: '田中太郎(削除済み)' }));
       (
         userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
       ).mockResolvedValue('deleted');
@@ -554,16 +552,7 @@ describe('createAuthService', () => {
       ).mockResolvedValue(null);
       (
         studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        student_id: 1,
-        user_id: 100,
-        user_name: '学生登録時の名前',
-        class_room_id: 1,
-        class_room_name: '3年A組',
-        attendance_number: 5,
-        student_id_number: '50000',
-        is_live_active: true,
-      });
+      ).mockResolvedValue(buildStudent({ userName: '学生登録時の名前' }));
 
       const result = await service.upsertUser(claims);
 
@@ -587,16 +576,7 @@ describe('createAuthService', () => {
       ).mockResolvedValue(null);
       (
         studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        student_id: 1,
-        user_id: 100,
-        user_name: '田中太郎',
-        class_room_id: 1,
-        class_room_name: '3年A組',
-        attendance_number: 5,
-        student_id_number: '50000',
-        is_live_active: true,
-      });
+      ).mockResolvedValue(buildStudent());
       (
         userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
       ).mockResolvedValue('active');
@@ -619,16 +599,7 @@ describe('createAuthService', () => {
       ).mockResolvedValue(null);
       (
         studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        student_id: 1,
-        user_id: 100,
-        user_name: '田中太郎',
-        class_room_id: 1,
-        class_room_name: '3年A組',
-        attendance_number: 5,
-        student_id_number: '50000',
-        is_live_active: true,
-      });
+      ).mockResolvedValue(buildStudent());
       (
         userRepository.linkMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockRejectedValue(
@@ -650,16 +621,7 @@ describe('createAuthService', () => {
       ).mockResolvedValueOnce(null);
       (
         studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        student_id: 1,
-        user_id: 100,
-        user_name: '田中太郎',
-        class_room_id: 1,
-        class_room_name: '3年A組',
-        attendance_number: 5,
-        student_id_number: '50000',
-        is_live_active: true,
-      });
+      ).mockResolvedValue(buildStudent());
       (
         userRepository.linkMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockRejectedValue(

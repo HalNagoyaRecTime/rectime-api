@@ -27,10 +27,14 @@ function buildDeps() {
   const studentRepository: IStudentRepository = {
     findById: vi.fn(),
     findByUserId: vi.fn(),
-    findAll: vi.fn(),
+    findAll: vi.fn().mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 50,
+      offset: 0,
+    }),
     findByStudentNum: vi.fn(),
     findExistingStudentNumbers: vi.fn(),
-    classRoomExists: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     createMany: vi.fn(),
