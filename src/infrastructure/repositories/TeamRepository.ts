@@ -354,6 +354,11 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     },
 
     async delete(teamId: number): Promise<boolean> {
+      await db
+        .prepare('UPDATE teams SET team_name = ? WHERE team_id = ?')
+        .bind(`__deleting_team_${teamId}__`, teamId)
+        .run();
+
       await detachRemovedClassRooms(teamId, []);
       const statements = buildCleanupEmptyTeamStatements(db, teamId);
       const results = await db.batch(statements);

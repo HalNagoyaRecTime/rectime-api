@@ -441,6 +441,23 @@ describe('TeamRepository', () => {
       }
     });
 
+    it('通常の単独編成(team_nameが再作成される単独編成名と同じ)を削除できる', async () => {
+      // 単独編成のteam_nameは"クラス名(クラスコード)"であり、detach時に
+      // 再作成される単独編成名と一致する。削除対象自身が残ったまま
+      // 同名の団体を作ろうとしてUNIQUE制約に違反しないことを確認する。
+      const provisionalName = '1A組(1A)';
+      const teamId = await insertTeam(provisionalName);
+      await insertClassRoom('1A', teamId);
+
+      await expect(repo.delete(teamId)).resolves.toBe(true);
+      await expect(repo.exists(teamId)).resolves.toBe(false);
+
+      const reattached = await env.DB.prepare(
+        `SELECT team_id FROM class_rooms WHERE class_code = '1A'`
+      ).first<{ team_id: number }>();
+      expect(reattached?.team_id).not.toBe(teamId);
+    });
+
     it('加算と減算で合計0に戻ったが行が残っているチームもFK違反なく削除できる', async () => {
       const teamId = await insertTeam('得点0だが行が残る');
       await repo.addScore(teamId, 100);
