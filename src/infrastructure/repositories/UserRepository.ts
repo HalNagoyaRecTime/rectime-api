@@ -144,31 +144,48 @@ export function createUserRepository(db: D1Database): IUserRepository {
       oid,
       tid,
       requireLiveActive = false,
+      requiredTeacherEmail,
     }) {
       const now = new Date().toISOString();
+      const teacherEmail = requiredTeacherEmail ?? '';
 
       try {
-        // 状態確認とINSERTを同じSQL条件にし、確認直後の削除・無効化でも
-        // Microsoftリンクが作られないようにする。
+        // 状態・教員メールの確認とINSERTを同じSQL条件にし、確認直後の
+        // 削除・無効化・メール変更でもMicrosoftリンクが作られないようにする。
         const result = await orm.run(sql`
           INSERT INTO microsoft_account_links (user_id, oid, tid, created_at, updated_at)
           SELECT ${Number(userId)}, ${oid}, ${tid}, ${now}, ${now}
           FROM users
           WHERE user_id = ${Number(userId)} AND deletion_status = 'active'
             AND (${requireLiveActive ? 1 : 0} = 0 OR is_live_active = 1)
+            AND (${requiredTeacherEmail === undefined ? 1 : 0} = 1 OR EXISTS (
+              SELECT 1 FROM teachers
+              WHERE teachers.user_id = users.user_id
+                AND teachers.email = ${teacherEmail}
+            ))
         `);
         if (result.meta.changes === 0) {
-          if (requireLiveActive) {
+          if (requireLiveActive || requiredTeacherEmail !== undefined) {
             const state = await orm
               .select({
                 deletionStatus: users.deletionStatus,
                 isLiveActive: users.isLiveActive,
+                teacherEmail: teachers.email,
               })
               .from(users)
+              .leftJoin(teachers, eq(teachers.userId, users.id))
               .where(eq(users.id, Number(userId)))
               .get();
-            if (state?.deletionStatus === 'active' && !state.isLiveActive) {
-              throw new Error('USER_DEACTIVATED');
+            if (state?.deletionStatus === 'active') {
+              if (requireLiveActive && !state.isLiveActive) {
+                throw new Error('USER_DEACTIVATED');
+              }
+              if (
+                requiredTeacherEmail !== undefined &&
+                state.teacherEmail !== requiredTeacherEmail
+              ) {
+                throw new Error('TEACHER_LINK_CHANGED');
+              }
             }
           }
           throw new Error('ACCOUNT_DELETION_PENDING');
@@ -177,7 +194,8 @@ export function createUserRepository(db: D1Database): IUserRepository {
         if (
           err instanceof Error &&
           (err.message === 'ACCOUNT_DELETION_PENDING' ||
-            err.message === 'USER_DEACTIVATED')
+            err.message === 'USER_DEACTIVATED' ||
+            err.message === 'TEACHER_LINK_CHANGED')
         ) {
           throw err;
         }
