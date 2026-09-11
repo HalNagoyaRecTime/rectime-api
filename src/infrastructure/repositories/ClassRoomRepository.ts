@@ -34,7 +34,9 @@ const classRoomSelect = `
   FROM class_rooms c
   LEFT JOIN students s ON s.class_room_id = c.class_room_id
   LEFT JOIN teachers t ON t.teacher_id = c.teacher_id
-  LEFT JOIN users u ON u.user_id = t.user_id
+  -- 無効化された教員は担任として扱わない。class_rooms.teacher_id は残すので、
+  -- 再有効化すれば元の担任に戻る。
+  LEFT JOIN users u ON u.user_id = t.user_id AND u.is_live_active = 1
 `;
 
 function toEntity(row: ClassRoomRow): ClassRoomEntity {
@@ -166,11 +168,41 @@ export function createClassRoomRepository(
       id: number,
       input: ClassRoomInput
     ): Promise<ClassRoomEntity | null> {
+      // 無効化された教員は担任として返していないため、呼び出し側が受け取った
+      // 教室にはそもそも担任が乗っていない。それをそのまま送り返してくる
+      // teacher_id = null を「担任を外す」と解釈すると、表示から隠しただけの
+      // 割り当てまで消えてしまう。担任が停止中のときの null は据え置きとして扱う。
+      //
+      // 既知の制約: この判定はUPDATE実行時点のDBの状態を見ている。教室の編集は
+      // GETとPUTの2リクエストにまたがるため、その間に別操作で担任が再有効化されると、
+      // GET時点でnullだった値がそのまま送られて割り当てを消してしまう。塞ぐには
+      // GET時点の状態を持ち回る仕組み（更新時刻を条件に含める楽観ロックなど）が要るが、
+      // 全項目置換のPUTすべてに関わる設計変更になるため、ここでは扱わない。
       const row = await db
         .prepare(
-          'UPDATE class_rooms SET class_code = ?, class_name = ?, teacher_id = ?, updated_at = CURRENT_TIMESTAMP WHERE class_room_id = ? RETURNING class_room_id'
+          `UPDATE class_rooms
+             SET class_code = ?,
+                 class_name = ?,
+                 teacher_id = CASE
+                   WHEN ? IS NULL AND EXISTS (
+                     SELECT 1 FROM teachers t
+                     JOIN users u ON u.user_id = t.user_id
+                     WHERE t.teacher_id = class_rooms.teacher_id
+                       AND u.is_live_active = 0
+                   ) THEN teacher_id
+                   ELSE ?
+                 END,
+                 updated_at = CURRENT_TIMESTAMP
+           WHERE class_room_id = ? RETURNING class_room_id`
         )
-        .bind(input.class_code, input.class_name, input.teacher_id, id)
+        .bind(
+          input.class_code,
+          input.class_name,
+          // D1は番号付きプレースホルダを使えないため、CASEのWHENとELSEへ同じ値を2回渡す
+          input.teacher_id,
+          input.teacher_id,
+          id
+        )
         .first<{ class_room_id: number }>();
       return row ? findById(row.class_room_id) : null;
     },

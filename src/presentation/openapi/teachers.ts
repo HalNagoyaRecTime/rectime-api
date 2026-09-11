@@ -30,6 +30,7 @@ export const teacherResponseSchema = z
       description: 'Microsoftアカウントとの突合に使うサインイン用アドレス。',
     }),
     is_live_active: z.boolean(),
+    is_staff: z.boolean(),
     class_rooms: z.array(teacherClassRoomSchema),
   })
   .openapi('Teacher');
@@ -48,27 +49,100 @@ export type TeacherPageResponseDTO = z.infer<typeof teacherPageResponseSchema>;
 export const teacherIdParams = z.object({
   teacherId: positivePathParam('teacherId', '教員ID'),
 });
+// Query はHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
+// OpenAPIとControllerが同じschemaをsafeParseすることで、受理範囲を一致させる。
+const digitsOnlyQuery = (minimum: number) =>
+  z.preprocess(
+    value =>
+      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
+    z.number().int().min(minimum)
+  );
 
-export const teacherListQuery = z.object({
-  teacherId: z.coerce.number().int().positive().optional(),
-  userName: z.string().optional(),
-  classRoomId: z.coerce.number().int().positive().optional(),
-  isLiveActive: z.enum(['true', 'false']).optional(),
-  offset: z.coerce.number().int().min(0).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+const limitedDigitsOnlyQuery = (minimum: number, maximum: number) =>
+  digitsOnlyQuery(minimum).refine(value => value <= maximum, {
+    message: `値は${minimum}から${maximum}の範囲で指定してください`,
+  });
+
+const classRoomIdsSchema = z
+  .array(z.number().int().positive())
+  .openapi({
+    description: '正の整数。重複した値を含められない。',
+    uniqueItems: true,
+  })
+  .refine(ids => new Set(ids).size === ids.length, {
+    message: 'classRoomIds must not contain duplicate values',
+  });
+
+export const teacherListQuery = z
+  .object({
+    search: z.string().trim().min(1).optional(),
+    classRoomId: digitsOnlyQuery(1).optional(),
+    isStaff: z.enum(['true', 'false', 'all']).default('all'),
+    isLiveActive: z.enum(['true', 'false', 'all']).default('true'),
+    sortBy: z
+      .enum([
+        'teacherId',
+        'displayName',
+        'classCode',
+        'className',
+        'isStaff',
+        'isLiveActive',
+      ])
+      .default('teacherId'),
+    sortOrder: z.enum(['asc', 'desc']).default('asc'),
+    offset: digitsOnlyQuery(0).default(0),
+    limit: limitedDigitsOnlyQuery(1, 100).default(50),
+  })
+  .strict();
+
+const teacherEmailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .email()
+  .max(255)
+  .openapi({
+    description: 'Microsoftアカウントとの突合に使うサインイン用アドレス。',
+  });
+
+export const teacherCreateSchema = z
+  .object({
+    userName: z.string().trim().min(1),
+    email: teacherEmailSchema,
+    classRoomIds: classRoomIdsSchema,
+  })
+  .strict()
+  .openapi('TeacherCreateRequest');
+
+export const teacherCreateRoute = createRoute({
+  method: 'post',
+  path: '/teachers',
+  tags: ['Teachers'],
+  summary: '教員を登録する',
+  security: bearerAuth,
+  request: {
+    body: {
+      content: { 'application/json': { schema: teacherCreateSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    201: jsonResponse(teacherResponseSchema, '登録した教員'),
+    400: badRequestResponse,
+    401: unauthorizedResponse,
+    403: forbiddenResponse,
+    409: conflictResponse,
+    500: internalServerErrorResponse,
+  },
 });
 
 export const teacherUpdateSchema = z
   .object({
-    userName: z.string().min(1),
-    email: z.string().email().openapi({
-      description: 'Microsoftアカウントとの突合に使うサインイン用アドレス。',
-    }),
-    isLiveActive: z.boolean(),
-    classRoomIds: z.array(z.number().int().positive()).openapi({
-      description: '重複した値を含められない。',
-    }),
+    userName: z.string().trim().min(1),
+    email: teacherEmailSchema,
+    classRoomIds: classRoomIdsSchema,
   })
+  .strict()
   .openapi('TeacherUpdateRequest');
 
 export const teacherListRoute = createRoute({

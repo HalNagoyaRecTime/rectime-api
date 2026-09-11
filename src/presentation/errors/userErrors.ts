@@ -101,11 +101,6 @@ export const UserErrors = {
     code: 'TEACHER_NOT_FOUND',
     message: '教員が見つかりません',
   },
-  INVALID_TEACHER_LIST_QUERY: {
-    status: 400,
-    code: 'INVALID_TEACHER_LIST_QUERY',
-    message: '教員一覧の検索条件が正しくありません',
-  },
   INVALID_TEACHER_CREATE_REQUEST: {
     status: 400,
     code: 'INVALID_TEACHER_CREATE_REQUEST',
@@ -140,11 +135,6 @@ export const UserErrors = {
     status: 500,
     code: 'TEACHER_UPDATE_FAILED',
     message: '教員の更新に失敗しました',
-  },
-  TEACHER_DELETE_FAILED: {
-    status: 500,
-    code: 'TEACHER_DELETE_FAILED',
-    message: '教員の削除に失敗しました',
   },
   CLASS_ROOM_NOT_FOUND: {
     status: 400,

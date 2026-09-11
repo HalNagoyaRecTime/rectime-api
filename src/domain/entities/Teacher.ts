@@ -1,25 +1,31 @@
 export interface TeacherClassRoomEntity {
-  class_room_id: number;
-  class_code: string;
-  class_name: string;
+  classRoomId: number;
+  classCode: string;
+  className: string;
 }
 
 export interface TeacherEntity {
-  teacher_id: number;
-  user_id: number;
-  user_name: string;
+  teacherId: number;
+  userId: number;
+  userName: string;
   email: string;
-  is_live_active: boolean;
-  class_rooms: TeacherClassRoomEntity[];
+  isLiveActive: boolean;
+  isStaff: boolean;
+  classRooms: TeacherClassRoomEntity[];
 }
 
 export interface TeacherSearchFilter {
-  teacherId?: number;
-  userName?: string;
-  classRoomId?: number;
-  isLiveActive?: boolean;
   search?: string;
-  sortBy?: 'teacherId' | 'displayName';
+  classRoomId?: number;
+  isStaff?: boolean;
+  isLiveActive?: boolean;
+  sortBy?:
+    | 'teacherId'
+    | 'displayName'
+    | 'classCode'
+    | 'className'
+    | 'isStaff'
+    | 'isLiveActive';
   sortOrder?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
