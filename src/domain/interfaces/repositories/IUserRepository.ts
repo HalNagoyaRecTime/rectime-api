@@ -30,6 +30,8 @@ export interface IUserRepository {
     userId: string;
     oid: string;
     tid: string;
+    requireLiveActive?: boolean;
+    requiredTeacherEmail?: string;
   }): Promise<void>;
   // deletion_statusを'deleted'にし、同時にmicrosoft_account_linksを削除する。
   // links を残したままだと、同一Microsoftアカウントでの再ログインが

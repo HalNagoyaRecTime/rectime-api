@@ -322,6 +322,79 @@ describe('UserRepository', () => {
         repo.findUserIdByMicrosoftAccount('oid-inactive', 'tid-inactive')
       ).resolves.toBeNull();
     });
+
+    it('requireLiveActive指定時は無効ユーザーへ紐付けず、USER_DEACTIVATEDを投げる', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name, is_live_active) VALUES ('無効教員', 0) RETURNING user_id"
+      ).first<{ user_id: number }>();
+
+      await expect(
+        repo.linkMicrosoftAccount({
+          userId: String(user!.user_id),
+          oid: 'oid-deactivated',
+          tid: 'tid-deactivated',
+          requireLiveActive: true,
+        })
+      ).rejects.toThrow('USER_DEACTIVATED');
+
+      await expect(
+        repo.findUserIdByMicrosoftAccount('oid-deactivated', 'tid-deactivated')
+      ).resolves.toBeNull();
+    });
+
+    it('requiredTeacherEmailが現在の教員メールと一致する場合だけ紐付ける', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('メール照合教員') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await env.DB.prepare(
+        "INSERT INTO teachers (user_id, email) VALUES (?, 'teacher@example.com')"
+      )
+        .bind(user!.user_id)
+        .run();
+
+      await repo.linkMicrosoftAccount({
+        userId: String(user!.user_id),
+        oid: 'oid-teacher-email',
+        tid: 'tid-teacher-email',
+        requireLiveActive: true,
+        requiredTeacherEmail: 'teacher@example.com',
+      });
+
+      await expect(
+        repo.findUserIdByMicrosoftAccount(
+          'oid-teacher-email',
+          'tid-teacher-email'
+        )
+      ).resolves.toBe(String(user!.user_id));
+    });
+
+    it('requiredTeacherEmailが現在の教員メールと異なる場合はTEACHER_LINK_CHANGEDを投げる', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('メール変更教員') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      await env.DB.prepare(
+        "INSERT INTO teachers (user_id, email) VALUES (?, 'updated@example.com')"
+      )
+        .bind(user!.user_id)
+        .run();
+
+      await expect(
+        repo.linkMicrosoftAccount({
+          userId: String(user!.user_id),
+          oid: 'oid-stale-teacher-email',
+          tid: 'tid-stale-teacher-email',
+          requireLiveActive: true,
+          requiredTeacherEmail: 'old@example.com',
+        })
+      ).rejects.toThrow('TEACHER_LINK_CHANGED');
+
+      await expect(
+        repo.findUserIdByMicrosoftAccount(
+          'oid-stale-teacher-email',
+          'tid-stale-teacher-email'
+        )
+      ).resolves.toBeNull();
+    });
   });
 
   describe('updateUser', () => {

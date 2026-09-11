@@ -47,6 +47,16 @@ export const AuthErrors = {
     code: 'STUDENT_ALREADY_LINKED',
     message: 'この学生は既に別のMicrosoftアカウントと連携されています',
   },
+  TEACHER_ALREADY_LINKED: {
+    status: 409,
+    code: 'TEACHER_ALREADY_LINKED',
+    message: 'この教員は既に別のMicrosoftアカウントと連携されています',
+  },
+  TEACHER_LINK_CHANGED: {
+    status: 409,
+    code: 'TEACHER_LINK_CHANGED',
+    message: '教員情報が更新されたため、もう一度ログインしてください',
+  },
   ACCOUNT_DELETION_PENDING: {
     status: 410,
     code: 'ACCOUNT_DELETION_PENDING',

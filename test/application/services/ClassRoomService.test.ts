@@ -26,6 +26,7 @@ function teacherRepository(
     findAll: vi.fn(),
     existsById: vi.fn().mockResolvedValue(true),
     findExistingEmails: vi.fn().mockResolvedValue(new Set<string>()),
+    findMicrosoftLinkCandidateByEmail: vi.fn().mockResolvedValue(null),
     existsClassRooms: vi.fn().mockResolvedValue(true),
     create: vi.fn(),
     createMany: vi.fn(),

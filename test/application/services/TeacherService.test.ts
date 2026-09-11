@@ -25,6 +25,7 @@ function buildRepository(
     findAll: vi.fn(),
     existsById: vi.fn(),
     findExistingEmails: vi.fn().mockResolvedValue(new Set<string>()),
+    findMicrosoftLinkCandidateByEmail: vi.fn(),
     existsClassRooms: vi.fn(),
     create: vi.fn(),
     createMany: vi.fn(),

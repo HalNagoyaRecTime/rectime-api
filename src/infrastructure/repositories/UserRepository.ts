@@ -139,30 +139,63 @@ export function createUserRepository(db: D1Database): IUserRepository {
       };
     },
     //すでに学生登録時にusersにuser_idが存在している場合、microsoft_account_linksをそのuser_idに合わせてinsertする
-    async linkMicrosoftAccount({ userId, oid, tid }) {
+    async linkMicrosoftAccount({
+      userId,
+      oid,
+      tid,
+      requireLiveActive = false,
+      requiredTeacherEmail,
+    }) {
       const now = new Date().toISOString();
+      const teacherEmail = requiredTeacherEmail ?? '';
 
       try {
-        // INSERT ... SELECT ... WHERE で「対象userIdがdeletion_status =
-        // 'active'であること」をINSERT自体の条件に含める。呼び出し元が
-        // 事前にgetDeletionStatusで確認していても、確認からこのINSERTまでの
-        // 間にmarkAsDeletedが割り込むと、確認時点ではactiveでも実行時には
-        // 既にdeleted/deletion_pendingになっている可能性がある(TOCTOU)。
-        // その場合はWHERE句が偽になり0行挿入となるため、
-        // ACCOUNT_DELETION_PENDINGとして呼び出し元へ区別して伝える。
+        // 状態・教員メールの確認とINSERTを同じSQL条件にし、確認直後の
+        // 削除・無効化・メール変更でもMicrosoftリンクが作られないようにする。
         const result = await orm.run(sql`
           INSERT INTO microsoft_account_links (user_id, oid, tid, created_at, updated_at)
           SELECT ${Number(userId)}, ${oid}, ${tid}, ${now}, ${now}
           FROM users
           WHERE user_id = ${Number(userId)} AND deletion_status = 'active'
+            AND (${requireLiveActive ? 1 : 0} = 0 OR is_live_active = 1)
+            AND (${requiredTeacherEmail === undefined ? 1 : 0} = 1 OR EXISTS (
+              SELECT 1 FROM teachers
+              WHERE teachers.user_id = users.user_id
+                AND teachers.email = ${teacherEmail}
+            ))
         `);
         if (result.meta.changes === 0) {
+          if (requireLiveActive || requiredTeacherEmail !== undefined) {
+            const state = await orm
+              .select({
+                deletionStatus: users.deletionStatus,
+                isLiveActive: users.isLiveActive,
+                teacherEmail: teachers.email,
+              })
+              .from(users)
+              .leftJoin(teachers, eq(teachers.userId, users.id))
+              .where(eq(users.id, Number(userId)))
+              .get();
+            if (state?.deletionStatus === 'active') {
+              if (requireLiveActive && !state.isLiveActive) {
+                throw new Error('USER_DEACTIVATED');
+              }
+              if (
+                requiredTeacherEmail !== undefined &&
+                state.teacherEmail !== requiredTeacherEmail
+              ) {
+                throw new Error('TEACHER_LINK_CHANGED');
+              }
+            }
+          }
           throw new Error('ACCOUNT_DELETION_PENDING');
         }
       } catch (err) {
         if (
           err instanceof Error &&
-          err.message === 'ACCOUNT_DELETION_PENDING'
+          (err.message === 'ACCOUNT_DELETION_PENDING' ||
+            err.message === 'USER_DEACTIVATED' ||
+            err.message === 'TEACHER_LINK_CHANGED')
         ) {
           throw err;
         }

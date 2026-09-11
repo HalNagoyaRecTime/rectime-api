@@ -21,9 +21,47 @@ describe('TeacherRepository', () => {
   let seeded: SeededData;
 
   beforeEach(async () => {
+    await env.DB.prepare('DELETE FROM microsoft_account_links').run();
     seeded = await seedStaffsTeachers(env.DB);
     repo = createTeacherRepository(env.DB);
   });
+
+  async function insertTeacherCandidate({
+    userName,
+    email,
+    isLiveActive = 1,
+    deletionStatus = 'active',
+    linked = false,
+  }: {
+    userName: string;
+    email: string;
+    isLiveActive?: number;
+    deletionStatus?: 'active' | 'deletion_pending' | 'deleted';
+    linked?: boolean;
+  }): Promise<number> {
+    const user = await env.DB.prepare(
+      `INSERT INTO users (user_name, is_live_active, deletion_status)
+       VALUES (?, ?, ?)
+       RETURNING user_id`
+    )
+      .bind(userName, isLiveActive, deletionStatus)
+      .first<{ user_id: number }>();
+    if (!user) throw new Error('テスト用ユーザーの作成に失敗しました');
+
+    await env.DB.prepare('INSERT INTO teachers (user_id, email) VALUES (?, ?)')
+      .bind(user.user_id, email)
+      .run();
+
+    if (linked) {
+      await env.DB.prepare(
+        'INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, ?, ?)'
+      )
+        .bind(user.user_id, `oid-${user.user_id}`, `tid-${user.user_id}`)
+        .run();
+    }
+
+    return user.user_id;
+  }
 
   describe('findAll', () => {
     it('teachers に登録されている教員を全件返す', async () => {
@@ -300,6 +338,91 @@ describe('TeacherRepository', () => {
 
     it('存在しない id の場合は null を返す', async () => {
       expect(await repo.findById(999999)).toBeNull();
+    });
+  });
+
+  describe('findMicrosoftLinkCandidateByEmail', () => {
+    it('氏名に依存せずメールが完全一致する教員を返す', async () => {
+      const userId = await insertTeacherCandidate({
+        userName: '事前登録された教員名',
+        email: 'teacher@example.com',
+      });
+
+      await expect(
+        repo.findMicrosoftLinkCandidateByEmail('teacher@example.com')
+      ).resolves.toEqual({
+        userId,
+        userName: '事前登録された教員名',
+        isLiveActive: true,
+      });
+    });
+
+    it('無効化・Microsoft連携済みの教員も候補として返す', async () => {
+      const inactiveLinkedUserId = await insertTeacherCandidate({
+        userName: '無効化された連携済み教員',
+        email: 'inactive@example.com',
+        isLiveActive: 0,
+        linked: true,
+      });
+
+      await expect(
+        repo.findMicrosoftLinkCandidateByEmail('inactive@example.com')
+      ).resolves.toEqual({
+        userId: inactiveLinkedUserId,
+        userName: '無効化された連携済み教員',
+        isLiveActive: false,
+      });
+    });
+
+    it('削除処理中は候補として返し、削除済みは除外する', async () => {
+      const deletionPendingUserId = await insertTeacherCandidate({
+        userName: '削除処理中教員',
+        email: 'pending@example.com',
+        deletionStatus: 'deletion_pending',
+      });
+      await insertTeacherCandidate({
+        userName: '削除済み教員',
+        email: 'deleted@example.com',
+        deletionStatus: 'deleted',
+      });
+
+      await expect(
+        repo.findMicrosoftLinkCandidateByEmail('pending@example.com')
+      ).resolves.toEqual({
+        userId: deletionPendingUserId,
+        userName: '削除処理中教員',
+        isLiveActive: true,
+      });
+      await expect(
+        repo.findMicrosoftLinkCandidateByEmail('deleted@example.com')
+      ).resolves.toBeNull();
+    });
+
+    it('該当する教員がいない場合はnullを返す', async () => {
+      await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('教員ではないUser')"
+      ).run();
+
+      await expect(
+        repo.findMicrosoftLinkCandidateByEmail('unknown@example.com')
+      ).resolves.toBeNull();
+    });
+
+    it('リポジトリでは正規化済みメールを完全一致で比較する', async () => {
+      await insertTeacherCandidate({
+        userName: '大文字比較教員',
+        email: 'case.teacher@example.com',
+      });
+
+      await expect(
+        repo.findMicrosoftLinkCandidateByEmail('Case.Teacher@Example.com')
+      ).resolves.toBeNull();
+    });
+
+    it('空文字では照合しない', async () => {
+      await expect(
+        repo.findMicrosoftLinkCandidateByEmail('')
+      ).resolves.toBeNull();
     });
   });
 

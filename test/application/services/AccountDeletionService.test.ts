@@ -54,6 +54,7 @@ function buildDeps() {
     findAll: vi.fn(),
     existsById: vi.fn(),
     findExistingEmails: vi.fn(),
+    findMicrosoftLinkCandidateByEmail: vi.fn(),
     existsClassRooms: vi.fn(),
     create: vi.fn(),
     createMany: vi.fn(),

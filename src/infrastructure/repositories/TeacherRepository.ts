@@ -9,6 +9,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -27,6 +28,7 @@ import {
 import {
   ITeacherRepository,
   NewTeacherInput,
+  TeacherMicrosoftLinkCandidate,
 } from '../../domain/interfaces/repositories/ITeacherRepository';
 import { chunkArray } from './chunk';
 import { escapeLikePattern } from '../helpers/escapeLikePattern';
@@ -275,6 +277,33 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       }
 
       return found;
+    },
+
+    async findMicrosoftLinkCandidateByEmail(
+      email: string
+    ): Promise<TeacherMicrosoftLinkCandidate | null> {
+      if (!email) return null;
+
+      const row = await orm
+        .select({
+          userId: users.id,
+          userName: users.userName,
+          isLiveActive: users.isLiveActive,
+        })
+        .from(teachers)
+        .innerJoin(users, eq(teachers.userId, users.id))
+        .where(
+          and(eq(teachers.email, email), ne(users.deletionStatus, 'deleted'))
+        )
+        .get();
+
+      return row
+        ? {
+            userId: row.userId,
+            userName: row.userName,
+            isLiveActive: Boolean(row.isLiveActive),
+          }
+        : null;
     },
 
     async existsClassRooms(classRoomIds: number[]): Promise<boolean> {
