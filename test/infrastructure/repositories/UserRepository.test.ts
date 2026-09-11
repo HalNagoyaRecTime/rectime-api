@@ -78,8 +78,10 @@ describe('UserRepository', () => {
       const user = await env.DB.prepare(
         "INSERT INTO users (user_name) VALUES ('教員') RETURNING user_id"
       ).first<{ user_id: number }>();
-      await env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
-        .bind(user!.user_id)
+      await env.DB.prepare(
+        'INSERT INTO teachers (user_id, email) VALUES (?, ?)'
+      )
+        .bind(user!.user_id, `teacher-${user!.user_id}@example.test`)
         .run();
 
       await expect(repo.isStaff(user!.user_id)).resolves.toBe(false);
@@ -129,9 +131,16 @@ describe('UserRepository', () => {
         const user = await env.DB.prepare(
           "INSERT INTO users (user_name) VALUES ('職員') RETURNING user_id"
         ).first<{ user_id: number }>();
-        await env.DB.prepare(`INSERT INTO ${table} (user_id) VALUES (?)`)
-          .bind(user!.user_id)
-          .run();
+        // teachers だけ email が NOT NULL のため、テーブルごとに列を変える。
+        await (
+          table === 'teachers'
+            ? env.DB.prepare(
+                'INSERT INTO teachers (user_id, email) VALUES (?, ?)'
+              ).bind(user!.user_id, `teacher-${user!.user_id}@example.test`)
+            : env.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)').bind(
+                user!.user_id
+              )
+        ).run();
 
         await expect(repo.getUserCategories(user!.user_id)).resolves.toEqual({
           is_student: false,
@@ -148,8 +157,10 @@ describe('UserRepository', () => {
       await env.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
         .bind(user!.user_id)
         .run();
-      await env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
-        .bind(user!.user_id)
+      await env.DB.prepare(
+        'INSERT INTO teachers (user_id, email) VALUES (?, ?)'
+      )
+        .bind(user!.user_id, `teacher-${user!.user_id}@example.test`)
         .run();
 
       await expect(repo.getUserCategories(user!.user_id)).resolves.toEqual({

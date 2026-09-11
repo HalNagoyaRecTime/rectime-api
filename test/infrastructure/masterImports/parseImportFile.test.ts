@@ -62,6 +62,22 @@ describe('parseImportFile', () => {
       expect(rows).toEqual([]);
     });
 
+    it('教員の日本語ヘッダー（メールアドレス）をsnake_caseのキーに正規化する', async () => {
+      const file = csvFile(
+        '氏名（姓）,氏名（名）,メールアドレス\n山田,太郎,yamada@example.ac.jp\n'
+      );
+
+      const rows = await parseImportFile(file, 'teachers.csv');
+
+      expect(rows).toEqual([
+        {
+          last_name: '山田',
+          first_name: '太郎',
+          email: 'yamada@example.ac.jp',
+        },
+      ]);
+    });
+
     it('日本語ヘッダーをsnake_caseのキーに正規化する', async () => {
       const file = csvFile(
         'クラス記号,出席番号,学籍番号,氏名（姓）,氏名（名）\n11A,1,10001,山田,太郎\n'

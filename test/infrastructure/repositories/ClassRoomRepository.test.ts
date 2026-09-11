@@ -33,7 +33,7 @@ describe('ClassRoomRepository', () => {
       .returning();
     const [teacher] = await orm
       .insert(teachers)
-      .values({ userId: teacherUser.id })
+      .values({ userId: teacherUser.id, email: 'tannin@example.ac.jp' })
       .returning();
     const classrooms = await orm
       .insert(class_rooms)

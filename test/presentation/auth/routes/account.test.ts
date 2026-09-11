@@ -269,8 +269,10 @@ describe('GET /auth/me', () => {
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('教師花子') RETURNING user_id"
     ).first<{ user_id: number }>();
-    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
-      .bind(user!.user_id)
+    await workerEnv.DB.prepare(
+      'INSERT INTO teachers (user_id, email) VALUES (?, ?)'
+    )
+      .bind(user!.user_id, `teacher-${user!.user_id}@example.test`)
       .run();
     const userId = String(user!.user_id);
     const token = await signAccessToken(

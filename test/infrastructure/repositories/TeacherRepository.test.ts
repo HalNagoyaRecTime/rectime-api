@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { D1PreparedStatement } from '@cloudflare/workers-types';
 import { createTeacherRepository } from '../../../src/infrastructure/repositories/TeacherRepository';
 import { createUserStatusRepository } from '../../../src/infrastructure/repositories/UserStatusRepository';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
@@ -62,9 +63,14 @@ describe('TeacherRepository', () => {
         .bind('50%_offプランナー', now, now)
         .first<{ user_id: number }>();
       const wildcardTeacher = await env.DB.prepare(
-        'INSERT INTO teachers (user_id, created_at, updated_at) VALUES (?, ?, ?) RETURNING teacher_id'
+        'INSERT INTO teachers (user_id, email, created_at, updated_at) VALUES (?, ?, ?, ?) RETURNING teacher_id'
       )
-        .bind(wildcardUser!.user_id, now, now)
+        .bind(
+          wildcardUser!.user_id,
+          `teacher-${wildcardUser!.user_id}@example.test`,
+          now,
+          now
+        )
         .first<{ teacher_id: number }>();
 
       // "%_" はエスケープされなければ「任意の1文字+任意0文字以上」にマッチしてしまい、
@@ -317,6 +323,7 @@ describe('TeacherRepository', () => {
       const target = seeded.teachers[1];
       const updated = await repo.update(target.teacherId, {
         userName: '更新済み先生',
+        email: 'repo-1@example.ac.jp',
         classRoomIds: [seeded.classRooms[1].classRoomId],
       });
 
@@ -341,6 +348,7 @@ describe('TeacherRepository', () => {
       const target = seeded.teachers[0];
       const updated = await repo.update(target.teacherId, {
         userName: target.displayName,
+        email: 'repo-2@example.ac.jp',
         classRoomIds: [],
       });
 
@@ -350,6 +358,7 @@ describe('TeacherRepository', () => {
     it('存在しない教員IDの場合は null を返す', async () => {
       const updated = await repo.update(999999, {
         userName: 'x',
+        email: 'repo-3@example.ac.jp',
         classRoomIds: [],
       });
       expect(updated).toBeNull();
@@ -361,6 +370,7 @@ describe('TeacherRepository', () => {
 
       const updated = await repo.update(target.teacherId, {
         userName: '更新不可先生',
+        email: 'repo-4@example.ac.jp',
         classRoomIds: [],
       });
       expect(updated).toMatchObject({
@@ -384,6 +394,7 @@ describe('TeacherRepository', () => {
       await expect(
         repo.update(target.teacherId, {
           userName: '更新失敗するはずの先生',
+          email: 'repo-5@example.ac.jp',
           classRoomIds: [999999],
         })
       ).rejects.toThrow();
@@ -423,7 +434,10 @@ describe('TeacherRepository', () => {
 
   describe('create', () => {
     it('教官を作成し、作成したエンティティを返す', async () => {
-      const created = await repo.create({ displayName: '新規教官' });
+      const created = await repo.create({
+        displayName: '新規教官',
+        email: 'repo-6@example.ac.jp',
+      });
 
       expect(created).toMatchObject({
         userName: '新規教官',
@@ -438,6 +452,7 @@ describe('TeacherRepository', () => {
       const classRoomId = seeded.classRooms[1].classRoomId;
       const created = await repo.create({
         userName: 'クラス担当教官',
+        email: 'repo-7@example.ac.jp',
         classRoomIds: [classRoomId],
       });
 
@@ -457,6 +472,7 @@ describe('TeacherRepository', () => {
 
       const created = await repo.create({
         userName: '複数クラス担当教官',
+        email: 'repo-8@example.ac.jp',
         classRoomIds,
       });
 
@@ -483,6 +499,7 @@ describe('TeacherRepository', () => {
       await expect(
         repo.create({
           userName,
+          email: 'repo-9@example.ac.jp',
           classRoomIds: [targetClassRoomId, 999999],
         })
       ).rejects.toThrow('Class room not found');
@@ -506,8 +523,8 @@ describe('TeacherRepository', () => {
   describe('createMany', () => {
     it('複数の教官をまとめて作成する', async () => {
       await repo.createMany([
-        { displayName: '一括教官A' },
-        { displayName: '一括教官B' },
+        { displayName: '一括教官A', email: 'bulk-a@example.ac.jp' },
+        { displayName: '一括教官B', email: 'bulk-b@example.ac.jp' },
       ]);
 
       const result = await repo.findAll({ search: '一括教官' });
@@ -527,6 +544,7 @@ describe('TeacherRepository', () => {
     it('2,000件の教官をまとめて作成できる', async () => {
       const inputs = Array.from({ length: 2000 }, (_, i) => ({
         displayName: `一括教官BULK2K${i}`,
+        email: `bulk2k-${i}@example.ac.jp`,
       }));
 
       await repo.createMany(inputs);
@@ -551,7 +569,9 @@ describe('TeacherRepository', () => {
 
       let thrown: unknown;
       try {
-        await repo.createMany([{ displayName: '再現用教官' }]);
+        await repo.createMany([
+          { displayName: '再現用教官', email: 'saigen@example.ac.jp' },
+        ]);
       } catch (error) {
         thrown = error;
       }
@@ -577,9 +597,9 @@ describe('TeacherRepository', () => {
         "INSERT INTO users (user_name) VALUES ('削除対象教員') RETURNING user_id"
       ).first<{ user_id: number }>();
       const teacher = await env.DB.prepare(
-        'INSERT INTO teachers (user_id) VALUES (?) RETURNING teacher_id'
+        'INSERT INTO teachers (user_id, email) VALUES (?, ?) RETURNING teacher_id'
       )
-        .bind(user!.user_id)
+        .bind(user!.user_id, `teacher-${user!.user_id}@example.test`)
         .first<{ teacher_id: number }>();
       const classRoom = await env.DB.prepare(
         "INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ('DEL-1', '削除確認クラス', ?) RETURNING class_room_id"
@@ -610,6 +630,173 @@ describe('TeacherRepository', () => {
       ).first<{ user_id: number }>();
 
       await expect(repo.deleteByUserId(user!.user_id)).resolves.toBe(false);
+    });
+  });
+
+  describe('email', () => {
+    it('findById/findAll がemailを返す', async () => {
+      const first = await repo.findById(seeded.teachers[0].teacherId);
+      const second = await repo.findById(seeded.teachers[1].teacherId);
+
+      expect(first?.email).toBe(seeded.teachers[0].email);
+      expect(second?.email).toBe(seeded.teachers[1].email);
+
+      const page = await repo.findAll({ limit: 100 });
+      const byName = new Map(page.items.map(t => [t.userName, t.email]));
+      expect(byName.get(seeded.teachers[0].displayName)).toBe(
+        seeded.teachers[0].email
+      );
+    });
+
+    it('createでemailを保存する', async () => {
+      const created = await repo.create({
+        userName: '新任先生',
+        email: 'shinnin@example.ac.jp',
+        classRoomIds: [],
+      });
+
+      expect(created.email).toBe('shinnin@example.ac.jp');
+      const refetched = await repo.findById(created.teacherId);
+      expect(refetched?.email).toBe('shinnin@example.ac.jp');
+    });
+
+    it('担当クラス付きのcreateでもemailを保存する', async () => {
+      const created = await repo.create({
+        userName: '担任付き先生',
+        email: 'tannin@example.ac.jp',
+        classRoomIds: [seeded.classRooms[1].classRoomId],
+      });
+
+      const refetched = await repo.findById(created.teacherId);
+      expect(refetched?.email).toBe('tannin@example.ac.jp');
+      expect(refetched?.classRooms).toHaveLength(1);
+    });
+
+    it('createManyで行ごとのemailを保存する', async () => {
+      await repo.createMany([
+        { displayName: '一括1', email: 'bulk1@example.ac.jp' },
+        { displayName: '一括2', email: 'bulk2@example.ac.jp' },
+        { displayName: '一括3', email: 'bulk3@example.ac.jp' },
+      ]);
+
+      const result = await repo.findAll({ limit: 100 });
+      const byName = new Map(result.items.map(t => [t.userName, t.email]));
+      expect(byName.get('一括1')).toBe('bulk1@example.ac.jp');
+      expect(byName.get('一括2')).toBe('bulk2@example.ac.jp');
+      expect(byName.get('一括3')).toBe('bulk3@example.ac.jp');
+    });
+
+    // createManyは1行あたりuser_idとemailの2つをbindするため、
+    // bind上限に基づくチャンク分割の境界を跨ぐ件数で検証する。
+    it('createManyがチャンク境界を跨いでも全行を正しく保存する', async () => {
+      const inputs = Array.from({ length: 120 }, (_, index) => ({
+        displayName: `大量${index}`,
+        email: `bulk-many-${index}@example.ac.jp`,
+      }));
+
+      await repo.createMany(inputs);
+
+      // usersは100件ずつ、teachersは50件ずつの別チャンクに分かれるため、
+      // 件数だけでなく全行の氏名とemailの対応も確認する。
+      const stored = await env.DB.prepare(
+        `SELECT u.user_name AS user_name, t.email AS email
+         FROM teachers t
+         INNER JOIN users u ON u.user_id = t.user_id
+         WHERE t.email LIKE 'bulk-many-%'`
+      ).all<{ user_name: string; email: string }>();
+
+      expect(stored.results).toHaveLength(120);
+      const byName = new Map(
+        stored.results.map(row => [row.user_name, row.email])
+      );
+      for (const input of inputs) {
+        expect(byName.get(input.displayName)).toBe(input.email);
+      }
+    });
+
+    it('updateでemailを変更できる', async () => {
+      const target = seeded.teachers[0];
+
+      const updated = await repo.update(target.teacherId, {
+        userName: target.displayName,
+        email: 'changed@example.ac.jp',
+        classRoomIds: [],
+      });
+
+      expect(updated?.email).toBe('changed@example.ac.jp');
+      expect((await repo.findById(target.teacherId))?.email).toBe(
+        'changed@example.ac.jp'
+      );
+    });
+
+    it('updateで他の教員と同じemailにはできない（氏名・担当クラスも巻き戻る）', async () => {
+      const target = seeded.teachers[0];
+      const beforeClassRooms = (await repo.findById(target.teacherId))
+        ?.classRooms;
+
+      await expect(
+        repo.update(target.teacherId, {
+          userName: '衝突して反映されないはずの名前',
+          email: seeded.teachers[1].email,
+          classRoomIds: [],
+        })
+      ).rejects.toThrow('UNIQUE constraint failed: teachers.email');
+
+      const refetched = await repo.findById(target.teacherId);
+      expect(refetched?.email).toBe(target.email);
+      expect(refetched?.userName).toBe(target.displayName);
+      expect(refetched?.classRooms).toEqual(beforeClassRooms);
+    });
+
+    // レビュー指摘(#376): usersのRETURNINGは行順が保証されないため、
+    // 配列の位置で対応付けると別人のメールアドレスが保存され得る。
+    it('usersのRETURNINGが入力と違う順で返ってもemailを取り違えない', async () => {
+      const originalBatch = env.DB.batch.bind(env.DB);
+      let batchCall = 0;
+      const shuffledDb = new Proxy(env.DB, {
+        get(target, prop, receiver) {
+          if (prop === 'batch') {
+            return async (statements: D1PreparedStatement[]) => {
+              const results = await originalBatch(statements);
+              batchCall += 1;
+              // 1回目はusersのINSERT。RETURNINGを逆順で返して再現する。
+              if (batchCall === 1) {
+                return results.map(result => ({
+                  ...result,
+                  results: [...result.results].reverse(),
+                }));
+              }
+              return results;
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      }) as typeof env.DB;
+
+      await createTeacherRepository(shuffledDb).createMany([
+        { displayName: 'A先生', email: 'a-sensei@example.ac.jp' },
+        { displayName: 'B先生', email: 'b-sensei@example.ac.jp' },
+      ]);
+
+      const page = await repo.findAll({ limit: 100 });
+      const byName = new Map(page.items.map(t => [t.userName, t.email]));
+      expect(byName.get('A先生')).toBe('a-sensei@example.ac.jp');
+      expect(byName.get('B先生')).toBe('b-sensei@example.ac.jp');
+    });
+
+    describe('findExistingEmails', () => {
+      it('DBに存在するものだけを返す', async () => {
+        const found = await repo.findExistingEmails([
+          'yamada@example.ac.jp',
+          'notfound@example.ac.jp',
+        ]);
+
+        expect(found).toEqual(new Set(['yamada@example.ac.jp']));
+      });
+
+      it('空配列を渡した場合は空のSetを返す', async () => {
+        expect(await repo.findExistingEmails([])).toEqual(new Set());
+      });
     });
   });
 });

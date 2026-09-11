@@ -16,8 +16,8 @@ const STAFFS = [
 ] as const;
 
 const TEACHERS = [
-  { displayName: '山田先生' },
-  { displayName: '中村先生' },
+  { displayName: '山田先生', email: 'yamada@example.ac.jp' },
+  { displayName: '中村先生', email: 'nakamura@example.ac.jp' },
 ] as const;
 
 const CLASS_ROOMS = [
@@ -34,6 +34,7 @@ export type SeededTeacher = {
   teacherId: number;
   userId: number;
   displayName: string;
+  email: string;
 };
 export type SeededClassRoom = {
   classRoomId: number;
@@ -97,13 +98,19 @@ export async function seedStaffsTeachers(db: D1Database): Promise<SeededData> {
 
     const [teacher] = await orm
       .insert(teachersTable)
-      .values({ userId: user.id, createdAt: now, updatedAt: now })
+      .values({
+        userId: user.id,
+        email: t.email,
+        createdAt: now,
+        updatedAt: now,
+      })
       .returning();
 
     seededTeachers.push({
       teacherId: teacher.id,
       userId: user.id,
       displayName: t.displayName,
+      email: t.email,
     });
   }
 

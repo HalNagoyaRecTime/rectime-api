@@ -8,6 +8,7 @@ export interface TeacherEntity {
   teacherId: number;
   userId: number;
   userName: string;
+  email: string;
   isLiveActive: boolean;
   isStaff: boolean;
   classRooms: TeacherClassRoomEntity[];
@@ -39,10 +40,12 @@ export interface TeacherPage {
 
 export interface TeacherUpdateInput {
   userName: string;
+  email: string;
   classRoomIds: number[];
 }
 
 export interface TeacherCreateInput {
   userName: string;
+  email: string;
   classRoomIds: number[];
 }

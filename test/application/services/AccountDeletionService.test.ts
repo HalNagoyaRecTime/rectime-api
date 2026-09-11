@@ -52,6 +52,7 @@ function buildDeps() {
   const teacherRepository: ITeacherRepository = {
     findById: vi.fn(),
     findAll: vi.fn(),
+    findExistingEmails: vi.fn(),
     existsClassRooms: vi.fn(),
     create: vi.fn(),
     createMany: vi.fn(),

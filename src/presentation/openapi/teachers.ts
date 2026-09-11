@@ -2,6 +2,7 @@ import { createRoute } from '@hono/zod-openapi';
 import {
   badRequestResponse,
   bearerAuth,
+  conflictResponse,
   forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
@@ -25,6 +26,9 @@ export const teacherResponseSchema = z
     teacher_id: z.number().int(),
     user_id: z.number().int(),
     display_name: z.string(),
+    email: z.string().openapi({
+      description: 'Microsoftアカウントとの突合に使うサインイン用アドレス。',
+    }),
     is_live_active: z.boolean(),
     is_staff: z.boolean(),
     class_rooms: z.array(teacherClassRoomSchema),
@@ -91,9 +95,20 @@ export const teacherListQuery = z
   })
   .strict();
 
+const teacherEmailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .email()
+  .max(255)
+  .openapi({
+    description: 'Microsoftアカウントとの突合に使うサインイン用アドレス。',
+  });
+
 export const teacherCreateSchema = z
   .object({
     userName: z.string().trim().min(1),
+    email: teacherEmailSchema,
     classRoomIds: classRoomIdsSchema,
   })
   .strict()
@@ -116,6 +131,7 @@ export const teacherCreateRoute = createRoute({
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
+    409: conflictResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -123,6 +139,7 @@ export const teacherCreateRoute = createRoute({
 export const teacherUpdateSchema = z
   .object({
     userName: z.string().trim().min(1),
+    email: teacherEmailSchema,
     classRoomIds: classRoomIdsSchema,
   })
   .strict()
@@ -180,6 +197,7 @@ export const teacherUpdateRoute = createRoute({
     401: unauthorizedResponse,
     403: forbiddenResponse,
     404: notFoundResponse,
+    409: conflictResponse,
     500: internalServerErrorResponse,
   },
 });

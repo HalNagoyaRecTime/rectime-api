@@ -9,6 +9,7 @@ function buildTeacher(overrides: Partial<TeacherDTO> = {}): TeacherDTO {
     teacher_id: 1,
     user_id: 10,
     display_name: '山田先生',
+    email: 'yamada@example.ac.jp',
     is_live_active: true,
     is_staff: false,
     class_rooms: [],
@@ -47,15 +48,57 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userName: '山田先生', classRoomIds: [] }),
+        body: JSON.stringify({
+          userName: '山田先生',
+          email: 'yamada@example.ac.jp',
+          classRoomIds: [],
+        }),
       });
 
       expect(res.status).toBe(201);
       expect(await res.json()).toEqual(teacher);
       expect(teacherService.createTeacher).toHaveBeenCalledWith({
         userName: '山田先生',
+        email: 'yamada@example.ac.jp',
         classRoomIds: [],
       });
+    });
+
+    it('メールアドレスが既に使われている場合は 409 を返す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.createTeacher as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Teacher email already exists'));
+
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userName: '山田先生',
+          email: 'dup@example.ac.jp',
+          classRoomIds: [],
+        }),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'TEACHER_EMAIL_ALREADY_EXISTS',
+          message: 'このメールアドレスは既に別の教員に登録されています',
+        },
+      });
+    });
+
+    it('emailを省略した場合は 400 を返す', async () => {
+      const { app, teacherService } = setup();
+      const res = await app.request('/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName: '山田先生', classRoomIds: [] }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(teacherService.createTeacher).not.toHaveBeenCalled();
     });
 
     it('userNameをtrimしてサービスに渡す', async () => {
@@ -67,12 +110,17 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userName: '  山田先生  ', classRoomIds: [] }),
+        body: JSON.stringify({
+          userName: '  山田先生  ',
+          email: 'yamada@example.ac.jp',
+          classRoomIds: [],
+        }),
       });
 
       expect(res.status).toBe(201);
       expect(teacherService.createTeacher).toHaveBeenCalledWith({
         userName: '山田先生',
+        email: 'yamada@example.ac.jp',
         classRoomIds: [],
       });
     });
@@ -84,6 +132,7 @@ describe('TeacherController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userName: '山田先生',
+          email: 'yamada@example.ac.jp',
           classRoomIds: [],
           isLiveActive: false,
         }),
@@ -100,7 +149,11 @@ describe('TeacherController', () => {
       const res = await app.request('/teachers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userName: '山田先生', classRoomIds: [999999] }),
+        body: JSON.stringify({
+          userName: '山田先生',
+          email: 'yamada@example.ac.jp',
+          classRoomIds: [999999],
+        }),
       });
 
       expect(res.status).toBe(400);
@@ -389,6 +442,7 @@ describe('TeacherController', () => {
   describe('updateTeacher', () => {
     const validBody = {
       userName: '更新済み先生',
+      email: 'koushin@example.ac.jp',
       classRoomIds: [1, 2],
     };
 
@@ -453,6 +507,67 @@ describe('TeacherController', () => {
       });
       expect(res.status).toBe(400);
       expect(teacherService.updateTeacher).not.toHaveBeenCalled();
+    });
+
+    it('emailを省略した場合は 400 を返す', async () => {
+      const { app, teacherService } = setup();
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userName: '更新済み先生',
+          classRoomIds: [1, 2],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(teacherService.updateTeacher).not.toHaveBeenCalled();
+    });
+
+    it('email形式でない場合は 400 を返す', async () => {
+      const { app, teacherService } = setup();
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...validBody, email: 'not-an-email' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(teacherService.updateTeacher).not.toHaveBeenCalled();
+    });
+
+    it('emailにnullを指定した場合は 400 を返す', async () => {
+      const { app, teacherService } = setup();
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...validBody, email: null }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(teacherService.updateTeacher).not.toHaveBeenCalled();
+    });
+
+    it('emailを小文字へ正規化して渡す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.updateTeacher as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(buildTeacher());
+
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...validBody,
+          email: ' Koushin@Example.AC.JP ',
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(teacherService.updateTeacher).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ email: 'koushin@example.ac.jp' })
+      );
     });
 
     it('不正なリクエストボディの場合は 400 を返す', async () => {
@@ -522,6 +637,27 @@ describe('TeacherController', () => {
         error: {
           code: 'CLASS_ROOM_NOT_FOUND',
           message: '指定されたクラスが見つかりません',
+        },
+      });
+    });
+
+    it('メールアドレスが既に使われている場合は 409 を返す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.updateTeacher as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Teacher email already exists'));
+
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validBody),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'TEACHER_EMAIL_ALREADY_EXISTS',
+          message: 'このメールアドレスは既に別の教員に登録されています',
         },
       });
     });

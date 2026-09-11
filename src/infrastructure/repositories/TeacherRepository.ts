@@ -38,6 +38,11 @@ type ReturnedUserRow = {
   is_live_active: number;
 };
 
+type ReturnedBulkUserRow = {
+  user_id: number;
+  user_name: string;
+};
+
 type ReturnedTeacherRow = {
   teacher_id: number;
   user_id: number;
@@ -99,6 +104,7 @@ function toEntity(
     teacherId: row.teachers.id,
     userId: row.users.id,
     userName: row.users.userName,
+    email: row.teachers.email,
     isLiveActive: Boolean(row.users.isLiveActive),
     isStaff: Boolean(row.staffs),
     classRooms,
@@ -246,6 +252,26 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       return { items, total, limit, offset };
     },
 
+    async findExistingEmails(emails: string[]): Promise<Set<string>> {
+      const unique = Array.from(new Set(emails));
+      const found = new Set<string>();
+
+      for (const chunk of chunkArray(unique, D1_MAX_BOUND_PARAMETERS)) {
+        const placeholders = chunk.map(() => '?').join(', ');
+        const result = await db
+          .prepare(
+            `SELECT email FROM teachers WHERE email IN (${placeholders})`
+          )
+          .bind(...chunk)
+          .all<{ email: string }>();
+        for (const row of result.results) {
+          found.add(row.email);
+        }
+      }
+
+      return found;
+    },
+
     async existsClassRooms(classRoomIds: number[]): Promise<boolean> {
       if (classRoomIds.length === 0) return true;
       const rows = await orm
@@ -261,6 +287,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
     ): Promise<TeacherEntity> {
       const displayName =
         'userName' in input ? input.userName : input.displayName;
+      const email = input.email;
       const classRoomIds = 'userName' in input ? input.classRoomIds : [];
       const hasClassRoomAssignments = classRoomIds.length > 0;
 
@@ -290,12 +317,12 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
               .bind(displayName, ...classRoomIds, classRoomIds.length),
             db
               .prepare(
-                `INSERT INTO teachers (user_id, updated_at)
-                 SELECT last_insert_rowid(), CURRENT_TIMESTAMP
+                `INSERT INTO teachers (user_id, email, updated_at)
+                 SELECT last_insert_rowid(), ?, CURRENT_TIMESTAMP
                  WHERE ${classRoomsExistCondition}
                  RETURNING teacher_id, user_id`
               )
-              .bind(...classRoomIds, classRoomIds.length),
+              .bind(email, ...classRoomIds, classRoomIds.length),
             db
               .prepare(
                 `UPDATE class_rooms
@@ -315,11 +342,13 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
                  RETURNING user_id, user_name, is_live_active`
               )
               .bind(displayName),
-            db.prepare(
-              `INSERT INTO teachers (user_id, updated_at)
-               VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
-               RETURNING teacher_id, user_id`
-            ),
+            db
+              .prepare(
+                `INSERT INTO teachers (user_id, email, updated_at)
+                 VALUES (last_insert_rowid(), ?, CURRENT_TIMESTAMP)
+                 RETURNING teacher_id, user_id`
+              )
+              .bind(email),
           ]);
 
       const [userResult, teacherResult] = batchResults;
@@ -373,32 +402,40 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         userStatements.push(
           db
             .prepare(
-              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id`
+              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id, user_name`
             )
             .bind(...values)
         );
       }
 
-      const userResults = await db.batch<{ user_id: number }>(userStatements);
-      const userIds: number[] = [];
+      const userResults = await db.batch<ReturnedBulkUserRow>(userStatements);
+      const returnedUsers: ReturnedBulkUserRow[] = [];
       for (const result of userResults) {
         for (const row of result.results) {
-          userIds.push(row.user_id);
+          returnedUsers.push(row);
         }
       }
+      const userIds = returnedUsers.map(row => row.user_id);
 
       try {
+        const teacherRows = pairTeachersWithCreatedUsers(inputs, returnedUsers);
         const teacherStatements: D1PreparedStatement[] = [];
-        for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
+        // 1行あたり user_id と email の2つをbindするため、行数の上限は
+        // D1のbind上限の半分になる。
+        for (const chunk of chunkArray(
+          teacherRows,
+          Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
+        )) {
           const placeholders = chunk
-            .map(() => '(?, CURRENT_TIMESTAMP)')
+            .map(() => '(?, ?, CURRENT_TIMESTAMP)')
             .join(', ');
+          const values = chunk.flatMap(row => [row.userId, row.email]);
           teacherStatements.push(
             db
               .prepare(
-                `INSERT INTO teachers (user_id, updated_at) VALUES ${placeholders}`
+                `INSERT INTO teachers (user_id, email, updated_at) VALUES ${placeholders}`
               )
-              .bind(...chunk)
+              .bind(...values)
           );
         }
         await db.batch(teacherStatements);
@@ -438,6 +475,11 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         })
         .where(eq(users.id, existing.users.id));
 
+      const updateTeacherStatement = orm
+        .update(teachers)
+        .set({ email: input.email, updatedAt: now })
+        .where(eq(teachers.id, id));
+
       // 1クラスの担当教員は最大1人のため、担当クラスの入れ替えは
       // class_rooms.teacher_id の付け替えで表現する。
       // まずこの教員が現在担当している全クラスを teacher_id = NULL に戻し、
@@ -470,17 +512,26 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           .where(inArray(class_rooms.id, input.classRoomIds));
         await orm.batch([
           updateUserStatement,
+          updateTeacherStatement,
           clearAssignmentsStatement,
           setAssignmentsStatement,
         ]);
       } else {
-        await orm.batch([updateUserStatement, clearAssignmentsStatement]);
+        await orm.batch([
+          updateUserStatement,
+          updateTeacherStatement,
+          clearAssignmentsStatement,
+        ]);
       }
 
       const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [id]);
       return toEntity(
         {
-          teachers: existing.teachers,
+          teachers: {
+            ...existing.teachers,
+            email: input.email,
+            updatedAt: now,
+          },
           users: {
             ...existing.users,
             userName: input.userName,
@@ -512,6 +563,37 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       return true;
     },
   };
+}
+
+function pairTeachersWithCreatedUsers(
+  inputs: NewTeacherInput[],
+  returnedUsers: ReturnedBulkUserRow[]
+) {
+  if (returnedUsers.length !== inputs.length) {
+    throw new Error(
+      `Created user count does not match teacher input count: expected ${inputs.length}, received ${returnedUsers.length}`
+    );
+  }
+
+  // SQLiteは複数行をRETURNINGした際の行順を保証しない。
+  // https://sqlite.org/lang_returning.html
+  // 一方でuser_idはAUTOINCREMENTでVALUESの並び順に採番され、batch内の各文も
+  // 順に実行されるため、返ってきた行をuser_idの昇順に並べ直すと入力の並びに戻る。
+  // emailはログイン時の本人確認に使うキーで、取り違えると別人として紐付くため、
+  // 表示名がその並びと一致することも検証してから対応付ける。
+  // (同姓同名が同じ取り込みに複数いる場合、この検証では並びの入れ替わりを
+  //  検出できない。対応付けの正しさ自体はuser_idの採番順が担保する。)
+  const sorted = [...returnedUsers].sort((a, b) => a.user_id - b.user_id);
+
+  return inputs.map((input, index) => {
+    const user = sorted[index];
+    if (user.user_name !== input.displayName) {
+      throw new Error(
+        `Created user order does not match teacher input order at index ${index}`
+      );
+    }
+    return { userId: user.user_id, email: input.email };
+  });
 }
 
 async function deleteUsersByIds(db: D1Database, userIds: number[]) {
