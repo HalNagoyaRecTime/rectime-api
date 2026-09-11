@@ -171,6 +171,9 @@ export const digitsOnlyInteger = (
   defaultValue: number
 ) => digitsOnlyNumber(minimum, maximum).default(defaultValue);
 
+/** digits-only整数クエリ。既存の共通名と互換性のある別名。 */
+export const digitsOnlyIntegerQuery = (minimum: number, maximum?: number) =>
+  digitsOnlyNumber(minimum, maximum);
 /** 件数指定のクエリ。上限と既定値はエンドポイントごとに異なる。 */
 export const paginationQuery = (limitMax: number, limitDefault: number) =>
   z.object({

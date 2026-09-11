@@ -1,7 +1,10 @@
 import {
   TeacherDTO,
   TeacherImportCommitResult,
+  TeacherImportErrorReason,
   TeacherImportInput,
+  TeacherImportRow,
+  TeacherImportRowError,
   TeacherImportValidationResult,
   TeacherPageDTO,
 } from '../dto/TeacherDTO';
@@ -33,10 +36,76 @@ function toDTO(teacher: TeacherEntity): TeacherDTO {
     teacher_id: teacher.teacherId,
     user_id: teacher.userId,
     display_name: teacher.userName,
+    email: teacher.email,
     is_live_active: teacher.isLiveActive,
     is_staff: teacher.isStaff,
     class_rooms: teacher.classRooms.map(toClassRoomDTO),
   };
+}
+
+// メールアドレスは大文字・小文字を区別しないため、保存前に小文字へ正規化する。
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function rethrowDuplicateEmail(error: unknown): never {
+  if (
+    error instanceof Error &&
+    error.message.includes('UNIQUE') &&
+    error.message.includes('teachers.email')
+  ) {
+    throw new Error('Teacher email already exists');
+  }
+  throw error;
+}
+
+async function findImportErrors(
+  rows: TeacherImportRow[],
+  teacherRepository: ITeacherRepository
+): Promise<TeacherImportRowError[]> {
+  const seenInFile = new Set<string>();
+  const fileDuplicateRowIndexes = new Set<number>();
+  const errors: TeacherImportRowError[] = [];
+  const emailsToCheck: string[] = [];
+
+  const pushError = (
+    rowIndex: number,
+    row: TeacherImportRow,
+    reason: TeacherImportErrorReason
+  ) => {
+    errors.push({
+      row_index: rowIndex + 1,
+      last_name: row.last_name,
+      first_name: row.first_name,
+      email: row.email,
+      reason,
+    });
+  };
+
+  for (const [rowIndex, row] of rows.entries()) {
+    if (seenInFile.has(row.email)) {
+      fileDuplicateRowIndexes.add(rowIndex);
+      pushError(rowIndex, row, 'email_duplicate_in_file');
+      continue;
+    }
+    seenInFile.add(row.email);
+    emailsToCheck.push(row.email);
+  }
+
+  const existingEmails =
+    await teacherRepository.findExistingEmails(emailsToCheck);
+
+  for (const [rowIndex, row] of rows.entries()) {
+    if (fileDuplicateRowIndexes.has(rowIndex)) {
+      continue;
+    }
+    if (existingEmails.has(row.email)) {
+      pushError(rowIndex, row, 'email_duplicate_in_db');
+    }
+  }
+
+  errors.sort((a, b) => a.row_index - b.row_index);
+  return errors;
 }
 
 export function createTeacherService(
@@ -55,7 +124,16 @@ export function createTeacherService(
   return {
     async createTeacher(input: TeacherCreateRequest): Promise<TeacherDTO> {
       await ensureClassRoomsExist(input.classRoomIds);
-      return toDTO(await teacherRepository.create(input));
+      try {
+        return toDTO(
+          await teacherRepository.create({
+            ...input,
+            email: normalizeEmail(input.email),
+          })
+        );
+      } catch (error) {
+        rethrowDuplicateEmail(error);
+      }
     },
     async getTeacherById(id: number): Promise<TeacherDTO> {
       const teacher = await teacherRepository.findById(id);
@@ -89,7 +167,15 @@ export function createTeacherService(
         throw new Error('Teacher not found');
       }
       await ensureClassRoomsExist(input.classRoomIds);
-      const updated = await teacherRepository.update(id, input);
+      let updated;
+      try {
+        updated = await teacherRepository.update(id, {
+          ...input,
+          email: normalizeEmail(input.email),
+        });
+      } catch (error) {
+        rethrowDuplicateEmail(error);
+      }
       if (!updated) {
         throw new Error('Teacher not found');
       }
@@ -98,19 +184,31 @@ export function createTeacherService(
     async validateTeacherImport(
       input: TeacherImportInput
     ): Promise<TeacherImportValidationResult> {
+      const errors = await findImportErrors(input.rows, teacherRepository);
       return {
         total: input.rows.length,
-        success_count: input.rows.length,
-        error_count: 0,
-        errors: [],
+        success_count: input.rows.length - errors.length,
+        error_count: errors.length,
+        errors,
       };
     },
     async commitTeacherImport(
       input: TeacherImportInput
     ): Promise<TeacherImportCommitResult> {
+      const errors = await findImportErrors(input.rows, teacherRepository);
+      if (errors.length > 0) {
+        return {
+          total: input.rows.length,
+          imported: 0,
+          error_count: errors.length,
+          errors,
+        };
+      }
+
       await teacherRepository.createMany(
         input.rows.map(row => ({
           displayName: `${row.last_name}${row.first_name}`,
+          email: normalizeEmail(row.email),
         }))
       );
       return {

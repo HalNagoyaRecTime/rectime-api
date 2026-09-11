@@ -229,9 +229,9 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       "INSERT INTO users (user_name) VALUES ('統合削除教員') RETURNING user_id"
     ).first<{ user_id: number }>();
     const teacher = await workerEnv.DB.prepare(
-      'INSERT INTO teachers (user_id) VALUES (?) RETURNING teacher_id'
+      'INSERT INTO teachers (user_id, email) VALUES (?, ?) RETURNING teacher_id'
     )
-      .bind(user!.user_id)
+      .bind(user!.user_id, `teacher-${user!.user_id}@example.test`)
       .first<{ teacher_id: number }>();
     const classRoom = await workerEnv.DB.prepare(
       "INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ('DEL-INT-2', '削除統合テストクラス2', ?) RETURNING class_room_id"
@@ -401,9 +401,9 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(user!.user_id)
       .run();
     const teacher = await workerEnv.DB.prepare(
-      'INSERT INTO teachers (user_id) VALUES (?) RETURNING teacher_id'
+      'INSERT INTO teachers (user_id, email) VALUES (?, ?) RETURNING teacher_id'
     )
-      .bind(user!.user_id)
+      .bind(user!.user_id, `teacher-${user!.user_id}@example.test`)
       .first<{ teacher_id: number }>();
     await workerEnv.DB.prepare(
       'UPDATE class_rooms SET teacher_id = ? WHERE class_room_id = ?'

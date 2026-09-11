@@ -154,6 +154,13 @@ export const classRoomUpdateRoute = createRoute({
   path: '/classrooms/{classId}',
   tags: ['Classrooms'],
   summary: '教室を更新する',
+  description: [
+    '`teacherId` に `null` を指定すると担任を外す。',
+    'ただし現在の担任が無効化された教員の場合は、取得APIが担任を返しておらず',
+    '`null` が「外す指定」なのか「担任なしをそのまま送り返しただけ」なのかを',
+    '区別できないため、割り当てを据え置く。',
+    '無効化された教員を担任から外すには、先にその教員を有効化する。',
+  ].join('\n'),
   security: bearerAuth,
   request: {
     params: classIdParams,

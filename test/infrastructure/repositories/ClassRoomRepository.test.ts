@@ -33,7 +33,7 @@ describe('ClassRoomRepository', () => {
       .returning();
     const [teacher] = await orm
       .insert(teachers)
-      .values({ userId: teacherUser.id })
+      .values({ userId: teacherUser.id, email: 'tannin@example.ac.jp' })
       .returning();
     const classrooms = await orm
       .insert(class_rooms)
@@ -371,6 +371,89 @@ describe('ClassRoomRepository', () => {
       await expect(repo.findByCode('BULK2K-1999')).resolves.toMatchObject({
         className: '一括クラス1999',
       });
+    });
+  });
+
+  describe('担任の稼働状態', () => {
+    it('無効化された教員は担任として返さないが、割り当ては残り再有効化で戻る', async () => {
+      const target = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
+        c => c.classCode === '12B'
+      );
+
+      await env.DB.prepare(
+        "UPDATE users SET is_live_active = 0 WHERE user_name = '担任教員'"
+      ).run();
+
+      await expect(repo.findById(target!.classRoomId)).resolves.toMatchObject({
+        teacher: null,
+      });
+
+      // 表示から外れるだけで、担任の割り当て自体は残っている
+      const row = await env.DB.prepare(
+        'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+      )
+        .bind(target!.classRoomId)
+        .first<{ teacher_id: number | null }>();
+      expect(row?.teacher_id).not.toBeNull();
+
+      await env.DB.prepare(
+        "UPDATE users SET is_live_active = 1 WHERE user_name = '担任教員'"
+      ).run();
+
+      await expect(repo.findById(target!.classRoomId)).resolves.toMatchObject({
+        teacher: { displayName: '担任教員' },
+      });
+    });
+
+    it('停止中の担任がいるクラスをクラス名だけ変更しても、再有効化で担任に戻る', async () => {
+      const target = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
+        c => c.classCode === '12B'
+      );
+
+      await env.DB.prepare(
+        "UPDATE users SET is_live_active = 0 WHERE user_name = '担任教員'"
+      ).run();
+
+      // 管理画面は担任なしとして受け取った教室をそのまま送り返すため、
+      // クラス名だけを変えた保存でも teacherId は null で届く
+      const updated = await repo.update(target!.classRoomId, {
+        classCode: '12B',
+        className: '2年Bクラス（改称）',
+        teacherId: null,
+      });
+      expect(updated).toMatchObject({
+        className: '2年Bクラス（改称）',
+        teacher: null,
+      });
+
+      await env.DB.prepare(
+        "UPDATE users SET is_live_active = 1 WHERE user_name = '担任教員'"
+      ).run();
+
+      await expect(repo.findById(target!.classRoomId)).resolves.toMatchObject({
+        className: '2年Bクラス（改称）',
+        teacher: { displayName: '担任教員' },
+      });
+    });
+
+    it('稼働中の担任はteacherId: nullで外せる', async () => {
+      const target = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
+        c => c.classCode === '12B'
+      );
+
+      const updated = await repo.update(target!.classRoomId, {
+        classCode: '12B',
+        className: '2年Bクラス',
+        teacherId: null,
+      });
+
+      expect(updated).toMatchObject({ teacher: null });
+      const row = await env.DB.prepare(
+        'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+      )
+        .bind(target!.classRoomId)
+        .first<{ teacher_id: number | null }>();
+      expect(row?.teacher_id).toBeNull();
     });
   });
 });

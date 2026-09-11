@@ -53,6 +53,8 @@ function buildDeps() {
     findById: vi.fn(),
     findAll: vi.fn(),
     existsById: vi.fn(),
+    findExistingEmails: vi.fn(),
+    existsClassRooms: vi.fn(),
     create: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),

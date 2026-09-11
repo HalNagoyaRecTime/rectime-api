@@ -103,19 +103,25 @@ export const staffs = sqliteTable('staffs', {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const teachers = sqliteTable('teachers', {
-  id: integer('teacher_id').primaryKey({ autoIncrement: true }),
-  userId: integer('user_id')
-    .notNull()
-    .references(() => users.id)
-    .unique(),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const teachers = sqliteTable(
+  'teachers',
+  {
+    id: integer('teacher_id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id)
+      .unique(),
+    // Microsoftアカウントとの突合キー。
+    email: text('email').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [uniqueIndex('uq_teachers_email').on(table.email)]
+);
 
 export const events = sqliteTable('events', {
   id: integer('event_id').primaryKey({ autoIncrement: true }),
