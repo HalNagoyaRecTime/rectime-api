@@ -1,11 +1,12 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringGroupMemberEntity } from '../../domain/entities/GatheringGroupMember';
+import { GatheringMemberSummary } from '../../domain/entities/GatheringMemberSummary';
 import { IGatheringGroupMemberRepository } from '../../domain/interfaces/repositories/IGatheringGroupMemberRepository';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import * as schema from '../database/schema';
-import { gathering_group_members, gatherings } from '../database/schema';
+import { gathering_group_members, gatherings, users } from '../database/schema';
 
 function toEntity(
   row: typeof gathering_group_members.$inferSelect
@@ -48,6 +49,65 @@ export function createGatheringGroupMemberRepository(
         .orderBy(asc(gathering_group_members.id))
         .all();
       return rows.map(toEntity);
+    },
+
+    async findMemberSummariesByGatheringId(
+      gatheringId: number
+    ): Promise<GatheringMemberSummary[]> {
+      const rows = await orm
+        .select({
+          user_id: gathering_group_members.userId,
+          display_name: users.userName,
+        })
+        .from(gathering_group_members)
+        .innerJoin(users, eq(gathering_group_members.userId, users.id))
+        .where(eq(gathering_group_members.gatheringId, gatheringId))
+        .orderBy(asc(gathering_group_members.id))
+        .all();
+      return rows;
+    },
+
+    async findMissingUserIds(userIds: number[]): Promise<number[]> {
+      if (userIds.length === 0) return [];
+      const existing = await orm
+        .select({ id: users.id })
+        .from(users)
+        .where(inArray(users.id, userIds))
+        .all();
+      const existingIds = new Set(existing.map(row => row.id));
+      return userIds.filter(id => !existingIds.has(id));
+    },
+
+    async replaceMembers(
+      gatheringId: number,
+      userIds: number[]
+    ): Promise<GatheringMemberSummary[]> {
+      const deleteStatement = orm
+        .delete(gathering_group_members)
+        .where(eq(gathering_group_members.gatheringId, gatheringId));
+
+      if (userIds.length > 0) {
+        const insertStatement = orm
+          .insert(gathering_group_members)
+          .values(userIds.map(userId => ({ gatheringId, userId })));
+        // D1のbatch()は複数文を1つのトランザクションとして原子的に実行するため、
+        // 全削除→全挿入の間に途中状態が外部から見えることはない。
+        await orm.batch([deleteStatement, insertStatement]);
+      } else {
+        await deleteStatement.run();
+      }
+
+      const rows = await orm
+        .select({
+          user_id: gathering_group_members.userId,
+          display_name: users.userName,
+        })
+        .from(gathering_group_members)
+        .innerJoin(users, eq(gathering_group_members.userId, users.id))
+        .where(eq(gathering_group_members.gatheringId, gatheringId))
+        .orderBy(asc(gathering_group_members.id))
+        .all();
+      return rows;
     },
 
     async create(

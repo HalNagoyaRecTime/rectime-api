@@ -69,6 +69,28 @@ export type GatheringMemberListResponseDTO = z.infer<
   typeof gatheringMemberListResponseSchema
 >;
 
+export const gatheringMemberSummarySchema = z
+  .object({
+    user_id: z.number().int(),
+    display_name: z.string(),
+  })
+  .openapi('GatheringMemberSummary');
+
+export type GatheringMemberSummaryDTO = z.infer<
+  typeof gatheringMemberSummarySchema
+>;
+
+export const gatheringMemberSetResponseSchema = z
+  .object({
+    gathering_id: z.number().int(),
+    members: z.array(gatheringMemberSummarySchema),
+  })
+  .openapi('GatheringMemberSet');
+
+export type GatheringMemberSetResponseDTO = z.infer<
+  typeof gatheringMemberSetResponseSchema
+>;
+
 export const gatheringResponseSchema = z
   .object({
     gathering_id: z.number().int(),
@@ -118,6 +140,16 @@ export const addGatheringMemberSchema = z
     userId: z.number().int().positive(),
   })
   .openapi('AddGatheringMemberRequest');
+
+export const replaceGatheringMembersSchema = z
+  .object({
+    user_ids: z
+      .array(z.number().int().positive())
+      .refine(ids => new Set(ids).size === ids.length, {
+        message: 'user_idsに重複があります',
+      }),
+  })
+  .openapi('ReplaceGatheringMembersRequest');
 
 export const createGatheringSchema = z
   .object({
@@ -202,9 +234,34 @@ export const gatheringMemberListRoute = createRoute({
   security: bearerAuth,
   request: { params: gatheringIdParams },
   responses: {
-    200: jsonResponse(gatheringMemberListResponseSchema, '参加者一覧'),
+    200: jsonResponse(gatheringMemberSetResponseSchema, '参加者一覧'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    404: notFoundResponse,
+    500: internalServerErrorResponse,
+  },
+});
+
+export const gatheringMemberReplaceRoute = createRoute({
+  method: 'put',
+  path: '/gatherings/{gatheringId}/members',
+  tags: ['Gathering members'],
+  summary: '集合予定の参加者集合を一括で置き換える',
+  security: bearerAuth,
+  request: {
+    params: gatheringIdParams,
+    body: {
+      content: {
+        'application/json': { schema: replaceGatheringMembersSchema },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: jsonResponse(gatheringMemberSetResponseSchema, '更新後の参加者一覧'),
+    400: badRequestResponse,
+    401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     500: internalServerErrorResponse,
   },

@@ -1,6 +1,9 @@
 import { GatheringGroupMemberEntity } from '../../domain/entities/GatheringGroupMember';
 import { IGatheringGroupMemberRepository } from '../../domain/interfaces/repositories/IGatheringGroupMemberRepository';
-import { IGatheringGroupMemberService } from './IGatheringGroupMemberService';
+import {
+  GatheringMemberSet,
+  IGatheringGroupMemberService,
+} from './IGatheringGroupMemberService';
 
 export function createGatheringGroupMemberService(
   gatheringGroupMemberRepository: IGatheringGroupMemberRepository
@@ -20,9 +23,13 @@ export function createGatheringGroupMemberService(
   return {
     async getGatheringMembers(
       gatheringId: number
-    ): Promise<GatheringGroupMemberEntity[]> {
+    ): Promise<GatheringMemberSet> {
       await ensureGatheringExists(gatheringId);
-      return gatheringGroupMemberRepository.findByGatheringId(gatheringId);
+      const members =
+        await gatheringGroupMemberRepository.findMemberSummariesByGatheringId(
+          gatheringId
+        );
+      return { gathering_id: gatheringId, members };
     },
 
     async addGatheringMember(
@@ -56,6 +63,27 @@ export function createGatheringGroupMemberService(
       );
       if (!removed) throw new Error('Gathering member not found');
       return true;
+    },
+
+    async replaceGatheringMembers(
+      gatheringId: number,
+      userIds: number[]
+    ): Promise<GatheringMemberSet> {
+      await ensureGatheringExists(gatheringId);
+
+      if (userIds.length > 0) {
+        const missingUserIds =
+          await gatheringGroupMemberRepository.findMissingUserIds(userIds);
+        if (missingUserIds.length > 0) {
+          throw new Error('User not found');
+        }
+      }
+
+      const members = await gatheringGroupMemberRepository.replaceMembers(
+        gatheringId,
+        userIds
+      );
+      return { gathering_id: gatheringId, members };
     },
   };
 }
