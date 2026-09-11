@@ -3,6 +3,7 @@ import {
   badRequestResponse,
   bearerAuth,
   conflictResponse,
+  digitsOnlyIntegerQuery,
   forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
@@ -49,19 +50,6 @@ export type TeacherPageResponseDTO = z.infer<typeof teacherPageResponseSchema>;
 export const teacherIdParams = z.object({
   teacherId: positivePathParam('teacherId', '教員ID'),
 });
-// Query はHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
-// OpenAPIとControllerが同じschemaをsafeParseすることで、受理範囲を一致させる。
-const digitsOnlyQuery = (minimum: number) =>
-  z.preprocess(
-    value =>
-      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
-    z.number().int().min(minimum)
-  );
-
-const limitedDigitsOnlyQuery = (minimum: number, maximum: number) =>
-  digitsOnlyQuery(minimum).refine(value => value <= maximum, {
-    message: `値は${minimum}から${maximum}の範囲で指定してください`,
-  });
 
 const classRoomIdsSchema = z
   .array(z.number().int().positive())
@@ -76,7 +64,7 @@ const classRoomIdsSchema = z
 export const teacherListQuery = z
   .object({
     search: z.string().trim().min(1).optional(),
-    classRoomId: digitsOnlyQuery(1).optional(),
+    classRoomId: digitsOnlyIntegerQuery(1).optional(),
     isStaff: z.enum(['true', 'false', 'all']).default('all'),
     isLiveActive: z.enum(['true', 'false', 'all']).default('true'),
     sortBy: z
@@ -90,8 +78,8 @@ export const teacherListQuery = z
       ])
       .default('teacherId'),
     sortOrder: z.enum(['asc', 'desc']).default('asc'),
-    offset: digitsOnlyQuery(0).default(0),
-    limit: limitedDigitsOnlyQuery(1, 100).default(50),
+    offset: digitsOnlyIntegerQuery(0).default(0),
+    limit: digitsOnlyIntegerQuery(1, 100).default(50),
   })
   .strict();
 
@@ -131,6 +119,7 @@ export const teacherCreateRoute = createRoute({
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
+    404: notFoundResponse,
     409: conflictResponse,
     500: internalServerErrorResponse,
   },

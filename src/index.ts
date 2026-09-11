@@ -301,19 +301,19 @@ apiV1.openapi(staffOnly(eventNotificationSummaryRoute), c => {
 
 // Classroom routes
 apiV1.openapi(staffOnly(classRoomListRoute), c => {
-  return c.get('container').classRoomController.getAllClassrooms(c);
+  return c.get('container').classRoomController.getAllClassRooms(c);
 });
 apiV1.openapi(staffOnly(classRoomDetailRoute), c => {
-  return c.get('container').classRoomController.getClassroomById(c);
+  return c.get('container').classRoomController.getClassRoomById(c);
 });
 apiV1.openapi(staffOnly(classRoomCreateRoute), c => {
-  return c.get('container').classRoomController.createClassroom(c);
+  return c.get('container').classRoomController.createClassRoom(c);
 });
 apiV1.openapi(staffOnly(classRoomUpdateRoute), c => {
-  return c.get('container').classRoomController.updateClassroom(c);
+  return c.get('container').classRoomController.updateClassRoom(c);
 });
 apiV1.openapi(staffOnly(classRoomDeleteRoute), c => {
-  return c.get('container').classRoomController.deleteClassroom(c);
+  return c.get('container').classRoomController.deleteClassRoom(c);
 });
 
 // Master import routes

@@ -140,7 +140,7 @@ describe('TeacherController', () => {
       expect(res.status).toBe(400);
     });
 
-    it('サービスがクラス未存在エラーを返した場合は400を返す', async () => {
+    it('サービスがクラス未存在エラーを返した場合は404を返す', async () => {
       const { app, teacherService } = setup();
       (
         teacherService.createTeacher as ReturnType<typeof vi.fn>
@@ -156,7 +156,7 @@ describe('TeacherController', () => {
         }),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(404);
       expect(await res.json()).toEqual({
         error: {
           code: 'CLASS_ROOM_NOT_FOUND',
@@ -165,6 +165,7 @@ describe('TeacherController', () => {
       });
     });
   });
+
   describe('getTeacherById', () => {
     it('存在する教員を 200 で返す', async () => {
       const { app, teacherService } = setup();
@@ -182,7 +183,6 @@ describe('TeacherController', () => {
 
     it('数値でない ID の場合は 400 を返す', async () => {
       const { app } = setup();
-
       const res = await app.request('/teachers/abc');
 
       expect(res.status).toBe(400);
@@ -198,7 +198,6 @@ describe('TeacherController', () => {
       '正のdigits-onlyでない teacherId(%s) は400を返す',
       async path => {
         const { app, teacherService } = setup();
-
         const res = await app.request(path);
 
         expect(res.status).toBe(400);
@@ -208,7 +207,6 @@ describe('TeacherController', () => {
 
     it("旧'id' path paramだけでは受理しない", async () => {
       const { app, teacherService } = setup();
-
       const res = await app.request('/teachers-by-id/1');
 
       expect(res.status).toBe(400);
@@ -466,7 +464,6 @@ describe('TeacherController', () => {
 
     it('数値でない ID の場合は 400 を返す', async () => {
       const { app } = setup();
-
       const res = await app.request('/teachers/abc', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -486,7 +483,6 @@ describe('TeacherController', () => {
       '正のdigits-onlyでない teacherId(%s) は400を返す',
       async path => {
         const { app, teacherService } = setup();
-
         const res = await app.request(path, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -572,7 +568,6 @@ describe('TeacherController', () => {
 
     it('不正なリクエストボディの場合は 400 を返す', async () => {
       const { app } = setup();
-
       const res = await app.request('/teachers/1', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -586,12 +581,11 @@ describe('TeacherController', () => {
 
     it('classRoomIds に重複がある場合は 400 を返す', async () => {
       const { app, teacherService } = setup();
-
       const res = await app.request('/teachers/1', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userName: '更新済み先生',
+          ...validBody,
           classRoomIds: [1, 1, 2],
         }),
       });
@@ -620,7 +614,7 @@ describe('TeacherController', () => {
       });
     });
 
-    it('サービスが Class room not found を投げた場合は 400 を返す', async () => {
+    it('サービスが Class room not found を投げた場合は 404 を返す', async () => {
       const { app, teacherService } = setup();
       (
         teacherService.updateTeacher as ReturnType<typeof vi.fn>
@@ -632,7 +626,7 @@ describe('TeacherController', () => {
         body: JSON.stringify(validBody),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(404);
       expect(await res.json()).toEqual({
         error: {
           code: 'CLASS_ROOM_NOT_FOUND',

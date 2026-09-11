@@ -3,13 +3,13 @@ import {
   badRequestResponse,
   bearerAuth,
   conflictResponse,
+  digitsOnlyIntegerQuery,
   forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
   noContentResponse,
   notFoundResponse,
   paginationFields,
-  paginationQuery,
   positivePathParam,
   unauthorizedResponse,
   z,
@@ -37,7 +37,7 @@ export type ClassRoomResponseDTO = z.infer<typeof classRoomResponseSchema>;
 
 export const classRoomPageResponseSchema = z
   .object({
-    classrooms: z.array(classRoomResponseSchema),
+    items: z.array(classRoomResponseSchema),
     ...paginationFields,
   })
   .openapi('ClassRoomPage');
@@ -50,7 +50,43 @@ export const classIdParams = z.object({
   classId: positivePathParam('classId', '教室ID'),
 });
 
-export const classRoomListQuery = paginationQuery(100, 20);
+export const classRoomListQuery = z
+  .object({
+    search: z.string().trim().min(1).optional(),
+    sortBy: z
+      .enum([
+        'classRoomId',
+        'classCode',
+        'className',
+        'teacherName',
+        'studentCount',
+      ])
+      .default('classRoomId')
+      .openapi({
+        param: { name: 'sortBy', in: 'query' },
+        example: 'classRoomId',
+      }),
+    sortOrder: z
+      .enum(['asc', 'desc'])
+      .default('asc')
+      .openapi({
+        param: { name: 'sortOrder', in: 'query' },
+        example: 'asc',
+      }),
+    limit: digitsOnlyIntegerQuery(1, 100)
+      .default(50)
+      .openapi({
+        param: { name: 'limit', in: 'query' },
+        example: 50,
+      }),
+    offset: digitsOnlyIntegerQuery(0)
+      .default(0)
+      .openapi({
+        param: { name: 'offset', in: 'query' },
+        example: 0,
+      }),
+  })
+  .strict();
 
 export const classRoomWriteSchema = z
   .object({
@@ -58,6 +94,7 @@ export const classRoomWriteSchema = z
     className: z.string().trim().min(1),
     teacherId: z.number().int().positive().nullable(),
   })
+  .strict()
   .openapi('ClassRoomWriteRequest');
 
 export const classRoomListRoute = createRoute({
@@ -122,7 +159,7 @@ export const classRoomUpdateRoute = createRoute({
   tags: ['Classrooms'],
   summary: '教室を更新する',
   description: [
-    '`teacher_id` に `null` を指定すると担任を外す。',
+    '`teacherId` に `null` を指定すると担任を外す。',
     'ただし現在の担任が無効化された教員の場合は、取得APIが担任を返しておらず',
     '`null` が「外す指定」なのか「担任なしをそのまま送り返しただけ」なのかを',
     '区別できないため、割り当てを据え置く。',

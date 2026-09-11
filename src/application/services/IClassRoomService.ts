@@ -6,19 +6,19 @@ import {
   ClassRoomPageDTO,
   ClassRoomRequestDTO,
 } from '../dto/ClassRoomDTO';
+import type { ClassRoomSearchFilter } from '../../domain/entities/ClassRoom';
 
 export interface IClassRoomService {
-  getAllClassrooms: (
-    limit: number,
-    offset: number
+  getAllClassRooms: (
+    filter?: ClassRoomSearchFilter
   ) => Promise<ClassRoomPageDTO>;
-  getClassroomById: (id: number) => Promise<ClassRoomDTO>;
-  createClassroom: (input: ClassRoomRequestDTO) => Promise<ClassRoomDTO>;
-  updateClassroom: (
+  getClassRoomById: (id: number) => Promise<ClassRoomDTO>;
+  createClassRoom: (input: ClassRoomRequestDTO) => Promise<ClassRoomDTO>;
+  updateClassRoom: (
     id: number,
     input: ClassRoomRequestDTO
   ) => Promise<ClassRoomDTO>;
-  deleteClassroom: (id: number) => Promise<void>;
+  deleteClassRoom: (id: number) => Promise<void>;
   validateClassRoomImport: (
     input: ClassRoomImportInput
   ) => Promise<ClassRoomImportValidationResult>;

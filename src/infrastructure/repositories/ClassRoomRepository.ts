@@ -1,59 +1,61 @@
-import type {
-  D1Database,
-  D1PreparedStatement,
-} from '@cloudflare/workers-types';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/d1';
+import type { D1Database } from '@cloudflare/workers-types';
+import * as schema from '../database/schema';
+import { class_rooms, students, teachers, users } from '../database/schema';
 import type {
   ClassRoomEntity,
   ClassRoomInput,
   ClassRoomPage,
+  ClassRoomSearchFilter,
 } from '../../domain/entities/ClassRoom';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import { chunkArray } from './chunk';
 
+const DEFAULT_LIMIT = 50;
 const D1_MAX_BOUND_PARAMETERS = 100;
 
-type ClassRoomRow = {
-  class_room_id: number;
-  class_code: string;
-  class_name: string;
-  student_count: number;
-  teacher_id: number | null;
-  teacher_user_id: number | null;
-  teacher_display_name: string | null;
-};
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, char => `\\${char}`);
+}
 
-const classRoomSelect = `
-  SELECT
-    c.class_room_id,
-    c.class_code,
-    c.class_name,
-    COUNT(s.student_id) AS student_count,
-    t.teacher_id,
-    u.user_id AS teacher_user_id,
-    u.user_name AS teacher_display_name
-  FROM class_rooms c
-  LEFT JOIN students s ON s.class_room_id = c.class_room_id
-  LEFT JOIN teachers t ON t.teacher_id = c.teacher_id
-  -- 無効化された教員は担任として扱わない。class_rooms.teacher_id は残すので、
-  -- 再有効化すれば元の担任に戻る。
-  LEFT JOIN users u ON u.user_id = t.user_id AND u.is_live_active = 1
-`;
+function unwrapDatabaseError(error: unknown): unknown {
+  const visited = new Set<Error>();
+  let current = error;
+  while (current instanceof Error && !visited.has(current)) {
+    visited.add(current);
+    if (!(current.cause instanceof Error)) return current;
+    current = current.cause;
+  }
+  return current;
+}
+
+type ClassRoomRow = {
+  classRoomId: number;
+  classCode: string;
+  className: string;
+  studentCount: number;
+  teacherId: number | null;
+  teacherUserId: number | null;
+  teacherDisplayName: string | null;
+};
 
 function toEntity(row: ClassRoomRow): ClassRoomEntity {
   return {
-    class_room_id: row.class_room_id,
-    class_code: row.class_code,
-    class_name: row.class_name,
-    student_count: Number(row.student_count),
+    classRoomId: row.classRoomId,
+    classCode: row.classCode,
+    className: row.className,
+    studentCount: Number(row.studentCount),
     teacher:
-      row.teacher_id === null ||
-      row.teacher_user_id === null ||
-      row.teacher_display_name === null
+      row.teacherId === null ||
+      row.teacherUserId === null ||
+      row.teacherDisplayName === null
         ? null
         : {
-            teacher_id: row.teacher_id,
-            user_id: row.teacher_user_id,
-            display_name: row.teacher_display_name,
+            teacherId: row.teacherId,
+            userId: row.teacherUserId,
+            displayName: row.teacherDisplayName,
           },
   };
 }
@@ -61,116 +63,209 @@ function toEntity(row: ClassRoomRow): ClassRoomEntity {
 export function createClassRoomRepository(
   db: D1Database
 ): IClassRoomRepository {
-  const findById = async (id: number): Promise<ClassRoomEntity | null> => {
-    const row = await db
-      .prepare(
-        `${classRoomSelect} WHERE c.class_room_id = ? GROUP BY c.class_room_id`
+  const orm = drizzle(db, { schema });
+
+  const findOne = async (condition: SQL): Promise<ClassRoomEntity | null> => {
+    const row = await orm
+      .select({
+        classRoomId: class_rooms.id,
+        classCode: class_rooms.classCode,
+        className: class_rooms.name,
+        studentCount: sql<number>`count(${students.id})`,
+        teacherId: teachers.id,
+        teacherUserId: users.id,
+        teacherDisplayName: users.userName,
+      })
+      .from(class_rooms)
+      .leftJoin(teachers, eq(teachers.id, class_rooms.teacherId))
+      // 無効化された教員は担任として扱わない。class_rooms.teacher_id は残すので、
+      // 再有効化すれば元の担任に戻る。
+      .leftJoin(
+        users,
+        and(eq(users.id, teachers.userId), eq(users.isLiveActive, 1))
       )
-      .bind(id)
-      .first<ClassRoomRow>();
+      .leftJoin(students, eq(students.classRoomId, class_rooms.id))
+      .where(condition)
+      .groupBy(
+        class_rooms.id,
+        class_rooms.classCode,
+        class_rooms.name,
+        teachers.id,
+        users.id,
+        users.userName
+      )
+      .limit(1)
+      .get();
+
     return row ? toEntity(row) : null;
   };
 
-  return {
-    async findAll(limit: number, offset: number): Promise<ClassRoomPage> {
-      const [rows, count] = await Promise.all([
-        db
-          .prepare(
-            `${classRoomSelect} GROUP BY c.class_room_id ORDER BY c.class_room_id LIMIT ? OFFSET ?`
-          )
-          .bind(limit, offset)
-          .all<ClassRoomRow>(),
-        db
-          .prepare('SELECT COUNT(*) AS total FROM class_rooms')
-          .first<{ total: number }>(),
-      ]);
-      return {
-        classrooms: rows.results.map(toEntity),
-        total: Number(count?.total ?? 0),
-        limit,
-        offset,
-      };
-    },
+  const findPage = async (
+    filter: ClassRoomSearchFilter = {}
+  ): Promise<ClassRoomPage> => {
+    const limit =
+      filter.limit && filter.limit > 0
+        ? Math.min(filter.limit, 100)
+        : DEFAULT_LIMIT;
+    const offset =
+      filter.offset !== undefined && filter.offset >= 0 ? filter.offset : 0;
+    const conditions = [];
+    if (filter.search) {
+      const pattern = `%${escapeLikePattern(filter.search)}%`;
+      conditions.push(
+        or(
+          sql`${class_rooms.classCode} LIKE ${pattern} ESCAPE ${'\\'}`,
+          sql`${class_rooms.name} LIKE ${pattern} ESCAPE ${'\\'}`,
+          sql`CAST(${class_rooms.id} AS TEXT) LIKE ${pattern} ESCAPE ${'\\'}`,
+          sql`${users.userName} LIKE ${pattern} ESCAPE ${'\\'}`
+        )!
+      );
+    }
+    const whereClause = conditions.length ? and(...conditions) : undefined;
 
-    findById,
+    const rowsQuery = orm
+      .select({
+        classRoomId: class_rooms.id,
+        classCode: class_rooms.classCode,
+        className: class_rooms.name,
+        studentCount: sql<number>`count(${students.id})`,
+        teacherId: teachers.id,
+        teacherUserId: users.id,
+        teacherDisplayName: users.userName,
+      })
+      .from(class_rooms)
+      .leftJoin(teachers, eq(teachers.id, class_rooms.teacherId))
+      // 無効化された教員は担任として扱わない。class_rooms.teacher_id は残すので、
+      // 再有効化すれば元の担任に戻る。
+      .leftJoin(
+        users,
+        and(eq(users.id, teachers.userId), eq(users.isLiveActive, 1))
+      )
+      .leftJoin(students, eq(students.classRoomId, class_rooms.id));
+    const countQuery = orm
+      .select({ total: sql<number>`count(distinct ${class_rooms.id})` })
+      .from(class_rooms)
+      .leftJoin(teachers, eq(teachers.id, class_rooms.teacherId))
+      .leftJoin(
+        users,
+        and(eq(users.id, teachers.userId), eq(users.isLiveActive, 1))
+      );
 
-    async findByCode(classCode: string): Promise<ClassRoomEntity | null> {
-      const row = await db
-        .prepare(
-          `${classRoomSelect} WHERE c.class_code = ? GROUP BY c.class_room_id`
+    const order = filter.sortOrder === 'desc' ? desc : asc;
+    const sortColumn =
+      filter.sortBy === 'classCode'
+        ? class_rooms.classCode
+        : filter.sortBy === 'className'
+          ? class_rooms.name
+          : filter.sortBy === 'teacherName'
+            ? users.userName
+            : filter.sortBy === 'studentCount'
+              ? sql<number>`count(${students.id})`
+              : class_rooms.id;
+
+    const [totalRow, rows] = await Promise.all([
+      (whereClause ? countQuery.where(whereClause) : countQuery).get(),
+      (whereClause ? rowsQuery.where(whereClause) : rowsQuery)
+        .groupBy(
+          class_rooms.id,
+          class_rooms.classCode,
+          class_rooms.name,
+          teachers.id,
+          users.id,
+          users.userName
         )
-        .bind(classCode)
-        .first<ClassRoomRow>();
-      return row ? toEntity(row) : null;
+        .orderBy(
+          ...(filter.sortBy === 'teacherName'
+            ? [
+                sql<number>`CASE WHEN ${users.userName} IS NULL THEN 1 ELSE 0 END`,
+              ]
+            : []),
+          order(sortColumn),
+          asc(class_rooms.id)
+        )
+        .limit(limit)
+        .offset(offset)
+        .all(),
+    ]);
+
+    const items = rows.map(toEntity);
+    return {
+      items,
+      total: Number(totalRow?.total ?? 0),
+      limit,
+      offset,
+    };
+  };
+
+  return {
+    async findAll(filter: ClassRoomSearchFilter = {}) {
+      return findPage(filter);
     },
-
-    async findExistingClassCodes(classCodes: string[]): Promise<Set<string>> {
-      const unique = Array.from(new Set(classCodes));
+    async findById(id) {
+      return findOne(eq(class_rooms.id, id));
+    },
+    async findByCode(classCode) {
+      return findOne(eq(class_rooms.classCode, classCode));
+    },
+    async findExistingClassCodes(classCodes) {
       const found = new Set<string>();
-
-      for (const chunk of chunkArray(unique, D1_MAX_BOUND_PARAMETERS)) {
-        const placeholders = chunk.map(() => '?').join(', ');
-        const result = await db
-          .prepare(
-            `SELECT class_code FROM class_rooms WHERE class_code IN (${placeholders})`
-          )
-          .bind(...chunk)
-          .all<{ class_code: string }>();
-        for (const row of result.results) {
-          found.add(row.class_code);
-        }
+      for (const chunk of chunkArray(
+        Array.from(new Set(classCodes)),
+        D1_MAX_BOUND_PARAMETERS
+      )) {
+        if (chunk.length === 0) continue;
+        const rows = await orm
+          .select({ classCode: class_rooms.classCode })
+          .from(class_rooms)
+          .where(inArray(class_rooms.classCode, chunk))
+          .all();
+        rows.forEach(row => found.add(row.classCode));
       }
-
       return found;
     },
-
-    async create(input: ClassRoomInput): Promise<ClassRoomEntity> {
-      const row = await db
-        .prepare(
-          'INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES (?, ?, ?) RETURNING class_room_id'
-        )
-        .bind(input.class_code, input.class_name, input.teacher_id)
-        .first<{ class_room_id: number }>();
-      if (!row) throw new Error('Failed to create class');
-      const classroom = await findById(row.class_room_id);
-      if (!classroom) throw new Error('Failed to fetch created class');
-      return classroom;
-    },
-
-    async createMany(inputs: ClassRoomInput[]): Promise<void> {
-      if (inputs.length === 0) {
-        return;
+    async create(input: ClassRoomInput) {
+      let row;
+      try {
+        row = await orm
+          .insert(class_rooms)
+          .values({
+            classCode: input.classCode,
+            name: input.className,
+            teacherId: input.teacherId,
+          })
+          .returning({ id: class_rooms.id })
+          .get();
+      } catch (error) {
+        throw unwrapDatabaseError(error);
       }
-
-      const statements: D1PreparedStatement[] = [];
-      for (const chunk of chunkArray(
+      if (!row) throw new Error('Failed to create class');
+      const created = await findOne(eq(class_rooms.id, row.id));
+      if (!created) throw new Error('Failed to fetch created class');
+      return created;
+    },
+    async createMany(inputs) {
+      const statements = chunkArray(
         inputs,
         Math.floor(D1_MAX_BOUND_PARAMETERS / 3)
-      )) {
+      ).map(chunk => {
         const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');
         const values = chunk.flatMap(input => [
-          input.class_code,
-          input.class_name,
-          input.teacher_id,
+          input.classCode,
+          input.className,
+          input.teacherId,
         ]);
-        statements.push(
-          db
-            .prepare(
-              `INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ${placeholders}`
-            )
-            .bind(...values)
-        );
-      }
-      await db.batch(statements);
+        return db
+          .prepare(
+            `INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ${placeholders}`
+          )
+          .bind(...values);
+      });
+      if (statements.length > 0) await db.batch(statements);
     },
-
-    async update(
-      id: number,
-      input: ClassRoomInput
-    ): Promise<ClassRoomEntity | null> {
+    async update(id, input) {
       // 無効化された教員は担任として返していないため、呼び出し側が受け取った
       // 教室にはそもそも担任が乗っていない。それをそのまま送り返してくる
-      // teacher_id = null を「担任を外す」と解釈すると、表示から隠しただけの
+      // teacherId = null を「担任を外す」と解釈すると、表示から隠しただけの
       // 割り当てまで消えてしまう。担任が停止中のときの null は据え置きとして扱う。
       //
       // 既知の制約: この判定はUPDATE実行時点のDBの状態を見ている。教室の編集は
@@ -178,59 +273,65 @@ export function createClassRoomRepository(
       // GET時点でnullだった値がそのまま送られて割り当てを消してしまう。塞ぐには
       // GET時点の状態を持ち回る仕組み（更新時刻を条件に含める楽観ロックなど）が要るが、
       // 全項目置換のPUTすべてに関わる設計変更になるため、ここでは扱わない。
-      const row = await db
-        .prepare(
-          `UPDATE class_rooms
-             SET class_code = ?,
-                 class_name = ?,
-                 teacher_id = CASE
-                   WHEN ? IS NULL AND EXISTS (
-                     SELECT 1 FROM teachers t
-                     JOIN users u ON u.user_id = t.user_id
-                     WHERE t.teacher_id = class_rooms.teacher_id
-                       AND u.is_live_active = 0
-                   ) THEN teacher_id
-                   ELSE ?
-                 END,
-                 updated_at = CURRENT_TIMESTAMP
-           WHERE class_room_id = ? RETURNING class_room_id`
-        )
-        .bind(
-          input.class_code,
-          input.class_name,
-          // D1は番号付きプレースホルダを使えないため、CASEのWHENとELSEへ同じ値を2回渡す
-          input.teacher_id,
-          input.teacher_id,
-          id
-        )
-        .first<{ class_room_id: number }>();
-      return row ? findById(row.class_room_id) : null;
+      let row;
+      try {
+        row = await db
+          .prepare(
+            `UPDATE class_rooms
+               SET class_code = ?,
+                   class_name = ?,
+                   teacher_id = CASE
+                     WHEN ? IS NULL AND EXISTS (
+                       SELECT 1 FROM teachers t
+                       JOIN users u ON u.user_id = t.user_id
+                       WHERE t.teacher_id = class_rooms.teacher_id
+                         AND u.is_live_active = 0
+                     ) THEN teacher_id
+                     ELSE ?
+                   END,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE class_room_id = ? RETURNING class_room_id`
+          )
+          .bind(
+            input.classCode,
+            input.className,
+            // D1は番号付きプレースホルダを使えないため、CASEのWHENとELSEへ同じ値を2回渡す
+            input.teacherId,
+            input.teacherId,
+            id
+          )
+          .first<{ class_room_id: number }>();
+      } catch (error) {
+        throw unwrapDatabaseError(error);
+      }
+      if (!row) return null;
+      return findOne(eq(class_rooms.id, row.class_room_id));
     },
-
-    async delete(id: number): Promise<boolean> {
-      const result = await db
-        .prepare('DELETE FROM class_rooms WHERE class_room_id = ?')
-        .bind(id)
+    async delete(id) {
+      const result = await orm
+        .delete(class_rooms)
+        .where(eq(class_rooms.id, id))
         .run();
-      return (result.meta.changes ?? 0) > 0;
+      return result.meta.changes > 0;
     },
-
-    async teacherExists(id: number): Promise<boolean> {
-      const row = await db
-        .prepare('SELECT teacher_id FROM teachers WHERE teacher_id = ?')
-        .bind(id)
-        .first();
-      return row !== null;
+    async teacherExists(id) {
+      return Boolean(
+        await orm
+          .select({ id: teachers.id })
+          .from(teachers)
+          .where(eq(teachers.id, id))
+          .get()
+      );
     },
-
-    async hasStudents(id: number): Promise<boolean> {
-      const row = await db
-        .prepare(
-          'SELECT 1 AS referenced FROM students WHERE class_room_id = ? LIMIT 1'
-        )
-        .bind(id)
-        .first();
-      return row !== null;
+    async hasStudents(id) {
+      return Boolean(
+        await orm
+          .select({ id: students.id })
+          .from(students)
+          .where(eq(students.classRoomId, id))
+          .limit(1)
+          .get()
+      );
     },
   };
 }

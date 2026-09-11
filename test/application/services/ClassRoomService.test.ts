@@ -21,12 +21,12 @@ describe('ClassRoomService', () => {
   it('一覧をlimitとoffset付きで返す', async () => {
     const repo = repository();
     (repo.findAll as ReturnType<typeof vi.fn>).mockResolvedValue({
-      classrooms: [
+      items: [
         {
-          class_room_id: 1,
-          class_code: 'IA14A',
-          class_name: '高度情報学科AI開発先行コース',
-          student_count: 2,
+          classRoomId: 1,
+          classCode: 'IA14A',
+          className: '高度情報学科AI開発先行コース',
+          studentCount: 2,
           teacher: null,
         },
       ],
@@ -36,9 +36,9 @@ describe('ClassRoomService', () => {
     });
 
     await expect(
-      createClassRoomService(repo).getAllClassrooms(20, 0)
+      createClassRoomService(repo).getAllClassRooms({ limit: 20, offset: 0 })
     ).resolves.toEqual({
-      classrooms: [
+      items: [
         {
           class_room_id: 1,
           class_code: 'IA14A',
@@ -58,10 +58,10 @@ describe('ClassRoomService', () => {
     (repo.teacherExists as ReturnType<typeof vi.fn>).mockResolvedValue(false);
 
     await expect(
-      createClassRoomService(repo).createClassroom({
-        class_code: 'IA14A',
-        class_name: '高度情報学科AI開発先行コース',
-        teacher_id: 1,
+      createClassRoomService(repo).createClassRoom({
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+        teacherId: 1,
       })
     ).rejects.toThrow('Teacher not found');
   });
@@ -69,23 +69,33 @@ describe('ClassRoomService', () => {
   it('存在する担任を指定してクラスを登録できる', async () => {
     const repo = repository();
     const input = {
-      class_code: 'IA14A',
-      class_name: '高度情報学科AI開発先行コース',
-      teacher_id: 1,
+      classCode: 'IA14A',
+      className: '高度情報学科AI開発先行コース',
+      teacherId: 1,
     };
     const classroom = {
-      class_room_id: 1,
-      class_code: 'IA14A',
-      class_name: '高度情報学科AI開発先行コース',
-      student_count: 0,
-      teacher: { teacher_id: 1, user_id: 10, display_name: '担任教員' },
+      classRoomId: 1,
+      classCode: 'IA14A',
+      className: '高度情報学科AI開発先行コース',
+      studentCount: 0,
+      teacher: { teacherId: 1, userId: 10, displayName: '担任教員' },
     };
     (repo.teacherExists as ReturnType<typeof vi.fn>).mockResolvedValue(true);
     (repo.create as ReturnType<typeof vi.fn>).mockResolvedValue(classroom);
 
     await expect(
-      createClassRoomService(repo).createClassroom(input)
-    ).resolves.toEqual(classroom);
+      createClassRoomService(repo).createClassRoom(input)
+    ).resolves.toEqual({
+      class_room_id: 1,
+      class_code: 'IA14A',
+      class_name: '高度情報学科AI開発先行コース',
+      student_count: 0,
+      teacher: {
+        teacher_id: 1,
+        user_id: 10,
+        display_name: '担任教員',
+      },
+    });
     expect(repo.create).toHaveBeenCalledWith(input);
   });
 
@@ -96,10 +106,27 @@ describe('ClassRoomService', () => {
     );
 
     await expect(
-      createClassRoomService(repo).createClassroom({
-        class_code: 'IA14A',
-        class_name: '高度情報学科AI開発先行コース',
-        teacher_id: null,
+      createClassRoomService(repo).createClassRoom({
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+        teacherId: null,
+      })
+    ).rejects.toThrow('Class code already exists');
+  });
+
+  it('createのwrapped UNIQUEエラーも重複クラスコードとして扱う', async () => {
+    const repo = repository();
+    (repo.create as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('D1 query failed', {
+        cause: new Error('UNIQUE constraint failed: class_rooms.class_code'),
+      })
+    );
+
+    await expect(
+      createClassRoomService(repo).createClassRoom({
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+        teacherId: null,
       })
     ).rejects.toThrow('Class code already exists');
   });
@@ -109,12 +136,52 @@ describe('ClassRoomService', () => {
     (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
     await expect(
-      createClassRoomService(repo).updateClassroom(999, {
-        class_code: 'IA14A',
-        class_name: '高度情報学科AI開発先行コース',
-        teacher_id: null,
+      createClassRoomService(repo).updateClassRoom(999, {
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+        teacherId: null,
       })
     ).rejects.toThrow('Class not found');
+  });
+
+  it('更新対象を先に確認し、対象が無ければteacher確認を行わない', async () => {
+    const repo = repository();
+    (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (repo.teacherExists as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+    await expect(
+      createClassRoomService(repo).updateClassRoom(999, {
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+        teacherId: 999,
+      })
+    ).rejects.toThrow('Class not found');
+    expect(repo.teacherExists).not.toHaveBeenCalled();
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('updateのwrapped UNIQUEエラーも重複クラスコードとして扱う', async () => {
+    const repo = repository();
+    (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      classRoomId: 1,
+      classCode: 'OLD',
+      className: '旧クラス',
+      studentCount: 0,
+      teacher: null,
+    });
+    (repo.update as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('D1 query failed', {
+        cause: new Error('UNIQUE constraint failed: class_rooms.class_code'),
+      })
+    );
+
+    await expect(
+      createClassRoomService(repo).updateClassRoom(1, {
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+        teacherId: null,
+      })
+    ).rejects.toThrow('Class code already exists');
   });
 
   it('学生が所属するクラスの削除を拒否する', async () => {
@@ -122,7 +189,7 @@ describe('ClassRoomService', () => {
     (repo.hasStudents as ReturnType<typeof vi.fn>).mockResolvedValue(true);
 
     await expect(
-      createClassRoomService(repo).deleteClassroom(1)
+      createClassRoomService(repo).deleteClassRoom(1)
     ).rejects.toThrow('Class is referenced by students');
     expect(repo.delete).not.toHaveBeenCalled();
   });
@@ -133,7 +200,7 @@ describe('ClassRoomService', () => {
     (repo.delete as ReturnType<typeof vi.fn>).mockResolvedValue(false);
 
     await expect(
-      createClassRoomService(repo).deleteClassroom(999)
+      createClassRoomService(repo).deleteClassRoom(999)
     ).rejects.toThrow('Class not found');
   });
 
@@ -247,8 +314,8 @@ describe('ClassRoomService', () => {
       });
       expect(repo.createMany).toHaveBeenCalledTimes(1);
       expect(repo.createMany).toHaveBeenCalledWith([
-        { class_code: '13C', class_name: '3年Cクラス', teacher_id: null },
-        { class_code: '13D', class_name: '3年Dクラス', teacher_id: null },
+        { classCode: '13C', className: '3年Cクラス', teacherId: null },
+        { classCode: '13D', className: '3年Dクラス', teacherId: null },
       ]);
     });
 
