@@ -132,11 +132,6 @@ export const UserErrors = {
     message: '教員の更新に失敗しました',
   },
   CLASS_ROOM_NOT_FOUND: {
-    status: 400,
-    code: 'CLASS_ROOM_NOT_FOUND',
-    message: '指定されたクラスが見つかりません',
-  },
-  STUDENT_CLASS_ROOM_NOT_FOUND: {
     status: 404,
     code: 'CLASS_ROOM_NOT_FOUND',
     message: '指定されたクラスが見つかりません',
@@ -146,54 +141,44 @@ export const UserErrors = {
     code: 'INVALID_CLASS_ID',
     message: 'クラスIDが正しくありません',
   },
-  CLASS_NOT_FOUND: {
-    status: 404,
-    code: 'CLASS_NOT_FOUND',
-    message: 'クラスが見つかりません',
-  },
-  INVALID_CLASS_LIST_QUERY: {
-    status: 400,
-    code: 'INVALID_CLASS_LIST_QUERY',
-    message: 'クラス一覧の検索条件が正しくありません',
-  },
   INVALID_CLASS_REQUEST: {
     status: 400,
     code: 'INVALID_CLASS_REQUEST',
     message: 'クラス情報の入力内容が正しくありません',
   },
-  CLASS_CODE_ALREADY_EXISTS: {
+  CLASS_ROOM_CODE_ALREADY_EXISTS: {
     status: 409,
-    code: 'CLASS_CODE_ALREADY_EXISTS',
+    code: 'CLASS_ROOM_CODE_ALREADY_EXISTS',
     message: '同じクラスコードが既に存在します',
   },
-  CLASS_REFERENCED_BY_STUDENTS: {
+  CLASS_ROOM_REFERENCED_BY_STUDENTS: {
     status: 409,
-    code: 'CLASS_REFERENCED_BY_STUDENTS',
+    code: 'CLASS_ROOM_REFERENCED_BY_STUDENTS',
     message: '学生が所属しているクラスは削除できません',
   },
-  CLASS_LIST_FAILED: {
+  CLASS_ROOM_LIST_FAILED: {
     status: 500,
-    code: 'CLASS_LIST_FAILED',
+    code: 'CLASS_ROOM_LIST_FAILED',
     message: 'クラス一覧の取得に失敗しました',
   },
-  CLASS_FETCH_FAILED: {
+  CLASS_ROOM_FETCH_FAILED: {
     status: 500,
-    code: 'CLASS_FETCH_FAILED',
+    code: 'CLASS_ROOM_FETCH_FAILED',
     message: 'クラスの取得に失敗しました',
   },
-  CLASS_CREATE_FAILED: {
+  CLASS_ROOM_CREATE_FAILED: {
     status: 500,
-    code: 'CLASS_CREATE_FAILED',
+    code: 'CLASS_ROOM_CREATE_FAILED',
     message: 'クラスの登録に失敗しました',
   },
-  CLASS_UPDATE_FAILED: {
+  CLASS_ROOM_UPDATE_FAILED: {
     status: 500,
-    code: 'CLASS_UPDATE_FAILED',
+    code: 'CLASS_ROOM_UPDATE_FAILED',
     message: 'クラスの更新に失敗しました',
   },
-  CLASS_DELETE_FAILED: {
+  CLASS_ROOM_DELETE_FAILED: {
     status: 500,
-    code: 'CLASS_DELETE_FAILED',
+    code: 'CLASS_ROOM_DELETE_FAILED',
     message: 'クラスの削除に失敗しました',
   },
   USER_SEARCH_FORBIDDEN: {

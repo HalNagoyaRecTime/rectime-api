@@ -10,6 +10,7 @@ import type {
   ClassRoomRequestDTO,
 } from '../dto/ClassRoomDTO';
 import type { ClassRoomEntity } from '../../domain/entities/ClassRoom';
+import type { ClassRoomSearchFilter } from '../../domain/entities/ClassRoom';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import type { IClassRoomService } from './IClassRoomService';
 
@@ -61,11 +62,42 @@ async function findImportErrors(
   return errors;
 }
 
+function getErrorChainMessage(error: unknown): string {
+  const messages: string[] = [];
+  const visited = new Set<Error>();
+  let current = error;
+
+  while (current instanceof Error && !visited.has(current)) {
+    visited.add(current);
+    messages.push(current.message);
+    current = current.cause;
+  }
+
+  return messages.join(' ');
+}
+
+function isClassCodeUniqueError(error: unknown): boolean {
+  const message = getErrorChainMessage(error);
+  return (
+    message.includes('UNIQUE') && message.includes('class_rooms.class_code')
+  );
+}
+
 export function createClassRoomService(
   classRoomRepository: IClassRoomRepository
 ): IClassRoomService {
   const toDTO = (classroom: ClassRoomEntity): ClassRoomDTO => ({
-    ...classroom,
+    class_room_id: classroom.classRoomId,
+    class_code: classroom.classCode,
+    class_name: classroom.className,
+    student_count: classroom.studentCount,
+    teacher: classroom.teacher
+      ? {
+          teacher_id: classroom.teacher.teacherId,
+          user_id: classroom.teacher.userId,
+          display_name: classroom.teacher.displayName,
+        }
+      : null,
   });
 
   const ensureTeacherExists = async (teacherId: number | null) => {
@@ -78,55 +110,56 @@ export function createClassRoomService(
   };
 
   return {
-    async getAllClassrooms(
-      limit: number,
-      offset: number
+    async getAllClassRooms(
+      filter: ClassRoomSearchFilter = {}
     ): Promise<ClassRoomPageDTO> {
-      const result = await classRoomRepository.findAll(limit, offset);
+      const result = await classRoomRepository.findAll(filter);
       return {
-        classrooms: result.classrooms.map(toDTO),
+        items: result.items.map(toDTO),
         total: result.total,
         limit: result.limit,
         offset: result.offset,
       };
     },
 
-    async getClassroomById(id: number): Promise<ClassRoomDTO> {
+    async getClassRoomById(id: number): Promise<ClassRoomDTO> {
       const classroom = await classRoomRepository.findById(id);
       if (!classroom) throw new Error('Class not found');
       return toDTO(classroom);
     },
 
-    async createClassroom(input: ClassRoomRequestDTO): Promise<ClassRoomDTO> {
-      await ensureTeacherExists(input.teacher_id);
+    async createClassRoom(input: ClassRoomRequestDTO): Promise<ClassRoomDTO> {
+      await ensureTeacherExists(input.teacherId);
       try {
         return toDTO(await classRoomRepository.create(input));
       } catch (error) {
-        if (error instanceof Error && error.message.includes('UNIQUE')) {
+        if (isClassCodeUniqueError(error)) {
           throw new Error('Class code already exists');
         }
         throw error;
       }
     },
 
-    async updateClassroom(
+    async updateClassRoom(
       id: number,
       input: ClassRoomRequestDTO
     ): Promise<ClassRoomDTO> {
-      await ensureTeacherExists(input.teacher_id);
+      const existing = await classRoomRepository.findById(id);
+      if (!existing) throw new Error('Class not found');
+      await ensureTeacherExists(input.teacherId);
       try {
         const classroom = await classRoomRepository.update(id, input);
         if (!classroom) throw new Error('Class not found');
         return toDTO(classroom);
       } catch (error) {
-        if (error instanceof Error && error.message.includes('UNIQUE')) {
+        if (isClassCodeUniqueError(error)) {
           throw new Error('Class code already exists');
         }
         throw error;
       }
     },
 
-    async deleteClassroom(id: number): Promise<void> {
+    async deleteClassRoom(id: number): Promise<void> {
       if (await classRoomRepository.hasStudents(id)) {
         throw new Error('Class is referenced by students');
       }
@@ -162,9 +195,9 @@ export function createClassRoomService(
 
       await classRoomRepository.createMany(
         input.rows.map(row => ({
-          class_code: row.class_code,
-          class_name: row.class_name,
-          teacher_id: null,
+          classCode: row.class_code,
+          className: row.class_name,
+          teacherId: null,
         }))
       );
 

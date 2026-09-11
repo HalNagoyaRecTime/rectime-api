@@ -1,65 +1,59 @@
 import type { Context } from 'hono';
-import { z } from 'zod';
 import type { IClassRoomService } from '../../application/services/IClassRoomService';
 import { errorResponse } from '../errors/errorResponse';
 import { UserErrors } from '../errors/userErrors';
-
-const classIdSchema = z.coerce.number().int().positive();
-const paginationSchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  offset: z.coerce.number().int().min(0).default(0),
-});
-const classRoomRequestSchema = z.object({
-  classCode: z.string().trim().min(1),
-  className: z.string().trim().min(1),
-  teacherId: z.number().int().positive().nullable(),
-});
+import { CommonErrors } from '../errors/commonErrors';
+import {
+  classIdParams,
+  classRoomListQuery,
+  classRoomWriteSchema,
+} from '../openapi/classrooms';
 
 export function createClassRoomController(classService: IClassRoomService) {
-  const getAllClassrooms = async (c: Context) => {
-    const query = paginationSchema.safeParse({
-      limit: c.req.query('limit'),
-      offset: c.req.query('offset'),
-    });
+  const getAllClassRooms = async (c: Context) => {
+    const query = classRoomListQuery.safeParse(c.req.query());
     if (!query.success) {
       return errorResponse(
         c,
-        UserErrors.INVALID_CLASS_LIST_QUERY,
+        CommonErrors.VALIDATION_ERROR,
         query.error.flatten()
       );
     }
     try {
+      const result = await classService.getAllClassRooms(query.data);
       return c.json(
-        await classService.getAllClassrooms(
-          query.data.limit,
-          query.data.offset
-        ),
+        {
+          items: result.items,
+          total: result.total,
+          limit: result.limit,
+          offset: result.offset,
+        },
         200
       );
     } catch {
-      return errorResponse(c, UserErrors.CLASS_LIST_FAILED);
+      return errorResponse(c, UserErrors.CLASS_ROOM_LIST_FAILED);
     }
   };
 
-  const getClassroomById = async (c: Context) => {
-    const id = classIdSchema.safeParse(c.req.param('classId'));
-    if (!id.success) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
+  const getClassRoomById = async (c: Context) => {
+    const id = parseClassRoomId(c);
+    if (id === null) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
     try {
-      return c.json(await classService.getClassroomById(id.data), 200);
+      return c.json(await classService.getClassRoomById(id), 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
-        return errorResponse(c, UserErrors.CLASS_NOT_FOUND);
+        return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
       }
-      return errorResponse(c, UserErrors.CLASS_FETCH_FAILED);
+      return errorResponse(c, UserErrors.CLASS_ROOM_FETCH_FAILED);
     }
   };
 
   const parseBody = async (c: Context) => {
     const body = await c.req.json().catch(() => undefined);
-    return classRoomRequestSchema.safeParse(body);
+    return classRoomWriteSchema.safeParse(body);
   };
 
-  const createClassroom = async (c: Context) => {
+  const createClassRoom = async (c: Context) => {
     const body = await parseBody(c);
     if (!body.success) {
       return errorResponse(
@@ -69,22 +63,15 @@ export function createClassRoomController(classService: IClassRoomService) {
       );
     }
     try {
-      return c.json(
-        await classService.createClassroom({
-          class_code: body.data.classCode,
-          class_name: body.data.className,
-          teacher_id: body.data.teacherId,
-        }),
-        201
-      );
+      return c.json(await classService.createClassRoom(body.data), 201);
     } catch (error) {
-      return handleWriteError(c, error, UserErrors.CLASS_CREATE_FAILED);
+      return handleWriteError(c, error, UserErrors.CLASS_ROOM_CREATE_FAILED);
     }
   };
 
-  const updateClassroom = async (c: Context) => {
-    const id = classIdSchema.safeParse(c.req.param('classId'));
-    if (!id.success) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
+  const updateClassRoom = async (c: Context) => {
+    const id = parseClassRoomId(c);
+    if (id === null) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
     const body = await parseBody(c);
     if (!body.success) {
       return errorResponse(
@@ -94,63 +81,61 @@ export function createClassRoomController(classService: IClassRoomService) {
       );
     }
     try {
-      return c.json(
-        await classService.updateClassroom(id.data, {
-          class_code: body.data.classCode,
-          class_name: body.data.className,
-          teacher_id: body.data.teacherId,
-        }),
-        200
-      );
+      return c.json(await classService.updateClassRoom(id, body.data), 200);
     } catch (error) {
-      return handleWriteError(c, error, UserErrors.CLASS_UPDATE_FAILED);
+      return handleWriteError(c, error, UserErrors.CLASS_ROOM_UPDATE_FAILED);
     }
   };
 
-  const deleteClassroom = async (c: Context) => {
-    const id = classIdSchema.safeParse(c.req.param('classId'));
-    if (!id.success) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
+  const deleteClassRoom = async (c: Context) => {
+    const id = parseClassRoomId(c);
+    if (id === null) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
     try {
-      await classService.deleteClassroom(id.data);
+      await classService.deleteClassRoom(id);
       return c.body(null, 204);
     } catch (error) {
       if (error instanceof Error && error.message === 'Class not found') {
-        return errorResponse(c, UserErrors.CLASS_NOT_FOUND);
+        return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
       }
       if (
         error instanceof Error &&
         error.message === 'Class is referenced by students'
       ) {
-        return errorResponse(c, UserErrors.CLASS_REFERENCED_BY_STUDENTS);
+        return errorResponse(c, UserErrors.CLASS_ROOM_REFERENCED_BY_STUDENTS);
       }
-      return errorResponse(c, UserErrors.CLASS_DELETE_FAILED);
+      return errorResponse(c, UserErrors.CLASS_ROOM_DELETE_FAILED);
     }
   };
 
   return {
-    getAllClassrooms,
-    getClassroomById,
-    createClassroom,
-    updateClassroom,
-    deleteClassroom,
+    getAllClassRooms,
+    getClassRoomById,
+    createClassRoom,
+    updateClassRoom,
+    deleteClassRoom,
   };
+}
+
+function parseClassRoomId(c: Context): number | null {
+  const parsed = classIdParams.safeParse({ classId: c.req.param('classId') });
+  return parsed.success ? Number(parsed.data.classId) : null;
 }
 
 function handleWriteError(
   c: Context,
   error: unknown,
   fallbackError:
-    | typeof UserErrors.CLASS_CREATE_FAILED
-    | typeof UserErrors.CLASS_UPDATE_FAILED
+    | typeof UserErrors.CLASS_ROOM_CREATE_FAILED
+    | typeof UserErrors.CLASS_ROOM_UPDATE_FAILED
 ) {
   if (error instanceof Error && error.message === 'Teacher not found') {
     return errorResponse(c, UserErrors.TEACHER_NOT_FOUND);
   }
   if (error instanceof Error && error.message === 'Class not found') {
-    return errorResponse(c, UserErrors.CLASS_NOT_FOUND);
+    return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
   }
   if (error instanceof Error && error.message === 'Class code already exists') {
-    return errorResponse(c, UserErrors.CLASS_CODE_ALREADY_EXISTS);
+    return errorResponse(c, UserErrors.CLASS_ROOM_CODE_ALREADY_EXISTS);
   }
   return errorResponse(c, fallbackError);
 }

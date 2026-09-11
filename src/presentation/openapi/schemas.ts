@@ -139,6 +139,21 @@ export const positivePathParam = (name: string, description: string) =>
     .regex(/^[1-9]\d*$/)
     .openapi({ param: { name, in: 'path' }, description, example: '1' });
 
+// Query はHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
+// OpenAPIとControllerが同じschemaをsafeParseすることで、受理範囲を一致させる。
+export const digitsOnlyIntegerQuery = (minimum: number, maximum?: number) => {
+  const base = z.preprocess(
+    value =>
+      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
+    z.number().int().min(minimum)
+  );
+  return maximum === undefined
+    ? base
+    : base.refine(value => value <= maximum, {
+        message: `値は${minimum}から${maximum}の範囲で指定してください`,
+      });
+};
+
 /** 件数指定のクエリ。上限と既定値はエンドポイントごとに異なる。 */
 export const paginationQuery = (limitMax: number, limitDefault: number) =>
   z.object({
