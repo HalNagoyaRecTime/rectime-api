@@ -93,5 +93,20 @@ export function createTeamService(
       }
       return toTeamDTO(updated);
     },
+
+    async deleteTeam(teamId: number) {
+      const team = await teamRepository.findTeamById(teamId);
+      if (!team) {
+        throw new Error('Team not found');
+      }
+      if (team.scores !== 0) {
+        throw new Error('Team has scores');
+      }
+      const deleted = await teamRepository.delete(teamId);
+      if (!deleted) {
+        throw new Error('Team has scores');
+      }
+      return deleted;
+    },
   };
 }

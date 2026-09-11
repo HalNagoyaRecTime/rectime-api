@@ -354,11 +354,16 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     },
 
     async delete(teamId: number): Promise<boolean> {
-      const result = await db
-        .prepare('DELETE FROM teams WHERE team_id = ?')
-        .bind(teamId)
+      await db
+        .prepare('UPDATE teams SET team_name = ? WHERE team_id = ?')
+        .bind(`__deleting_team_${teamId}__`, teamId)
         .run();
-      return (result.meta.changes ?? 0) > 0;
+
+      await detachRemovedClassRooms(teamId, []);
+      const statements = buildCleanupEmptyTeamStatements(db, teamId);
+      const results = await db.batch(statements);
+      const teamDeleteResult = results[results.length - 1];
+      return (teamDeleteResult.meta.changes ?? 0) > 0;
     },
 
     async addScore(teamId: number, points: number): Promise<TeamEntity> {

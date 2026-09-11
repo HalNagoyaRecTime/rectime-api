@@ -420,6 +420,65 @@ describe('TeamRepository', () => {
     it('存在しないチームの場合はfalseを返す', async () => {
       await expect(repo.delete(999999)).resolves.toBe(false);
     });
+
+    it('所属クラスは自分専用の単独編成へ戻してから削除する', async () => {
+      const teamId = await insertTeam('削除対象(複数編成)');
+      await insertClassRoom('1A', teamId);
+      await insertClassRoom('1B', teamId);
+
+      await expect(repo.delete(teamId)).resolves.toBe(true);
+      await expect(repo.exists(teamId)).resolves.toBe(false);
+
+      const detached = await env.DB.prepare(
+        `SELECT t.team_name, t.team_id
+         FROM class_rooms c
+         JOIN teams t ON t.team_id = c.team_id
+         WHERE c.class_code IN ('1A', '1B')`
+      ).all<{ team_name: string; team_id: number }>();
+      expect(detached.results).toHaveLength(2);
+      for (const row of detached.results) {
+        expect(row.team_id).not.toBe(teamId);
+      }
+    });
+
+    it('通常の単独編成(team_nameが再作成される単独編成名と同じ)を削除できる', async () => {
+      // 単独編成のteam_nameは"クラス名(クラスコード)"であり、detach時に
+      // 再作成される単独編成名と一致する。削除対象自身が残ったまま
+      // 同名の団体を作ろうとしてUNIQUE制約に違反しないことを確認する。
+      const provisionalName = '1A組(1A)';
+      const teamId = await insertTeam(provisionalName);
+      await insertClassRoom('1A', teamId);
+
+      await expect(repo.delete(teamId)).resolves.toBe(true);
+      await expect(repo.exists(teamId)).resolves.toBe(false);
+
+      const reattached = await env.DB.prepare(
+        `SELECT team_id FROM class_rooms WHERE class_code = '1A'`
+      ).first<{ team_id: number }>();
+      expect(reattached?.team_id).not.toBe(teamId);
+    });
+
+    it('加算と減算で合計0に戻ったが行が残っているチームもFK違反なく削除できる', async () => {
+      const teamId = await insertTeam('得点0だが行が残る');
+      await repo.addScore(teamId, 100);
+      await repo.addScore(teamId, -100);
+
+      const before = await env.DB.prepare(
+        'SELECT scores FROM team_scores WHERE team_id = ?'
+      )
+        .bind(teamId)
+        .first<{ scores: number }>();
+      expect(before?.scores).toBe(0);
+
+      await expect(repo.delete(teamId)).resolves.toBe(true);
+      await expect(repo.exists(teamId)).resolves.toBe(false);
+      const after = await env.DB.prepare(
+        'SELECT COUNT(*) AS count FROM team_scores WHERE team_id = ?'
+      )
+        .bind(teamId)
+        .first<{ count: number }>();
+      expect(after?.count).toBe(0);
+    });
   });
 
   describe('addScore', () => {

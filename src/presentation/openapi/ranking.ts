@@ -6,6 +6,7 @@ import {
   forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
+  noContentResponse,
   notFoundResponse,
   paginationFields,
   positivePathParam,
@@ -178,6 +179,24 @@ export const teamUpdateRoute = createRoute({
   },
   responses: {
     200: jsonResponse(teamResponseSchema, '更新したチーム'),
+    400: badRequestResponse,
+    401: unauthorizedResponse,
+    403: forbiddenResponse,
+    404: notFoundResponse,
+    409: conflictResponse,
+    500: internalServerErrorResponse,
+  },
+});
+
+export const teamDeleteRoute = createRoute({
+  method: 'delete',
+  path: '/teams/{teamId}',
+  tags: ['Teams'],
+  summary: 'チームを削除する',
+  security: bearerAuth,
+  request: { params: teamIdParams },
+  responses: {
+    204: noContentResponse,
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,

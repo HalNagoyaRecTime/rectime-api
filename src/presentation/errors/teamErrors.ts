@@ -76,4 +76,14 @@ export const TeamErrors = {
     code: 'TEAM_SCORE_UPDATE_FAILED',
     message: '得点の更新に失敗しました',
   },
+  TEAM_DELETE_FAILED: {
+    status: 500,
+    code: 'TEAM_DELETE_FAILED',
+    message: 'チームの削除に失敗しました',
+  },
+  TEAM_HAS_SCORES: {
+    status: 409,
+    code: 'TEAM_HAS_SCORES',
+    message: 'チームに得点が登録されているため削除できません',
+  },
 } as const satisfies Record<string, ApiErrorDefinition>;
