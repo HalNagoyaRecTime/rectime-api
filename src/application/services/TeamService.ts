@@ -102,7 +102,11 @@ export function createTeamService(
       if (team.scores !== 0) {
         throw new Error('Team has scores');
       }
-      return await teamRepository.delete(teamId);
+      const deleted = await teamRepository.delete(teamId);
+      if (!deleted) {
+        throw new Error('Team has scores');
+      }
+      return deleted;
     },
   };
 }
