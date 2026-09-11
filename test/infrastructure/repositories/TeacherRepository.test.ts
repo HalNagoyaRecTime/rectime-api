@@ -28,11 +28,13 @@ describe('TeacherRepository', () => {
 
   async function insertTeacherCandidate({
     userName,
+    email,
     isLiveActive = 1,
     deletionStatus = 'active',
     linked = false,
   }: {
     userName: string;
+    email: string;
     isLiveActive?: number;
     deletionStatus?: 'active' | 'deletion_pending' | 'deleted';
     linked?: boolean;
@@ -46,8 +48,8 @@ describe('TeacherRepository', () => {
       .first<{ user_id: number }>();
     if (!user) throw new Error('テスト用ユーザーの作成に失敗しました');
 
-    await env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
-      .bind(user.user_id)
+    await env.DB.prepare('INSERT INTO teachers (user_id, email) VALUES (?, ?)')
+      .bind(user.user_id, email)
       .run();
 
     if (linked) {
@@ -339,91 +341,88 @@ describe('TeacherRepository', () => {
     });
   });
 
-  describe('findMicrosoftLinkCandidatesByDisplayName', () => {
-    it('半角空白と全角空白を無視して氏名が一致する候補を返す', async () => {
+  describe('findMicrosoftLinkCandidateByEmail', () => {
+    it('氏名に依存せずメールが完全一致する教員を返す', async () => {
       const userId = await insertTeacherCandidate({
-        userName: '山田　太 郎',
+        userName: '事前登録された教員名',
+        email: 'teacher@example.com',
       });
 
       await expect(
-        repo.findMicrosoftLinkCandidatesByDisplayName('山 田太郎')
-      ).resolves.toEqual([
-        {
-          userId,
-          userName: '山田　太 郎',
-          isLiveActive: true,
-        },
-      ]);
+        repo.findMicrosoftLinkCandidateByEmail('teacher@example.com')
+      ).resolves.toEqual({
+        userId,
+        userName: '事前登録された教員名',
+        isLiveActive: true,
+      });
     });
 
-    it('inactive・Microsoft連携済み・削除処理中の候補も返し、deletedのみ除外する', async () => {
-      const activeUserId = await insertTeacherCandidate({
-        userName: '照合 対象',
-      });
+    it('無効化・Microsoft連携済みの教員も候補として返す', async () => {
       const inactiveLinkedUserId = await insertTeacherCandidate({
-        userName: '照合　対象',
+        userName: '無効化された連携済み教員',
+        email: 'inactive@example.com',
         isLiveActive: 0,
         linked: true,
       });
+
+      await expect(
+        repo.findMicrosoftLinkCandidateByEmail('inactive@example.com')
+      ).resolves.toEqual({
+        userId: inactiveLinkedUserId,
+        userName: '無効化された連携済み教員',
+        isLiveActive: false,
+      });
+    });
+
+    it('削除処理中は候補として返し、削除済みは除外する', async () => {
       const deletionPendingUserId = await insertTeacherCandidate({
-        userName: '照 合対象',
+        userName: '削除処理中教員',
+        email: 'pending@example.com',
         deletionStatus: 'deletion_pending',
       });
       await insertTeacherCandidate({
-        userName: '照合対 象',
+        userName: '削除済み教員',
+        email: 'deleted@example.com',
         deletionStatus: 'deleted',
       });
 
-      const result =
-        await repo.findMicrosoftLinkCandidatesByDisplayName('照合対象');
-
-      expect(result).toEqual([
-        {
-          userId: activeUserId,
-          userName: '照合 対象',
-          isLiveActive: true,
-        },
-        {
-          userId: inactiveLinkedUserId,
-          userName: '照合　対象',
-          isLiveActive: false,
-        },
-        {
-          userId: deletionPendingUserId,
-          userName: '照 合対象',
-          isLiveActive: true,
-        },
-      ]);
+      await expect(
+        repo.findMicrosoftLinkCandidateByEmail('pending@example.com')
+      ).resolves.toEqual({
+        userId: deletionPendingUserId,
+        userName: '削除処理中教員',
+        isLiveActive: true,
+      });
+      await expect(
+        repo.findMicrosoftLinkCandidateByEmail('deleted@example.com')
+      ).resolves.toBeNull();
     });
 
-    it('教員ではない同名Userを候補に含めない', async () => {
+    it('該当する教員がいない場合はnullを返す', async () => {
       await env.DB.prepare(
-        "INSERT INTO users (user_name) VALUES ('教員ではない 同名User')"
+        "INSERT INTO users (user_name) VALUES ('教員ではないUser')"
       ).run();
 
       await expect(
-        repo.findMicrosoftLinkCandidatesByDisplayName('教員ではない同名User')
-      ).resolves.toEqual([]);
+        repo.findMicrosoftLinkCandidateByEmail('unknown@example.com')
+      ).resolves.toBeNull();
     });
 
-    it('空白以外の文字は完全一致で比較し、大文字・小文字を同一視しない', async () => {
-      await insertTeacherCandidate({ userName: 'Case Teacher' });
-      await insertTeacherCandidate({ userName: '山田太郎' });
+    it('リポジトリでは正規化済みメールを完全一致で比較する', async () => {
+      await insertTeacherCandidate({
+        userName: '大文字比較教員',
+        email: 'case.teacher@example.com',
+      });
 
       await expect(
-        repo.findMicrosoftLinkCandidatesByDisplayName('case teacher')
-      ).resolves.toEqual([]);
-      await expect(
-        repo.findMicrosoftLinkCandidatesByDisplayName('山田')
-      ).resolves.toEqual([]);
+        repo.findMicrosoftLinkCandidateByEmail('Case.Teacher@Example.com')
+      ).resolves.toBeNull();
     });
 
-    it('空白を除くと空になる表示名では照合しない', async () => {
-      await insertTeacherCandidate({ userName: ' 　 ' });
-
+    it('空文字では照合しない', async () => {
       await expect(
-        repo.findMicrosoftLinkCandidatesByDisplayName(' 　 ')
-      ).resolves.toEqual([]);
+        repo.findMicrosoftLinkCandidateByEmail('')
+      ).resolves.toBeNull();
     });
   });
 

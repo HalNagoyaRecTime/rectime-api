@@ -52,10 +52,10 @@ export const AuthErrors = {
     code: 'TEACHER_ALREADY_LINKED',
     message: 'この教員は既に別のMicrosoftアカウントと連携されています',
   },
-  TEACHER_LINK_AMBIGUOUS: {
+  TEACHER_LINK_CHANGED: {
     status: 409,
-    code: 'TEACHER_LINK_AMBIGUOUS',
-    message: '同じ名前の教員が複数いるため連携できません',
+    code: 'TEACHER_LINK_CHANGED',
+    message: '教員情報が更新されたため、もう一度ログインしてください',
   },
   ACCOUNT_DELETION_PENDING: {
     status: 410,

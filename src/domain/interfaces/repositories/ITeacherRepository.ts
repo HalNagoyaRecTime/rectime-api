@@ -22,9 +22,10 @@ export interface ITeacherRepository {
   findAll: (filter?: TeacherSearchFilter) => Promise<TeacherPage>;
   existsById: (id: number) => Promise<boolean>;
   findExistingEmails: (emails: string[]) => Promise<Set<string>>;
-  findMicrosoftLinkCandidatesByDisplayName: (
-    displayName: string
-  ) => Promise<TeacherMicrosoftLinkCandidate[]>;
+  findMicrosoftLinkCandidateByEmail: (
+    email: string
+  ) => Promise<TeacherMicrosoftLinkCandidate | null>;
+  existsClassRooms: (classRoomIds: number[]) => Promise<boolean>;
   create: (
     input: NewTeacherInput | TeacherCreateInput
   ) => Promise<TeacherEntity>;

@@ -340,8 +340,8 @@ microsoft.post('/token', async c => {
     if (err instanceof Error && err.message === 'TEACHER_ALREADY_LINKED') {
       return errorResponse(c, AuthErrors.TEACHER_ALREADY_LINKED);
     }
-    if (err instanceof Error && err.message === 'TEACHER_LINK_AMBIGUOUS') {
-      return errorResponse(c, AuthErrors.TEACHER_LINK_AMBIGUOUS);
+    if (err instanceof Error && err.message === 'TEACHER_LINK_CHANGED') {
+      return errorResponse(c, AuthErrors.TEACHER_LINK_CHANGED);
     }
     if (err instanceof Error && err.message === 'ACCOUNT_DELETION_PENDING') {
       return errorResponse(c, AuthErrors.ACCOUNT_DELETION_PENDING);

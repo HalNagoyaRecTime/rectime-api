@@ -5,8 +5,9 @@ import type { IStudentRepository } from '../../domain/interfaces/repositories/IS
 import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 import type { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
 
-function getEmailDomain(email: string): string | null {
-  const parts = email.trim().split('@');
+function normalizeMicrosoftEmail(email: string): string | null {
+  const normalized = email.trim().toLowerCase();
+  const parts = normalized.split('@');
   if (
     parts.length !== 2 ||
     !parts[0] ||
@@ -15,7 +16,7 @@ function getEmailDomain(email: string): string | null {
   ) {
     return null;
   }
-  return parts[1].toLowerCase();
+  return normalized;
 }
 
 function extractStudentIdNumber(
@@ -51,7 +52,16 @@ export function createAuthService(
 
   return {
     async upsertUser(claims: MicrosoftClaims) {
-      const email = claims.preferred_username ?? claims.email ?? '';
+      const preferredUsername =
+        typeof claims.preferred_username === 'string'
+          ? claims.preferred_username
+          : '';
+      const emailClaim = typeof claims.email === 'string' ? claims.email : '';
+      const email = preferredUsername.trim()
+        ? preferredUsername
+        : emailClaim.trim()
+          ? emailClaim
+          : '';
       const claimName =
         typeof claims.name === 'string' ? claims.name : undefined;
       const displayName = claimName ?? email;
@@ -92,7 +102,13 @@ export function createAuthService(
         return updated;
       }
 
-      const studentIdNumber = extractStudentIdNumber(email, studentEmailDomain);
+      const normalizedEmail = normalizeMicrosoftEmail(email);
+      const normalizedTeacherEmail = preferredUsername.trim()
+        ? normalizeMicrosoftEmail(preferredUsername)
+        : null;
+      const studentIdNumber = normalizedEmail
+        ? extractStudentIdNumber(normalizedEmail, normalizedStudentEmailDomain)
+        : null;
       if (studentIdNumber) {
         const student =
           await studentRepository.findByStudentNum(studentIdNumber);
@@ -171,32 +187,19 @@ export function createAuthService(
         }
       }
 
-      // 教員は学生のような学籍番号を持たず、現行の事前登録情報で
-      // Microsoft側と照合できるのは氏名だけである。学生用メールの
-      // 利用者を同名の教員へ誤って紐付けないよう、形式が不正なものも含め
-      // 学生用ドメインは教員照合の対象外にする。また、emailへフォール
-      // バックしたdisplayNameではなく、ID Tokenのnameが実際に存在する
-      // 場合だけ照合する。
-      const emailDomain = getEmailDomain(email);
-      const teacherDisplayName = claimName?.trim() ?? '';
-      if (
-        emailDomain &&
-        emailDomain !== normalizedStudentEmailDomain &&
-        teacherDisplayName
-      ) {
-        const candidates =
-          await teacherRepository.findMicrosoftLinkCandidatesByDisplayName(
-            teacherDisplayName
+      // 教員は事前登録されたMicrosoftサインイン用メールアドレスで照合する。
+      // teachers.emailは保存時にtrim + lowercaseで正規化されているため、
+      // ID Token側も同じ形に揃える。氏名は表示用途に限り、職員番号などが
+      // 含まれていても本人確認には使わない。
+      // preferred_usernameはMicrosoftのサインイン用アドレスであり、
+      // 連絡先用途のemail claimにはフォールバックしない。また、nhs+数字の
+      // 学生形式は、DBに該当学生がまだいなくても教員として扱わない。
+      if (normalizedTeacherEmail && !studentIdNumber) {
+        const teacher =
+          await teacherRepository.findMicrosoftLinkCandidateByEmail(
+            normalizedTeacherEmail
           );
 
-        // users.user_nameにはUNIQUE制約がない。同姓同名が複数いる場合に
-        // 先頭の1人を選ぶと別人の担当クラス・権限を奪うため、書き込みを
-        // 一切せず明示的に拒否する。
-        if (candidates.length > 1) {
-          throw new Error('TEACHER_LINK_AMBIGUOUS');
-        }
-
-        const teacher = candidates[0];
         if (teacher) {
           const teacherDeletionStatus = await userRepository.getDeletionStatus(
             String(teacher.userId)
@@ -221,6 +224,7 @@ export function createAuthService(
                 oid: claims.oid,
                 tid: claims.tid,
                 requireLiveActive: true,
+                requiredTeacherEmail: normalizedTeacherEmail,
               });
               return {
                 id: String(teacher.userId),
@@ -238,6 +242,10 @@ export function createAuthService(
               }
 
               if (err.message === 'USER_DEACTIVATED') {
+                throw err;
+              }
+
+              if (err.message === 'TEACHER_LINK_CHANGED') {
                 throw err;
               }
 

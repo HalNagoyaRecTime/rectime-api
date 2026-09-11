@@ -965,7 +965,7 @@ describe('POST /auth/microsoft/token', () => {
       "INSERT INTO users (user_name) VALUES ('教師三郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     const teacher = await workerEnv.DB.prepare(
-      'INSERT INTO teachers (user_id) VALUES (?) RETURNING teacher_id'
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'sensei@example.com') RETURNING teacher_id"
     )
       .bind(user!.user_id)
       .first<{ teacher_id: number }>();
@@ -985,7 +985,7 @@ describe('POST /auth/microsoft/token', () => {
       attemptId: 'teacher-link-1',
       oid: 'oid-teacher-link',
       sub: 'sub-teacher-link',
-      name: '教師三郎',
+      name: 'NH-STAFF Microsoft表示名',
       email: 'sensei@example.com',
     });
 
@@ -1024,7 +1024,7 @@ describe('POST /auth/microsoft/token', () => {
       attemptId: 'teacher-link-2',
       oid: 'oid-teacher-link',
       sub: 'sub-teacher-link',
-      name: '教師三郎',
+      name: 'NH-STAFF Microsoft表示名',
       email: 'sensei@example.com',
     });
 
@@ -1054,7 +1054,7 @@ describe('POST /auth/microsoft/token', () => {
     expect(classRoomAfterSecondLogin?.teacher_id).toBe(teacher!.teacher_id);
   });
 
-  it('同名の事前登録済み教員が複数いる場合は409 TEACHER_LINK_AMBIGUOUSを返し、何も紐付けない', async () => {
+  it('同名の教員が複数いてもメールが一致する教員だけへ紐付ける', async () => {
     const env = buildEnv();
 
     const firstUser = await workerEnv.DB.prepare(
@@ -1063,33 +1063,42 @@ describe('POST /auth/microsoft/token', () => {
     const secondUser = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('同名先生') RETURNING user_id"
     ).first<{ user_id: number }>();
-    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'first.teacher@example.com')"
+    )
       .bind(firstUser!.user_id)
       .run();
-    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'second.teacher@example.com')"
+    )
       .bind(secondUser!.user_id)
       .run();
 
     const response = await requestWebLogin(env, {
-      attemptId: 'teacher-ambiguous',
-      oid: 'oid-teacher-ambiguous',
-      sub: 'sub-teacher-ambiguous',
-      name: '同名先生',
-      email: 'ambiguous@example.com',
+      attemptId: 'teacher-same-name',
+      oid: 'oid-teacher-same-name',
+      sub: 'sub-teacher-same-name',
+      name: 'NH-STAFF 同名先生',
+      email: 'second.teacher@example.com',
     });
 
-    expect(response.status).toBe(409);
-    const body = (await response.json()) as { error?: { code?: string } };
-    expect(body.error?.code).toBe('TEACHER_LINK_AMBIGUOUS');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { user: { id: string } };
+    expect(body.user.id).toBe(String(secondUser!.user_id));
 
     const userCount = await workerEnv.DB.prepare(
       'SELECT COUNT(*) AS count FROM users'
     ).first<{ count: number }>();
-    const linkCount = await workerEnv.DB.prepare(
-      'SELECT COUNT(*) AS count FROM microsoft_account_links'
-    ).first<{ count: number }>();
+    const links = await workerEnv.DB.prepare(
+      'SELECT user_id, oid FROM microsoft_account_links'
+    ).all<{ user_id: number; oid: string }>();
     expect(userCount?.count).toBe(2);
-    expect(linkCount?.count).toBe(0);
+    expect(links.results).toEqual([
+      {
+        user_id: secondUser!.user_id,
+        oid: 'oid-teacher-same-name',
+      },
+    ]);
   });
 
   it('同名の事前登録済み教員が別のMicrosoftアカウントと連携済みの場合は409 TEACHER_ALREADY_LINKEDを返す', async () => {
@@ -1098,7 +1107,9 @@ describe('POST /auth/microsoft/token', () => {
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('連携済み先生') RETURNING user_id"
     ).first<{ user_id: number }>();
-    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'linked@example.com')"
+    )
       .bind(user!.user_id)
       .run();
     await workerEnv.DB.prepare(
@@ -1141,7 +1152,9 @@ describe('POST /auth/microsoft/token', () => {
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name, is_live_active) VALUES ('無効化教員', 0) RETURNING user_id"
     ).first<{ user_id: number }>();
-    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'deactivated@example.com')"
+    )
       .bind(user!.user_id)
       .run();
 

@@ -29,12 +29,13 @@ function buildTeacherRepository(): ITeacherRepository {
   return {
     findById: vi.fn(),
     findAll: vi.fn(),
-    findMicrosoftLinkCandidatesByDisplayName: vi.fn().mockResolvedValue([]),
+    existsById: vi.fn(),
+    findExistingEmails: vi.fn().mockResolvedValue(new Set<string>()),
+    findMicrosoftLinkCandidateByEmail: vi.fn().mockResolvedValue(null),
     existsClassRooms: vi.fn(),
     create: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),
-    deactivate: vi.fn(),
     deleteByUserId: vi.fn(),
   };
 }
@@ -328,7 +329,7 @@ describe('createAuthService', () => {
         expect.objectContaining({ email: '', displayName: '山田花子' })
       );
       expect(
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName
+        teacherRepository.findMicrosoftLinkCandidateByEmail
       ).not.toHaveBeenCalled();
     });
 
@@ -406,38 +407,37 @@ describe('createAuthService', () => {
       );
     });
 
-    it('非学生メールかつ氏名が一意な事前登録済み教員の場合、既存user_idへMicrosoftアカウントを紐付ける', async () => {
+    it('Microsoft側の氏名が異なってもメールが一致する事前登録済み教員へ紐付ける', async () => {
       const { userRepository, teacherRepository, service } = setup();
       (
         userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockResolvedValue(null);
       (
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName as ReturnType<
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
           typeof vi.fn
         >
-      ).mockResolvedValue([
-        {
-          userId: 100,
-          userName: '事前登録済み教員',
-          isLiveActive: true,
-        },
-      ]);
+      ).mockResolvedValue({
+        userId: 100,
+        userName: '事前登録済み教員',
+        isLiveActive: true,
+      });
 
       const result = await service.upsertUser(
         buildClaims({
-          name: '事前登録済み 教員',
+          name: 'NH-STAFF Microsoft表示名',
           preferred_username: 'teacher@example.com',
         })
       );
 
       expect(
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName
-      ).toHaveBeenCalledWith('事前登録済み 教員');
+        teacherRepository.findMicrosoftLinkCandidateByEmail
+      ).toHaveBeenCalledWith('teacher@example.com');
       expect(userRepository.linkMicrosoftAccount).toHaveBeenCalledWith({
         userId: '100',
         oid: 'oid-1',
         tid: 'tid-1',
         requireLiveActive: true,
+        requiredTeacherEmail: 'teacher@example.com',
       });
       expect(userRepository.createUserWithMicrosoftLink).not.toHaveBeenCalled();
       expect(result).toEqual({
@@ -450,32 +450,59 @@ describe('createAuthService', () => {
       });
     });
 
-    it('同名の教員候補が複数いる場合はTEACHER_LINK_AMBIGUOUSを投げ、書き込まない', async () => {
+    it('教員メールの大文字と前後空白を正規化して照合する', async () => {
       const { userRepository, teacherRepository, service } = setup();
       (
         userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockResolvedValue(null);
       (
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName as ReturnType<
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
           typeof vi.fn
         >
-      ).mockResolvedValue([
-        { userId: 100, userName: '同名教員', isLiveActive: true },
-        { userId: 200, userName: '同名教員', isLiveActive: true },
-      ]);
+      ).mockResolvedValue({
+        userId: 100,
+        userName: '正規化対象教員',
+        isLiveActive: true,
+      });
+
+      await service.upsertUser(
+        buildClaims({ preferred_username: ' Teacher@Example.COM ' })
+      );
+
+      expect(
+        teacherRepository.findMicrosoftLinkCandidateByEmail
+      ).toHaveBeenCalledWith('teacher@example.com');
+    });
+
+    it('氏名が一致してもメールが一致する教員がいなければ新規ユーザーを作成する', async () => {
+      const { userRepository, teacherRepository, service } = setup();
+      const created = buildAppUser({ id: 'new-user' });
+      (
+        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(null);
+      (
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue(null);
+      (
+        userRepository.createUserWithMicrosoftLink as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(created);
 
       await expect(
         service.upsertUser(
           buildClaims({
             name: '同名教員',
-            preferred_username: 'teacher@example.com',
+            preferred_username: 'different@example.com',
           })
         )
-      ).rejects.toThrow('TEACHER_LINK_AMBIGUOUS');
+      ).resolves.toEqual(created);
 
-      expect(userRepository.getDeletionStatus).not.toHaveBeenCalled();
+      expect(
+        teacherRepository.findMicrosoftLinkCandidateByEmail
+      ).toHaveBeenCalledWith('different@example.com');
       expect(userRepository.linkMicrosoftAccount).not.toHaveBeenCalled();
-      expect(userRepository.createUserWithMicrosoftLink).not.toHaveBeenCalled();
+      expect(userRepository.createUserWithMicrosoftLink).toHaveBeenCalled();
     });
 
     it('教員候補のuser_idが別Microsoftアカウントと連携済みの場合はTEACHER_ALREADY_LINKEDを投げる', async () => {
@@ -484,12 +511,14 @@ describe('createAuthService', () => {
         userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockResolvedValue(null);
       (
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName as ReturnType<
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
           typeof vi.fn
         >
-      ).mockResolvedValue([
-        { userId: 100, userName: '連携済み教員', isLiveActive: true },
-      ]);
+      ).mockResolvedValue({
+        userId: 100,
+        userName: '連携済み教員',
+        isLiveActive: true,
+      });
       (
         userRepository.linkMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockRejectedValue(
@@ -514,12 +543,14 @@ describe('createAuthService', () => {
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce('100');
       (
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName as ReturnType<
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
           typeof vi.fn
         >
-      ).mockResolvedValue([
-        { userId: 100, userName: '競合教員', isLiveActive: true },
-      ]);
+      ).mockResolvedValue({
+        userId: 100,
+        userName: '競合教員',
+        isLiveActive: true,
+      });
       (
         userRepository.linkMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockRejectedValue(
@@ -544,12 +575,14 @@ describe('createAuthService', () => {
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce('999');
       (
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName as ReturnType<
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
           typeof vi.fn
         >
-      ).mockResolvedValue([
-        { userId: 100, userName: '競合教員', isLiveActive: true },
-      ]);
+      ).mockResolvedValue({
+        userId: 100,
+        userName: '競合教員',
+        isLiveActive: true,
+      });
       (
         userRepository.linkMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockRejectedValue(
@@ -574,12 +607,14 @@ describe('createAuthService', () => {
         userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockResolvedValue(null);
       (
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName as ReturnType<
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
           typeof vi.fn
         >
-      ).mockResolvedValue([
-        { userId: 100, userName: '障害確認教員', isLiveActive: true },
-      ]);
+      ).mockResolvedValue({
+        userId: 100,
+        userName: '障害確認教員',
+        isLiveActive: true,
+      });
       (
         userRepository.linkMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockRejectedValue(new Error('database unavailable'));
@@ -596,18 +631,47 @@ describe('createAuthService', () => {
       expect(userRepository.createUserWithMicrosoftLink).not.toHaveBeenCalled();
     });
 
+    it('候補取得後に教員メールが変更された場合はTEACHER_LINK_CHANGEDを投げて紐付けない', async () => {
+      const { userRepository, teacherRepository, service } = setup();
+      (
+        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(null);
+      (
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        userId: 100,
+        userName: '更新対象教員',
+        isLiveActive: true,
+      });
+      (
+        userRepository.linkMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('TEACHER_LINK_CHANGED'));
+
+      await expect(
+        service.upsertUser(
+          buildClaims({ preferred_username: 'teacher@example.com' })
+        )
+      ).rejects.toThrow('TEACHER_LINK_CHANGED');
+
+      expect(userRepository.createUserWithMicrosoftLink).not.toHaveBeenCalled();
+    });
+
     it('教員候補が削除処理中の場合はACCOUNT_DELETION_PENDINGを投げて紐付けない', async () => {
       const { userRepository, teacherRepository, service } = setup();
       (
         userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockResolvedValue(null);
       (
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName as ReturnType<
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
           typeof vi.fn
         >
-      ).mockResolvedValue([
-        { userId: 100, userName: '削除処理中教員', isLiveActive: true },
-      ]);
+      ).mockResolvedValue({
+        userId: 100,
+        userName: '削除処理中教員',
+        isLiveActive: true,
+      });
       (
         userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
       ).mockResolvedValue('deletion_pending');
@@ -631,12 +695,14 @@ describe('createAuthService', () => {
         userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockResolvedValue(null);
       (
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName as ReturnType<
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
           typeof vi.fn
         >
-      ).mockResolvedValue([
-        { userId: 100, userName: '無効化教員', isLiveActive: false },
-      ]);
+      ).mockResolvedValue({
+        userId: 100,
+        userName: '無効化教員',
+        isLiveActive: false,
+      });
 
       await expect(
         service.upsertUser(
@@ -658,12 +724,14 @@ describe('createAuthService', () => {
         userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockResolvedValue(null);
       (
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName as ReturnType<
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
           typeof vi.fn
         >
-      ).mockResolvedValue([
-        { userId: 100, userName: '削除済み教員', isLiveActive: true },
-      ]);
+      ).mockResolvedValue({
+        userId: 100,
+        userName: '削除済み教員',
+        isLiveActive: true,
+      });
       (
         userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
       ).mockResolvedValue('deleted');
@@ -683,16 +751,22 @@ describe('createAuthService', () => {
       expect(userRepository.linkMicrosoftAccount).not.toHaveBeenCalled();
     });
 
-    it('claims.nameが無い場合はメールを教員名として使わず、教員照合を行わない', async () => {
+    it('claims.nameが無くてもメールが一致すれば事前登録済み教員へ紐付ける', async () => {
       const { userRepository, teacherRepository, service } = setup();
       (
         userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
       ).mockResolvedValue(null);
       (
-        userRepository.createUserWithMicrosoftLink as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(buildAppUser());
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        userId: 100,
+        userName: '事前登録名',
+        isLiveActive: true,
+      });
 
-      await service.upsertUser(
+      const result = await service.upsertUser(
         buildClaims({
           name: undefined,
           preferred_username: 'teacher@example.com',
@@ -700,8 +774,104 @@ describe('createAuthService', () => {
       );
 
       expect(
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName
+        teacherRepository.findMicrosoftLinkCandidateByEmail
+      ).toHaveBeenCalledWith('teacher@example.com');
+      expect(result.display_name).toBe('事前登録名');
+    });
+
+    it('preferred_usernameが無い場合はemail claimだけで教員を照合しない', async () => {
+      const { userRepository, teacherRepository, service } = setup();
+      const created = buildAppUser({ id: 'email-claim-user' });
+      (
+        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(null);
+      (
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        userId: 100,
+        userName: 'email claim教員',
+        isLiveActive: true,
+      });
+      (
+        userRepository.createUserWithMicrosoftLink as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(created);
+
+      await expect(
+        service.upsertUser(
+          buildClaims({
+            preferred_username: undefined,
+            email: 'Teacher.Email@Example.COM',
+          })
+        )
+      ).resolves.toEqual(created);
+
+      expect(
+        teacherRepository.findMicrosoftLinkCandidateByEmail
       ).not.toHaveBeenCalled();
+      expect(userRepository.linkMicrosoftAccount).not.toHaveBeenCalled();
+    });
+
+    it('preferred_usernameが空の場合もemail claimだけで教員を照合しない', async () => {
+      const { userRepository, teacherRepository, service } = setup();
+      const created = buildAppUser({ id: 'email-fallback-user' });
+      (
+        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(null);
+      (
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        userId: 100,
+        userName: 'email fallback教員',
+        isLiveActive: true,
+      });
+      (
+        userRepository.createUserWithMicrosoftLink as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(created);
+
+      await expect(
+        service.upsertUser(
+          buildClaims({
+            preferred_username: '  ',
+            email: 'fallback@example.com',
+          })
+        )
+      ).resolves.toEqual(created);
+
+      expect(
+        teacherRepository.findMicrosoftLinkCandidateByEmail
+      ).not.toHaveBeenCalled();
+      expect(userRepository.linkMicrosoftAccount).not.toHaveBeenCalled();
+    });
+
+    it('学生用ドメインでもnhs数字形式でなければメールが一致する教員へ紐付ける', async () => {
+      const { userRepository, teacherRepository, service } = setup();
+      (
+        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(null);
+      (
+        teacherRepository.findMicrosoftLinkCandidateByEmail as ReturnType<
+          typeof vi.fn
+        >
+      ).mockResolvedValue({
+        userId: 100,
+        userName: '同一ドメイン教員',
+        isLiveActive: true,
+      });
+
+      const result = await service.upsertUser(
+        buildClaims({
+          preferred_username: 'staff@NHS.HAL.AC.JP',
+        })
+      );
+
+      expect(
+        teacherRepository.findMicrosoftLinkCandidateByEmail
+      ).toHaveBeenCalledWith('staff@nhs.hal.ac.jp');
+      expect(result.id).toBe('100');
     });
 
     it('メール形式が不正な場合は氏名があっても教員照合を行わない', async () => {
@@ -721,7 +891,7 @@ describe('createAuthService', () => {
       );
 
       expect(
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName
+        teacherRepository.findMicrosoftLinkCandidateByEmail
       ).not.toHaveBeenCalled();
     });
 
@@ -743,7 +913,7 @@ describe('createAuthService', () => {
 
       expect(studentRepository.findByStudentNum).not.toHaveBeenCalled();
       expect(
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName
+        teacherRepository.findMicrosoftLinkCandidateByEmail
       ).not.toHaveBeenCalled();
       expect(userRepository.createUserWithMicrosoftLink).toHaveBeenCalled();
     });
@@ -771,7 +941,7 @@ describe('createAuthService', () => {
       });
       expect(userRepository.createUserWithMicrosoftLink).not.toHaveBeenCalled();
       expect(
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName
+        teacherRepository.findMicrosoftLinkCandidateByEmail
       ).not.toHaveBeenCalled();
       expect(result).toEqual({
         id: '100',
@@ -854,7 +1024,7 @@ describe('createAuthService', () => {
       expect(userRepository.createUserWithMicrosoftLink).toHaveBeenCalled();
     });
 
-    it('学生ドメインは大文字小文字を問わず、nhs形式でなくても教員照合へ流さない', async () => {
+    it('学生用ドメインでもnhs数字形式でなければ正規化して教員を検索する', async () => {
       const { userRepository, studentRepository, teacherRepository, service } =
         setup();
       const claims = buildClaims({
@@ -871,8 +1041,8 @@ describe('createAuthService', () => {
 
       expect(studentRepository.findByStudentNum).not.toHaveBeenCalled();
       expect(
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName
-      ).not.toHaveBeenCalled();
+        teacherRepository.findMicrosoftLinkCandidateByEmail
+      ).toHaveBeenCalledWith('tanaka2024@nhs.hal.ac.jp');
       expect(userRepository.createUserWithMicrosoftLink).toHaveBeenCalled();
     });
 
@@ -893,8 +1063,8 @@ describe('createAuthService', () => {
 
       expect(studentRepository.findByStudentNum).not.toHaveBeenCalled();
       expect(
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName
-      ).not.toHaveBeenCalled();
+        teacherRepository.findMicrosoftLinkCandidateByEmail
+      ).toHaveBeenCalledWith('tanaka@nhs.hal.ac.jp');
       expect(userRepository.createUserWithMicrosoftLink).toHaveBeenCalled();
     });
 
@@ -918,7 +1088,7 @@ describe('createAuthService', () => {
 
       expect(studentRepository.findByStudentNum).toHaveBeenCalledWith('99999');
       expect(
-        teacherRepository.findMicrosoftLinkCandidatesByDisplayName
+        teacherRepository.findMicrosoftLinkCandidateByEmail
       ).not.toHaveBeenCalled();
       expect(userRepository.createUserWithMicrosoftLink).toHaveBeenCalled();
     });
@@ -1123,7 +1293,9 @@ describe('createAuthService (実DB・TOCTOU再現)', () => {
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('競合削除教員') RETURNING user_id"
     ).first<{ user_id: number }>();
-    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'teacher@example.com')"
+    )
       .bind(user!.user_id)
       .run();
 
@@ -1161,7 +1333,9 @@ describe('createAuthService (実DB・TOCTOU再現)', () => {
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('競合無効化教員') RETURNING user_id"
     ).first<{ user_id: number }>();
-    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'teacher@example.com')"
+    )
       .bind(user!.user_id)
       .run();
 
@@ -1188,6 +1362,49 @@ describe('createAuthService (実DB・TOCTOU再現)', () => {
         })
       )
     ).rejects.toThrow('USER_DEACTIVATED');
+
+    const linkRow = await workerEnv.DB.prepare(
+      'SELECT * FROM microsoft_account_links WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first();
+    expect(linkRow).toBeNull();
+  });
+
+  it('教員候補の状態確認直後にメールが変更されても、古いメールでは紐付けずTEACHER_LINK_CHANGEDになる', async () => {
+    const { userRepository, service } = buildRealService();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('競合メール変更教員') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'old.teacher@example.com')"
+    )
+      .bind(user!.user_id)
+      .run();
+
+    const getDeletionStatusSpy = vi.spyOn(userRepository, 'getDeletionStatus');
+    getDeletionStatusSpy.mockImplementationOnce(async userId => {
+      const status = await createUserRepository(workerEnv.DB).getDeletionStatus(
+        userId
+      );
+      await workerEnv.DB.prepare(
+        "UPDATE teachers SET email = 'new.teacher@example.com' WHERE user_id = ?"
+      )
+        .bind(userId)
+        .run();
+      return status;
+    });
+
+    await expect(
+      service.upsertUser(
+        buildClaims({
+          oid: 'oid-toctou-email-changed',
+          tid: 'tid-toctou-email-changed',
+          preferred_username: 'old.teacher@example.com',
+        })
+      )
+    ).rejects.toThrow('TEACHER_LINK_CHANGED');
 
     const linkRow = await workerEnv.DB.prepare(
       'SELECT * FROM microsoft_account_links WHERE user_id = ?'
