@@ -142,7 +142,10 @@ export function createDIContainer(env: Env) {
     teacherRepository,
     classRoomRepository
   );
-  const eventService = createEventService(eventRepository);
+  const eventService = createEventService(
+    eventRepository,
+    eventGatheringSettingsRepository
+  );
   const eventScheduleService = createEventScheduleService({
     eventRepository,
     eventScheduleRepository,
