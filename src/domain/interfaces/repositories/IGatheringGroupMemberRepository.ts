@@ -1,5 +1,4 @@
 import { GatheringGroupMemberEntity } from '../../entities/GatheringGroupMember';
-import { GatheringMemberSummary } from '../../entities/GatheringMemberSummary';
 
 export interface IGatheringGroupMemberRepository {
   existsGathering: (gatheringId: number) => Promise<boolean>;
@@ -7,11 +6,6 @@ export interface IGatheringGroupMemberRepository {
   findByGatheringId: (
     gatheringId: number
   ) => Promise<GatheringGroupMemberEntity[]>;
-  // GET /gatherings/:gatheringId/members 用。user_idのみを返す
-  // (display_nameは含めない。GatheringMemberSummary参照)。
-  findMemberSummariesByGatheringId: (
-    gatheringId: number
-  ) => Promise<GatheringMemberSummary[]>;
   create: (
     gatheringId: number,
     userId: number
@@ -24,7 +18,7 @@ export interface IGatheringGroupMemberRepository {
   replaceMembers: (
     gatheringId: number,
     userIds: number[]
-  ) => Promise<GatheringMemberSummary[]>;
+  ) => Promise<GatheringGroupMemberEntity[]>;
   // アカウント削除(#265 PR4)専用。該当ユーザーが所属する全gatheringの
   // メンバー行を削除する。対象が無ければ何もしない(冪等)。
   deleteByUserId: (userId: number) => Promise<void>;

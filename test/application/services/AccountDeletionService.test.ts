@@ -65,7 +65,6 @@ function buildDeps() {
     existsGathering: vi.fn(),
     existsUser: vi.fn(),
     findByGatheringId: vi.fn(),
-    findMemberSummariesByGatheringId: vi.fn(),
     findMissingUserIds: vi.fn(),
     replaceMembers: vi.fn(),
     create: vi.fn(),

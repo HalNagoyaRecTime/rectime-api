@@ -1,9 +1,6 @@
 import { GatheringGroupMemberEntity } from '../../domain/entities/GatheringGroupMember';
 import { IGatheringGroupMemberRepository } from '../../domain/interfaces/repositories/IGatheringGroupMemberRepository';
-import {
-  GatheringMemberSet,
-  IGatheringGroupMemberService,
-} from './IGatheringGroupMemberService';
+import { IGatheringGroupMemberService } from './IGatheringGroupMemberService';
 
 export function createGatheringGroupMemberService(
   gatheringGroupMemberRepository: IGatheringGroupMemberRepository
@@ -23,13 +20,9 @@ export function createGatheringGroupMemberService(
   return {
     async getGatheringMembers(
       gatheringId: number
-    ): Promise<GatheringMemberSet> {
+    ): Promise<GatheringGroupMemberEntity[]> {
       await ensureGatheringExists(gatheringId);
-      const members =
-        await gatheringGroupMemberRepository.findMemberSummariesByGatheringId(
-          gatheringId
-        );
-      return { gathering_id: gatheringId, members };
+      return gatheringGroupMemberRepository.findByGatheringId(gatheringId);
     },
 
     async addGatheringMember(
@@ -68,7 +61,7 @@ export function createGatheringGroupMemberService(
     async replaceGatheringMembers(
       gatheringId: number,
       userIds: number[]
-    ): Promise<GatheringMemberSet> {
+    ): Promise<GatheringGroupMemberEntity[]> {
       await ensureGatheringExists(gatheringId);
 
       if (userIds.length > 0) {
@@ -79,11 +72,10 @@ export function createGatheringGroupMemberService(
         }
       }
 
-      const members = await gatheringGroupMemberRepository.replaceMembers(
+      return gatheringGroupMemberRepository.replaceMembers(
         gatheringId,
         userIds
       );
-      return { gathering_id: gatheringId, members };
     },
   };
 }

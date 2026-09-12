@@ -275,7 +275,7 @@ describe('Gathering master controllers', () => {
     const { app, memberService } = setup();
     (
       memberService.getGatheringMembers as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ gathering_id: 1, members: [] });
+    ).mockResolvedValue([]);
     (
       memberService.addGatheringMember as ReturnType<typeof vi.fn>
     ).mockResolvedValue({ gathering_group_member_id: 1 });
@@ -300,12 +300,16 @@ describe('Gathering master controllers', () => {
 
   it('参加者集合の一括置換をServiceへ委譲する', async () => {
     const { app, memberService } = setup();
+    const member = {
+      gathering_group_member_id: 3,
+      gathering_id: 1,
+      user_id: 2,
+      created_at: '2026-01-01 00:00:00',
+      updated_at: '2026-01-01 00:00:00',
+    };
     (
       memberService.replaceGatheringMembers as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({
-      gathering_id: 1,
-      members: [{ user_id: 2 }],
-    });
+    ).mockResolvedValue([member]);
 
     const response = await app.request('/gatherings/1/members', {
       method: 'PUT',
@@ -314,10 +318,7 @@ describe('Gathering master controllers', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      gathering_id: 1,
-      members: [{ user_id: 2 }],
-    });
+    expect(await response.json()).toEqual([member]);
     expect(memberService.replaceGatheringMembers).toHaveBeenCalledWith(1, [2]);
   });
 

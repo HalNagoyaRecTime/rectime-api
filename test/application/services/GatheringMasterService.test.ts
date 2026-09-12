@@ -136,16 +136,12 @@ describe('Gathering master services', () => {
       created_at: '2026-01-01 00:00:00',
       updated_at: '2026-01-01 00:00:00',
     };
-    const memberSummary = { user_id: 2 };
     const repository: IGatheringGroupMemberRepository = {
       existsGathering: vi.fn().mockResolvedValue(true),
       existsUser: vi.fn().mockResolvedValue(true),
       findByGatheringId: vi.fn().mockResolvedValue([member]),
-      findMemberSummariesByGatheringId: vi
-        .fn()
-        .mockResolvedValue([memberSummary]),
       findMissingUserIds: vi.fn().mockResolvedValue([]),
-      replaceMembers: vi.fn().mockResolvedValue([memberSummary]),
+      replaceMembers: vi.fn().mockResolvedValue([member]),
       create: vi.fn().mockResolvedValue(member),
       remove: vi.fn().mockResolvedValue(true),
       deleteByUserId: vi.fn(),
@@ -153,20 +149,16 @@ describe('Gathering master services', () => {
     const service = createGatheringGroupMemberService(repository);
 
     await expect(service.addGatheringMember(1, 2)).resolves.toBe(member);
-    await expect(service.getGatheringMembers(1)).resolves.toEqual({
-      gathering_id: 1,
-      members: [memberSummary],
-    });
+    await expect(service.getGatheringMembers(1)).resolves.toEqual([member]);
     await expect(service.removeGatheringMember(1, 2)).resolves.toBe(true);
-    await expect(service.replaceGatheringMembers(1, [2])).resolves.toEqual({
-      gathering_id: 1,
-      members: [memberSummary],
-    });
+    await expect(service.replaceGatheringMembers(1, [2])).resolves.toEqual([
+      member,
+    ]);
 
     expect(repository.existsGathering).toHaveBeenCalledTimes(3);
     expect(repository.existsUser).toHaveBeenCalledTimes(1);
     expect(repository.create).toHaveBeenCalledWith(1, 2);
-    expect(repository.findMemberSummariesByGatheringId).toHaveBeenCalledWith(1);
+    expect(repository.findByGatheringId).toHaveBeenCalledWith(1);
     expect(repository.remove).toHaveBeenCalledWith(1, 2);
     expect(repository.findMissingUserIds).toHaveBeenCalledWith([2]);
     expect(repository.replaceMembers).toHaveBeenCalledWith(1, [2]);

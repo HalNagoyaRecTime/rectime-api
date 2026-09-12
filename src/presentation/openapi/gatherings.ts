@@ -69,32 +69,6 @@ export type GatheringMemberListResponseDTO = z.infer<
   typeof gatheringMemberListResponseSchema
 >;
 
-// GETはmobile側の学生アプリも本人参加判定のために呼ぶ認証済み全ユーザー向けの
-// エンドポイントであるため、display_nameは含めない。含めると任意のユーザーが
-// 他のgatheringIdを指定するだけで、その参加者全員の実名を取得できてしまう。
-// 管理画面は別途 GET /api/v1/students で取得したuser_id→display_nameの
-// マッピングと突き合わせて名前を表示する。
-export const gatheringMemberSummarySchema = z
-  .object({
-    user_id: z.number().int(),
-  })
-  .openapi('GatheringMemberSummary');
-
-export type GatheringMemberSummaryDTO = z.infer<
-  typeof gatheringMemberSummarySchema
->;
-
-export const gatheringMemberSetResponseSchema = z
-  .object({
-    gathering_id: z.number().int(),
-    members: z.array(gatheringMemberSummarySchema),
-  })
-  .openapi('GatheringMemberSet');
-
-export type GatheringMemberSetResponseDTO = z.infer<
-  typeof gatheringMemberSetResponseSchema
->;
-
 export const gatheringResponseSchema = z
   .object({
     gathering_id: z.number().int(),
@@ -238,7 +212,7 @@ export const gatheringMemberListRoute = createRoute({
   security: bearerAuth,
   request: { params: gatheringIdParams },
   responses: {
-    200: jsonResponse(gatheringMemberSetResponseSchema, '参加者一覧'),
+    200: jsonResponse(gatheringMemberListResponseSchema, '参加者一覧'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     404: notFoundResponse,
@@ -262,7 +236,7 @@ export const gatheringMemberReplaceRoute = createRoute({
     },
   },
   responses: {
-    200: jsonResponse(gatheringMemberSetResponseSchema, '更新後の参加者一覧'),
+    200: jsonResponse(gatheringMemberListResponseSchema, '更新後の参加者一覧'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,

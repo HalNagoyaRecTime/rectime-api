@@ -37,7 +37,6 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       existsGathering: async () => false,
       existsUser: async () => false,
       findByGatheringId: async () => [],
-      findMemberSummariesByGatheringId: async () => [],
       findMissingUserIds: async () => [],
       replaceMembers: async () => [],
       create: async () => {
