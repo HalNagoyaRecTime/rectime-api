@@ -10,6 +10,18 @@ export interface EventDTO {
   updated_at: string;
 }
 
+/** イベント一覧に含める集合概要。 */
+export interface GatheringSummaryDTO {
+  gathering_count: number;
+  configured_gathering_count: number;
+  first_gathering_time: string | null;
+}
+
+/** GET /events の一覧項目として返すイベント。 */
+export interface EventListItemDTO extends EventDTO {
+  gathering_summary: GatheringSummaryDTO;
+}
+
 /** GET /events のクエリとして受け取る値。 */
 export interface GetEventsRequestDTO {
   start_time?: string;
@@ -43,7 +55,7 @@ export interface PatchEventRequestDTO {
 
 /** GET /events のレスポンス本文。 */
 export interface EventListResponseDTO {
-  events: EventDTO[];
+  events: EventListItemDTO[];
   total: number;
   limit: number;
   offset: number;

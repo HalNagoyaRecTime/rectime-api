@@ -33,9 +33,23 @@ export const eventResponseSchema = z
 
 export type EventResponseDTO = z.infer<typeof eventResponseSchema>;
 
+export const gatheringSummaryResponseSchema = z
+  .object({
+    gathering_count: z.number().int(),
+    configured_gathering_count: z.number().int(),
+    first_gathering_time: z.string().nullable(),
+  })
+  .openapi('GatheringSummary');
+
+export const eventListItemResponseSchema = eventResponseSchema
+  .extend({
+    gathering_summary: gatheringSummaryResponseSchema,
+  })
+  .openapi('EventListItem');
+
 export const eventListResponseSchema = z
   .object({
-    events: z.array(eventResponseSchema),
+    events: z.array(eventListItemResponseSchema),
     ...paginationFields,
   })
   .openapi('EventList');

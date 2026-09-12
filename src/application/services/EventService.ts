@@ -1,12 +1,14 @@
 import type {
   EventEntity,
   EventListOptions,
+  EventWithGatheringSummaryEntity,
   EventWriteInput,
 } from '../../domain/entities/Event';
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 import type {
   CreateEventRequestDTO,
   EventDTO,
+  EventListItemDTO,
   GetEventsRequestDTO,
 } from '../dto/EventDTO';
 import type { IEventService } from './IEventService';
@@ -21,6 +23,20 @@ function toEventDTO(event: EventEntity): EventDTO {
     end_time: event.end_time,
     created_at: event.created_at,
     updated_at: event.updated_at,
+  };
+}
+
+function toEventListItemDTO(
+  event: EventWithGatheringSummaryEntity
+): EventListItemDTO {
+  return {
+    ...toEventDTO(event),
+    gathering_summary: {
+      gathering_count: event.gathering_summary.gathering_count,
+      configured_gathering_count:
+        event.gathering_summary.configured_gathering_count,
+      first_gathering_time: event.gathering_summary.first_gathering_time,
+    },
   };
 }
 
@@ -50,7 +66,7 @@ export function createEventService(
       const repositoryOptions = toEventListOptions(options);
       const result = await eventRepository.findAll(repositoryOptions);
       return {
-        events: result.events.map(toEventDTO),
+        events: result.events.map(toEventListItemDTO),
         total: result.total,
         limit: options.limit ?? 50,
         offset: options.offset ?? 0,
