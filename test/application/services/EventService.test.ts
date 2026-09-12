@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createEventService } from '../../../src/application/services/EventService';
 import type { IEventRepository } from '../../../src/domain/interfaces/repositories/IEventRepository';
-import type { EventEntity } from '../../../src/domain/entities/Event';
+import type {
+  EventEntity,
+  EventWithGatheringSummaryEntity,
+} from '../../../src/domain/entities/Event';
 
 function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
   return {
@@ -13,6 +16,20 @@ function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
     end_time: '0930',
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
+    ...overrides,
+  };
+}
+
+function buildEventWithGatheringSummary(
+  overrides: Partial<EventWithGatheringSummaryEntity> = {}
+): EventWithGatheringSummaryEntity {
+  return {
+    ...buildEvent(overrides),
+    gathering_summary: {
+      gathering_count: 0,
+      configured_gathering_count: 0,
+      first_gathering_time: null,
+    },
     ...overrides,
   };
 }
@@ -35,7 +52,15 @@ function createRepository(
 describe('EventService', () => {
   describe('getAllEvents', () => {
     it('EntityをレスポンスDTOへ変換し、既定のページング値を返す', async () => {
-      const events = [buildEvent()];
+      const events = [
+        buildEventWithGatheringSummary({
+          gathering_summary: {
+            gathering_count: 3,
+            configured_gathering_count: 2,
+            first_gathering_time: '10:45',
+          },
+        }),
+      ];
       const repository = createRepository({
         findAll: vi.fn().mockResolvedValue({ events, total: 1 }),
       });
