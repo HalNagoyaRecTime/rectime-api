@@ -136,7 +136,7 @@ describe('Gathering master services', () => {
       created_at: '2026-01-01 00:00:00',
       updated_at: '2026-01-01 00:00:00',
     };
-    const memberSummary = { user_id: 2, display_name: '山田 太郎' };
+    const memberSummary = { user_id: 2 };
     const repository: IGatheringGroupMemberRepository = {
       existsGathering: vi.fn().mockResolvedValue(true),
       existsUser: vi.fn().mockResolvedValue(true),

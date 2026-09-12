@@ -92,7 +92,7 @@ describe('GatheringGroupMemberRepository', () => {
     userIds = [];
   });
 
-  it('display_nameを含む参加者一覧をgathering_group_member_id順に返す', async () => {
+  it('user_idのみの参加者一覧をgathering_group_member_id順に返す', async () => {
     const gatheringId = await createGathering('一覧');
     const user1 = await createUser('山田 太郎');
     const user2 = await createUser('山田 花子');
@@ -102,10 +102,7 @@ describe('GatheringGroupMemberRepository', () => {
     const members =
       await repository.findMemberSummariesByGatheringId(gatheringId);
 
-    expect(members).toEqual([
-      { user_id: user1, display_name: '山田 太郎' },
-      { user_id: user2, display_name: '山田 花子' },
-    ]);
+    expect(members).toEqual([{ user_id: user1 }, { user_id: user2 }]);
   });
 
   it('実在しないuser_idsをfindMissingUserIdsで検出する', async () => {
@@ -126,10 +123,7 @@ describe('GatheringGroupMemberRepository', () => {
 
     const result = await repository.replaceMembers(gatheringId, [user2, user3]);
 
-    expect(result).toEqual([
-      { user_id: user2, display_name: '置換後ユーザー1' },
-      { user_id: user3, display_name: '置換後ユーザー2' },
-    ]);
+    expect(result.map(m => m.user_id).sort()).toEqual([user2, user3].sort());
     const members =
       await repository.findMemberSummariesByGatheringId(gatheringId);
     expect(members.map(m => m.user_id).sort()).toEqual([user2, user3].sort());

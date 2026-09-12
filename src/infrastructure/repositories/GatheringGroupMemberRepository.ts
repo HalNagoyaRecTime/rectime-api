@@ -8,6 +8,18 @@ import type { IUserRepository } from '../../domain/interfaces/repositories/IUser
 import * as schema from '../database/schema';
 import { gathering_group_members, gatherings, users } from '../database/schema';
 
+function selectMemberSummaries(
+  orm: ReturnType<typeof drizzle<typeof schema>>,
+  gatheringId: number
+) {
+  return orm
+    .select({ user_id: gathering_group_members.userId })
+    .from(gathering_group_members)
+    .where(eq(gathering_group_members.gatheringId, gatheringId))
+    .orderBy(asc(gathering_group_members.id))
+    .all();
+}
+
 function toEntity(
   row: typeof gathering_group_members.$inferSelect
 ): GatheringGroupMemberEntity {
@@ -54,17 +66,7 @@ export function createGatheringGroupMemberRepository(
     async findMemberSummariesByGatheringId(
       gatheringId: number
     ): Promise<GatheringMemberSummary[]> {
-      const rows = await orm
-        .select({
-          user_id: gathering_group_members.userId,
-          display_name: users.userName,
-        })
-        .from(gathering_group_members)
-        .innerJoin(users, eq(gathering_group_members.userId, users.id))
-        .where(eq(gathering_group_members.gatheringId, gatheringId))
-        .orderBy(asc(gathering_group_members.id))
-        .all();
-      return rows;
+      return selectMemberSummaries(orm, gatheringId);
     },
 
     async findMissingUserIds(userIds: number[]): Promise<number[]> {
@@ -97,17 +99,7 @@ export function createGatheringGroupMemberRepository(
         await deleteStatement.run();
       }
 
-      const rows = await orm
-        .select({
-          user_id: gathering_group_members.userId,
-          display_name: users.userName,
-        })
-        .from(gathering_group_members)
-        .innerJoin(users, eq(gathering_group_members.userId, users.id))
-        .where(eq(gathering_group_members.gatheringId, gatheringId))
-        .orderBy(asc(gathering_group_members.id))
-        .all();
-      return rows;
+      return selectMemberSummaries(orm, gatheringId);
     },
 
     async create(

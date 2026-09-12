@@ -7,7 +7,8 @@ export interface IGatheringGroupMemberRepository {
   findByGatheringId: (
     gatheringId: number
   ) => Promise<GatheringGroupMemberEntity[]>;
-  // GET /gatherings/:gatheringId/members 用。usersとJOINしてdisplay_nameを含めて返す。
+  // GET /gatherings/:gatheringId/members 用。user_idのみを返す
+  // (display_nameは含めない。GatheringMemberSummary参照)。
   findMemberSummariesByGatheringId: (
     gatheringId: number
   ) => Promise<GatheringMemberSummary[]>;

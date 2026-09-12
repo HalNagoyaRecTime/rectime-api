@@ -304,7 +304,7 @@ describe('Gathering master controllers', () => {
       memberService.replaceGatheringMembers as ReturnType<typeof vi.fn>
     ).mockResolvedValue({
       gathering_id: 1,
-      members: [{ user_id: 2, display_name: '山田 太郎' }],
+      members: [{ user_id: 2 }],
     });
 
     const response = await app.request('/gatherings/1/members', {
@@ -316,7 +316,7 @@ describe('Gathering master controllers', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       gathering_id: 1,
-      members: [{ user_id: 2, display_name: '山田 太郎' }],
+      members: [{ user_id: 2 }],
     });
     expect(memberService.replaceGatheringMembers).toHaveBeenCalledWith(1, [2]);
   });

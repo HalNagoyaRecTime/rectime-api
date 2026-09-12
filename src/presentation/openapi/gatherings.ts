@@ -69,10 +69,14 @@ export type GatheringMemberListResponseDTO = z.infer<
   typeof gatheringMemberListResponseSchema
 >;
 
+// GETはmobile側の学生アプリも本人参加判定のために呼ぶ認証済み全ユーザー向けの
+// エンドポイントであるため、display_nameは含めない。含めると任意のユーザーが
+// 他のgatheringIdを指定するだけで、その参加者全員の実名を取得できてしまう。
+// 管理画面は別途 GET /api/v1/students で取得したuser_id→display_nameの
+// マッピングと突き合わせて名前を表示する。
 export const gatheringMemberSummarySchema = z
   .object({
     user_id: z.number().int(),
-    display_name: z.string(),
   })
   .openapi('GatheringMemberSummary');
 
