@@ -27,3 +27,13 @@ export interface EventListOptions {
   limit?: number;
   offset?: number;
 }
+
+export interface GatheringSummaryEntity {
+  gathering_count: number;
+  configured_gathering_count: number;
+  first_gathering_time: string | null;
+}
+
+export interface EventWithGatheringSummaryEntity extends EventEntity {
+  gathering_summary: GatheringSummaryEntity;
+}
