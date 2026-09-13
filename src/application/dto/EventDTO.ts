@@ -1,3 +1,5 @@
+import type { RoundSettingDTO } from './EventGatheringSettingsDTO';
+
 /** HTTPレスポンスとして返すイベント。 */
 export interface EventDTO {
   event_id: number;
@@ -8,6 +10,14 @@ export interface EventDTO {
   end_time: string;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * GET /events/:eventId のレスポンス本文。
+ * 一覧や作成・更新のレスポンスへ `rounds` を波及させないため、EventDTOとは別に定義する。
+ */
+export interface EventDetailDTO extends EventDTO {
+  rounds: RoundSettingDTO[];
 }
 
 /** GET /events のクエリとして受け取る値。 */

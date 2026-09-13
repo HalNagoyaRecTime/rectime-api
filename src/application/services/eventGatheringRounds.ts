@@ -26,12 +26,12 @@ function toGatheringSettingDTO(
  * Round専用のテーブルは無く `gatherings.round` だけでRoundを表しているため、
  * 集合予定を1件も持たないRoundは結果に現れない。
  *
- * Event詳細の読み取りでも同じ構造を返せるよう、保存処理から切り離している。
+ * 集合設定の保存とEvent詳細の読み取りが同じ構造を返せるよう、どちらの
+ * Application Serviceからも呼べる形にしている。
  */
-export function buildEventGatheringSettings(
-  eventId: number,
+export function buildRoundSettings(
   gatherings: EventGatheringEntity[]
-): EventGatheringSettingsDTO {
+): RoundSettingDTO[] {
   const rounds: RoundSettingDTO[] = [];
   for (const gathering of gatherings) {
     const last = rounds[rounds.length - 1];
@@ -44,5 +44,12 @@ export function buildEventGatheringSettings(
       });
     }
   }
-  return { event_id: eventId, rounds };
+  return rounds;
+}
+
+export function buildEventGatheringSettings(
+  eventId: number,
+  gatherings: EventGatheringEntity[]
+): EventGatheringSettingsDTO {
+  return { event_id: eventId, rounds: buildRoundSettings(gatherings) };
 }
