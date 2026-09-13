@@ -10,6 +10,7 @@ const teamIdSchema = z.coerce.number().int().positive();
 
 const rankingListQuerySchema = z
   .object({
+    search: z.string().trim().min(1).optional(),
     limit: z.coerce.number().int().min(1).max(MAX_LIMIT).optional(),
     offset: z.coerce.number().int().min(0).optional(),
   })

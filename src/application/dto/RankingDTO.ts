@@ -8,6 +8,7 @@ export interface RankingEntryDTO {
 
 /** GET /ranking のクエリとして受け取る値。 */
 export interface GetRankingRequestDTO {
+  search?: string;
   limit?: number;
   offset?: number;
 }

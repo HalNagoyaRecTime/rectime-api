@@ -189,25 +189,33 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     async findRanking(
       options: RankingListOptions
     ): Promise<{ items: RankingEntryEntity[]; total: number }> {
+      const searchPattern = options.search ? `%${options.search}%` : null;
+
       const [rows, totalResult] = await Promise.all([
         db
           .prepare(
-            `SELECT
-               t.team_id,
-               t.team_name,
-               COALESCE(ts.scores, 0) AS scores,
-               RANK() OVER (
-                 ORDER BY COALESCE(ts.scores, 0) DESC
-               ) AS rank
-             FROM teams t
-             LEFT JOIN team_scores ts ON ts.team_id = t.team_id
-             ORDER BY scores DESC, t.team_id ASC
+            `SELECT * FROM (
+               SELECT
+                 t.team_id,
+                 t.team_name,
+                 COALESCE(ts.scores, 0) AS scores,
+                 RANK() OVER (
+                   ORDER BY COALESCE(ts.scores, 0) DESC
+                 ) AS rank
+               FROM teams t
+               LEFT JOIN team_scores ts ON ts.team_id = t.team_id
+             ) ranked
+             WHERE (? IS NULL OR ranked.team_name LIKE ?)
+             ORDER BY rank ASC, team_id ASC
              LIMIT ? OFFSET ?`
           )
-          .bind(options.limit, options.offset)
+          .bind(searchPattern, searchPattern, options.limit, options.offset)
           .all<RankingRow>(),
         db
-          .prepare('SELECT COUNT(*) AS total FROM teams')
+          .prepare(
+            'SELECT COUNT(*) AS total FROM teams WHERE (? IS NULL OR team_name LIKE ?)'
+          )
+          .bind(searchPattern, searchPattern)
           .first<{ total: number }>(),
       ]);
 

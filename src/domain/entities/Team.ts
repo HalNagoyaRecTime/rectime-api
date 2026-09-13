@@ -15,6 +15,7 @@ export interface RankingEntryEntity {
 }
 
 export interface RankingListOptions {
+  search?: string;
   limit: number;
   offset: number;
 }

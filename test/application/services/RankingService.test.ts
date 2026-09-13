@@ -61,6 +61,7 @@ describe('RankingService', () => {
 
       expect(result).toEqual({ items, total: 1, limit: 50, offset: 0 });
       expect(repository.findRanking).toHaveBeenCalledWith({
+        search: undefined,
         limit: 50,
         offset: 0,
       });
@@ -75,8 +76,24 @@ describe('RankingService', () => {
       await service.getRanking({ limit: 10, offset: 20 });
 
       expect(repository.findRanking).toHaveBeenCalledWith({
+        search: undefined,
         limit: 10,
         offset: 20,
+      });
+    });
+
+    it('指定したsearchをそのままリポジトリへ渡す', async () => {
+      const repository = createRepository({
+        findRanking: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      });
+      const service = createRankingService(repository);
+
+      await service.getRanking({ search: '赤' });
+
+      expect(repository.findRanking).toHaveBeenCalledWith({
+        search: '赤',
+        limit: 50,
+        offset: 0,
       });
     });
   });
