@@ -94,11 +94,7 @@ export function createDIContainer(env: Env) {
     db,
     userRepository
   );
-  const gatheringRepository = createGatheringRepository(
-    db,
-    eventRepository,
-    gatheringSpotRepository
-  );
+  const gatheringRepository = createGatheringRepository(db, eventRepository);
   const eventGatheringSettingsRepository =
     createEventGatheringSettingsRepository(db);
   const scheduleRepository = createScheduleRepository(db);
