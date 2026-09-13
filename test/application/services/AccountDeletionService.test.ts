@@ -66,7 +66,7 @@ function buildDeps() {
     existsUser: vi.fn(),
     findByGatheringId: vi.fn(),
     findMissingUserIds: vi.fn(),
-    replaceMembers: vi.fn(),
+    applyMemberDiff: vi.fn(),
     create: vi.fn(),
     remove: vi.fn(),
     deleteByUserId: vi.fn(),

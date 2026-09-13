@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
+import { createGatheringGroupMemberService } from '../../../src/application/services/GatheringGroupMemberService';
 import { createGatheringGroupMemberRepository } from '../../../src/infrastructure/repositories/GatheringGroupMemberRepository';
 import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 
@@ -101,29 +102,124 @@ describe('GatheringGroupMemberRepository', () => {
     expect(missing).toEqual([missingId]);
   });
 
-  it('replaceMembersで参加者集合を一括置換する', async () => {
-    const gatheringId = await createGathering('置換');
-    const user1 = await createUser('置換前ユーザー');
-    const user2 = await createUser('置換後ユーザー1');
-    const user3 = await createUser('置換後ユーザー2');
+  it('applyMemberDiffは追加対象を追加し削除対象を削除する', async () => {
+    const gatheringId = await createGathering('差分');
+    const user1 = await createUser('削除対象ユーザー');
+    const user2 = await createUser('追加対象ユーザー1');
+    const user3 = await createUser('追加対象ユーザー2');
     await repository.create(gatheringId, user1);
 
-    const result = await repository.replaceMembers(gatheringId, [user2, user3]);
+    const result = await repository.applyMemberDiff(
+      gatheringId,
+      [user2, user3],
+      [user1]
+    );
 
     expect(result.map(m => m.user_id).sort()).toEqual([user2, user3].sort());
     const members = await repository.findByGatheringId(gatheringId);
     expect(members.map(m => m.user_id).sort()).toEqual([user2, user3].sort());
   });
 
-  it('replaceMembersに空配列を渡すと参加者を全員削除する', async () => {
+  it('applyMemberDiffは削除対象がなければ参加者を全員削除する', async () => {
     const gatheringId = await createGathering('全削除');
     const user1 = await createUser('削除対象ユーザー');
     await repository.create(gatheringId, user1);
 
-    const result = await repository.replaceMembers(gatheringId, []);
+    const result = await repository.applyMemberDiff(gatheringId, [], [user1]);
 
     expect(result).toEqual([]);
     const members = await repository.findByGatheringId(gatheringId);
     expect(members).toEqual([]);
+  });
+
+  it('applyMemberDiffに空の追加・削除を渡すと変更のないメンバーの行を維持する', async () => {
+    const gatheringId = await createGathering('冪等性');
+    const user1 = await createUser('維持されるユーザー');
+    const created = await repository.create(gatheringId, user1);
+
+    const result = await repository.applyMemberDiff(gatheringId, [], []);
+
+    expect(result).toEqual([created]);
+    expect(result[0].gathering_group_member_id).toBe(
+      created.gathering_group_member_id
+    );
+    expect(result[0].created_at).toBe(created.created_at);
+  });
+
+  it('同一のuser_idsで繰り返しapplyMemberDiffを呼んでも既存メンバーのIDとcreated_atは変わらない', async () => {
+    const gatheringId = await createGathering('繰り返し置換');
+    const user1 = await createUser('繰り返しユーザー1');
+    const user2 = await createUser('繰り返しユーザー2');
+    await repository.create(gatheringId, user1);
+    await repository.create(gatheringId, user2);
+
+    const before = await repository.findByGatheringId(gatheringId);
+    const beforeById = new Map(before.map(m => [m.user_id, m]));
+
+    // 1回目: 現在の参加者(user1, user2)と同じuser_idsを指定するPUTを想定し、
+    // 差分計算の結果addUserIds=[], removeUserIds=[]がRepositoryへ渡される。
+    await repository.applyMemberDiff(gatheringId, [], []);
+    // 2回目も同様に同じuser_idsを繰り返し指定する。
+    const after = await repository.applyMemberDiff(gatheringId, [], []);
+
+    expect(after.map(m => m.user_id).sort()).toEqual([user1, user2].sort());
+    for (const member of after) {
+      const original = beforeById.get(member.user_id);
+      expect(member.gathering_group_member_id).toBe(
+        original?.gathering_group_member_id
+      );
+      expect(member.created_at).toBe(original?.created_at);
+    }
+  });
+
+  it('Serviceで同一user_idsのPUTを繰り返しても、変更のない参加者はIDとcreated_atを維持したままPUTが冪等になる', async () => {
+    const gatheringId = await createGathering('Service冪等性');
+    const user1 = await createUser('継続参加ユーザー');
+    const user2 = await createUser('入れ替え対象ユーザー');
+    const service = createGatheringGroupMemberService(repository);
+
+    // 1回目のPUT: [user1, user2] を参加者集合として指定する。
+    const firstResult = await service.replaceGatheringMembers(gatheringId, [
+      user1,
+      user2,
+    ]);
+    const firstByUserId = new Map(firstResult.map(m => [m.user_id, m]));
+
+    // 2回目のPUT: recwatchが同じuser_idsを再送するケースを想定し、
+    // 全く同じ[user1, user2]を指定する。差分がないため、
+    // user1・user2ともにgathering_group_member_id・created_atが
+    // 変わらないことを期待する(全削除→全挿入だとここでIDが変わってしまう)。
+    const secondResult = await service.replaceGatheringMembers(gatheringId, [
+      user1,
+      user2,
+    ]);
+
+    expect(secondResult.map(m => m.user_id).sort()).toEqual(
+      [user1, user2].sort()
+    );
+    for (const member of secondResult) {
+      const original = firstByUserId.get(member.user_id);
+      expect(member.gathering_group_member_id).toBe(
+        original?.gathering_group_member_id
+      );
+      expect(member.created_at).toBe(original?.created_at);
+    }
+
+    // 3回目のPUT: user2をuser3へ入れ替える。user1(変更なし)のIDは維持され、
+    // user2は削除、user3のみ新規追加されることを確認する。
+    const user3 = await createUser('新規参加ユーザー');
+    const thirdResult = await service.replaceGatheringMembers(gatheringId, [
+      user1,
+      user3,
+    ]);
+
+    expect(thirdResult.map(m => m.user_id).sort()).toEqual(
+      [user1, user3].sort()
+    );
+    const keptMember = thirdResult.find(m => m.user_id === user1);
+    expect(keptMember?.gathering_group_member_id).toBe(
+      firstByUserId.get(user1)?.gathering_group_member_id
+    );
+    expect(keptMember?.created_at).toBe(firstByUserId.get(user1)?.created_at);
   });
 });

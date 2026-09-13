@@ -147,7 +147,7 @@ describe('Gathering master services', () => {
       existsUser: vi.fn().mockResolvedValue(true),
       findByGatheringId: vi.fn().mockResolvedValue([member]),
       findMissingUserIds: vi.fn().mockResolvedValue([]),
-      replaceMembers: vi.fn().mockResolvedValue([member]),
+      applyMemberDiff: vi.fn().mockResolvedValue([member]),
       create: vi.fn().mockResolvedValue(member),
       remove: vi.fn().mockResolvedValue(true),
       deleteByUserId: vi.fn(),
@@ -157,6 +157,7 @@ describe('Gathering master services', () => {
     await expect(service.addGatheringMember(1, 2)).resolves.toBe(member);
     await expect(service.getGatheringMembers(1)).resolves.toEqual([member]);
     await expect(service.removeGatheringMember(1, 2)).resolves.toBe(true);
+    // 現在の参加者(user_id: 2)と同じuser_idsを渡すため、差分は空になる。
     await expect(service.replaceGatheringMembers(1, [2])).resolves.toEqual([
       member,
     ]);
@@ -167,7 +168,48 @@ describe('Gathering master services', () => {
     expect(repository.findByGatheringId).toHaveBeenCalledWith(1);
     expect(repository.remove).toHaveBeenCalledWith(1, 2);
     expect(repository.findMissingUserIds).toHaveBeenCalledWith([2]);
-    expect(repository.replaceMembers).toHaveBeenCalledWith(1, [2]);
+    expect(repository.applyMemberDiff).toHaveBeenCalledWith(1, [], []);
+  });
+
+  it('参加者集合の一括置換は現在の参加者との差分だけをRepositoryへ渡す', async () => {
+    const keep = { user_id: 1 };
+    const toRemove = { user_id: 2 };
+    const currentMembers = [
+      {
+        gathering_group_member_id: 10,
+        gathering_id: 1,
+        user_id: keep.user_id,
+        created_at: '2026-01-01 00:00:00',
+        updated_at: '2026-01-01 00:00:00',
+      },
+      {
+        gathering_group_member_id: 11,
+        gathering_id: 1,
+        user_id: toRemove.user_id,
+        created_at: '2026-01-01 00:00:00',
+        updated_at: '2026-01-01 00:00:00',
+      },
+    ];
+    const repository: IGatheringGroupMemberRepository = {
+      existsGathering: vi.fn().mockResolvedValue(true),
+      existsUser: vi.fn(),
+      findByGatheringId: vi.fn().mockResolvedValue(currentMembers),
+      findMissingUserIds: vi.fn().mockResolvedValue([]),
+      applyMemberDiff: vi.fn().mockResolvedValue(currentMembers),
+      create: vi.fn(),
+      remove: vi.fn(),
+      deleteByUserId: vi.fn(),
+    };
+    const service = createGatheringGroupMemberService(repository);
+
+    // 現在: [1, 2] → 指定: [1, 3] なので、追加は3のみ、削除は2のみになる。
+    await service.replaceGatheringMembers(1, [keep.user_id, 3]);
+
+    expect(repository.applyMemberDiff).toHaveBeenCalledWith(
+      1,
+      [3],
+      [toRemove.user_id]
+    );
   });
 
   it('存在しない集合または利用者は追加前にエラーにする', async () => {

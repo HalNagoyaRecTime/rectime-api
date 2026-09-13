@@ -68,23 +68,38 @@ export function createGatheringGroupMemberRepository(
       return userIds.filter(id => !existingIds.has(id));
     },
 
-    async replaceMembers(
+    async applyMemberDiff(
       gatheringId: number,
-      userIds: number[]
+      addUserIds: number[],
+      removeUserIds: number[]
     ): Promise<GatheringGroupMemberEntity[]> {
-      const deleteStatement = orm
-        .delete(gathering_group_members)
-        .where(eq(gathering_group_members.gatheringId, gatheringId));
+      // 変更のないメンバーの行(gathering_group_member_id・created_at)を
+      // 保持するため、全削除→全挿入ではなく追加分・削除分のみへ差分反映する。
+      if (removeUserIds.length > 0) {
+        const deleteStatement = orm
+          .delete(gathering_group_members)
+          .where(
+            and(
+              eq(gathering_group_members.gatheringId, gatheringId),
+              inArray(gathering_group_members.userId, removeUserIds)
+            )
+          );
 
-      if (userIds.length > 0) {
-        const insertStatement = orm
+        if (addUserIds.length > 0) {
+          const insertStatement = orm
+            .insert(gathering_group_members)
+            .values(addUserIds.map(userId => ({ gatheringId, userId })));
+          // D1のbatch()は複数文を1つのトランザクションとして原子的に実行するため、
+          // 削除→追加の間に途中状態が外部から見えることはない。
+          await orm.batch([deleteStatement, insertStatement]);
+        } else {
+          await deleteStatement.run();
+        }
+      } else if (addUserIds.length > 0) {
+        await orm
           .insert(gathering_group_members)
-          .values(userIds.map(userId => ({ gatheringId, userId })));
-        // D1のbatch()は複数文を1つのトランザクションとして原子的に実行するため、
-        // 全削除→全挿入の間に途中状態が外部から見えることはない。
-        await orm.batch([deleteStatement, insertStatement]);
-      } else {
-        await deleteStatement.run();
+          .values(addUserIds.map(userId => ({ gatheringId, userId })))
+          .run();
       }
 
       const rows = await selectMembers(orm, gatheringId);

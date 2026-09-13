@@ -72,9 +72,23 @@ export function createGatheringGroupMemberService(
         }
       }
 
-      return gatheringGroupMemberRepository.replaceMembers(
+      // 変更のないメンバーの行(gathering_group_member_id・created_at)を
+      // 保持するため、全削除→全挿入ではなく現在の参加者集合との差分だけを
+      // Repositoryへ反映する。同一内容の再送はPUTを非冪等にしない。
+      const currentMembers =
+        await gatheringGroupMemberRepository.findByGatheringId(gatheringId);
+      const currentUserIds = new Set(currentMembers.map(m => m.user_id));
+      const targetUserIds = new Set(userIds);
+
+      const addUserIds = userIds.filter(userId => !currentUserIds.has(userId));
+      const removeUserIds = currentMembers
+        .map(m => m.user_id)
+        .filter(userId => !targetUserIds.has(userId));
+
+      return gatheringGroupMemberRepository.applyMemberDiff(
         gatheringId,
-        userIds
+        addUserIds,
+        removeUserIds
       );
     },
   };
