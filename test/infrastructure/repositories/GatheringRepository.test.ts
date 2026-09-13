@@ -2,20 +2,13 @@ import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createEventRepository } from '../../../src/infrastructure/repositories/EventRepository';
 import { createGatheringRepository } from '../../../src/infrastructure/repositories/GatheringRepository';
-import { createGatheringSpotRepository } from '../../../src/infrastructure/repositories/GatheringSpotRepository';
 
 describe('GatheringRepository', () => {
   const eventRepository = createEventRepository(env.DB);
-  const gatheringSpotRepository = createGatheringSpotRepository(env.DB);
-  const repository = createGatheringRepository(
-    env.DB,
-    eventRepository,
-    gatheringSpotRepository
-  );
+  const repository = createGatheringRepository(env.DB, eventRepository);
   let gatheringIds: number[] = [];
   let eventIds: number[] = [];
   let spotIds: number[] = [];
-  let userIds: number[] = [];
 
   async function createReferences(suffix: string) {
     const spot = await env.DB.prepare(
@@ -38,23 +31,29 @@ describe('GatheringRepository', () => {
     };
   }
 
+  // 読み取りテストの初期データは、廃止したWrite処理を経由せずに用意する。
+  async function insertGathering(
+    eventId: number,
+    spotId: number,
+    round = 1,
+    gatheringTime = '08:50'
+  ): Promise<number> {
+    const row = await env.DB.prepare(
+      'INSERT INTO gatherings (event_id, gathering_spot_id, round, gathering_time) VALUES (?, ?, ?, ?) RETURNING gathering_id'
+    )
+      .bind(eventId, spotId, round, gatheringTime)
+      .first<{ gathering_id: number }>();
+    gatheringIds.push(row!.gathering_id);
+    return row!.gathering_id;
+  }
+
   afterEach(async () => {
     if (gatheringIds.length > 0) {
       await env.DB.batch(
-        gatheringIds.flatMap(id => [
-          env.DB.prepare(
-            'DELETE FROM gathering_group_members WHERE gathering_id = ?'
-          ).bind(id),
+        gatheringIds.map(id =>
           env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?').bind(
             id
-          ),
-        ])
-      );
-    }
-    if (userIds.length > 0) {
-      await env.DB.batch(
-        userIds.map(id =>
-          env.DB.prepare('DELETE FROM users WHERE user_id = ?').bind(id)
+          )
         )
       );
     }
@@ -77,104 +76,72 @@ describe('GatheringRepository', () => {
     gatheringIds = [];
     eventIds = [];
     spotIds = [];
-    userIds = [];
   });
 
-  it('競技・集合場所を結合した集合予定を作成・取得できる', async () => {
-    const { spotId, eventId } = await createReferences('作成取得');
-
-    const created = await repository.create({
-      event_id: eventId,
-      gathering_spot_id: spotId,
-      gathering_time: '08:50',
-      round: 1,
-    });
-    gatheringIds.push(created.gathering_id);
-
-    expect(created).toMatchObject({
-      event_id: eventId,
-      gathering_spot_id: spotId,
-      event_name: '集合テスト競技-作成取得',
-      gathering_spot_name: '集合テスト場所-作成取得',
-      gathering_time: '08:50',
-      round: 1,
-    });
-    expect(created).not.toHaveProperty('gathering_group_id');
-  });
-
-  it('任意項目を省略するとDBのデフォルト値を保存する', async () => {
-    const { spotId, eventId } = await createReferences('デフォルト');
-
-    const created = await repository.create({
-      event_id: eventId,
-      gathering_spot_id: spotId,
-    });
-    gatheringIds.push(created.gathering_id);
-
-    expect(created).toMatchObject({ gathering_time: '99:59', round: 99 });
-  });
-
-  it('作成した集合予定をID順で一覧取得できる', async () => {
-    const firstReferences = await createReferences('一覧1');
-    const secondReferences = await createReferences('一覧2');
-    const first = await repository.create({
-      event_id: firstReferences.eventId,
-      gathering_spot_id: firstReferences.spotId,
-    });
-    const second = await repository.create({
-      event_id: secondReferences.eventId,
-      gathering_spot_id: secondReferences.spotId,
-    });
-    gatheringIds.push(first.gathering_id, second.gathering_id);
-
-    const all = await repository.findAll();
-    const created = all.filter(gathering =>
-      [first.gathering_id, second.gathering_id].includes(gathering.gathering_id)
-    );
-
-    expect(created.map(gathering => gathering.gathering_id)).toEqual([
-      first.gathering_id,
-      second.gathering_id,
-    ]);
-  });
-
-  it('同じ競技に複数の集合予定を作成できる', async () => {
-    const { spotId, eventId } = await createReferences('複数回');
-    const first = await repository.create({
-      event_id: eventId,
-      gathering_spot_id: spotId,
-      round: 1,
-    });
-    const second = await repository.create({
-      event_id: eventId,
-      gathering_spot_id: spotId,
-      round: 2,
-    });
-    gatheringIds.push(first.gathering_id, second.gathering_id);
-
-    expect(first.gathering_id).not.toBe(second.gathering_id);
-  });
-
-  it('競技IDを指定して複数の集合予定をID順で取得できる', async () => {
-    const { spotId, eventId } = await createReferences('競技指定');
-    const first = await repository.create({
-      event_id: eventId,
-      gathering_spot_id: spotId,
-      round: 1,
-    });
-    const second = await repository.create({
-      event_id: eventId,
-      gathering_spot_id: spotId,
-      round: 2,
-    });
-    gatheringIds.push(first.gathering_id, second.gathering_id);
+  it('競技・集合場所を結合した既存の集合予定を取得できる', async () => {
+    const { spotId, eventId } = await createReferences('取得');
+    const gatheringId = await insertGathering(eventId, spotId);
 
     const result = await repository.findByEventId(eventId);
 
-    expect(result.map(item => item.gathering_id)).toEqual([
-      first.gathering_id,
-      second.gathering_id,
+    expect(result).toEqual([
+      expect.objectContaining({
+        gathering_id: gatheringId,
+        event_id: eventId,
+        gathering_spot_id: spotId,
+        event_name: '集合テスト競技-取得',
+        gathering_spot_name: '集合テスト場所-取得',
+        gathering_time: '08:50',
+        round: 1,
+        created_at: expect.any(String),
+        updated_at: expect.any(String),
+      }),
     ]);
+    expect(result[0]).not.toHaveProperty('gathering_group_id');
+  });
+
+  it('旧APIで保存された未設定値もそのまま取得できる', async () => {
+    const { spotId, eventId } = await createReferences('未設定');
+    await insertGathering(eventId, spotId, 99, '99:59');
+
+    await expect(repository.findByEventId(eventId)).resolves.toEqual([
+      expect.objectContaining({ gathering_time: '99:59', round: 99 }),
+    ]);
+  });
+
+  it('複数の競技の集合予定をID順で一覧取得できる', async () => {
+    const firstReferences = await createReferences('一覧1');
+    const secondReferences = await createReferences('一覧2');
+    const firstId = await insertGathering(
+      firstReferences.eventId,
+      firstReferences.spotId
+    );
+    const secondId = await insertGathering(
+      secondReferences.eventId,
+      secondReferences.spotId
+    );
+
+    const all = await repository.findAll();
+    const created = all.filter(gathering =>
+      [firstId, secondId].includes(gathering.gathering_id)
+    );
+
+    expect(created.map(gathering => gathering.gathering_id)).toEqual([
+      firstId,
+      secondId,
+    ]);
+  });
+
+  it('指定した競技だけの集合予定をID順で取得できる', async () => {
+    const { spotId, eventId } = await createReferences('競技指定');
+    const other = await createReferences('対象外');
+    const firstId = await insertGathering(eventId, spotId, 2);
+    await insertGathering(other.eventId, other.spotId);
+    const secondId = await insertGathering(eventId, spotId, 1);
+
+    const result = await repository.findByEventId(eventId);
+
+    expect(result.map(item => item.gathering_id)).toEqual([firstId, secondId]);
   });
 
   it('集合予定が未登録の競技では空配列を返す', async () => {
@@ -183,66 +150,10 @@ describe('GatheringRepository', () => {
     await expect(repository.findByEventId(eventId)).resolves.toEqual([]);
   });
 
-  it('競技と集合場所の存在を確認できる', async () => {
-    const { spotId, eventId } = await createReferences('存在確認');
+  it('競技の存在を確認できる', async () => {
+    const { eventId } = await createReferences('存在確認');
 
     await expect(repository.existsEvent(eventId)).resolves.toBe(true);
     await expect(repository.existsEvent(999999)).resolves.toBe(false);
-    await expect(repository.existsGatheringSpot(spotId)).resolves.toBe(true);
-    await expect(repository.existsGatheringSpot(999999)).resolves.toBe(false);
-  });
-
-  it('存在しない競技または集合場所を参照する作成を拒否する', async () => {
-    const { spotId, eventId } = await createReferences('外部キー');
-
-    await expect(
-      repository.create({
-        event_id: 999999,
-        gathering_spot_id: spotId,
-      })
-    ).rejects.toThrow();
-    await expect(
-      repository.create({
-        event_id: eventId,
-        gathering_spot_id: 999999,
-      })
-    ).rejects.toThrow();
-  });
-
-  it('集合メンバーと集合予定を同じbatchで削除する', async () => {
-    const { spotId, eventId } = await createReferences('削除');
-    const gathering = await repository.create({
-      event_id: eventId,
-      gathering_spot_id: spotId,
-    });
-    gatheringIds.push(gathering.gathering_id);
-    const user = await env.DB.prepare(
-      "INSERT INTO users (user_name) VALUES ('集合削除テスト') RETURNING user_id"
-    ).first<{ user_id: number }>();
-    userIds.push(user!.user_id);
-    await env.DB.prepare(
-      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
-    )
-      .bind(gathering.gathering_id, user!.user_id)
-      .run();
-
-    await expect(repository.remove(gathering.gathering_id)).resolves.toBe(true);
-
-    const member = await env.DB.prepare(
-      'SELECT gathering_group_member_id FROM gathering_group_members WHERE gathering_id = ?'
-    )
-      .bind(gathering.gathering_id)
-      .first();
-    const deletedGathering = await env.DB.prepare(
-      'SELECT gathering_id FROM gatherings WHERE gathering_id = ?'
-    )
-      .bind(gathering.gathering_id)
-      .first();
-    expect(member).toBeNull();
-    expect(deletedGathering).toBeNull();
-  });
-
-  it('存在しない集合予定の削除はfalseを返す', async () => {
-    await expect(repository.remove(999999)).resolves.toBe(false);
   });
 });
