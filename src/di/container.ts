@@ -7,7 +7,6 @@ import { createEventScheduleRepository } from '../infrastructure/repositories/Ev
 import { createClassRoomRepository } from '../infrastructure/repositories/ClassRoomRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
-import { createNotificationRepository } from '../infrastructure/repositories/NotificationRepository';
 import { createAdminNotificationRepository } from '../infrastructure/repositories/AdminNotificationRepository';
 import { createAdminNotificationManagementRepository } from '../infrastructure/repositories/AdminNotificationManagementRepository';
 import { createMobileNotificationRepository } from '../infrastructure/repositories/MobileNotificationRepository';
@@ -28,7 +27,6 @@ import { createFirebaseTokenService } from '../application/services/FirebaseToke
 import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
 import { createNotificationScheduleService } from '../application/services/NotificationScheduleService';
-import { createNotificationService } from '../application/services/NotificationService';
 import { createAdminNotificationService } from '../application/services/AdminNotificationService';
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
@@ -84,7 +82,6 @@ export function createDIContainer(env: Env) {
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
   const notificationScheduleRepository =
     createNotificationScheduleRepository(db);
-  const notificationRepository = createNotificationRepository(db);
   const adminNotificationRepository = createAdminNotificationRepository(db);
   const adminNotificationManagementRepository =
     createAdminNotificationManagementRepository(db);
@@ -177,7 +174,6 @@ export function createDIContainer(env: Env) {
   const notificationScheduleService = createNotificationScheduleService(
     notificationScheduleRepository
   );
-  const notificationService = createNotificationService(notificationRepository);
   const adminNotificationService = createAdminNotificationService(
     adminNotificationRepository
   );
@@ -219,10 +215,7 @@ export function createDIContainer(env: Env) {
     createMasterImportController(masterImportService);
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
-  const notificationController = createNotificationController(
-    fcmService,
-    notificationService
-  );
+  const notificationController = createNotificationController(fcmService);
   const adminNotificationController = createAdminNotificationController(
     adminNotificationService
   );
