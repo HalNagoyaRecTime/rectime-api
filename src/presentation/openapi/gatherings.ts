@@ -119,22 +119,6 @@ export const addGatheringMemberSchema = z
   })
   .openapi('AddGatheringMemberRequest');
 
-export const createGatheringSchema = z
-  .object({
-    eventId: z.number().int().positive(),
-    gatheringSpotId: z.number().int().positive(),
-    gatheringTime: z
-      .string()
-      .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$|^99:59$/)
-      .optional()
-      .openapi({
-        description: 'HH:MM形式。99:59は集合時刻が未設定であることを表す。',
-        example: '08:45',
-      }),
-    round: z.number().int().min(1).max(99).optional(),
-  })
-  .openapi('CreateGatheringRequest');
-
 export const gatheringSpotListRoute = createRoute({
   method: 'get',
   path: '/gathering-spots',
@@ -261,45 +245,6 @@ export const gatheringListRoute = createRoute({
     200: jsonResponse(gatheringListResponseSchema, '集合予定一覧'),
     401: unauthorizedResponse,
     403: forbiddenResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const gatheringCreateRoute = createRoute({
-  method: 'post',
-  path: '/gatherings',
-  tags: ['Gatherings'],
-  summary: '集合予定を作成する',
-  security: bearerAuth,
-  request: {
-    body: {
-      content: { 'application/json': { schema: createGatheringSchema } },
-      required: true,
-    },
-  },
-  responses: {
-    201: jsonResponse(gatheringResponseSchema, '作成した集合予定'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const gatheringDeleteRoute = createRoute({
-  method: 'delete',
-  path: '/gatherings/{gatheringId}',
-  tags: ['Gatherings'],
-  summary: '集合予定を削除する',
-  security: bearerAuth,
-  request: { params: gatheringIdParams },
-  responses: {
-    204: noContentResponse,
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
     500: internalServerErrorResponse,
   },
 });
