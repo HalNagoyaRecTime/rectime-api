@@ -86,14 +86,10 @@ import {
   firebaseTokenCreateRoute,
   myNotificationDetailRoute,
   myNotificationListRoute,
-  notificationCreateRoute,
-  notificationDetailRoute,
-  notificationListRoute,
   notificationScheduleCreateRoute,
   notificationScheduleDeleteRoute,
   notificationScheduleDetailRoute,
   notificationScheduleListRoute,
-  notificationUpdateRoute,
   scheduleUpdateRoute,
   testNotificationRoute,
 } from './presentation/openapi/notifications';
@@ -173,7 +169,6 @@ app.openapi(apiOverviewRoute, c => {
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
         schedules: '/api/v1/notification/schedules',
         firebaseTokens: '/api/v1/firebase-tokens',
-        notifications: '/api/v1/notifications',
         adminNotifications: '/api/v1/admin/notifications',
         adminUsers: '/api/v1/admin/users',
         myNotifications: '/api/v1/me/notifications',
@@ -426,19 +421,6 @@ apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.deleteAdminNotification(c);
-});
-
-apiV1.openapi(staffOnly(notificationCreateRoute), c => {
-  return c.get('container').notificationController.createNotification(c);
-});
-apiV1.openapi(staffOnly(notificationListRoute), c => {
-  return c.get('container').notificationController.getNotifications(c);
-});
-apiV1.openapi(staffOnly(notificationDetailRoute), c => {
-  return c.get('container').notificationController.getNotificationById(c);
-});
-apiV1.openapi(staffOnly(notificationUpdateRoute), c => {
-  return c.get('container').notificationController.updateNotification(c);
 });
 
 apiV1.openapi(authed(myNotificationListRoute), c => {
