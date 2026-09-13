@@ -162,6 +162,11 @@ export const EventErrors = {
     code: 'GATHERING_MEMBER_REMOVE_FAILED',
     message: '集合メンバーの削除に失敗しました',
   },
+  GATHERING_MEMBER_UPDATE_FAILED: {
+    status: 500,
+    code: 'GATHERING_MEMBER_UPDATE_FAILED',
+    message: '集合メンバーの更新に失敗しました',
+  },
   INVALID_GATHERING_SPOT_LIST_QUERY: {
     status: 400,
     code: 'INVALID_GATHERING_SPOT_LIST_QUERY',

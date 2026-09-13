@@ -119,6 +119,16 @@ export const addGatheringMemberSchema = z
   })
   .openapi('AddGatheringMemberRequest');
 
+export const replaceGatheringMembersSchema = z
+  .object({
+    user_ids: z
+      .array(z.number().int().positive())
+      .refine(ids => new Set(ids).size === ids.length, {
+        message: 'user_idsに重複があります',
+      }),
+  })
+  .openapi('ReplaceGatheringMembersRequest');
+
 export const createGatheringSchema = z
   .object({
     eventId: z.number().int().positive(),
@@ -205,6 +215,31 @@ export const gatheringMemberListRoute = createRoute({
     200: jsonResponse(gatheringMemberListResponseSchema, '参加者一覧'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    404: notFoundResponse,
+    500: internalServerErrorResponse,
+  },
+});
+
+export const gatheringMemberReplaceRoute = createRoute({
+  method: 'put',
+  path: '/gatherings/{gatheringId}/members',
+  tags: ['Gathering members'],
+  summary: '集合予定の参加者集合を一括で置き換える',
+  security: bearerAuth,
+  request: {
+    params: gatheringIdParams,
+    body: {
+      content: {
+        'application/json': { schema: replaceGatheringMembersSchema },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: jsonResponse(gatheringMemberListResponseSchema, '更新後の参加者一覧'),
+    400: badRequestResponse,
+    401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     500: internalServerErrorResponse,
   },

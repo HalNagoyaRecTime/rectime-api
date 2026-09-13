@@ -73,6 +73,7 @@ import {
   gatheringMemberCreateRoute,
   gatheringMemberDeleteRoute,
   gatheringMemberListRoute,
+  gatheringMemberReplaceRoute,
   gatheringSpotCreateRoute,
   gatheringSpotListRoute,
   gatheringSpotUpdateRoute,
@@ -374,6 +375,11 @@ apiV1.openapi(staffOnly(gatheringMemberDeleteRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.removeGatheringMember(c);
+});
+apiV1.openapi(staffOnly(gatheringMemberReplaceRoute), c => {
+  return c
+    .get('container')
+    .gatheringGroupMemberController.replaceGatheringMembers(c);
 });
 
 // Gathering routes

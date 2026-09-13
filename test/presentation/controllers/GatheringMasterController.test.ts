@@ -18,6 +18,7 @@ function setup() {
     getGatheringMembers: vi.fn(),
     addGatheringMember: vi.fn(),
     removeGatheringMember: vi.fn(),
+    replaceGatheringMembers: vi.fn(),
   };
   const spotController = createGatheringSpotController(spotService);
   const memberController = createGatheringGroupMemberController(memberService);
@@ -41,6 +42,9 @@ function setup() {
   );
   app.delete('/gatherings/:gatheringId/members/:userId', c =>
     memberController.removeGatheringMember(c)
+  );
+  app.put('/gatherings/:gatheringId/members', c =>
+    memberController.replaceGatheringMembers(c)
   );
   return { app, spotService, memberService };
 }
@@ -292,6 +296,58 @@ describe('Gathering master controllers', () => {
     expect(memberService.getGatheringMembers).toHaveBeenCalledWith(1);
     expect(memberService.addGatheringMember).toHaveBeenCalledWith(1, 2);
     expect(memberService.removeGatheringMember).toHaveBeenCalledWith(1, 2);
+  });
+
+  it('参加者集合の一括置換をServiceへ委譲する', async () => {
+    const { app, memberService } = setup();
+    const member = {
+      gathering_group_member_id: 3,
+      gathering_id: 1,
+      user_id: 2,
+      created_at: '2026-01-01 00:00:00',
+      updated_at: '2026-01-01 00:00:00',
+    };
+    (
+      memberService.replaceGatheringMembers as ReturnType<typeof vi.fn>
+    ).mockResolvedValue([member]);
+
+    const response = await app.request('/gatherings/1/members', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_ids: [2] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([member]);
+    expect(memberService.replaceGatheringMembers).toHaveBeenCalledWith(1, [2]);
+  });
+
+  it('重複したuser_idsを含む一括置換は400を返す', async () => {
+    const { app, memberService } = setup();
+
+    const response = await app.request('/gatherings/1/members', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_ids: [2, 2] }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(memberService.replaceGatheringMembers).not.toHaveBeenCalled();
+  });
+
+  it('存在しないuser_idsを含む一括置換は404を返す', async () => {
+    const { app, memberService } = setup();
+    (
+      memberService.replaceGatheringMembers as ReturnType<typeof vi.fn>
+    ).mockRejectedValue(new Error('User not found'));
+
+    const response = await app.request('/gatherings/1/members', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_ids: [999] }),
+    });
+
+    expect(response.status).toBe(404);
   });
 
   it('不正な集合IDまたは利用者IDは400で拒否する', async () => {
