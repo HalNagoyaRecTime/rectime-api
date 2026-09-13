@@ -276,6 +276,8 @@ apiV1.openapi(authed(eventDetailRoute), c => {
 apiV1.get('/me/events', requireAuth, c => {
   return c.get('container').eventController.getMyEvents(c);
 });
+// 配布済みmobileが利用中の互換APIのため削除禁止（#395）。レスポンス形式・認可を維持する。
+// リポジトリ内の呼び出しが0件でも削除不可。2027年度以降、OpenAPI記載の全条件を満たして#386で削除する。
 apiV1.openapi(authed(eventGatheringListRoute), c => {
   return c.get('container').gatheringController.getGatheringsByEventId(c);
 });
