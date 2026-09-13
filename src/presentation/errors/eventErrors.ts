@@ -87,11 +87,6 @@ export const EventErrors = {
     code: 'INVALID_GATHERING_ID',
     message: '集合グループIDが正しくありません',
   },
-  INVALID_GATHERING_REQUEST: {
-    status: 400,
-    code: 'INVALID_GATHERING_REQUEST',
-    message: '集合グループの入力内容が正しくありません',
-  },
   GATHERING_NOT_FOUND: {
     status: 404,
     code: 'GATHERING_NOT_FOUND',
@@ -116,16 +111,6 @@ export const EventErrors = {
     status: 500,
     code: 'EVENT_GATHERING_LIST_FAILED',
     message: '競技の集合グループ一覧の取得に失敗しました',
-  },
-  GATHERING_CREATE_FAILED: {
-    status: 500,
-    code: 'GATHERING_CREATE_FAILED',
-    message: '集合グループの登録に失敗しました',
-  },
-  GATHERING_DELETE_FAILED: {
-    status: 500,
-    code: 'GATHERING_DELETE_FAILED',
-    message: '集合グループの削除に失敗しました',
   },
   INVALID_GATHERING_MEMBER_REQUEST: {
     status: 400,
