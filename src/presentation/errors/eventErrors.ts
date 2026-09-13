@@ -97,6 +97,16 @@ export const EventErrors = {
     code: 'GATHERING_NOT_FOUND',
     message: '集合グループが見つかりません',
   },
+  GATHERING_IN_USE: {
+    status: 409,
+    code: 'GATHERING_IN_USE',
+    message: '参加者がいる集合グループは削除できません',
+  },
+  EVENT_GATHERINGS_UPDATE_FAILED: {
+    status: 500,
+    code: 'EVENT_GATHERINGS_UPDATE_FAILED',
+    message: '競技の集合設定の更新に失敗しました',
+  },
   GATHERING_LIST_FAILED: {
     status: 500,
     code: 'GATHERING_LIST_FAILED',

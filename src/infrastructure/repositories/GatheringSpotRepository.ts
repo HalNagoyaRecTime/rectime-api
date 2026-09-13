@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc, count, desc, eq, like, sql } from 'drizzle-orm';
+import { asc, count, desc, eq, inArray, like, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringSpotEntity } from '../../domain/entities/GatheringSpot';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
@@ -31,6 +31,17 @@ export function createGatheringSpotRepository(
           .where(eq(gathering_spots.id, gatheringSpotId))
           .get()
       );
+    },
+
+    async findExistingIds(gatheringSpotIds: number[]): Promise<Set<number>> {
+      const uniqueIds = Array.from(new Set(gatheringSpotIds));
+      if (uniqueIds.length === 0) return new Set();
+      const rows = await orm
+        .select({ id: gathering_spots.id })
+        .from(gathering_spots)
+        .where(inArray(gathering_spots.id, uniqueIds))
+        .all();
+      return new Set(rows.map(row => row.id));
     },
 
     async findAll(): Promise<GatheringSpotEntity[]> {

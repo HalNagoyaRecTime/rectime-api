@@ -139,7 +139,7 @@ describe('EventController', () => {
   describe('getEventById', () => {
     it('存在するイベントを200で返す', async () => {
       const { app, eventService } = setup();
-      const event = buildEvent();
+      const event = { ...buildEvent(), rounds: [] };
       (eventService.getEventById as ReturnType<typeof vi.fn>).mockResolvedValue(
         event
       );

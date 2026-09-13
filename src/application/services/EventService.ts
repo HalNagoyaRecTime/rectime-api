@@ -4,6 +4,7 @@ import type {
   EventWithGatheringSummaryEntity,
   EventWriteInput,
 } from '../../domain/entities/Event';
+import type { IEventGatheringSettingsRepository } from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 import type {
   CreateEventRequestDTO,
@@ -11,6 +12,7 @@ import type {
   EventListItemDTO,
   GetEventsRequestDTO,
 } from '../dto/EventDTO';
+import { buildRoundSettings } from './eventGatheringRounds';
 import type { IEventService } from './IEventService';
 
 function toEventDTO(event: EventEntity): EventDTO {
@@ -59,7 +61,8 @@ function toEventListOptions(options: GetEventsRequestDTO): EventListOptions {
 }
 
 export function createEventService(
-  eventRepository: IEventRepository
+  eventRepository: IEventRepository,
+  eventGatheringSettingsRepository: IEventGatheringSettingsRepository
 ): IEventService {
   return {
     async getAllEvents(options) {
@@ -78,7 +81,10 @@ export function createEventService(
       if (!event) {
         throw new Error('Event not found');
       }
-      return toEventDTO(event);
+      // 参加人数まで含めてRepositoryが1クエリで返すため、集合予定ごとの追加取得はしない。
+      const gatherings =
+        await eventGatheringSettingsRepository.findByEventId(id);
+      return { ...toEventDTO(event), rounds: buildRoundSettings(gatherings) };
     },
     async getMyEvents(userId) {
       const events = await eventRepository.findByParticipantUserId(userId);
