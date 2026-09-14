@@ -36,55 +36,110 @@ describe('NotificationScheduleRepository', () => {
     const notification = await env.DB.prepare(
       "INSERT INTO notifications (notification_type, title, body) VALUES ('manual', '件名', '本文') RETURNING notification_id"
     ).first<{ notification_id: number }>();
-    const schedule = await repository.create({
-      created_user_id: user!.user_id,
-      event_id: event!.event_id,
-      notification_id: notification!.notification_id,
-      firebase_token_id: token!.firebase_token_id,
-      importance: 2,
-      send_at: sendAt,
-    });
+    const schedule = await env.DB.prepare(
+      `INSERT INTO notification_schedules
+       (created_user_id, event_id, notification_id, firebase_token_id, importance, send_at)
+       VALUES (?, ?, ?, ?, 2, ?) RETURNING notification_schedule_id`
+    )
+      .bind(
+        user!.user_id,
+        event!.event_id,
+        notification!.notification_id,
+        token!.firebase_token_id,
+        sendAt
+      )
+      .first<{ notification_schedule_id: number }>();
+    if (!schedule)
+      throw new Error('通知予定のテストデータを作成できませんでした');
     return { user, event, token, notification, schedule };
   }
 
-  it('token単位の通知予定を作成・詳細取得できる', async () => {
-    const { schedule } = await createFixture();
+  function readSchedule(scheduleId: number) {
+    return env.DB.prepare(
+      'SELECT * FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(scheduleId)
+      .first();
+  }
+
+  it('対象競技のevent_reminderのdraftだけを取得する', async () => {
+    const { user, event, token } = await createFixture();
+    const reminder = await env.DB.prepare(
+      "INSERT INTO notifications (notification_type, title, body) VALUES ('event_reminder', '競技通知', '集合してください') RETURNING notification_id"
+    ).first<{ notification_id: number }>();
+    const otherEvent = await env.DB.prepare(
+      "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('別競技', '体育館', '1000', '1100') RETURNING event_id"
+    ).first<{ event_id: number }>();
+    for (const [eventId, status] of [
+      [event!.event_id, 'draft'],
+      [event!.event_id, 'sending'],
+      [event!.event_id, 'sent'],
+      [event!.event_id, 'failed'],
+      [otherEvent!.event_id, 'draft'],
+    ] as const) {
+      await env.DB.prepare(
+        `INSERT INTO notification_schedules
+         (created_user_id, event_id, notification_id, firebase_token_id, importance, send_at, send_status)
+         VALUES (?, ?, ?, ?, 2, '2026-07-23T09:00:00.000Z', ?)`
+      )
+        .bind(
+          user!.user_id,
+          eventId,
+          reminder!.notification_id,
+          token!.firebase_token_id,
+          status
+        )
+        .run();
+    }
+
     await expect(
-      repository.findById(schedule.notification_schedule_id)
-    ).resolves.toEqual(schedule);
-    expect(schedule).toMatchObject({
-      firebase_token_id: expect.any(Number),
-      importance: 2,
-      notification_type: 'manual',
-      send_status: 'draft',
-    });
+      repository.findDraftsByEvent(event!.event_id)
+    ).resolves.toEqual([
+      expect.objectContaining({
+        event_id: event!.event_id,
+        notification_id: reminder!.notification_id,
+        firebase_token_id: token!.firebase_token_id,
+        notification_type: 'event_reminder',
+        title: '競技通知',
+        body: '集合してください',
+        send_status: 'draft',
+      }),
+    ]);
+    await expect(repository.findDraftsByEvent(999999)).resolves.toEqual([]);
   });
 
-  it('作成者・競技・Firebaseトークンで一覧を絞り込む', async () => {
-    const fixture = await createFixture();
-    const result = await repository.findAll({
-      send_status: 'draft',
-      event_id: fixture.event!.event_id,
-      created_user_id: fixture.user!.user_id,
-      firebase_token_id: fixture.token!.firebase_token_id,
-      limit: 10,
-      offset: 0,
-    });
-    expect(result.total).toBe(1);
-    expect(result.notification_schedules[0].notification_schedule_id).toBe(
-      fixture.schedule.notification_schedule_id
-    );
-  });
+  it.each(['sent', 'failed'] as const)(
+    '確保済みの予定だけを%sに更新し、完了した状態を上書きしない',
+    async status => {
+      const { schedule } = await createFixture();
+      const id = schedule.notification_schedule_id;
+      const finish = () =>
+        status === 'sent'
+          ? repository.markSent(id, 'fcm-message-id')
+          : repository.markFailed(id, '配信に失敗しました');
 
-  it('draftのみ削除できる', async () => {
-    const { schedule } = await createFixture();
-    await expect(
-      repository.deleteDraft(schedule.notification_schedule_id)
-    ).resolves.toBe('deleted');
-    await expect(
-      repository.deleteDraft(schedule.notification_schedule_id)
-    ).resolves.toBe('not_found');
-  });
+      await finish();
+      await expect(readSchedule(id)).resolves.toMatchObject({
+        send_status: 'draft',
+      });
+      await repository.claimForDelivery(
+        [id],
+        '2026-07-23T09:05:00.000Z',
+        '2026-07-23T09:01:00.000Z'
+      );
+      await finish();
+      const finished = await readSchedule(id);
+      expect(finished).toMatchObject({
+        send_status: status,
+        fcm_message_id: status === 'sent' ? 'fcm-message-id' : null,
+        failed_reason: status === 'failed' ? '配信に失敗しました' : null,
+      });
+
+      await repository.markSent(id, '別のメッセージID');
+      await repository.markFailed(id, '別のエラー');
+      await expect(readSchedule(id)).resolves.toEqual(finished);
+    }
+  );
 
   it('期限到来したdraftをQueue登録候補として取得する', async () => {
     const { schedule } = await createFixture();
@@ -96,7 +151,7 @@ describe('NotificationScheduleRepository', () => {
       )
     ).resolves.toEqual([schedule.notification_schedule_id]);
     await expect(
-      repository.findById(schedule.notification_schedule_id)
+      readSchedule(schedule.notification_schedule_id)
     ).resolves.toMatchObject({ send_status: 'draft' });
   });
 
@@ -210,9 +265,7 @@ describe('NotificationScheduleRepository', () => {
 
       await repository.anonymizeCreatedUserId(user!.user_id);
 
-      const found = await repository.findById(
-        schedule.notification_schedule_id
-      );
+      const found = await readSchedule(schedule.notification_schedule_id);
       expect(found).not.toBeNull();
       expect(found?.created_user_id).toBeNull();
     });
@@ -231,7 +284,7 @@ describe('NotificationScheduleRepository', () => {
       await repository.deleteByFirebaseTokenId(token!.firebase_token_id);
 
       await expect(
-        repository.findById(schedule.notification_schedule_id)
+        readSchedule(schedule.notification_schedule_id)
       ).resolves.toBeNull();
     });
 
