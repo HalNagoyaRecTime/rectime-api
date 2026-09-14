@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { createEventService } from '../../../src/application/services/EventService';
 import type { IEventGatheringSettingsRepository } from '../../../src/domain/interfaces/repositories/IEventGatheringSettingsRepository';
 import type { IEventRepository } from '../../../src/domain/interfaces/repositories/IEventRepository';
-import type { EventEntity } from '../../../src/domain/entities/Event';
+import type {
+  EventEntity,
+  EventWithGatheringSummaryEntity,
+} from '../../../src/domain/entities/Event';
 import type { EventGatheringEntity } from '../../../src/domain/entities/EventGathering';
 
 function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
@@ -28,6 +31,20 @@ function buildGathering(
     gathering_spot_id: 1,
     gathering_spot_name: '出入口①',
     member_count: 0,
+    ...overrides,
+  };
+}
+
+function buildEventWithGatheringSummary(
+  overrides: Partial<EventWithGatheringSummaryEntity> = {}
+): EventWithGatheringSummaryEntity {
+  return {
+    ...buildEvent(overrides),
+    gathering_summary: {
+      gathering_count: 0,
+      configured_gathering_count: 0,
+      first_gathering_time: null,
+    },
     ...overrides,
   };
 }
@@ -66,7 +83,15 @@ function createService(
 describe('EventService', () => {
   describe('getAllEvents', () => {
     it('EntityをレスポンスDTOへ変換し、既定のページング値を返す', async () => {
-      const events = [buildEvent()];
+      const events = [
+        buildEventWithGatheringSummary({
+          gathering_summary: {
+            gathering_count: 3,
+            configured_gathering_count: 2,
+            first_gathering_time: '10:45',
+          },
+        }),
+      ];
       const repository = createRepository({
         findAll: vi.fn().mockResolvedValue({ events, total: 1 }),
       });

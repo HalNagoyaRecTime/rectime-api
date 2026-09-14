@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/d1';
-import { and, asc, count, eq, SQL } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, sql, SQL } from 'drizzle-orm';
 import * as schema from '../database/schema';
 import {
   events,
@@ -12,9 +12,20 @@ import { D1Database } from '@cloudflare/workers-types';
 import type {
   EventEntity,
   EventListOptions,
+  EventWithGatheringSummaryEntity,
   EventWriteInput,
+  GatheringSummaryEntity,
 } from '../../domain/entities/Event';
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
+
+// 集合時刻が未設定であることを表すsentinel値。gatherings.gathering_timeのデフォルト。
+const UNSET_GATHERING_TIME = '99:59';
+
+const EMPTY_GATHERING_SUMMARY: GatheringSummaryEntity = {
+  gathering_count: 0,
+  configured_gathering_count: 0,
+  first_gathering_time: null,
+};
 
 function toEntity(row: typeof events.$inferSelect): EventEntity {
   return {
@@ -27,6 +38,39 @@ function toEntity(row: typeof events.$inferSelect): EventEntity {
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
+}
+
+async function findGatheringSummaries(
+  orm: ReturnType<typeof drizzle>,
+  eventIds: number[]
+): Promise<Map<number, GatheringSummaryEntity>> {
+  const summaries = new Map<number, GatheringSummaryEntity>();
+  if (eventIds.length === 0) {
+    return summaries;
+  }
+
+  const rows = await orm
+    .select({
+      eventId: gatherings.eventId,
+      gatheringCount: count(),
+      configuredGatheringCount: sql<number>`COUNT(CASE WHEN ${gatherings.gatheringTime} != ${UNSET_GATHERING_TIME} THEN 1 END)`,
+      firstGatheringTime: sql<
+        string | null
+      >`MIN(CASE WHEN ${gatherings.gatheringTime} != ${UNSET_GATHERING_TIME} THEN ${gatherings.gatheringTime} END)`,
+    })
+    .from(gatherings)
+    .where(inArray(gatherings.eventId, eventIds))
+    .groupBy(gatherings.eventId)
+    .all();
+
+  for (const row of rows) {
+    summaries.set(row.eventId, {
+      gathering_count: row.gatheringCount,
+      configured_gathering_count: row.configuredGatheringCount,
+      first_gathering_time: row.firstGatheringTime,
+    });
+  }
+  return summaries;
 }
 
 export function createEventRepository(db: D1Database): IEventRepository {
@@ -45,7 +89,7 @@ export function createEventRepository(db: D1Database): IEventRepository {
 
     async findAll(
       options: EventListOptions
-    ): Promise<{ events: EventEntity[]; total: number }> {
+    ): Promise<{ events: EventWithGatheringSummaryEntity[]; total: number }> {
       const conditions: SQL[] = [];
       if (options.startTime) {
         conditions.push(eq(events.startTime, options.startTime));
@@ -71,8 +115,18 @@ export function createEventRepository(db: D1Database): IEventRepository {
         orm.select({ total: count() }).from(events).where(where).get(),
       ]);
 
+      const eventEntities = rows.map(toEntity);
+      const summaries = await findGatheringSummaries(
+        orm,
+        eventEntities.map(event => event.event_id)
+      );
+
       return {
-        events: rows.map(toEntity),
+        events: eventEntities.map(event => ({
+          ...event,
+          gathering_summary:
+            summaries.get(event.event_id) ?? EMPTY_GATHERING_SUMMARY,
+        })),
         total: totalResult?.total ?? 0,
       };
     },
