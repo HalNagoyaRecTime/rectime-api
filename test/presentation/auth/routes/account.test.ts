@@ -240,15 +240,19 @@ describe('GET /auth/me', () => {
       user?: {
         student_id_number: string | null;
         class_room_name: string | null;
+        class_room_id: number | null;
+        team_id: number | null;
       };
     };
     expect(body.user).toMatchObject({
       student_id_number: '50001',
       class_room_name: '3年A組',
+      class_room_id: classRoom.classRoomId,
+      team_id: classRoom.teamId,
     });
   });
 
-  it('学生でないユーザーの場合はstudent_id_number/class_room_nameがnullで返る', async () => {
+  it('学生でないユーザーの場合はstudent_id_number/class_room_name/class_room_id/team_idがnullで返る', async () => {
     const env = buildEnv();
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('教師花子') RETURNING user_id"
@@ -281,11 +285,15 @@ describe('GET /auth/me', () => {
       user?: {
         student_id_number: string | null;
         class_room_name: string | null;
+        class_room_id: number | null;
+        team_id: number | null;
       };
     };
     expect(body.user).toMatchObject({
       student_id_number: null,
       class_room_name: null,
+      class_room_id: null,
+      team_id: null,
     });
   });
 

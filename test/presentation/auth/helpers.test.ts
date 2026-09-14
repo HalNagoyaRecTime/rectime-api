@@ -198,7 +198,39 @@ describe('presentation/auth/helpers', () => {
         avatar_updated_at: null,
         student_id_number: '10000',
         class_room_name: 'IH11A111',
+        class_room_id: null,
+        team_id: null,
         is_student: false,
+        is_staff: false,
+        is_teacher: false,
+      });
+    });
+
+    it('class_room_id / team_id が指定されている場合はそのまま使う', () => {
+      const result = userResponse(
+        {
+          id: 'user-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+          student_id_number: '10000',
+          class_room_name: 'IH11A111',
+          class_room_id: 1,
+          team_id: 2,
+        },
+        { is_student: true, is_staff: false, is_teacher: false }
+      );
+
+      expect(result).toEqual({
+        id: 'user-1',
+        email: 'tanaka@example.com',
+        display_name: '田中太郎',
+        avatar_url: ACCOUNT_PHOTO_PATH,
+        avatar_updated_at: null,
+        student_id_number: '10000',
+        class_room_name: 'IH11A111',
+        class_room_id: 1,
+        team_id: 2,
+        is_student: true,
         is_staff: false,
         is_teacher: false,
       });
@@ -226,6 +258,8 @@ describe('presentation/auth/helpers', () => {
         avatar_updated_at: '2026-01-01T00:00:00.000Z',
         student_id_number: '10000',
         class_room_name: 'IH11A111',
+        class_room_id: null,
+        team_id: null,
         is_student: true,
         is_staff: false,
         is_teacher: false,

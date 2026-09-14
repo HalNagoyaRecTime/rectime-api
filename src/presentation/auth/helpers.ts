@@ -18,6 +18,7 @@ import { createStudentRepository } from '../../infrastructure/repositories/Stude
 import { createFirebaseTokenRepository } from '../../infrastructure/repositories/FirebaseTokenRepository';
 import { createAuthService } from '../../application/services/authService';
 import type { IStudentService } from '../../application/services/IStudentService';
+import type { IClassRoomService } from '../../application/services/IClassRoomService';
 import type { StudentDTO } from '../../application/dto/StudentDTO';
 
 export type AppContext = Context<{
@@ -78,6 +79,8 @@ export function userResponse(
     avatar_updated_at?: string | null;
     student_id_number: string | null;
     class_room_name: string | null;
+    class_room_id?: number | null;
+    team_id?: number | null;
   },
   categories: UserCategories
 ) {
@@ -89,6 +92,8 @@ export function userResponse(
     avatar_updated_at: user.avatar_updated_at ?? null,
     student_id_number: user.student_id_number,
     class_room_name: user.class_room_name,
+    class_room_id: user.class_room_id ?? null,
+    team_id: user.team_id ?? null,
     is_student: categories.is_student,
     is_staff: categories.is_staff,
     is_teacher: categories.is_teacher,
@@ -181,6 +186,23 @@ export async function getStudentInfoOrNull(
     }
     throw err;
   });
+}
+
+// 学生の所属クラスからチームIDを解決する。クラス未所属(学生でない)場合はnull。
+export async function getTeamIdForStudent(
+  classRoomService: IClassRoomService,
+  student: StudentDTO | null
+): Promise<number | null> {
+  if (!student) return null;
+  const classroom = await classRoomService
+    .getClassroomById(student.class_room_id)
+    .catch(err => {
+      if (err instanceof Error && err.message === 'Class not found') {
+        return null;
+      }
+      throw err;
+    });
+  return classroom?.team_id ?? null;
 }
 
 export async function getUserCategories(
