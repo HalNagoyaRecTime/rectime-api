@@ -12,6 +12,7 @@ import {
   firebase_tokens,
   notification_schedules,
   notifications,
+  users,
 } from '../database/schema';
 
 const selection = {
@@ -255,12 +256,16 @@ export function createNotificationScheduleRepository(
         .all();
       if (claimed.length === 0) return [];
 
+      // 宛先Userの稼働状態は予定作成時ではなく送信時に判定する。無効化中に
+      // 送信時刻を迎えた予定だけを送らずに済ませ、再有効化後の予定は
+      // そのまま届くようにするため。判定自体は呼び出し元が行う。
       return orm
         .select({
           ...selection,
           fcm_token: firebase_tokens.fcmToken,
           platform: firebase_tokens.platform,
           is_firebase_active: firebase_tokens.isFirebaseActive,
+          is_user_live_active: users.isLiveActive,
         })
         .from(notification_schedules)
         .innerJoin(
@@ -277,6 +282,7 @@ export function createNotificationScheduleRepository(
             firebase_tokens.firebaseTokenId
           )
         )
+        .innerJoin(users, eq(firebase_tokens.userId, users.id))
         .where(
           inArray(
             notification_schedules.id,

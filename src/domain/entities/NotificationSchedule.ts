@@ -54,4 +54,6 @@ export interface DueNotificationSchedule extends NotificationScheduleEntity {
   fcm_token: string;
   platform: 1 | 2;
   is_firebase_active: number;
+  // 宛先Userのusers.is_live_active。送信時に無効化済みかどうかを判定する。
+  is_user_live_active: number;
 }
