@@ -41,7 +41,11 @@ export function createRankingService(
     async getRanking(options: GetRankingRequestDTO) {
       const limit = options.limit ?? DEFAULT_LIMIT;
       const offset = options.offset ?? DEFAULT_OFFSET;
-      const result = await teamRepository.findRanking({ limit, offset });
+      const result = await teamRepository.findRanking({
+        search: options.search,
+        limit,
+        offset,
+      });
       return {
         items: result.items.map(toRankingEntryDTO),
         total: result.total,

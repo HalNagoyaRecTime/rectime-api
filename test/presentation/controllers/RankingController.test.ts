@@ -65,6 +65,19 @@ describe('RankingController', () => {
       });
     });
 
+    it('searchクエリを解析してサービスへ渡す', async () => {
+      const { app, rankingService } = setup();
+      (rankingService.getRanking as ReturnType<typeof vi.fn>).mockResolvedValue(
+        { items: [], total: 0, limit: 50, offset: 0 }
+      );
+
+      await app.request('/ranking?search=%E8%B5%A4%E7%B5%84');
+
+      expect(rankingService.getRanking).toHaveBeenCalledWith({
+        search: '赤組',
+      });
+    });
+
     it('limitが範囲外の場合は400を返す', async () => {
       const { app } = setup();
 

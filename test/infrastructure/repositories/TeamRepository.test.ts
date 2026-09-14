@@ -81,6 +81,42 @@ describe('TeamRepository', () => {
         { rank: 2, team_id: teamB, team_name: 'チームB', scores: 10 },
       ]);
     });
+
+    it('searchでチーム名を部分一致検索でき、rankは絞り込み前の全体順位のまま', async () => {
+      const teamA = await insertTeam('赤組');
+      const teamB = await insertTeam('白組');
+      const teamC = await insertTeam('赤白連合');
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, ?), (?, ?), (?, ?)'
+      )
+        .bind(teamA, 30, teamB, 20, teamC, 10)
+        .run();
+
+      const result = await repo.findRanking({
+        search: '赤',
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(result.total).toBe(2);
+      expect(result.items).toEqual([
+        { rank: 1, team_id: teamA, team_name: '赤組', scores: 30 },
+        { rank: 3, team_id: teamC, team_name: '赤白連合', scores: 10 },
+      ]);
+    });
+
+    it('searchに一致するチームが無い場合は空配列を返す', async () => {
+      await insertTeam('赤組');
+
+      const result = await repo.findRanking({
+        search: '存在しないチーム',
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(result.total).toBe(0);
+      expect(result.items).toEqual([]);
+    });
   });
 
   describe('findAllTeams', () => {
