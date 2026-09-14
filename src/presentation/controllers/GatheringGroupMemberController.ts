@@ -4,17 +4,10 @@ import { IGatheringGroupMemberService } from '../../application/services/IGather
 import { errorResponse } from '../errors/errorResponse';
 import { EventErrors } from '../errors/eventErrors';
 import { UserErrors } from '../errors/userErrors';
+import { replaceGatheringMembersSchema } from '../openapi/gatherings';
 
 const addGatheringMemberSchema = z.object({
   userId: z.number().int().positive(),
-});
-
-const replaceGatheringMembersSchema = z.object({
-  user_ids: z
-    .array(z.number().int().positive())
-    .refine(ids => new Set(ids).size === ids.length, {
-      message: 'user_idsに重複があります',
-    }),
 });
 
 function getGatheringId(c: Context): number | null {

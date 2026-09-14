@@ -335,6 +335,41 @@ describe('Gathering master controllers', () => {
     expect(memberService.replaceGatheringMembers).not.toHaveBeenCalled();
   });
 
+  it('user_idsが30件を超える一括置換は400を返す', async () => {
+    const { app, memberService } = setup();
+
+    const response = await app.request('/gatherings/1/members', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_ids: Array.from({ length: 31 }, (_, i) => i + 1),
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(memberService.replaceGatheringMembers).not.toHaveBeenCalled();
+  });
+
+  it('user_idsがちょうど30件の一括置換は受理する', async () => {
+    const { app, memberService } = setup();
+    (
+      memberService.replaceGatheringMembers as ReturnType<typeof vi.fn>
+    ).mockResolvedValue([]);
+
+    const userIds = Array.from({ length: 30 }, (_, i) => i + 1);
+    const response = await app.request('/gatherings/1/members', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_ids: userIds }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(memberService.replaceGatheringMembers).toHaveBeenCalledWith(
+      1,
+      userIds
+    );
+  });
+
   it('存在しないuser_idsを含む一括置換は404を返す', async () => {
     const { app, memberService } = setup();
     (

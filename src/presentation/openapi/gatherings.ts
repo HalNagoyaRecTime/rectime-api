@@ -121,8 +121,14 @@ export const addGatheringMemberSchema = z
 
 export const replaceGatheringMembersSchema = z
   .object({
+    // 1集合(=1チーム)の参加者は最大30人の運用のため上限を設ける。
+    // D1は1クエリあたりのバインド変数が100個までで、追加1人につき
+    // gathering_id/user_idの2個を消費するため、30人(=60個)を超えると
+    // 51人以上の追加でPUTが500になる。件数上限はWorkerの実行時間と
+    // D1負荷を抑える目的も兼ねる。
     user_ids: z
       .array(z.number().int().positive())
+      .max(30, { message: 'user_idsは30件までです' })
       .refine(ids => new Set(ids).size === ids.length, {
         message: 'user_idsに重複があります',
       }),
