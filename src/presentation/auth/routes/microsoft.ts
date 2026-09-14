@@ -345,8 +345,9 @@ microsoft.post('/token', async c => {
   }
 
   const { studentService, classRoomService } = c.get('container');
-  // KV書き込み・JWT署名と並行して進められるよう、ここでは待たずに開始する。
-  const studentPromise = getStudentInfoOrNull(studentService, Number(user.id));
+  // 生徒情報取得の失敗(想定外のDBエラー等)は、生きたMicrosoftリフレッシュ
+  // トークンをKVへ書き込む前に検知したいため、副作用より先にawaitする。
+  const student = await getStudentInfoOrNull(studentService, Number(user.id));
 
   const refreshTokenId = crypto.randomUUID();
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
@@ -390,11 +391,10 @@ microsoft.post('/token', async c => {
     jwtTtl
   );
 
-  const [student, categories] = await Promise.all([
-    studentPromise,
+  const [categories, teamId] = await Promise.all([
     getUserCategories(c, user.id),
+    getTeamIdForStudent(classRoomService, student),
   ]);
-  const teamId = await getTeamIdForStudent(classRoomService, student);
 
   return c.json({
     access_token: accessToken,
