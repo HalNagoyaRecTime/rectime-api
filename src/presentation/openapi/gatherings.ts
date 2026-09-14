@@ -1,4 +1,5 @@
 import { createRoute } from '@hono/zod-openapi';
+
 import {
   badRequestResponse,
   bearerAuth,
@@ -99,9 +100,11 @@ export type GatheringListResponseDTO = z.infer<
 export const gatheringSpotIdParams = z.object({
   gatheringSpotId: positivePathParam('gatheringSpotId', '集合場所ID'),
 });
+
 export const gatheringIdParams = z.object({
   gatheringId: positivePathParam('gatheringId', '集合予定ID'),
 });
+
 export const gatheringMemberParams = z.object({
   gatheringId: positivePathParam('gatheringId', '集合予定ID'),
   userId: positivePathParam('userId', '利用者ID'),
@@ -247,20 +250,6 @@ export const gatheringMemberDeleteRoute = createRoute({
     401: unauthorizedResponse,
     403: forbiddenResponse,
     404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const gatheringListRoute = createRoute({
-  method: 'get',
-  path: '/gatherings',
-  tags: ['Gatherings'],
-  summary: '集合予定一覧を取得する',
-  security: bearerAuth,
-  responses: {
-    200: jsonResponse(gatheringListResponseSchema, '集合予定一覧'),
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
     500: internalServerErrorResponse,
   },
 });

@@ -69,7 +69,6 @@ import {
 import {
   gatheringCreateRoute,
   gatheringDeleteRoute,
-  gatheringListRoute,
   gatheringMemberCreateRoute,
   gatheringMemberDeleteRoute,
   gatheringMemberListRoute,
@@ -169,7 +168,6 @@ app.openapi(apiOverviewRoute, c => {
         events: '/api/v1/events',
         classRooms: '/api/v1/classrooms',
         gatheringSpots: '/api/v1/gathering-spots',
-        gatherings: '/api/v1/gatherings',
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
         schedules: '/api/v1/notification/schedules',
         firebaseTokens: '/api/v1/firebase-tokens',
@@ -377,12 +375,10 @@ apiV1.openapi(staffOnly(gatheringMemberDeleteRoute), c => {
 });
 
 // Gathering routes
-apiV1.openapi(staffOnly(gatheringListRoute), c => {
-  return c.get('container').gatheringController.getAllGatherings(c);
-});
 apiV1.openapi(staffOnly(gatheringCreateRoute), c => {
   return c.get('container').gatheringController.createGathering(c);
 });
+
 apiV1.openapi(staffOnly(gatheringDeleteRoute), c => {
   return c.get('container').gatheringController.deleteGathering(c);
 });

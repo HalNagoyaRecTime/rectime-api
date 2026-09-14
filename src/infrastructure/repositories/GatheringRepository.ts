@@ -1,14 +1,22 @@
 import type { D1Database } from '@cloudflare/workers-types';
+
 import { asc, eq } from 'drizzle-orm';
+
 import { drizzle } from 'drizzle-orm/d1';
+
 import {
   CreateGatheringInput,
   GatheringDetailsEntity,
 } from '../../domain/entities/Gathering';
+
 import { IGatheringRepository } from '../../domain/interfaces/repositories/IGatheringRepository';
+
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
+
 import type { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
+
 import * as schema from '../database/schema';
+
 import { events, gathering_spots, gatherings } from '../database/schema';
 
 const detailSelection = {
@@ -43,23 +51,11 @@ export function createGatheringRepository(
       )
       .where(eq(gatherings.id, gatheringId))
       .get();
+
     return row ?? null;
   };
 
   return {
-    async findAll(): Promise<GatheringDetailsEntity[]> {
-      return orm
-        .select(detailSelection)
-        .from(gatherings)
-        .innerJoin(events, eq(gatherings.eventId, events.id))
-        .innerJoin(
-          gathering_spots,
-          eq(gatherings.gatheringSpotId, gathering_spots.id)
-        )
-        .orderBy(asc(gatherings.id))
-        .all();
-    },
-
     async findByEventId(eventId: number): Promise<GatheringDetailsEntity[]> {
       return orm
         .select(detailSelection)
@@ -91,10 +87,13 @@ export function createGatheringRepository(
         })
         .returning({ id: gatherings.id })
         .get();
+
       if (!row) throw new Error('Failed to create gathering');
 
       const gathering = await findById(row.id);
+
       if (!gathering) throw new Error('Failed to create gathering');
+
       return gathering;
     },
 
@@ -109,6 +108,7 @@ export function createGatheringRepository(
           .prepare('DELETE FROM gatherings WHERE gathering_id = ?')
           .bind(gatheringId),
       ]);
+
       return (gatheringResult.meta.changes ?? 0) > 0;
     },
   };
