@@ -17,6 +17,7 @@ import {
   upsertUser,
   userResponse,
   getStudentInfoOrNull,
+  getTeamIdForStudent,
   getUserCategories,
 } from '../helpers';
 import {
@@ -343,7 +344,7 @@ microsoft.post('/token', async c => {
     throw err;
   }
 
-  const { studentService } = c.get('container');
+  const { studentService, classRoomService } = c.get('container');
   const student = await getStudentInfoOrNull(studentService, Number(user.id));
 
   const refreshTokenId = crypto.randomUUID();
@@ -388,7 +389,10 @@ microsoft.post('/token', async c => {
     jwtTtl
   );
 
-  const categories = await getUserCategories(c, user.id);
+  const [categories, teamId] = await Promise.all([
+    getUserCategories(c, user.id),
+    getTeamIdForStudent(classRoomService, student),
+  ]);
 
   return c.json({
     access_token: accessToken,
@@ -400,6 +404,8 @@ microsoft.post('/token', async c => {
         ...user,
         student_id_number: student?.student_id_number ?? null,
         class_room_name: student?.class_room_name ?? null,
+        class_room_id: student?.class_room_id ?? null,
+        team_id: teamId,
       },
       categories
     ),

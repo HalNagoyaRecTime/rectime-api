@@ -884,11 +884,15 @@ describe('POST /auth/microsoft/token', () => {
         id: string;
         student_id_number: string | null;
         class_room_name: string | null;
+        class_room_id: number | null;
+        team_id: number | null;
       };
     };
     expect(body.user.id).toBe(String(user!.user_id));
     expect(body.user.student_id_number).toBe('60001');
     expect(body.user.class_room_name).toBe('3年B組');
+    expect(body.user.class_room_id).toBe(classRoom.classRoomId);
+    expect(body.user.team_id).toBe(classRoom.teamId);
   });
 
   it('学生でないユーザーがログインした場合、エラーにならずstudent_id_number/class_room_nameがnullで返る', async () => {
@@ -938,10 +942,14 @@ describe('POST /auth/microsoft/token', () => {
       user: {
         student_id_number: string | null;
         class_room_name: string | null;
+        class_room_id: number | null;
+        team_id: number | null;
       };
     };
     expect(body.user.student_id_number).toBeNull();
     expect(body.user.class_room_name).toBeNull();
+    expect(body.user.class_room_id).toBeNull();
+    expect(body.user.team_id).toBeNull();
   });
 
   it('markAsDeleted実行後に同じ学籍番号メールでログインすると、古い削除済みユーザーへ紐付けず新規アカウントとして登録される', async () => {
