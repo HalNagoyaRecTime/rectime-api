@@ -62,7 +62,12 @@ export function createGatheringGroupMemberRepository(
       const existing = await orm
         .select({ id: users.id })
         .from(users)
-        .where(inArray(users.id, userIds))
+        // 退会処理(deleteByUserId, #265)でメンバー行を削除済みのユーザーを、
+        // PUTでの参加者集合指定によって復活させないため、deletion_statusが
+        // 'active'のユーザーのみを実在するものとして扱う。
+        .where(
+          and(inArray(users.id, userIds), eq(users.deletionStatus, 'active'))
+        )
         .all();
       const existingIds = new Set(existing.map(row => row.id));
       return userIds.filter(id => !existingIds.has(id));

@@ -41,11 +41,14 @@ describe('GatheringGroupMemberRepository', () => {
     return gathering!.gathering_id;
   }
 
-  async function createUser(userName: string) {
+  async function createUser(
+    userName: string,
+    deletionStatus: 'active' | 'deletion_pending' | 'deleted' = 'active'
+  ) {
     const user = await env.DB.prepare(
-      'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
+      'INSERT INTO users (user_name, deletion_status) VALUES (?, ?) RETURNING user_id'
     )
-      .bind(userName)
+      .bind(userName, deletionStatus)
       .first<{ user_id: number }>();
     userIds.push(user!.user_id);
     return user!.user_id;
@@ -100,6 +103,31 @@ describe('GatheringGroupMemberRepository', () => {
     const missing = await repository.findMissingUserIds([user1, missingId]);
 
     expect(missing).toEqual([missingId]);
+  });
+
+  it('退会済み(deletion_status=deleted)のユーザーはfindMissingUserIdsで実在しない扱いにする', async () => {
+    // 退会処理(deleteByUserId, #265)でメンバー行を削除済みのユーザーを、
+    // PUTでの参加者集合指定によって復活させないための検証。
+    const activeUser = await createUser('現役ユーザー');
+    const deletedUser = await createUser('退会済みユーザー', 'deleted');
+
+    const missing = await repository.findMissingUserIds([
+      activeUser,
+      deletedUser,
+    ]);
+
+    expect(missing).toEqual([deletedUser]);
+  });
+
+  it('削除申請中(deletion_status=deletion_pending)のユーザーもfindMissingUserIdsで実在しない扱いにする', async () => {
+    const pendingUser = await createUser(
+      '削除申請中ユーザー',
+      'deletion_pending'
+    );
+
+    const missing = await repository.findMissingUserIds([pendingUser]);
+
+    expect(missing).toEqual([pendingUser]);
   });
 
   it('applyMemberDiffは追加対象を追加し削除対象を削除する', async () => {
@@ -240,5 +268,21 @@ describe('GatheringGroupMemberRepository', () => {
     }
     const members = await repository.findByGatheringId(gatheringId);
     expect(members.map(m => m.user_id)).toEqual([user1]);
+  });
+
+  it('Serviceで退会済みユーザーをuser_idsに含むPUTはUser not foundで拒否し、退会処理で削除済みの参加者行を復活させない', async () => {
+    const gatheringId = await createGathering('退会ユーザー拒否');
+    const activeUser = await createUser('現役ユーザー');
+    const deletedUser = await createUser('退会済みユーザー', 'deleted');
+    const service = createGatheringGroupMemberService(repository);
+
+    await expect(
+      service.replaceGatheringMembers(gatheringId, [activeUser, deletedUser])
+    ).rejects.toThrow('User not found');
+
+    // 拒否された場合は差分反映自体が行われず、参加者が追加されていない
+    // ことも併せて確認する。
+    const members = await repository.findByGatheringId(gatheringId);
+    expect(members).toEqual([]);
   });
 });
