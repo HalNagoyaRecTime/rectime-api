@@ -102,14 +102,11 @@ account.get('/me', async c => {
   if (!auth.ok) return auth.response;
   const { claims } = auth;
 
-  const student = await getStudentInfoOrNull(
-    studentService,
-    Number(claims.sub)
-  );
-  const [categories, teamId] = await Promise.all([
+  const [student, categories] = await Promise.all([
+    getStudentInfoOrNull(studentService, Number(claims.sub)),
     getUserCategories(c, claims.sub),
-    getTeamIdForStudent(classRoomService, student),
   ]);
+  const teamId = await getTeamIdForStudent(classRoomService, student);
 
   return c.json({
     user: userResponse(

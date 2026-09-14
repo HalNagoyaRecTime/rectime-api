@@ -79,8 +79,8 @@ export function userResponse(
     avatar_updated_at?: string | null;
     student_id_number: string | null;
     class_room_name: string | null;
-    class_room_id?: number | null;
-    team_id?: number | null;
+    class_room_id: number | null;
+    team_id: number | null;
   },
   categories: UserCategories
 ) {
@@ -92,8 +92,8 @@ export function userResponse(
     avatar_updated_at: user.avatar_updated_at ?? null,
     student_id_number: user.student_id_number,
     class_room_name: user.class_room_name,
-    class_room_id: user.class_room_id ?? null,
-    team_id: user.team_id ?? null,
+    class_room_id: user.class_room_id,
+    team_id: user.team_id,
     is_student: categories.is_student,
     is_staff: categories.is_staff,
     is_teacher: categories.is_teacher,
