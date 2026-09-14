@@ -44,14 +44,7 @@ describe('ScheduledNotificationService', () => {
     schedules?: DueNotificationSchedule[];
   }) {
     const notificationScheduleRepository: INotificationScheduleRepository = {
-      create: vi.fn(),
-      findAll: vi.fn(),
-      findById: vi.fn(),
-      deleteDraft: vi.fn(),
       findDraftsByEvent: vi.fn(),
-      existsFirebaseToken: vi.fn(),
-      existsEvent: vi.fn(),
-      existsNotification: vi.fn(),
       findDeliveryCandidateIds: vi
         .fn()
         .mockResolvedValue(options?.candidateIds ?? []),
