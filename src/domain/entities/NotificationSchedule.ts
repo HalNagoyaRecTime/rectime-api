@@ -46,9 +46,7 @@ export interface NotificationScheduleListResult {
 }
 
 export type DeleteDraftNotificationScheduleResult =
-  | 'deleted'
-  | 'not_found'
-  | 'not_draft';
+  'deleted' | 'not_found' | 'not_draft';
 
 export interface DueNotificationSchedule extends NotificationScheduleEntity {
   fcm_token: string;
