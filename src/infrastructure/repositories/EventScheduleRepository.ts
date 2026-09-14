@@ -40,6 +40,7 @@ export function createEventScheduleRepository(
                    FROM gathering_group_members ggm
                    INNER JOIN users u
                      ON u.user_id = ggm.user_id
+                    AND u.is_live_active = 1
                    INNER JOIN firebase_tokens ft
                      ON ft.user_id = u.user_id
                     AND ft.is_firebase_active = 1
@@ -242,6 +243,7 @@ function buildScheduleInsert(
        FROM gathering_group_members ggm
        INNER JOIN users u
          ON u.user_id = ggm.user_id
+        AND u.is_live_active = 1
        INNER JOIN firebase_tokens ft
          ON ft.user_id = u.user_id
         AND ft.is_firebase_active = 1
