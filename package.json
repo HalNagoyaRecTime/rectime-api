@@ -2,7 +2,7 @@
   "name": "recreation-management-api",
   "type": "module",
   "engines": {
-    "node": "22.x"
+    "node": ">=22.13 <23"
   },
   "scripts": {
     "dev": "wrangler dev --env development --ip 0.0.0.0",
