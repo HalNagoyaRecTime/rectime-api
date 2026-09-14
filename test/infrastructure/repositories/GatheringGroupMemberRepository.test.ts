@@ -222,4 +222,23 @@ describe('GatheringGroupMemberRepository', () => {
     );
     expect(keptMember?.created_at).toBe(firstByUserId.get(user1)?.created_at);
   });
+
+  it('同一のaddUserIdsを持つapplyMemberDiffが同時に来てもUNIQUE制約違反で失敗しない', async () => {
+    const gatheringId = await createGathering('同時追加');
+    const user1 = await createUser('同時追加対象ユーザー');
+
+    // 同じ内容のPUTが同時に来て、両方が同じuserIdを追加対象と判断した
+    // 状況を再現する。ON CONFLICT DO NOTHINGにより、後から書いた方が
+    // UNIQUE制約(gathering_id, user_id)違反で500にならないことを確認する。
+    const results = await Promise.all([
+      repository.applyMemberDiff(gatheringId, [user1], []),
+      repository.applyMemberDiff(gatheringId, [user1], []),
+    ]);
+
+    for (const result of results) {
+      expect(result.map(m => m.user_id)).toEqual([user1]);
+    }
+    const members = await repository.findByGatheringId(gatheringId);
+    expect(members.map(m => m.user_id)).toEqual([user1]);
+  });
 });

@@ -88,7 +88,16 @@ export function createGatheringGroupMemberRepository(
         if (addUserIds.length > 0) {
           const insertStatement = orm
             .insert(gathering_group_members)
-            .values(addUserIds.map(userId => ({ gatheringId, userId })));
+            .values(addUserIds.map(userId => ({ gatheringId, userId })))
+            // 同一内容のPUTが同時に来ると、両リクエストが同じuserIdを
+            // 追加対象と判断しうる。ON CONFLICT DO NOTHINGにより、後から
+            // 書いた方がUNIQUE制約違反で500になることを防ぐ。
+            .onConflictDoNothing({
+              target: [
+                gathering_group_members.gatheringId,
+                gathering_group_members.userId,
+              ],
+            });
           // D1のbatch()は複数文を1つのトランザクションとして原子的に実行するため、
           // 削除→追加の間に途中状態が外部から見えることはない。
           await orm.batch([deleteStatement, insertStatement]);
@@ -99,6 +108,12 @@ export function createGatheringGroupMemberRepository(
         await orm
           .insert(gathering_group_members)
           .values(addUserIds.map(userId => ({ gatheringId, userId })))
+          .onConflictDoNothing({
+            target: [
+              gathering_group_members.gatheringId,
+              gathering_group_members.userId,
+            ],
+          })
           .run();
       }
 
