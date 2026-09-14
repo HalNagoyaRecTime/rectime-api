@@ -13,6 +13,7 @@ export interface IClassRoomService {
     offset: number
   ) => Promise<ClassRoomPageDTO>;
   getClassroomById: (id: number) => Promise<ClassRoomDTO>;
+  getTeamIdByClassRoomId: (id: number) => Promise<number | null>;
   createClassroom: (input: ClassRoomRequestDTO) => Promise<ClassRoomDTO>;
   updateClassroom: (
     id: number,

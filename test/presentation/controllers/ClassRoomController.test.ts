@@ -7,6 +7,7 @@ function setup() {
   const service: IClassRoomService = {
     getAllClassrooms: vi.fn(),
     getClassroomById: vi.fn(),
+    getTeamIdByClassRoomId: vi.fn(),
     createClassroom: vi.fn(),
     updateClassroom: vi.fn(),
     deleteClassroom: vi.fn(),

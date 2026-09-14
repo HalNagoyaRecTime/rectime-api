@@ -41,6 +41,7 @@ function createClassRoomRepository(
   return {
     findAll: vi.fn(),
     findById: vi.fn(),
+    findTeamIdById: vi.fn(),
     findByCode: vi.fn().mockResolvedValue(null),
     findExistingClassCodes: vi.fn().mockResolvedValue(new Set()),
     create: vi.fn(),

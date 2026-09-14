@@ -189,20 +189,14 @@ export async function getStudentInfoOrNull(
 }
 
 // 学生の所属クラスからチームIDを解決する。クラス未所属(学生でない)場合はnull。
+// 教員一覧・生徒数などを含む重いJOIN(getClassroomById)は不要なため、
+// team_idだけを取得する軽量なリポジトリ呼び出しを使う。
 export async function getTeamIdForStudent(
   classRoomService: IClassRoomService,
   student: StudentDTO | null
 ): Promise<number | null> {
   if (!student) return null;
-  const classroom = await classRoomService
-    .getClassroomById(student.class_room_id)
-    .catch(err => {
-      if (err instanceof Error && err.message === 'Class not found') {
-        return null;
-      }
-      throw err;
-    });
-  return classroom?.team_id ?? null;
+  return classRoomService.getTeamIdByClassRoomId(student.class_room_id);
 }
 
 export async function getUserCategories(

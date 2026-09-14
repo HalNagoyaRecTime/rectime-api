@@ -102,6 +102,15 @@ describe('ClassRoomRepository', () => {
     await expect(repo.findById(999999)).resolves.toBeNull();
   });
 
+  it('team_idだけを軽量に取得できる', async () => {
+    const classroom = (await repo.findAll(1, 0)).classrooms[0];
+
+    await expect(repo.findTeamIdById(classroom.class_room_id)).resolves.toBe(
+      classroom.team_id
+    );
+    await expect(repo.findTeamIdById(999999)).resolves.toBeNull();
+  });
+
   it('担任未設定のクラスを作成・更新・削除できる', async () => {
     const created = await repo.create({
       class_code: '13A',

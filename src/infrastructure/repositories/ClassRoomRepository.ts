@@ -84,6 +84,16 @@ export function createClassRoomRepository(
   };
 
   return {
+    // findByIdは教員・生徒数集計を含む重いJOINクエリのため、team_idだけが
+    // 必要な呼び出し元(認証まわりのホットパス)向けに軽量な取得手段を用意する。
+    async findTeamIdById(id: number): Promise<number | null> {
+      const row = await db
+        .prepare('SELECT team_id FROM class_rooms WHERE class_room_id = ?')
+        .bind(id)
+        .first<{ team_id: number }>();
+      return row?.team_id ?? null;
+    },
+
     async findAll(limit: number, offset: number): Promise<ClassRoomPage> {
       const [rows, count] = await Promise.all([
         db
