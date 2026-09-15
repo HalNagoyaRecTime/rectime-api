@@ -67,8 +67,6 @@ import {
   masterImportDetailRoute,
 } from './presentation/openapi/masterImports';
 import {
-  gatheringCreateRoute,
-  gatheringDeleteRoute,
   gatheringListRoute,
   gatheringMemberCreateRoute,
   gatheringMemberDeleteRoute,
@@ -379,12 +377,6 @@ apiV1.openapi(staffOnly(gatheringMemberDeleteRoute), c => {
 // Gathering routes
 apiV1.openapi(staffOnly(gatheringListRoute), c => {
   return c.get('container').gatheringController.getAllGatherings(c);
-});
-apiV1.openapi(staffOnly(gatheringCreateRoute), c => {
-  return c.get('container').gatheringController.createGathering(c);
-});
-apiV1.openapi(staffOnly(gatheringDeleteRoute), c => {
-  return c.get('container').gatheringController.deleteGathering(c);
 });
 
 // Firebase token routes
