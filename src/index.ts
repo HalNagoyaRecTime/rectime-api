@@ -335,9 +335,6 @@ apiV1.openapi(staffOnly(masterImportCommitRoute), c => {
 apiV1.openapi(staffOnly(gatheringSpotListRoute), c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
 });
-apiV1.get('/gathering-spots/:gatheringSpotId', requireAuth, requireStaff, c => {
-  return c.get('container').gatheringSpotController.getGatheringSpotById(c);
-});
 apiV1.openapi(staffOnly(gatheringSpotCreateRoute), c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });

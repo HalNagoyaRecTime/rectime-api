@@ -177,11 +177,6 @@ export const EventErrors = {
     code: 'GATHERING_SPOT_LIST_FAILED',
     message: '集合場所一覧の取得に失敗しました',
   },
-  GATHERING_SPOT_FETCH_FAILED: {
-    status: 500,
-    code: 'GATHERING_SPOT_FETCH_FAILED',
-    message: '集合場所の取得に失敗しました',
-  },
   GATHERING_SPOT_CREATE_FAILED: {
     status: 500,
     code: 'GATHERING_SPOT_CREATE_FAILED',
