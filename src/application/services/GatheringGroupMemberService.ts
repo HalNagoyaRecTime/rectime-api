@@ -34,14 +34,25 @@ export function createGatheringGroupMemberService(
       try {
         return await gatheringGroupMemberRepository.create(gatheringId, userId);
       } catch (error) {
-        // 存在確認後に集合または利用者が削除される競合では、INSERTが
-        // 外部キー制約で失敗する。現在の状態を確認し、500ではなく404へ変換する。
-        const [gatheringExists, userExists] = await Promise.all([
-          gatheringGroupMemberRepository.existsGathering(gatheringId),
-          gatheringGroupMemberRepository.existsUser(userId),
-        ]);
+        // 存在確認後に集合が削除される競合では、INSERTが外部キー制約で
+        // 失敗する。現在の状態を確認し、500ではなく404へ変換する。
+        const gatheringExists =
+          await gatheringGroupMemberRepository.existsGathering(gatheringId);
         if (!gatheringExists) throw new Error('Gathering not found');
-        if (!userExists) throw new Error('User not found');
+
+        // createが投げる'Gathering member already exists'は、「既に参加
+        // 済み」と「存在確認(ensureUserExists)後にuserIdが退会処理された
+        // ため書き込み時点でactiveでなかった」のいずれかを区別できない。
+        // findMissingUserIds(active限定の存在確認)で再判定し、後者なら
+        // User not foundへ変換する。
+        if (
+          error instanceof Error &&
+          error.message === 'Gathering member already exists'
+        ) {
+          const missingUserIds =
+            await gatheringGroupMemberRepository.findMissingUserIds([userId]);
+          if (missingUserIds.length > 0) throw new Error('User not found');
+        }
         throw error;
       }
     },

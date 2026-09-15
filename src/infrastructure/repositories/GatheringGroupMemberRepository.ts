@@ -157,15 +157,16 @@ export function createGatheringGroupMemberRepository(
       gatheringId: number,
       userId: number
     ): Promise<GatheringGroupMemberEntity> {
-      const row = await orm
-        .insert(gathering_group_members)
-        .values({ gatheringId, userId })
-        .onConflictDoNothing({
-          target: [
-            gathering_group_members.gatheringId,
-            gathering_group_members.userId,
-          ],
-        })
+      // ensureUserExists(userRepository.exists)はdeletion_statusを見ない
+      // ため、存在確認後にuserIdが退会処理(deleteByUserId)されるレースが
+      // ありうる。buildAddMembersStatementと同様、値を直接INSERTするのでは
+      // なく、書き込み時点でもusers.deletion_status='active'であることを
+      // 再確認し、退会済みユーザーの参加行を作成しないようにする。
+      //
+      // rowがundefinedになるのは「既に参加済み(ON CONFLICT DO NOTHING)」
+      // 「userIdが書き込み時点でactiveでない」のいずれか。ここでは区別
+      // できないため、呼び出し側(Service)がfindMissingUserIdsで再判定する。
+      const row = await buildAddMembersStatement(orm, gatheringId, [userId])
         .returning()
         .get();
       if (!row) throw new Error('Gathering member already exists');
