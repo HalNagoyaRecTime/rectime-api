@@ -64,7 +64,8 @@ export function createGatheringSpotController(
     }
     try {
       return c.json(
-        await gatheringSpotService.getGatheringSpotById(parsedId.data)
+        await gatheringSpotService.getGatheringSpotById(parsedId.data),
+        200
       );
     } catch (error) {
       if (
