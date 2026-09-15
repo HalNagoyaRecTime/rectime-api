@@ -91,11 +91,7 @@ export function createDIContainer(env: Env) {
     db,
     userRepository
   );
-  const gatheringRepository = createGatheringRepository(
-    db,
-    eventRepository,
-    gatheringSpotRepository
-  );
+  const gatheringRepository = createGatheringRepository(db, eventRepository);
   const eventGatheringSettingsRepository =
     createEventGatheringSettingsRepository(db);
   const scheduleRepository = createScheduleRepository(db);
@@ -139,7 +135,10 @@ export function createDIContainer(env: Env) {
     teacherRepository,
     classRoomRepository
   );
-  const eventService = createEventService(eventRepository);
+  const eventService = createEventService(
+    eventRepository,
+    eventGatheringSettingsRepository
+  );
   const eventScheduleService = createEventScheduleService({
     eventRepository,
     eventScheduleRepository,

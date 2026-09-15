@@ -67,8 +67,6 @@ import {
   masterImportDetailRoute,
 } from './presentation/openapi/masterImports';
 import {
-  gatheringCreateRoute,
-  gatheringDeleteRoute,
   gatheringListRoute,
   gatheringMemberCreateRoute,
   gatheringMemberDeleteRoute,
@@ -271,6 +269,8 @@ apiV1.openapi(authed(eventDetailRoute), c => {
 apiV1.get('/me/events', requireAuth, c => {
   return c.get('container').eventController.getMyEvents(c);
 });
+// 配布済みmobileが利用中の互換APIのため削除禁止（#395）。レスポンス形式・認可を維持する。
+// リポジトリ内の呼び出しが0件でも削除不可。2027年度以降、OpenAPI記載の全条件を満たして#386で削除する。
 apiV1.openapi(authed(eventGatheringListRoute), c => {
   return c.get('container').gatheringController.getGatheringsByEventId(c);
 });
@@ -332,9 +332,6 @@ apiV1.openapi(staffOnly(masterImportCommitRoute), c => {
 apiV1.openapi(staffOnly(gatheringSpotListRoute), c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
 });
-apiV1.get('/gathering-spots/:gatheringSpotId', requireAuth, requireStaff, c => {
-  return c.get('container').gatheringSpotController.getGatheringSpotById(c);
-});
 apiV1.openapi(staffOnly(gatheringSpotCreateRoute), c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
@@ -374,12 +371,6 @@ apiV1.openapi(staffOnly(gatheringMemberDeleteRoute), c => {
 // Gathering routes
 apiV1.openapi(staffOnly(gatheringListRoute), c => {
   return c.get('container').gatheringController.getAllGatherings(c);
-});
-apiV1.openapi(staffOnly(gatheringCreateRoute), c => {
-  return c.get('container').gatheringController.createGathering(c);
-});
-apiV1.openapi(staffOnly(gatheringDeleteRoute), c => {
-  return c.get('container').gatheringController.deleteGathering(c);
 });
 
 // Firebase token routes
