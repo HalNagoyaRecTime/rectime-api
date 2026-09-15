@@ -56,6 +56,12 @@ export default [
   },
   prettier,
   {
-    ignores: ['node_modules/', 'dist/', '.wrangler/', 'migrations/'],
+    ignores: [
+      'node_modules/',
+      'dist/',
+      '**/.wrangler/',
+      '.claude/worktrees/',
+      'migrations/',
+    ],
   },
 ];

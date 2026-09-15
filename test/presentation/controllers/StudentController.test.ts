@@ -11,6 +11,7 @@ function buildStudent(overrides: Partial<StudentDTO> = {}): StudentDTO {
     display_name: '山田太郎',
     class_room_id: 1,
     class_room_name: '1年A組',
+    team_id: 2,
     attendance_number: 1,
     student_id_number: 'S001',
     is_live_active: true,

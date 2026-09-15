@@ -20,7 +20,10 @@ import type {
   MobileRefreshEntry,
   DeletionConfirmationEntry,
 } from '../../../../src/domain/auth/types';
-import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
+import {
+  diContainerMiddleware,
+  type ContainerVariables,
+} from '../../../../src/presentation/middleware/diContainer';
 import { insertClassRoomWithTeam } from '../../../fixtures/classRooms';
 import { createUserRepository } from '../../../../src/infrastructure/repositories/UserRepository';
 
@@ -134,6 +137,23 @@ function createMockKv(): KVNamespace {
 function buildApp() {
   const app = new Hono<{ Bindings: Env }>();
   app.use('*', diContainerMiddleware);
+  app.route('/', microsoft);
+  return app;
+}
+
+// 生徒情報取得(studentService.getByUserId)がD1の一時障害等で失敗する
+// ケースを再現するためのapp。KV書き込みより前にこの失敗を検知できていれば、
+// mobile_refresh系のKVエントリは作られないはず。
+function buildAppWithFailingStudentLookup() {
+  const app = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
+  app.use('*', diContainerMiddleware);
+  app.use('*', async (c, next) => {
+    const container = c.get('container');
+    container.studentService.getByUserId = vi
+      .fn()
+      .mockRejectedValue(new Error('D1 transient failure'));
+    await next();
+  });
   app.route('/', microsoft);
   return app;
 }
@@ -884,11 +904,65 @@ describe('POST /auth/microsoft/token', () => {
         id: string;
         student_id_number: string | null;
         class_room_name: string | null;
+        class_room_id: number | null;
+        team_id: number | null;
       };
     };
     expect(body.user.id).toBe(String(user!.user_id));
     expect(body.user.student_id_number).toBe('60001');
     expect(body.user.class_room_name).toBe('3年B組');
+    expect(body.user.class_room_id).toBe(classRoom.classRoomId);
+    expect(body.user.team_id).toBe(classRoom.teamId);
+  });
+
+  it('生徒情報取得に失敗した場合、mobile_refresh系のKVエントリを書き込まずエラーにする', async () => {
+    const env = buildEnv();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-student-lookup-failure',
+      oid: 'oid-student-lookup-failure',
+      tid: 'tid-1',
+      name: '教師三郎',
+      preferred_username: 'sensei-lookup-failure@example.com',
+      nonce: 'nonce-student-lookup-failure',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-student-lookup-failure',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-student-lookup-failure',
+        client_type: 'web',
+        purpose: 'login',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildAppWithFailingStudentLookup();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-student-lookup-failure',
+          state: 'state-student-lookup-failure',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(500);
+    expect(
+      Array.from((env.AUTH_KV.put as ReturnType<typeof vi.fn>).mock.calls).some(
+        ([key]) => typeof key === 'string' && key.startsWith('mobile_refresh')
+      )
+    ).toBe(false);
   });
 
   it('学生でないユーザーがログインした場合、エラーにならずstudent_id_number/class_room_nameがnullで返る', async () => {
@@ -938,10 +1012,14 @@ describe('POST /auth/microsoft/token', () => {
       user: {
         student_id_number: string | null;
         class_room_name: string | null;
+        class_room_id: number | null;
+        team_id: number | null;
       };
     };
     expect(body.user.student_id_number).toBeNull();
     expect(body.user.class_room_name).toBeNull();
+    expect(body.user.class_room_id).toBeNull();
+    expect(body.user.team_id).toBeNull();
   });
 
   it('markAsDeleted実行後に同じ学籍番号メールでログインすると、古い削除済みユーザーへ紐付けず新規アカウントとして登録される', async () => {

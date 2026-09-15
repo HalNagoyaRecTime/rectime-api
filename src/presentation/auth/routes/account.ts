@@ -101,12 +101,11 @@ account.get('/me', async c => {
   if (!auth.ok) return auth.response;
   const { claims } = auth;
 
-  const student = await getStudentInfoOrNull(
-    studentService,
-    Number(claims.sub)
-  );
+  const [student, categories] = await Promise.all([
+    getStudentInfoOrNull(studentService, Number(claims.sub)),
+    getUserCategories(c, claims.sub),
+  ]);
 
-  const categories = await getUserCategories(c, claims.sub);
   return c.json({
     user: userResponse(
       {
@@ -117,6 +116,8 @@ account.get('/me', async c => {
         avatar_updated_at: claims.avatar_updated_at ?? null,
         student_id_number: student?.student_id_number ?? null,
         class_room_name: student?.class_room_name ?? null,
+        class_room_id: student?.class_room_id ?? null,
+        team_id: student?.team_id ?? null,
       },
       categories
     ),

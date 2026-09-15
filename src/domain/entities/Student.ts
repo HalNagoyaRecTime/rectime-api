@@ -4,6 +4,7 @@ export interface StudentEntity {
   user_name: string;
   class_room_id: number;
   class_room_name: string;
+  team_id: number;
   attendance_number: number;
   student_id_number: string;
   is_live_active: boolean;

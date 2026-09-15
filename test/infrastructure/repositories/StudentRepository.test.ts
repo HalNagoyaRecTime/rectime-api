@@ -57,6 +57,7 @@ describe('StudentRepository', () => {
         student_id_number: target.studentIdNumber,
         class_room_id: target.classRoomId,
         class_room_name: 'テスト教室',
+        team_id: seeded.teamId,
         is_live_active: true,
       });
     });
@@ -79,6 +80,7 @@ describe('StudentRepository', () => {
         student_id_number: target.studentIdNumber,
         class_room_id: target.classRoomId,
         class_room_name: 'テスト教室',
+        team_id: seeded.teamId,
         is_live_active: true,
       });
     });
@@ -117,6 +119,7 @@ describe('StudentRepository', () => {
       expect(created).toMatchObject({
         user_name: input.display_name,
         class_room_name: 'テスト教室',
+        team_id: seeded.teamId,
         is_live_active: true,
       });
       expect(findByStudentNumSpy).not.toHaveBeenCalled();
@@ -130,6 +133,7 @@ describe('StudentRepository', () => {
       expect(updated).toMatchObject({
         user_name: '更新学生',
         attendance_number: 11,
+        team_id: seeded.teamId,
       });
       expect(findByIdSpy).not.toHaveBeenCalled();
     });

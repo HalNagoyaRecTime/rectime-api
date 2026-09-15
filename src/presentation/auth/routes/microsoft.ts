@@ -344,7 +344,13 @@ microsoft.post('/token', async c => {
   }
 
   const { studentService } = c.get('container');
-  const student = await getStudentInfoOrNull(studentService, Number(user.id));
+  // 生徒情報・カテゴリの取得(想定外のDBエラー等)は、生きたMicrosoft
+  // リフレッシュトークンをKVへ書き込む前にすべて検知したいため、副作用より
+  // 先にawaitする。
+  const [student, categories] = await Promise.all([
+    getStudentInfoOrNull(studentService, Number(user.id)),
+    getUserCategories(c, user.id),
+  ]);
 
   const refreshTokenId = crypto.randomUUID();
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
@@ -388,8 +394,6 @@ microsoft.post('/token', async c => {
     jwtTtl
   );
 
-  const categories = await getUserCategories(c, user.id);
-
   return c.json({
     access_token: accessToken,
     refresh_token_id: refreshTokenId,
@@ -400,6 +404,8 @@ microsoft.post('/token', async c => {
         ...user,
         student_id_number: student?.student_id_number ?? null,
         class_room_name: student?.class_room_name ?? null,
+        class_room_id: student?.class_room_id ?? null,
+        team_id: student?.team_id ?? null,
       },
       categories
     ),
