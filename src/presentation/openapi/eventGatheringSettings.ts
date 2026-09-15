@@ -1,6 +1,7 @@
 import { createRoute } from '@hono/zod-openapi';
 import type { EventGatheringSettingsDTO } from '../../application/dto/EventGatheringSettingsDTO';
 import { eventIdParams } from './events';
+import { roundSettingResponseSchema } from './gatheringRounds';
 import {
   badRequestResponse,
   bearerAuth,
@@ -100,33 +101,6 @@ export const eventGatheringSettingsWriteSchema = z
     });
   })
   .openapi('EventGatheringSettingsWriteRequest');
-
-export const gatheringSpotSummarySchema = z
-  .object({
-    gathering_spot_id: z.number().int(),
-    gathering_spot_name: z.string(),
-  })
-  .openapi('GatheringSpotSummary');
-
-export const gatheringSettingResponseSchema = z
-  .object({
-    gathering_id: z.number().int(),
-    gathering_time: z.string().openapi({
-      description:
-        'HH:mm形式。本APIで保存した値は常に実在する時刻だが、旧APIで未設定のまま作成された行は `99:59` のまま返る。',
-      example: '10:45',
-    }),
-    gathering_spot: gatheringSpotSummarySchema,
-    member_count: z.number().int(),
-  })
-  .openapi('GatheringSetting');
-
-export const roundSettingResponseSchema = z
-  .object({
-    round: z.number().int(),
-    gatherings: z.array(gatheringSettingResponseSchema),
-  })
-  .openapi('RoundSetting');
 
 // Application DTO と食い違うと型エラーになるよう、schemaの出力型をDTOで固定する。
 export const eventGatheringSettingsResponseSchema = z
