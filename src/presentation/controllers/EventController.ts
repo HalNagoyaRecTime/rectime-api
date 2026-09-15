@@ -3,7 +3,6 @@ import { z } from 'zod';
 import type {
   CreateEventRequestDTO,
   PatchEventRequestDTO,
-  UpdateEventRequestDTO,
 } from '../../application/dto/EventDTO';
 import type { IEventScheduleService } from '../../application/services/IEventScheduleService';
 import type { IEventService } from '../../application/services/IEventService';
@@ -32,9 +31,6 @@ const eventWriteSchema = z
     path: ['end_time'],
   });
 
-const eventUpdateSchema = eventWriteSchema.and(
-  z.object({ notification_enabled: z.boolean().optional() })
-);
 const eventPatchSchema = z
   .object({
     event_name: z.string().trim().min(1).max(100).optional(),
@@ -135,37 +131,11 @@ export function createEventController(
     const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
     if (!parsedId.success)
       return errorResponse(c, EventErrors.INVALID_EVENT_ID);
-    const body = await c.req.json().catch(() => undefined);
-    const parsed = eventUpdateSchema.safeParse(body);
-    if (!parsed.success) {
-      return errorResponse(
-        c,
-        EventErrors.INVALID_EVENT_REQUEST,
-        parsed.error.flatten()
-      );
-    }
-    const request = {
-      ...parsed.data,
-      rule_text: parsed.data.rule_text ?? null,
-    } satisfies UpdateEventRequestDTO;
-    const eventContext = c as EventContext;
-    const userId = eventContext.get('authenticatedUserId');
-    if (userId === null) {
-      return errorResponse(c, CommonErrors.UNAUTHORIZED);
-    }
+    const parsed = await parseEventBody(c);
+    if (!parsed.success) return parsed.response;
     try {
       return c.json(
-        await eventScheduleService.updateEventSchedule({
-          event_id: parsedId.data,
-          user_id: userId,
-          event_name: request.event_name,
-          rule_text: request.rule_text,
-          venue: request.venue,
-          start_time: request.start_time,
-          end_time: request.end_time,
-          notification_enabled: request.notification_enabled,
-          event_date: eventContext.env?.EVENT_DATE,
-        }),
+        await eventService.updateEvent(parsedId.data, parsed.data),
         200
       );
     } catch (error) {

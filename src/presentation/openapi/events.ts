@@ -111,12 +111,6 @@ export const eventWriteSchema = z
   })
   .openapi('EventWriteRequest');
 
-export const eventUpdateSchema = eventWriteSchema
-  .extend({
-    notification_enabled: z.boolean().optional(),
-  })
-  .openapi('EventUpdateRequest');
-
 export const eventPatchSchema = z
   .object({
     event_name: z.string().trim().min(1).max(100).optional(),
@@ -231,12 +225,12 @@ export const eventUpdateRoute = createRoute({
   request: {
     params: eventIdParams,
     body: {
-      content: { 'application/json': { schema: eventUpdateSchema } },
+      content: { 'application/json': { schema: eventWriteSchema } },
       required: true,
     },
   },
   responses: {
-    200: jsonResponse(eventScheduleResultSchema, '更新したイベントと通知予定'),
+    200: jsonResponse(eventResponseSchema, '更新したイベント'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
