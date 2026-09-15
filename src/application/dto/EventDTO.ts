@@ -48,10 +48,11 @@ export interface CreateEventRequestDTO {
   end_time: string;
 }
 
-/** PUT /events/:eventId のリクエスト本文。 */
-export interface UpdateEventRequestDTO extends CreateEventRequestDTO {
-  notification_enabled?: boolean;
-}
+/**
+ * PUT /events/:eventId のリクエスト本文。
+ * Event本体の項目だけを受け付け、Notification固有fieldは含まない(#388)。
+ */
+export type UpdateEventRequestDTO = CreateEventRequestDTO;
 
 /** PATCH /events/:eventId のリクエスト本文。 */
 export interface PatchEventRequestDTO {
