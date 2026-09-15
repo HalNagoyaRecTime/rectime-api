@@ -70,16 +70,16 @@ function createMockKv(): KVNamespace {
 }
 
 // 本番では diContainerMiddleware がコンテナを設定する。ここでは requireAuth が
-// 実際に参照する userActivationRepository だけをスタブとして差し込み、
+// 実際に参照する userStatusRepository だけをスタブとして差し込み、
 // D1に依存せずミドルウェア単体の分岐を検証する（実SQLの検証は
-// UserActivationRepository.test.ts が実DBに対して行う）。
+// UserStatusRepository.test.ts が実DBに対して行う）。
 function useStubContainer(
   app: Hono<{ Bindings: Env; Variables: Variables }>,
   isActive: boolean
 ) {
   app.use('*', async (c, next) => {
     c.set('container', {
-      userActivationRepository: { isActive: async () => isActive },
+      userStatusRepository: { isActive: async () => isActive },
     } as unknown as DIContainer);
     await next();
   });
@@ -91,7 +91,7 @@ function useFailingContainer(
 ) {
   app.use('*', async (c, next) => {
     c.set('container', {
-      userActivationRepository: {
+      userStatusRepository: {
         isActive: async () => {
           throw new Error('D1_ERROR');
         },

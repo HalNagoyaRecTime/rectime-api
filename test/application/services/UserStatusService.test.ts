@@ -9,6 +9,7 @@ function buildUserStatusRepository(
   overrides: Partial<IUserStatusRepository> = {}
 ): IUserStatusRepository {
   return {
+    isActive: vi.fn().mockResolvedValue(true),
     updateLiveActive: vi
       .fn()
       .mockResolvedValue({ user_id: TARGET_USER_ID, is_live_active: false }),
