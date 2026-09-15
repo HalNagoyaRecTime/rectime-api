@@ -248,6 +248,56 @@ describe('EventScheduleRepository', () => {
     ]);
   });
 
+  it('無効化済みの利用者には通知予定を作らない', async () => {
+    const fixture = await createFixture();
+    const inactiveUser = await env.DB.prepare(
+      "INSERT INTO users (user_name, is_live_active) VALUES ('無効化済み参加者', 0) RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await env.DB.batch([
+      env.DB.prepare(
+        'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+      ).bind(fixture.gatheringId, inactiveUser!.user_id),
+      env.DB.prepare(
+        "INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, 'inactive-user-token')"
+      ).bind(inactiveUser!.user_id),
+    ]);
+
+    await repository.apply(buildInput(fixture));
+
+    const schedules = await env.DB.prepare(
+      `SELECT ft.user_id
+       FROM notification_schedules ns
+       INNER JOIN firebase_tokens ft
+         ON ft.firebase_token_id = ns.firebase_token_id
+       WHERE ns.event_id = ?`
+    )
+      .bind(fixture.eventId)
+      .all<{ user_id: number }>();
+    expect(schedules.results).toEqual([{ user_id: fixture.userId }]);
+  });
+
+  it('集合の利用者が全員無効化済みなら通知を作らない', async () => {
+    const fixture = await createFixture();
+    await env.DB.prepare(
+      'UPDATE users SET is_live_active = 0 WHERE user_id = ?'
+    )
+      .bind(fixture.userId)
+      .run();
+
+    await repository.apply(buildInput(fixture));
+
+    const notificationCount = await env.DB.prepare(
+      'SELECT COUNT(*) AS total FROM notifications'
+    ).first<{ total: number }>();
+    const scheduleCount = await env.DB.prepare(
+      'SELECT COUNT(*) AS total FROM notification_schedules WHERE event_id = ?'
+    )
+      .bind(fixture.eventId)
+      .first<{ total: number }>();
+    expect(notificationCount?.total).toBe(0);
+    expect(scheduleCount?.total).toBe(0);
+  });
+
   it('同じ競技に複数の集合がある場合も各集合の利用者へ通知する', async () => {
     const fixture = await createFixture();
     const secondUser = await env.DB.prepare(

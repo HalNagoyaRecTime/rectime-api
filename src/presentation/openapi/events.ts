@@ -1,4 +1,6 @@
 import { createRoute } from '@hono/zod-openapi';
+import type { EventDetailDTO } from '../../application/dto/EventDTO';
+import { roundSettingResponseSchema } from './gatheringRounds';
 import { gatheringListResponseSchema } from './gatherings';
 import { notificationScheduleResponseSchema } from './notifications';
 import {
@@ -33,9 +35,30 @@ export const eventResponseSchema = z
 
 export type EventResponseDTO = z.infer<typeof eventResponseSchema>;
 
+// Application DTO と食い違うと型エラーになるよう、schemaの出力型をDTOで固定する。
+export const eventDetailResponseSchema = eventResponseSchema
+  .extend({
+    rounds: z.array(roundSettingResponseSchema),
+  })
+  .openapi('EventDetail') satisfies z.ZodType<EventDetailDTO>;
+
+export const gatheringSummaryResponseSchema = z
+  .object({
+    gathering_count: z.number().int(),
+    configured_gathering_count: z.number().int(),
+    first_gathering_time: z.string().nullable(),
+  })
+  .openapi('GatheringSummary');
+
+export const eventListItemResponseSchema = eventResponseSchema
+  .extend({
+    gathering_summary: gatheringSummaryResponseSchema,
+  })
+  .openapi('EventListItem');
+
 export const eventListResponseSchema = z
   .object({
-    events: z.array(eventResponseSchema),
+    events: z.array(eventListItemResponseSchema),
     ...paginationFields,
   })
   .openapi('EventList');
@@ -133,10 +156,18 @@ export const eventDetailRoute = createRoute({
   path: '/events/{eventId}',
   tags: ['Events'],
   summary: 'イベントを取得する',
+  description: [
+    'Event基本情報に加えて、配下の集合予定を `rounds[].gatherings[]` として返す。',
+    'Round専用のテーブルは無く `gatherings.round` でRoundを表すため、集合予定を',
+    '1件も持たないRoundは現れない。集合予定が0件のEventは `rounds: []` を返す。',
+    '',
+    '並び順は `round` 昇順、同一Round内は `gathering_time` 昇順、同時刻は',
+    '`gathering_id` 昇順。`member_count` は集合予定ごとの参加者数。',
+  ].join('\n'),
   security: bearerAuth,
   request: { params: eventIdParams },
   responses: {
-    200: jsonResponse(eventResponseSchema, 'イベント'),
+    200: jsonResponse(eventDetailResponseSchema, 'イベント'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     404: notFoundResponse,
