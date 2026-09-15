@@ -1,11 +1,54 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringGroupMemberEntity } from '../../domain/entities/GatheringGroupMember';
 import { IGatheringGroupMemberRepository } from '../../domain/interfaces/repositories/IGatheringGroupMemberRepository';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import * as schema from '../database/schema';
 import { gathering_group_members, gatherings, users } from '../database/schema';
+
+function buildAddMembersStatement(
+  orm: ReturnType<typeof drizzle<typeof schema>>,
+  gatheringId: number,
+  addUserIds: number[]
+) {
+  // addUserIdsは呼び出し側(replaceGatheringMembers)がfindMissingUserIdsで
+  // active確認済みだが、確認からこのINSERT実行までの間に対象ユーザーが
+  // 退会処理(deleteByUserId)されるレースがありうる。そのため、値を直接
+  // INSERTするのではなく、書き込み時点でもusers.deletion_status='active'
+  // であることをこのSELECTで再確認し、退会済みユーザーの参加行が
+  // deleteByUserIdでの削除後に復活しないようにする。
+  return (
+    orm
+      .insert(gathering_group_members)
+      .select(
+        orm
+          .select({
+            id: sql<number | null>`null`.as('gathering_group_member_id'),
+            gatheringId: sql<number>`${gatheringId}`.as('gathering_id'),
+            userId: users.id,
+            createdAt: sql<string>`CURRENT_TIMESTAMP`.as('created_at'),
+            updatedAt: sql<string>`CURRENT_TIMESTAMP`.as('updated_at'),
+          })
+          .from(users)
+          .where(
+            and(
+              inArray(users.id, addUserIds),
+              eq(users.deletionStatus, 'active')
+            )
+          )
+      )
+      // 同一内容のPUTが同時に来ると、両リクエストが同じuserIdを
+      // 追加対象と判断しうる。ON CONFLICT DO NOTHINGにより、後から
+      // 書いた方がUNIQUE制約違反で500になることを防ぐ。
+      .onConflictDoNothing({
+        target: [
+          gathering_group_members.gatheringId,
+          gathering_group_members.userId,
+        ],
+      })
+  );
+}
 
 function selectMembers(
   orm: ReturnType<typeof drizzle<typeof schema>>,
@@ -91,18 +134,11 @@ export function createGatheringGroupMemberRepository(
           );
 
         if (addUserIds.length > 0) {
-          const insertStatement = orm
-            .insert(gathering_group_members)
-            .values(addUserIds.map(userId => ({ gatheringId, userId })))
-            // 同一内容のPUTが同時に来ると、両リクエストが同じuserIdを
-            // 追加対象と判断しうる。ON CONFLICT DO NOTHINGにより、後から
-            // 書いた方がUNIQUE制約違反で500になることを防ぐ。
-            .onConflictDoNothing({
-              target: [
-                gathering_group_members.gatheringId,
-                gathering_group_members.userId,
-              ],
-            });
+          const insertStatement = buildAddMembersStatement(
+            orm,
+            gatheringId,
+            addUserIds
+          );
           // D1のbatch()は複数文を1つのトランザクションとして原子的に実行するため、
           // 削除→追加の間に途中状態が外部から見えることはない。
           await orm.batch([deleteStatement, insertStatement]);
@@ -110,16 +146,7 @@ export function createGatheringGroupMemberRepository(
           await deleteStatement.run();
         }
       } else if (addUserIds.length > 0) {
-        await orm
-          .insert(gathering_group_members)
-          .values(addUserIds.map(userId => ({ gatheringId, userId })))
-          .onConflictDoNothing({
-            target: [
-              gathering_group_members.gatheringId,
-              gathering_group_members.userId,
-            ],
-          })
-          .run();
+        await buildAddMembersStatement(orm, gatheringId, addUserIds).run();
       }
 
       const rows = await selectMembers(orm, gatheringId);

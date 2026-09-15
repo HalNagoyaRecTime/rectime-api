@@ -285,4 +285,32 @@ describe('GatheringGroupMemberRepository', () => {
     const members = await repository.findByGatheringId(gatheringId);
     expect(members).toEqual([]);
   });
+
+  it('findMissingUserIdsでのactive確認後にapplyMemberDiff実行までの間で退会しても、削除済みの参加者行を復活させない', async () => {
+    const gatheringId = await createGathering('TOCTOU競合');
+    const activeUser = await createUser('現役ユーザー');
+    const raceUser = await createUser('競合ユーザー');
+
+    // replaceGatheringMembersのfindMissingUserIdsでのactive確認が
+    // 通った直後を模す: applyMemberDiff呼び出し時点では、その間に
+    // 退会処理(deleteByUserId)が完了しdeletion_status='deleted'に
+    // なっているケース。
+    await env.DB.prepare(
+      "UPDATE users SET deletion_status = 'deleted' WHERE user_id = ?"
+    )
+      .bind(raceUser)
+      .run();
+
+    const result = await repository.applyMemberDiff(
+      gatheringId,
+      [activeUser, raceUser],
+      []
+    );
+
+    // 書き込み時点でのactive確認により、退会済みユーザーはサイレントに
+    // 追加対象から除外される。
+    expect(result.map(m => m.user_id)).toEqual([activeUser]);
+    const members = await repository.findByGatheringId(gatheringId);
+    expect(members.map(m => m.user_id)).toEqual([activeUser]);
+  });
 });
