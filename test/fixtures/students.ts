@@ -43,6 +43,7 @@ export type SeededStudent = {
 
 export type SeededData = {
   classRoomId: number;
+  teamId: number;
   students: SeededStudent[];
   // students を持たないユーザー（findAll で除外されることの検証用）
   teacher: { userId: number; displayName: string };
@@ -63,7 +64,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
   await db.prepare('DELETE FROM teams').run();
 
   const now = new Date().toISOString();
-  const { classRoomId } = await insertClassRoomWithTeam(db, {
+  const { classRoomId, teamId } = await insertClassRoomWithTeam(db, {
     classCode: 'TEST-1',
     className: 'テスト教室',
   });
@@ -113,6 +114,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
 
   return {
     classRoomId,
+    teamId,
     students: seededStudents,
     teacher: { userId: teacher.id, displayName: teacher.userName },
   };
