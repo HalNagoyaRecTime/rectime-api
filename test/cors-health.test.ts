@@ -83,9 +83,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/notification-schedules',
       '/api/v1/notification-schedules/{id}',
       '/api/v1/notification/schedules/{notificationId}',
-      '/api/v1/notifications',
       '/api/v1/notifications/test',
-      '/api/v1/notifications/{id}',
       '/api/v1/staffs',
       '/api/v1/staffs/{staffId}',
       '/api/v1/students',
@@ -168,7 +166,11 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(61);
+    expect(documentedOperations).toHaveLength(57);
+    expect(document.paths['/api/v1/gatherings']).not.toHaveProperty('post');
+    expect(document.components.schemas).not.toHaveProperty(
+      'CreateGatheringRequest'
+    );
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {
