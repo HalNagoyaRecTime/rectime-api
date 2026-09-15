@@ -4,6 +4,7 @@ import type {
   EventDTO,
   EventListResponseDTO,
   GetEventsRequestDTO,
+  UpdateEventRequestDTO,
 } from '../dto/EventDTO';
 
 export interface IEventService {
@@ -11,5 +12,6 @@ export interface IEventService {
   getEventById: (id: number) => Promise<EventDetailDTO>;
   getMyEvents: (userId: number) => Promise<EventDTO[]>;
   createEvent: (event: CreateEventRequestDTO) => Promise<EventDTO>;
+  updateEvent: (id: number, event: UpdateEventRequestDTO) => Promise<EventDTO>;
   deleteEvent: (id: number) => Promise<void>;
 }

@@ -58,6 +58,7 @@ function createRepository(
     findById: vi.fn(),
     findByParticipantUserId: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
     delete: vi.fn(),
     hasReferences: vi.fn(),
     ...overrides,
@@ -266,6 +267,64 @@ describe('EventService', () => {
         startTime: '0900',
         endTime: '0930',
       });
+    });
+  });
+
+  describe('updateEvent', () => {
+    it('リクエストDTOをDomain入力型へ変換して更新し、Notificationには一切触れない', async () => {
+      const updated = buildEvent({ event_name: '更新後の開会式' });
+      const repository = createRepository({
+        update: vi.fn().mockResolvedValue(updated),
+      });
+
+      await expect(
+        createService(repository).updateEvent(1, {
+          event_name: '更新後の開会式',
+          rule_text: null,
+          venue: '体育館',
+          start_time: '0900',
+          end_time: '0930',
+        })
+      ).resolves.toEqual(updated);
+
+      expect(repository.update).toHaveBeenCalledWith(1, {
+        name: '更新後の開会式',
+        ruleText: null,
+        venue: '体育館',
+        startTime: '0900',
+        endTime: '0930',
+      });
+    });
+
+    it('存在しないイベントの場合はEvent not foundを投げる', async () => {
+      const repository = createRepository({
+        update: vi.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        createService(repository).updateEvent(999, {
+          event_name: '開会式',
+          rule_text: null,
+          venue: '体育館',
+          start_time: '0900',
+          end_time: '0930',
+        })
+      ).rejects.toThrow('Event not found');
+    });
+
+    it('開始時刻が終了時刻以降の場合は更新せずエラーを投げる', async () => {
+      const repository = createRepository({ update: vi.fn() });
+
+      await expect(
+        createService(repository).updateEvent(1, {
+          event_name: '開会式',
+          rule_text: null,
+          venue: '体育館',
+          start_time: '0930',
+          end_time: '0900',
+        })
+      ).rejects.toThrow('end_time must be after start_time');
+      expect(repository.update).not.toHaveBeenCalled();
     });
   });
 
