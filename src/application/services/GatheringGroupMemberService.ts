@@ -91,11 +91,19 @@ export function createGatheringGroupMemberService(
         .map(m => m.user_id)
         .filter(userId => !targetUserIds.has(userId));
 
-      return gatheringGroupMemberRepository.applyMemberDiff(
-        gatheringId,
-        addUserIds,
-        removeUserIds
-      );
+      try {
+        return await gatheringGroupMemberRepository.applyMemberDiff(
+          gatheringId,
+          addUserIds,
+          removeUserIds
+        );
+      } catch (error) {
+        // 存在確認後に集合が削除される競合では、INSERTが外部キー制約で
+        // 失敗する。現在の状態を確認し、500ではなく404へ変換する
+        // (addGatheringMemberと同じパターン)。
+        await ensureGatheringExists(gatheringId);
+        throw error;
+      }
     },
   };
 }

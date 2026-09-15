@@ -313,4 +313,51 @@ describe('GatheringGroupMemberRepository', () => {
     const members = await repository.findByGatheringId(gatheringId);
     expect(members.map(m => m.user_id)).toEqual([activeUser]);
   });
+
+  it('applyMemberDiff実行前に集合が削除されると、FOREIGN KEY制約違反の素の例外が発生する(Serviceでの変換対象を確認する)', async () => {
+    const gatheringId = await createGathering('集合削除競合-repo');
+    const user1 = await createUser('参加予定ユーザー-repo');
+
+    // ensureGatheringExistsでの存在確認が通った直後、applyMemberDiff
+    // 実行までの間に集合自体が削除される競合を再現する。
+    await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
+      .bind(gatheringId)
+      .run();
+    gatheringIds = gatheringIds.filter(id => id !== gatheringId);
+
+    // Repositoryはこの競合を検知・変換せず、gathering_group_members.
+    // gathering_idの外部キー制約違反という素の例外をそのまま投げる。
+    // Service層(replaceGatheringMembers)がこれをcatchし、addGatheringMember
+    // と同じ「存在確認後の削除競合はcatchして404に変換する」パターンで
+    // Gathering not foundへ変換する。
+    await expect(
+      repository.applyMemberDiff(gatheringId, [user1], [])
+    ).rejects.toThrow(/Failed query: insert into "gathering_group_members"/);
+  });
+
+  it('ServiceでensureGatheringExists通過後に集合が削除されると、FK違反の素の例外ではなくGathering not foundへ変換される', async () => {
+    const gatheringId = await createGathering('集合削除競合-service');
+    const user1 = await createUser('参加予定ユーザー-service');
+
+    // repositoryをラップし、Serviceがreplace処理の一環として最初に呼ぶ
+    // findByGatheringId(現在の参加者取得、ensureGatheringExists通過後)の
+    // 直後に集合を削除することで、「存在確認は通過したが、その後の
+    // applyMemberDiff実行までの間に削除される」レースを正確に再現する。
+    const racyRepository: typeof repository = {
+      ...repository,
+      async findByGatheringId(id) {
+        const result = await repository.findByGatheringId(id);
+        await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
+          .bind(gatheringId)
+          .run();
+        gatheringIds = gatheringIds.filter(gid => gid !== gatheringId);
+        return result;
+      },
+    };
+    const service = createGatheringGroupMemberService(racyRepository);
+
+    await expect(
+      service.replaceGatheringMembers(gatheringId, [user1])
+    ).rejects.toThrow('Gathering not found');
+  });
 });
