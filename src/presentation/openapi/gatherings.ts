@@ -135,22 +135,6 @@ export const replaceGatheringMembersSchema = z
   })
   .openapi('ReplaceGatheringMembersRequest');
 
-export const createGatheringSchema = z
-  .object({
-    eventId: z.number().int().positive(),
-    gatheringSpotId: z.number().int().positive(),
-    gatheringTime: z
-      .string()
-      .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$|^99:59$/)
-      .optional()
-      .openapi({
-        description: 'HH:MM形式。99:59は集合時刻が未設定であることを表す。',
-        example: '08:45',
-      }),
-    round: z.number().int().min(1).max(99).optional(),
-  })
-  .openapi('CreateGatheringRequest');
-
 export const gatheringSpotListRoute = createRoute({
   method: 'get',
   path: '/gathering-spots',
