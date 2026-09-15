@@ -74,7 +74,6 @@ import {
   gatheringMemberReplaceRoute,
   gatheringSpotCreateRoute,
   gatheringSpotDeleteRoute,
-  gatheringSpotDetailRoute,
   gatheringSpotListRoute,
   gatheringSpotUpdateRoute,
 } from './presentation/openapi/gatherings';
@@ -337,9 +336,6 @@ apiV1.openapi(staffOnly(masterImportCommitRoute), c => {
 // Gathering spot routes
 apiV1.openapi(staffOnly(gatheringSpotListRoute), c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
-});
-apiV1.openapi(staffOnly(gatheringSpotDetailRoute), c => {
-  return c.get('container').gatheringSpotController.getGatheringSpotById(c);
 });
 apiV1.openapi(staffOnly(gatheringSpotCreateRoute), c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);

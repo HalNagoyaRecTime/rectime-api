@@ -93,17 +93,6 @@ export function createGatheringSpotRepository(
       };
     },
 
-    async findById(
-      gatheringSpotId: number
-    ): Promise<GatheringSpotEntity | null> {
-      const row = await orm
-        .select()
-        .from(gathering_spots)
-        .where(eq(gathering_spots.id, gatheringSpotId))
-        .get();
-      return row ? toEntity(row) : null;
-    },
-
     async create(gatheringSpotName: string): Promise<GatheringSpotEntity> {
       const row = await orm
         .insert(gathering_spots)

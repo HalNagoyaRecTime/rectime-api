@@ -17,7 +17,6 @@ describe('Gathering master services', () => {
       findExistingIds: vi.fn(),
       findAll: vi.fn().mockResolvedValue([spot]),
       findPage: vi.fn(),
-      findById: vi.fn(),
       create: vi.fn().mockResolvedValue(spot),
       update: vi.fn(),
       delete: vi.fn(),
@@ -41,7 +40,6 @@ describe('Gathering master services', () => {
       findExistingIds: vi.fn(),
       findAll: vi.fn(),
       findPage: vi.fn(),
-      findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn().mockResolvedValue(updatedSpot),
       delete: vi.fn(),
@@ -62,7 +60,6 @@ describe('Gathering master services', () => {
       findExistingIds: vi.fn(),
       findAll: vi.fn(),
       findPage: vi.fn(),
-      findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn().mockResolvedValue(null),
       delete: vi.fn(),
@@ -77,32 +74,12 @@ describe('Gathering master services', () => {
     ).rejects.toThrow('Gathering spot not found');
   });
 
-  it('集合場所をIDで取得し、存在しない場合はエラーにする', async () => {
-    const repository: IGatheringSpotRepository = {
-      exists: vi.fn(),
-      findExistingIds: vi.fn(),
-      findAll: vi.fn(),
-      findPage: vi.fn(),
-      findById: vi.fn().mockResolvedValue(null),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-      hasGatherings: vi.fn(),
-    };
-    const service = createGatheringSpotService(repository);
-
-    await expect(service.getGatheringSpotById(999)).rejects.toThrow(
-      'Gathering spot not found'
-    );
-  });
-
   it('未使用の集合場所を削除する', async () => {
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
       findExistingIds: vi.fn(),
       findAll: vi.fn(),
       findPage: vi.fn(),
-      findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn().mockResolvedValue(true),
@@ -120,7 +97,6 @@ describe('Gathering master services', () => {
       findExistingIds: vi.fn(),
       findAll: vi.fn(),
       findPage: vi.fn(),
-      findById: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),

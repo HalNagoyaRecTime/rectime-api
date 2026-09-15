@@ -9,7 +9,6 @@ function setup() {
   const spotService: IGatheringSpotService = {
     getAllGatheringSpots: vi.fn(),
     getGatheringSpotPage: vi.fn(),
-    getGatheringSpotById: vi.fn(),
     createGatheringSpot: vi.fn(),
     updateGatheringSpot: vi.fn(),
     deleteGatheringSpot: vi.fn(),
@@ -24,9 +23,6 @@ function setup() {
   const memberController = createGatheringGroupMemberController(memberService);
   const app = new Hono();
   app.get('/gathering-spots', c => spotController.getAllGatheringSpots(c));
-  app.get('/gathering-spots/:gatheringSpotId', c =>
-    spotController.getGatheringSpotById(c)
-  );
   app.post('/gathering-spots', c => spotController.createGatheringSpot(c));
   app.put('/gathering-spots/:gatheringSpotId', c =>
     spotController.updateGatheringSpot(c)
@@ -155,27 +151,6 @@ describe('Gathering master controllers', () => {
 
     expect(response.status).toBe(400);
     expect(spotService.getGatheringSpotPage).not.toHaveBeenCalled();
-  });
-
-  it('集合場所をIDで取得し、存在しない場合は404を返す', async () => {
-    const { app, spotService } = setup();
-    (
-      spotService.getGatheringSpotById as ReturnType<typeof vi.fn>
-    ).mockRejectedValue(new Error('Gathering spot not found'));
-
-    const response = await app.request('/gathering-spots/999');
-
-    expect(response.status).toBe(404);
-    expect(spotService.getGatheringSpotById).toHaveBeenCalledWith(999);
-  });
-
-  it('不正な集合場所IDの取得は400で拒否する', async () => {
-    const { app, spotService } = setup();
-
-    const response = await app.request('/gathering-spots/invalid');
-
-    expect(response.status).toBe(400);
-    expect(spotService.getGatheringSpotById).not.toHaveBeenCalled();
   });
 
   it('未使用の集合場所を削除し204を返す', async () => {

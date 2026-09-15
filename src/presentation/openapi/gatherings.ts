@@ -187,23 +187,6 @@ export const gatheringSpotCreateRoute = createRoute({
   },
 });
 
-export const gatheringSpotDetailRoute = createRoute({
-  method: 'get',
-  path: '/gathering-spots/{gatheringSpotId}',
-  tags: ['Gathering spots'],
-  summary: '集合場所を取得する',
-  security: bearerAuth,
-  request: { params: gatheringSpotIdParams },
-  responses: {
-    200: jsonResponse(gatheringSpotResponseSchema, '集合場所'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
 export const gatheringSpotUpdateRoute = createRoute({
   method: 'put',
   path: '/gathering-spots/{gatheringSpotId}',
