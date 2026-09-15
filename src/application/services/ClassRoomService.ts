@@ -127,10 +127,6 @@ export function createClassRoomService(
       return toDTO(classroom);
     },
 
-    async getTeamIdByClassRoomId(id: number): Promise<number | null> {
-      return classRoomRepository.findTeamIdById(id);
-    },
-
     async createClassroom(input: ClassRoomRequestDTO): Promise<ClassRoomDTO> {
       await ensureTeacherExists(input.teacher_id);
       await ensureTeamExists(input.team_id ?? null);

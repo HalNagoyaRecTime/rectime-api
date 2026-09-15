@@ -76,7 +76,6 @@ function buildClassRoomService(
   return {
     getAllClassrooms: vi.fn(),
     getClassroomById: vi.fn(),
-    getTeamIdByClassRoomId: vi.fn(),
     createClassroom: vi.fn(),
     updateClassroom: vi.fn(),
     deleteClassroom: vi.fn(),

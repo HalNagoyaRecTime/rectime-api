@@ -33,6 +33,7 @@ type ReturnedStudentRow = {
   user_id: number;
   class_room_id: number;
   class_room_name: string;
+  team_id: number;
   attendance_number: number;
   student_id_number: string;
 };
@@ -44,6 +45,7 @@ function toEntity(row: StudentJoinRow): StudentEntity {
     user_name: row.users.userName,
     class_room_id: row.students.classRoomId,
     class_room_name: row.class_rooms.name,
+    team_id: row.class_rooms.teamId,
     attendance_number: row.students.attendanceNumber,
     student_id_number: row.students.studentIdNumber,
     is_live_active: row.users.isLiveActive === 1,
@@ -60,6 +62,7 @@ function toWrittenEntity(
     user_name: user.user_name,
     class_room_id: student.class_room_id,
     class_room_name: student.class_room_name,
+    team_id: student.team_id,
     attendance_number: student.attendance_number,
     student_id_number: student.student_id_number,
     is_live_active: user.is_live_active === 1,
@@ -190,12 +193,18 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
                 SELECT class_name
                 FROM class_rooms
                 WHERE class_room_id = ?
-              ) AS class_room_name`
+              ) AS class_room_name,
+              (
+                SELECT team_id
+                FROM class_rooms
+                WHERE class_room_id = ?
+              ) AS team_id`
           )
           .bind(
             student.class_room_id,
             student.attendance_number,
             student.student_id_number,
+            student.class_room_id,
             student.class_room_id
           ),
       ]);
@@ -242,13 +251,19 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
                  SELECT class_name
                  FROM class_rooms
                  WHERE class_room_id = ?
-               ) AS class_room_name`
+               ) AS class_room_name,
+               (
+                 SELECT team_id
+                 FROM class_rooms
+                 WHERE class_room_id = ?
+               ) AS team_id`
           )
           .bind(
             student.class_room_id,
             student.attendance_number,
             student.student_id_number,
             id,
+            student.class_room_id,
             student.class_room_id
           ),
       ]);

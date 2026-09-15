@@ -17,7 +17,6 @@ import {
   upsertUser,
   userResponse,
   getStudentInfoOrNull,
-  getTeamIdForStudent,
   getUserCategories,
 } from '../helpers';
 import {
@@ -344,14 +343,13 @@ microsoft.post('/token', async c => {
     throw err;
   }
 
-  const { studentService, classRoomService } = c.get('container');
-  // 生徒情報・カテゴリ・team_idの取得(想定外のDBエラー等)は、生きたMicrosoft
+  const { studentService } = c.get('container');
+  // 生徒情報・カテゴリの取得(想定外のDBエラー等)は、生きたMicrosoft
   // リフレッシュトークンをKVへ書き込む前にすべて検知したいため、副作用より
   // 先にawaitする。
-  const student = await getStudentInfoOrNull(studentService, Number(user.id));
-  const [categories, teamId] = await Promise.all([
+  const [student, categories] = await Promise.all([
+    getStudentInfoOrNull(studentService, Number(user.id)),
     getUserCategories(c, user.id),
-    getTeamIdForStudent(classRoomService, student),
   ]);
 
   const refreshTokenId = crypto.randomUUID();
@@ -407,7 +405,7 @@ microsoft.post('/token', async c => {
         student_id_number: student?.student_id_number ?? null,
         class_room_name: student?.class_room_name ?? null,
         class_room_id: student?.class_room_id ?? null,
-        team_id: teamId,
+        team_id: student?.team_id ?? null,
       },
       categories
     ),

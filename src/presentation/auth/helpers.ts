@@ -18,7 +18,6 @@ import { createStudentRepository } from '../../infrastructure/repositories/Stude
 import { createFirebaseTokenRepository } from '../../infrastructure/repositories/FirebaseTokenRepository';
 import { createAuthService } from '../../application/services/authService';
 import type { IStudentService } from '../../application/services/IStudentService';
-import type { IClassRoomService } from '../../application/services/IClassRoomService';
 import type { StudentDTO } from '../../application/dto/StudentDTO';
 
 export type AppContext = Context<{
@@ -186,17 +185,6 @@ export async function getStudentInfoOrNull(
     }
     throw err;
   });
-}
-
-// 学生の所属クラスからチームIDを解決する。クラス未所属(学生でない)場合はnull。
-// 教員一覧・生徒数などを含む重いJOIN(getClassroomById)は不要なため、
-// team_idだけを取得する軽量なリポジトリ呼び出しを使う。
-export async function getTeamIdForStudent(
-  classRoomService: IClassRoomService,
-  student: StudentDTO | null
-): Promise<number | null> {
-  if (!student) return null;
-  return classRoomService.getTeamIdByClassRoomId(student.class_room_id);
 }
 
 export async function getUserCategories(

@@ -20,6 +20,7 @@ export const studentResponseSchema = z
     display_name: z.string(),
     class_room_id: z.number().int(),
     class_room_name: z.string(),
+    team_id: z.number().int(),
     attendance_number: z.number().int(),
     student_id_number: z.string(),
     is_live_active: z.boolean(),

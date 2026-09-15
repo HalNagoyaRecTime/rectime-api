@@ -141,15 +141,15 @@ function buildApp() {
   return app;
 }
 
-// team_id解決(classRoomService.getTeamIdByClassRoomId)がD1の一時障害等で
-// 失敗するケースを再現するためのapp。KV書き込みより前にこの失敗を検知できて
-// いれば、mobile_refresh系のKVエントリは作られないはず。
-function buildAppWithFailingTeamLookup() {
+// 生徒情報取得(studentService.getByUserId)がD1の一時障害等で失敗する
+// ケースを再現するためのapp。KV書き込みより前にこの失敗を検知できていれば、
+// mobile_refresh系のKVエントリは作られないはず。
+function buildAppWithFailingStudentLookup() {
   const app = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
   app.use('*', diContainerMiddleware);
   app.use('*', async (c, next) => {
     const container = c.get('container');
-    container.classRoomService.getTeamIdByClassRoomId = vi
+    container.studentService.getByUserId = vi
       .fn()
       .mockRejectedValue(new Error('D1 transient failure'));
     await next();
@@ -915,47 +915,34 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.user.team_id).toBe(classRoom.teamId);
   });
 
-  it('team_id解決に失敗した場合、mobile_refresh系のKVエントリを書き込まずエラーにする', async () => {
+  it('生徒情報取得に失敗した場合、mobile_refresh系のKVエントリを書き込まずエラーにする', async () => {
     const env = buildEnv();
-
-    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
-      classCode: 'TEAMFAIL',
-      className: 'チームID解決失敗テスト組',
-    });
-    const user = await workerEnv.DB.prepare(
-      "INSERT INTO users (user_name) VALUES ('学生三郎') RETURNING user_id"
-    ).first<{ user_id: number }>();
-    await workerEnv.DB.prepare(
-      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 3, '60002')"
-    )
-      .bind(user!.user_id, classRoom.classRoomId)
-      .run();
 
     const now = Math.floor(Date.now() / 1000);
     const idToken = await signIdToken({
-      sub: 'sub-student-teamid-failure',
-      oid: 'oid-student-teamid-failure',
+      sub: 'sub-student-lookup-failure',
+      oid: 'oid-student-lookup-failure',
       tid: 'tid-1',
-      name: '学生三郎',
-      preferred_username: 'nhs60002@nhs.hal.ac.jp',
-      nonce: 'nonce-student-teamid-failure',
+      name: '教師三郎',
+      preferred_username: 'sensei-lookup-failure@example.com',
+      nonce: 'nonce-student-lookup-failure',
       iss: `https://login.microsoftonline.com/tid-1/v2.0`,
       aud: CLIENT_ID,
       exp: now + 3600,
       iat: now - 10,
     });
     await env.AUTH_KV.put(
-      'pkce:state-student-teamid-failure',
+      'pkce:state-student-lookup-failure',
       JSON.stringify({
         code_verifier: generateRandom(32),
-        nonce: 'nonce-student-teamid-failure',
+        nonce: 'nonce-student-lookup-failure',
         client_type: 'web',
         purpose: 'login',
         created_at: new Date().toISOString(),
       } satisfies PkceEntry)
     );
     stubMicrosoftFetch(idToken);
-    const app = buildAppWithFailingTeamLookup();
+    const app = buildAppWithFailingStudentLookup();
 
     const res = await app.request(
       '/token',
@@ -963,8 +950,8 @@ describe('POST /auth/microsoft/token', () => {
         method: 'POST',
         headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          code: 'auth-code-student-teamid-failure',
-          state: 'state-student-teamid-failure',
+          code: 'auth-code-student-lookup-failure',
+          state: 'state-student-lookup-failure',
         }),
       },
       env
@@ -976,9 +963,6 @@ describe('POST /auth/microsoft/token', () => {
         ([key]) => typeof key === 'string' && key.startsWith('mobile_refresh')
       )
     ).toBe(false);
-    expect(
-      await env.AUTH_KV.get(`mobile_refresh_by_user:${user!.user_id}`)
-    ).toBeNull();
   });
 
   it('学生でないユーザーがログインした場合、エラーにならずstudent_id_number/class_room_nameがnullで返る', async () => {

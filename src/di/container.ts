@@ -227,7 +227,6 @@ export function createDIContainer(env: Env) {
     teacherController,
     eventController,
     eventScheduleController,
-    classRoomService,
     classRoomController,
     masterImportController,
     firebaseTokenController,
