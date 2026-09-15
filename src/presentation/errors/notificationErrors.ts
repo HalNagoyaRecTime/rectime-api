@@ -76,11 +76,6 @@ export const NotificationErrors = {
     code: 'INVALID_NOTIFICATION_REQUEST',
     message: '通知の入力内容が正しくありません',
   },
-  INVALID_NOTIFICATION_QUERY: {
-    status: 400,
-    code: 'INVALID_NOTIFICATION_QUERY',
-    message: '通知一覧の検索条件が正しくありません',
-  },
   INVALID_NOTIFICATION_LIST_QUERY: {
     status: 400,
     code: 'INVALID_NOTIFICATION_LIST_QUERY',
@@ -91,11 +86,6 @@ export const NotificationErrors = {
     code: 'NOTIFICATION_NOT_FOUND',
     message: '通知が見つかりません',
   },
-  NOTIFICATION_CREATE_FAILED: {
-    status: 500,
-    code: 'NOTIFICATION_CREATE_FAILED',
-    message: '通知の作成に失敗しました',
-  },
   NOTIFICATION_LIST_FAILED: {
     status: 500,
     code: 'NOTIFICATION_LIST_FAILED',
@@ -105,11 +95,6 @@ export const NotificationErrors = {
     status: 500,
     code: 'NOTIFICATION_FETCH_FAILED',
     message: '通知の取得に失敗しました',
-  },
-  NOTIFICATION_UPDATE_FAILED: {
-    status: 500,
-    code: 'NOTIFICATION_UPDATE_FAILED',
-    message: '通知の更新に失敗しました',
   },
   TEST_NOTIFICATION_SEND_FAILED: {
     status: 500,
