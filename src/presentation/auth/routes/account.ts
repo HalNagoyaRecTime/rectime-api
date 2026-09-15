@@ -37,8 +37,7 @@ const account = new Hono<{
 }>();
 
 type ActiveAuthResult =
-  | { ok: true; claims: AccessTokenClaims }
-  | { ok: false; response: Response };
+  { ok: true; claims: AccessTokenClaims } | { ok: false; response: Response };
 
 // Bearer Tokenの署名検証に加え、DB上のdeletion_statusを確認する。
 // JWTは自己完結検証のため、削除開始(deletion_status !== 'active')後も
