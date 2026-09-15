@@ -91,6 +91,13 @@ export function createGatheringGroupMemberService(
         .map(m => m.user_id)
         .filter(userId => !targetUserIds.has(userId));
 
+      // 無変更の冪等な再送では、直前のfindByGatheringIdの結果と
+      // applyMemberDiffが返す内容が一致するため、そのまま返して
+      // 差分反映後の再取得(D1往復)を省略する。
+      if (addUserIds.length === 0 && removeUserIds.length === 0) {
+        return currentMembers;
+      }
+
       try {
         return await gatheringGroupMemberRepository.applyMemberDiff(
           gatheringId,

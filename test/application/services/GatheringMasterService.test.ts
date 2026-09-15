@@ -144,7 +144,9 @@ describe('Gathering master services', () => {
     expect(repository.findByGatheringId).toHaveBeenCalledWith(1);
     expect(repository.remove).toHaveBeenCalledWith(1, 2);
     expect(repository.findMissingUserIds).toHaveBeenCalledWith([2]);
-    expect(repository.applyMemberDiff).toHaveBeenCalledWith(1, [], []);
+    // 差分が空(無変更の冪等な再送)の場合、直前のfindByGatheringIdの
+    // 結果をそのまま返しapplyMemberDiffの呼び出し自体を省略する。
+    expect(repository.applyMemberDiff).not.toHaveBeenCalled();
   });
 
   it('参加者集合の一括置換は現在の参加者との差分だけをRepositoryへ渡す', async () => {
