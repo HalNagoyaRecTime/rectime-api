@@ -11,6 +11,7 @@ import type {
   EventDTO,
   EventListItemDTO,
   GetEventsRequestDTO,
+  UpdateEventRequestDTO,
 } from '../dto/EventDTO';
 import { buildRoundSettings } from './eventGatheringRounds';
 import type { IEventService } from './IEventService';
@@ -92,6 +93,19 @@ export function createEventService(
     },
     async createEvent(event) {
       return toEventDTO(await eventRepository.create(toEventWriteInput(event)));
+    },
+    async updateEvent(id: number, event: UpdateEventRequestDTO) {
+      if (event.start_time >= event.end_time) {
+        throw new Error('end_time must be after start_time');
+      }
+      const updated = await eventRepository.update(
+        id,
+        toEventWriteInput(event)
+      );
+      if (!updated) {
+        throw new Error('Event not found');
+      }
+      return toEventDTO(updated);
     },
     async deleteEvent(id: number): Promise<void> {
       if (await eventRepository.hasReferences(id)) {
