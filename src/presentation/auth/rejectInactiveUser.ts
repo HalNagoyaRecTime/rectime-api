@@ -20,9 +20,7 @@ export async function rejectInactiveUser(
 
   let isActive: boolean;
   try {
-    isActive = await c
-      .get('container')
-      .userActivationRepository.isActive(userId);
+    isActive = await c.get('container').userStatusRepository.isActive(userId);
   } catch (error) {
     // D1が一時的に不調な場合。素通りはさせないが、Honoの既定の500ではなく
     // アプリ標準のエラー形式で返して切り分けできるようにする。
