@@ -12,7 +12,6 @@ export interface IGatheringSpotRepository {
   findExistingIds: (gatheringSpotIds: number[]) => Promise<Set<number>>;
   findAll: () => Promise<GatheringSpotEntity[]>;
   findPage: (options: GatheringSpotListOptions) => Promise<GatheringSpotPage>;
-  findById: (gatheringSpotId: number) => Promise<GatheringSpotEntity | null>;
   create: (gatheringSpotName: string) => Promise<GatheringSpotEntity>;
   update: (
     gatheringSpotId: number,

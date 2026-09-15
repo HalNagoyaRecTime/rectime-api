@@ -173,10 +173,35 @@ describe('NotificationScheduleRepository', () => {
         notification_schedule_id: schedule.notification_schedule_id,
         fcm_token: 'token-a',
         is_firebase_active: 1,
+        is_user_live_active: 1,
         send_status: 'sending',
       }),
     ]);
     expect(second).toEqual([]);
+  });
+
+  it('宛先Userが無効化済みなら確保した予定にその状態を含める', async () => {
+    const { user, schedule } = await createFixture();
+    await env.DB.prepare(
+      'UPDATE users SET is_live_active = 0 WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .run();
+
+    const claimed = await repository.claimForDelivery(
+      [schedule.notification_schedule_id],
+      '2026-07-23T09:05:00.000Z',
+      '2026-07-23T09:01:00.000Z'
+    );
+
+    expect(claimed).toEqual([
+      expect.objectContaining({
+        notification_schedule_id: schedule.notification_schedule_id,
+        is_firebase_active: 1,
+        is_user_live_active: 0,
+        send_status: 'sending',
+      }),
+    ]);
   });
 
   it('並行するQueue messageでも同じ予定を重複確保しない', async () => {

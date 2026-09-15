@@ -51,7 +51,6 @@ function setup(
       .mockResolvedValue(new Set(options.existingSpotIds ?? [1, 2, 3])),
     findAll: vi.fn(),
     findPage: vi.fn(),
-    findById: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
