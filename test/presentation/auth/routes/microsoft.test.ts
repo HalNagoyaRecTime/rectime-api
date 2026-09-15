@@ -20,7 +20,10 @@ import type {
   MobileRefreshEntry,
   DeletionConfirmationEntry,
 } from '../../../../src/domain/auth/types';
-import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
+import {
+  diContainerMiddleware,
+  type ContainerVariables,
+} from '../../../../src/presentation/middleware/diContainer';
 import { insertClassRoomWithTeam } from '../../../fixtures/classRooms';
 import { createUserRepository } from '../../../../src/infrastructure/repositories/UserRepository';
 
@@ -134,6 +137,23 @@ function createMockKv(): KVNamespace {
 function buildApp() {
   const app = new Hono<{ Bindings: Env }>();
   app.use('*', diContainerMiddleware);
+  app.route('/', microsoft);
+  return app;
+}
+
+// team_id解決(classRoomService.getTeamIdByClassRoomId)がD1の一時障害等で
+// 失敗するケースを再現するためのapp。KV書き込みより前にこの失敗を検知できて
+// いれば、mobile_refresh系のKVエントリは作られないはず。
+function buildAppWithFailingTeamLookup() {
+  const app = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
+  app.use('*', diContainerMiddleware);
+  app.use('*', async (c, next) => {
+    const container = c.get('container');
+    container.classRoomService.getTeamIdByClassRoomId = vi
+      .fn()
+      .mockRejectedValue(new Error('D1 transient failure'));
+    await next();
+  });
   app.route('/', microsoft);
   return app;
 }
@@ -893,6 +913,72 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.user.class_room_name).toBe('3年B組');
     expect(body.user.class_room_id).toBe(classRoom.classRoomId);
     expect(body.user.team_id).toBe(classRoom.teamId);
+  });
+
+  it('team_id解決に失敗した場合、mobile_refresh系のKVエントリを書き込まずエラーにする', async () => {
+    const env = buildEnv();
+
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'TEAMFAIL',
+      className: 'チームID解決失敗テスト組',
+    });
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('学生三郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 3, '60002')"
+    )
+      .bind(user!.user_id, classRoom.classRoomId)
+      .run();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-student-teamid-failure',
+      oid: 'oid-student-teamid-failure',
+      tid: 'tid-1',
+      name: '学生三郎',
+      preferred_username: 'nhs60002@nhs.hal.ac.jp',
+      nonce: 'nonce-student-teamid-failure',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-student-teamid-failure',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-student-teamid-failure',
+        client_type: 'web',
+        purpose: 'login',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildAppWithFailingTeamLookup();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-student-teamid-failure',
+          state: 'state-student-teamid-failure',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(500);
+    expect(
+      Array.from((env.AUTH_KV.put as ReturnType<typeof vi.fn>).mock.calls).some(
+        ([key]) => typeof key === 'string' && key.startsWith('mobile_refresh')
+      )
+    ).toBe(false);
+    expect(
+      await env.AUTH_KV.get(`mobile_refresh_by_user:${user!.user_id}`)
+    ).toBeNull();
   });
 
   it('学生でないユーザーがログインした場合、エラーにならずstudent_id_number/class_room_nameがnullで返る', async () => {
