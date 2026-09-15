@@ -80,9 +80,6 @@ describe('OpenAPI documentation', () => {
       '/api/v1/master-imports/{validatedFileId}/commit',
       '/api/v1/me/notifications',
       '/api/v1/me/notifications/{notificationId}',
-      '/api/v1/notification-schedules',
-      '/api/v1/notification-schedules/{id}',
-      '/api/v1/notification/schedules/{notificationId}',
       '/api/v1/notifications/test',
       '/api/v1/staffs',
       '/api/v1/staffs/{staffId}',
@@ -166,7 +163,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(55);
+    expect(documentedOperations).toHaveLength(50);
     expect(document.paths['/api/v1/gatherings']).not.toHaveProperty('post');
     expect(document.components.schemas).not.toHaveProperty(
       'CreateGatheringRequest'
@@ -284,6 +281,62 @@ describe('通知配信の実行経路', () => {
     );
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe('通知予定管理APIの廃止', () => {
+  it.each([
+    ['GET', '/api/v1/notification-schedules'],
+    ['GET', '/api/v1/notification-schedules/1'],
+    ['POST', '/api/v1/notification-schedules'],
+    ['DELETE', '/api/v1/notification-schedules/1'],
+    ['PUT', '/api/v1/notification/schedules/1'],
+  ])(
+    '認証の有無にかかわらず旧APIを公開しない（%s %s）',
+    async (method, path) => {
+      for (const headers of [{}, await bearerHeaders()]) {
+        const response = await app.fetch(
+          new Request(`http://example.com${path}`, { method, headers }),
+          authEnv
+        );
+        expect(response.status).toBe(404);
+      }
+    }
+  );
+
+  it('API概要で廃止した通知予定管理APIを案内しない', async () => {
+    const response = await app.fetch(new Request('http://example.com/'), env);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      endpoints: Record<string, string>;
+    };
+    expect(body.endpoints).not.toHaveProperty('schedules');
+    expect(body.endpoints).not.toHaveProperty('notificationSchedules');
+    expect(body.endpoints).toMatchObject({
+      adminNotifications: '/api/v1/admin/notifications',
+      myNotifications: '/api/v1/me/notifications',
+    });
+  });
+
+  it.each([
+    ['GET', '/api/v1/admin/notifications'],
+    ['POST', '/api/v1/admin/notifications'],
+    ['GET', '/api/v1/admin/notifications/1'],
+    ['PUT', '/api/v1/admin/notifications/1'],
+    ['DELETE', '/api/v1/admin/notifications/1'],
+    ['GET', '/api/v1/events/1/notification-summary'],
+    ['PUT', '/api/v1/events/1/schedule'],
+    ['GET', '/api/v1/me/notifications'],
+    ['GET', '/api/v1/me/notifications/1'],
+  ])('利用中の通知APIと認証を維持する（%s %s）', async (method, path) => {
+    const response = await app.fetch(
+      new Request(`http://example.com${path}`, { method }),
+      env
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
   });
 });
 
