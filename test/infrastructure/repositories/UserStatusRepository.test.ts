@@ -219,6 +219,52 @@ describe('UserStatusRepository', () => {
       await expect(repo.existsActiveUser(999999)).resolves.toBe(false);
     });
   });
+
+  describe('isActive', () => {
+    it('稼働中で退会していないUserはtrueを返す', async () => {
+      const target = await insertUser('有効判定対象');
+
+      await expect(repo.isActive(target)).resolves.toBe(true);
+    });
+
+    it('無効化されたUserはfalseを返す', async () => {
+      await insertActiveStaff('残る管理者');
+      const target = await insertUser('無効化済み');
+      await repo.updateLiveActive(target, false);
+
+      await expect(repo.isActive(target)).resolves.toBe(false);
+    });
+
+    it('無効化された後は同じuserIdでもfalseになる', async () => {
+      await insertActiveStaff('残る管理者');
+      const target = await insertUser('切替対象');
+      await expect(repo.isActive(target)).resolves.toBe(true);
+
+      await repo.updateLiveActive(target, false);
+
+      await expect(repo.isActive(target)).resolves.toBe(false);
+    });
+
+    // 稼働状態は 1 のままでも、退会していれば通さない。bearerAuthentication
+    // が D1 障害時に退会確認を素通しした場合の最後の砦になる。
+    it('退会済みUserは稼働状態が1のままでもfalseを返す', async () => {
+      const target = await insertUser('退会済み');
+      await markAsDeleted(target);
+
+      await expect(repo.isActive(target)).resolves.toBe(false);
+    });
+
+    it('退会処理中のUserもfalseを返す', async () => {
+      const target = await insertUser('退会処理中');
+      await markDeletionPending(target);
+
+      await expect(repo.isActive(target)).resolves.toBe(false);
+    });
+
+    it('存在しないuserIdの場合はfalseを返す', async () => {
+      await expect(repo.isActive(-1)).resolves.toBe(false);
+    });
+  });
 });
 
 async function insertUser(userName: string): Promise<number> {

@@ -11,6 +11,22 @@ export function createUserStatusRepository(
   const orm = drizzle(db, { schema });
 
   return {
+    async isActive(userId) {
+      const row = await orm
+        .select({ id: users.id })
+        .from(users)
+        .where(
+          and(
+            eq(users.id, userId),
+            eq(users.isLiveActive, 1),
+            eq(users.deletionStatus, 'active')
+          )
+        )
+        .get();
+
+      return Boolean(row);
+    },
+
     async updateLiveActive(userId, isLiveActive) {
       const now = new Date().toISOString();
 

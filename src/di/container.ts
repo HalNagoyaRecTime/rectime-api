@@ -57,7 +57,6 @@ import { createUserRepository } from '../infrastructure/repositories/UserReposit
 import { createUserStatusRepository } from '../infrastructure/repositories/UserStatusRepository';
 import { createUserStatusService } from '../application/services/UserStatusService';
 import { createUserStatusController } from '../presentation/controllers/UserStatusController';
-import { createUserActivationRepository } from '../infrastructure/repositories/UserActivationRepository';
 import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
 import { createAccountDeletionService } from '../application/services/AccountDeletionService';
@@ -71,7 +70,7 @@ export function createDIContainer(env: Env) {
 
   // Repositories
   const userRepository = createUserRepository(db);
-  const userActivationRepository = createUserActivationRepository(db);
+  const userStatusRepository = createUserStatusRepository(db);
   const userSearchRepository = createUserSearchRepository(db);
   const studentRepository = createStudentRepository(db);
   const staffRepository = createStaffRepository(db);
@@ -108,9 +107,7 @@ export function createDIContainer(env: Env) {
     env.AUTH_KV,
     firebaseTokenRepository
   );
-  const userStatusService = createUserStatusService(
-    createUserStatusRepository(db)
-  );
+  const userStatusService = createUserStatusService(userStatusRepository);
   const authorizationService = createAuthorizationService(userRepository);
   // #265: 関連データの削除・匿名化(deleteRelatedData)は
   // DELETE /auth/me(account.ts)から呼ばれる。retryPendingPurgesは
@@ -241,7 +238,7 @@ export function createDIContainer(env: Env) {
 
   return {
     // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
-    userActivationRepository,
+    userStatusRepository,
     authService,
     userStatusController,
     accountDeletionService,
