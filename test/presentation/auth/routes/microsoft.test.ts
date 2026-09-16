@@ -1112,6 +1112,12 @@ describe('POST /auth/microsoft/token', () => {
     )
       .bind(secondUser!.user_id)
       .run();
+    // Webログインのstaff必須化(#288)の導入後もこの回帰テストが
+    // 本来の「メール一致による教員紐付け」を検証し続けられるよう、
+    // 一致させたい側のuserをteacher + staffとして事前登録する。
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(secondUser!.user_id)
+      .run();
 
     const response = await requestWebLogin(env, {
       attemptId: 'teacher-same-name',
@@ -1331,7 +1337,9 @@ describe('POST /auth/microsoft/token', () => {
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('教員花子') RETURNING user_id"
     ).first<{ user_id: number }>();
-    await workerEnv.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'hanako@example.com')"
+    )
       .bind(user!.user_id)
       .run();
     await workerEnv.DB.prepare(
