@@ -190,7 +190,7 @@ describe('OpenAPI documentation', () => {
     );
 
     expect(documentedOperations).toHaveLength(54);
-    expect(document.paths).not.toHaveProperty('/api/v1/gatherings');
+    expect(document.paths['/api/v1/gatherings']?.get).toBeUndefined();
     expect(document.components.schemas).not.toHaveProperty(
       'CreateGatheringRequest'
     );
@@ -325,8 +325,21 @@ describe('通知配信の実行経路', () => {
 });
 
 describe('集合APIの実ルーティング', () => {
+  it('削除した旧Gathering一覧APIのGETは404を返す', async () => {
+    for (const headers of [{}, await bearerHeaders()]) {
+      const res = await app.fetch(
+        new Request('http://example.com/api/v1/gatherings', {
+          method: 'GET',
+          headers,
+        }),
+        authEnv
+      );
+
+      expect(res.status).toBe(404);
+    }
+  });
+
   it.each([
-    ['GET', '/api/v1/gatherings'],
     ['POST', '/api/v1/gatherings'],
     ['DELETE', '/api/v1/gatherings/1'],
   ])('旧Gathering APIを公開しない（%s %s）', async (method, path) => {
