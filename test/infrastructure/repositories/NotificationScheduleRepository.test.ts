@@ -118,10 +118,35 @@ describe('NotificationScheduleRepository', () => {
         notification_schedule_id: schedule.notification_schedule_id,
         fcm_token: 'token-a',
         is_firebase_active: 1,
+        is_user_live_active: 1,
         send_status: 'sending',
       }),
     ]);
     expect(second).toEqual([]);
+  });
+
+  it('宛先Userが無効化済みなら確保した予定にその状態を含める', async () => {
+    const { user, schedule } = await createFixture();
+    await env.DB.prepare(
+      'UPDATE users SET is_live_active = 0 WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .run();
+
+    const claimed = await repository.claimForDelivery(
+      [schedule.notification_schedule_id],
+      '2026-07-23T09:05:00.000Z',
+      '2026-07-23T09:01:00.000Z'
+    );
+
+    expect(claimed).toEqual([
+      expect.objectContaining({
+        notification_schedule_id: schedule.notification_schedule_id,
+        is_firebase_active: 1,
+        is_user_live_active: 0,
+        send_status: 'sending',
+      }),
+    ]);
   });
 
   it('並行するQueue messageでも同じ予定を重複確保しない', async () => {
@@ -202,5 +227,43 @@ describe('NotificationScheduleRepository', () => {
         5000
       )
     ).resolves.toEqual([]);
+  });
+
+  describe('anonymizeCreatedUserId', () => {
+    it('created_user_idをNULL化し、通知予定自体は残す', async () => {
+      const { user, schedule } = await createFixture();
+
+      await repository.anonymizeCreatedUserId(user!.user_id);
+
+      const found = await repository.findById(
+        schedule.notification_schedule_id
+      );
+      expect(found).not.toBeNull();
+      expect(found?.created_user_id).toBeNull();
+    });
+
+    it('該当する通知予定が無くてもエラーにならない(冪等)', async () => {
+      await expect(
+        repository.anonymizeCreatedUserId(999999)
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('deleteByFirebaseTokenId', () => {
+    it('指定firebase_token_idに紐づく通知予定を物理削除する', async () => {
+      const { token, schedule } = await createFixture();
+
+      await repository.deleteByFirebaseTokenId(token!.firebase_token_id);
+
+      await expect(
+        repository.findById(schedule.notification_schedule_id)
+      ).resolves.toBeNull();
+    });
+
+    it('該当する通知予定が無くてもエラーにならない(冪等)', async () => {
+      await expect(
+        repository.deleteByFirebaseTokenId(999999)
+      ).resolves.toBeUndefined();
+    });
   });
 });

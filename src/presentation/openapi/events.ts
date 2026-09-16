@@ -1,4 +1,6 @@
 import { createRoute } from '@hono/zod-openapi';
+import type { EventDetailDTO } from '../../application/dto/EventDTO';
+import { roundSettingResponseSchema } from './gatheringRounds';
 import { gatheringListResponseSchema } from './gatherings';
 import { notificationScheduleResponseSchema } from './notifications';
 import {
@@ -33,9 +35,30 @@ export const eventResponseSchema = z
 
 export type EventResponseDTO = z.infer<typeof eventResponseSchema>;
 
+// Application DTO と食い違うと型エラーになるよう、schemaの出力型をDTOで固定する。
+export const eventDetailResponseSchema = eventResponseSchema
+  .extend({
+    rounds: z.array(roundSettingResponseSchema),
+  })
+  .openapi('EventDetail') satisfies z.ZodType<EventDetailDTO>;
+
+export const gatheringSummaryResponseSchema = z
+  .object({
+    gathering_count: z.number().int(),
+    configured_gathering_count: z.number().int(),
+    first_gathering_time: z.string().nullable(),
+  })
+  .openapi('GatheringSummary');
+
+export const eventListItemResponseSchema = eventResponseSchema
+  .extend({
+    gathering_summary: gatheringSummaryResponseSchema,
+  })
+  .openapi('EventListItem');
+
 export const eventListResponseSchema = z
   .object({
-    events: z.array(eventResponseSchema),
+    events: z.array(eventListItemResponseSchema),
     ...paginationFields,
   })
   .openapi('EventList');
@@ -88,10 +111,10 @@ export const eventWriteSchema = z
   })
   .openapi('EventWriteRequest');
 
+// notification_enabled等の未知fieldを黙って無視すると「通知を止めたつもりが
+// 実は止まっていない」事故につながるため、PUTはstrictで未知fieldを拒否する(#388)。
 export const eventUpdateSchema = eventWriteSchema
-  .extend({
-    notification_enabled: z.boolean().optional(),
-  })
+  .strict()
   .openapi('EventUpdateRequest');
 
 export const eventPatchSchema = z
@@ -133,10 +156,18 @@ export const eventDetailRoute = createRoute({
   path: '/events/{eventId}',
   tags: ['Events'],
   summary: 'イベントを取得する',
+  description: [
+    'Event基本情報に加えて、配下の集合予定を `rounds[].gatherings[]` として返す。',
+    'Round専用のテーブルは無く `gatherings.round` でRoundを表すため、集合予定を',
+    '1件も持たないRoundは現れない。集合予定が0件のEventは `rounds: []` を返す。',
+    '',
+    '並び順は `round` 昇順、同一Round内は `gathering_time` 昇順、同時刻は',
+    '`gathering_id` 昇順。`member_count` は集合予定ごとの参加者数。',
+  ].join('\n'),
   security: bearerAuth,
   request: { params: eventIdParams },
   responses: {
-    200: jsonResponse(eventResponseSchema, 'イベント'),
+    200: jsonResponse(eventDetailResponseSchema, 'イベント'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     404: notFoundResponse,
@@ -149,6 +180,16 @@ export const eventGatheringListRoute = createRoute({
   path: '/events/{eventId}/gatherings',
   tags: ['Events'],
   summary: 'イベントに紐づく集合予定一覧を取得する',
+  description: [
+    '配布済みrectime-mobileが利用する旧Read APIを、mobile互換のため維持する（#395）。',
+    'recwatchが新Event詳細Read（#384）へ移行しても、レスポンス形式・認可を変更しない。',
+    'リポジトリ内の呼び出しが0件でも削除条件を満たさない。',
+    '削除は2027年度以降に#386で行い、以下の全条件を満たすまで削除しない。',
+    'rectime-mobile#244で新Event詳細Readへの移行が完了していること。',
+    '新バージョンがAndroid / iOSの両方でリリース済みであること。',
+    'サポート対象バージョンが本APIへ依存していないこと。',
+    'recwatchを含む他クライアントの呼び出しも0件であること。',
+  ].join('\n'),
   security: bearerAuth,
   request: { params: eventIdParams },
   responses: {
@@ -195,12 +236,11 @@ export const eventUpdateRoute = createRoute({
     },
   },
   responses: {
-    200: jsonResponse(eventScheduleResultSchema, '更新したイベントと通知予定'),
+    200: jsonResponse(eventResponseSchema, '更新したイベント'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
     404: notFoundResponse,
-    409: conflictResponse,
     500: internalServerErrorResponse,
   },
 });

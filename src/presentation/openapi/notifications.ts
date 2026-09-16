@@ -18,34 +18,6 @@ import {
   z,
 } from './schemas';
 
-// --- 通知 ---
-
-export const notificationResponseSchema = z
-  .object({
-    notification_id: z.number().int(),
-    notification_type: z.string(),
-    title: z.string(),
-    body: z.string(),
-    created_at: timestampSchema,
-    updated_at: timestampSchema,
-  })
-  .openapi('Notification');
-
-export type NotificationResponseDTO = z.infer<
-  typeof notificationResponseSchema
->;
-
-export const notificationListResponseSchema = z
-  .object({
-    notifications: z.array(notificationResponseSchema),
-    ...paginationFields,
-  })
-  .openapi('NotificationList');
-
-export type NotificationListResponseDTO = z.infer<
-  typeof notificationListResponseSchema
->;
-
 // --- 通知予定 ---
 
 export const notificationScheduleResponseSchema = z
@@ -89,7 +61,7 @@ export const firebaseTokenRegistrationResponseSchema = z
   .object({
     firebase_token_id: z.number().int(),
     user_id: z.number().int(),
-    platform: z.literal('android'),
+    platform: z.enum(['ios', 'android']),
     is_firebase_active: z.boolean(),
     last_seen_at: timestampSchema,
   })
@@ -292,9 +264,6 @@ export type FcmNotificationResponseDTO = z.infer<
 
 // --- パラメータ・リクエスト本文 ---
 
-export const notificationIdParams = z.object({
-  id: positivePathParam('id', '通知ID'),
-});
 export const adminNotificationIdParams = z.object({
   notificationId: positivePathParam('notificationId', '通知ID'),
 });
@@ -308,28 +277,9 @@ export const mobileNotificationIdParams = z.object({
 export const registerFirebaseTokenSchema = z
   .object({
     fcmToken: z.string().min(1),
-    platform: z.literal('android'),
+    platform: z.enum(['ios', 'android']),
   })
   .openapi('RegisterFirebaseTokenRequest');
-
-export const createNotificationSchema = z
-  .object({
-    notificationType: z.string().trim().min(1),
-    title: z.string().trim().min(1),
-    body: z.string().trim().min(1),
-  })
-  .openapi('CreateNotificationRequest');
-
-export const updateNotificationSchema = z
-  .object({
-    title: z.string().trim().min(1).optional(),
-    body: z.string().trim().min(1).optional(),
-  })
-  .openapi('UpdateNotificationRequest');
-
-export const notificationListQuery = z
-  .object({ notificationType: z.string().trim().min(1).optional() })
-  .merge(paginationQuery(100, 50));
 
 export const createManualNotificationSchema = z
   .object({
@@ -533,83 +483,6 @@ export const adminNotificationDeleteRoute = createRoute({
     403: forbiddenResponse,
     404: notFoundResponse,
     409: conflictResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const notificationCreateRoute = createRoute({
-  method: 'post',
-  path: '/notifications',
-  tags: ['Notifications'],
-  summary: '通知を作成する',
-  security: bearerAuth,
-  request: {
-    body: {
-      content: { 'application/json': { schema: createNotificationSchema } },
-      required: true,
-    },
-  },
-  responses: {
-    201: jsonResponse(notificationResponseSchema, '作成した通知'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const notificationListRoute = createRoute({
-  method: 'get',
-  path: '/notifications',
-  tags: ['Notifications'],
-  summary: '通知一覧を取得する',
-  security: bearerAuth,
-  request: { query: notificationListQuery },
-  responses: {
-    200: jsonResponse(notificationListResponseSchema, '通知一覧'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const notificationDetailRoute = createRoute({
-  method: 'get',
-  path: '/notifications/{id}',
-  tags: ['Notifications'],
-  summary: '通知を取得する',
-  security: bearerAuth,
-  request: { params: notificationIdParams },
-  responses: {
-    200: jsonResponse(notificationResponseSchema, '通知'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const notificationUpdateRoute = createRoute({
-  method: 'put',
-  path: '/notifications/{id}',
-  tags: ['Notifications'],
-  summary: '通知を更新する',
-  security: bearerAuth,
-  request: {
-    params: notificationIdParams,
-    body: {
-      content: { 'application/json': { schema: updateNotificationSchema } },
-      required: true,
-    },
-  },
-  responses: {
-    200: jsonResponse(notificationResponseSchema, '更新した通知'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
     500: internalServerErrorResponse,
   },
 });

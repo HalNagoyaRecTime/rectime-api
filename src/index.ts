@@ -31,11 +31,13 @@ import {
   studentUpdateRoute,
 } from './presentation/openapi/students';
 import {
+  adminUserStaffAssignRoute,
+  adminUserStaffRevokeRoute,
   staffDetailRoute,
   staffListRoute,
 } from './presentation/openapi/staffs';
 import {
-  teacherDeleteRoute,
+  teacherCreateRoute,
   teacherDetailRoute,
   teacherListRoute,
   teacherUpdateRoute,
@@ -51,6 +53,7 @@ import {
   eventScheduleUpdateRoute,
   eventUpdateRoute,
 } from './presentation/openapi/events';
+import { eventGatheringSettingsUpdateRoute } from './presentation/openapi/eventGatheringSettings';
 import {
   classRoomCreateRoute,
   classRoomDeleteRoute,
@@ -64,8 +67,6 @@ import {
   masterImportDetailRoute,
 } from './presentation/openapi/masterImports';
 import {
-  gatheringCreateRoute,
-  gatheringDeleteRoute,
   gatheringListRoute,
   gatheringMemberCreateRoute,
   gatheringMemberDeleteRoute,
@@ -83,18 +84,17 @@ import {
   firebaseTokenCreateRoute,
   myNotificationDetailRoute,
   myNotificationListRoute,
-  notificationCreateRoute,
-  notificationDetailRoute,
-  notificationListRoute,
   notificationScheduleCreateRoute,
   notificationScheduleDeleteRoute,
   notificationScheduleDetailRoute,
   notificationScheduleListRoute,
-  notificationUpdateRoute,
   scheduleUpdateRoute,
   testNotificationRoute,
 } from './presentation/openapi/notifications';
-import { adminUserSearchRoute } from './presentation/openapi/adminUsers';
+import {
+  adminUserSearchRoute,
+  adminUserStatusUpdateRoute,
+} from './presentation/openapi/adminUsers';
 
 const app = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationDefaultHook,
@@ -167,7 +167,6 @@ app.openapi(apiOverviewRoute, c => {
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
         schedules: '/api/v1/notification/schedules',
         firebaseTokens: '/api/v1/firebase-tokens',
-        notifications: '/api/v1/notifications',
         adminNotifications: '/api/v1/admin/notifications',
         adminUsers: '/api/v1/admin/users',
         myNotifications: '/api/v1/me/notifications',
@@ -213,6 +212,11 @@ const staffOnly = <R extends RouteConfig>(route: R) => ({
   middleware: [requireAuth, requireStaff],
 });
 
+// Admin user routes
+apiV1.openapi(staffOnly(adminUserStatusUpdateRoute), c => {
+  return c.get('container').userStatusController.updateUserStatus(c);
+});
+
 // Student routes
 apiV1.openapi(staffOnly(studentListRoute), c => {
   return c.get('container').studentController.getAllStudent(c);
@@ -234,9 +238,15 @@ apiV1.openapi(staffOnly(staffListRoute), c => {
 apiV1.openapi(staffOnly(staffDetailRoute), c => {
   return c.get('container').staffController.getStaffById(c);
 });
+apiV1.openapi(staffOnly(adminUserStaffAssignRoute), c => {
+  return c.get('container').staffController.assignStaffRole(c);
+});
+apiV1.openapi(staffOnly(adminUserStaffRevokeRoute), c => {
+  return c.get('container').staffController.revokeStaffRole(c);
+});
 
 // Teacher routes
-apiV1.post('/teachers', requireAuth, requireStaff, c => {
+apiV1.openapi(staffOnly(teacherCreateRoute), c => {
   return c.get('container').teacherController.createTeacher(c);
 });
 apiV1.openapi(staffOnly(teacherListRoute), c => {
@@ -247,9 +257,6 @@ apiV1.openapi(staffOnly(teacherDetailRoute), c => {
 });
 apiV1.openapi(staffOnly(teacherUpdateRoute), c => {
   return c.get('container').teacherController.updateTeacher(c);
-});
-apiV1.openapi(staffOnly(teacherDeleteRoute), c => {
-  return c.get('container').teacherController.deleteTeacher(c);
 });
 
 // Event routes
@@ -262,8 +269,15 @@ apiV1.openapi(authed(eventDetailRoute), c => {
 apiV1.get('/me/events', requireAuth, c => {
   return c.get('container').eventController.getMyEvents(c);
 });
+// 配布済みmobileが利用中の互換APIのため削除禁止（#395）。レスポンス形式・認可を維持する。
+// リポジトリ内の呼び出しが0件でも削除不可。2027年度以降、OpenAPI記載の全条件を満たして#386で削除する。
 apiV1.openapi(authed(eventGatheringListRoute), c => {
   return c.get('container').gatheringController.getGatheringsByEventId(c);
+});
+apiV1.openapi(staffOnly(eventGatheringSettingsUpdateRoute), c => {
+  return c
+    .get('container')
+    .eventGatheringSettingsController.saveEventGatheringSettings(c);
 });
 apiV1.openapi(staffOnly(eventCreateRoute), c => {
   return c.get('container').eventController.createEvent(c);
@@ -288,19 +302,19 @@ apiV1.openapi(staffOnly(eventNotificationSummaryRoute), c => {
 
 // Classroom routes
 apiV1.openapi(staffOnly(classRoomListRoute), c => {
-  return c.get('container').classRoomController.getAllClassrooms(c);
+  return c.get('container').classRoomController.getAllClassRooms(c);
 });
 apiV1.openapi(staffOnly(classRoomDetailRoute), c => {
-  return c.get('container').classRoomController.getClassroomById(c);
+  return c.get('container').classRoomController.getClassRoomById(c);
 });
 apiV1.openapi(staffOnly(classRoomCreateRoute), c => {
-  return c.get('container').classRoomController.createClassroom(c);
+  return c.get('container').classRoomController.createClassRoom(c);
 });
 apiV1.openapi(staffOnly(classRoomUpdateRoute), c => {
-  return c.get('container').classRoomController.updateClassroom(c);
+  return c.get('container').classRoomController.updateClassRoom(c);
 });
 apiV1.openapi(staffOnly(classRoomDeleteRoute), c => {
-  return c.get('container').classRoomController.deleteClassroom(c);
+  return c.get('container').classRoomController.deleteClassRoom(c);
 });
 
 // Master import routes
@@ -317,9 +331,6 @@ apiV1.openapi(staffOnly(masterImportCommitRoute), c => {
 // Gathering spot routes
 apiV1.openapi(staffOnly(gatheringSpotListRoute), c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
-});
-apiV1.get('/gathering-spots/:gatheringSpotId', requireAuth, requireStaff, c => {
-  return c.get('container').gatheringSpotController.getGatheringSpotById(c);
 });
 apiV1.openapi(staffOnly(gatheringSpotCreateRoute), c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
@@ -361,12 +372,6 @@ apiV1.openapi(staffOnly(gatheringMemberDeleteRoute), c => {
 apiV1.openapi(staffOnly(gatheringListRoute), c => {
   return c.get('container').gatheringController.getAllGatherings(c);
 });
-apiV1.openapi(staffOnly(gatheringCreateRoute), c => {
-  return c.get('container').gatheringController.createGathering(c);
-});
-apiV1.openapi(staffOnly(gatheringDeleteRoute), c => {
-  return c.get('container').gatheringController.deleteGathering(c);
-});
 
 // Firebase token routes
 apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
@@ -407,19 +412,6 @@ apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.deleteAdminNotification(c);
-});
-
-apiV1.openapi(staffOnly(notificationCreateRoute), c => {
-  return c.get('container').notificationController.createNotification(c);
-});
-apiV1.openapi(staffOnly(notificationListRoute), c => {
-  return c.get('container').notificationController.getNotifications(c);
-});
-apiV1.openapi(staffOnly(notificationDetailRoute), c => {
-  return c.get('container').notificationController.getNotificationById(c);
-});
-apiV1.openapi(staffOnly(notificationUpdateRoute), c => {
-  return c.get('container').notificationController.updateNotification(c);
 });
 
 apiV1.openapi(authed(myNotificationListRoute), c => {
@@ -493,9 +485,27 @@ app.get(
 
 export { app };
 
+// アカウント削除の後片付け再実行(#345)専用Cron式。通知配信Cron
+// ('* * * * *')とはevent.cronの値で区別する。EVENT_DATE判定には
+// 依存させない(削除の後片付けは開催日に関係なく毎日実行したいため)。
+const ACCOUNT_DELETION_PURGE_RETRY_CRON = '0 18 * * *';
+// 1回のCron実行で処理する上限件数。冪等な再実行のため、上限を超えた
+// 残りは翌日以降のCronで拾われる。
+const ACCOUNT_DELETION_PURGE_RETRY_LIMIT = 100;
+
 export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    if (event.cron === ACCOUNT_DELETION_PURGE_RETRY_CRON) {
+      const container = createDIContainer(env);
+      ctx.waitUntil(
+        container.accountDeletionService.retryPendingPurges(
+          ACCOUNT_DELETION_PURGE_RETRY_LIMIT
+        )
+      );
+      return;
+    }
+
     if (!isValidEventDate(env.EVENT_DATE)) {
       if (!eventDateWarnLogged) {
         console.error(

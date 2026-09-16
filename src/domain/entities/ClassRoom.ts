@@ -1,26 +1,39 @@
 export interface ClassRoomTeacher {
-  teacher_id: number;
-  user_id: number;
-  display_name: string;
+  teacherId: number;
+  userId: number;
+  displayName: string;
 }
 
 export interface ClassRoomEntity {
-  class_room_id: number;
-  class_code: string;
-  class_name: string;
-  student_count: number;
+  classRoomId: number;
+  classCode: string;
+  className: string;
+  studentCount: number;
   teacher: ClassRoomTeacher | null;
 }
 
 export interface ClassRoomPage {
-  classrooms: ClassRoomEntity[];
+  items: ClassRoomEntity[];
   total: number;
   limit: number;
   offset: number;
 }
 
 export interface ClassRoomInput {
-  class_code: string;
-  class_name: string;
-  teacher_id: number | null;
+  classCode: string;
+  className: string;
+  teacherId: number | null;
+}
+
+export interface ClassRoomSearchFilter {
+  search?: string;
+  sortBy?:
+    | 'classRoomId'
+    | 'classCode'
+    | 'className'
+    | 'teacherName'
+    | 'studentCount';
+  sortOrder?: 'asc' | 'desc';
+  limit?: number;
+  offset?: number;
 }

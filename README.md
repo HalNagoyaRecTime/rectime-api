@@ -186,6 +186,13 @@ VITE_BACKEND_BASE_URL=https://rectime-api.rectime-project.workers.dev
 `npm install` の `prepare` スクリプトで Husky を初期化する。
 
 - `pre-commit`: `lint-staged` による変更ファイルの ESLint/Prettier
-- `pre-push`: format・lint・型チェック（リモートブランチ削除だけの push はスキップ）
+- `pre-push`: 全体Typecheckと、`origin/develop` の差分に影響するVitestのみ実行する
+  - `package.json`、`package-lock.json`、`tsconfig*.json`、Vitest/Vite設定、`wrangler.jsonc`、`migrations/**`変更時は、pre-pushがGitの差分を判定して全テストを実行する
+  - `origin/develop` が見つからない場合は全テストへフォールバックする
+  - Stacked PRでも`origin/develop`を基準にするため、実際のPR差分より検査範囲が広がる、または親PRの変更を打ち消すケースでは差分を正確に検出できない場合がある
+  - 関連テストは現在チェックアウト中のHEADを基準に選択するため、別ref指定や複数refのpushでは実際のpush対象と完全一致しない場合がある
+  - 別ref指定や複数refのpushを検出した場合は、pushを止めずにコンソールへ警告を表示する
+- リモートブランチ削除だけの push では `pre-push` の検査をスキップする
+- Prettier/ESLintの全体確認と全テストはCIで実行し、CIを最終的な品質保証とする
 
 hook を手動で再設定する場合は `npm run prepare` を実行する。

@@ -2,18 +2,29 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { createStudentController } from '../../../src/presentation/controllers/StudentController';
 import type { IStudentService } from '../../../src/application/services/IStudentService';
-import type { StudentDTO } from '../../../src/application/dto/StudentDTO';
+import type { StudentManagementDTO } from '../../../src/application/dto/StudentDTO';
+import {
+  studentListQuery,
+  studentListRoute,
+  studentWriteSchema,
+} from '../../../src/presentation/openapi/students';
 
-function buildStudent(overrides: Partial<StudentDTO> = {}): StudentDTO {
+function buildStudent(
+  overrides: Partial<StudentManagementDTO> = {}
+): StudentManagementDTO {
   return {
     student_id: 1,
     user_id: 10,
     display_name: '山田太郎',
-    class_room_id: 1,
-    class_room_name: '1年A組',
     attendance_number: 1,
     student_id_number: 'S001',
     is_live_active: true,
+    is_staff: false,
+    class_room: {
+      class_room_id: 1,
+      class_code: '1A',
+      class_name: '1年A組',
+    },
     ...overrides,
   };
 }
@@ -105,7 +116,7 @@ describe('StudentController', () => {
       const students = [buildStudent()];
       (
         studentService.getAllStudents as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({ students, total: 1, limit: 50, offset: 0 });
+      ).mockResolvedValue({ items: students, total: 1, limit: 50, offset: 0 });
 
       const res = await app.request('/students');
 
@@ -113,13 +124,132 @@ describe('StudentController', () => {
       expect(studentService.getAllStudents).toHaveBeenCalledWith({
         limit: 50,
         offset: 0,
+        sortBy: 'studentId',
+        sortOrder: 'asc',
+        isLiveActive: true,
       });
       expect(await res.json()).toEqual({
-        students,
+        items: students,
         total: 1,
         limit: 50,
         offset: 0,
       });
+    });
+
+    it('一覧Queryを変換してサービスへ渡す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.getAllStudents as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 10, offset: 20 });
+
+      const res = await app.request(
+        '/students?search=山田&classRoomId=3&isStaff=true&isLiveActive=false&sortBy=isLiveActive&sortOrder=desc&limit=10&offset=20'
+      );
+
+      expect(res.status).toBe(200);
+      expect(studentService.getAllStudents).toHaveBeenCalledWith({
+        search: '山田',
+        classRoomId: 3,
+        isStaff: true,
+        isLiveActive: false,
+        sortBy: 'isLiveActive',
+        sortOrder: 'desc',
+        limit: 10,
+        offset: 20,
+      });
+    });
+
+    it('isStaff=allとisLiveActive=allはfilterなしとして扱う', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.getAllStudents as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+      const res = await app.request(
+        '/students?isStaff=all&isLiveActive=all&sortBy=isStaff'
+      );
+
+      expect(res.status).toBe(200);
+      expect(studentService.getAllStudents).toHaveBeenCalledWith({
+        limit: 50,
+        offset: 0,
+        sortBy: 'isStaff',
+        sortOrder: 'asc',
+      });
+    });
+
+    it.each([
+      ['isStaff=true', { isStaff: true, isLiveActive: true }],
+      ['isStaff=false', { isStaff: false, isLiveActive: true }],
+      ['isLiveActive=true', { isLiveActive: true }],
+      ['isLiveActive=false', { isLiveActive: false }],
+    ])('%sをboolean filterへ変換する', async (query, filter) => {
+      const { app, studentService } = setup();
+      (
+        studentService.getAllStudents as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+      const res = await app.request(`/students?${query}`);
+
+      expect(res.status).toBe(200);
+      expect(studentService.getAllStudents).toHaveBeenCalledWith({
+        ...filter,
+        limit: 50,
+        offset: 0,
+        sortBy: 'studentId',
+        sortOrder: 'asc',
+      });
+    });
+
+    it.each([
+      ['sortBy', '/students?sortBy=invalid'],
+      ['isStaff', '/students?isStaff=invalid'],
+      ['isLiveActive', '/students?isLiveActive=invalid'],
+      ['unknown query', '/students?page=2'],
+      ['old studentId query', '/students?studentId=1'],
+      ['old userName query', '/students?userName=%E5%B1%B1%E7%94%B0'],
+      ['non-digits limit', '/students?limit=1.0'],
+      ['non-digits offset', '/students?offset=1.0'],
+      ['non-digits classRoomId', '/students?classRoomId=1.0'],
+      ['blank search', '/students?search=%20%20%20'],
+    ])('%sはVALIDATION_ERRORを返す', async (_name, path) => {
+      const { app, studentService } = setup();
+
+      const res = await app.request(path);
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+      expect(studentService.getAllStudents).not.toHaveBeenCalled();
+    });
+
+    it('OpenAPIとControllerで共有するQuery schemaの規則を確認する', () => {
+      expect(studentListRoute.request?.query).toBe(studentListQuery);
+      expect(studentListQuery.safeParse({}).data).toEqual({
+        sortBy: 'studentId',
+        sortOrder: 'asc',
+        limit: 50,
+        offset: 0,
+        isLiveActive: true,
+      });
+      expect(studentListQuery.safeParse({ limit: '1.0' }).success).toBe(false);
+      expect(studentListQuery.safeParse({ offset: '1e2' }).success).toBe(false);
+      expect(studentListQuery.safeParse({ unknown: 'value' }).success).toBe(
+        false
+      );
+    });
+
+    it('limit=101はVALIDATION_ERRORを返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students?limit=101');
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+      expect(studentService.getAllStudents).not.toHaveBeenCalled();
     });
 
     it('サービスが例外を投げた場合は 500 を返す（console.error は呼ばれない）', async () => {
@@ -152,7 +282,7 @@ describe('StudentController', () => {
       expect(res.status).toBe(400);
       expect(
         ((await res.json()) as { error: { message: string } }).error.message
-      ).toBe('学生一覧の検索条件が正しくありません');
+      ).toBe('リクエスト内容が正しくありません');
     });
   });
 
@@ -274,6 +404,21 @@ describe('StudentController', () => {
           message: '学生の登録に失敗しました',
         },
       });
+    });
+
+    it('未知のbody fieldはOpenAPIと同じstrict schemaで400を返す', async () => {
+      const { app, studentService } = setup();
+      const body = { ...input, legacy_field: '不要' };
+
+      expect(studentWriteSchema.safeParse(body).success).toBe(false);
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.createStudent).not.toHaveBeenCalled();
     });
   });
 

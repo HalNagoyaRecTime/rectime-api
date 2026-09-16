@@ -340,4 +340,31 @@ describe('Gathering master repositories', () => {
       false
     );
   });
+
+  it('deleteByUserIdは指定ユーザーが所属する全gatheringのメンバー行を削除する', async () => {
+    const gatheringIdA = await createGathering('一括削除A');
+    const gatheringIdB = await createGathering('一括削除B');
+    const userId = await createUser('集合対象者7');
+    const otherUserId = await createUser('集合対象者8');
+    await memberRepository.create(gatheringIdA, userId);
+    await memberRepository.create(gatheringIdB, userId);
+    await memberRepository.create(gatheringIdA, otherUserId);
+
+    await memberRepository.deleteByUserId(userId);
+
+    await expect(
+      memberRepository.findByGatheringId(gatheringIdA)
+    ).resolves.toEqual([expect.objectContaining({ user_id: otherUserId })]);
+    await expect(
+      memberRepository.findByGatheringId(gatheringIdB)
+    ).resolves.toEqual([]);
+  });
+
+  it('deleteByUserIdは対象が存在しなくてもエラーにならない(冪等)', async () => {
+    const userId = await createUser('所属なし利用者');
+
+    await expect(
+      memberRepository.deleteByUserId(userId)
+    ).resolves.toBeUndefined();
+  });
 });

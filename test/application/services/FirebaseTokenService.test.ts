@@ -16,6 +16,9 @@ describe('FirebaseTokenService', () => {
       register: vi.fn().mockResolvedValue(result),
       findActiveTokens: vi.fn(),
       deactivate: vi.fn(),
+      deactivateByUserId: vi.fn(),
+      findByUserId: vi.fn(),
+      deleteByUserId: vi.fn(),
     };
     const service = createFirebaseTokenService(repository);
     const input = {

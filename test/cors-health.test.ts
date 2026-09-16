@@ -60,6 +60,8 @@ describe('OpenAPI documentation', () => {
       '/api/v1/admin/notifications',
       '/api/v1/admin/notifications/{notificationId}',
       '/api/v1/admin/users',
+      '/api/v1/admin/users/{userId}',
+      '/api/v1/admin/users/{userId}/staff',
       '/api/v1/classrooms',
       '/api/v1/classrooms/{classId}',
       '/api/v1/events',
@@ -71,7 +73,6 @@ describe('OpenAPI documentation', () => {
       '/api/v1/gathering-spots',
       '/api/v1/gathering-spots/{gatheringSpotId}',
       '/api/v1/gatherings',
-      '/api/v1/gatherings/{gatheringId}',
       '/api/v1/gatherings/{gatheringId}/members',
       '/api/v1/gatherings/{gatheringId}/members/{userId}',
       '/api/v1/master-imports',
@@ -82,9 +83,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/notification-schedules',
       '/api/v1/notification-schedules/{id}',
       '/api/v1/notification/schedules/{notificationId}',
-      '/api/v1/notifications',
       '/api/v1/notifications/test',
-      '/api/v1/notifications/{id}',
       '/api/v1/staffs',
       '/api/v1/staffs/{staffId}',
       '/api/v1/students',
@@ -98,12 +97,80 @@ describe('OpenAPI documentation', () => {
       nullable: true,
     });
 
+    const teacherListParameters = (
+      document.paths['/api/v1/teachers'].get as {
+        parameters?: Array<{
+          name: string;
+          schema?: { default?: unknown; enum?: unknown[] };
+        }>;
+      }
+    ).parameters;
+    expect(
+      teacherListParameters?.find(param => param.name === 'isStaff')?.schema
+    ).toMatchObject({ default: 'all', enum: ['true', 'false', 'all'] });
+    expect(
+      teacherListParameters?.find(param => param.name === 'isLiveActive')
+        ?.schema
+    ).toMatchObject({ default: 'true', enum: ['true', 'false', 'all'] });
+    expect(
+      teacherListParameters?.find(param => param.name === 'sortBy')?.schema
+    ).toMatchObject({
+      default: 'teacherId',
+      enum: [
+        'teacherId',
+        'displayName',
+        'classCode',
+        'className',
+        'isStaff',
+        'isLiveActive',
+      ],
+    });
+
+    expect(document.paths['/api/v1/teachers/{teacherId}']).not.toHaveProperty(
+      'delete'
+    );
+
+    const studentListParameters = (
+      document.paths['/api/v1/students'].get as {
+        parameters?: Array<{
+          name: string;
+          schema?: { default?: unknown; enum?: unknown[] };
+        }>;
+      }
+    ).parameters;
+    expect(
+      studentListParameters?.find(param => param.name === 'isStaff')?.schema
+    ).toMatchObject({ default: 'all', enum: ['true', 'false', 'all'] });
+    expect(
+      studentListParameters?.find(param => param.name === 'isLiveActive')
+        ?.schema
+    ).toMatchObject({ default: 'true', enum: ['true', 'false', 'all'] });
+    expect(
+      studentListParameters?.find(param => param.name === 'sortBy')?.schema
+    ).toMatchObject({
+      default: 'studentId',
+      enum: [
+        'studentId',
+        'studentIdNumber',
+        'displayName',
+        'classCode',
+        'className',
+        'attendanceNumber',
+        'isStaff',
+        'isLiveActive',
+      ],
+    });
+
     const documentedOperations = Object.values(document.paths).flatMap(path =>
       Object.keys(path).filter(method =>
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(57);
+    expect(documentedOperations).toHaveLength(55);
+    expect(document.paths['/api/v1/gatherings']).not.toHaveProperty('post');
+    expect(document.components.schemas).not.toHaveProperty(
+      'CreateGatheringRequest'
+    );
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {
@@ -221,6 +288,42 @@ describe('通知配信の実行経路', () => {
 });
 
 describe('集合APIの実ルーティング', () => {
+  it.each([
+    ['POST', '/api/v1/gatherings'],
+    ['DELETE', '/api/v1/gatherings/1'],
+  ])('旧Gathering Write APIを公開しない（%s %s）', async (method, path) => {
+    for (const headers of [{}, await bearerHeaders()]) {
+      const res = await app.fetch(
+        new Request(`http://example.com${path}`, {
+          method,
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          ...(method === 'POST' && {
+            body: JSON.stringify({ eventId: 1, gatheringSpotId: 1 }),
+          }),
+        }),
+        authEnv
+      );
+
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it('Event単位の集合設定保存APIは公開されているが認証が必要', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/api/v1/events/1/gatherings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rounds: [] }),
+      }),
+      env
+    );
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
+  });
+
   it.each([
     ['GET', '/api/v1/gathering-groups'],
     ['POST', '/api/v1/gathering-groups'],

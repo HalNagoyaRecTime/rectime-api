@@ -39,6 +39,7 @@ function setup() {
     findById: vi.fn().mockResolvedValue(event),
     findByParticipantUserId: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
     delete: vi.fn(),
     hasReferences: vi.fn(),
   };
@@ -66,6 +67,8 @@ function setup() {
     claimForDelivery: vi.fn(),
     markSent: vi.fn(),
     markFailed: vi.fn(),
+    anonymizeCreatedUserId: vi.fn(),
+    deleteByFirebaseTokenId: vi.fn(),
   };
   return {
     eventRepository,

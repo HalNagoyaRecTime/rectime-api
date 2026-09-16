@@ -48,6 +48,62 @@ describe('EventRepository', () => {
       expect(result.events).toHaveLength(0);
       expect(result.total).toBe(seeded.events.length);
     });
+
+    it('gatheringが無いイベントは0件のgathering_summaryを返す', async () => {
+      const target = seeded.events[0];
+      const result = await repo.findAll({ startTime: target.startTime });
+      const event = result.events.find(e => e.event_id === target.eventId);
+
+      expect(event?.gathering_summary).toEqual({
+        gathering_count: 0,
+        configured_gathering_count: 0,
+        first_gathering_time: null,
+      });
+    });
+
+    it('gatheringのgathering_summaryをN+1なしで集計する', async () => {
+      const target = seeded.events[0];
+      const spot = await env.DB.prepare(
+        "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('findAll用集合場所') RETURNING gathering_spot_id"
+      ).first<{ gathering_spot_id: number }>();
+
+      const insertGathering = async (gatheringTime?: string) => {
+        const stmt = gatheringTime
+          ? env.DB.prepare(
+              'INSERT INTO gatherings (event_id, gathering_spot_id, gathering_time) VALUES (?, ?, ?) RETURNING gathering_id'
+            ).bind(target.eventId, spot!.gathering_spot_id, gatheringTime)
+          : env.DB.prepare(
+              'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id'
+            ).bind(target.eventId, spot!.gathering_spot_id);
+        return stmt.first<{ gathering_id: number }>();
+      };
+
+      const g1 = await insertGathering('10:45');
+      const g2 = await insertGathering('11:00');
+      const g3 = await insertGathering();
+
+      try {
+        const result = await repo.findAll({ startTime: target.startTime });
+        const event = result.events.find(e => e.event_id === target.eventId);
+
+        expect(event?.gathering_summary).toEqual({
+          gathering_count: 3,
+          configured_gathering_count: 2,
+          first_gathering_time: '10:45',
+        });
+      } finally {
+        for (const g of [g1, g2, g3]) {
+          await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
+            .bind(g!.gathering_id)
+            .run();
+        }
+        await env.DB.prepare(
+          'DELETE FROM gathering_spots WHERE gathering_spot_id = ?'
+        )
+          .bind(spot!.gathering_spot_id)
+          .run();
+      }
+    });
   });
 
   describe('findById', () => {
@@ -75,6 +131,53 @@ describe('EventRepository', () => {
 
       await expect(repo.exists(target.eventId)).resolves.toBe(true);
       await expect(repo.exists(999999)).resolves.toBe(false);
+    });
+  });
+
+  describe('update', () => {
+    it('Event本体を更新し、更新後のEventを返す', async () => {
+      const created = await repo.create({
+        name: 'update用イベント',
+        ruleText: null,
+        venue: '体育館',
+        startTime: '0900',
+        endTime: '0930',
+      });
+
+      try {
+        const updated = await repo.update(created.event_id, {
+          name: '更新後のイベント',
+          ruleText: '規則',
+          venue: 'トラック',
+          startTime: '1000',
+          endTime: '1030',
+        });
+
+        expect(updated).toMatchObject({
+          event_id: created.event_id,
+          event_name: '更新後のイベント',
+          rule_text: '規則',
+          venue: 'トラック',
+          start_time: '1000',
+          end_time: '1030',
+        });
+      } finally {
+        await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
+          .bind(created.event_id)
+          .run();
+      }
+    });
+
+    it('存在しないidの場合はnullを返す', async () => {
+      const updated = await repo.update(999999, {
+        name: '更新後のイベント',
+        ruleText: null,
+        venue: 'トラック',
+        startTime: '1000',
+        endTime: '1030',
+      });
+
+      expect(updated).toBeNull();
     });
   });
 
