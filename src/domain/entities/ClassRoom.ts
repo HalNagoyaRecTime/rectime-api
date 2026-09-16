@@ -28,11 +28,7 @@ export interface ClassRoomInput {
 export interface ClassRoomSearchFilter {
   search?: string;
   sortBy?:
-    | 'classRoomId'
-    | 'classCode'
-    | 'className'
-    | 'teacherName'
-    | 'studentCount';
+    'classRoomId' | 'classCode' | 'className' | 'teacherName' | 'studentCount';
   sortOrder?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
