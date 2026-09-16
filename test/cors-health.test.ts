@@ -67,8 +67,6 @@ describe('OpenAPI documentation', () => {
       '/api/v1/events',
       '/api/v1/events/{eventId}',
       '/api/v1/events/{eventId}/gatherings',
-      '/api/v1/events/{eventId}/notification-summary',
-      '/api/v1/events/{eventId}/schedule',
       '/api/v1/firebase-tokens',
       '/api/v1/gathering-spots',
       '/api/v1/gathering-spots/{gatheringSpotId}',
@@ -166,7 +164,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(55);
+    expect(documentedOperations).toHaveLength(52);
     expect(document.paths['/api/v1/gatherings']).not.toHaveProperty('post');
     expect(document.components.schemas).not.toHaveProperty(
       'CreateGatheringRequest'
