@@ -4,13 +4,17 @@ updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "09:30"
       timezone: "Asia/Tokyo"
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     groups:
       eslint-stack:
         applies-to: "version-updates"
@@ -20,7 +24,6 @@ updates:
           - "eslint-*"
           - "@typescript-eslint/*"
         update-types:
-          - "major"
           - "minor"
           - "patch"
       cloudflare-stack:
@@ -30,7 +33,6 @@ updates:
           - "wrangler"
           - "@cloudflare/*"
         update-types:
-          - "major"
           - "minor"
           - "patch"
       vitest-stack:
@@ -40,7 +42,6 @@ updates:
           - "vitest"
           - "@vitest/*"
         update-types:
-          - "major"
           - "minor"
           - "patch"
       production-minor-and-patch:
@@ -67,13 +68,17 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "09:50"
       timezone: "Asia/Tokyo"
     cooldown:
       default-days: 7
     open-pull-requests-limit: 3
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     groups:
       actions-minor-and-patch:
         applies-to: "version-updates"
