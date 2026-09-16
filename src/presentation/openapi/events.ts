@@ -111,10 +111,10 @@ export const eventWriteSchema = z
   })
   .openapi('EventWriteRequest');
 
+// notification_enabled等の未知fieldを黙って無視すると「通知を止めたつもりが
+// 実は止まっていない」事故につながるため、PUTはstrictで未知fieldを拒否する(#388)。
 export const eventUpdateSchema = eventWriteSchema
-  .extend({
-    notification_enabled: z.boolean().optional(),
-  })
+  .strict()
   .openapi('EventUpdateRequest');
 
 export const eventPatchSchema = z
@@ -236,12 +236,11 @@ export const eventUpdateRoute = createRoute({
     },
   },
   responses: {
-    200: jsonResponse(eventScheduleResultSchema, '更新したイベントと通知予定'),
+    200: jsonResponse(eventResponseSchema, '更新したイベント'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
     404: notFoundResponse,
-    409: conflictResponse,
     500: internalServerErrorResponse,
   },
 });

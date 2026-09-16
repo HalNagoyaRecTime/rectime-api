@@ -182,6 +182,26 @@ export function createEventRepository(db: D1Database): IEventRepository {
       return toEntity(created);
     },
 
+    async update(
+      id: number,
+      event: EventWriteInput
+    ): Promise<EventEntity | null> {
+      const updated = await orm
+        .update(events)
+        .set({
+          name: event.name,
+          ruleText: event.ruleText,
+          venue: event.venue,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          updatedAt: sql`CURRENT_TIMESTAMP`,
+        })
+        .where(eq(events.id, id))
+        .returning()
+        .get();
+      return updated ? toEntity(updated) : null;
+    },
+
     async delete(id: number): Promise<boolean> {
       const deleted = await orm
         .delete(events)
