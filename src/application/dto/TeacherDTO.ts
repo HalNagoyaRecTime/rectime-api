@@ -28,7 +28,8 @@ export interface TeacherImportRow {
 }
 
 export type TeacherImportErrorReason =
-  'email_duplicate_in_file' | 'email_duplicate_in_db';
+  | 'email_duplicate_in_file'
+  | 'email_duplicate_in_db';
 
 export interface TeacherImportInput {
   rows: TeacherImportRow[];

@@ -250,7 +250,8 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
 
       const user = userResult.results[0] as ReturnedUserRow | undefined;
       const created = studentResult.results[0] as
-        ReturnedStudentRow | undefined;
+        | ReturnedStudentRow
+        | undefined;
       if (!user || !created) {
         throw new Error('Failed to create student');
       }
@@ -311,7 +312,8 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
 
       const user = userResult.results[0] as ReturnedUserRow | undefined;
       const updated = studentResult.results[0] as
-        ReturnedStudentRow | undefined;
+        | ReturnedStudentRow
+        | undefined;
       if (!user || !updated) return null;
       const result = await orm
         .select()

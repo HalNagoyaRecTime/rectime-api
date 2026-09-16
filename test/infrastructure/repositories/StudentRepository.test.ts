@@ -32,7 +32,8 @@ function replaceFirstReturnedUserName(db: D1Database): D1Database {
         if (replaced) return result;
 
         const firstRow = result.results[0] as
-          Record<string, unknown> | undefined;
+          | Record<string, unknown>
+          | undefined;
         if (!firstRow || typeof firstRow.user_name !== 'string') {
           return result;
         }
