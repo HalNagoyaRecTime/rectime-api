@@ -18,18 +18,26 @@ import {
 
 const eventIdSchema = z.coerce.number().int().positive();
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
-const eventWriteSchema = z
-  .object({
-    event_name: z.string().trim().min(1).max(100),
-    rule_text: z.string().trim().max(1000).nullable().optional(),
-    venue: z.string().trim().min(1).max(100),
-    start_time: hhmmSchema,
-    end_time: hhmmSchema,
-  })
-  .refine(data => data.start_time < data.end_time, {
-    message: 'end_time must be after start_time',
-    path: ['end_time'],
-  });
+const eventBaseSchema = z.object({
+  event_name: z.string().trim().min(1).max(100),
+  rule_text: z.string().trim().max(1000).nullable().optional(),
+  venue: z.string().trim().min(1).max(100),
+  start_time: hhmmSchema,
+  end_time: hhmmSchema,
+});
+const timeRangeRefinement: [
+  (data: { start_time: string; end_time: string }) => boolean,
+  { message: string; path: string[] },
+] = [
+  data => data.start_time < data.end_time,
+  { message: 'end_time must be after start_time', path: ['end_time'] },
+];
+
+const eventWriteSchema = eventBaseSchema.refine(...timeRangeRefinement);
+
+const eventUpdateSchema = eventBaseSchema
+  .strict()
+  .refine(...timeRangeRefinement);
 
 const eventPatchSchema = z
   .object({
@@ -118,7 +126,7 @@ export function createEventController(
   };
 
   const createEvent = async (c: Context) => {
-    const parsed = await parseEventBody(c);
+    const parsed = await parseEventBody(c, eventWriteSchema);
     if (!parsed.success) return parsed.response;
     try {
       return c.json(await eventService.createEvent(parsed.data), 201);
@@ -131,7 +139,7 @@ export function createEventController(
     const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
     if (!parsedId.success)
       return errorResponse(c, EventErrors.INVALID_EVENT_ID);
-    const parsed = await parseEventBody(c);
+    const parsed = await parseEventBody(c, eventUpdateSchema);
     if (!parsed.success) return parsed.response;
     try {
       return c.json(
@@ -139,7 +147,7 @@ export function createEventController(
         200
       );
     } catch (error) {
-      return eventError(c, error, EventErrors.EVENT_UPDATE_FAILED);
+      return updateEventError(c, error);
     }
   };
 
@@ -200,9 +208,12 @@ export function createEventController(
   };
 }
 
-async function parseEventBody(c: Context) {
+async function parseEventBody(
+  c: Context,
+  schema: typeof eventWriteSchema | typeof eventUpdateSchema
+) {
   const body = await c.req.json().catch(() => undefined);
-  const parsed = eventWriteSchema.safeParse(body);
+  const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return {
       success: false as const,
@@ -220,6 +231,19 @@ async function parseEventBody(c: Context) {
       rule_text: parsed.data.rule_text ?? null,
     } satisfies CreateEventRequestDTO,
   };
+}
+
+function updateEventError(c: Context, error: unknown) {
+  if (
+    error instanceof Error &&
+    error.message === 'end_time must be after start_time'
+  ) {
+    return errorResponse(c, EventErrors.INVALID_EVENT_TIME_RANGE);
+  }
+  if (error instanceof Error && error.message === 'Event not found') {
+    return errorResponse(c, EventErrors.EVENT_NOT_FOUND);
+  }
+  return errorResponse(c, EventErrors.EVENT_UPDATE_FAILED);
 }
 
 function eventError(

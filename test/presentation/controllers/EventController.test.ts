@@ -328,12 +328,8 @@ describe('EventController', () => {
       expect(await response.json()).toEqual(event);
     });
 
-    it('notification_enabledを含むRequestを受け取ってもServiceには渡さない', async () => {
+    it('notification_enabledを含むRequestは400を返し、Serviceを呼ばない(#388)', async () => {
       const { app, eventService } = setup();
-      const event = buildEvent();
-      (eventService.updateEvent as ReturnType<typeof vi.fn>).mockResolvedValue(
-        event
-      );
 
       const response = await app.request('/events/1', {
         method: 'PUT',
@@ -348,14 +344,33 @@ describe('EventController', () => {
         }),
       });
 
-      expect(response.status).toBe(200);
-      expect(eventService.updateEvent).toHaveBeenCalledWith(1, {
-        event_name: '徒競走',
-        rule_text: null,
-        venue: 'トラック',
-        start_time: '0930',
-        end_time: '0950',
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as {
+        error: { code: string; message: string };
+      };
+      expect(body.error.code).toBe('INVALID_EVENT_REQUEST');
+      expect(body.error.message).toBe('競技情報の入力内容が正しくありません');
+      expect(eventService.updateEvent).not.toHaveBeenCalled();
+    });
+
+    it('未定義のfieldを含むRequestは400を返し、Serviceを呼ばない', async () => {
+      const { app, eventService } = setup();
+
+      const response = await app.request('/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue: 'トラック',
+          start_time: '0930',
+          end_time: '0950',
+          unknown_field: 'x',
+        }),
       });
+
+      expect(response.status).toBe(400);
+      expect(eventService.updateEvent).not.toHaveBeenCalled();
     });
 
     it('想定外の例外は500とdetailsを返す', async () => {

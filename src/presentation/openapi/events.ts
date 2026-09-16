@@ -111,6 +111,12 @@ export const eventWriteSchema = z
   })
   .openapi('EventWriteRequest');
 
+// notification_enabled等の未知fieldを黙って無視すると「通知を止めたつもりが
+// 実は止まっていない」事故につながるため、PUTはstrictで未知fieldを拒否する(#388)。
+export const eventUpdateSchema = eventWriteSchema
+  .strict()
+  .openapi('EventUpdateRequest');
+
 export const eventPatchSchema = z
   .object({
     event_name: z.string().trim().min(1).max(100).optional(),
@@ -225,7 +231,7 @@ export const eventUpdateRoute = createRoute({
   request: {
     params: eventIdParams,
     body: {
-      content: { 'application/json': { schema: eventWriteSchema } },
+      content: { 'application/json': { schema: eventUpdateSchema } },
       required: true,
     },
   },
