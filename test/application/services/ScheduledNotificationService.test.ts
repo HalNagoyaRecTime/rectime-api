@@ -24,6 +24,7 @@ function buildSchedule(
     fcm_token: 'token-a',
     platform: 2,
     is_firebase_active: 1,
+    is_user_live_active: 1,
     notification_type: 'event_reminder',
     title: '集合のお知らせ',
     body: '集合時刻です。',
@@ -275,6 +276,21 @@ describe('ScheduledNotificationService', () => {
     expect(notificationScheduleRepository.markFailed).toHaveBeenCalledWith(
       1,
       'Firebase token is inactive'
+    );
+    expect(result).toEqual({ checkedEvents: 1, sent: 0, failed: 1 });
+  });
+
+  it('無効化済みUser宛ては送らず予定をfailedにする', async () => {
+    const { service, notificationScheduleRepository, fcmService } = setup({
+      schedules: [buildSchedule({ is_user_live_active: 0 })],
+    });
+
+    const result = await service.sendQueuedNotifications([1]);
+
+    expect(fcmService.sendNotificationToToken).not.toHaveBeenCalled();
+    expect(notificationScheduleRepository.markFailed).toHaveBeenCalledWith(
+      1,
+      'User is inactive'
     );
     expect(result).toEqual({ checkedEvents: 1, sent: 0, failed: 1 });
   });

@@ -76,8 +76,6 @@ describe('OpenAPI documentation', () => {
       '/api/v1/firebase-tokens',
       '/api/v1/gathering-spots',
       '/api/v1/gathering-spots/{gatheringSpotId}',
-      '/api/v1/gatherings',
-      '/api/v1/gatherings/{gatheringId}',
       '/api/v1/gatherings/{gatheringId}/members',
       '/api/v1/gatherings/{gatheringId}/members/{userId}',
       '/api/v1/master-imports',
@@ -88,9 +86,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/notification-schedules',
       '/api/v1/notification-schedules/{id}',
       '/api/v1/notification/schedules/{notificationId}',
-      '/api/v1/notifications',
       '/api/v1/notifications/test',
-      '/api/v1/notifications/{id}',
       '/api/v1/staffs',
       '/api/v1/staffs/{staffId}',
       '/api/v1/students',
@@ -193,7 +189,11 @@ describe('OpenAPI documentation', () => {
       )
     );
 
-    expect(documentedOperations).toHaveLength(60);
+    expect(documentedOperations).toHaveLength(54);
+    expect(document.paths).not.toHaveProperty('/api/v1/gatherings');
+    expect(document.components.schemas).not.toHaveProperty(
+      'CreateGatheringRequest'
+    );
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {
@@ -325,6 +325,43 @@ describe('通知配信の実行経路', () => {
 });
 
 describe('集合APIの実ルーティング', () => {
+  it.each([
+    ['GET', '/api/v1/gatherings'],
+    ['POST', '/api/v1/gatherings'],
+    ['DELETE', '/api/v1/gatherings/1'],
+  ])('旧Gathering APIを公開しない（%s %s）', async (method, path) => {
+    for (const headers of [{}, await bearerHeaders()]) {
+      const res = await app.fetch(
+        new Request(`http://example.com${path}`, {
+          method,
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          ...(method === 'POST' && {
+            body: JSON.stringify({ eventId: 1, gatheringSpotId: 1 }),
+          }),
+        }),
+        authEnv
+      );
+
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it('Event単位の集合設定保存APIは公開されているが認証が必要', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/api/v1/events/1/gatherings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rounds: [] }),
+      }),
+      env
+    );
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
+  });
+
   it.each([
     ['GET', '/api/v1/gathering-groups'],
     ['POST', '/api/v1/gathering-groups'],

@@ -7,7 +7,6 @@ import { createEventScheduleRepository } from '../infrastructure/repositories/Ev
 import { createClassRoomRepository } from '../infrastructure/repositories/ClassRoomRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
-import { createNotificationRepository } from '../infrastructure/repositories/NotificationRepository';
 import { createAdminNotificationRepository } from '../infrastructure/repositories/AdminNotificationRepository';
 import { createAdminNotificationManagementRepository } from '../infrastructure/repositories/AdminNotificationManagementRepository';
 import { createMobileNotificationRepository } from '../infrastructure/repositories/MobileNotificationRepository';
@@ -28,7 +27,6 @@ import { createFirebaseTokenService } from '../application/services/FirebaseToke
 import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
 import { createNotificationScheduleService } from '../application/services/NotificationScheduleService';
-import { createNotificationService } from '../application/services/NotificationService';
 import { createAdminNotificationService } from '../application/services/AdminNotificationService';
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
@@ -59,7 +57,6 @@ import { createUserRepository } from '../infrastructure/repositories/UserReposit
 import { createUserStatusRepository } from '../infrastructure/repositories/UserStatusRepository';
 import { createUserStatusService } from '../application/services/UserStatusService';
 import { createUserStatusController } from '../presentation/controllers/UserStatusController';
-import { createUserActivationRepository } from '../infrastructure/repositories/UserActivationRepository';
 import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
 import { createAccountDeletionService } from '../application/services/AccountDeletionService';
@@ -73,7 +70,7 @@ export function createDIContainer(env: Env) {
 
   // Repositories
   const userRepository = createUserRepository(db);
-  const userActivationRepository = createUserActivationRepository(db);
+  const userStatusRepository = createUserStatusRepository(db);
   const userSearchRepository = createUserSearchRepository(db);
   const studentRepository = createStudentRepository(db);
   const staffRepository = createStaffRepository(db);
@@ -84,7 +81,6 @@ export function createDIContainer(env: Env) {
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
   const notificationScheduleRepository =
     createNotificationScheduleRepository(db);
-  const notificationRepository = createNotificationRepository(db);
   const adminNotificationRepository = createAdminNotificationRepository(db);
   const adminNotificationManagementRepository =
     createAdminNotificationManagementRepository(db);
@@ -94,11 +90,7 @@ export function createDIContainer(env: Env) {
     db,
     userRepository
   );
-  const gatheringRepository = createGatheringRepository(
-    db,
-    eventRepository,
-    gatheringSpotRepository
-  );
+  const gatheringRepository = createGatheringRepository(db, eventRepository);
   const eventGatheringSettingsRepository =
     createEventGatheringSettingsRepository(db);
   const scheduleRepository = createScheduleRepository(db);
@@ -115,9 +107,7 @@ export function createDIContainer(env: Env) {
     env.AUTH_KV,
     firebaseTokenRepository
   );
-  const userStatusService = createUserStatusService(
-    createUserStatusRepository(db)
-  );
+  const userStatusService = createUserStatusService(userStatusRepository);
   const authorizationService = createAuthorizationService(userRepository);
   // #265: 関連データの削除・匿名化(deleteRelatedData)は
   // DELETE /auth/me(account.ts)から呼ばれる。retryPendingPurgesは
@@ -180,7 +170,6 @@ export function createDIContainer(env: Env) {
   const notificationScheduleService = createNotificationScheduleService(
     notificationScheduleRepository
   );
-  const notificationService = createNotificationService(notificationRepository);
   const adminNotificationService = createAdminNotificationService(
     adminNotificationRepository
   );
@@ -222,10 +211,7 @@ export function createDIContainer(env: Env) {
     createMasterImportController(masterImportService);
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
-  const notificationController = createNotificationController(
-    fcmService,
-    notificationService
-  );
+  const notificationController = createNotificationController(fcmService);
   const adminNotificationController = createAdminNotificationController(
     adminNotificationService
   );
@@ -252,7 +238,7 @@ export function createDIContainer(env: Env) {
 
   return {
     // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
-    userActivationRepository,
+    userStatusRepository,
     authService,
     userStatusController,
     accountDeletionService,

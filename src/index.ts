@@ -67,8 +67,6 @@ import {
   masterImportDetailRoute,
 } from './presentation/openapi/masterImports';
 import {
-  gatheringCreateRoute,
-  gatheringDeleteRoute,
   gatheringMemberCreateRoute,
   gatheringMemberDeleteRoute,
   gatheringMemberListRoute,
@@ -85,14 +83,10 @@ import {
   firebaseTokenCreateRoute,
   myNotificationDetailRoute,
   myNotificationListRoute,
-  notificationCreateRoute,
-  notificationDetailRoute,
-  notificationListRoute,
   notificationScheduleCreateRoute,
   notificationScheduleDeleteRoute,
   notificationScheduleDetailRoute,
   notificationScheduleListRoute,
-  notificationUpdateRoute,
   scheduleUpdateRoute,
   testNotificationRoute,
 } from './presentation/openapi/notifications';
@@ -171,7 +165,6 @@ app.openapi(apiOverviewRoute, c => {
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
         schedules: '/api/v1/notification/schedules',
         firebaseTokens: '/api/v1/firebase-tokens',
-        notifications: '/api/v1/notifications',
         adminNotifications: '/api/v1/admin/notifications',
         adminUsers: '/api/v1/admin/users',
         myNotifications: '/api/v1/me/notifications',
@@ -274,6 +267,8 @@ apiV1.openapi(authed(eventDetailRoute), c => {
 apiV1.get('/me/events', requireAuth, c => {
   return c.get('container').eventController.getMyEvents(c);
 });
+// 配布済みmobileが利用中の互換APIのため削除禁止（#395）。レスポンス形式・認可を維持する。
+// リポジトリ内の呼び出しが0件でも削除不可。2027年度以降、OpenAPI記載の全条件を満たして#386で削除する。
 apiV1.openapi(authed(eventGatheringListRoute), c => {
   return c.get('container').gatheringController.getGatheringsByEventId(c);
 });
@@ -335,9 +330,6 @@ apiV1.openapi(staffOnly(masterImportCommitRoute), c => {
 apiV1.openapi(staffOnly(gatheringSpotListRoute), c => {
   return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
 });
-apiV1.get('/gathering-spots/:gatheringSpotId', requireAuth, requireStaff, c => {
-  return c.get('container').gatheringSpotController.getGatheringSpotById(c);
-});
 apiV1.openapi(staffOnly(gatheringSpotCreateRoute), c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
@@ -372,15 +364,6 @@ apiV1.openapi(staffOnly(gatheringMemberDeleteRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.removeGatheringMember(c);
-});
-
-// Gathering routes
-apiV1.openapi(staffOnly(gatheringCreateRoute), c => {
-  return c.get('container').gatheringController.createGathering(c);
-});
-
-apiV1.openapi(staffOnly(gatheringDeleteRoute), c => {
-  return c.get('container').gatheringController.deleteGathering(c);
 });
 
 // Firebase token routes
@@ -422,19 +405,6 @@ apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.deleteAdminNotification(c);
-});
-
-apiV1.openapi(staffOnly(notificationCreateRoute), c => {
-  return c.get('container').notificationController.createNotification(c);
-});
-apiV1.openapi(staffOnly(notificationListRoute), c => {
-  return c.get('container').notificationController.getNotifications(c);
-});
-apiV1.openapi(staffOnly(notificationDetailRoute), c => {
-  return c.get('container').notificationController.getNotificationById(c);
-});
-apiV1.openapi(staffOnly(notificationUpdateRoute), c => {
-  return c.get('container').notificationController.updateNotification(c);
 });
 
 apiV1.openapi(authed(myNotificationListRoute), c => {
