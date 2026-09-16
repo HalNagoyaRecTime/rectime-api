@@ -134,6 +134,53 @@ describe('EventRepository', () => {
     });
   });
 
+  describe('update', () => {
+    it('Event本体を更新し、更新後のEventを返す', async () => {
+      const created = await repo.create({
+        name: 'update用イベント',
+        ruleText: null,
+        venue: '体育館',
+        startTime: '0900',
+        endTime: '0930',
+      });
+
+      try {
+        const updated = await repo.update(created.event_id, {
+          name: '更新後のイベント',
+          ruleText: '規則',
+          venue: 'トラック',
+          startTime: '1000',
+          endTime: '1030',
+        });
+
+        expect(updated).toMatchObject({
+          event_id: created.event_id,
+          event_name: '更新後のイベント',
+          rule_text: '規則',
+          venue: 'トラック',
+          start_time: '1000',
+          end_time: '1030',
+        });
+      } finally {
+        await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
+          .bind(created.event_id)
+          .run();
+      }
+    });
+
+    it('存在しないidの場合はnullを返す', async () => {
+      const updated = await repo.update(999999, {
+        name: '更新後のイベント',
+        ruleText: null,
+        venue: 'トラック',
+        startTime: '1000',
+        endTime: '1030',
+      });
+
+      expect(updated).toBeNull();
+    });
+  });
+
   describe('findByParticipantUserId', () => {
     it('ユーザーが集合に参加しているイベントだけを返す', async () => {
       const target = seeded.events[0];

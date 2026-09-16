@@ -25,6 +25,7 @@ function setup(authenticatedUserId: number | null = 7) {
     getEventById: vi.fn(),
     getMyEvents: vi.fn(),
     createEvent: vi.fn(),
+    updateEvent: vi.fn(),
     deleteEvent: vi.fn(),
   };
   const eventScheduleService: IEventScheduleService = {
@@ -296,75 +297,99 @@ describe('EventController', () => {
   });
 
   describe('updateEvent', () => {
-    it('IDと有効な本文をServiceへ渡して更新する', async () => {
-      const { app, eventScheduleService } = setup();
+    it('IDと有効な本文をServiceへ渡して更新する(Notification固有fieldは扱わない)', async () => {
+      const { app, eventService, eventScheduleService } = setup();
       const event = buildEvent({ event_name: '更新後の徒競走' });
-      (
-        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        event,
-        notification_enabled: true,
-        notification_schedules: [],
-      });
-
-      const response = await app.request(
-        '/events/1',
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event_name: '更新後の徒競走',
-            rule_text: '規則',
-            venue: 'トラック',
-            start_time: '1000',
-            end_time: '1030',
-            notification_enabled: true,
-          }),
-        },
-        { EVENT_DATE: '2026-11-07' }
+      (eventService.updateEvent as ReturnType<typeof vi.fn>).mockResolvedValue(
+        event
       );
 
-      expect(eventScheduleService.updateEventSchedule).toHaveBeenCalledWith({
-        event_id: 1,
-        user_id: 7,
+      const response = await app.request('/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '更新後の徒競走',
+          rule_text: '規則',
+          venue: 'トラック',
+          start_time: '1000',
+          end_time: '1030',
+        }),
+      });
+
+      expect(eventService.updateEvent).toHaveBeenCalledWith(1, {
         event_name: '更新後の徒競走',
         rule_text: '規則',
         venue: 'トラック',
         start_time: '1000',
         end_time: '1030',
-        notification_enabled: true,
-        event_date: '2026-11-07',
       });
+      expect(eventScheduleService.updateEventSchedule).not.toHaveBeenCalled();
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
-        event,
-        notification_enabled: true,
-        notification_schedules: [],
+      expect(await response.json()).toEqual(event);
+    });
+
+    it('notification_enabledを含むRequestは400を返し、Serviceを呼ばない(#388)', async () => {
+      const { app, eventService } = setup();
+
+      const response = await app.request('/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue: 'トラック',
+          start_time: '0930',
+          end_time: '0950',
+          notification_enabled: false,
+        }),
       });
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as {
+        error: { code: string; message: string };
+      };
+      expect(body.error.code).toBe('INVALID_EVENT_REQUEST');
+      expect(body.error.message).toBe('競技情報の入力内容が正しくありません');
+      expect(eventService.updateEvent).not.toHaveBeenCalled();
+    });
+
+    it('未定義のfieldを含むRequestは400を返し、Serviceを呼ばない', async () => {
+      const { app, eventService } = setup();
+
+      const response = await app.request('/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue: 'トラック',
+          start_time: '0930',
+          end_time: '0950',
+          unknown_field: 'x',
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(eventService.updateEvent).not.toHaveBeenCalled();
     });
 
     it('想定外の例外は500とdetailsを返す', async () => {
-      const { app, eventScheduleService } = setup();
-      (
-        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('db error'));
-
-      const response = await app.request(
-        '/events/1',
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event_name: '徒競走',
-            rule_text: null,
-            venue: 'トラック',
-            start_time: '0930',
-            end_time: '0950',
-            notification_enabled: false,
-          }),
-        },
-        { EVENT_DATE: '2026-11-07' }
+      const { app, eventService } = setup();
+      (eventService.updateEvent as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('db error')
       );
+
+      const response = await app.request('/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue: 'トラック',
+          start_time: '0930',
+          end_time: '0950',
+        }),
+      });
 
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({
@@ -375,75 +400,47 @@ describe('EventController', () => {
       });
     });
 
-    it('notification_enabledがない既存Requestも受け付ける', async () => {
-      const { app, eventScheduleService } = setup();
-      (
-        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        event: buildEvent(),
-        notification_enabled: false,
-        notification_schedules: [],
-      });
-      const response = await app.request(
-        '/events/1',
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event_name: '徒競走',
-            rule_text: null,
-            venue: 'トラック',
-            start_time: '0930',
-            end_time: '0950',
-          }),
-        },
-        { EVENT_DATE: '2026-11-07' }
+    it('存在しないイベントの場合は404を返す', async () => {
+      const { app, eventService } = setup();
+      (eventService.updateEvent as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Event not found')
       );
 
-      expect(response.status).toBe(200);
-      expect(eventScheduleService.updateEventSchedule).toHaveBeenCalledWith({
-        event_id: 1,
-        user_id: 7,
-        event_name: '徒競走',
-        rule_text: null,
-        venue: 'トラック',
-        start_time: '0930',
-        end_time: '0950',
-        notification_enabled: undefined,
-        event_date: '2026-11-07',
+      const response = await app.request('/events/999', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue: 'トラック',
+          start_time: '0930',
+          end_time: '0950',
+        }),
+      });
+
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({
+        error: { code: 'EVENT_NOT_FOUND', message: '競技が見つかりません' },
       });
     });
 
-    it('既存時刻との組み合わせが不正な場合は400を返す', async () => {
-      const { app, eventScheduleService } = setup();
-      (
-        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('end_time must be after start_time'));
+    it('開始・終了時刻が不正な場合は400を返す', async () => {
+      const { app, eventService } = setup();
 
-      const response = await app.request(
-        '/events/1',
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event_name: '徒競走',
-            rule_text: null,
-            venue: 'トラック',
-            start_time: '0930',
-            end_time: '0950',
-            notification_enabled: false,
-          }),
-        },
-        { EVENT_DATE: '2026-11-07' }
-      );
+      const response = await app.request('/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue: 'トラック',
+          start_time: '0950',
+          end_time: '0930',
+        }),
+      });
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({
-        error: {
-          code: 'INVALID_EVENT_TIME_RANGE',
-          message: '終了時刻は開始時刻より後に設定してください',
-        },
-      });
+      expect(eventService.updateEvent).not.toHaveBeenCalled();
     });
   });
 
