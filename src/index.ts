@@ -81,11 +81,6 @@ import {
   firebaseTokenCreateRoute,
   myNotificationDetailRoute,
   myNotificationListRoute,
-  notificationScheduleCreateRoute,
-  notificationScheduleDeleteRoute,
-  notificationScheduleDetailRoute,
-  notificationScheduleListRoute,
-  scheduleUpdateRoute,
   testNotificationRoute,
 } from './presentation/openapi/notifications';
 import {
@@ -162,13 +157,11 @@ app.openapi(apiOverviewRoute, c => {
         gatheringSpots: '/api/v1/gathering-spots',
         gatherings: '/api/v1/gatherings',
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
-        schedules: '/api/v1/notification/schedules',
         firebaseTokens: '/api/v1/firebase-tokens',
         adminNotifications: '/api/v1/admin/notifications',
         adminUsers: '/api/v1/admin/users',
         myNotifications: '/api/v1/me/notifications',
         testNotification: '/api/v1/notifications/test',
-        notificationSchedules: '/api/v1/notification-schedules',
         myEvents: '/api/v1/me/events',
       },
       // 非公開の環境で存在しないエンドポイントを案内しないよう、
@@ -364,11 +357,6 @@ apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
 });
 
-// Notification schedule routes
-apiV1.openapi(staffOnly(scheduleUpdateRoute), c => {
-  return c.get('container').scheduleController.updateSchedule(c);
-});
-
 apiV1.openapi(staffOnly(adminUserSearchRoute), c => {
   return c.get('container').userSearchController.searchUsers(c);
 });
@@ -405,27 +393,6 @@ apiV1.openapi(authed(myNotificationListRoute), c => {
 });
 apiV1.openapi(authed(myNotificationDetailRoute), c => {
   return c.get('container').mobileNotificationController.getNotificationById(c);
-});
-
-apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
-  return c
-    .get('container')
-    .notificationScheduleController.getAllNotificationSchedules(c);
-});
-apiV1.openapi(staffOnly(notificationScheduleCreateRoute), c => {
-  return c
-    .get('container')
-    .notificationScheduleController.createNotificationSchedule(c);
-});
-apiV1.openapi(staffOnly(notificationScheduleDetailRoute), c => {
-  return c
-    .get('container')
-    .notificationScheduleController.getNotificationScheduleById(c);
-});
-apiV1.openapi(staffOnly(notificationScheduleDeleteRoute), c => {
-  return c
-    .get('container')
-    .notificationScheduleController.deleteNotificationSchedule(c);
 });
 
 apiV1.openapi(staffOnly(testNotificationRoute), c => {
