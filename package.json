@@ -17,6 +17,9 @@
     "prepare": "husky",
     "type-check": "tsc --noEmit",
     "check": "npm run format:check && npm run lint && npm run type-check",
+    "actions:check": "node .github/scripts/update-actions.mjs --check",
+    "actions:update:compatible": "node .github/scripts/update-actions.mjs --update-compatible",
+    "dependencies:update:compatible": "ncu --target semver --cooldown 7 --upgrade --reject npm-check-updates,wrangler,@cloudflare/workers-types,@cloudflare/vitest-pool-workers",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
@@ -33,8 +36,8 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.16.18",
-    "@cloudflare/workers-types": "^4.20250909.0",
+    "@cloudflare/vitest-pool-workers": "0.16.18",
+    "@cloudflare/workers-types": "4.20260621.1",
     "@eslint/js": "^9.35.0",
     "@typescript-eslint/eslint-plugin": "^8.69.0",
     "@typescript-eslint/parser": "^8.69.0",
@@ -44,11 +47,12 @@
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
+    "npm-check-updates": "22.2.0",
     "prettier": "^3.9.6",
     "tsx": "^4.4.0",
     "typescript": "^5.9.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.4.0"
+    "wrangler": "4.103.0"
   },
   "packageManager": "npm@10.9.2"
 }
