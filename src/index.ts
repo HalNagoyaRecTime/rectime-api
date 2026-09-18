@@ -48,9 +48,6 @@ import {
   eventDetailRoute,
   eventGatheringListRoute,
   eventListRoute,
-  eventNotificationSummaryRoute,
-  eventPatchRoute,
-  eventScheduleUpdateRoute,
   eventUpdateRoute,
 } from './presentation/openapi/events';
 import { eventGatheringSettingsUpdateRoute } from './presentation/openapi/eventGatheringSettings';
@@ -280,19 +277,8 @@ apiV1.openapi(staffOnly(eventCreateRoute), c => {
 apiV1.openapi(staffOnly(eventUpdateRoute), c => {
   return c.get('container').eventController.updateEvent(c);
 });
-apiV1.openapi(staffOnly(eventPatchRoute), c => {
-  return c.get('container').eventController.patchEvent(c);
-});
 apiV1.openapi(staffOnly(eventDeleteRoute), c => {
   return c.get('container').eventController.deleteEvent(c);
-});
-apiV1.openapi(staffOnly(eventScheduleUpdateRoute), c => {
-  return c.get('container').eventScheduleController.updateEventSchedule(c);
-});
-apiV1.openapi(staffOnly(eventNotificationSummaryRoute), c => {
-  return c
-    .get('container')
-    .eventScheduleController.getEventNotificationSummary(c);
 });
 
 // Classroom routes

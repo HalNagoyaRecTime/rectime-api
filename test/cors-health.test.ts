@@ -67,8 +67,6 @@ describe('OpenAPI documentation', () => {
       '/api/v1/events',
       '/api/v1/events/{eventId}',
       '/api/v1/events/{eventId}/gatherings',
-      '/api/v1/events/{eventId}/notification-summary',
-      '/api/v1/events/{eventId}/schedule',
       '/api/v1/firebase-tokens',
       '/api/v1/gathering-spots',
       '/api/v1/gathering-spots/{gatheringSpotId}',
@@ -163,11 +161,15 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(52);
+    expect(documentedOperations).toHaveLength(49);
     expect(document.paths['/api/v1/gatherings']).not.toHaveProperty('post');
     expect(document.components.schemas).not.toHaveProperty(
       'CreateGatheringRequest'
     );
+    expect(document.paths['/api/v1/events/{eventId}']).not.toHaveProperty(
+      'patch'
+    );
+    expect(document.paths['/api/v1/events/{eventId}']).toHaveProperty('put');
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {
@@ -324,8 +326,6 @@ describe('通知予定管理APIの廃止', () => {
     ['GET', '/api/v1/admin/notifications/1'],
     ['PUT', '/api/v1/admin/notifications/1'],
     ['DELETE', '/api/v1/admin/notifications/1'],
-    ['GET', '/api/v1/events/1/notification-summary'],
-    ['PUT', '/api/v1/events/1/schedule'],
     ['GET', '/api/v1/me/notifications'],
     ['GET', '/api/v1/me/notifications/1'],
   ])('利用中の通知APIと認証を維持する（%s %s）', async (method, path) => {
@@ -335,6 +335,40 @@ describe('通知予定管理APIの廃止', () => {
     );
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
+  });
+});
+
+describe('旧Event操作APIの廃止', () => {
+  it.each([
+    ['PATCH', '/api/v1/events/1'],
+    ['PUT', '/api/v1/events/1/schedule'],
+    ['GET', '/api/v1/events/1/notification-summary'],
+  ])('削除した旧APIを公開しない（%s %s）', async (method, path) => {
+    const res = await app.fetch(
+      new Request(`http://example.com${path}`, {
+        method,
+        headers: await bearerHeaders(),
+      }),
+      authEnv
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it('維持対象のPUT /api/v1/events/1は未認証時に401になる', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/api/v1/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+      env
+    );
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
       error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
     });
   });
