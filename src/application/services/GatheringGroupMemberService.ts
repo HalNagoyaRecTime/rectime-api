@@ -11,62 +11,12 @@ export function createGatheringGroupMemberService(
     }
   }
 
-  async function ensureUserExists(userId: number) {
-    if (!(await gatheringGroupMemberRepository.existsUser(userId))) {
-      throw new Error('User not found');
-    }
-  }
-
   return {
     async getGatheringMembers(
       gatheringId: number
     ): Promise<GatheringGroupMemberEntity[]> {
       await ensureGatheringExists(gatheringId);
       return gatheringGroupMemberRepository.findByGatheringId(gatheringId);
-    },
-
-    async addGatheringMember(
-      gatheringId: number,
-      userId: number
-    ): Promise<GatheringGroupMemberEntity> {
-      await ensureGatheringExists(gatheringId);
-      await ensureUserExists(userId);
-      try {
-        return await gatheringGroupMemberRepository.create(gatheringId, userId);
-      } catch (error) {
-        // 存在確認後に集合が削除される競合では、INSERTが外部キー制約で
-        // 失敗する。現在の状態を確認し、500ではなく404へ変換する。
-        const gatheringExists =
-          await gatheringGroupMemberRepository.existsGathering(gatheringId);
-        if (!gatheringExists) throw new Error('Gathering not found');
-
-        // createが投げる'Gathering member already exists'は、「既に参加
-        // 済み」と「存在確認(ensureUserExists)後にuserIdが退会処理された
-        // ため書き込み時点でactiveでなかった」のいずれかを区別できない。
-        // findMissingUserIds(active限定の存在確認)で再判定し、後者なら
-        // User not foundへ変換する。
-        if (
-          error instanceof Error &&
-          error.message === 'Gathering member already exists'
-        ) {
-          const missingUserIds =
-            await gatheringGroupMemberRepository.findMissingUserIds([userId]);
-          if (missingUserIds.length > 0) throw new Error('User not found');
-        }
-        throw error;
-      }
-    },
-
-    async removeGatheringMember(
-      gatheringId: number,
-      userId: number
-    ): Promise<boolean> {
-      const removed = await gatheringGroupMemberRepository.remove(
-        gatheringId,
-        userId
-      );
-      if (!removed) throw new Error('Gathering member not found');
-      return true;
     },
 
     async replaceGatheringMembers(
@@ -117,8 +67,7 @@ export function createGatheringGroupMemberService(
         );
       } catch (error) {
         // 存在確認後に集合が削除される競合では、INSERTが外部キー制約で
-        // 失敗する。現在の状態を確認し、500ではなく404へ変換する
-        // (addGatheringMemberと同じパターン)。
+        // 失敗する。現在の状態を確認し、500ではなく404へ変換する。
         await ensureGatheringExists(gatheringId);
         throw error;
       }

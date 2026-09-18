@@ -102,22 +102,12 @@ export const gatheringSpotIdParams = z.object({
 export const gatheringIdParams = z.object({
   gatheringId: positivePathParam('gatheringId', '集合予定ID'),
 });
-export const gatheringMemberParams = z.object({
-  gatheringId: positivePathParam('gatheringId', '集合予定ID'),
-  userId: positivePathParam('userId', '利用者ID'),
-});
 
 export const gatheringSpotWriteSchema = z
   .object({
     gatheringSpotName: z.string().trim().min(1),
   })
   .openapi('GatheringSpotWriteRequest');
-
-export const addGatheringMemberSchema = z
-  .object({
-    userId: z.number().int().positive(),
-  })
-  .openapi('AddGatheringMemberRequest');
 
 export const replaceGatheringMembersSchema = z
   .object({
@@ -245,47 +235,6 @@ export const gatheringMemberReplaceRoute = createRoute({
   },
   responses: {
     200: jsonResponse(gatheringMemberListResponseSchema, '更新後の参加者一覧'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const gatheringMemberCreateRoute = createRoute({
-  method: 'post',
-  path: '/gatherings/{gatheringId}/members',
-  tags: ['Gathering members'],
-  summary: '集合予定へ参加者を追加する',
-  security: bearerAuth,
-  request: {
-    params: gatheringIdParams,
-    body: {
-      content: { 'application/json': { schema: addGatheringMemberSchema } },
-      required: true,
-    },
-  },
-  responses: {
-    201: jsonResponse(gatheringMemberResponseSchema, '追加した参加情報'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    409: conflictResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const gatheringMemberDeleteRoute = createRoute({
-  method: 'delete',
-  path: '/gatherings/{gatheringId}/members/{userId}',
-  tags: ['Gathering members'],
-  summary: '集合予定から参加者を削除する',
-  security: bearerAuth,
-  request: { params: gatheringMemberParams },
-  responses: {
-    204: noContentResponse,
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,

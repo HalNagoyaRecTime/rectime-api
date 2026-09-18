@@ -110,7 +110,7 @@ describe('Gathering master services', () => {
     expect(repository.delete).not.toHaveBeenCalled();
   });
 
-  it('集合対象者の追加・一覧取得・解除をRepositoryへ委譲する', async () => {
+  it('集合対象者の一覧取得と一括置換をRepositoryへ委譲する', async () => {
     const member = {
       gathering_group_member_id: 3,
       gathering_id: 1,
@@ -120,29 +120,21 @@ describe('Gathering master services', () => {
     };
     const repository: IGatheringGroupMemberRepository = {
       existsGathering: vi.fn().mockResolvedValue(true),
-      existsUser: vi.fn().mockResolvedValue(true),
       findByGatheringId: vi.fn().mockResolvedValue([member]),
       findMissingUserIds: vi.fn().mockResolvedValue([]),
       applyMemberDiff: vi.fn().mockResolvedValue([member]),
-      create: vi.fn().mockResolvedValue(member),
-      remove: vi.fn().mockResolvedValue(true),
       deleteByUserId: vi.fn(),
     };
     const service = createGatheringGroupMemberService(repository);
 
-    await expect(service.addGatheringMember(1, 2)).resolves.toBe(member);
     await expect(service.getGatheringMembers(1)).resolves.toEqual([member]);
-    await expect(service.removeGatheringMember(1, 2)).resolves.toBe(true);
     // 現在の参加者(user_id: 2)と同じuser_idsを渡すため、差分は空になる。
     await expect(service.replaceGatheringMembers(1, [2])).resolves.toEqual([
       member,
     ]);
 
-    expect(repository.existsGathering).toHaveBeenCalledTimes(3);
-    expect(repository.existsUser).toHaveBeenCalledTimes(1);
-    expect(repository.create).toHaveBeenCalledWith(1, 2);
+    expect(repository.existsGathering).toHaveBeenCalledTimes(2);
     expect(repository.findByGatheringId).toHaveBeenCalledWith(1);
-    expect(repository.remove).toHaveBeenCalledWith(1, 2);
     expect(repository.findMissingUserIds).toHaveBeenCalledWith([2]);
     // 差分が空(無変更の冪等な再送)の場合、直前のfindByGatheringIdの
     // 結果をそのまま返しapplyMemberDiffの呼び出し自体を省略する。
@@ -170,12 +162,9 @@ describe('Gathering master services', () => {
     ];
     const repository: IGatheringGroupMemberRepository = {
       existsGathering: vi.fn().mockResolvedValue(true),
-      existsUser: vi.fn(),
       findByGatheringId: vi.fn().mockResolvedValue(currentMembers),
       findMissingUserIds: vi.fn().mockResolvedValue([]),
       applyMemberDiff: vi.fn().mockResolvedValue(currentMembers),
-      create: vi.fn(),
-      remove: vi.fn(),
       deleteByUserId: vi.fn(),
     };
     const service = createGatheringGroupMemberService(repository);
@@ -190,66 +179,14 @@ describe('Gathering master services', () => {
     );
   });
 
-  it('存在しない集合または利用者は追加前にエラーにする', async () => {
+  it('存在しない集合は一覧取得前にエラーにする', async () => {
     const repository: IGatheringGroupMemberRepository = {
       existsGathering: vi.fn().mockResolvedValue(false),
-      existsUser: vi.fn().mockResolvedValue(false),
-      create: vi.fn(),
     } as unknown as IGatheringGroupMemberRepository;
     const service = createGatheringGroupMemberService(repository);
 
     await expect(service.getGatheringMembers(1)).rejects.toThrow(
       'Gathering not found'
     );
-    await expect(service.addGatheringMember(1, 2)).rejects.toThrow(
-      'Gathering not found'
-    );
-    expect(repository.create).not.toHaveBeenCalled();
-
-    (repository.existsGathering as ReturnType<typeof vi.fn>).mockResolvedValue(
-      true
-    );
-    await expect(service.addGatheringMember(1, 2)).rejects.toThrow(
-      'User not found'
-    );
-  });
-
-  it('存在確認後に集合が削除された場合は追加時の外部キーエラーを404用エラーへ変換する', async () => {
-    const repository: IGatheringGroupMemberRepository = {
-      existsGathering: vi
-        .fn()
-        .mockResolvedValueOnce(true)
-        .mockResolvedValueOnce(false),
-      existsUser: vi.fn().mockResolvedValue(true),
-      create: vi.fn().mockRejectedValue(new Error('FOREIGN KEY constraint')),
-    } as unknown as IGatheringGroupMemberRepository;
-
-    await expect(
-      createGatheringGroupMemberService(repository).addGatheringMember(1, 2)
-    ).rejects.toThrow('Gathering not found');
-    expect(repository.create).toHaveBeenCalledWith(1, 2);
-    expect(repository.existsGathering).toHaveBeenCalledTimes(2);
-  });
-
-  it('存在しない集合対象者の解除はエラーにする', async () => {
-    const repository: IGatheringGroupMemberRepository = {
-      existsGathering: vi.fn().mockResolvedValue(true),
-      existsUser: vi.fn().mockResolvedValue(true),
-      remove: vi.fn().mockResolvedValue(false),
-    } as unknown as IGatheringGroupMemberRepository;
-
-    await expect(
-      createGatheringGroupMemberService(repository).removeGatheringMember(1, 2)
-    ).rejects.toThrow('Gathering member not found');
-  });
-
-  it('所属解除でRepositoryの例外をそのまま送出する', async () => {
-    const repository: IGatheringGroupMemberRepository = {
-      remove: vi.fn().mockRejectedValue(new Error('database error')),
-    } as unknown as IGatheringGroupMemberRepository;
-
-    await expect(
-      createGatheringGroupMemberService(repository).removeGatheringMember(1, 2)
-    ).rejects.toThrow('database error');
   });
 });
