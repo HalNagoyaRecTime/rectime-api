@@ -9,6 +9,7 @@ let eventId: number;
 let emptyEventId: number;
 let spotId: number;
 let gatheringId: number;
+let authUserId: number;
 let headers: Record<string, string>;
 
 function request(event: number | string, authHeaders = headers) {
@@ -21,9 +22,17 @@ function request(event: number | string, authHeaders = headers) {
 }
 
 beforeAll(async () => {
+  const authUser = await env.DB.prepare(
+    "INSERT INTO users (user_name) VALUES ('旧Event集合API互換テスト') RETURNING user_id"
+  ).first<{ user_id: number }>();
+  if (!authUser) {
+    throw new Error('旧Event集合APIテスト用の利用者を作成できませんでした');
+  }
+  authUserId = authUser.user_id;
+
   const token = await signAccessToken(
     {
-      sub: '1',
+      sub: String(authUserId),
       oid: 'legacy-mobile-test',
       email: 'legacy-mobile@example.com',
       display_name: '互換テスト',
@@ -61,6 +70,7 @@ afterAll(async () => {
     env.DB.prepare(
       'DELETE FROM gathering_spots WHERE gathering_spot_id = ?'
     ).bind(spotId),
+    env.DB.prepare('DELETE FROM users WHERE user_id = ?').bind(authUserId),
   ]);
 });
 

@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { app } from '../src/index';
 import { signAccessToken } from '../src/infrastructure/auth/jwt';
 import { errorResponseSchema } from '../src/presentation/openapi/schemas';
@@ -14,12 +14,27 @@ const corsTestEnv = {
 // signAccessToken は32バイト以上のシークレットを要求する。
 const JWT_SECRET = 'a'.repeat(32);
 const authEnv = { ...env, JWT_SECRET };
+let authUserId: number;
+
+beforeAll(async () => {
+  const user = await env.DB.prepare(
+    "INSERT INTO users (user_name) VALUES ('API契約テスト') RETURNING user_id"
+  ).first<{ user_id: number }>();
+  if (!user) throw new Error('API契約テスト用の利用者を作成できませんでした');
+  authUserId = user.user_id;
+});
+
+afterAll(async () => {
+  await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+    .bind(authUserId)
+    .run();
+});
 
 /** apiV1配下は全ルートが認証必須のため、契約検証にもトークンが要る。 */
 async function bearerHeaders(): Promise<Record<string, string>> {
   const token = await signAccessToken(
     {
-      sub: '1',
+      sub: String(authUserId),
       oid: 'oid-1',
       email: 'contract@example.com',
       display_name: '契約テスト',
