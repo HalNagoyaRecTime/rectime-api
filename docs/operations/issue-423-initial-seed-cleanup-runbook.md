@@ -47,15 +47,56 @@ npm test
 
 ## 5. 読取専用監査
 
+`--file`はremote D1でSQLファイルの投入経路を使用し、SELECT結果ではなく
+実行概要だけを返す。監査SQLは`--command=`で渡し、候補16行と確認4行が
+すべて返ったことを`jq`で検証する。
+
+以下の関数を、監査コマンドを実行するshellで先に定義する。
+
+```shell
+issue_423_audit() (
+  set -o pipefail
+
+  npx wrangler d1 execute "$@" \
+    --command="$(cat docs/operations/sql/issue-423-seed-audit.sql)" \
+    --json |
+    jq -e '
+      if length == 1
+        and .[0].success == true
+        and (.[0].results | length == 20)
+        and all(.[0].results[];
+          has("entity_type")
+          and has("seed_id")
+          and has("expected_action")
+          and has("reason_codes"))
+        and (([
+          .[0].results[] | select(.entity_type == "check") | .seed_id
+        ] | sort) == [-4, -3, -2, -1])
+        and (([
+          .[0].results[] | select(.entity_type == "class_room") | .seed_id
+        ] | sort) == [1, 2, 3])
+        and (([
+          .[0].results[] | select(.entity_type == "event") | .seed_id
+        ] | sort) == [1, 2, 3, 4])
+        and (([
+          .[0].results[] | select(.entity_type == "student") | .seed_id
+        ] | sort) == [1, 2, 3, 4])
+        and (([
+          .[0].results[] | select(.entity_type == "user") | .seed_id
+        ] | sort) == [1, 2, 3, 4, 5])
+      then .[0].results
+      else error("監査結果が期待した20行ではありません")
+      end
+    '
+)
+```
+
 ### 5.1 local
 
 既存local D1を確認する場合は、Migrationを適用する前に実行する。
 
 ```shell
-npx wrangler d1 execute rectime-api-dev \
-  --local --env development \
-  --file docs/operations/sql/issue-423-seed-audit.sql \
-  --json
+issue_423_audit rectime-api-dev --local --env development
 ```
 
 空DBからの最終状態は、隔離した保存先で確認する。
@@ -68,33 +109,22 @@ npx wrangler d1 migrations apply rectime-api-dev \
   --local --env development \
   --persist-to "${ISSUE_423_LOCAL_DIR}"
 
-npx wrangler d1 execute rectime-api-dev \
+issue_423_audit rectime-api-dev \
   --local --env development \
-  --persist-to "${ISSUE_423_LOCAL_DIR}" \
-  --file docs/operations/sql/issue-423-seed-audit.sql \
-  --json
+  --persist-to "${ISSUE_423_LOCAL_DIR}"
 ```
 
 ### 5.2 remote環境
 
 ```shell
 # development
-npx wrangler d1 execute rectime-api-dev \
-  --remote --env development \
-  --file docs/operations/sql/issue-423-seed-audit.sql \
-  --json
+issue_423_audit rectime-api-dev --remote --env development
 
 # staging
-npx wrangler d1 execute rectime-api-staging \
-  --remote --env staging \
-  --file docs/operations/sql/issue-423-seed-audit.sql \
-  --json
+issue_423_audit rectime-api-staging --remote --env staging
 
 # production
-npx wrangler d1 execute rectime-api \
-  --remote \
-  --file docs/operations/sql/issue-423-seed-audit.sql \
-  --json
+issue_423_audit rectime-api --remote
 ```
 
 ### 5.3 判定
