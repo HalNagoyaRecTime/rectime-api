@@ -37,6 +37,8 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       existsGathering: async () => false,
       existsUser: async () => false,
       findByGatheringId: async () => [],
+      findMissingUserIds: async () => [],
+      applyMemberDiff: async () => [],
       create: async () => {
         throw new Error('NOT_IMPLEMENTED_IN_TEST_STUB');
       },
