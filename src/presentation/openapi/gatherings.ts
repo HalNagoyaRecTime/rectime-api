@@ -89,7 +89,9 @@ export const gatheringResponseSchema = z
 
 export type GatheringResponseDTO = z.infer<typeof gatheringResponseSchema>;
 
-export const gatheringListResponseSchema = z.array(gatheringResponseSchema);
+export const gatheringListResponseSchema = z
+  .array(gatheringResponseSchema)
+  .openapi('GatheringList');
 
 export const gatheringSpotIdParams = z.object({
   gatheringSpotId: positivePathParam('gatheringSpotId', '集合場所ID'),
