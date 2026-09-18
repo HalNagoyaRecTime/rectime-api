@@ -2,14 +2,9 @@ import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createGatheringGroupMemberService } from '../../../src/application/services/GatheringGroupMemberService';
 import { createGatheringGroupMemberRepository } from '../../../src/infrastructure/repositories/GatheringGroupMemberRepository';
-import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 
 describe('GatheringGroupMemberRepository', () => {
-  const userRepository = createUserRepository(env.DB);
-  const repository = createGatheringGroupMemberRepository(
-    env.DB,
-    userRepository
-  );
+  const repository = createGatheringGroupMemberRepository(env.DB);
 
   let gatheringIds: number[] = [];
   let eventIds: number[] = [];
@@ -135,7 +130,7 @@ describe('GatheringGroupMemberRepository', () => {
     const user1 = await createUser('削除対象ユーザー');
     const user2 = await createUser('追加対象ユーザー1');
     const user3 = await createUser('追加対象ユーザー2');
-    await repository.create(gatheringId, user1);
+    await repository.applyMemberDiff(gatheringId, [user1], []);
 
     const result = await repository.applyMemberDiff(
       gatheringId,
@@ -151,7 +146,7 @@ describe('GatheringGroupMemberRepository', () => {
   it('applyMemberDiffは削除対象がなければ参加者を全員削除する', async () => {
     const gatheringId = await createGathering('全削除');
     const user1 = await createUser('削除対象ユーザー');
-    await repository.create(gatheringId, user1);
+    await repository.applyMemberDiff(gatheringId, [user1], []);
 
     const result = await repository.applyMemberDiff(gatheringId, [], [user1]);
 
@@ -163,7 +158,11 @@ describe('GatheringGroupMemberRepository', () => {
   it('applyMemberDiffに空の追加・削除を渡すと変更のないメンバーの行を維持する', async () => {
     const gatheringId = await createGathering('冪等性');
     const user1 = await createUser('維持されるユーザー');
-    const created = await repository.create(gatheringId, user1);
+    const [created] = await repository.applyMemberDiff(
+      gatheringId,
+      [user1],
+      []
+    );
 
     const result = await repository.applyMemberDiff(gatheringId, [], []);
 
@@ -178,8 +177,7 @@ describe('GatheringGroupMemberRepository', () => {
     const gatheringId = await createGathering('繰り返し置換');
     const user1 = await createUser('繰り返しユーザー1');
     const user2 = await createUser('繰り返しユーザー2');
-    await repository.create(gatheringId, user1);
-    await repository.create(gatheringId, user2);
+    await repository.applyMemberDiff(gatheringId, [user1, user2], []);
 
     const before = await repository.findByGatheringId(gatheringId);
     const beforeById = new Map(before.map(m => [m.user_id, m]));
@@ -327,9 +325,8 @@ describe('GatheringGroupMemberRepository', () => {
 
     // Repositoryはこの競合を検知・変換せず、gathering_group_members.
     // gathering_idの外部キー制約違反という素の例外をそのまま投げる。
-    // Service層(replaceGatheringMembers)がこれをcatchし、addGatheringMember
-    // と同じ「存在確認後の削除競合はcatchして404に変換する」パターンで
-    // Gathering not foundへ変換する。
+    // Service層(replaceGatheringMembers)がこれをcatchし、現在の状態を
+    // 再確認してGathering not foundへ変換する。
     await expect(
       repository.applyMemberDiff(gatheringId, [user1], [])
     ).rejects.toThrow(/Failed query: insert into "gathering_group_members"/);
@@ -359,36 +356,5 @@ describe('GatheringGroupMemberRepository', () => {
     await expect(
       service.replaceGatheringMembers(gatheringId, [user1])
     ).rejects.toThrow('Gathering not found');
-  });
-
-  it('ServiceでensureUserExists通過後にuserIdが退会処理されると、参加行を作成せずUser not foundへ変換される', async () => {
-    const gatheringId = await createGathering('単体追加TOCTOU');
-    const raceUser = await createUser('単体追加競合ユーザー');
-
-    // repositoryをラップし、addGatheringMemberがensureUserExistsで呼ぶ
-    // existsUserの直後にuserIdを退会させることで、「存在確認(active判定
-    // なし)は通過したが、その後のcreate実行までの間に退会処理される」
-    // レースを再現する。
-    const racyRepository: typeof repository = {
-      ...repository,
-      async existsUser(userId) {
-        const result = await repository.existsUser(userId);
-        await env.DB.prepare(
-          "UPDATE users SET deletion_status = 'deleted' WHERE user_id = ?"
-        )
-          .bind(raceUser)
-          .run();
-        return result;
-      },
-    };
-    const service = createGatheringGroupMemberService(racyRepository);
-
-    await expect(
-      service.addGatheringMember(gatheringId, raceUser)
-    ).rejects.toThrow('User not found');
-
-    // 参加行が作成されていないことも併せて確認する。
-    const members = await repository.findByGatheringId(gatheringId);
-    expect(members).toEqual([]);
   });
 });

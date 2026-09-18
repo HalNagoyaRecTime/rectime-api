@@ -35,14 +35,9 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
   function buildFailingGatheringGroupMemberRepository(): IGatheringGroupMemberRepository {
     return {
       existsGathering: async () => false,
-      existsUser: async () => false,
       findByGatheringId: async () => [],
       findMissingUserIds: async () => [],
       applyMemberDiff: async () => [],
-      create: async () => {
-        throw new Error('NOT_IMPLEMENTED_IN_TEST_STUB');
-      },
-      remove: async () => false,
       deleteByUserId: async () => {
         throw new Error('SIMULATED_FAILURE');
       },
@@ -56,10 +51,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       studentRepository: createStudentRepository(db),
       staffRepository: createStaffRepository(db),
       teacherRepository: createTeacherRepository(db),
-      gatheringGroupMemberRepository: createGatheringGroupMemberRepository(
-        db,
-        createUserRepository(db)
-      ),
+      gatheringGroupMemberRepository: createGatheringGroupMemberRepository(db),
       notificationScheduleRepository: createNotificationScheduleRepository(db),
       firebaseTokenRepository: createFirebaseTokenRepository(db),
     });
