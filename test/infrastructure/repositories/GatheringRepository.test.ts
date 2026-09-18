@@ -1,11 +1,13 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
+
 import { createEventRepository } from '../../../src/infrastructure/repositories/EventRepository';
 import { createGatheringRepository } from '../../../src/infrastructure/repositories/GatheringRepository';
 
 describe('GatheringRepository', () => {
   const eventRepository = createEventRepository(env.DB);
   const repository = createGatheringRepository(env.DB, eventRepository);
+
   let gatheringIds: number[] = [];
   let eventIds: number[] = [];
   let spotIds: number[] = [];
@@ -16,6 +18,7 @@ describe('GatheringRepository', () => {
     )
       .bind(`集合テスト場所-${suffix}`)
       .first<{ gathering_spot_id: number }>();
+
     spotIds.push(spot!.gathering_spot_id);
 
     const event = await env.DB.prepare(
@@ -23,6 +26,7 @@ describe('GatheringRepository', () => {
     )
       .bind(`集合テスト競技-${suffix}`, '体育館', '0900', '1000')
       .first<{ event_id: number }>();
+
     eventIds.push(event!.event_id);
 
     return {
@@ -43,7 +47,9 @@ describe('GatheringRepository', () => {
     )
       .bind(eventId, spotId, round, gatheringTime)
       .first<{ gathering_id: number }>();
+
     gatheringIds.push(row!.gathering_id);
+
     return row!.gathering_id;
   }
 
@@ -57,6 +63,7 @@ describe('GatheringRepository', () => {
         )
       );
     }
+
     if (eventIds.length > 0) {
       await env.DB.batch(
         eventIds.map(id =>
@@ -64,6 +71,7 @@ describe('GatheringRepository', () => {
         )
       );
     }
+
     if (spotIds.length > 0) {
       await env.DB.batch(
         spotIds.map(id =>
@@ -73,6 +81,7 @@ describe('GatheringRepository', () => {
         )
       );
     }
+
     gatheringIds = [];
     eventIds = [];
     spotIds = [];
@@ -80,6 +89,7 @@ describe('GatheringRepository', () => {
 
   it('競技・集合場所を結合した既存の集合予定を取得できる', async () => {
     const { spotId, eventId } = await createReferences('取得');
+
     const gatheringId = await insertGathering(eventId, spotId);
 
     const result = await repository.findByEventId(eventId);
@@ -97,46 +107,31 @@ describe('GatheringRepository', () => {
         updated_at: expect.any(String),
       }),
     ]);
+
     expect(result[0]).not.toHaveProperty('gathering_group_id');
   });
 
   it('旧APIで保存された未設定値もそのまま取得できる', async () => {
     const { spotId, eventId } = await createReferences('未設定');
+
     await insertGathering(eventId, spotId, 99, '99:59');
 
     await expect(repository.findByEventId(eventId)).resolves.toEqual([
-      expect.objectContaining({ gathering_time: '99:59', round: 99 }),
-    ]);
-  });
-
-  it('複数の競技の集合予定をID順で一覧取得できる', async () => {
-    const firstReferences = await createReferences('一覧1');
-    const secondReferences = await createReferences('一覧2');
-    const firstId = await insertGathering(
-      firstReferences.eventId,
-      firstReferences.spotId
-    );
-    const secondId = await insertGathering(
-      secondReferences.eventId,
-      secondReferences.spotId
-    );
-
-    const all = await repository.findAll();
-    const created = all.filter(gathering =>
-      [firstId, secondId].includes(gathering.gathering_id)
-    );
-
-    expect(created.map(gathering => gathering.gathering_id)).toEqual([
-      firstId,
-      secondId,
+      expect.objectContaining({
+        gathering_time: '99:59',
+        round: 99,
+      }),
     ]);
   });
 
   it('指定した競技だけの集合予定をID順で取得できる', async () => {
     const { spotId, eventId } = await createReferences('競技指定');
     const other = await createReferences('対象外');
+
     const firstId = await insertGathering(eventId, spotId, 2);
+
     await insertGathering(other.eventId, other.spotId);
+
     const secondId = await insertGathering(eventId, spotId, 1);
 
     const result = await repository.findByEventId(eventId);

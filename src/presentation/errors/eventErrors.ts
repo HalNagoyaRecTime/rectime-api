@@ -102,11 +102,6 @@ export const EventErrors = {
     code: 'EVENT_GATHERINGS_UPDATE_FAILED',
     message: '競技の集合設定の更新に失敗しました',
   },
-  GATHERING_LIST_FAILED: {
-    status: 500,
-    code: 'GATHERING_LIST_FAILED',
-    message: '集合グループ一覧の取得に失敗しました',
-  },
   EVENT_GATHERING_LIST_FAILED: {
     status: 500,
     code: 'EVENT_GATHERING_LIST_FAILED',
