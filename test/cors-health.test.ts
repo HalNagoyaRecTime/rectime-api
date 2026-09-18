@@ -74,7 +74,6 @@ describe('OpenAPI documentation', () => {
       '/api/v1/gathering-spots/{gatheringSpotId}',
       '/api/v1/gatherings',
       '/api/v1/gatherings/{gatheringId}/members',
-      '/api/v1/gatherings/{gatheringId}/members/{userId}',
       '/api/v1/master-imports',
       '/api/v1/master-imports/{validatedFileId}',
       '/api/v1/master-imports/{validatedFileId}/commit',
@@ -163,10 +162,19 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(52);
+    expect(documentedOperations).toHaveLength(50);
     expect(document.paths['/api/v1/gatherings']).not.toHaveProperty('post');
+    expect(
+      Object.keys(document.paths['/api/v1/gatherings/{gatheringId}/members'])
+    ).toEqual(['get', 'put']);
+    expect(document.paths).not.toHaveProperty(
+      '/api/v1/gatherings/{gatheringId}/members/{userId}'
+    );
     expect(document.components.schemas).not.toHaveProperty(
       'CreateGatheringRequest'
+    );
+    expect(document.components.schemas).not.toHaveProperty(
+      'AddGatheringMemberRequest'
     );
   });
 
@@ -392,17 +400,45 @@ describe('集合APIの実ルーティング', () => {
     expect(res.status).toBe(404);
   });
 
-  it('集合ID配下のメンバーAPIは公開されているが認証が必要', async () => {
-    const res = await app.fetch(
-      new Request('http://example.com/api/v1/gatherings/999999/members'),
-      env
-    );
+  it.each(['GET', 'PUT'])(
+    '集合ID配下のメンバー%s APIは公開されているが認証が必要',
+    async method => {
+      const res = await app.fetch(
+        new Request('http://example.com/api/v1/gatherings/999999/members', {
+          method,
+        }),
+        env
+      );
 
-    expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({
-      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
-    });
-  });
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({
+        error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+      });
+    }
+  );
+
+  it.each([
+    ['POST', '/api/v1/gatherings/1/members'],
+    ['DELETE', '/api/v1/gatherings/1/members/1'],
+  ])(
+    '旧Gathering Members個別更新APIを公開しない（%s %s）',
+    async (method, path) => {
+      for (const headers of [{}, await bearerHeaders()]) {
+        const res = await app.fetch(
+          new Request(`http://example.com${path}`, {
+            method,
+            headers: { ...headers, 'Content-Type': 'application/json' },
+            ...(method === 'POST' && {
+              body: JSON.stringify({ userId: 1 }),
+            }),
+          }),
+          authEnv
+        );
+
+        expect(res.status).toBe(404);
+      }
+    }
+  );
 
   it('競技ID配下の集合一覧APIは公開されているが認証が必要', async () => {
     const res = await app.fetch(

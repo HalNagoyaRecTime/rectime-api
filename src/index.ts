@@ -68,8 +68,6 @@ import {
 } from './presentation/openapi/masterImports';
 import {
   gatheringListRoute,
-  gatheringMemberCreateRoute,
-  gatheringMemberDeleteRoute,
   gatheringMemberListRoute,
   gatheringMemberReplaceRoute,
   gatheringSpotCreateRoute,
@@ -346,16 +344,6 @@ apiV1.openapi(authed(gatheringMemberListRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.getGatheringMembers(c);
-});
-apiV1.openapi(staffOnly(gatheringMemberCreateRoute), c => {
-  return c
-    .get('container')
-    .gatheringGroupMemberController.addGatheringMember(c);
-});
-apiV1.openapi(staffOnly(gatheringMemberDeleteRoute), c => {
-  return c
-    .get('container')
-    .gatheringGroupMemberController.removeGatheringMember(c);
 });
 apiV1.openapi(staffOnly(gatheringMemberReplaceRoute), c => {
   return c
