@@ -163,7 +163,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(50);
+    expect(documentedOperations).toHaveLength(52);
     expect(document.paths['/api/v1/gatherings']).not.toHaveProperty('post');
     expect(document.components.schemas).not.toHaveProperty(
       'CreateGatheringRequest'

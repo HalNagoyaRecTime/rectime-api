@@ -71,7 +71,9 @@ import {
   gatheringMemberCreateRoute,
   gatheringMemberDeleteRoute,
   gatheringMemberListRoute,
+  gatheringMemberReplaceRoute,
   gatheringSpotCreateRoute,
+  gatheringSpotDeleteRoute,
   gatheringSpotListRoute,
   gatheringSpotUpdateRoute,
 } from './presentation/openapi/gatherings';
@@ -331,14 +333,9 @@ apiV1.openapi(staffOnly(gatheringSpotCreateRoute), c => {
 apiV1.openapi(staffOnly(gatheringSpotUpdateRoute), c => {
   return c.get('container').gatheringSpotController.updateGatheringSpot(c);
 });
-apiV1.delete(
-  '/gathering-spots/:gatheringSpotId',
-  requireAuth,
-  requireStaff,
-  c => {
-    return c.get('container').gatheringSpotController.deleteGatheringSpot(c);
-  }
-);
+apiV1.openapi(staffOnly(gatheringSpotDeleteRoute), c => {
+  return c.get('container').gatheringSpotController.deleteGatheringSpot(c);
+});
 
 // Gathering member routes
 //
@@ -359,6 +356,11 @@ apiV1.openapi(staffOnly(gatheringMemberDeleteRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.removeGatheringMember(c);
+});
+apiV1.openapi(staffOnly(gatheringMemberReplaceRoute), c => {
+  return c
+    .get('container')
+    .gatheringGroupMemberController.replaceGatheringMembers(c);
 });
 
 // Gathering routes
