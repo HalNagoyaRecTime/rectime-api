@@ -39,6 +39,7 @@ function setup() {
     findById: vi.fn().mockResolvedValue(event),
     findByParticipantUserId: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
     delete: vi.fn(),
     hasReferences: vi.fn(),
   };
@@ -54,14 +55,7 @@ function setup() {
     }),
   };
   const notificationScheduleRepository: INotificationScheduleRepository = {
-    create: vi.fn(),
-    findAll: vi.fn(),
-    findById: vi.fn(),
-    deleteDraft: vi.fn(),
     findDraftsByEvent: vi.fn().mockResolvedValue([schedule]),
-    existsFirebaseToken: vi.fn(),
-    existsEvent: vi.fn(),
-    existsNotification: vi.fn(),
     findDeliveryCandidateIds: vi.fn(),
     claimForDelivery: vi.fn(),
     markSent: vi.fn(),

@@ -14,7 +14,6 @@ import { createGatheringSpotRepository } from '../infrastructure/repositories/Ga
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
 import { createEventGatheringSettingsRepository } from '../infrastructure/repositories/EventGatheringSettingsRepository';
-import { createScheduleRepository } from '../infrastructure/repositories/ScheduleRepository';
 import { createNotificationDeliveryQueue } from '../infrastructure/queues/NotificationDeliveryQueue';
 import { createStudentService } from '../application/services/StudentService';
 import { createStaffService } from '../application/services/StaffService';
@@ -26,7 +25,6 @@ import { createMasterImportService } from '../application/services/MasterImportS
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
-import { createNotificationScheduleService } from '../application/services/NotificationScheduleService';
 import { createAdminNotificationService } from '../application/services/AdminNotificationService';
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
@@ -34,7 +32,6 @@ import { createGatheringSpotService } from '../application/services/GatheringSpo
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createGatheringService } from '../application/services/GatheringService';
 import { createEventGatheringSettingsService } from '../application/services/EventGatheringSettingsService';
-import { createScheduleService } from '../application/services/ScheduleService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createStaffController } from '../presentation/controllers/StaffController';
 import { createTeacherController } from '../presentation/controllers/TeacherController';
@@ -46,18 +43,15 @@ import { createFirebaseTokenController } from '../presentation/controllers/Fireb
 import { createNotificationController } from '../presentation/controllers/NotificationController';
 import { createAdminNotificationController } from '../presentation/controllers/AdminNotificationController';
 import { createAdminNotificationManagementController } from '../presentation/controllers/AdminNotificationManagementController';
-import { createNotificationScheduleController } from '../presentation/controllers/NotificationScheduleController';
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createGatheringController } from '../presentation/controllers/GatheringController';
 import { createEventGatheringSettingsController } from '../presentation/controllers/EventGatheringSettingsController';
-import { createScheduleController } from '../presentation/controllers/ScheduleController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createUserStatusRepository } from '../infrastructure/repositories/UserStatusRepository';
 import { createUserStatusService } from '../application/services/UserStatusService';
 import { createUserStatusController } from '../presentation/controllers/UserStatusController';
-import { createUserActivationRepository } from '../infrastructure/repositories/UserActivationRepository';
 import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
 import { createAccountDeletionService } from '../application/services/AccountDeletionService';
@@ -71,7 +65,7 @@ export function createDIContainer(env: Env) {
 
   // Repositories
   const userRepository = createUserRepository(db);
-  const userActivationRepository = createUserActivationRepository(db);
+  const userStatusRepository = createUserStatusRepository(db);
   const userSearchRepository = createUserSearchRepository(db);
   const studentRepository = createStudentRepository(db);
   const staffRepository = createStaffRepository(db);
@@ -94,7 +88,6 @@ export function createDIContainer(env: Env) {
   const gatheringRepository = createGatheringRepository(db, eventRepository);
   const eventGatheringSettingsRepository =
     createEventGatheringSettingsRepository(db);
-  const scheduleRepository = createScheduleRepository(db);
   const notificationDeliveryQueue = createNotificationDeliveryQueue(
     env.NOTIFICATION_DELIVERY_QUEUE
   );
@@ -108,9 +101,7 @@ export function createDIContainer(env: Env) {
     env.AUTH_KV,
     firebaseTokenRepository
   );
-  const userStatusService = createUserStatusService(
-    createUserStatusRepository(db)
-  );
+  const userStatusService = createUserStatusService(userStatusRepository);
   const authorizationService = createAuthorizationService(userRepository);
   // #265: 関連データの削除・匿名化(deleteRelatedData)は
   // DELETE /auth/me(account.ts)から呼ばれる。retryPendingPurgesは
@@ -170,9 +161,6 @@ export function createDIContainer(env: Env) {
     notificationDeliveryQueue,
     fcmService,
   });
-  const notificationScheduleService = createNotificationScheduleService(
-    notificationScheduleRepository
-  );
   const adminNotificationService = createAdminNotificationService(
     adminNotificationRepository
   );
@@ -196,7 +184,6 @@ export function createDIContainer(env: Env) {
     gatheringSpotRepository,
     eventGatheringSettingsRepository
   );
-  const scheduleService = createScheduleService(scheduleRepository);
 
   // Controllers
   const userStatusController = createUserStatusController(userStatusService);
@@ -223,9 +210,6 @@ export function createDIContainer(env: Env) {
       adminNotificationManagementService
     );
   const userSearchController = createUserSearchController(userSearchService);
-  const notificationScheduleController = createNotificationScheduleController(
-    notificationScheduleService
-  );
   const mobileNotificationController = createMobileNotificationController(
     mobileNotificationService
   );
@@ -237,11 +221,10 @@ export function createDIContainer(env: Env) {
   const gatheringController = createGatheringController(gatheringService);
   const eventGatheringSettingsController =
     createEventGatheringSettingsController(eventGatheringSettingsService);
-  const scheduleController = createScheduleController(scheduleService);
 
   return {
     // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
-    userActivationRepository,
+    userStatusRepository,
     authService,
     userStatusController,
     accountDeletionService,
@@ -259,14 +242,12 @@ export function createDIContainer(env: Env) {
     adminNotificationController,
     adminNotificationManagementController,
     userSearchController,
-    notificationScheduleController,
     mobileNotificationController,
     scheduledNotificationService,
     gatheringSpotController,
     gatheringGroupMemberController,
     gatheringController,
     eventGatheringSettingsController,
-    scheduleController,
   };
 }
 
