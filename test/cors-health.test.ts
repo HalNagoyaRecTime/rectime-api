@@ -187,8 +187,7 @@ describe('OpenAPI documentation', () => {
     );
 
     expect(documentedOperations).toHaveLength(49);
-    expect(document.paths['/api/v1/gatherings']?.get).toBeUndefined();
-    expect(document.paths['/api/v1/gatherings']).not.toHaveProperty('post');
+    expect(document.paths['/api/v1/gatherings']).toBeUndefined();
     expect(document.components.schemas).not.toHaveProperty(
       'CreateGatheringRequest'
     );
