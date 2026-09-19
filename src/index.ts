@@ -7,6 +7,7 @@ import { createDIContainer } from './di/container';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
 import { isDocsEnabled, type Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
+import { getAllowedOriginRules, isAllowedOrigin } from './lib/allowedOrigins';
 import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
 import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
 import {
@@ -95,7 +96,6 @@ const app = new OpenAPIHono<{ Bindings: Env }>({
 });
 
 let corsWarnLogged = false;
-const allowedOriginRulesCache = new Map<string, AllowedOriginRule[]>();
 let tenantWarnLogged = false;
 let eventDateWarnLogged = false;
 
@@ -492,63 +492,3 @@ export default {
     );
   },
 };
-
-type AllowedOriginRule =
-  | {
-      type: 'exact';
-      origin: string;
-    }
-  | {
-      type: 'pattern';
-      pattern: RegExp;
-    };
-
-function getAllowedOriginRules(allowedOrigins: string): AllowedOriginRule[] {
-  const cachedRules = allowedOriginRulesCache.get(allowedOrigins);
-  if (cachedRules) {
-    return cachedRules;
-  }
-
-  const rules = allowedOrigins
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean)
-    .map(createAllowedOriginRule);
-
-  allowedOriginRulesCache.set(allowedOrigins, rules);
-  return rules;
-}
-
-function createAllowedOriginRule(allowedOrigin: string): AllowedOriginRule {
-  if (!allowedOrigin.includes('*')) {
-    return {
-      type: 'exact',
-      origin: allowedOrigin,
-    };
-  }
-
-  const allowedOriginPattern = escapeRegExp(allowedOrigin).replace(
-    /\\\*/g,
-    '[^.]+'
-  );
-  return {
-    type: 'pattern',
-    pattern: new RegExp(`^${allowedOriginPattern}$`),
-  };
-}
-
-function isAllowedOrigin(
-  origin: string,
-  allowedOriginRules: AllowedOriginRule[]
-): boolean {
-  return allowedOriginRules.some(rule => {
-    if (rule.type === 'exact') {
-      return origin === rule.origin;
-    }
-    return rule.pattern.test(origin);
-  });
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}

@@ -35,6 +35,8 @@ export interface PkceEntry {
   nonce: string;
   client_type: ClientType;
   purpose: PkcePurpose;
+  // Web認証の開始元。ALLOWED_ORIGINSで検証済みのoriginだけを保持する。
+  frontend_origin?: string;
   created_at: string;
 }
 
