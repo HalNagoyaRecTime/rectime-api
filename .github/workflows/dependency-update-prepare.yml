@@ -31,6 +31,44 @@ jobs:
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           fi
 
+  cleanup-stale-candidates:
+    permissions:
+      contents: write
+      pull-requests: read
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 期限切れの候補branchを削除
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh pr list \
+            --state open \
+            --limit 1000 \
+            --json headRefName \
+            --jq '.[].headRefName' > "$RUNNER_TEMP/open-pr-heads"
+          cutoff=$(date -u -d '7 days ago' +%s)
+
+          gh api --paginate \
+            "repos/${GH_REPO}/git/matching-refs/heads/automation/monthly-dependencies-" \
+            --jq '.[] | [.ref, .object.sha] | @tsv' |
+          while IFS=$'\t' read -r ref sha; do
+            branch=${ref#refs/heads/}
+            if grep -Fqx "$branch" "$RUNNER_TEMP/open-pr-heads"; then
+              continue
+            fi
+
+            email=$(gh api "repos/${GH_REPO}/commits/${sha}" --jq '.commit.author.email // ""')
+            committed_at=$(gh api "repos/${GH_REPO}/commits/${sha}" --jq '.commit.committer.date')
+            committed_epoch=$(date -u -d "$committed_at" +%s)
+            if [ "$email" = "41898282+github-actions[bot]@users.noreply.github.com" ] && \
+               [ "$committed_epoch" -lt "$cutoff" ]; then
+              gh api --method DELETE "repos/${GH_REPO}/git/refs/heads/${branch}"
+              echo "期限切れの候補branchを削除しました: ${branch}"
+            fi
+          done
+
   prepare:
     needs: policy
     if: needs.policy.outputs.should_run == 'true'
@@ -122,37 +160,6 @@ jobs:
         with:
           name: dependency-update-${{ github.run_id }}
           path: .dependency-update
-
-      - name: 期限切れの候補branchを削除
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          gh pr list \
-            --state open \
-            --limit 1000 \
-            --json headRefName \
-            --jq '.[].headRefName' > "$RUNNER_TEMP/open-pr-heads"
-          cutoff=$(date -u -d '7 days ago' +%s)
-
-          gh api --paginate \
-            "repos/${GH_REPO}/git/matching-refs/heads/automation/monthly-dependencies-" \
-            --jq '.[] | [.ref, .object.sha] | @tsv' |
-          while IFS=$'\t' read -r ref sha; do
-            branch=${ref#refs/heads/}
-            if grep -Fqx "$branch" "$RUNNER_TEMP/open-pr-heads"; then
-              continue
-            fi
-
-            email=$(gh api "repos/${GH_REPO}/commits/${sha}" --jq '.commit.author.email // ""')
-            committed_at=$(gh api "repos/${GH_REPO}/commits/${sha}" --jq '.commit.committer.date')
-            committed_epoch=$(date -u -d "$committed_at" +%s)
-            if [ "$email" = "41898282+github-actions[bot]@users.noreply.github.com" ] && \
-               [ "$committed_epoch" -lt "$cutoff" ]; then
-              gh api --method DELETE "repos/${GH_REPO}/git/refs/heads/${branch}"
-              echo "期限切れの候補branchを削除しました: ${branch}"
-            fi
-          done
 
       - name: 未完了の依存関係更新PRを確認
         id: existing
