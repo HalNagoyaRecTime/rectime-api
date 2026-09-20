@@ -1,6 +1,41 @@
 import type { ApiErrorDefinition } from './errorResponse';
 
 export const NotificationErrors = {
+  NOTIFICATION_IMPORTANCE_FORBIDDEN: {
+    status: 403,
+    code: 'NOTIFICATION_IMPORTANCE_FORBIDDEN',
+    message: '指定された通知重要度は利用できません',
+  },
+  NOTIFICATION_PUSH_DELIVERY_NOT_FOUND: {
+    status: 404,
+    code: 'NOTIFICATION_PUSH_DELIVERY_NOT_FOUND',
+    message: 'Push配信が見つかりません',
+  },
+  NOTIFICATION_EDIT_NOT_ALLOWED: {
+    status: 409,
+    code: 'NOTIFICATION_EDIT_NOT_ALLOWED',
+    message: 'この通知は編集できません',
+  },
+  NOTIFICATION_DELETE_NOT_ALLOWED: {
+    status: 409,
+    code: 'NOTIFICATION_DELETE_NOT_ALLOWED',
+    message: 'この通知は削除できません',
+  },
+  NOTIFICATION_SCHEDULE_CANCEL_NOT_ALLOWED: {
+    status: 409,
+    code: 'NOTIFICATION_SCHEDULE_CANCEL_NOT_ALLOWED',
+    message: 'この通知スケジュールはキャンセルできません',
+  },
+  NOTIFICATION_SCHEDULE_STOP_NOT_ALLOWED: {
+    status: 409,
+    code: 'NOTIFICATION_SCHEDULE_STOP_NOT_ALLOWED',
+    message: 'この通知スケジュールは停止できません',
+  },
+  NOTIFICATION_RESEND_NOT_ALLOWED: {
+    status: 409,
+    code: 'NOTIFICATION_RESEND_NOT_ALLOWED',
+    message: 'この通知スケジュールは再送できません',
+  },
   INVALID_MANUAL_NOTIFICATION_REQUEST: {
     status: 400,
     code: 'INVALID_MANUAL_NOTIFICATION_REQUEST',
