@@ -157,5 +157,43 @@ describe('venues/event_venues テーブルの制約', () => {
           .run()
       ).rejects.toThrow('FOREIGN KEY constraint failed');
     });
+
+    it('競技を削除すると紐づけも削除される', async () => {
+      const eventId = await createTestEvent('スキーマテスト競技E');
+      const venueId = await createTestVenue('スキーマテスト第3体育館');
+      await env.DB.prepare(
+        'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)'
+      )
+        .bind(eventId, venueId)
+        .run();
+
+      await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
+        .bind(eventId)
+        .run();
+
+      const row = await env.DB.prepare(
+        'SELECT COUNT(*) AS count FROM event_venues WHERE event_id = ?'
+      )
+        .bind(eventId)
+        .first<{ count: number }>();
+
+      expect(row?.count).toBe(0);
+    });
+
+    it('競技から紐づけられている実施場所は削除できない', async () => {
+      const eventId = await createTestEvent('スキーマテスト競技F');
+      const venueId = await createTestVenue('スキーマテスト柔道場');
+      await env.DB.prepare(
+        'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)'
+      )
+        .bind(eventId, venueId)
+        .run();
+
+      await expect(
+        env.DB.prepare('DELETE FROM venues WHERE venue_id = ?')
+          .bind(venueId)
+          .run()
+      ).rejects.toThrow('FOREIGN KEY constraint failed');
+    });
   });
 });

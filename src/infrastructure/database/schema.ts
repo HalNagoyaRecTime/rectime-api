@@ -159,7 +159,7 @@ export const event_venues = sqliteTable(
     id: integer('event_venue_id').primaryKey({ autoIncrement: true }),
     eventId: integer('event_id')
       .notNull()
-      .references(() => events.id),
+      .references(() => events.id, { onDelete: 'cascade' }),
     venueId: integer('venue_id')
       .notNull()
       .references(() => venues.id),
