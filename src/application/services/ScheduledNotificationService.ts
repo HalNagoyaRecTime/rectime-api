@@ -76,6 +76,13 @@ export function createScheduledNotificationService(deps: {
             );
             return 'failed' as const;
           }
+          if (schedule.is_user_live_active !== 1) {
+            await notificationScheduleRepository.markFailed(
+              schedule.notification_schedule_id,
+              'User is inactive'
+            );
+            return 'failed' as const;
+          }
 
           let result;
           try {

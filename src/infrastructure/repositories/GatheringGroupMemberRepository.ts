@@ -1,11 +1,66 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringGroupMemberEntity } from '../../domain/entities/GatheringGroupMember';
 import { IGatheringGroupMemberRepository } from '../../domain/interfaces/repositories/IGatheringGroupMemberRepository';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import * as schema from '../database/schema';
-import { gathering_group_members, gatherings } from '../database/schema';
+import { gathering_group_members, gatherings, users } from '../database/schema';
+
+function buildAddMembersStatement(
+  orm: ReturnType<typeof drizzle<typeof schema>>,
+  gatheringId: number,
+  addUserIds: number[]
+) {
+  // addUserIdsは呼び出し側(replaceGatheringMembers)がfindMissingUserIdsで
+  // active確認済みだが、確認からこのINSERT実行までの間に対象ユーザーが
+  // 退会処理(deleteByUserId)されるレースがありうる。そのため、値を直接
+  // INSERTするのではなく、書き込み時点でもusers.deletion_status='active'
+  // であることをこのSELECTで再確認し、退会済みユーザーの参加行が
+  // deleteByUserIdでの削除後に復活しないようにする。
+  return (
+    orm
+      .insert(gathering_group_members)
+      .select(
+        orm
+          .select({
+            id: sql<number | null>`null`.as('gathering_group_member_id'),
+            gatheringId: sql<number>`${gatheringId}`.as('gathering_id'),
+            userId: users.id,
+            createdAt: sql<string>`CURRENT_TIMESTAMP`.as('created_at'),
+            updatedAt: sql<string>`CURRENT_TIMESTAMP`.as('updated_at'),
+          })
+          .from(users)
+          .where(
+            and(
+              inArray(users.id, addUserIds),
+              eq(users.deletionStatus, 'active')
+            )
+          )
+      )
+      // 同一内容のPUTが同時に来ると、両リクエストが同じuserIdを
+      // 追加対象と判断しうる。ON CONFLICT DO NOTHINGにより、後から
+      // 書いた方がUNIQUE制約違反で500になることを防ぐ。
+      .onConflictDoNothing({
+        target: [
+          gathering_group_members.gatheringId,
+          gathering_group_members.userId,
+        ],
+      })
+  );
+}
+
+function selectMembers(
+  orm: ReturnType<typeof drizzle<typeof schema>>,
+  gatheringId: number
+) {
+  return orm
+    .select()
+    .from(gathering_group_members)
+    .where(eq(gathering_group_members.gatheringId, gatheringId))
+    .orderBy(asc(gathering_group_members.id))
+    .all();
+}
 
 function toEntity(
   row: typeof gathering_group_members.$inferSelect
@@ -41,12 +96,60 @@ export function createGatheringGroupMemberRepository(
     async findByGatheringId(
       gatheringId: number
     ): Promise<GatheringGroupMemberEntity[]> {
-      const rows = await orm
-        .select()
-        .from(gathering_group_members)
-        .where(eq(gathering_group_members.gatheringId, gatheringId))
-        .orderBy(asc(gathering_group_members.id))
+      const rows = await selectMembers(orm, gatheringId);
+      return rows.map(toEntity);
+    },
+
+    async findMissingUserIds(userIds: number[]): Promise<number[]> {
+      if (userIds.length === 0) return [];
+      const existing = await orm
+        .select({ id: users.id })
+        .from(users)
+        // 退会処理(deleteByUserId, #265)でメンバー行を削除済みのユーザーを、
+        // PUTでの参加者集合指定によって復活させないため、deletion_statusが
+        // 'active'のユーザーのみを実在するものとして扱う。
+        .where(
+          and(inArray(users.id, userIds), eq(users.deletionStatus, 'active'))
+        )
         .all();
+      const existingIds = new Set(existing.map(row => row.id));
+      return userIds.filter(id => !existingIds.has(id));
+    },
+
+    async applyMemberDiff(
+      gatheringId: number,
+      addUserIds: number[],
+      removeUserIds: number[]
+    ): Promise<GatheringGroupMemberEntity[]> {
+      // 変更のないメンバーの行(gathering_group_member_id・created_at)を
+      // 保持するため、全削除→全挿入ではなく追加分・削除分のみへ差分反映する。
+      if (removeUserIds.length > 0) {
+        const deleteStatement = orm
+          .delete(gathering_group_members)
+          .where(
+            and(
+              eq(gathering_group_members.gatheringId, gatheringId),
+              inArray(gathering_group_members.userId, removeUserIds)
+            )
+          );
+
+        if (addUserIds.length > 0) {
+          const insertStatement = buildAddMembersStatement(
+            orm,
+            gatheringId,
+            addUserIds
+          );
+          // D1のbatch()は複数文を1つのトランザクションとして原子的に実行するため、
+          // 削除→追加の間に途中状態が外部から見えることはない。
+          await orm.batch([deleteStatement, insertStatement]);
+        } else {
+          await deleteStatement.run();
+        }
+      } else if (addUserIds.length > 0) {
+        await buildAddMembersStatement(orm, gatheringId, addUserIds).run();
+      }
+
+      const rows = await selectMembers(orm, gatheringId);
       return rows.map(toEntity);
     },
 
@@ -54,15 +157,16 @@ export function createGatheringGroupMemberRepository(
       gatheringId: number,
       userId: number
     ): Promise<GatheringGroupMemberEntity> {
-      const row = await orm
-        .insert(gathering_group_members)
-        .values({ gatheringId, userId })
-        .onConflictDoNothing({
-          target: [
-            gathering_group_members.gatheringId,
-            gathering_group_members.userId,
-          ],
-        })
+      // ensureUserExists(userRepository.exists)はdeletion_statusを見ない
+      // ため、存在確認後にuserIdが退会処理(deleteByUserId)されるレースが
+      // ありうる。buildAddMembersStatementと同様、値を直接INSERTするのでは
+      // なく、書き込み時点でもusers.deletion_status='active'であることを
+      // 再確認し、退会済みユーザーの参加行を作成しないようにする。
+      //
+      // rowがundefinedになるのは「既に参加済み(ON CONFLICT DO NOTHING)」
+      // 「userIdが書き込み時点でactiveでない」のいずれか。ここでは区別
+      // できないため、呼び出し側(Service)がfindMissingUserIdsで再判定する。
+      const row = await buildAddMembersStatement(orm, gatheringId, [userId])
         .returning()
         .get();
       if (!row) throw new Error('Gathering member already exists');
@@ -81,6 +185,13 @@ export function createGatheringGroupMemberRepository(
         .returning()
         .get();
       return Boolean(row);
+    },
+
+    async deleteByUserId(userId: number): Promise<void> {
+      await orm
+        .delete(gathering_group_members)
+        .where(eq(gathering_group_members.userId, userId))
+        .run();
     },
   };
 }

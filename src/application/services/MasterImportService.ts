@@ -54,9 +54,15 @@ const classRoomRowSchema = z.object({
   class_name: stringField,
 });
 
+const emailField = z
+  .union([z.string(), z.number()])
+  .transform(value => String(value).trim().toLowerCase())
+  .pipe(z.string().min(1).max(255).email());
+
 const teacherRowSchema = z.object({
   last_name: stringField,
   first_name: stringField,
+  email: emailField,
 });
 
 function toDTO(

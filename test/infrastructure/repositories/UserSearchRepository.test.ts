@@ -59,14 +59,14 @@ describe('UserSearchRepository', () => {
       .bind(both, studentRoom, 1, 'SEARCH-BOTH')
       .run();
     await env.DB.prepare(
-      'INSERT INTO teachers (user_id) VALUES (?) RETURNING teacher_id'
+      'INSERT INTO teachers (user_id, email) VALUES (?, ?) RETURNING teacher_id'
     )
-      .bind(both)
+      .bind(both, `teacher-${both}@example.test`)
       .run();
     const teacher = await env.DB.prepare(
-      'INSERT INTO teachers (user_id) VALUES (?) RETURNING teacher_id'
+      'INSERT INTO teachers (user_id, email) VALUES (?, ?) RETURNING teacher_id'
     )
-      .bind(inactive)
+      .bind(inactive, `teacher-${inactive}@example.test`)
       .first<{ teacher_id: number }>();
     await env.DB.prepare(
       'UPDATE class_rooms SET teacher_id = ? WHERE class_room_id = ?'
@@ -112,9 +112,9 @@ describe('UserSearchRepository', () => {
       .bind(student, room, 1, 'SEARCH-Q-1')
       .run();
     const teacherRow = await env.DB.prepare(
-      'INSERT INTO teachers (user_id) VALUES (?) RETURNING teacher_id'
+      'INSERT INTO teachers (user_id, email) VALUES (?, ?) RETURNING teacher_id'
     )
-      .bind(teacher)
+      .bind(teacher, `teacher-${teacher}@example.test`)
       .first<{ teacher_id: number }>();
     await env.DB.prepare(
       'UPDATE class_rooms SET teacher_id = ? WHERE class_room_id = ?'

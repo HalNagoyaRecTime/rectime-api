@@ -18,34 +18,6 @@ import {
   z,
 } from './schemas';
 
-// --- 通知 ---
-
-export const notificationResponseSchema = z
-  .object({
-    notification_id: z.number().int(),
-    notification_type: z.string(),
-    title: z.string(),
-    body: z.string(),
-    created_at: timestampSchema,
-    updated_at: timestampSchema,
-  })
-  .openapi('Notification');
-
-export type NotificationResponseDTO = z.infer<
-  typeof notificationResponseSchema
->;
-
-export const notificationListResponseSchema = z
-  .object({
-    notifications: z.array(notificationResponseSchema),
-    ...paginationFields,
-  })
-  .openapi('NotificationList');
-
-export type NotificationListResponseDTO = z.infer<
-  typeof notificationListResponseSchema
->;
-
 // --- 通知予定 ---
 
 export const notificationScheduleResponseSchema = z
@@ -67,21 +39,6 @@ export const notificationScheduleResponseSchema = z
     updated_at: timestampSchema,
   })
   .openapi('NotificationSchedule');
-
-export type NotificationScheduleResponseDTO = z.infer<
-  typeof notificationScheduleResponseSchema
->;
-
-export const notificationScheduleListResponseSchema = z
-  .object({
-    notification_schedules: z.array(notificationScheduleResponseSchema),
-    ...paginationFields,
-  })
-  .openapi('NotificationScheduleList');
-
-export type NotificationScheduleListResponseDTO = z.infer<
-  typeof notificationScheduleListResponseSchema
->;
 
 // --- Firebaseトークン ---
 
@@ -254,32 +211,6 @@ export type MobileNotificationListResponseDTO = z.infer<
   typeof mobileNotificationListResponseSchema
 >;
 
-// --- 通知配信スケジュール（ScheduleController） ---
-
-export const scheduleUpdateSchema = z
-  .object({
-    create_user_id: z.number().int().positive(),
-    new_event_id: z.number().int().positive(),
-    new_importance: z.literal(2).default(2),
-    new_send_at: isoDateTimeSchema,
-    new_gathering_id: z.number().int().positive(),
-  })
-  .openapi('ScheduleUpdateRequest');
-
-export const scheduleUpdateResponseSchema = z
-  .object({
-    create_user_id: z.number().int(),
-    new_event_id: z.number().int(),
-    new_importance: z.number().int(),
-    new_send_at: isoDateTimeSchema,
-    new_gathering_id: z.number().int(),
-  })
-  .openapi('ScheduleUpdateResult');
-
-export type ScheduleUpdateResponseDTO = z.infer<
-  typeof scheduleUpdateResponseSchema
->;
-
 // --- FCM ---
 
 export const fcmNotificationResponseSchema = z
@@ -292,14 +223,8 @@ export type FcmNotificationResponseDTO = z.infer<
 
 // --- パラメータ・リクエスト本文 ---
 
-export const notificationIdParams = z.object({
-  id: positivePathParam('id', '通知ID'),
-});
 export const adminNotificationIdParams = z.object({
   notificationId: positivePathParam('notificationId', '通知ID'),
-});
-export const notificationScheduleIdParams = z.object({
-  id: positivePathParam('id', '通知予定ID'),
 });
 export const mobileNotificationIdParams = z.object({
   notificationId: positivePathParam('notificationId', '通知ID'),
@@ -311,25 +236,6 @@ export const registerFirebaseTokenSchema = z
     platform: z.enum(['ios', 'android']),
   })
   .openapi('RegisterFirebaseTokenRequest');
-
-export const createNotificationSchema = z
-  .object({
-    notificationType: z.string().trim().min(1),
-    title: z.string().trim().min(1),
-    body: z.string().trim().min(1),
-  })
-  .openapi('CreateNotificationRequest');
-
-export const updateNotificationSchema = z
-  .object({
-    title: z.string().trim().min(1).optional(),
-    body: z.string().trim().min(1).optional(),
-  })
-  .openapi('UpdateNotificationRequest');
-
-export const notificationListQuery = z
-  .object({ notificationType: z.string().trim().min(1).optional() })
-  .merge(paginationQuery(100, 50));
 
 export const createManualNotificationSchema = z
   .object({
@@ -358,27 +264,6 @@ export const adminNotificationListQuery = z
   })
   .merge(paginationQuery(100, 50));
 
-export const notificationScheduleListQuery = z
-  .object({
-    sendStatus: sendStatusSchema.optional(),
-    eventId: z.coerce.number().int().positive().optional(),
-    createdUserId: z.coerce.number().int().positive().optional(),
-    firebaseTokenId: z.coerce.number().int().positive().optional(),
-    from: isoDateTimeSchema.optional(),
-    to: isoDateTimeSchema.optional(),
-  })
-  .merge(paginationQuery(100, 50));
-
-export const createNotificationScheduleSchema = z
-  .object({
-    eventId: z.number().int().positive().nullable().optional(),
-    notificationId: z.number().int().positive(),
-    firebaseTokenId: z.number().int().positive(),
-    importance: z.literal(2).optional(),
-    sendAt: isoDateTimeSchema,
-  })
-  .openapi('CreateNotificationScheduleRequest');
-
 export const testNotificationSchema = z
   .object({
     title: z.string().min(1),
@@ -405,29 +290,6 @@ export const firebaseTokenCreateRoute = createRoute({
     400: badRequestResponse,
     401: unauthorizedResponse,
     404: notFoundResponse,
-    409: conflictResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const scheduleUpdateRoute = createRoute({
-  method: 'put',
-  path: '/notification/schedules/{notificationId}',
-  tags: ['Notification schedules'],
-  summary: '通知の配信予定を更新する',
-  security: bearerAuth,
-  request: {
-    params: adminNotificationIdParams,
-    body: {
-      content: { 'application/json': { schema: scheduleUpdateSchema } },
-      required: true,
-    },
-  },
-  responses: {
-    200: jsonResponse(scheduleUpdateResponseSchema, '更新した配信予定'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
     409: conflictResponse,
     500: internalServerErrorResponse,
   },
@@ -537,83 +399,6 @@ export const adminNotificationDeleteRoute = createRoute({
   },
 });
 
-export const notificationCreateRoute = createRoute({
-  method: 'post',
-  path: '/notifications',
-  tags: ['Notifications'],
-  summary: '通知を作成する',
-  security: bearerAuth,
-  request: {
-    body: {
-      content: { 'application/json': { schema: createNotificationSchema } },
-      required: true,
-    },
-  },
-  responses: {
-    201: jsonResponse(notificationResponseSchema, '作成した通知'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const notificationListRoute = createRoute({
-  method: 'get',
-  path: '/notifications',
-  tags: ['Notifications'],
-  summary: '通知一覧を取得する',
-  security: bearerAuth,
-  request: { query: notificationListQuery },
-  responses: {
-    200: jsonResponse(notificationListResponseSchema, '通知一覧'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const notificationDetailRoute = createRoute({
-  method: 'get',
-  path: '/notifications/{id}',
-  tags: ['Notifications'],
-  summary: '通知を取得する',
-  security: bearerAuth,
-  request: { params: notificationIdParams },
-  responses: {
-    200: jsonResponse(notificationResponseSchema, '通知'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const notificationUpdateRoute = createRoute({
-  method: 'put',
-  path: '/notifications/{id}',
-  tags: ['Notifications'],
-  summary: '通知を更新する',
-  security: bearerAuth,
-  request: {
-    params: notificationIdParams,
-    body: {
-      content: { 'application/json': { schema: updateNotificationSchema } },
-      required: true,
-    },
-  },
-  responses: {
-    200: jsonResponse(notificationResponseSchema, '更新した通知'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
 export const myNotificationListRoute = createRoute({
   method: 'get',
   path: '/me/notifications',
@@ -641,81 +426,6 @@ export const myNotificationDetailRoute = createRoute({
     400: badRequestResponse,
     401: unauthorizedResponse,
     404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const notificationScheduleListRoute = createRoute({
-  method: 'get',
-  path: '/notification-schedules',
-  tags: ['Notification schedules'],
-  summary: '通知予定一覧を取得する',
-  security: bearerAuth,
-  request: { query: notificationScheduleListQuery },
-  responses: {
-    200: jsonResponse(notificationScheduleListResponseSchema, '通知予定一覧'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const notificationScheduleCreateRoute = createRoute({
-  method: 'post',
-  path: '/notification-schedules',
-  tags: ['Notification schedules'],
-  summary: '通知予定を作成する',
-  security: bearerAuth,
-  request: {
-    body: {
-      content: {
-        'application/json': { schema: createNotificationScheduleSchema },
-      },
-      required: true,
-    },
-  },
-  responses: {
-    201: jsonResponse(notificationScheduleResponseSchema, '作成した通知予定'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const notificationScheduleDetailRoute = createRoute({
-  method: 'get',
-  path: '/notification-schedules/{id}',
-  tags: ['Notification schedules'],
-  summary: '通知予定を取得する',
-  security: bearerAuth,
-  request: { params: notificationScheduleIdParams },
-  responses: {
-    200: jsonResponse(notificationScheduleResponseSchema, '通知予定'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const notificationScheduleDeleteRoute = createRoute({
-  method: 'delete',
-  path: '/notification-schedules/{id}',
-  tags: ['Notification schedules'],
-  summary: '通知予定を削除する',
-  security: bearerAuth,
-  request: { params: notificationScheduleIdParams },
-  responses: {
-    204: noContentResponse,
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    409: conflictResponse,
     500: internalServerErrorResponse,
   },
 });

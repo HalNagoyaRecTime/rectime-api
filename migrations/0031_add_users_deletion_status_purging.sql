@@ -1,0 +1,18 @@
+-- アカウント削除(#265)の後片付け(関連データの削除・匿名化)は複数テーブルへの
+-- 個別の書き込みで構成され、単一のトランザクションにできない。そのため
+-- 「削除を受け付けた」と「後片付けまで完了した」を区別できるようにする。
+--
+-- deletion_status自体のCHECK制約は変更しない。SQLiteでCHECK制約を変更する
+-- にはテーブル再作成(RENAME→CREATE→INSERT SELECT→DROP)が必要だが、
+-- usersは多数のテーブル(students/staffs/teachers/microsoft_account_links/
+-- class_rooms.teacher_id/notification_schedules.created_user_id/
+-- gathering_group_members等)から外部キー参照されており、D1はauto-commit
+-- (各ステートメントを個別にコミットする)のため、PRAGMA defer_foreign_keys
+-- を使ってもRENAME中の外部キー違反を回避できない。
+--
+-- 代わりに、後片付け完了時刻を持つ列を追加する。deletion_status='deleted'
+-- かつpurged_at IS NULLが「削除を受け付けたが後片付けが未完了」、
+-- purged_at IS NOT NULLが「後片付けまで完了」を表す。
+-- `WHERE deletion_status = 'deleted' AND purged_at IS NULL`で、途中失敗した
+-- 利用者を機械的に抽出できる。
+ALTER TABLE users ADD COLUMN purged_at TEXT;

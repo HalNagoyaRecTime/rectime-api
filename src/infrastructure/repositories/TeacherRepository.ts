@@ -1,10 +1,24 @@
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '../database/schema';
-import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
-import { class_rooms, teachers, users } from '../database/schema';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
+import { class_rooms, staffs, teachers, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import {
+  TeacherClassRoomEntity,
   TeacherEntity,
   TeacherPage,
   TeacherSearchFilter,
@@ -14,8 +28,10 @@ import {
 import {
   ITeacherRepository,
   NewTeacherInput,
+  TeacherMicrosoftLinkCandidate,
 } from '../../domain/interfaces/repositories/ITeacherRepository';
 import { chunkArray } from './chunk';
+import { escapeLikePattern } from '../helpers/escapeLikePattern';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
 
@@ -23,6 +39,11 @@ type ReturnedUserRow = {
   user_id: number;
   user_name: string;
   is_live_active: number;
+};
+
+type ReturnedBulkUserRow = {
+  user_id: number;
+  user_name: string;
 };
 
 type ReturnedTeacherRow = {
@@ -33,22 +54,19 @@ type ReturnedTeacherRow = {
 const DEFAULT_OFFSET = 0;
 const DEFAULT_LIMIT = 50;
 
-// LIKE検索の対象文字列に % や _ そのものが含まれていても、ワイルドカードとして
-// 展開されず文字通りに一致するよう、SQLiteの ESCAPE 句と組み合わせて使う。
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, char => `\\${char}`);
-}
-
 type TeacherJoinRow = {
   teachers: typeof teachers.$inferSelect;
   users: typeof users.$inferSelect;
+  staffs: typeof staffs.$inferSelect | null;
 };
 
-function toClassRoom(row: typeof class_rooms.$inferSelect) {
+function toClassRoom(
+  row: typeof class_rooms.$inferSelect
+): TeacherClassRoomEntity {
   return {
-    class_room_id: row.id,
-    class_code: row.classCode,
-    class_name: row.name,
+    classRoomId: row.id,
+    classCode: row.classCode,
+    className: row.name,
   };
 }
 
@@ -77,25 +95,29 @@ async function loadClassRoomsByTeacherIds(
 
 function toEntity(
   row: TeacherJoinRow,
-  classRooms: ReturnType<typeof toClassRoom>[]
+  classRooms: TeacherClassRoomEntity[]
 ): TeacherEntity {
   return {
-    teacher_id: row.teachers.id,
-    user_id: row.users.id,
-    user_name: row.users.userName,
-    is_live_active: Boolean(row.users.isLiveActive),
-    class_rooms: classRooms,
+    teacherId: row.teachers.id,
+    userId: row.users.id,
+    userName: row.users.userName,
+    email: row.teachers.email,
+    isLiveActive: Boolean(row.users.isLiveActive),
+    isStaff: Boolean(row.staffs),
+    classRooms,
   };
 }
 
 export function createTeacherRepository(db: D1Database): ITeacherRepository {
   const orm = drizzle(db, { schema });
+  const searchClassRooms = alias(class_rooms, 'search_class_rooms');
   return {
     async findById(id: number): Promise<TeacherEntity | null> {
       const result = await orm
         .select()
         .from(teachers)
         .innerJoin(users, eq(teachers.userId, users.id))
+        .leftJoin(staffs, eq(staffs.userId, users.id))
         .where(eq(teachers.id, id))
         .get();
 
@@ -116,35 +138,35 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           : DEFAULT_LIMIT;
 
       const conditions = [];
-      if (filter.teacherId !== undefined) {
-        conditions.push(eq(teachers.id, filter.teacherId));
-      }
-      if (filter.userName) {
-        const escapedPattern = `%${escapeLikePattern(filter.userName)}%`;
-        conditions.push(
-          sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`
-        );
-      }
       if (filter.search) {
         const escapedPattern = `%${escapeLikePattern(filter.search)}%`;
         conditions.push(
           or(
             sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
-            sql`EXISTS (
-              SELECT 1 FROM class_rooms search_class_rooms
-              WHERE search_class_rooms.teacher_id = teachers.teacher_id
-                AND (
-                  search_class_rooms.class_code LIKE ${escapedPattern} ESCAPE ${'\\'}
-                  OR search_class_rooms.class_name LIKE ${escapedPattern} ESCAPE ${'\\'}
+            exists(
+              orm
+                .select({ id: searchClassRooms.id })
+                .from(searchClassRooms)
+                .where(
+                  and(
+                    eq(searchClassRooms.teacherId, teachers.id),
+                    or(
+                      sql`${searchClassRooms.classCode} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
+                      sql`${searchClassRooms.name} LIKE ${escapedPattern} ESCAPE ${'\\'}`
+                    )
+                  )
                 )
-            )`
+            )
           )!
         );
       }
       if (filter.isLiveActive !== undefined) {
         conditions.push(eq(users.isLiveActive, filter.isLiveActive ? 1 : 0));
-      } else {
-        conditions.push(eq(users.isLiveActive, 1));
+      }
+      if (filter.isStaff !== undefined) {
+        conditions.push(
+          filter.isStaff ? isNotNull(staffs.id) : isNull(staffs.id)
+        );
       }
 
       if (filter.classRoomId !== undefined) {
@@ -165,7 +187,8 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       const countBaseQuery = orm
         .select({ count: sql<number>`count(*)` })
         .from(teachers)
-        .innerJoin(users, eq(teachers.userId, users.id));
+        .innerJoin(users, eq(teachers.userId, users.id))
+        .leftJoin(staffs, eq(staffs.userId, users.id));
       const countResult = await (
         whereClause ? countBaseQuery.where(whereClause) : countBaseQuery
       ).get();
@@ -174,14 +197,42 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       const rowsBaseQuery = orm
         .select()
         .from(teachers)
-        .innerJoin(users, eq(teachers.userId, users.id));
+        .innerJoin(users, eq(teachers.userId, users.id))
+        .leftJoin(staffs, eq(staffs.userId, users.id));
       const sortOrder = filter.sortOrder === 'desc' ? desc : asc;
+      const classSortColumn = sql<string | null>`(
+        SELECT MIN(${class_rooms.classCode})
+        FROM ${class_rooms}
+        WHERE ${class_rooms.teacherId} = ${teachers.id}
+      )`;
+      const classNameSortColumn = sql<string | null>`(
+        SELECT MIN(${class_rooms.name})
+        FROM ${class_rooms}
+        WHERE ${class_rooms.teacherId} = ${teachers.id}
+      )`;
       const sortColumn =
-        filter.sortBy === 'displayName' ? users.userName : teachers.id;
+        filter.sortBy === 'displayName'
+          ? users.userName
+          : filter.sortBy === 'classCode'
+            ? classSortColumn
+            : filter.sortBy === 'className'
+              ? classNameSortColumn
+              : filter.sortBy === 'isStaff'
+                ? sql<number>`CASE WHEN ${staffs.id} IS NULL THEN 0 ELSE 1 END`
+                : filter.sortBy === 'isLiveActive'
+                  ? users.isLiveActive
+                  : teachers.id;
+      const classSortKey =
+        filter.sortBy === 'className' ? classNameSortColumn : classSortColumn;
+      const classSortLast = sql<number>`CASE WHEN ${classSortKey} IS NULL THEN 1 ELSE 0 END`;
+      const orderBy =
+        filter.sortBy === 'classCode' || filter.sortBy === 'className'
+          ? [classSortLast, sortOrder(sortColumn), asc(teachers.id)]
+          : [sortOrder(sortColumn), asc(teachers.id)];
       const results = await (
         whereClause ? rowsBaseQuery.where(whereClause) : rowsBaseQuery
       )
-        .orderBy(sortOrder(sortColumn), asc(teachers.id))
+        .orderBy(...orderBy)
         .limit(limit)
         .offset(offset)
         .all();
@@ -196,6 +247,63 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       );
 
       return { items, total, limit, offset };
+    },
+
+    async existsById(id: number): Promise<boolean> {
+      return Boolean(
+        await orm
+          .select({ id: teachers.id })
+          .from(teachers)
+          .where(eq(teachers.id, id))
+          .get()
+      );
+    },
+
+    async findExistingEmails(emails: string[]): Promise<Set<string>> {
+      const unique = Array.from(new Set(emails));
+      const found = new Set<string>();
+
+      for (const chunk of chunkArray(unique, D1_MAX_BOUND_PARAMETERS)) {
+        const placeholders = chunk.map(() => '?').join(', ');
+        const result = await db
+          .prepare(
+            `SELECT email FROM teachers WHERE email IN (${placeholders})`
+          )
+          .bind(...chunk)
+          .all<{ email: string }>();
+        for (const row of result.results) {
+          found.add(row.email);
+        }
+      }
+
+      return found;
+    },
+
+    async findMicrosoftLinkCandidateByEmail(
+      email: string
+    ): Promise<TeacherMicrosoftLinkCandidate | null> {
+      if (!email) return null;
+
+      const row = await orm
+        .select({
+          userId: users.id,
+          userName: users.userName,
+          isLiveActive: users.isLiveActive,
+        })
+        .from(teachers)
+        .innerJoin(users, eq(teachers.userId, users.id))
+        .where(
+          and(eq(teachers.email, email), ne(users.deletionStatus, 'deleted'))
+        )
+        .get();
+
+      return row
+        ? {
+            userId: row.userId,
+            userName: row.userName,
+            isLiveActive: Boolean(row.isLiveActive),
+          }
+        : null;
     },
 
     async existsClassRooms(classRoomIds: number[]): Promise<boolean> {
@@ -213,6 +321,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
     ): Promise<TeacherEntity> {
       const displayName =
         'userName' in input ? input.userName : input.displayName;
+      const email = input.email;
       const classRoomIds = 'userName' in input ? input.classRoomIds : [];
       const hasClassRoomAssignments = classRoomIds.length > 0;
 
@@ -242,12 +351,12 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
               .bind(displayName, ...classRoomIds, classRoomIds.length),
             db
               .prepare(
-                `INSERT INTO teachers (user_id, updated_at)
-                 SELECT last_insert_rowid(), CURRENT_TIMESTAMP
+                `INSERT INTO teachers (user_id, email, updated_at)
+                 SELECT last_insert_rowid(), ?, CURRENT_TIMESTAMP
                  WHERE ${classRoomsExistCondition}
                  RETURNING teacher_id, user_id`
               )
-              .bind(...classRoomIds, classRoomIds.length),
+              .bind(email, ...classRoomIds, classRoomIds.length),
             db
               .prepare(
                 `UPDATE class_rooms
@@ -267,11 +376,13 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
                  RETURNING user_id, user_name, is_live_active`
               )
               .bind(displayName),
-            db.prepare(
-              `INSERT INTO teachers (user_id, updated_at)
-               VALUES (last_insert_rowid(), CURRENT_TIMESTAMP)
-               RETURNING teacher_id, user_id`
-            ),
+            db
+              .prepare(
+                `INSERT INTO teachers (user_id, email, updated_at)
+                 VALUES (last_insert_rowid(), ?, CURRENT_TIMESTAMP)
+                 RETURNING teacher_id, user_id`
+              )
+              .bind(email),
           ]);
 
       const [userResult, teacherResult] = batchResults;
@@ -298,6 +409,7 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .select()
         .from(teachers)
         .innerJoin(users, eq(teachers.userId, users.id))
+        .leftJoin(staffs, eq(staffs.userId, users.id))
         .where(eq(teachers.id, created.teacher_id))
         .get();
       if (!result) throw new Error('Failed to create teacher');
@@ -324,32 +436,40 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         userStatements.push(
           db
             .prepare(
-              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id`
+              `INSERT INTO users (user_name, updated_at) VALUES ${placeholders} RETURNING user_id, user_name`
             )
             .bind(...values)
         );
       }
 
-      const userResults = await db.batch<{ user_id: number }>(userStatements);
-      const userIds: number[] = [];
+      const userResults = await db.batch<ReturnedBulkUserRow>(userStatements);
+      const returnedUsers: ReturnedBulkUserRow[] = [];
       for (const result of userResults) {
         for (const row of result.results) {
-          userIds.push(row.user_id);
+          returnedUsers.push(row);
         }
       }
+      const userIds = returnedUsers.map(row => row.user_id);
 
       try {
+        const teacherRows = pairTeachersWithCreatedUsers(inputs, returnedUsers);
         const teacherStatements: D1PreparedStatement[] = [];
-        for (const chunk of chunkArray(userIds, D1_MAX_BOUND_PARAMETERS)) {
+        // 1行あたり user_id と email の2つをbindするため、行数の上限は
+        // D1のbind上限の半分になる。
+        for (const chunk of chunkArray(
+          teacherRows,
+          Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
+        )) {
           const placeholders = chunk
-            .map(() => '(?, CURRENT_TIMESTAMP)')
+            .map(() => '(?, ?, CURRENT_TIMESTAMP)')
             .join(', ');
+          const values = chunk.flatMap(row => [row.userId, row.email]);
           teacherStatements.push(
             db
               .prepare(
-                `INSERT INTO teachers (user_id, updated_at) VALUES ${placeholders}`
+                `INSERT INTO teachers (user_id, email, updated_at) VALUES ${placeholders}`
               )
-              .bind(...chunk)
+              .bind(...values)
           );
         }
         await db.batch(teacherStatements);
@@ -374,9 +494,10 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         .select()
         .from(teachers)
         .innerJoin(users, eq(teachers.userId, users.id))
+        .leftJoin(staffs, eq(staffs.userId, users.id))
         .where(eq(teachers.id, id))
         .get();
-      if (!existing || existing.users.isLiveActive !== 1) return null;
+      if (!existing) return null;
 
       const now = new Date().toISOString();
 
@@ -387,6 +508,11 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           updatedAt: now,
         })
         .where(eq(users.id, existing.users.id));
+
+      const updateTeacherStatement = orm
+        .update(teachers)
+        .set({ email: input.email, updatedAt: now })
+        .where(eq(teachers.id, id));
 
       // 1クラスの担当教員は最大1人のため、担当クラスの入れ替えは
       // class_rooms.teacher_id の付け替えで表現する。
@@ -420,49 +546,88 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           .where(inArray(class_rooms.id, input.classRoomIds));
         await orm.batch([
           updateUserStatement,
+          updateTeacherStatement,
           clearAssignmentsStatement,
           setAssignmentsStatement,
         ]);
       } else {
-        await orm.batch([updateUserStatement, clearAssignmentsStatement]);
+        await orm.batch([
+          updateUserStatement,
+          updateTeacherStatement,
+          clearAssignmentsStatement,
+        ]);
       }
 
       const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [id]);
       return toEntity(
         {
-          teachers: existing.teachers,
+          teachers: {
+            ...existing.teachers,
+            email: input.email,
+            updatedAt: now,
+          },
           users: {
             ...existing.users,
             userName: input.userName,
             updatedAt: now,
           },
+          staffs: existing.staffs,
         },
         classRoomsByTeacher.get(id) ?? []
       );
     },
 
-    async deactivate(id: number): Promise<boolean> {
+    async deleteByUserId(userId: number): Promise<boolean> {
       const existing = await orm
-        .select({ userId: teachers.userId })
+        .select({ id: teachers.id })
         .from(teachers)
-        .where(eq(teachers.id, id))
+        .where(eq(teachers.userId, userId))
         .get();
       if (!existing) return false;
 
-      const now = new Date().toISOString();
+      // class_rooms.teacher_idはON DELETE句を持たない外部キーのため、
+      // teachers行を削除する前に必ずNULL化する(削除後のNULL化はFK違反)。
       await orm.batch([
         orm
-          .update(users)
-          .set({ isLiveActive: 0, updatedAt: now })
-          .where(eq(users.id, existing.userId)),
-        orm
           .update(class_rooms)
-          .set({ teacherId: null, updatedAt: now })
-          .where(eq(class_rooms.teacherId, id)),
+          .set({ teacherId: null, updatedAt: new Date().toISOString() })
+          .where(eq(class_rooms.teacherId, existing.id)),
+        orm.delete(teachers).where(eq(teachers.id, existing.id)),
       ]);
       return true;
     },
   };
+}
+
+function pairTeachersWithCreatedUsers(
+  inputs: NewTeacherInput[],
+  returnedUsers: ReturnedBulkUserRow[]
+) {
+  if (returnedUsers.length !== inputs.length) {
+    throw new Error(
+      `Created user count does not match teacher input count: expected ${inputs.length}, received ${returnedUsers.length}`
+    );
+  }
+
+  // SQLiteは複数行をRETURNINGした際の行順を保証しない。
+  // https://sqlite.org/lang_returning.html
+  // 一方でuser_idはAUTOINCREMENTでVALUESの並び順に採番され、batch内の各文も
+  // 順に実行されるため、返ってきた行をuser_idの昇順に並べ直すと入力の並びに戻る。
+  // emailはログイン時の本人確認に使うキーで、取り違えると別人として紐付くため、
+  // 表示名がその並びと一致することも検証してから対応付ける。
+  // (同姓同名が同じ取り込みに複数いる場合、この検証では並びの入れ替わりを
+  //  検出できない。対応付けの正しさ自体はuser_idの採番順が担保する。)
+  const sorted = [...returnedUsers].sort((a, b) => a.user_id - b.user_id);
+
+  return inputs.map((input, index) => {
+    const user = sorted[index];
+    if (user.user_name !== input.displayName) {
+      throw new Error(
+        `Created user order does not match teacher input order at index ${index}`
+      );
+    }
+    return { userId: user.user_id, email: input.email };
+  });
 }
 
 async function deleteUsersByIds(db: D1Database, userIds: number[]) {

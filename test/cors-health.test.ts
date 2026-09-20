@@ -60,18 +60,17 @@ describe('OpenAPI documentation', () => {
       '/api/v1/admin/notifications',
       '/api/v1/admin/notifications/{notificationId}',
       '/api/v1/admin/users',
+      '/api/v1/admin/users/{userId}',
+      '/api/v1/admin/users/{userId}/staff',
       '/api/v1/classrooms',
       '/api/v1/classrooms/{classId}',
       '/api/v1/events',
       '/api/v1/events/{eventId}',
       '/api/v1/events/{eventId}/gatherings',
-      '/api/v1/events/{eventId}/notification-summary',
-      '/api/v1/events/{eventId}/schedule',
       '/api/v1/firebase-tokens',
       '/api/v1/gathering-spots',
       '/api/v1/gathering-spots/{gatheringSpotId}',
       '/api/v1/gatherings',
-      '/api/v1/gatherings/{gatheringId}',
       '/api/v1/gatherings/{gatheringId}/members',
       '/api/v1/gatherings/{gatheringId}/members/{userId}',
       '/api/v1/master-imports',
@@ -79,12 +78,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/master-imports/{validatedFileId}/commit',
       '/api/v1/me/notifications',
       '/api/v1/me/notifications/{notificationId}',
-      '/api/v1/notification-schedules',
-      '/api/v1/notification-schedules/{id}',
-      '/api/v1/notification/schedules/{notificationId}',
-      '/api/v1/notifications',
       '/api/v1/notifications/test',
-      '/api/v1/notifications/{id}',
       '/api/v1/ranking',
       '/api/v1/staffs',
       '/api/v1/staffs/{staffId}',
@@ -102,12 +96,84 @@ describe('OpenAPI documentation', () => {
       nullable: true,
     });
 
+    const teacherListParameters = (
+      document.paths['/api/v1/teachers'].get as {
+        parameters?: Array<{
+          name: string;
+          schema?: { default?: unknown; enum?: unknown[] };
+        }>;
+      }
+    ).parameters;
+    expect(
+      teacherListParameters?.find(param => param.name === 'isStaff')?.schema
+    ).toMatchObject({ default: 'all', enum: ['true', 'false', 'all'] });
+    expect(
+      teacherListParameters?.find(param => param.name === 'isLiveActive')
+        ?.schema
+    ).toMatchObject({ default: 'true', enum: ['true', 'false', 'all'] });
+    expect(
+      teacherListParameters?.find(param => param.name === 'sortBy')?.schema
+    ).toMatchObject({
+      default: 'teacherId',
+      enum: [
+        'teacherId',
+        'displayName',
+        'classCode',
+        'className',
+        'isStaff',
+        'isLiveActive',
+      ],
+    });
+
+    expect(document.paths['/api/v1/teachers/{teacherId}']).not.toHaveProperty(
+      'delete'
+    );
+
+    const studentListParameters = (
+      document.paths['/api/v1/students'].get as {
+        parameters?: Array<{
+          name: string;
+          schema?: { default?: unknown; enum?: unknown[] };
+        }>;
+      }
+    ).parameters;
+    expect(
+      studentListParameters?.find(param => param.name === 'isStaff')?.schema
+    ).toMatchObject({ default: 'all', enum: ['true', 'false', 'all'] });
+    expect(
+      studentListParameters?.find(param => param.name === 'isLiveActive')
+        ?.schema
+    ).toMatchObject({ default: 'true', enum: ['true', 'false', 'all'] });
+    expect(
+      studentListParameters?.find(param => param.name === 'sortBy')?.schema
+    ).toMatchObject({
+      default: 'studentId',
+      enum: [
+        'studentId',
+        'studentIdNumber',
+        'displayName',
+        'classCode',
+        'className',
+        'attendanceNumber',
+        'isStaff',
+        'isLiveActive',
+      ],
+    });
+
     const documentedOperations = Object.values(document.paths).flatMap(path =>
       Object.keys(path).filter(method =>
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(64);
+    expect(documentedOperations).toHaveLength(56);
+    expect(document.paths['/api/v1/gatherings']).not.toHaveProperty('post');
+    expect(document.components.schemas).not.toHaveProperty(
+      'CreateGatheringRequest'
+    );
+    expect(document.paths['/api/v1/events/{eventId}']).not.toHaveProperty(
+      'patch'
+    );
+    expect(document.paths['/api/v1/events/{eventId}']).toHaveProperty('put');
   });
 
   it('認証が必要なルートにBearer認証を定義する', async () => {
@@ -224,7 +290,131 @@ describe('通知配信の実行経路', () => {
   });
 });
 
+describe('通知予定管理APIの廃止', () => {
+  it.each([
+    ['GET', '/api/v1/notification-schedules'],
+    ['GET', '/api/v1/notification-schedules/1'],
+    ['POST', '/api/v1/notification-schedules'],
+    ['DELETE', '/api/v1/notification-schedules/1'],
+    ['PUT', '/api/v1/notification/schedules/1'],
+  ])(
+    '認証の有無にかかわらず旧APIを公開しない（%s %s）',
+    async (method, path) => {
+      for (const headers of [{}, await bearerHeaders()]) {
+        const response = await app.fetch(
+          new Request(`http://example.com${path}`, { method, headers }),
+          authEnv
+        );
+        expect(response.status).toBe(404);
+      }
+    }
+  );
+
+  it('API概要で廃止した通知予定管理APIを案内しない', async () => {
+    const response = await app.fetch(new Request('http://example.com/'), env);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      endpoints: Record<string, string>;
+    };
+    expect(body.endpoints).not.toHaveProperty('schedules');
+    expect(body.endpoints).not.toHaveProperty('notificationSchedules');
+    expect(body.endpoints).toMatchObject({
+      adminNotifications: '/api/v1/admin/notifications',
+      myNotifications: '/api/v1/me/notifications',
+    });
+  });
+
+  it.each([
+    ['GET', '/api/v1/admin/notifications'],
+    ['POST', '/api/v1/admin/notifications'],
+    ['GET', '/api/v1/admin/notifications/1'],
+    ['PUT', '/api/v1/admin/notifications/1'],
+    ['DELETE', '/api/v1/admin/notifications/1'],
+    ['GET', '/api/v1/me/notifications'],
+    ['GET', '/api/v1/me/notifications/1'],
+  ])('利用中の通知APIと認証を維持する（%s %s）', async (method, path) => {
+    const response = await app.fetch(
+      new Request(`http://example.com${path}`, { method }),
+      env
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
+  });
+});
+
+describe('旧Event操作APIの廃止', () => {
+  it.each([
+    ['PATCH', '/api/v1/events/1'],
+    ['PUT', '/api/v1/events/1/schedule'],
+    ['GET', '/api/v1/events/1/notification-summary'],
+  ])('削除した旧APIを公開しない（%s %s）', async (method, path) => {
+    const res = await app.fetch(
+      new Request(`http://example.com${path}`, {
+        method,
+        headers: await bearerHeaders(),
+      }),
+      authEnv
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it('維持対象のPUT /api/v1/events/1は未認証時に401になる', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/api/v1/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+      env
+    );
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
+  });
+});
+
 describe('集合APIの実ルーティング', () => {
+  it.each([
+    ['POST', '/api/v1/gatherings'],
+    ['DELETE', '/api/v1/gatherings/1'],
+  ])('旧Gathering Write APIを公開しない（%s %s）', async (method, path) => {
+    for (const headers of [{}, await bearerHeaders()]) {
+      const res = await app.fetch(
+        new Request(`http://example.com${path}`, {
+          method,
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          ...(method === 'POST' && {
+            body: JSON.stringify({ eventId: 1, gatheringSpotId: 1 }),
+          }),
+        }),
+        authEnv
+      );
+
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it('Event単位の集合設定保存APIは公開されているが認証が必要', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/api/v1/events/1/gatherings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rounds: [] }),
+      }),
+      env
+    );
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
+  });
+
   it.each([
     ['GET', '/api/v1/gathering-groups'],
     ['POST', '/api/v1/gathering-groups'],
