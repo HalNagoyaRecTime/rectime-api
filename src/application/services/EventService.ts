@@ -2,6 +2,7 @@ import type {
   EventEntity,
   EventListOptions,
   EventWithGatheringSummaryEntity,
+  EventWithVenuesEntity,
   EventWriteInput,
 } from '../../domain/entities/Event';
 import type { IEventGatheringSettingsRepository } from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
@@ -10,6 +11,7 @@ import type {
   CreateEventRequestDTO,
   EventDTO,
   EventListItemDTO,
+  EventWithVenuesDTO,
   GetEventsRequestDTO,
   UpdateEventRequestDTO,
 } from '../dto/EventDTO';
@@ -29,11 +31,23 @@ function toEventDTO(event: EventEntity): EventDTO {
   };
 }
 
+function toEventWithVenuesDTO(
+  event: EventWithVenuesEntity
+): EventWithVenuesDTO {
+  return {
+    ...toEventDTO(event),
+    venues: event.venues.map(venue => ({
+      venue_id: venue.venue_id,
+      venue_name: venue.venue_name,
+    })),
+  };
+}
+
 function toEventListItemDTO(
   event: EventWithGatheringSummaryEntity
 ): EventListItemDTO {
   return {
-    ...toEventDTO(event),
+    ...toEventWithVenuesDTO(event),
     gathering_summary: {
       gathering_count: event.gathering_summary.gathering_count,
       configured_gathering_count:
@@ -85,11 +99,14 @@ export function createEventService(
       // 参加人数まで含めてRepositoryが1クエリで返すため、集合予定ごとの追加取得はしない。
       const gatherings =
         await eventGatheringSettingsRepository.findByEventId(id);
-      return { ...toEventDTO(event), rounds: buildRoundSettings(gatherings) };
+      return {
+        ...toEventWithVenuesDTO(event),
+        rounds: buildRoundSettings(gatherings),
+      };
     },
     async getMyEvents(userId) {
       const events = await eventRepository.findByParticipantUserId(userId);
-      return events.map(toEventDTO);
+      return events.map(toEventWithVenuesDTO);
     },
     async createEvent(event) {
       return toEventDTO(await eventRepository.create(toEventWriteInput(event)));

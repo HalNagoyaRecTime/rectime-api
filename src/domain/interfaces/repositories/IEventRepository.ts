@@ -2,6 +2,7 @@ import {
   EventEntity,
   EventListOptions,
   EventWithGatheringSummaryEntity,
+  EventWithVenuesEntity,
   EventWriteInput,
 } from '../../entities/Event';
 
@@ -10,8 +11,8 @@ export interface IEventRepository {
   findAll: (
     options: EventListOptions
   ) => Promise<{ events: EventWithGatheringSummaryEntity[]; total: number }>;
-  findById: (id: number) => Promise<EventEntity | null>;
-  findByParticipantUserId: (userId: number) => Promise<EventEntity[]>;
+  findById: (id: number) => Promise<EventWithVenuesEntity | null>;
+  findByParticipantUserId: (userId: number) => Promise<EventWithVenuesEntity[]>;
   create: (event: EventWriteInput) => Promise<EventEntity>;
   update: (id: number, event: EventWriteInput) => Promise<EventEntity | null>;
   delete: (id: number) => Promise<boolean>;

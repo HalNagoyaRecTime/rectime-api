@@ -1,7 +1,10 @@
+import type { EventVenueDTO } from './EventDTO';
+
 export interface MobileNotificationEventDTO {
   event_id: number;
   event_name: string;
   venue: string;
+  venues: EventVenueDTO[];
   start_time: string;
   end_time: string;
 }
