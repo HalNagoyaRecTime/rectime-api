@@ -74,6 +74,12 @@ import {
   gatheringSpotUpdateRoute,
 } from './presentation/openapi/gatherings';
 import {
+  venueCreateRoute,
+  venueDeleteRoute,
+  venueListRoute,
+  venueUpdateRoute,
+} from './presentation/openapi/venues';
+import {
   adminNotificationCreateRoute,
   adminNotificationDeleteRoute,
   adminNotificationDetailRoute,
@@ -152,6 +158,7 @@ app.openapi(apiOverviewRoute, c => {
         events: '/api/v1/events',
         classRooms: '/api/v1/classrooms',
         gatheringSpots: '/api/v1/gathering-spots',
+        venues: '/api/v1/venues',
         gatherings: '/api/v1/gatherings',
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
         firebaseTokens: '/api/v1/firebase-tokens',
@@ -315,6 +322,20 @@ apiV1.openapi(staffOnly(gatheringSpotUpdateRoute), c => {
 });
 apiV1.openapi(staffOnly(gatheringSpotDeleteRoute), c => {
   return c.get('container').gatheringSpotController.deleteGatheringSpot(c);
+});
+
+// Venue routes
+apiV1.openapi(staffOnly(venueListRoute), c => {
+  return c.get('container').venueController.getAllVenues(c);
+});
+apiV1.openapi(staffOnly(venueCreateRoute), c => {
+  return c.get('container').venueController.createVenue(c);
+});
+apiV1.openapi(staffOnly(venueUpdateRoute), c => {
+  return c.get('container').venueController.updateVenue(c);
+});
+apiV1.openapi(staffOnly(venueDeleteRoute), c => {
+  return c.get('container').venueController.deleteVenue(c);
 });
 
 // Gathering member routes
