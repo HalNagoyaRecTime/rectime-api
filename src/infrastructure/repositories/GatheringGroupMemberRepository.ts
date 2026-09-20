@@ -3,7 +3,6 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringGroupMemberEntity } from '../../domain/entities/GatheringGroupMember';
 import { IGatheringGroupMemberRepository } from '../../domain/interfaces/repositories/IGatheringGroupMemberRepository';
-import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import * as schema from '../database/schema';
 import { gathering_group_members, gatherings, users } from '../database/schema';
 
@@ -75,8 +74,7 @@ function toEntity(
 }
 
 export function createGatheringGroupMemberRepository(
-  db: D1Database,
-  userRepository: IUserRepository
+  db: D1Database
 ): IGatheringGroupMemberRepository {
   const orm = drizzle(db, { schema });
 
@@ -89,9 +87,6 @@ export function createGatheringGroupMemberRepository(
         .get();
       return Boolean(row);
     },
-
-    // ユーザーの存在確認自体はUserRepositoryの責務のため、重複させず委譲する。
-    existsUser: userId => userRepository.exists(userId),
 
     async findByGatheringId(
       gatheringId: number
@@ -151,40 +146,6 @@ export function createGatheringGroupMemberRepository(
 
       const rows = await selectMembers(orm, gatheringId);
       return rows.map(toEntity);
-    },
-
-    async create(
-      gatheringId: number,
-      userId: number
-    ): Promise<GatheringGroupMemberEntity> {
-      // ensureUserExists(userRepository.exists)はdeletion_statusを見ない
-      // ため、存在確認後にuserIdが退会処理(deleteByUserId)されるレースが
-      // ありうる。buildAddMembersStatementと同様、値を直接INSERTするのでは
-      // なく、書き込み時点でもusers.deletion_status='active'であることを
-      // 再確認し、退会済みユーザーの参加行を作成しないようにする。
-      //
-      // rowがundefinedになるのは「既に参加済み(ON CONFLICT DO NOTHING)」
-      // 「userIdが書き込み時点でactiveでない」のいずれか。ここでは区別
-      // できないため、呼び出し側(Service)がfindMissingUserIdsで再判定する。
-      const row = await buildAddMembersStatement(orm, gatheringId, [userId])
-        .returning()
-        .get();
-      if (!row) throw new Error('Gathering member already exists');
-      return toEntity(row);
-    },
-
-    async remove(gatheringId: number, userId: number): Promise<boolean> {
-      const row = await orm
-        .delete(gathering_group_members)
-        .where(
-          and(
-            eq(gathering_group_members.gatheringId, gatheringId),
-            eq(gathering_group_members.userId, userId)
-          )
-        )
-        .returning()
-        .get();
-      return Boolean(row);
     },
 
     async deleteByUserId(userId: number): Promise<void> {
