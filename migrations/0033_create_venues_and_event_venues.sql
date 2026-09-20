@@ -22,3 +22,15 @@ CREATE TABLE event_venues (
 CREATE UNIQUE INDEX uq_event_venues_event_venue ON event_venues(event_id, venue_id);
 
 CREATE INDEX idx_event_venues_venue_id ON event_venues(venue_id);
+
+-- events.venue は後続のIssueで削除される。シードを含む既存の競技をここで
+-- 移しておくと、移行後も実施場所が入った状態で開発を続けられる。
+INSERT INTO venues (venue_name)
+SELECT DISTINCT TRIM(venue)
+FROM events
+WHERE TRIM(venue) <> '';
+
+INSERT INTO event_venues (event_id, venue_id)
+SELECT events.event_id, venues.venue_id
+FROM events
+INNER JOIN venues ON venues.venue_name = TRIM(events.venue);
