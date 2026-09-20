@@ -14,7 +14,8 @@ describe('0018_create_notification_schedules.sql', () => {
         expect.objectContaining({ name: 'notification_schedule_id', pk: 1 }),
         expect.objectContaining({ name: 'created_user_id' }),
         expect.objectContaining({ name: 'event_id' }),
-        expect.objectContaining({ name: 'firebase_token_id', notnull: 1 }),
+        // v3ではScheduleはToken単位ではないため、Token FKはnullable。
+        expect.objectContaining({ name: 'firebase_token_id', notnull: 0 }),
         expect.objectContaining({ name: 'notification_id', notnull: 1 }),
         expect.objectContaining({ name: 'importance', notnull: 1, dflt_value: '2' }),
         expect.objectContaining({ name: 'send_status', notnull: 1, dflt_value: "'draft'" }),

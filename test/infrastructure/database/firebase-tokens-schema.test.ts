@@ -1,10 +1,8 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
 
-// firebase_tokens は migrations/0028 で「1利用者1端末」モデルへ揃えた。
-// user_id への UNIQUE で1利用者1行を保証しつつ、fcm_token の UNIQUE は
-// 有効な行だけに限定している。端末を別の利用者へ付け替えるとき、旧所有者の行は
-// notification_schedules から参照されていて削除できず、無効化して残すため。
+// firebase_tokens は通知v3で1利用者複数端末モデルへ移行した。
+// 旧active flagとpartial uniqueは#460までのexpand互換用に残している。
 describe('firebase_tokens テーブルの制約', () => {
   afterEach(async () => {
     await env.DB.prepare(
@@ -38,13 +36,17 @@ describe('firebase_tokens テーブルの制約', () => {
       .run();
   }
 
-  it('同じ user_id で2行目を作ろうとすると UNIQUE 制約で失敗する', async () => {
+  it('同じ user_id で複数Tokenを登録できる', async () => {
     const userId = await createTestUser('Firebaseスキーマテスト1利用者1行');
     await insertToken(userId, 'schema-token-first', 1);
 
-    await expect(
-      insertToken(userId, 'schema-token-second', 1)
-    ).rejects.toThrow();
+    await insertToken(userId, 'schema-token-second', 1);
+    const rows = await env.DB.prepare(
+      'SELECT COUNT(*) AS count FROM firebase_tokens WHERE user_id = ?'
+    )
+      .bind(userId)
+      .first<{ count: number }>();
+    expect(rows?.count).toBe(2);
   });
 
   it('同じ fcm_token を持つ有効な行は1つしか作れない', async () => {
