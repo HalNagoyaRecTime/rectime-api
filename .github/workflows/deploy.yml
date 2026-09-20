@@ -31,21 +31,15 @@ on:
 # キャンセルしてしまう。これを防ぐため、workflow_dispatch(main以外)専用のユニークな
 # group('invalid-dispatch-<ブランチ名>')に分離し、他のgroupと絶対に衝突しないようにする。
 #
-# cancel-in-progressは全イベント種別でfalse固定にしている。同一PRへ短時間で
-# 連続pushすると、直前のpushのjobs.migrateが`d1 migrations apply`を実行中の
-# ままこのgroup(pr-<番号>)へcancel-in-progress: trueで巻き添えキャンセルされ、
-# D1の状態が中途半端になる可能性があった。これは他PR/developとの直列化待ちが
-# 発生していなくても、同一PR内の連続pushだけで起こり得る(レビュー指摘: PR #204
-# discussion_r3818106363、MayugeStudio)。連続pushはキャンセルされず順番に
-# 直列実行される分、PRプレビューの反映が数分遅れる場合があるが、それよりD1の
-# 整合性を優先する。
+# cancel-in-progressは全イベント種別でfalse固定にしている。develop/staging/productionの
+# migration実行中のworkflowをキャンセルすると、D1の状態が中途半端になる可能性がある。
+# PRプレビューは共有development D1へmigrationを適用しないため、同一PRへの連続pushでは
+# Preview WorkerのDeployだけが順番に実行される。
 #
-# ここでのgroupはPR番号・ブランチ単位(=「同じ対象への連続実行」)の直列化であり、
-# 「同じD1を共有する別々の対象」間の直列化は保証しない。例えばPR #1とPR #2は別groupの
-# ため同時に走り得るが、両方とも最終的に共有のdevelopment用D1(rectime-api-dev)へ
-# migrationを適用する。この競合を防ぐため、migrationの適用だけはjobs.migrateという
-# 別ジョブに分離し、D1データベース名を基準にした専用concurrency.group(下部参照)で
-# 直列化している(レビュー指摘: PR #204 review 4957824497)。
+# ここでのgroupはPR番号・ブランチ単位(=「同じ対象への連続実行」)の直列化である。
+# PRプレビューはjobs.migrateをskipして共有development用D1(rectime-api-dev)へ
+# migrationを適用しない。develop/staging/productionのmigrationはjobs.migrateで実行し、
+# D1データベース名を基準にした専用concurrency.group(下部参照)で直列化する。
 concurrency:
   group: deploy-cloudflare-workers-${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' && 'production' || format('invalid-dispatch-{0}', github.ref_name)) || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || (github.event.workflow_run.event == 'pull_request') && format('pr-{0}', github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id) || 'development' }}
   cancel-in-progress: false
@@ -129,12 +123,11 @@ jobs:
 
   migrate:
     needs: target
-    # PRプレビュー(pr-<番号>)とdevelopブランチへのpushは別concurrency.group
-    # (上部参照)のため、同時に走り得る。しかしどちらも同じ共有D1
-    # (rectime-api-dev、env.development)へmigrationを適用するため、
-    # ここだけはD1データベース名を基準にした専用グループで直列化する
-    # (production/staging用D1は他のどのイベント種別とも共有されないため、
-    # このグループでも実質的に競合は起きないが、統一的に扱うためD1名で分岐する)。
+    # PRプレビューでは未マージPRのmigrationが共有development用D1
+    # (rectime-api-dev、env.development)へ適用されないようskipする。
+    # develop/staging/productionのmigrationはD1データベース名を基準にした専用グループで
+    # 直列化する(production/staging用D1は他のイベント種別と共有されないが、統一的に扱う)。
+    if: needs.target.outputs.mode != 'pr-preview'
     # cancel-in-progressはfalse固定: 直列待ちにするだけで、進行中のmigrationを
     # 決してキャンセルしない(D1の状態が中途半端になることを避けるため)。
     #
@@ -177,11 +170,18 @@ jobs:
 
   deploy:
     needs: [target, migrate]
+    # PRプレビューではmigrateがskipされるため、needsのskip伝播を無効化してDeployを続行する。
+    # targetが成功し、通常経路ではmigrationも成功した場合、またはPRプレビューで
+    # migrationがskipされた場合だけDeployを実行する。
+    if: >-
+      always() &&
+      needs.target.result == 'success' &&
+      (needs.migrate.result == 'success' ||
+       (needs.target.outputs.mode == 'pr-preview' && needs.migrate.result == 'skipped'))
     name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
     runs-on: ubuntu-latest
-    # jobs.migrate(上部)と同じ判定式(先頭コメント参照)。
-    # PRプレビューもdevelopmentと同じGitHub Environment(同じsecrets/vars)を使うため、
-    # concurrency.groupのようなPRごとの分離はここでは不要。
+    # PRプレビューはjobs.migrateをskipするが、同じdevelopmentのGitHub Environment
+    # (同じsecrets/vars)を使うため、concurrency.groupのようなPRごとの分離はここでは不要。
     environment: ${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
 
     steps:
