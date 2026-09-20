@@ -36,8 +36,7 @@ export interface NotificationAudienceDTO {
 }
 
 export type NotificationDeliveryInputDTO =
-  | { type: 'immediate'; sendAt: null }
-  | { type: 'scheduled'; sendAt: string };
+  { type: 'immediate'; sendAt: null } | { type: 'scheduled'; sendAt: string };
 
 export type NotificationCreationDTO =
   | {

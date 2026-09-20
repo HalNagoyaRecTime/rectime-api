@@ -59,8 +59,7 @@ export interface NotificationScheduleProgressDTO {
   deliveryProgress: NotificationDeliveryProgressDTO;
 }
 
-export interface NotificationScheduleDetailDTO
-  extends NotificationScheduleSummaryDTO {
+export interface NotificationScheduleDetailDTO extends NotificationScheduleSummaryDTO {
   updatedAt: string;
   progress: NotificationScheduleProgressDTO;
 }
