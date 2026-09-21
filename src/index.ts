@@ -84,10 +84,7 @@ import {
   myNotificationListRoute,
   testNotificationRoute,
 } from './presentation/openapi/notifications';
-import {
-  adminUserSearchRoute,
-  adminUserStatusUpdateRoute,
-} from './presentation/openapi/adminUsers';
+import { adminUserStatusUpdateRoute } from './presentation/openapi/adminUsers';
 
 const app = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationDefaultHook,
@@ -159,7 +156,6 @@ app.openapi(apiOverviewRoute, c => {
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
         firebaseTokens: '/api/v1/firebase-tokens',
         adminNotifications: '/api/v1/admin/notifications',
-        adminUsers: '/api/v1/admin/users',
         myNotifications: '/api/v1/me/notifications',
         testNotification: '/api/v1/notifications/test',
         myEvents: '/api/v1/me/events',
@@ -345,10 +341,6 @@ apiV1.openapi(staffOnly(gatheringListRoute), c => {
 // Firebase token routes
 apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
-});
-
-apiV1.openapi(staffOnly(adminUserSearchRoute), c => {
-  return c.get('container').userSearchController.searchUsers(c);
 });
 
 // Notification routes
