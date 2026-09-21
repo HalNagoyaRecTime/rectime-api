@@ -280,6 +280,7 @@ export const firebase_tokens = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`),
   },
   table => [
+    check('ck_firebase_tokens_platform', sql`${table.platform} IN (1, 2)`),
     index('idx_firebase_tokens_user_id').on(table.userId),
     uniqueIndex('uq_firebase_tokens_fcm_token').on(table.fcmToken),
     index('idx_firebase_tokens_active').on(table.isFirebaseActive),
@@ -352,8 +353,8 @@ export const notifications = sqliteTable(
     createdByUserId: integer('created_by_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),
-    pushTitle: text('push_title').notNull().default(''),
-    pushBody: text('push_body').notNull().default(''),
+    pushTitle: text('push_title').notNull(),
+    pushBody: text('push_body').notNull(),
     // アプリ内通知詳細の表示内容。pushTitle/pushBodyとは別の最終フィールド。
     notificationType: text('notification_type').notNull(),
     title: text('title').notNull(),

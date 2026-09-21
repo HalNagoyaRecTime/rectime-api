@@ -49,8 +49,8 @@ ALTER TABLE notifications
 CREATE TABLE notifications (
   notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_by_user_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
-  push_title TEXT NOT NULL DEFAULT '',
-  push_body TEXT NOT NULL DEFAULT '',
+  push_title TEXT NOT NULL,
+  push_body TEXT NOT NULL,
   notification_type TEXT NOT NULL,
   title TEXT NOT NULL,
   body TEXT NOT NULL,

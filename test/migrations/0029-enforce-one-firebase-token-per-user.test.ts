@@ -126,8 +126,9 @@ async function createUser(userName: string): Promise<number> {
 
 async function createNotification(): Promise<number> {
   const row = await env.DB.prepare(
-    `INSERT INTO notifications (notification_type, title, body)
-     VALUES ('manual', '0029移行確認', '0029移行確認')
+    `INSERT INTO notifications (
+       notification_type, push_title, push_body, title, body
+     ) VALUES ('manual', '0029移行確認', '0029移行確認', '0029移行確認', '0029移行確認')
      RETURNING notification_id`
   ).first<{ notification_id: number }>();
   if (!row) throw new Error('failed to create notification');

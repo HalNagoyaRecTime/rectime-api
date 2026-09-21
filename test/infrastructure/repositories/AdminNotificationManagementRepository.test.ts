@@ -33,7 +33,7 @@ async function createFixture(
     .bind(event!.event_id, spot!.gathering_spot_id)
     .first<{ gathering_id: number }>();
   const notification = await env.DB.prepare(
-    "INSERT INTO notifications (notification_type, title, body) VALUES (?, '変更前', '本文') RETURNING notification_id"
+    "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES (?, '変更前', '本文', '変更前', '本文') RETURNING notification_id"
   )
     .bind(notificationType)
     .first<{ notification_id: number }>();

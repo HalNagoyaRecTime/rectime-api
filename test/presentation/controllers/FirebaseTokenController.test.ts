@@ -72,14 +72,14 @@ async function captureDuplicateFcmTokenError(): Promise<unknown> {
 async function captureOtherUniqueError(): Promise<unknown> {
   await env.DB.prepare(
     `INSERT INTO notifications (
-       notification_type, title, body, source_type, source_id, source_hash
-     ) VALUES ('automatic', 'Firebaseコントローラ確認通知', '確認', 'gathering', 9901, 'controller-source')`
+       notification_type, push_title, push_body, title, body, source_type, source_id, source_hash
+     ) VALUES ('automatic', 'Firebaseコントローラ確認通知', '確認', 'Firebaseコントローラ確認通知', '確認', 'gathering', 9901, 'controller-source')`
   ).run();
   return captureError(() =>
     env.DB.prepare(
       `INSERT INTO notifications (
-         notification_type, title, body, source_type, source_id, source_hash
-       ) VALUES ('automatic', 'Firebaseコントローラ確認通知2', '確認', 'gathering', 9901, 'controller-source')`
+         notification_type, push_title, push_body, title, body, source_type, source_id, source_hash
+       ) VALUES ('automatic', 'Firebaseコントローラ確認通知2', '確認', 'Firebaseコントローラ確認通知2', '確認', 'gathering', 9901, 'controller-source')`
     ).run()
   );
 }

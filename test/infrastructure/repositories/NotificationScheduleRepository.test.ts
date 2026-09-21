@@ -34,7 +34,7 @@ describe('NotificationScheduleRepository', () => {
       .bind(user!.user_id)
       .first<{ firebase_token_id: number }>();
     const notification = await env.DB.prepare(
-      "INSERT INTO notifications (notification_type, title, body) VALUES ('manual', '件名', '本文') RETURNING notification_id"
+      "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('manual', '件名', '本文', '件名', '本文') RETURNING notification_id"
     ).first<{ notification_id: number }>();
     const schedule = await env.DB.prepare(
       `INSERT INTO notification_schedules
@@ -65,7 +65,7 @@ describe('NotificationScheduleRepository', () => {
   it('対象競技のevent_reminderのdraftだけを取得する', async () => {
     const { user, event, token } = await createFixture();
     const reminder = await env.DB.prepare(
-      "INSERT INTO notifications (notification_type, title, body) VALUES ('event_reminder', '競技通知', '集合してください') RETURNING notification_id"
+      "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('event_reminder', '競技通知', '集合してください', '競技通知', '集合してください') RETURNING notification_id"
     ).first<{ notification_id: number }>();
     const otherEvent = await env.DB.prepare(
       "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('別競技', '体育館', '1000', '1100') RETURNING event_id"

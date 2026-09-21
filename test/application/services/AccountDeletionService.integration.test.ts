@@ -117,7 +117,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(user!.user_id)
       .first<{ firebase_token_id: number }>();
     const notification = await workerEnv.DB.prepare(
-      "INSERT INTO notifications (notification_type, title, body) VALUES ('manual', '件名', '本文') RETURNING notification_id"
+      "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('manual', '件名', '本文', '件名', '本文') RETURNING notification_id"
     ).first<{ notification_id: number }>();
     const receivedSchedule = await workerEnv.DB.prepare(
       "INSERT INTO notification_schedules (created_user_id, event_id, notification_id, firebase_token_id, send_status, send_at) VALUES (NULL, ?, ?, ?, 'draft', '2026-07-23T09:00:00.000Z') RETURNING notification_schedule_id"

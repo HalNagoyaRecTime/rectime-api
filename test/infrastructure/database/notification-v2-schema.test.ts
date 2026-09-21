@@ -73,13 +73,13 @@ describe('通知v2のDB Schema', () => {
           name: 'push_title',
           type: 'TEXT',
           notnull: 1,
-          dflt_value: "''",
+          dflt_value: null,
         }),
         expect.objectContaining({
           name: 'push_body',
           type: 'TEXT',
           notnull: 1,
-          dflt_value: "''",
+          dflt_value: null,
         }),
         expect.objectContaining({
           name: 'importance',
