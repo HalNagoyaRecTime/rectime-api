@@ -6,7 +6,7 @@ import type {
   NotificationAudienceRecord,
   NotificationAudienceTarget,
 } from '../../domain/interfaces/repositories/INotificationAudienceResolverRepository';
-import type { NotificationAudienceType } from '../../domain/entities/NotificationV3';
+import type { NotificationAudienceType } from '../../domain/entities/NotificationV2';
 import * as schema from '../database/schema';
 import {
   notification_audiences,

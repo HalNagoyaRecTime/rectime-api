@@ -1,7 +1,7 @@
 import type {
   NotificationAudienceType,
   NotificationAudienceTargetType,
-} from '../../entities/NotificationV3';
+} from '../../entities/NotificationV2';
 
 export interface NotificationAudienceRecord {
   id: number;
