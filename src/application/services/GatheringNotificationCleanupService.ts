@@ -1,4 +1,4 @@
-import type { NotificationScheduleStatus } from '../../domain/entities/NotificationV3';
+import type { NotificationScheduleStatus } from '../../domain/entities/NotificationV2';
 import type { IGatheringNotificationCleanupRepository } from '../../domain/interfaces/repositories/IGatheringNotificationCleanupRepository';
 import type { INotificationStopService } from './INotificationStopService';
 import type {
