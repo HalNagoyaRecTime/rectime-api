@@ -27,6 +27,11 @@ export interface INotificationRetryRepository {
     reason: string,
     now: string
   ) => Promise<boolean>;
+  markDeliveryStopped: (
+    deliveryId: number,
+    reason: string,
+    now: string
+  ) => Promise<boolean>;
   deleteFirebaseToken: (firebaseTokenId: number) => Promise<void>;
   markDeliverySent: (
     deliveryId: number,

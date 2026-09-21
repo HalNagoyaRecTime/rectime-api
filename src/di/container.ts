@@ -14,6 +14,7 @@ import { createGatheringGroupMemberRepository } from '../infrastructure/reposito
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
 import { createEventGatheringSettingsRepository } from '../infrastructure/repositories/EventGatheringSettingsRepository';
 import { createNotificationDeliveryQueue } from '../infrastructure/queues/NotificationDeliveryQueue';
+import { createNotificationStopRepository } from '../infrastructure/repositories/NotificationStopRepository';
 import { createStudentService } from '../application/services/StudentService';
 import { createStaffService } from '../application/services/StaffService';
 import { createTeacherService } from '../application/services/TeacherService';
@@ -30,6 +31,7 @@ import { createGatheringSpotService } from '../application/services/GatheringSpo
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createGatheringService } from '../application/services/GatheringService';
 import { createEventGatheringSettingsService } from '../application/services/EventGatheringSettingsService';
+import { createNotificationStopService } from '../application/services/NotificationStopService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createStaffController } from '../presentation/controllers/StaffController';
 import { createTeacherController } from '../presentation/controllers/TeacherController';
@@ -45,6 +47,7 @@ import { createGatheringSpotController } from '../presentation/controllers/Gathe
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createGatheringController } from '../presentation/controllers/GatheringController';
 import { createEventGatheringSettingsController } from '../presentation/controllers/EventGatheringSettingsController';
+import { createNotificationStopController } from '../presentation/controllers/NotificationStopController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createUserStatusRepository } from '../infrastructure/repositories/UserStatusRepository';
 import { createUserStatusService } from '../application/services/UserStatusService';
@@ -82,6 +85,7 @@ export function createDIContainer(env: Env) {
   const gatheringRepository = createGatheringRepository(db, eventRepository);
   const eventGatheringSettingsRepository =
     createEventGatheringSettingsRepository(db);
+  const notificationStopRepository = createNotificationStopRepository(db);
   const notificationDeliveryQueue = createNotificationDeliveryQueue(
     env.NOTIFICATION_DELIVERY_QUEUE
   );
@@ -173,6 +177,9 @@ export function createDIContainer(env: Env) {
     gatheringSpotRepository,
     eventGatheringSettingsRepository
   );
+  const notificationStopService = createNotificationStopService({
+    repository: notificationStopRepository,
+  });
 
   // Controllers
   const userStatusController = createUserStatusController(userStatusService);
@@ -205,6 +212,9 @@ export function createDIContainer(env: Env) {
   const gatheringController = createGatheringController(gatheringService);
   const eventGatheringSettingsController =
     createEventGatheringSettingsController(eventGatheringSettingsService);
+  const notificationStopController = createNotificationStopController(
+    notificationStopService
+  );
 
   return {
     // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
@@ -231,6 +241,8 @@ export function createDIContainer(env: Env) {
     gatheringGroupMemberController,
     gatheringController,
     eventGatheringSettingsController,
+    notificationStopService,
+    notificationStopController,
   };
 }
 

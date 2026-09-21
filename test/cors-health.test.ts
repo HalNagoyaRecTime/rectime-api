@@ -58,6 +58,7 @@ describe('OpenAPI documentation', () => {
     expect(Object.keys(document.paths).sort()).toEqual([
       '/',
       '/api/v1/admin/notifications',
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}/stop',
       '/api/v1/admin/notifications/{notificationId}',
       '/api/v1/admin/users',
       '/api/v1/admin/users/{userId}',
@@ -160,7 +161,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(47);
+    expect(documentedOperations).toHaveLength(48);
     expect(document.paths['/api/v1/gatherings']).not.toHaveProperty('post');
     expect(
       Object.keys(document.paths['/api/v1/gatherings/{gatheringId}/members'])

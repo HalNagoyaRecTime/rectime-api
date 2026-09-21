@@ -169,6 +169,10 @@ describe('NotificationPushDeliveryRepository', () => {
   it('条件付きclaimでattemptと時刻を更新し、二重claimを拒否する', async () => {
     const fixture = await createFixture();
     await repository.createPendingDeliveries(fixture.scheduleId);
+    await repository.markScheduleSending(
+      fixture.scheduleId,
+      '2026-09-21T08:59:00.000Z'
+    );
 
     const delivery = await env.DB.prepare(
       'SELECT d.notification_push_delivery_id FROM notification_push_deliveries d INNER JOIN notification_recipients r ON r.notification_recipient_id = d.notification_recipient_id WHERE r.notification_schedule_id = ? ORDER BY d.notification_push_delivery_id LIMIT 1'
