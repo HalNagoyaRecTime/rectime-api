@@ -15,6 +15,7 @@ const migrationQueries = (() => {
 
 async function prepareLegacySchema() {
   await env.DB.batch([
+    env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_user_id'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_active_fcm_token'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_active'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_notification_schedules_due'),
@@ -81,6 +82,9 @@ async function restoreCurrentSchema() {
     ),
     env.DB.prepare(
       'ALTER TABLE notification_schedules_backup RENAME TO notification_schedules'
+    ),
+    env.DB.prepare(
+      'CREATE INDEX idx_firebase_tokens_user_id ON firebase_tokens(user_id)'
     ),
     env.DB.prepare(
       `CREATE UNIQUE INDEX idx_firebase_tokens_active_fcm_token

@@ -19,7 +19,7 @@ async function createNotification(userId: number): Promise<number> {
        created_by_user_id, push_title, push_body, title, body,
        importance, notification_type, source_type, source_id, source_hash
      ) VALUES (?, 'push title', 'push body', '通知v2スキーマテストdetail title', 'detail body',
-       2, 'manual', 'gathering', 9001, 'schema-source-9001')
+       'normal', 'notification_general', 'gathering', 9001, 'schema-source-9001')
      RETURNING notification_id`
   )
     .bind(userId)
@@ -54,7 +54,42 @@ describe('通知v2のDB Schema', () => {
       .run();
   });
 
-  it('新しい通知関連テーブルとexpand互換列を持つ', async () => {
+  it('新しい通知関連テーブルとv2列を持つ', async () => {
+    const notificationColumns = await env.DB.prepare(
+      'PRAGMA table_info(notifications)'
+    ).all<{
+      name: string;
+      type: string;
+      notnull: number;
+      dflt_value: string | null;
+    }>();
+    expect(notificationColumns.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'created_by_user_id',
+          notnull: 0,
+        }),
+        expect.objectContaining({
+          name: 'push_title',
+          type: 'TEXT',
+          notnull: 1,
+          dflt_value: "''",
+        }),
+        expect.objectContaining({
+          name: 'push_body',
+          type: 'TEXT',
+          notnull: 1,
+          dflt_value: "''",
+        }),
+        expect.objectContaining({
+          name: 'importance',
+          type: 'TEXT',
+          notnull: 1,
+          dflt_value: "'normal'",
+        }),
+      ])
+    );
+
     const scheduleColumns = await env.DB.prepare(
       'PRAGMA table_info(notification_schedules)'
     ).all<{ name: string }>();
@@ -86,6 +121,61 @@ describe('通知v2のDB Schema', () => {
       'notification_push_deliveries',
       'notification_recipients',
     ]);
+
+    const deliveryColumns = await env.DB.prepare(
+      'PRAGMA table_info(notification_push_deliveries)'
+    ).all<{
+      name: string;
+      notnull: number;
+      dflt_value: string | null;
+    }>();
+    expect(deliveryColumns.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'status',
+          notnull: 1,
+          dflt_value: null,
+        }),
+        expect.objectContaining({
+          name: 'attempt_count',
+          notnull: 1,
+          dflt_value: '0',
+        }),
+      ])
+    );
+  });
+
+  it('後続ResolverとWorker向けのindexを持つ', async () => {
+    const tokenIndexes = await env.DB.prepare(
+      'PRAGMA index_list(firebase_tokens)'
+    ).all<{ name: string }>();
+    expect(tokenIndexes.results.map(index => index.name)).toContain(
+      'idx_firebase_tokens_user_id'
+    );
+
+    const deliveryIndexes = await env.DB.prepare(
+      'PRAGMA index_list(notification_push_deliveries)'
+    ).all<{ name: string }>();
+    expect(deliveryIndexes.results.map(index => index.name)).toEqual(
+      expect.arrayContaining([
+        'idx_notification_push_deliveries_firebase_token_id',
+        'idx_notification_push_deliveries_retry',
+      ])
+    );
+
+    const userIndexes = await env.DB.prepare('PRAGMA index_list(users)').all<{
+      name: string;
+    }>();
+    expect(userIndexes.results.map(index => index.name)).toContain(
+      'idx_users_live_active_user_id'
+    );
+
+    const studentIndexes = await env.DB.prepare(
+      'PRAGMA index_list(students)'
+    ).all<{ name: string }>();
+    expect(studentIndexes.results.map(index => index.name)).toContain(
+      'idx_students_class_room_id_user_id'
+    );
   });
 
   it('複数Token、Audience制約、RecipientとDeliveryの冪等制約を持つ', async () => {
@@ -153,12 +243,22 @@ describe('通知v2のDB Schema', () => {
 
     const delivery = await env.DB.prepare(
       `INSERT INTO notification_push_deliveries
-         (notification_recipient_id, firebase_token_id, platform)
-       VALUES (?, ?, 1) RETURNING notification_push_delivery_id`
+         (notification_recipient_id, firebase_token_id, platform, status)
+       VALUES (?, ?, 1, 'pending') RETURNING notification_push_delivery_id`
     )
       .bind(recipient.notification_recipient_id, iosTokenId)
       .first<{ notification_push_delivery_id: number }>();
     if (!delivery) throw new Error('failed to create test delivery');
+
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO notification_push_deliveries
+           (notification_recipient_id, firebase_token_id, platform)
+         VALUES (?, ?, 1)`
+      )
+        .bind(recipient.notification_recipient_id, androidTokenId)
+        .run()
+    ).rejects.toThrow();
 
     await expect(
       env.DB.prepare(
@@ -185,7 +285,7 @@ describe('通知v2のDB Schema', () => {
     expect(androidTokenId).toBeTypeOf('number');
   });
 
-  it('Notificationのsource整合性とSchedule削除時のCASCADEを持つ', async () => {
+  it('Notificationのsource重複防止とSchedule削除時のCASCADEを持つ', async () => {
     const userId = await createUser('source制約');
     const notificationId = await createNotification(userId);
     const scheduleId = await createSchedule(notificationId);
@@ -193,8 +293,10 @@ describe('通知v2のDB Schema', () => {
     await expect(
       env.DB.prepare(
         `INSERT INTO notifications
-           (push_title, push_body, title, body, notification_type, source_type)
-         VALUES ('p', 'b', 't', 'd', 'automatic', 'gathering')`
+           (push_title, push_body, title, body, importance, notification_type,
+            source_type, source_id, source_hash)
+         VALUES ('p', 'b', 't', 'd', 'normal', 'notification_general',
+                 'gathering', 9001, 'schema-source-9001')`
       ).run()
     ).rejects.toThrow();
 

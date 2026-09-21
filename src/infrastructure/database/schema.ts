@@ -64,27 +64,39 @@ export const users = sqliteTable(
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
   },
-  table => [index('idx_users_deletion_status').on(table.deletionStatus)]
+  table => [
+    index('idx_users_deletion_status').on(table.deletionStatus),
+    index('idx_users_live_active_user_id').on(table.isLiveActive, table.id),
+  ]
 );
 
-export const students = sqliteTable('students', {
-  id: integer('student_id').primaryKey({ autoIncrement: true }),
-  userId: integer('user_id')
-    .notNull()
-    .references(() => users.id)
-    .unique(),
-  classRoomId: integer('class_room_id')
-    .notNull()
-    .references(() => class_rooms.id),
-  attendanceNumber: integer('attendance_number').notNull(),
-  studentIdNumber: text('student_id_number').notNull().unique(),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const students = sqliteTable(
+  'students',
+  {
+    id: integer('student_id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id)
+      .unique(),
+    classRoomId: integer('class_room_id')
+      .notNull()
+      .references(() => class_rooms.id),
+    attendanceNumber: integer('attendance_number').notNull(),
+    studentIdNumber: text('student_id_number').notNull().unique(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    index('idx_students_class_room_id_user_id').on(
+      table.classRoomId,
+      table.userId
+    ),
+  ]
+);
 
 // staffs/teachers はまだ専用のリポジトリ層を持たない。1ユーザーにつき
 // 最大1行（user_id にUNIQUE）だが、staffs と teachers は相互排他ではなく、
@@ -255,7 +267,7 @@ export const firebase_tokens = sqliteTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     platform: integer('platform').notNull(),
     fcmToken: text('fcm_token').notNull(),
-    // #460でactive flagを削除するまで、旧Workerとのexpand互換用に残す。
+    // 1利用者N端末を実現するための旧active flagは#460で整理する。
     isFirebaseActive: integer('is_firebase_active').notNull().default(1),
     lastSeenAt: text('last_seen_at')
       .notNull()
@@ -268,6 +280,7 @@ export const firebase_tokens = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`),
   },
   table => [
+    index('idx_firebase_tokens_user_id').on(table.userId),
     uniqueIndex('idx_firebase_tokens_active_fcm_token')
       .on(table.fcmToken)
       .where(sql`${table.isFirebaseActive} = 1`),
@@ -344,11 +357,11 @@ export const notifications = sqliteTable(
     }),
     pushTitle: text('push_title').notNull().default(''),
     pushBody: text('push_body').notNull().default(''),
-    // #460で旧Mobile・旧Admin経路の互換列を削除する。
+    // アプリ内通知詳細の表示内容。pushTitle/pushBodyとは別の最終フィールド。
     notificationType: text('notification_type').notNull(),
     title: text('title').notNull(),
     body: text('body').notNull(),
-    importance: integer('importance').notNull().default(2),
+    importance: text('importance').notNull().default('normal'),
     sourceType: text('source_type'),
     sourceId: integer('source_id'),
     sourceHash: text('source_hash'),
@@ -360,13 +373,6 @@ export const notifications = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`),
   },
   table => [
-    check(
-      'ck_notifications_source_columns',
-      sql`(
-      (${table.sourceType} IS NULL AND ${table.sourceId} IS NULL AND ${table.sourceHash} IS NULL)
-      OR (${table.sourceType} IS NOT NULL AND ${table.sourceId} IS NOT NULL AND ${table.sourceHash} IS NOT NULL)
-    )`
-    ),
     uniqueIndex('uq_notifications_source').on(
       table.sourceType,
       table.sourceId,
@@ -453,7 +459,7 @@ export const notification_push_deliveries = sqliteTable(
       { onDelete: 'set null' }
     ),
     platform: integer('platform').notNull(),
-    status: text('status').notNull().default('pending'),
+    status: text('status').notNull(),
     attemptCount: integer('attempt_count').notNull().default(0),
     firstAttemptAt: text('first_attempt_at'),
     lastAttemptAt: text('last_attempt_at'),
@@ -469,9 +475,20 @@ export const notification_push_deliveries = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`),
   },
   table => [
+    check(
+      'ck_notification_push_deliveries_platform',
+      sql`${table.platform} IN (1, 2)`
+    ),
+    check(
+      'ck_notification_push_deliveries_attempt_count',
+      sql`${table.attemptCount} >= 0`
+    ),
     uniqueIndex('uq_notification_push_deliveries_recipient_token')
       .on(table.notificationRecipientId, table.firebaseTokenId)
       .where(sql`${table.firebaseTokenId} IS NOT NULL`),
+    index('idx_notification_push_deliveries_firebase_token_id').on(
+      table.firebaseTokenId
+    ),
     index('idx_notification_push_deliveries_retry').on(
       table.status,
       table.nextRetryAt
