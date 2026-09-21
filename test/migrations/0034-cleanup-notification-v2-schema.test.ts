@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 
-describe('0034_cleanup_notification_v3_schema.sql', () => {
+describe('0034_cleanup_notification_v2_schema.sql', () => {
   it('expand互換列を削除し、v2の通知スキーマだけを残す', async () => {
     const tableColumns = async (tableName: string) => {
       const result = await env.DB.prepare(`PRAGMA table_info(${tableName})`).all<{
