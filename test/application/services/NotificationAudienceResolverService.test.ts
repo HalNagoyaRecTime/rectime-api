@@ -5,6 +5,7 @@ import type { INotificationAudienceResolverRepository } from '../../../src/domai
 function setup() {
   const repository: INotificationAudienceResolverRepository = {
     claimScheduleForResolution: vi.fn().mockResolvedValue(true),
+    isScheduleResolutionAllowed: vi.fn().mockResolvedValue(true),
     findUnresolvedAudiences: vi.fn().mockResolvedValue([
       {
         id: 10,
@@ -90,6 +91,25 @@ describe('NotificationAudienceResolverService', () => {
       10,
       '2026-09-21T09:00:00.000Z'
     );
+    expect(repository.markRecipientsResolved).not.toHaveBeenCalled();
+  });
+
+  it('Stop後は後続Audienceの解決を開始しない', async () => {
+    const { repository, service } = setup();
+    vi.mocked(repository.isScheduleResolutionAllowed)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+
+    await expect(
+      service.resolveSchedule(1, new Date('2026-09-21T09:00:00.000Z'))
+    ).resolves.toEqual({
+      status: 'skipped',
+      audienceCount: 0,
+      recipientCount: 2,
+    });
+    expect(repository.findAudienceUserIds).toHaveBeenCalledTimes(1);
+    expect(repository.insertRecipients).toHaveBeenCalledTimes(1);
+    expect(repository.markAudienceResolved).toHaveBeenCalledTimes(1);
     expect(repository.markRecipientsResolved).not.toHaveBeenCalled();
   });
 });

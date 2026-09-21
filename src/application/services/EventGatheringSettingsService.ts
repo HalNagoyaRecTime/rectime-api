@@ -11,6 +11,7 @@ import type {
   EventGatheringSettingsDTO,
   RoundSettingInputDTO,
 } from '../dto/EventGatheringSettingsDTO';
+import type { IGatheringNotificationCleanupService } from './IGatheringNotificationCleanupService';
 import { buildEventGatheringSettings } from './eventGatheringRounds';
 import type {
   IEventGatheringSettingsService,
@@ -61,7 +62,8 @@ function isForeignKeyError(error: unknown): boolean {
 export function createEventGatheringSettingsService(
   eventRepository: IEventRepository,
   gatheringSpotRepository: IGatheringSpotRepository,
-  eventGatheringSettingsRepository: IEventGatheringSettingsRepository
+  eventGatheringSettingsRepository: IEventGatheringSettingsRepository,
+  gatheringNotificationCleanupService?: IGatheringNotificationCleanupService
 ): IEventGatheringSettingsService {
   const ensureGatheringSpotsExist = async (gatheringSpotIds: number[]) => {
     const existing =
@@ -133,6 +135,19 @@ export function createEventGatheringSettingsService(
         command.event_id
       );
       const changeSet = buildChangeSet(command.event_id, current, requested);
+
+      // source_idにはFKがないため、Gatheringを消した後では通知を検索できない。
+      // 先に通知cleanupを完了させ、その後に既存の集合設定batchを実行する。
+      // cleanupは各D1 batch単位で冪等に完了し、集合設定batchが参加者競合で
+      // 失敗した場合も次回保存時に同じ対象を再評価できる。
+      if (
+        gatheringNotificationCleanupService &&
+        changeSet.delete_ids.length > 0
+      ) {
+        await gatheringNotificationCleanupService.cleanupForGatherings(
+          changeSet.delete_ids
+        );
+      }
 
       try {
         await eventGatheringSettingsRepository.apply(changeSet);

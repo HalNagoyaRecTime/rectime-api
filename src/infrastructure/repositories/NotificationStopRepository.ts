@@ -10,6 +10,10 @@ export function createNotificationStopRepository(
 ): INotificationStopRepository {
   return {
     async stopSchedule(scheduleId, stoppedByUserId, reason, now) {
+      const allowedStatuses =
+        reason === 'source_deleted'
+          ? "send_status IN ('resolving', 'sending')"
+          : "send_status = 'sending'";
       const schedule = await db
         .prepare(
           'SELECT send_status FROM notification_schedules WHERE notification_schedule_id = ?'
@@ -17,12 +21,17 @@ export function createNotificationStopRepository(
         .bind(scheduleId)
         .first<ScheduleStatusRow>();
       if (!schedule) return 'not_found';
-      if (schedule.send_status !== 'sending') return 'not_allowed';
+      const isAllowed =
+        reason === 'source_deleted'
+          ? schedule.send_status === 'resolving' ||
+            schedule.send_status === 'sending'
+          : schedule.send_status === 'sending';
+      if (!isAllowed) return 'not_allowed';
 
       const results = await db.batch([
         db
           .prepare(
-            "UPDATE notification_schedules SET send_status = 'stopped', stopped_at = ?, stopped_by_user_id = ?, reason = ?, updated_at = ? WHERE notification_schedule_id = ? AND send_status = 'sending'"
+            `UPDATE notification_schedules SET send_status = 'stopped', stopped_at = ?, stopped_by_user_id = ?, reason = ?, updated_at = ? WHERE notification_schedule_id = ? AND ${allowedStatuses}`
           )
           .bind(now, stoppedByUserId, reason, now, scheduleId),
         db

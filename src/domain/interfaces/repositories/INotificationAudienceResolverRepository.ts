@@ -20,6 +20,7 @@ export interface INotificationAudienceResolverRepository {
     scheduleId: number,
     dueAt: string
   ) => Promise<boolean>;
+  isScheduleResolutionAllowed: (scheduleId: number) => Promise<boolean>;
   findUnresolvedAudiences: (
     scheduleId: number
   ) => Promise<NotificationAudienceRecord[]>;
