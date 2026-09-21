@@ -4,6 +4,9 @@ import type {
 } from '../../domain/entities/NotificationV2';
 import type {
   NotificationAudienceDTO,
+  NotificationContentDTO,
+  NotificationCreationDTO,
+  NotificationDeliveryInputDTO,
   NotificationScheduleStopDTO,
   NotificationUserReferenceDTO,
 } from './AdminNotificationDTO';
@@ -11,6 +14,11 @@ import type {
 export interface NotificationRecipientResolutionDTO {
   status: 'pending' | 'resolved';
   resolvedCount: number;
+}
+
+export interface NotificationScheduleAudienceDTO
+  extends NotificationAudienceDTO {
+  recipientResolution: NotificationRecipientResolutionDTO;
 }
 
 export interface NotificationRecipientPushSummaryDTO {
@@ -27,9 +35,7 @@ export interface NotificationScheduleSummaryDTO {
   stop: NotificationScheduleStopDTO | null;
   scheduledBy: NotificationUserReferenceDTO | null;
   createdAt: string;
-  audience: NotificationAudienceDTO & {
-    recipientResolution: NotificationRecipientResolutionDTO;
-  };
+  audience: NotificationScheduleAudienceDTO;
   recipientPushSummary: NotificationRecipientPushSummaryDTO;
 }
 
@@ -59,9 +65,19 @@ export interface NotificationScheduleProgressDTO {
   deliveryProgress: NotificationDeliveryProgressDTO;
 }
 
-export interface NotificationScheduleDetailDTO extends NotificationScheduleSummaryDTO {
-  updatedAt: string;
+export interface NotificationScheduleMonitorListItemDTO
+  extends NotificationScheduleSummaryDTO {
+  notificationId: number;
+  content: NotificationContentDTO;
+  creation: NotificationCreationDTO;
+  startedAt: string | null;
+  completedAt: string | null;
   progress: NotificationScheduleProgressDTO;
+}
+
+export interface NotificationScheduleDetailDTO
+  extends NotificationScheduleMonitorListItemDTO {
+  updatedAt: string;
 }
 
 export interface NotificationPushDeliveryDetailDTO {
@@ -79,18 +95,37 @@ export interface NotificationPushDeliveryDetailDTO {
   fcmMessageId: string | null;
 }
 
+export type NotificationRecipientResultStatus =
+  | 'success'
+  | 'failed'
+  | 'no_push_target';
+
+export interface NotificationRecipientResultDTO {
+  notificationRecipientId: number;
+  user: NotificationUserReferenceDTO;
+  push: {
+    status: NotificationRecipientResultStatus;
+    successCount: number;
+    failedCount: number;
+  };
+}
+
 export interface NotificationScheduleResultsResponseDTO {
-  results: NotificationPushDeliveryDetailDTO[];
+  results: NotificationRecipientResultDTO[];
   total: number;
   limit: number;
   offset: number;
 }
 
 export interface NotificationScheduleListResponseDTO {
-  schedules: NotificationScheduleSummaryDTO[];
+  schedules: NotificationScheduleMonitorListItemDTO[];
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface NotificationResendRequestDTO {
+  delivery: NotificationDeliveryInputDTO;
 }
 
 export interface NotificationResendResponseDTO {

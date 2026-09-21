@@ -40,7 +40,11 @@ export const NOTIFICATION_TARGET_AUDIENCE_TYPES = [
   'user',
 ] as const;
 
-export const NOTIFICATION_IMPORTANCE_LEVELS = ['low', 'normal'] as const;
+export const NOTIFICATION_IMPORTANCE_LEVELS = [
+  'low',
+  'normal',
+  'high',
+] as const;
 
 export type NotificationImportance =
   (typeof NOTIFICATION_IMPORTANCE_LEVELS)[number];

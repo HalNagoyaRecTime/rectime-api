@@ -60,15 +60,20 @@ export const notificationImportanceSchema = z
 
 export const notificationContentSchema = z
   .object({
-    push: z.object({
-      title: z.string().trim().min(1),
-      body: z.string().trim().min(1),
-    }),
-    detail: z.object({
-      title: z.string().trim().min(1),
-      body: z.string().trim().min(1),
-    }),
+    push: z
+      .object({
+        title: z.string().trim().min(1),
+        body: z.string().trim().min(1),
+      })
+      .strict(),
+    detail: z
+      .object({
+        title: z.string().trim().min(1),
+        body: z.string().trim().min(1),
+      })
+      .strict(),
   })
+  .strict()
   .openapi('NotificationContent');
 
 export const notificationUserReferenceSchema = z
@@ -76,19 +81,38 @@ export const notificationUserReferenceSchema = z
     userId: z.number().int().positive(),
     userName: z.string(),
   })
+  .strict()
   .openapi('NotificationUserReference');
+
+export const notificationAudienceInputItemSchema = z
+  .discriminatedUnion('type', [
+    z.object({ type: z.literal(NOTIFICATION_AUDIENCE_TYPES[0]) }).strict(),
+    z
+      .object({
+        type: z.enum(NOTIFICATION_TARGET_AUDIENCE_TYPES),
+        targetId: z.number().int().positive(),
+      })
+      .strict(),
+  ])
+  .openapi('NotificationAudienceInputItem');
+
+export const notificationAudienceInputSchema = z
+  .object({
+    items: z.array(notificationAudienceInputItemSchema).min(1),
+  })
+  .strict()
+  .openapi('NotificationAudienceInput');
 
 export const notificationAudienceItemSchema = z
   .discriminatedUnion('type', [
-    z.object({
-      type: z.literal(NOTIFICATION_AUDIENCE_TYPES[0]),
-      label: z.null().optional(),
-    }),
-    z.object({
-      type: z.enum(NOTIFICATION_TARGET_AUDIENCE_TYPES),
-      targetId: z.number().int().positive(),
-      label: z.string().nullable().optional(),
-    }),
+    z.object({ type: z.literal(NOTIFICATION_AUDIENCE_TYPES[0]) }).strict(),
+    z
+      .object({
+        type: z.enum(NOTIFICATION_TARGET_AUDIENCE_TYPES),
+        targetId: z.number().int().positive(),
+        label: z.string().nullable(),
+      })
+      .strict(),
   ])
   .openapi('NotificationAudienceItem');
 
@@ -96,37 +120,48 @@ export const notificationAudienceSchema = z
   .object({
     items: z.array(notificationAudienceItemSchema).min(1),
   })
+  .strict()
   .openapi('NotificationAudience');
 
 export const notificationDeliveryInputSchema = z
   .discriminatedUnion('type', [
-    z.object({
-      type: z.literal(NOTIFICATION_DELIVERY_TYPES[0]),
-      sendAt: z.null(),
-    }),
-    z.object({
-      type: z.literal(NOTIFICATION_DELIVERY_TYPES[1]),
-      sendAt: isoDateTimeSchema,
-    }),
+    z
+      .object({
+        type: z.literal(NOTIFICATION_DELIVERY_TYPES[0]),
+        sendAt: z.null(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal(NOTIFICATION_DELIVERY_TYPES[1]),
+        sendAt: isoDateTimeSchema,
+      })
+      .strict(),
   ])
   .openapi('NotificationDeliveryInput');
 
 export const notificationCreationSchema = z
   .discriminatedUnion('method', [
-    z.object({
-      method: z.literal(NOTIFICATION_CREATION_METHODS[0]),
-      user: notificationUserReferenceSchema.nullable(),
-      source: z.null(),
-    }),
-    z.object({
-      method: z.literal(NOTIFICATION_CREATION_METHODS[1]),
-      user: z.null(),
-      source: z.object({
-        type: z.literal('gathering'),
-        id: z.number().int().positive(),
-        label: z.string().nullable(),
-      }),
-    }),
+    z
+      .object({
+        method: z.literal(NOTIFICATION_CREATION_METHODS[0]),
+        user: notificationUserReferenceSchema,
+        source: z.null(),
+      })
+      .strict(),
+    z
+      .object({
+        method: z.literal(NOTIFICATION_CREATION_METHODS[1]),
+        user: z.null(),
+        source: z
+          .object({
+            type: z.literal('gathering'),
+            id: z.number().int().positive(),
+            label: z.string().nullable(),
+          })
+          .strict(),
+      })
+      .strict(),
   ])
   .openapi('NotificationCreation');
 
@@ -136,6 +171,7 @@ export const notificationStopSchema = z
     stoppedAt: isoDateTimeSchema,
     stoppedBy: notificationUserReferenceSchema.nullable(),
   })
+  .strict()
   .openapi('NotificationStop');
 
 export const notificationRecipientResolutionSchema = z
@@ -143,6 +179,7 @@ export const notificationRecipientResolutionSchema = z
     status: z.enum(['pending', 'resolved']),
     resolvedCount: z.number().int().nonnegative(),
   })
+  .strict()
   .openapi('NotificationRecipientResolution');
 
 export const notificationRecipientPushSummarySchema = z
@@ -152,12 +189,14 @@ export const notificationRecipientPushSummarySchema = z
     failedCount: z.number().int().nonnegative(),
     noPushTargetCount: z.number().int().nonnegative(),
   })
+  .strict()
   .openapi('NotificationRecipientPushSummary');
 
 export const notificationScheduleAudienceSchema = notificationAudienceSchema
   .extend({
     recipientResolution: notificationRecipientResolutionSchema,
   })
+  .strict()
   .openapi('NotificationScheduleAudience');
 
 export const notificationScheduleSummarySchema = z
@@ -171,6 +210,7 @@ export const notificationScheduleSummarySchema = z
     audience: notificationScheduleAudienceSchema,
     recipientPushSummary: notificationRecipientPushSummarySchema,
   })
+  .strict()
   .openapi('NotificationScheduleSummaryV2');
 
 export const notificationAudienceProgressSchema = z
@@ -178,6 +218,7 @@ export const notificationAudienceProgressSchema = z
     totalCount: z.number().int().nonnegative(),
     resolvedCount: z.number().int().nonnegative(),
   })
+  .strict()
   .openapi('NotificationAudienceProgress');
 
 export const notificationRecipientProgressSchema = z
@@ -185,6 +226,7 @@ export const notificationRecipientProgressSchema = z
     count: z.number().int().nonnegative(),
     status: z.enum(['pending', 'resolved']),
   })
+  .strict()
   .openapi('NotificationRecipientProgress');
 
 export const notificationDeliveryProgressSchema = z
@@ -197,6 +239,7 @@ export const notificationDeliveryProgressSchema = z
     failedCount: z.number().int().nonnegative(),
     stoppedCount: z.number().int().nonnegative(),
   })
+  .strict()
   .openapi('NotificationDeliveryProgress');
 
 export const notificationScheduleProgressSchema = z
@@ -205,14 +248,35 @@ export const notificationScheduleProgressSchema = z
     recipientProgress: notificationRecipientProgressSchema,
     deliveryProgress: notificationDeliveryProgressSchema,
   })
+  .strict()
   .openapi('NotificationScheduleProgress');
 
+export const notificationScheduleMonitorListItemSchema = z
+  .object({
+    notificationScheduleId: z.number().int().positive(),
+    notificationId: z.number().int().positive(),
+    content: notificationContentSchema,
+    creation: notificationCreationSchema,
+    sendAt: isoDateTimeSchema,
+    status: notificationV2StatusSchemas.schedule,
+    stop: notificationStopSchema.nullable(),
+    scheduledBy: notificationUserReferenceSchema.nullable(),
+    createdAt: isoDateTimeSchema,
+    startedAt: isoDateTimeSchema.nullable(),
+    completedAt: isoDateTimeSchema.nullable(),
+    audience: notificationScheduleAudienceSchema,
+    recipientPushSummary: notificationRecipientPushSummarySchema,
+    progress: notificationScheduleProgressSchema,
+  })
+  .strict()
+  .openapi('NotificationScheduleMonitorListItem');
+
 export const notificationScheduleDetailSchema =
-  notificationScheduleSummarySchema
+  notificationScheduleMonitorListItemSchema
     .extend({
       updatedAt: isoDateTimeSchema,
-      progress: notificationScheduleProgressSchema,
     })
+    .strict()
     .openapi('NotificationScheduleDetailV2');
 
 export const notificationPushDeliveryDetailSchema = z
@@ -230,7 +294,23 @@ export const notificationPushDeliveryDetailSchema = z
     failedReason: z.string().nullable(),
     fcmMessageId: z.string().nullable(),
   })
+  .strict()
   .openapi('NotificationPushDeliveryDetail');
+
+export const notificationRecipientResultSchema = z
+  .object({
+    notificationRecipientId: z.number().int().positive(),
+    user: notificationUserReferenceSchema,
+    push: z
+      .object({
+        status: z.enum(['success', 'failed', 'no_push_target']),
+        successCount: z.number().int().nonnegative(),
+        failedCount: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict()
+  .openapi('NotificationRecipientResult');
 
 export const adminNotificationDetailV2Schema = z
   .object({
@@ -242,6 +322,7 @@ export const adminNotificationDetailV2Schema = z
     updatedAt: isoDateTimeSchema,
     schedules: z.array(notificationScheduleSummarySchema),
   })
+  .strict()
   .openapi('AdminNotificationDetailV2');
 
 export const adminNotificationListV2ResponseSchema = z
@@ -249,15 +330,17 @@ export const adminNotificationListV2ResponseSchema = z
     notifications: z.array(adminNotificationDetailV2Schema),
     ...paginationFields,
   })
+  .strict()
   .openapi('AdminNotificationListV2');
 
 export const notificationCreateRequestSchema = z
   .object({
     content: notificationContentSchema,
-    audience: notificationAudienceSchema,
+    audience: notificationAudienceInputSchema,
     delivery: notificationDeliveryInputSchema,
     importance: notificationImportanceSchema,
   })
+  .strict()
   .openapi('NotificationCreateRequest');
 
 export const notificationCreateResponseSchema = z
@@ -265,15 +348,50 @@ export const notificationCreateResponseSchema = z
     notificationId: z.number().int().positive(),
     notificationScheduleId: z.number().int().positive(),
   })
+  .strict()
   .openapi('NotificationCreateResponse');
+
+const notificationContentPatchBlockSchema = z
+  .object({
+    title: z.string().trim().min(1).optional(),
+    body: z.string().trim().min(1).optional(),
+  })
+  .strict()
+  .refine(value => Object.keys(value).length > 0, {
+    message: '少なくともtitleまたはbodyを指定してください',
+  });
+
+export const notificationContentPatchSchema = z
+  .object({
+    push: notificationContentPatchBlockSchema.optional(),
+    detail: notificationContentPatchBlockSchema.optional(),
+  })
+  .strict()
+  .refine(value => Object.keys(value).length > 0, {
+    message: '少なくともpushまたはdetailを指定してください',
+  })
+  .openapi('NotificationContentPatch');
+
+export const notificationSchedulePatchSchema = z
+  .object({
+    notificationScheduleId: z.number().int().positive(),
+    audience: notificationAudienceInputSchema.optional(),
+    delivery: notificationDeliveryInputSchema.optional(),
+  })
+  .strict()
+  .refine(
+    value => value.audience !== undefined || value.delivery !== undefined,
+    { message: 'audienceまたはdeliveryを指定してください' }
+  )
+  .openapi('NotificationSchedulePatch');
 
 export const notificationPatchRequestSchema = z
   .object({
-    content: notificationContentSchema.optional(),
-    audience: notificationAudienceSchema.optional(),
-    delivery: notificationDeliveryInputSchema.optional(),
+    content: notificationContentPatchSchema.optional(),
     importance: notificationImportanceSchema.optional(),
+    schedule: notificationSchedulePatchSchema.optional(),
   })
+  .strict()
   .refine(value => Object.keys(value).length > 0, {
     message: '少なくとも1項目を指定してください',
   })
@@ -281,33 +399,40 @@ export const notificationPatchRequestSchema = z
 
 export const notificationConfigResponseSchema = z
   .object({
-    importance: z.object({
-      default: z.literal('normal'),
-      options: z.array(notificationImportanceSchema),
-    }),
+    importance: z
+      .object({
+        default: z.literal('normal'),
+        options: z.array(notificationImportanceSchema),
+      })
+      .strict(),
   })
+  .strict()
   .openapi('NotificationConfig');
 
 export const notificationAudienceCountRequestSchema = z
-  .object({ audience: notificationAudienceSchema })
+  .object({ audience: notificationAudienceInputSchema })
+  .strict()
   .openapi('NotificationAudienceCountRequest');
 
 export const notificationAudienceCountResponseSchema = z
   .object({ recipientCount: z.number().int().nonnegative() })
+  .strict()
   .openapi('NotificationAudienceCountResponse');
 
 export const notificationScheduleListResponseSchema = z
   .object({
-    schedules: z.array(notificationScheduleSummarySchema),
+    schedules: z.array(notificationScheduleMonitorListItemSchema),
     ...paginationFields,
   })
-  .openapi('NotificationScheduleListV2');
+  .strict()
+  .openapi('NotificationScheduleMonitorList');
 
 export const notificationScheduleResultsResponseSchema = z
   .object({
-    results: z.array(notificationPushDeliveryDetailSchema),
+    results: z.array(notificationRecipientResultSchema),
     ...paginationFields,
   })
+  .strict()
   .openapi('NotificationScheduleResults');
 
 export const notificationStopResponseSchema = z
@@ -315,7 +440,31 @@ export const notificationStopResponseSchema = z
     notificationScheduleId: z.number().int().positive(),
     status: z.literal('stopped'),
   })
+  .strict()
   .openapi('NotificationStopResponse');
+
+export const notificationResendRequestSchema = z
+  .object({ delivery: notificationDeliveryInputSchema })
+  .strict()
+  .openapi('NotificationResendRequest');
+
+export const firebaseTokenRegistrationRequestV2Schema = z
+  .object({
+    fcmToken: z.string().min(1),
+    platform: z.enum(['ios', 'android']),
+  })
+  .strict()
+  .openapi('FirebaseTokenRegistrationRequestV2');
+
+export const firebaseTokenV2Schema = z
+  .object({
+    firebaseTokenId: z.number().int().positive(),
+    userId: z.number().int().positive(),
+    platform: z.enum(['ios', 'android']),
+    lastSeenAt: isoDateTimeSchema,
+  })
+  .strict()
+  .openapi('FirebaseTokenV2');
 
 export const adminNotificationV2IdParams = z.object({
   notificationId: positivePathParam('notificationId', '通知ID'),
@@ -519,7 +668,7 @@ export const notificationScheduleResultsRoute = createRoute({
   method: 'get',
   path: '/admin/notifications/schedules/{notificationScheduleId}/results',
   tags: ['Notification schedules v2'],
-  summary: '通知スケジュールの配信結果を取得する',
+  summary: '通知スケジュールの受信者単位の配信結果を取得する',
   security: bearerAuth,
   request: {
     params: notificationScheduleIdParams,
@@ -555,11 +704,20 @@ export const notificationScheduleResendRoute = createRoute({
   method: 'post',
   path: '/admin/notifications/schedules/{notificationScheduleId}/resend',
   tags: ['Notification schedules v2'],
-  summary: '通知スケジュールを再送する',
+  summary: '同じ通知に新しい通知スケジュールを作成する',
   security: bearerAuth,
-  request: { params: notificationScheduleIdParams },
+  request: {
+    params: notificationScheduleIdParams,
+    body: {
+      content: {
+        'application/json': { schema: notificationResendRequestSchema },
+      },
+      required: true,
+    },
+  },
   responses: {
     201: jsonResponse(notificationCreateResponseSchema, '再送結果'),
+    400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
     404: notFoundResponse,

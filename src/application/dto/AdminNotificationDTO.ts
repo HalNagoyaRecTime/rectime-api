@@ -18,17 +18,39 @@ export interface NotificationContentDTO {
   };
 }
 
+export interface NotificationContentPatchDTO {
+  push?: {
+    title?: string;
+    body?: string;
+  };
+  detail?: {
+    title?: string;
+    body?: string;
+  };
+}
+
 export interface NotificationUserReferenceDTO {
   userId: number;
   userName: string;
 }
 
-export type NotificationAudienceItemDTO =
-  | { type: 'all'; label?: null }
+export type NotificationAudienceInputItemDTO =
+  | { type: 'all' }
   | {
       type: Exclude<NotificationAudienceType, 'all'>;
       targetId: number;
-      label?: string | null;
+    };
+
+export interface NotificationAudienceInputDTO {
+  items: NotificationAudienceInputItemDTO[];
+}
+
+export type NotificationAudienceItemDTO =
+  | { type: 'all' }
+  | {
+      type: Exclude<NotificationAudienceType, 'all'>;
+      targetId: number;
+      label: string | null;
     };
 
 export interface NotificationAudienceDTO {
@@ -36,12 +58,13 @@ export interface NotificationAudienceDTO {
 }
 
 export type NotificationDeliveryInputDTO =
-  { type: 'immediate'; sendAt: null } | { type: 'scheduled'; sendAt: string };
+  | { type: 'immediate'; sendAt: null }
+  | { type: 'scheduled'; sendAt: string };
 
 export type NotificationCreationDTO =
   | {
       method: Extract<NotificationCreationMethod, 'manual'>;
-      user: NotificationUserReferenceDTO | null;
+      user: NotificationUserReferenceDTO;
       source: null;
     }
   | {
@@ -56,21 +79,24 @@ export type NotificationCreationDTO =
 
 export interface NotificationCreateRequestDTO {
   content: NotificationContentDTO;
-  audience: NotificationAudienceDTO;
+  audience: NotificationAudienceInputDTO;
   delivery: NotificationDeliveryInputDTO;
   importance: NotificationImportance;
 }
 
-export type NotificationCreateResponseDTO = {
+export interface NotificationCreateResponseDTO {
   notificationId: number;
   notificationScheduleId: number;
-};
+}
 
 export interface NotificationPatchRequestDTO {
-  content?: NotificationContentDTO;
-  audience?: NotificationAudienceDTO;
-  delivery?: NotificationDeliveryInputDTO;
+  content?: NotificationContentPatchDTO;
   importance?: NotificationImportance;
+  schedule?: {
+    notificationScheduleId: number;
+    audience?: NotificationAudienceInputDTO;
+    delivery?: NotificationDeliveryInputDTO;
+  };
 }
 
 export interface AdminNotificationDetailDTO {
@@ -100,7 +126,7 @@ export interface NotificationConfigDTO {
 }
 
 export interface NotificationAudienceCountRequestDTO {
-  audience: NotificationAudienceDTO;
+  audience: NotificationAudienceInputDTO;
 }
 
 export interface NotificationAudienceCountResponseDTO {

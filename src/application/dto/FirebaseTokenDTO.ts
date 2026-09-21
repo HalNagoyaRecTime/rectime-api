@@ -9,7 +9,6 @@ export interface FirebaseTokenDTO {
   firebaseTokenId: number;
   userId: number;
   platform: FirebaseTokenPlatformDTO;
-  isActive: boolean;
   lastSeenAt: string;
 }
 
