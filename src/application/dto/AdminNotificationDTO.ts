@@ -5,7 +5,7 @@ import type {
   NotificationScheduleStatus,
   NotificationSourceType,
   NotificationStopReason,
-} from '../../domain/entities/NotificationV2';
+} from '../../domain/entities/Notification';
 import type { NotificationScheduleSummaryDTO } from './NotificationScheduleDTO';
 
 export interface NotificationContentDTO {

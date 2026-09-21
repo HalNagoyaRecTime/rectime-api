@@ -7,7 +7,7 @@ import {
   NOTIFICATION_SCHEDULE_STATUSES,
   NOTIFICATION_SOURCE_TYPES,
   NOTIFICATION_TYPES,
-} from '../../../src/domain/entities/NotificationV2';
+} from '../../../src/domain/entities/Notification';
 import {
   adminNotificationV2CreateRoute,
   adminNotificationV2DetailRoute,

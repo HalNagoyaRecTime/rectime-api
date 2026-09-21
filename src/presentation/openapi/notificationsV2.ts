@@ -10,7 +10,7 @@ import {
   NOTIFICATION_STOP_REASONS,
   NOTIFICATION_TARGET_AUDIENCE_TYPES,
   NOTIFICATION_TYPES,
-} from '../../domain/entities/NotificationV2';
+} from '../../domain/entities/Notification';
 import {
   bearerAuth,
   internalServerErrorResponse,
