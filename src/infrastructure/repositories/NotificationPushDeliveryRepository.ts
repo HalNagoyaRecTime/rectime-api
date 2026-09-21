@@ -43,6 +43,16 @@ export function createNotificationPushDeliveryRepository(
       return result.meta.changes;
     },
 
+    async findPendingDeliveryIds(scheduleId, limit) {
+      const rows = await db
+        .prepare(
+          "SELECT d.notification_push_delivery_id AS id FROM notification_push_deliveries d INNER JOIN notification_recipients r ON r.notification_recipient_id = d.notification_recipient_id WHERE r.notification_schedule_id = ? AND d.status = 'pending' ORDER BY d.notification_push_delivery_id LIMIT ?"
+        )
+        .bind(scheduleId, limit)
+        .all<{ id: number }>();
+      return rows.results.map(row => row.id);
+    },
+
     async markScheduleSending(scheduleId, now) {
       const result = await db
         .prepare(

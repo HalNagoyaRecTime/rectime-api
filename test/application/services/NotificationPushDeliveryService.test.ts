@@ -24,6 +24,7 @@ function setup() {
   const repository: INotificationPushDeliveryRepository = {
     isDeliveryGenerationAllowed: vi.fn().mockResolvedValue(true),
     createPendingDeliveries: vi.fn().mockResolvedValue(3),
+    findPendingDeliveryIds: vi.fn(),
     markScheduleSending: vi.fn().mockResolvedValue(true),
     claimPendingDelivery: vi.fn().mockResolvedValue(buildTarget()),
     markDeliverySent: vi.fn().mockResolvedValue(true),

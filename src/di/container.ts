@@ -13,9 +13,11 @@ import { createGatheringSpotRepository } from '../infrastructure/repositories/Ga
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
 import { createEventGatheringSettingsRepository } from '../infrastructure/repositories/EventGatheringSettingsRepository';
-import { createNotificationDeliveryQueue } from '../infrastructure/queues/NotificationDeliveryQueue';
 import { createNotificationStopRepository } from '../infrastructure/repositories/NotificationStopRepository';
 import { createGatheringNotificationCleanupRepository } from '../infrastructure/repositories/GatheringNotificationCleanupRepository';
+import { createNotificationAudienceResolverRepository } from '../infrastructure/repositories/NotificationAudienceResolverRepository';
+import { createNotificationPushDeliveryRepository } from '../infrastructure/repositories/NotificationPushDeliveryRepository';
+import { createNotificationRetryRepository } from '../infrastructure/repositories/NotificationRetryRepository';
 import { createStudentService } from '../application/services/StudentService';
 import { createStaffService } from '../application/services/StaffService';
 import { createTeacherService } from '../application/services/TeacherService';
@@ -24,7 +26,6 @@ import { createClassRoomService } from '../application/services/ClassRoomService
 import { createMasterImportService } from '../application/services/MasterImportService';
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
-import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
 import { createAdminNotificationService } from '../application/services/AdminNotificationService';
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
@@ -34,6 +35,11 @@ import { createGatheringService } from '../application/services/GatheringService
 import { createEventGatheringSettingsService } from '../application/services/EventGatheringSettingsService';
 import { createNotificationStopService } from '../application/services/NotificationStopService';
 import { createGatheringNotificationCleanupService } from '../application/services/GatheringNotificationCleanupService';
+import { createNotificationAudienceResolverService } from '../application/services/NotificationAudienceResolverService';
+import { createNotificationPushDeliveryService } from '../application/services/NotificationPushDeliveryService';
+import { createNotificationRetryService } from '../application/services/NotificationRetryService';
+import { createNotificationWorkerService } from '../application/services/NotificationWorkerService';
+import { createNotificationWorkerQueue } from '../infrastructure/queues/NotificationWorkerQueue';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createStaffController } from '../presentation/controllers/StaffController';
 import { createTeacherController } from '../presentation/controllers/TeacherController';
@@ -90,9 +96,14 @@ export function createDIContainer(env: Env) {
   const notificationStopRepository = createNotificationStopRepository(db);
   const gatheringNotificationCleanupRepository =
     createGatheringNotificationCleanupRepository(db);
-  const notificationDeliveryQueue = createNotificationDeliveryQueue(
+  const notificationWorkerQueue = createNotificationWorkerQueue(
     env.NOTIFICATION_DELIVERY_QUEUE
   );
+  const notificationAudienceResolverRepository =
+    createNotificationAudienceResolverRepository(db);
+  const notificationPushDeliveryRepository =
+    createNotificationPushDeliveryRepository(db);
+  const notificationRetryRepository = createNotificationRetryRepository(db);
 
   // Services
   const authService = createAuthService(
@@ -152,12 +163,6 @@ export function createDIContainer(env: Env) {
     privateKey: env.FIREBASE_PRIVATE_KEY,
     testFcmToken: env.TEST_FCM_TOKEN,
   });
-  const scheduledNotificationService = createScheduledNotificationService({
-    firebaseTokenRepository,
-    notificationScheduleRepository,
-    notificationDeliveryQueue,
-    fcmService,
-  });
   const adminNotificationService = createAdminNotificationService(
     adminNotificationRepository
   );
@@ -190,6 +195,29 @@ export function createDIContainer(env: Env) {
     eventGatheringSettingsRepository,
     gatheringNotificationCleanupService
   );
+  const notificationRetryService = createNotificationRetryService({
+    repository: notificationRetryRepository,
+    fcmService,
+  });
+  const notificationAudienceResolverService =
+    createNotificationAudienceResolverService(
+      notificationAudienceResolverRepository
+    );
+  const notificationPushDeliveryService = createNotificationPushDeliveryService(
+    {
+      repository: notificationPushDeliveryRepository,
+      fcmService,
+      retryService: notificationRetryService,
+    }
+  );
+  const notificationWorkerService = createNotificationWorkerService({
+    audienceResolverRepository: notificationAudienceResolverRepository,
+    pushDeliveryRepository: notificationPushDeliveryRepository,
+    audienceResolverService: notificationAudienceResolverService,
+    pushDeliveryService: notificationPushDeliveryService,
+    retryService: notificationRetryService,
+    queue: notificationWorkerQueue,
+  });
 
   // Controllers
   const userStatusController = createUserStatusController(userStatusService);
@@ -246,13 +274,13 @@ export function createDIContainer(env: Env) {
     adminNotificationManagementController,
     userSearchController,
     mobileNotificationController,
-    scheduledNotificationService,
     gatheringSpotController,
     gatheringGroupMemberController,
     gatheringController,
     eventGatheringSettingsController,
     notificationStopService,
     notificationStopController,
+    notificationWorkerService,
   };
 }
 

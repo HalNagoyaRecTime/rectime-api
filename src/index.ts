@@ -5,11 +5,11 @@ import { OpenAPIHono, type RouteConfig } from '@hono/zod-openapi';
 import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
-import { isDocsEnabled, type Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
+import { isDocsEnabled, type Env } from './lib/env';
 import { getAllowedOriginRules, isAllowedOrigin } from './lib/allowedOrigins';
-import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
-import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
+import type { NotificationWorkerMessage } from './domain/entities/NotificationWorkerMessage';
+import { consumeNotificationWorkerQueue } from './infrastructure/queues/NotificationWorkerQueueConsumer';
 import {
   diContainerMiddleware,
   type ContainerVariables,
@@ -433,8 +433,7 @@ app.get(
 export { app };
 
 // アカウント削除の後片付け再実行(#345)専用Cron式。通知配信Cron
-// ('* * * * *')とはevent.cronの値で区別する。EVENT_DATE判定には
-// 依存させない(削除の後片付けは開催日に関係なく毎日実行したいため)。
+// ('* * * * *')とはevent.cronの値で区別する。
 const ACCOUNT_DELETION_PURGE_RETRY_CRON = '0 18 * * *';
 // 1回のCron実行で処理する上限件数。冪等な再実行のため、上限を超えた
 // 残りは翌日以降のCronで拾われる。
@@ -468,19 +467,23 @@ export default {
 
     const container = createDIContainer(env);
     ctx.waitUntil(
-      container.scheduledNotificationService.enqueueDueNotifications(
-        scheduledAt
-      )
+      Promise.all([
+        container.notificationWorkerService.enqueueDueSchedules(scheduledAt),
+        container.notificationWorkerService.retryDueDeliveries(scheduledAt),
+        container.notificationWorkerService.recoverProcessingTimeouts(
+          scheduledAt
+        ),
+      ])
     );
   },
   async queue(
-    batch: MessageBatch<NotificationDeliveryMessage>,
+    batch: MessageBatch<NotificationWorkerMessage>,
     env: Env
   ): Promise<void> {
     const container = createDIContainer(env);
-    await consumeNotificationDeliveryQueue(
+    await consumeNotificationWorkerQueue(
       batch,
-      container.scheduledNotificationService
+      container.notificationWorkerService
     );
   },
 };

@@ -16,6 +16,7 @@ export interface NotificationAudienceTarget {
 }
 
 export interface INotificationAudienceResolverRepository {
+  findDueScheduleIds: (dueAt: string, limit: number) => Promise<number[]>;
   claimScheduleForResolution: (
     scheduleId: number,
     dueAt: string

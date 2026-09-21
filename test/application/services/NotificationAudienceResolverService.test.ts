@@ -4,6 +4,7 @@ import type { INotificationAudienceResolverRepository } from '../../../src/domai
 
 function setup() {
   const repository: INotificationAudienceResolverRepository = {
+    findDueScheduleIds: vi.fn(),
     claimScheduleForResolution: vi.fn().mockResolvedValue(true),
     isScheduleResolutionAllowed: vi.fn().mockResolvedValue(true),
     findUnresolvedAudiences: vi.fn().mockResolvedValue([
