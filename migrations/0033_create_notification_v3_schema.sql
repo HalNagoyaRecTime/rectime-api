@@ -1,4 +1,4 @@
--- 通知v3のexpand migration。
+-- 通知v2のexpand migration。
 -- 既存の通知経路が参照する列はcleanup phaseまで残し、新しい論理配信単位を追加する。
 
 CREATE TABLE __migration_0033_schedule_rows AS
@@ -150,7 +150,7 @@ CREATE TABLE notification_schedules (
   event_id INTEGER REFERENCES events(event_id) ON DELETE SET NULL,
   notification_id INTEGER NOT NULL
     REFERENCES notifications(notification_id) ON DELETE CASCADE,
-  -- 旧Token単位Scheduleとのexpand互換用。v3ではNULLを許容する。
+  -- 旧Token単位Scheduleとのexpand互換用。v2ではNULLを許容する。
   firebase_token_id INTEGER REFERENCES firebase_tokens(firebase_token_id) ON DELETE SET NULL,
   importance INTEGER NOT NULL DEFAULT 2,
   -- 旧Workerとのexpand互換用。#460でdefaultと旧statusを整理する。
