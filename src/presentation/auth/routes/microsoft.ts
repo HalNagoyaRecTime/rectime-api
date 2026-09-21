@@ -20,6 +20,10 @@ import {
   getUserCategories,
 } from '../helpers';
 import {
+  getAllowedFrontendOrigin,
+  getStoredFrontendOrigin,
+} from '../frontendOrigin';
+import {
   type PkceEntry,
   type MobileRefreshEntry,
   type DeletionConfirmationEntry,
@@ -91,6 +95,7 @@ microsoft.get('/login', async c => {
   const state = generateRandom(32);
   const codeVerifier = generateRandom(32);
   const codeChallenge = await generateCodeChallenge(codeVerifier);
+  const frontendOrigin = getAllowedFrontendOrigin(c);
 
   await c.env.AUTH_KV.put(
     `pkce:${state}`,
@@ -99,6 +104,7 @@ microsoft.get('/login', async c => {
       nonce,
       client_type: 'web',
       purpose: 'login',
+      ...(frontendOrigin ? { frontend_origin: frontendOrigin } : {}),
       created_at: new Date().toISOString(),
     } satisfies PkceEntry),
     { expirationTtl: 600 }
@@ -178,6 +184,7 @@ microsoft.get('/delete-login', async c => {
   const state = generateRandom(32);
   const codeVerifier = generateRandom(32);
   const codeChallenge = await generateCodeChallenge(codeVerifier);
+  const frontendOrigin = getAllowedFrontendOrigin(c);
 
   await c.env.AUTH_KV.put(
     `pkce:${state}`,
@@ -186,14 +193,14 @@ microsoft.get('/delete-login', async c => {
       nonce,
       client_type: 'web',
       purpose: 'account_deletion',
+      ...(frontendOrigin ? { frontend_origin: frontendOrigin } : {}),
       created_at: new Date().toISOString(),
     } satisfies PkceEntry),
     { expirationTtl: 600 }
   );
 
-  // 戻り先はFRONTEND_URL固定(既存/callbackと同じリダイレクト先)。
-  // クライアントからreturn_toを受け取らないことで、削除確認フローが
-  // 任意のオリジンへのオープンリダイレクトに使われることを防ぐ。
+  // Refererから検証済みoriginをstateに保存し、callbackで同じoriginへ戻す。
+  // 取得できない場合はFRONTEND_URLへフォールバックする。
   // prompt=login については上記mobile側の分岐と同じ理由。
   return c.redirect(
     buildMicrosoftAuthorizeUrl(
@@ -214,7 +221,8 @@ microsoft.get('/delete-login', async c => {
 // (フロントエンドが POST /auth/microsoft/token で自ら交換する)。
 microsoft.get('/callback', async c => {
   const { code, state, error } = c.req.query();
-  const frontendUrl = c.env.FRONTEND_URL;
+  const frontendUrl =
+    (await getStoredFrontendOrigin(c, state)) ?? c.env.FRONTEND_URL;
 
   if (error || !code || !state) {
     return c.redirect(`${frontendUrl}/login?error=auth_failed`, 302);

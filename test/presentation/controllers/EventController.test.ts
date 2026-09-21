@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { createEventController } from '../../../src/presentation/controllers/EventController';
-import type { IEventScheduleService } from '../../../src/application/services/IEventScheduleService';
 import type { IEventService } from '../../../src/application/services/IEventService';
 import type { EventEntity } from '../../../src/domain/entities/Event';
 
@@ -28,11 +27,7 @@ function setup(authenticatedUserId: number | null = 7) {
     updateEvent: vi.fn(),
     deleteEvent: vi.fn(),
   };
-  const eventScheduleService: IEventScheduleService = {
-    updateEventSchedule: vi.fn(),
-    getEventNotificationSummary: vi.fn(),
-  };
-  const controller = createEventController(eventService, eventScheduleService);
+  const controller = createEventController(eventService);
   const app = new Hono<{
     Bindings: { EVENT_DATE?: string };
     Variables: { authenticatedUserId: number | null };
@@ -46,9 +41,8 @@ function setup(authenticatedUserId: number | null = 7) {
   app.get('/events/:eventId', c => controller.getEventById(c));
   app.post('/events', c => controller.createEvent(c));
   app.put('/events/:eventId', c => controller.updateEvent(c));
-  app.patch('/events/:eventId', c => controller.patchEvent(c));
   app.delete('/events/:eventId', c => controller.deleteEvent(c));
-  return { app, eventService, eventScheduleService };
+  return { app, eventService };
 }
 
 describe('EventController', () => {
@@ -298,7 +292,7 @@ describe('EventController', () => {
 
   describe('updateEvent', () => {
     it('IDと有効な本文をServiceへ渡して更新する(Notification固有fieldは扱わない)', async () => {
-      const { app, eventService, eventScheduleService } = setup();
+      const { app, eventService } = setup();
       const event = buildEvent({ event_name: '更新後の徒競走' });
       (eventService.updateEvent as ReturnType<typeof vi.fn>).mockResolvedValue(
         event
@@ -323,7 +317,6 @@ describe('EventController', () => {
         start_time: '1000',
         end_time: '1030',
       });
-      expect(eventScheduleService.updateEventSchedule).not.toHaveBeenCalled();
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual(event);
     });
@@ -441,134 +434,6 @@ describe('EventController', () => {
 
       expect(response.status).toBe(400);
       expect(eventService.updateEvent).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('patchEvent', () => {
-    it('指定された項目だけをsnake_caseでServiceへ渡す', async () => {
-      const { app, eventScheduleService } = setup();
-      (
-        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        event: buildEvent({ venue: 'サブトラック' }),
-        notification_enabled: false,
-        notification_schedules: [],
-      });
-
-      const response = await app.request(
-        '/events/1',
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            venue: 'サブトラック',
-            notification_enabled: false,
-          }),
-        },
-        { EVENT_DATE: '2026-11-07' }
-      );
-
-      expect(response.status).toBe(200);
-      expect(eventScheduleService.updateEventSchedule).toHaveBeenCalledWith({
-        event_id: 1,
-        user_id: 7,
-        venue: 'サブトラック',
-        notification_enabled: false,
-        event_date: '2026-11-07',
-      });
-    });
-
-    it('空のRequestは400を返す', async () => {
-      const { app, eventScheduleService } = setup();
-
-      const response = await app.request(
-        '/events/1',
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        },
-        { EVENT_DATE: '2026-11-07' }
-      );
-
-      expect(response.status).toBe(400);
-      expect(eventScheduleService.updateEventSchedule).not.toHaveBeenCalled();
-    });
-
-    it('既存の時刻と組み合わせて不正になる部分更新は400を返す', async () => {
-      const { app, eventScheduleService } = setup();
-      (
-        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('end_time must be after start_time'));
-
-      const response = await app.request(
-        '/events/1',
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ start_time: '1000' }),
-        },
-        { EVENT_DATE: '2026-11-07' }
-      );
-
-      expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({
-        error: {
-          code: 'INVALID_EVENT_TIME_RANGE',
-          message: '終了時刻は開始時刻より後に設定してください',
-        },
-      });
-    });
-
-    it('通知を生成しない会場更新はEVENT_DATEなしでもServiceへ渡す', async () => {
-      const { app, eventScheduleService } = setup();
-      (
-        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        event: buildEvent({ venue: 'サブトラック' }),
-        notification_enabled: false,
-        notification_schedules: [],
-      });
-
-      const response = await app.request('/events/1', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ venue: 'サブトラック' }),
-      });
-
-      expect(response.status).toBe(200);
-      expect(eventScheduleService.updateEventSchedule).toHaveBeenCalledWith({
-        event_id: 1,
-        user_id: 7,
-        venue: 'サブトラック',
-        event_date: undefined,
-      });
-    });
-
-    it('同時更新の競合は409を返す', async () => {
-      const { app, eventScheduleService } = setup();
-      (
-        eventScheduleService.updateEventSchedule as ReturnType<typeof vi.fn>
-      ).mockRejectedValue(new Error('Event update conflict'));
-
-      const response = await app.request(
-        '/events/1',
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ venue: 'サブトラック' }),
-        },
-        { EVENT_DATE: '2026-11-07' }
-      );
-
-      expect(response.status).toBe(409);
-      expect(await response.json()).toEqual({
-        error: {
-          code: 'EVENT_UPDATE_CONFLICT',
-          message:
-            '競技情報の更新が競合しました。再読み込みしてから再度お試しください',
-        },
-      });
     });
   });
 

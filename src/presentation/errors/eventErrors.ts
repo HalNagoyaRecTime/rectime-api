@@ -31,12 +31,6 @@ export const EventErrors = {
     code: 'EVENT_IN_USE',
     message: '使用中の競技は削除できません',
   },
-  EVENT_UPDATE_CONFLICT: {
-    status: 409,
-    code: 'EVENT_UPDATE_CONFLICT',
-    message:
-      '競技情報の更新が競合しました。再読み込みしてから再度お試しください',
-  },
   EVENT_LIST_FAILED: {
     status: 500,
     code: 'EVENT_LIST_FAILED',
@@ -66,21 +60,6 @@ export const EventErrors = {
     status: 500,
     code: 'EVENT_DELETE_FAILED',
     message: '競技の削除に失敗しました',
-  },
-  INVALID_EVENT_SCHEDULE_REQUEST: {
-    status: 400,
-    code: 'INVALID_EVENT_SCHEDULE_REQUEST',
-    message: '競技スケジュールの入力内容が正しくありません',
-  },
-  EVENT_SCHEDULE_UPDATE_FAILED: {
-    status: 500,
-    code: 'EVENT_SCHEDULE_UPDATE_FAILED',
-    message: '競技スケジュールの更新に失敗しました',
-  },
-  EVENT_NOTIFICATION_SUMMARY_FAILED: {
-    status: 500,
-    code: 'EVENT_NOTIFICATION_SUMMARY_FAILED',
-    message: '競技の通知状況の取得に失敗しました',
   },
   INVALID_GATHERING_ID: {
     status: 400,
@@ -117,35 +96,10 @@ export const EventErrors = {
     code: 'INVALID_GATHERING_MEMBER_REQUEST',
     message: '集合メンバーの入力内容が正しくありません',
   },
-  INVALID_GATHERING_MEMBER_ID: {
-    status: 400,
-    code: 'INVALID_GATHERING_MEMBER_ID',
-    message: '集合メンバーIDが正しくありません',
-  },
-  GATHERING_MEMBER_ALREADY_EXISTS: {
-    status: 409,
-    code: 'GATHERING_MEMBER_ALREADY_EXISTS',
-    message: '指定されたユーザーは既に集合メンバーです',
-  },
-  GATHERING_MEMBER_NOT_FOUND: {
-    status: 404,
-    code: 'GATHERING_MEMBER_NOT_FOUND',
-    message: '集合メンバーが見つかりません',
-  },
   GATHERING_MEMBER_LIST_FAILED: {
     status: 500,
     code: 'GATHERING_MEMBER_LIST_FAILED',
     message: '集合メンバー一覧の取得に失敗しました',
-  },
-  GATHERING_MEMBER_ADD_FAILED: {
-    status: 500,
-    code: 'GATHERING_MEMBER_ADD_FAILED',
-    message: '集合メンバーの追加に失敗しました',
-  },
-  GATHERING_MEMBER_REMOVE_FAILED: {
-    status: 500,
-    code: 'GATHERING_MEMBER_REMOVE_FAILED',
-    message: '集合メンバーの削除に失敗しました',
   },
   GATHERING_MEMBER_UPDATE_FAILED: {
     status: 500,
