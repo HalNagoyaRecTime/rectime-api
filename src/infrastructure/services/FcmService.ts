@@ -94,7 +94,8 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
         fcmErrorCode,
         `FCM request failed: HTTP ${response.status}${
           fcmErrorCode ? ` ${fcmErrorCode}` : ''
-        }`
+        }`,
+        parseRetryAfterSeconds(response.headers.get('retry-after'))
       );
     }
 
@@ -192,6 +193,19 @@ function extractFcmErrorCode(responseBody: unknown): string | null {
   return 'status' in error && typeof error.status === 'string'
     ? error.status
     : null;
+}
+
+function parseRetryAfterSeconds(value: string | null): number | null {
+  if (!value) return null;
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.ceil(seconds);
+  }
+
+  const retryAt = Date.parse(value);
+  if (Number.isNaN(retryAt)) return null;
+  return Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
 }
 
 function getAccessTokenCacheEntry(cacheKey: string): AccessTokenCacheEntry {

@@ -16,6 +16,7 @@ type DeliveryRow = {
   firebase_token_id: number;
   fcm_token: string;
   platform: number;
+  attempt_count: number;
 };
 
 export function createNotificationPushDeliveryRepository(
@@ -63,7 +64,7 @@ export function createNotificationPushDeliveryRepository(
 
       const row = await db
         .prepare(
-          'SELECT d.notification_push_delivery_id AS delivery_id, s.notification_schedule_id AS schedule_id, s.notification_id, s.event_id, n.notification_type, n.title, n.body, s.importance, d.firebase_token_id, ft.fcm_token, d.platform FROM notification_push_deliveries d INNER JOIN notification_recipients r ON r.notification_recipient_id = d.notification_recipient_id INNER JOIN notification_schedules s ON s.notification_schedule_id = r.notification_schedule_id INNER JOIN notifications n ON n.notification_id = s.notification_id INNER JOIN firebase_tokens ft ON ft.firebase_token_id = d.firebase_token_id WHERE d.notification_push_delivery_id = ?'
+          'SELECT d.notification_push_delivery_id AS delivery_id, s.notification_schedule_id AS schedule_id, s.notification_id, s.event_id, n.notification_type, n.title, n.body, s.importance, d.firebase_token_id, ft.fcm_token, d.platform, d.attempt_count FROM notification_push_deliveries d INNER JOIN notification_recipients r ON r.notification_recipient_id = d.notification_recipient_id INNER JOIN notification_schedules s ON s.notification_schedule_id = r.notification_schedule_id INNER JOIN notifications n ON n.notification_id = s.notification_id INNER JOIN firebase_tokens ft ON ft.firebase_token_id = d.firebase_token_id WHERE d.notification_push_delivery_id = ?'
         )
         .bind(deliveryId)
         .first<DeliveryRow>();
@@ -93,7 +94,7 @@ export function createNotificationPushDeliveryRepository(
     async completeScheduleIfIdle(scheduleId, now) {
       const result = await db
         .prepare(
-          "UPDATE notification_schedules SET send_status = 'completed', completed_at = ?, updated_at = ? WHERE notification_schedule_id = ? AND send_status = 'sending' AND recipients_resolved_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM notification_push_deliveries d INNER JOIN notification_recipients r ON r.notification_recipient_id = d.notification_recipient_id WHERE r.notification_schedule_id = ? AND d.status IN ('pending', 'sending'))"
+          "UPDATE notification_schedules SET send_status = 'completed', completed_at = ?, updated_at = ? WHERE notification_schedule_id = ? AND send_status = 'sending' AND recipients_resolved_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM notification_push_deliveries d INNER JOIN notification_recipients r ON r.notification_recipient_id = d.notification_recipient_id WHERE r.notification_schedule_id = ? AND d.status IN ('pending', 'sending', 'retry_wait'))"
         )
         .bind(now, now, scheduleId, scheduleId)
         .run();
@@ -128,5 +129,6 @@ function toSendTarget(row: DeliveryRow): NotificationPushDeliverySendTarget {
     firebaseTokenId: row.firebase_token_id,
     fcmToken: row.fcm_token,
     platform: row.platform,
+    attemptCount: row.attempt_count,
   };
 }

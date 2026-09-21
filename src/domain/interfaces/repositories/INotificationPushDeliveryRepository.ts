@@ -10,6 +10,7 @@ export interface NotificationPushDeliverySendTarget {
   firebaseTokenId: number;
   fcmToken: string;
   platform: 1 | 2;
+  attemptCount: number;
 }
 
 export interface INotificationPushDeliveryRepository {

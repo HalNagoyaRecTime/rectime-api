@@ -1,5 +1,6 @@
 import { firebasePlatformToName } from '../../domain/entities/FirebaseToken';
 import type { INotificationPushDeliveryRepository } from '../../domain/interfaces/repositories/INotificationPushDeliveryRepository';
+import type { INotificationRetryService } from './INotificationRetryService';
 import type { IFcmService } from './IFcmService';
 import type {
   INotificationPushDeliveryService,
@@ -10,8 +11,9 @@ import type {
 export function createNotificationPushDeliveryService(deps: {
   repository: INotificationPushDeliveryRepository;
   fcmService: IFcmService;
+  retryService?: INotificationRetryService;
 }): INotificationPushDeliveryService {
-  const { repository, fcmService } = deps;
+  const { repository, fcmService, retryService } = deps;
 
   return {
     async generateDeliveries(
@@ -60,6 +62,22 @@ export function createNotificationPushDeliveryService(deps: {
           data: buildFcmData(target),
         });
       } catch (error) {
+        if (retryService) {
+          const retryResult = await retryService.handleFcmFailure(
+            {
+              deliveryId,
+              scheduleId: target.scheduleId,
+              firebaseTokenId: target.firebaseTokenId,
+              attemptCount: target.attemptCount,
+              error,
+            },
+            now
+          );
+          return {
+            status: retryResult.status,
+            scheduleCompleted: retryResult.scheduleCompleted,
+          };
+        }
         await repository.markDeliveryFailed(
           deliveryId,
           toErrorMessage(error),
