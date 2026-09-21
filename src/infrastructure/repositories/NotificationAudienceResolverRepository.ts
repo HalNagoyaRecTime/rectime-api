@@ -35,6 +35,16 @@ export function createNotificationAudienceResolverRepository(
       return result.meta.changes === 1;
     },
 
+    async isScheduleResolutionAllowed(scheduleId) {
+      const row = await db
+        .prepare(
+          "SELECT 1 AS allowed FROM notification_schedules WHERE notification_schedule_id = ? AND send_status = 'resolving'"
+        )
+        .bind(scheduleId)
+        .first<{ allowed: number }>();
+      return row?.allowed === 1;
+    },
+
     async findUnresolvedAudiences(scheduleId) {
       const rows = await orm
         .select({

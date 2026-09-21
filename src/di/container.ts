@@ -15,6 +15,7 @@ import { createGatheringRepository } from '../infrastructure/repositories/Gather
 import { createEventGatheringSettingsRepository } from '../infrastructure/repositories/EventGatheringSettingsRepository';
 import { createNotificationDeliveryQueue } from '../infrastructure/queues/NotificationDeliveryQueue';
 import { createNotificationStopRepository } from '../infrastructure/repositories/NotificationStopRepository';
+import { createGatheringNotificationCleanupRepository } from '../infrastructure/repositories/GatheringNotificationCleanupRepository';
 import { createStudentService } from '../application/services/StudentService';
 import { createStaffService } from '../application/services/StaffService';
 import { createTeacherService } from '../application/services/TeacherService';
@@ -32,6 +33,7 @@ import { createGatheringGroupMemberService } from '../application/services/Gathe
 import { createGatheringService } from '../application/services/GatheringService';
 import { createEventGatheringSettingsService } from '../application/services/EventGatheringSettingsService';
 import { createNotificationStopService } from '../application/services/NotificationStopService';
+import { createGatheringNotificationCleanupService } from '../application/services/GatheringNotificationCleanupService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createStaffController } from '../presentation/controllers/StaffController';
 import { createTeacherController } from '../presentation/controllers/TeacherController';
@@ -86,6 +88,8 @@ export function createDIContainer(env: Env) {
   const eventGatheringSettingsRepository =
     createEventGatheringSettingsRepository(db);
   const notificationStopRepository = createNotificationStopRepository(db);
+  const gatheringNotificationCleanupRepository =
+    createGatheringNotificationCleanupRepository(db);
   const notificationDeliveryQueue = createNotificationDeliveryQueue(
     env.NOTIFICATION_DELIVERY_QUEUE
   );
@@ -172,14 +176,20 @@ export function createDIContainer(env: Env) {
     gatheringGroupMemberRepository
   );
   const gatheringService = createGatheringService(gatheringRepository);
-  const eventGatheringSettingsService = createEventGatheringSettingsService(
-    eventRepository,
-    gatheringSpotRepository,
-    eventGatheringSettingsRepository
-  );
   const notificationStopService = createNotificationStopService({
     repository: notificationStopRepository,
   });
+  const gatheringNotificationCleanupService =
+    createGatheringNotificationCleanupService({
+      repository: gatheringNotificationCleanupRepository,
+      notificationStopService,
+    });
+  const eventGatheringSettingsService = createEventGatheringSettingsService(
+    eventRepository,
+    gatheringSpotRepository,
+    eventGatheringSettingsRepository,
+    gatheringNotificationCleanupService
+  );
 
   // Controllers
   const userStatusController = createUserStatusController(userStatusService);

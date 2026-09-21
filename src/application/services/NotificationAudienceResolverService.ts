@@ -26,6 +26,13 @@ export function createNotificationAudienceResolverService(
       // 途中で失敗したAudienceは未解決のまま残るため、後続の再実行で
       // 同じAudienceだけを処理できる。
       for (const audience of audiences) {
+        if (!(await repository.isScheduleResolutionAllowed(scheduleId))) {
+          return {
+            status: 'skipped',
+            audienceCount: 0,
+            recipientCount,
+          };
+        }
         const userIds = await repository.findAudienceUserIds({
           audienceType: audience.audienceType,
           targetId: audience.targetId,
