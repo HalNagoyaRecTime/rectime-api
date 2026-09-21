@@ -137,6 +137,11 @@ async function handleFcmFailureWithRepository(
 ): Promise<NotificationRetryResult> {
   const nowIso = now.toISOString();
   if (await repository.isScheduleStopped(input.scheduleId)) {
+    await repository.markDeliveryStopped(
+      input.deliveryId,
+      'Schedule stopped',
+      nowIso
+    );
     return { status: 'skipped', scheduleCompleted: false, tokenDeleted: false };
   }
 

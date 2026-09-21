@@ -83,6 +83,7 @@ import {
   myNotificationDetailRoute,
   myNotificationListRoute,
   testNotificationRoute,
+  notificationScheduleStopRoute,
 } from './presentation/openapi/notifications';
 import {
   adminUserSearchRoute,
@@ -387,6 +388,9 @@ apiV1.openapi(authed(myNotificationDetailRoute), c => {
 
 apiV1.openapi(staffOnly(testNotificationRoute), c => {
   return c.get('container').notificationController.sendTestNotification(c);
+});
+apiV1.openapi(staffOnly(notificationScheduleStopRoute), c => {
+  return c.get('container').notificationStopController.stopSchedule(c);
 });
 
 // Auth routes

@@ -96,6 +96,16 @@ export function createNotificationRetryRepository(
       return result.meta.changes === 1;
     },
 
+    async markDeliveryStopped(deliveryId, reason, now) {
+      const result = await db
+        .prepare(
+          "UPDATE notification_push_deliveries SET status = 'stopped', failed_reason = ?, next_retry_at = NULL, updated_at = ? WHERE notification_push_delivery_id = ? AND status = 'sending'"
+        )
+        .bind(reason, now, deliveryId)
+        .run();
+      return result.meta.changes === 1;
+    },
+
     async deleteFirebaseToken(firebaseTokenId) {
       await db
         .prepare('DELETE FROM firebase_tokens WHERE firebase_token_id = ?')

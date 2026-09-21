@@ -56,7 +56,7 @@ export function createNotificationPushDeliveryRepository(
     async claimPendingDelivery(deliveryId, now) {
       const claim = await db
         .prepare(
-          "UPDATE notification_push_deliveries SET status = 'sending', first_attempt_at = COALESCE(first_attempt_at, ?), last_attempt_at = ?, attempt_count = attempt_count + 1, updated_at = ? WHERE notification_push_delivery_id = ? AND status = 'pending' AND firebase_token_id IS NOT NULL"
+          "UPDATE notification_push_deliveries SET status = 'sending', first_attempt_at = COALESCE(first_attempt_at, ?), last_attempt_at = ?, attempt_count = attempt_count + 1, updated_at = ? WHERE notification_push_delivery_id = ? AND status = 'pending' AND firebase_token_id IS NOT NULL AND EXISTS (SELECT 1 FROM notification_recipients r INNER JOIN notification_schedules s ON s.notification_schedule_id = r.notification_schedule_id WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND s.send_status = 'sending')"
         )
         .bind(now, now, now, deliveryId)
         .run();

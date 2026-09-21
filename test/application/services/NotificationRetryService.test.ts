@@ -34,6 +34,7 @@ function setup() {
     claimTimedOutDelivery: vi.fn().mockResolvedValue(buildTarget()),
     scheduleRetry: vi.fn().mockResolvedValue(true),
     markDeliveryFailed: vi.fn().mockResolvedValue(true),
+    markDeliveryStopped: vi.fn().mockResolvedValue(true),
     deleteFirebaseToken: vi.fn(),
     markDeliverySent: vi.fn().mockResolvedValue(true),
     completeScheduleIfIdle: vi.fn().mockResolvedValue(true),
@@ -186,6 +187,11 @@ describe('NotificationRetryService', () => {
     });
     expect(repository.scheduleRetry).not.toHaveBeenCalled();
     expect(repository.markDeliveryFailed).not.toHaveBeenCalled();
+    expect(repository.markDeliveryStopped).toHaveBeenCalledWith(
+      10,
+      'Schedule stopped',
+      expect.any(String)
+    );
   });
 
   it('due retryをclaimしてFCM成功結果を保存する', async () => {
