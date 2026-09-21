@@ -1,7 +1,7 @@
 import type {
   NotificationPushDeliveryStatus,
   NotificationScheduleStatus,
-} from '../../domain/entities/NotificationV3';
+} from '../../domain/entities/NotificationV2';
 import type {
   NotificationAudienceDTO,
   NotificationScheduleStopDTO,

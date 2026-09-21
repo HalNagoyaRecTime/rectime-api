@@ -3,11 +3,11 @@ import {
   NOTIFICATION_AUDIENCE_TYPES,
   NOTIFICATION_PUSH_DELIVERY_STATUSES,
   NOTIFICATION_SCHEDULE_STATUSES,
-} from '../../../src/domain/entities/NotificationV3';
+} from '../../../src/domain/entities/NotificationV2';
 import {
-  adminNotificationV3CreateRoute,
-  adminNotificationV3PatchRoute,
-  adminNotificationV3DetailRoute,
+  adminNotificationV2CreateRoute,
+  adminNotificationV2PatchRoute,
+  adminNotificationV2DetailRoute,
   notificationAudienceCountRoute,
   notificationAudienceCountRequestSchema,
   notificationAudienceItemSchema,
@@ -19,13 +19,13 @@ import {
   notificationScheduleResultsRoute,
   notificationScheduleStopRoute,
   notificationScheduleSummarySchema,
-  notificationV3ErrorCodeSchema,
-} from '../../../src/presentation/openapi/notificationsV3';
+  notificationV2ErrorCodeSchema,
+} from '../../../src/presentation/openapi/notificationsV2';
 
 const date = '2026-11-07T15:35:00+09:00';
 
-describe('通知基盤v3のDomain literal', () => {
-  it('Schedule statusはv3の6種類だけを正本として持つ', () => {
+describe('通知基盤v2のDomain literal', () => {
+  it('Schedule statusはv2の6種類だけを正本として持つ', () => {
     expect(NOTIFICATION_SCHEDULE_STATUSES).toEqual([
       'scheduled',
       'resolving',
@@ -57,7 +57,7 @@ describe('通知基盤v3のDomain literal', () => {
   });
 });
 
-describe('通知基盤v3のRequest / Response schema', () => {
+describe('通知基盤v2のRequest / Response schema', () => {
   it('Audienceは5種類を受け付け、旧typeとtarget欠落を拒否する', () => {
     for (const item of [
       { type: 'all' },
@@ -186,32 +186,32 @@ describe('通知基盤v3のRequest / Response schema', () => {
     ).toBe(true);
   });
 
-  it('Error codeは共通契約とv3専用契約だけを受け付ける', () => {
-    expect(notificationV3ErrorCodeSchema.parse('VALIDATION_ERROR')).toBe(
+  it('Error codeは共通契約とv2専用契約だけを受け付ける', () => {
+    expect(notificationV2ErrorCodeSchema.parse('VALIDATION_ERROR')).toBe(
       'VALIDATION_ERROR'
     );
     expect(
-      notificationV3ErrorCodeSchema.parse(
+      notificationV2ErrorCodeSchema.parse(
         'NOTIFICATION_SCHEDULE_STOP_NOT_ALLOWED'
       )
     ).toBe('NOTIFICATION_SCHEDULE_STOP_NOT_ALLOWED');
     expect(() =>
-      notificationV3ErrorCodeSchema.parse('NOTIFICATION_AUDIENCE_HAS_NO_TOKENS')
+      notificationV2ErrorCodeSchema.parse('NOTIFICATION_AUDIENCE_HAS_NO_TOKENS')
     ).toThrow();
   });
 });
 
-describe('通知基盤v3のEndpoint契約', () => {
+describe('通知基盤v2のEndpoint契約', () => {
   it('PATCHを使用し、PUTを定義しない', () => {
-    expect(adminNotificationV3PatchRoute.method).toBe('patch');
-    expect(adminNotificationV3PatchRoute.path).toBe(
+    expect(adminNotificationV2PatchRoute.method).toBe('patch');
+    expect(adminNotificationV2PatchRoute.path).toBe(
       '/admin/notifications/{notificationId}'
     );
   });
 
   it('管理通知のmutationとmonitor endpointを定義する', () => {
-    expect(adminNotificationV3CreateRoute.method).toBe('post');
-    expect(adminNotificationV3DetailRoute.method).toBe('get');
+    expect(adminNotificationV2CreateRoute.method).toBe('post');
+    expect(adminNotificationV2DetailRoute.method).toBe('get');
     expect(notificationAudienceCountRoute.path).toBe(
       '/admin/notifications/audience-count'
     );

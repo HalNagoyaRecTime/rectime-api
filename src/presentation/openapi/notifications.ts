@@ -18,7 +18,7 @@ import {
   z,
 } from './schemas';
 
-export * from './notificationsV3';
+export * from './notificationsV2';
 
 // --- 通知予定 ---
 

@@ -8,7 +8,7 @@ import {
   NOTIFICATION_SCHEDULE_STATUSES,
   NOTIFICATION_STOP_REASONS,
   NOTIFICATION_TARGET_AUDIENCE_TYPES,
-} from '../../domain/entities/NotificationV3';
+} from '../../domain/entities/NotificationV2';
 import {
   badRequestResponse,
   bearerAuth,
@@ -26,7 +26,7 @@ import {
   z,
 } from './schemas';
 
-const notificationV3ErrorCodes = [
+const notificationV2ErrorCodes = [
   'VALIDATION_ERROR',
   'UNAUTHORIZED',
   'STAFF_REQUIRED',
@@ -43,9 +43,9 @@ const notificationV3ErrorCodes = [
   'NOTIFICATION_RESEND_NOT_ALLOWED',
 ] as const;
 
-export const notificationV3ErrorCodeSchema = z.enum(notificationV3ErrorCodes);
+export const notificationV2ErrorCodeSchema = z.enum(notificationV2ErrorCodes);
 
-export const notificationV3StatusSchemas = {
+export const notificationV2StatusSchemas = {
   schedule: z
     .enum(NOTIFICATION_SCHEDULE_STATUSES)
     .openapi('NotificationScheduleStatus'),
@@ -164,14 +164,14 @@ export const notificationScheduleSummarySchema = z
   .object({
     notificationScheduleId: z.number().int().positive(),
     sendAt: isoDateTimeSchema,
-    status: notificationV3StatusSchemas.schedule,
+    status: notificationV2StatusSchemas.schedule,
     stop: notificationStopSchema.nullable(),
     scheduledBy: notificationUserReferenceSchema.nullable(),
     createdAt: isoDateTimeSchema,
     audience: notificationScheduleAudienceSchema,
     recipientPushSummary: notificationRecipientPushSummarySchema,
   })
-  .openapi('NotificationScheduleSummaryV3');
+  .openapi('NotificationScheduleSummaryV2');
 
 export const notificationAudienceProgressSchema = z
   .object({
@@ -213,7 +213,7 @@ export const notificationScheduleDetailSchema =
       updatedAt: isoDateTimeSchema,
       progress: notificationScheduleProgressSchema,
     })
-    .openapi('NotificationScheduleDetailV3');
+    .openapi('NotificationScheduleDetailV2');
 
 export const notificationPushDeliveryDetailSchema = z
   .object({
@@ -221,7 +221,7 @@ export const notificationPushDeliveryDetailSchema = z
     notificationRecipientId: z.number().int().positive(),
     firebaseTokenId: z.number().int().positive().nullable(),
     platform: z.enum(['ios', 'android']),
-    status: notificationV3StatusSchemas.pushDelivery,
+    status: notificationV2StatusSchemas.pushDelivery,
     attemptCount: z.number().int().nonnegative(),
     firstAttemptAt: isoDateTimeSchema.nullable(),
     lastAttemptAt: isoDateTimeSchema.nullable(),
@@ -232,7 +232,7 @@ export const notificationPushDeliveryDetailSchema = z
   })
   .openapi('NotificationPushDeliveryDetail');
 
-export const adminNotificationDetailV3Schema = z
+export const adminNotificationDetailV2Schema = z
   .object({
     notificationId: z.number().int().positive(),
     content: notificationContentSchema,
@@ -242,14 +242,14 @@ export const adminNotificationDetailV3Schema = z
     updatedAt: isoDateTimeSchema,
     schedules: z.array(notificationScheduleSummarySchema),
   })
-  .openapi('AdminNotificationDetailV3');
+  .openapi('AdminNotificationDetailV2');
 
-export const adminNotificationListV3ResponseSchema = z
+export const adminNotificationListV2ResponseSchema = z
   .object({
-    notifications: z.array(adminNotificationDetailV3Schema),
+    notifications: z.array(adminNotificationDetailV2Schema),
     ...paginationFields,
   })
-  .openapi('AdminNotificationListV3');
+  .openapi('AdminNotificationListV2');
 
 export const notificationCreateRequestSchema = z
   .object({
@@ -301,7 +301,7 @@ export const notificationScheduleListResponseSchema = z
     schedules: z.array(notificationScheduleSummarySchema),
     ...paginationFields,
   })
-  .openapi('NotificationScheduleListV3');
+  .openapi('NotificationScheduleListV2');
 
 export const notificationScheduleResultsResponseSchema = z
   .object({
@@ -317,7 +317,7 @@ export const notificationStopResponseSchema = z
   })
   .openapi('NotificationStopResponse');
 
-export const adminNotificationV3IdParams = z.object({
+export const adminNotificationV2IdParams = z.object({
   notificationId: positivePathParam('notificationId', '通知ID'),
 });
 
@@ -339,17 +339,17 @@ export const firebaseTokenIdParams = z.object({
   firebaseTokenId: positivePathParam('firebaseTokenId', 'FirebaseトークンID'),
 });
 
-export const notificationV3PaginationQuery = paginationQuery(100, 50);
+export const notificationV2PaginationQuery = paginationQuery(100, 50);
 
-export const adminNotificationV3ListRoute = createRoute({
+export const adminNotificationV2ListRoute = createRoute({
   method: 'get',
   path: '/admin/notifications',
-  tags: ['Admin notifications v3'],
-  summary: '通知基盤v3の通知一覧を取得する',
+  tags: ['Admin notifications v2'],
+  summary: '通知基盤v2の通知一覧を取得する',
   security: bearerAuth,
-  request: { query: notificationV3PaginationQuery },
+  request: { query: notificationV2PaginationQuery },
   responses: {
-    200: jsonResponse(adminNotificationListV3ResponseSchema, '通知一覧'),
+    200: jsonResponse(adminNotificationListV2ResponseSchema, '通知一覧'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
@@ -357,15 +357,15 @@ export const adminNotificationV3ListRoute = createRoute({
   },
 });
 
-export const adminNotificationV3DetailRoute = createRoute({
+export const adminNotificationV2DetailRoute = createRoute({
   method: 'get',
   path: '/admin/notifications/{notificationId}',
-  tags: ['Admin notifications v3'],
-  summary: '通知基盤v3の通知詳細を取得する',
+  tags: ['Admin notifications v2'],
+  summary: '通知基盤v2の通知詳細を取得する',
   security: bearerAuth,
-  request: { params: adminNotificationV3IdParams },
+  request: { params: adminNotificationV2IdParams },
   responses: {
-    200: jsonResponse(adminNotificationDetailV3Schema, '通知詳細'),
+    200: jsonResponse(adminNotificationDetailV2Schema, '通知詳細'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
@@ -374,11 +374,11 @@ export const adminNotificationV3DetailRoute = createRoute({
   },
 });
 
-export const adminNotificationV3CreateRoute = createRoute({
+export const adminNotificationV2CreateRoute = createRoute({
   method: 'post',
   path: '/admin/notifications',
-  tags: ['Admin notifications v3'],
-  summary: '通知基盤v3の通知を作成する',
+  tags: ['Admin notifications v2'],
+  summary: '通知基盤v2の通知を作成する',
   security: bearerAuth,
   request: {
     body: {
@@ -399,14 +399,14 @@ export const adminNotificationV3CreateRoute = createRoute({
   },
 });
 
-export const adminNotificationV3PatchRoute = createRoute({
+export const adminNotificationV2PatchRoute = createRoute({
   method: 'patch',
   path: '/admin/notifications/{notificationId}',
-  tags: ['Admin notifications v3'],
-  summary: '通知基盤v3の通知を編集する',
+  tags: ['Admin notifications v2'],
+  summary: '通知基盤v2の通知を編集する',
   security: bearerAuth,
   request: {
-    params: adminNotificationV3IdParams,
+    params: adminNotificationV2IdParams,
     body: {
       content: {
         'application/json': { schema: notificationPatchRequestSchema },
@@ -415,7 +415,7 @@ export const adminNotificationV3PatchRoute = createRoute({
     },
   },
   responses: {
-    200: jsonResponse(adminNotificationDetailV3Schema, '編集後の通知詳細'),
+    200: jsonResponse(adminNotificationDetailV2Schema, '編集後の通知詳細'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
@@ -425,13 +425,13 @@ export const adminNotificationV3PatchRoute = createRoute({
   },
 });
 
-export const adminNotificationV3DeleteRoute = createRoute({
+export const adminNotificationV2DeleteRoute = createRoute({
   method: 'delete',
   path: '/admin/notifications/{notificationId}',
-  tags: ['Admin notifications v3'],
-  summary: '通知基盤v3の通知を削除する',
+  tags: ['Admin notifications v2'],
+  summary: '通知基盤v2の通知を削除する',
   security: bearerAuth,
-  request: { params: adminNotificationV3IdParams },
+  request: { params: adminNotificationV2IdParams },
   responses: {
     204: noContentResponse,
     400: badRequestResponse,
@@ -446,7 +446,7 @@ export const adminNotificationV3DeleteRoute = createRoute({
 export const notificationConfigRoute = createRoute({
   method: 'get',
   path: '/admin/notifications/config',
-  tags: ['Admin notifications v3'],
+  tags: ['Admin notifications v2'],
   summary: '通知設定を取得する',
   security: bearerAuth,
   responses: {
@@ -460,7 +460,7 @@ export const notificationConfigRoute = createRoute({
 export const notificationAudienceCountRoute = createRoute({
   method: 'post',
   path: '/admin/notifications/audience-count',
-  tags: ['Admin notifications v3'],
+  tags: ['Admin notifications v2'],
   summary: '通知対象の受信者数を取得する',
   security: bearerAuth,
   request: {
@@ -483,10 +483,10 @@ export const notificationAudienceCountRoute = createRoute({
 export const notificationScheduleListRoute = createRoute({
   method: 'get',
   path: '/admin/notifications/schedules',
-  tags: ['Notification schedules v3'],
+  tags: ['Notification schedules v2'],
   summary: '通知スケジュール一覧を取得する',
   security: bearerAuth,
-  request: { query: notificationV3PaginationQuery },
+  request: { query: notificationV2PaginationQuery },
   responses: {
     200: jsonResponse(
       notificationScheduleListResponseSchema,
@@ -502,7 +502,7 @@ export const notificationScheduleListRoute = createRoute({
 export const notificationScheduleDetailRoute = createRoute({
   method: 'get',
   path: '/admin/notifications/schedules/{notificationScheduleId}',
-  tags: ['Notification schedules v3'],
+  tags: ['Notification schedules v2'],
   summary: '通知スケジュール詳細を取得する',
   security: bearerAuth,
   request: { params: notificationScheduleIdParams },
@@ -518,12 +518,12 @@ export const notificationScheduleDetailRoute = createRoute({
 export const notificationScheduleResultsRoute = createRoute({
   method: 'get',
   path: '/admin/notifications/schedules/{notificationScheduleId}/results',
-  tags: ['Notification schedules v3'],
+  tags: ['Notification schedules v2'],
   summary: '通知スケジュールの配信結果を取得する',
   security: bearerAuth,
   request: {
     params: notificationScheduleIdParams,
-    query: notificationV3PaginationQuery,
+    query: notificationV2PaginationQuery,
   },
   responses: {
     200: jsonResponse(notificationScheduleResultsResponseSchema, '配信結果'),
@@ -537,7 +537,7 @@ export const notificationScheduleResultsRoute = createRoute({
 export const notificationScheduleDeleteRoute = createRoute({
   method: 'delete',
   path: '/admin/notifications/schedules/{notificationScheduleId}',
-  tags: ['Notification schedules v3'],
+  tags: ['Notification schedules v2'],
   summary: '未開始の通知スケジュールを削除する',
   security: bearerAuth,
   request: { params: notificationScheduleIdParams },
@@ -554,7 +554,7 @@ export const notificationScheduleDeleteRoute = createRoute({
 export const notificationScheduleResendRoute = createRoute({
   method: 'post',
   path: '/admin/notifications/schedules/{notificationScheduleId}/resend',
-  tags: ['Notification schedules v3'],
+  tags: ['Notification schedules v2'],
   summary: '通知スケジュールを再送する',
   security: bearerAuth,
   request: { params: notificationScheduleIdParams },
@@ -571,7 +571,7 @@ export const notificationScheduleResendRoute = createRoute({
 export const notificationScheduleStopRoute = createRoute({
   method: 'post',
   path: '/admin/notifications/schedules/{notificationScheduleId}/stop',
-  tags: ['Notification schedules v3'],
+  tags: ['Notification schedules v2'],
   summary: '通知スケジュールを停止する',
   security: bearerAuth,
   request: { params: notificationScheduleIdParams },
@@ -588,7 +588,7 @@ export const notificationScheduleStopRoute = createRoute({
 export const notificationPushDeliveryDetailRoute = createRoute({
   method: 'get',
   path: '/admin/notifications/push-deliveries/{notificationPushDeliveryId}',
-  tags: ['Push deliveries v3'],
+  tags: ['Push deliveries v2'],
   summary: 'Push配信詳細を取得する',
   security: bearerAuth,
   request: { params: notificationPushDeliveryIdParams },
@@ -604,7 +604,7 @@ export const notificationPushDeliveryDetailRoute = createRoute({
 export const firebaseTokenDeleteRoute = createRoute({
   method: 'delete',
   path: '/firebase-tokens/{firebaseTokenId}',
-  tags: ['Firebase tokens v3'],
+  tags: ['Firebase tokens v2'],
   summary: 'Firebaseトークンを削除する',
   security: bearerAuth,
   request: { params: firebaseTokenIdParams },
