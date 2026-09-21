@@ -1,4 +1,4 @@
-import type { NotificationStopReason } from '../../entities/NotificationV3';
+import type { NotificationStopReason } from '../../entities/NotificationV2';
 
 export type NotificationStopRepositoryResult =
   'not_found' | 'not_allowed' | 'stopped';

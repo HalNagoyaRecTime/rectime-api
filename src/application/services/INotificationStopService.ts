@@ -1,4 +1,4 @@
-import type { NotificationStopReason } from '../../domain/entities/NotificationV3';
+import type { NotificationStopReason } from '../../domain/entities/NotificationV2';
 
 export type NotificationStopCommand = {
   scheduleId: number;
