@@ -5,13 +5,13 @@ import type {
   Queue,
 } from '@cloudflare/workers-types';
 import type { MasterImportCommitLock } from '../infrastructure/masterImports/MasterImportCommitLock';
-import type { NotificationDeliveryMessage } from '../domain/entities/NotificationDelivery';
+import type { NotificationWorkerMessage } from '../domain/entities/NotificationWorkerMessage';
 
 export type Env = {
   DB: D1Database;
   AUTH_KV: KVNamespace;
   MASTER_IMPORT_COMMIT_LOCK: DurableObjectNamespace<MasterImportCommitLock>;
-  NOTIFICATION_DELIVERY_QUEUE: Queue<NotificationDeliveryMessage>;
+  NOTIFICATION_DELIVERY_QUEUE: Queue<NotificationWorkerMessage>;
   ALLOWED_ORIGINS?: string;
   EVENT_DATE?: string;
   /**

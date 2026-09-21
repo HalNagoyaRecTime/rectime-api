@@ -25,6 +25,16 @@ export function createNotificationAudienceResolverRepository(
   const orm = drizzle(db, { schema });
 
   return {
+    async findDueScheduleIds(dueAt, limit) {
+      const rows = await db
+        .prepare(
+          "SELECT notification_schedule_id AS id FROM notification_schedules WHERE send_status = 'scheduled' AND datetime(send_at) <= datetime(?) ORDER BY send_at, notification_schedule_id LIMIT ?"
+        )
+        .bind(dueAt, limit)
+        .all<{ id: number }>();
+      return rows.results.map(row => row.id);
+    },
+
     async claimScheduleForResolution(scheduleId, dueAt) {
       const result = await db
         .prepare(

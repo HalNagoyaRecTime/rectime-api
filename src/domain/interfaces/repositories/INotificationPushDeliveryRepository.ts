@@ -16,6 +16,10 @@ export interface NotificationPushDeliverySendTarget {
 export interface INotificationPushDeliveryRepository {
   isDeliveryGenerationAllowed: (scheduleId: number) => Promise<boolean>;
   createPendingDeliveries: (scheduleId: number) => Promise<number>;
+  findPendingDeliveryIds: (
+    scheduleId: number,
+    limit: number
+  ) => Promise<number[]>;
   markScheduleSending: (scheduleId: number, now: string) => Promise<boolean>;
   claimPendingDelivery: (
     deliveryId: number,
