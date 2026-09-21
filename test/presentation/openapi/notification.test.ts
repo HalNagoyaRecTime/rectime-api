@@ -9,11 +9,11 @@ import {
   NOTIFICATION_TYPES,
 } from '../../../src/domain/entities/Notification';
 import {
-  adminNotificationV2CreateRoute,
-  adminNotificationV2DetailRoute,
-  adminNotificationV2PatchRoute,
-  firebaseTokenRegistrationRequestV2Schema,
-  firebaseTokenV2Schema,
+  adminNotificationCreateRoute,
+  adminNotificationDetailRoute,
+  adminNotificationPatchRoute,
+  firebaseTokenRegistrationRequestSchema,
+  firebaseTokenSchema,
   notificationAudienceCountRequestSchema,
   notificationAudienceInputItemSchema,
   notificationAudienceItemSchema,
@@ -33,11 +33,11 @@ import {
   notificationScheduleResultsResponseSchema,
   notificationScheduleSummarySchema,
   notificationScheduleResendRoute,
-  notificationV2ConflictErrorResponseSchema,
-  notificationV2ErrorCodeSchema,
-  notificationV2ForbiddenErrorResponseSchema,
+  notificationConflictErrorResponseSchema,
+  notificationErrorCodeSchema,
+  notificationForbiddenErrorResponseSchema,
   notificationTypeSchema,
-} from '../../../src/presentation/openapi/notificationsV2';
+} from '../../../src/presentation/openapi/notification';
 
 const date = '2026-11-07T15:35:00+09:00';
 const content = {
@@ -87,8 +87,8 @@ const monitorItem = {
   progress,
 };
 
-describe('通知基盤v2のDomain literal', () => {
-  it('Schedule statusはv2の6種類だけを正本として持つ', () => {
+describe('通知基盤のDomain literal', () => {
+  it('Schedule statusは6種類だけを正本として持つ', () => {
     expect(NOTIFICATION_SCHEDULE_STATUSES).toEqual([
       'scheduled',
       'resolving',
@@ -127,7 +127,7 @@ describe('通知基盤v2のDomain literal', () => {
   });
 });
 
-describe('通知基盤v2のRequest / Response schema', () => {
+describe('通知基盤のRequest / Response schema', () => {
   it('AudienceのRequestとResponseを分離し、Requestではlabelを受け付けない', () => {
     for (const item of [
       { type: 'all' },
@@ -306,7 +306,7 @@ describe('通知基盤v2のRequest / Response schema', () => {
   });
 });
 
-describe('通知基盤v2の結果・Token・Monitor schema', () => {
+describe('通知基盤の結果・Token・Monitor schema', () => {
   it('Schedule summaryはRecipient集計とDelivery件数を分離する', () => {
     expect(
       notificationScheduleSummarySchema.safeParse({
@@ -408,15 +408,15 @@ describe('通知基盤v2の結果・Token・Monitor schema', () => {
     ).toBe(true);
   });
 
-  it('Firebase Token v2はisActiveを持たず、Registration requestを分離する', () => {
+  it('Firebase TokenはisActiveを持たず、Registration requestを分離する', () => {
     expect(
-      firebaseTokenRegistrationRequestV2Schema.safeParse({
+      firebaseTokenRegistrationRequestSchema.safeParse({
         fcmToken: 'token',
         platform: 'ios',
       }).success
     ).toBe(true);
     expect(
-      firebaseTokenV2Schema.safeParse({
+      firebaseTokenSchema.safeParse({
         firebaseTokenId: 10,
         userId: 123,
         platform: 'ios',
@@ -424,7 +424,7 @@ describe('通知基盤v2の結果・Token・Monitor schema', () => {
       }).success
     ).toBe(true);
     expect(
-      firebaseTokenV2Schema.safeParse({
+      firebaseTokenSchema.safeParse({
         firebaseTokenId: 10,
         userId: 123,
         platform: 'ios',
@@ -435,17 +435,17 @@ describe('通知基盤v2の結果・Token・Monitor schema', () => {
   });
 });
 
-describe('通知基盤v2のEndpoint契約', () => {
+describe('通知基盤のEndpoint契約', () => {
   it('PATCHを使用し、PUTを定義しない', () => {
-    expect(adminNotificationV2PatchRoute.method).toBe('patch');
-    expect(adminNotificationV2PatchRoute.path).toBe(
+    expect(adminNotificationPatchRoute.method).toBe('patch');
+    expect(adminNotificationPatchRoute.path).toBe(
       '/admin/notifications/{notificationId}'
     );
   });
 
   it('管理通知のmutationとmonitor endpointを定義する', () => {
-    expect(adminNotificationV2CreateRoute.method).toBe('post');
-    expect(adminNotificationV2DetailRoute.method).toBe('get');
+    expect(adminNotificationCreateRoute.method).toBe('post');
+    expect(adminNotificationDetailRoute.method).toBe('get');
     expect(notificationScheduleResendRoute.method).toBe('post');
     expect(notificationScheduleResendRoute.path).toContain('/resend');
   });
@@ -464,12 +464,12 @@ describe('通知基盤v2のEndpoint契約', () => {
     expect(notificationResendRequestSchema.safeParse({}).success).toBe(false);
   });
 
-  it('Error codeはv2専用契約だけを受け付ける', () => {
-    expect(notificationV2ErrorCodeSchema.parse('VALIDATION_ERROR')).toBe(
+  it('Error codeは通知契約で定義したcodeだけを受け付ける', () => {
+    expect(notificationErrorCodeSchema.parse('VALIDATION_ERROR')).toBe(
       'VALIDATION_ERROR'
     );
     expect(() =>
-      notificationV2ErrorCodeSchema.parse('NOTIFICATION_AUDIENCE_HAS_NO_TOKENS')
+      notificationErrorCodeSchema.parse('NOTIFICATION_AUDIENCE_HAS_NO_TOKENS')
     ).toThrow();
   });
 
@@ -488,13 +488,13 @@ describe('通知基盤v2のEndpoint契約', () => {
     };
 
     expect(
-      notificationV2ForbiddenErrorResponseSchema.safeParse(forbidden).success
+      notificationForbiddenErrorResponseSchema.safeParse(forbidden).success
     ).toBe(true);
     expect(
-      notificationV2ForbiddenErrorResponseSchema.safeParse(conflict).success
+      notificationForbiddenErrorResponseSchema.safeParse(conflict).success
     ).toBe(false);
     expect(
-      notificationV2ConflictErrorResponseSchema.safeParse(conflict).success
+      notificationConflictErrorResponseSchema.safeParse(conflict).success
     ).toBe(true);
   });
 

@@ -18,8 +18,6 @@ import {
   z,
 } from './schemas';
 
-export * from './notificationsV2';
-
 // --- 通知予定 ---
 
 export const notificationScheduleResponseSchema = z
