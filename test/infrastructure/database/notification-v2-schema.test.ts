@@ -300,6 +300,16 @@ describe('通知v2のDB Schema', () => {
       ).run()
     ).rejects.toThrow();
 
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO notifications
+           (push_title, push_body, title, body, importance, notification_type,
+            source_type)
+         VALUES ('p', 'b', 't', 'd', 'normal', 'notification_general',
+                 'gathering')`
+      ).run()
+    ).rejects.toThrow();
+
     await env.DB.prepare(
       `INSERT INTO notification_recipients (notification_schedule_id, user_id)
        VALUES (?, ?)`

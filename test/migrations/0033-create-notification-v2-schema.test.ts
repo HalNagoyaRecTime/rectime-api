@@ -303,6 +303,7 @@ describe('0033_create_notification_v2_schema.sql', () => {
       .bind(userId)
       .first<{ notification_id: number }>();
     if (!newNotification) throw new Error('failed to create v2 notification');
+    expect(newNotification.notification_id).toBeGreaterThan(legacyNotificationId);
 
     const newSchedule = await env.DB.prepare(
       `INSERT INTO notification_schedules (

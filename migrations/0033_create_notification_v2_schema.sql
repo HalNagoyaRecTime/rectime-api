@@ -1,40 +1,25 @@
 -- 通知v2のDB基盤を追加するforward migration。
 -- 既存の通知履歴はLegacy行として保持し、Audience/Recipient/Deliveryへ変換しない。
 
--- notificationsは既存行を保持したまま、v2の内容・重複排除情報を追加する。
-ALTER TABLE notifications
-  ADD COLUMN created_by_user_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL;
-ALTER TABLE notifications
-  ADD COLUMN push_title TEXT NOT NULL DEFAULT '';
-ALTER TABLE notifications
-  ADD COLUMN push_body TEXT NOT NULL DEFAULT '';
-ALTER TABLE notifications
-  ADD COLUMN importance TEXT NOT NULL DEFAULT 'normal';
-ALTER TABLE notifications ADD COLUMN source_type TEXT;
-ALTER TABLE notifications ADD COLUMN source_id INTEGER;
-ALTER TABLE notifications ADD COLUMN source_hash TEXT;
-
--- 既存通知は同じ内容をPush表示にも使う。作成者はLegacy Scheduleから逆算しない。
-UPDATE notifications
-SET push_title = title,
-    push_body = body;
-
-CREATE UNIQUE INDEX uq_notifications_source
-  ON notifications(source_type, source_id, notification_type, source_hash);
-
 -- firebase_tokensはuser_idのUNIQUEだけを解除するため再作成する。
 -- active flagとLegacy indexは旧Repository互換のため#460まで残す。
 -- notification_schedulesもfirebase_token_idをNULL許容にするため同時に再作成する。
 CREATE TABLE __migration_0033_sequences (
+  notifications_seq INTEGER NOT NULL,
   firebase_tokens_seq INTEGER NOT NULL,
   notification_schedules_seq INTEGER NOT NULL
 );
 
 INSERT INTO __migration_0033_sequences (
+  notifications_seq,
   firebase_tokens_seq,
   notification_schedules_seq
 )
 SELECT
+  COALESCE(
+    (SELECT seq FROM sqlite_sequence WHERE name = 'notifications'),
+    0
+  ),
   COALESCE(
     (SELECT seq FROM sqlite_sequence WHERE name = 'firebase_tokens'),
     0
@@ -56,6 +41,74 @@ ALTER TABLE notification_schedules
   RENAME TO __migration_0033_notification_schedules;
 ALTER TABLE firebase_tokens
   RENAME TO __migration_0033_firebase_tokens;
+ALTER TABLE notifications
+  RENAME TO __migration_0033_notifications;
+
+-- source情報は3項目すべてNULL、または3項目すべて値ありだけを許可する。
+-- SQLiteでは既存tableへCHECKを追加できないため、notificationsだけ最終形で再作成する。
+CREATE TABLE notifications (
+  notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_by_user_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
+  push_title TEXT NOT NULL DEFAULT '',
+  push_body TEXT NOT NULL DEFAULT '',
+  notification_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  importance TEXT NOT NULL DEFAULT 'normal',
+  source_type TEXT,
+  source_id INTEGER,
+  source_hash TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK (
+    (
+      source_type IS NULL
+      AND source_id IS NULL
+      AND source_hash IS NULL
+    )
+    OR (
+      source_type IS NOT NULL
+      AND source_id IS NOT NULL
+      AND source_hash IS NOT NULL
+    )
+  )
+);
+
+-- Legacy Notificationは意味変換せず、既存の表示内容をPush初期値にも使う。
+-- v2専用の作成者・source情報はLegacy行から逆算しない。
+INSERT INTO notifications (
+  notification_id,
+  created_by_user_id,
+  push_title,
+  push_body,
+  notification_type,
+  title,
+  body,
+  importance,
+  source_type,
+  source_id,
+  source_hash,
+  created_at,
+  updated_at
+)
+SELECT
+  notification_id,
+  NULL,
+  title,
+  body,
+  notification_type,
+  title,
+  body,
+  'normal',
+  NULL,
+  NULL,
+  NULL,
+  created_at,
+  updated_at
+FROM __migration_0033_notifications;
+
+CREATE UNIQUE INDEX uq_notifications_source
+  ON notifications(source_type, source_id, notification_type, source_hash);
 
 CREATE TABLE firebase_tokens (
   firebase_token_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,6 +214,7 @@ CREATE INDEX idx_notification_schedules_firebase_token_id
 
 DROP TABLE __migration_0033_notification_schedules;
 DROP TABLE __migration_0033_firebase_tokens;
+DROP TABLE __migration_0033_notifications;
 
 -- 後続Resolver/Worker用の検索index。既存indexとは列の組み合わせが異なる。
 CREATE INDEX idx_users_live_active_user_id
@@ -230,6 +284,18 @@ CREATE INDEX idx_notification_push_deliveries_retry
   ON notification_push_deliveries(status, next_retry_at);
 
 -- 再作成したtableだけAUTOINCREMENTの高水位を復元する。
+UPDATE sqlite_sequence
+SET seq = MAX(seq, (SELECT notifications_seq FROM __migration_0033_sequences))
+WHERE name = 'notifications';
+
+INSERT INTO sqlite_sequence (name, seq)
+SELECT 'notifications', notifications_seq
+FROM __migration_0033_sequences
+WHERE notifications_seq > 0
+  AND NOT EXISTS (
+    SELECT 1 FROM sqlite_sequence WHERE name = 'notifications'
+  );
+
 UPDATE sqlite_sequence
 SET seq = MAX(seq, (SELECT firebase_tokens_seq FROM __migration_0033_sequences))
 WHERE name = 'firebase_tokens';

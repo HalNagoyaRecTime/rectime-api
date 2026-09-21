@@ -379,6 +379,21 @@ export const notifications = sqliteTable(
       table.notificationType,
       table.sourceHash
     ),
+    check(
+      'ck_notifications_source_complete',
+      sql`(
+        (
+          ${table.sourceType} IS NULL
+          AND ${table.sourceId} IS NULL
+          AND ${table.sourceHash} IS NULL
+        )
+        OR (
+          ${table.sourceType} IS NOT NULL
+          AND ${table.sourceId} IS NOT NULL
+          AND ${table.sourceHash} IS NOT NULL
+        )
+      )`
+    ),
   ]
 );
 
