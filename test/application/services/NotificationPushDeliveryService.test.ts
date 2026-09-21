@@ -16,6 +16,7 @@ function buildTarget() {
     firebaseTokenId: 50,
     fcmToken: 'fcm-token',
     platform: 1 as const,
+    attemptCount: 1,
   };
 }
 

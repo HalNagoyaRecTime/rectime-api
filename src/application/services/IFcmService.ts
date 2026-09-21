@@ -23,7 +23,8 @@ export class FcmRequestError extends Error {
   constructor(
     readonly httpStatus: number,
     readonly fcmErrorCode: string | null,
-    message: string
+    message: string,
+    readonly retryAfterSeconds: number | null = null
   ) {
     super(message);
     this.name = 'FcmRequestError';

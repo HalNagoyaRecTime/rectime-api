@@ -4,7 +4,7 @@ export interface NotificationDeliveryGenerationResult {
 }
 
 export interface NotificationDeliverySendResult {
-  status: 'sent' | 'failed' | 'skipped';
+  status: 'sent' | 'failed' | 'retry_wait' | 'skipped';
   scheduleCompleted: boolean;
 }
 
