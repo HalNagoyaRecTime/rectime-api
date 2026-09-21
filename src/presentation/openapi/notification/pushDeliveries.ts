@@ -7,8 +7,9 @@ import {
   z,
 } from '../schemas';
 import {
-  notificationForbiddenResponse,
-  notificationNotFoundResponse,
+  notificationBadRequestResponse,
+  notificationPushDeliveryNotFoundResponse,
+  notificationStaffForbiddenResponse,
   notificationUnauthorizedResponse,
 } from './errors';
 import { notificationPushDeliveryDetailSchema } from './commonSchemas';
@@ -29,9 +30,10 @@ export const notificationPushDeliveryDetailRoute = createRoute({
   request: { params: notificationPushDeliveryIdParams },
   responses: {
     200: jsonResponse(notificationPushDeliveryDetailSchema, 'Push配信詳細'),
+    400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
-    403: notificationForbiddenResponse,
-    404: notificationNotFoundResponse,
+    403: notificationStaffForbiddenResponse,
+    404: notificationPushDeliveryNotFoundResponse,
     500: internalServerErrorResponse,
   },
 });

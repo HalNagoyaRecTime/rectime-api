@@ -4,38 +4,45 @@ import {
   internalServerErrorResponse,
   jsonResponse,
   noContentResponse,
-  paginationFields,
   positivePathParam,
   z,
 } from '../schemas';
 import {
   notificationBadRequestResponse,
-  notificationConflictResponse,
-  notificationForbiddenResponse,
-  notificationNotFoundResponse,
+  notificationResendConflictResponse,
+  notificationScheduleCancelConflictResponse,
+  notificationScheduleNotFoundResponse,
+  notificationScheduleStopConflictResponse,
+  notificationStaffForbiddenResponse,
   notificationUnauthorizedResponse,
 } from './errors';
 import {
+  notificationDateRangeQuery,
   notificationDeliveryInputSchema,
-  notificationPaginationQuery,
   notificationRecipientResultSchema,
+  notificationResultsQuery,
   notificationScheduleDetailSchema,
-  notificationScheduleMonitorListItemSchema,
+  notificationScheduleListItemSchema,
+  notificationScheduleResultsPaginationSchema,
 } from './commonSchemas';
 import { notificationCreateResponseSchema } from './admin';
 
 export const notificationScheduleListResponseSchema = z
   .object({
-    schedules: z.array(notificationScheduleMonitorListItemSchema),
-    ...paginationFields,
+    items: z.array(notificationScheduleListItemSchema),
   })
   .strict()
-  .openapi('NotificationScheduleMonitorList');
+  .openapi('NotificationScheduleList');
 
 export const notificationScheduleResultsResponseSchema = z
   .object({
-    results: z.array(notificationRecipientResultSchema),
-    ...paginationFields,
+    notificationScheduleId: z.number().int().positive(),
+    recipients: z
+      .object({
+        items: z.array(notificationRecipientResultSchema),
+        pagination: notificationScheduleResultsPaginationSchema,
+      })
+      .strict(),
   })
   .strict()
   .openapi('NotificationScheduleResults');
@@ -66,7 +73,7 @@ export const notificationScheduleListRoute = createRoute({
   tags: ['Notification schedules'],
   summary: '通知スケジュール一覧を取得する',
   security: bearerAuth,
-  request: { query: notificationPaginationQuery },
+  request: { query: notificationDateRangeQuery },
   responses: {
     200: jsonResponse(
       notificationScheduleListResponseSchema,
@@ -74,7 +81,7 @@ export const notificationScheduleListRoute = createRoute({
     ),
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
-    403: notificationForbiddenResponse,
+    403: notificationStaffForbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -90,7 +97,8 @@ export const notificationScheduleDetailRoute = createRoute({
     200: jsonResponse(notificationScheduleDetailSchema, 'スケジュール詳細'),
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
-    404: notificationNotFoundResponse,
+    403: notificationStaffForbiddenResponse,
+    404: notificationScheduleNotFoundResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -103,13 +111,14 @@ export const notificationScheduleResultsRoute = createRoute({
   security: bearerAuth,
   request: {
     params: notificationScheduleIdParams,
-    query: notificationPaginationQuery,
+    query: notificationResultsQuery,
   },
   responses: {
     200: jsonResponse(notificationScheduleResultsResponseSchema, '配信結果'),
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
-    404: notificationNotFoundResponse,
+    403: notificationStaffForbiddenResponse,
+    404: notificationScheduleNotFoundResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -123,10 +132,11 @@ export const notificationScheduleDeleteRoute = createRoute({
   request: { params: notificationScheduleIdParams },
   responses: {
     204: noContentResponse,
+    400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
-    403: notificationForbiddenResponse,
-    404: notificationNotFoundResponse,
-    409: notificationConflictResponse,
+    403: notificationStaffForbiddenResponse,
+    404: notificationScheduleNotFoundResponse,
+    409: notificationScheduleCancelConflictResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -150,9 +160,9 @@ export const notificationScheduleResendRoute = createRoute({
     201: jsonResponse(notificationCreateResponseSchema, '再送結果'),
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
-    403: notificationForbiddenResponse,
-    404: notificationNotFoundResponse,
-    409: notificationConflictResponse,
+    403: notificationStaffForbiddenResponse,
+    404: notificationScheduleNotFoundResponse,
+    409: notificationResendConflictResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -166,10 +176,11 @@ export const notificationScheduleStopRoute = createRoute({
   request: { params: notificationScheduleIdParams },
   responses: {
     200: jsonResponse(notificationStopResponseSchema, '停止結果'),
+    400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
-    403: notificationForbiddenResponse,
-    404: notificationNotFoundResponse,
-    409: notificationConflictResponse,
+    403: notificationStaffForbiddenResponse,
+    404: notificationScheduleNotFoundResponse,
+    409: notificationScheduleStopConflictResponse,
     500: internalServerErrorResponse,
   },
 });

@@ -6,17 +6,24 @@ import type {
   NotificationSourceType,
   NotificationStopReason,
 } from '../../domain/entities/Notification';
-import type { NotificationScheduleSummaryDTO } from './NotificationScheduleDTO';
+import type {
+  NotificationAdminScheduleListItemDTO,
+  NotificationScheduleSummaryDTO,
+} from './NotificationScheduleDTO';
+
+export interface NotificationContentPushDTO {
+  title: string;
+  body: string;
+}
+
+export interface NotificationContentDetailDTO {
+  title: string;
+  body: string;
+}
 
 export interface NotificationContentDTO {
-  push: {
-    title: string;
-    body: string;
-  };
-  detail: {
-    title: string;
-    body: string;
-  };
+  push: NotificationContentPushDTO;
+  detail: NotificationContentDetailDTO;
 }
 
 export interface NotificationContentPatchDTO {
@@ -111,11 +118,19 @@ export interface AdminNotificationDetailDTO {
 
 export type NotificationPatchResponseDTO = AdminNotificationDetailDTO;
 
+export interface AdminNotificationListItemDTO {
+  notificationId: number;
+  content: {
+    push: NotificationContentPushDTO;
+  };
+  importance: NotificationImportance;
+  creation: NotificationCreationDTO;
+  createdAt: string;
+  schedules: NotificationAdminScheduleListItemDTO[];
+}
+
 export interface AdminNotificationListResponseDTO {
-  notifications: AdminNotificationDetailDTO[];
-  total: number;
-  limit: number;
-  offset: number;
+  items: AdminNotificationListItemDTO[];
 }
 
 export interface NotificationConfigDTO {

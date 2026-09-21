@@ -5,26 +5,41 @@ import {
   isoDateTimeSchema,
   jsonResponse,
   noContentResponse,
-  paginationFields,
   positivePathParam,
   z,
 } from '../schemas';
 import {
+  notificationAdminNotFoundResponse,
+  notificationAdminPatchNotFoundResponse,
+  notificationAudienceNotFoundResponse,
   notificationBadRequestResponse,
-  notificationConflictResponse,
+  notificationDeleteConflictResponse,
+  notificationEditConflictResponse,
   notificationForbiddenResponse,
-  notificationNotFoundResponse,
+  notificationStaffForbiddenResponse,
   notificationUnauthorizedResponse,
 } from './errors';
 import {
+  notificationAdminScheduleListItemSchema,
   notificationAudienceInputSchema,
   notificationContentSchema,
   notificationCreationSchema,
+  notificationDateRangeQuery,
   notificationDeliveryInputSchema,
   notificationImportanceSchema,
-  notificationPaginationQuery,
   notificationScheduleSummarySchema,
 } from './commonSchemas';
+export const adminNotificationListItemSchema = z
+  .object({
+    notificationId: z.number().int().positive(),
+    content: z.object({ push: notificationContentSchema.shape.push }).strict(),
+    importance: notificationImportanceSchema,
+    creation: notificationCreationSchema,
+    createdAt: isoDateTimeSchema,
+    schedules: z.array(notificationAdminScheduleListItemSchema),
+  })
+  .strict()
+  .openapi('AdminNotificationListItem');
 
 export const adminNotificationDetailSchema = z
   .object({
@@ -41,8 +56,7 @@ export const adminNotificationDetailSchema = z
 
 export const adminNotificationListResponseSchema = z
   .object({
-    notifications: z.array(adminNotificationDetailSchema),
-    ...paginationFields,
+    items: z.array(adminNotificationListItemSchema),
   })
   .strict()
   .openapi('AdminNotificationList');
@@ -143,12 +157,12 @@ export const adminNotificationListRoute = createRoute({
   tags: ['Admin notifications'],
   summary: '通知一覧を取得する',
   security: bearerAuth,
-  request: { query: notificationPaginationQuery },
+  request: { query: notificationDateRangeQuery },
   responses: {
     200: jsonResponse(adminNotificationListResponseSchema, '通知一覧'),
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
-    403: notificationForbiddenResponse,
+    403: notificationStaffForbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -164,8 +178,8 @@ export const adminNotificationDetailRoute = createRoute({
     200: jsonResponse(adminNotificationDetailSchema, '通知詳細'),
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
-    403: notificationForbiddenResponse,
-    404: notificationNotFoundResponse,
+    403: notificationStaffForbiddenResponse,
+    404: notificationAdminNotFoundResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -189,8 +203,7 @@ export const adminNotificationCreateRoute = createRoute({
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
     403: notificationForbiddenResponse,
-    404: notificationNotFoundResponse,
-    409: notificationConflictResponse,
+    404: notificationAudienceNotFoundResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -215,8 +228,8 @@ export const adminNotificationPatchRoute = createRoute({
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
     403: notificationForbiddenResponse,
-    404: notificationNotFoundResponse,
-    409: notificationConflictResponse,
+    404: notificationAdminPatchNotFoundResponse,
+    409: notificationEditConflictResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -232,9 +245,9 @@ export const adminNotificationDeleteRoute = createRoute({
     204: noContentResponse,
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
-    403: notificationForbiddenResponse,
-    404: notificationNotFoundResponse,
-    409: notificationConflictResponse,
+    403: notificationStaffForbiddenResponse,
+    404: notificationAdminNotFoundResponse,
+    409: notificationDeleteConflictResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -248,7 +261,7 @@ export const notificationConfigRoute = createRoute({
   responses: {
     200: jsonResponse(notificationConfigResponseSchema, '通知設定'),
     401: notificationUnauthorizedResponse,
-    403: notificationForbiddenResponse,
+    403: notificationStaffForbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -273,7 +286,7 @@ export const notificationAudienceCountRoute = createRoute({
     200: jsonResponse(notificationAudienceCountResponseSchema, '受信者数'),
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
-    403: notificationForbiddenResponse,
+    403: notificationStaffForbiddenResponse,
     500: internalServerErrorResponse,
   },
 });

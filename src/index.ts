@@ -79,11 +79,13 @@ import {
   adminNotificationDetailRoute,
   adminNotificationListRoute,
   adminNotificationUpdateRoute,
-  firebaseTokenCreateRoute,
+} from './presentation/openapi/notification/legacy/admin';
+import { firebaseTokenCreateRoute } from './presentation/openapi/notification/legacy/firebaseTokens';
+import {
   myNotificationDetailRoute,
   myNotificationListRoute,
-  testNotificationRoute,
-} from './presentation/openapi/notifications';
+} from './presentation/openapi/notification/mobileNotifications';
+import { testNotificationRoute } from './presentation/openapi/notification/testNotification';
 import {
   adminUserSearchRoute,
   adminUserStatusUpdateRoute,

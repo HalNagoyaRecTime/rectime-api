@@ -10,7 +10,7 @@ import {
   NOTIFICATION_TARGET_AUDIENCE_TYPES,
   NOTIFICATION_TYPES,
 } from '../../../domain/entities/Notification';
-import { isoDateTimeSchema, paginationQuery, z } from '../schemas';
+import { isoDateTimeSchema, z } from '../schemas';
 
 export const notificationStatusSchemas = {
   schedule: z
@@ -33,23 +33,31 @@ export const notificationSourceTypeSchema = z
   .enum(NOTIFICATION_SOURCE_TYPES)
   .openapi('NotificationSourceType');
 
+const notificationContentBlockSchema = z
+  .object({
+    title: z.string().trim().min(1),
+    body: z.string().trim().min(1),
+  })
+  .strict();
+
+export const notificationContentPushSchema =
+  notificationContentBlockSchema.openapi('NotificationContentPush');
+
+export const notificationContentDetailSchema =
+  notificationContentBlockSchema.openapi('NotificationContentDetail');
+
 export const notificationContentSchema = z
   .object({
-    push: z
-      .object({
-        title: z.string().trim().min(1),
-        body: z.string().trim().min(1),
-      })
-      .strict(),
-    detail: z
-      .object({
-        title: z.string().trim().min(1),
-        body: z.string().trim().min(1),
-      })
-      .strict(),
+    push: notificationContentPushSchema,
+    detail: notificationContentDetailSchema,
   })
   .strict()
   .openapi('NotificationContent');
+
+export const notificationContentPushOnlySchema = z
+  .object({ push: notificationContentPushSchema })
+  .strict()
+  .openapi('NotificationContentPushOnly');
 
 export const notificationUserReferenceSchema = z
   .object({
@@ -188,6 +196,33 @@ export const notificationScheduleSummarySchema = z
   .strict()
   .openapi('NotificationScheduleSummary');
 
+export const notificationAdminScheduleListItemSchema = z
+  .object({
+    notificationScheduleId: z.number().int().positive(),
+    sendAt: isoDateTimeSchema,
+    status: notificationStatusSchemas.schedule,
+    scheduledBy: notificationUserReferenceSchema.nullable(),
+    createdAt: isoDateTimeSchema,
+    audience: notificationScheduleAudienceSchema,
+    recipientPushSummary: notificationRecipientPushSummarySchema,
+  })
+  .strict()
+  .openapi('AdminNotificationScheduleListItem');
+
+export const notificationScheduleListItemSchema = z
+  .object({
+    notificationId: z.number().int().positive(),
+    notificationScheduleId: z.number().int().positive(),
+    content: notificationContentPushOnlySchema,
+    importance: notificationImportanceSchema,
+    sendAt: isoDateTimeSchema,
+    status: notificationStatusSchemas.schedule,
+    stop: notificationStopSchema.nullable(),
+    creation: notificationCreationSchema,
+  })
+  .strict()
+  .openapi('NotificationScheduleListItem');
+
 export const notificationAudienceProgressSchema = z
   .object({
     totalCount: z.number().int().nonnegative(),
@@ -217,42 +252,22 @@ export const notificationDeliveryProgressSchema = z
   .strict()
   .openapi('NotificationDeliveryProgress');
 
-export const notificationScheduleProgressSchema = z
+export const notificationScheduleDetailSchema = z
   .object({
+    notificationId: z.number().int().positive(),
+    notificationScheduleId: z.number().int().positive(),
+    content: notificationContentPushOnlySchema,
+    importance: notificationImportanceSchema,
+    sendAt: isoDateTimeSchema,
+    status: notificationStatusSchemas.schedule,
+    stop: notificationStopSchema.nullable(),
+    creation: notificationCreationSchema,
     audienceProgress: notificationAudienceProgressSchema,
     recipientProgress: notificationRecipientProgressSchema,
     deliveryProgress: notificationDeliveryProgressSchema,
   })
   .strict()
-  .openapi('NotificationScheduleProgress');
-
-export const notificationScheduleMonitorListItemSchema = z
-  .object({
-    notificationScheduleId: z.number().int().positive(),
-    notificationId: z.number().int().positive(),
-    content: notificationContentSchema,
-    creation: notificationCreationSchema,
-    sendAt: isoDateTimeSchema,
-    status: notificationStatusSchemas.schedule,
-    stop: notificationStopSchema.nullable(),
-    scheduledBy: notificationUserReferenceSchema.nullable(),
-    createdAt: isoDateTimeSchema,
-    startedAt: isoDateTimeSchema.nullable(),
-    completedAt: isoDateTimeSchema.nullable(),
-    audience: notificationScheduleAudienceSchema,
-    recipientPushSummary: notificationRecipientPushSummarySchema,
-    progress: notificationScheduleProgressSchema,
-  })
-  .strict()
-  .openapi('NotificationScheduleMonitorListItem');
-
-export const notificationScheduleDetailSchema =
-  notificationScheduleMonitorListItemSchema
-    .extend({
-      updatedAt: isoDateTimeSchema,
-    })
-    .strict()
-    .openapi('NotificationScheduleDetail');
+  .openapi('NotificationScheduleDetail');
 
 export const notificationPushDeliveryDetailSchema = z
   .object({
@@ -272,19 +287,49 @@ export const notificationPushDeliveryDetailSchema = z
   .strict()
   .openapi('NotificationPushDeliveryDetail');
 
+export const notificationRecipientResultDeliverySchema = z
+  .object({
+    notificationPushDeliveryId: z.number().int().positive(),
+    platform: z.enum(['ios', 'android']),
+    status: notificationStatusSchemas.pushDelivery,
+    attemptCount: z.number().int().nonnegative(),
+    lastAttemptAt: isoDateTimeSchema.nullable(),
+    sentAt: isoDateTimeSchema.nullable(),
+  })
+  .strict()
+  .openapi('NotificationRecipientResultDelivery');
+
 export const notificationRecipientResultSchema = z
   .object({
     notificationRecipientId: z.number().int().positive(),
     user: notificationUserReferenceSchema,
-    push: z
-      .object({
-        status: z.enum(['success', 'failed', 'no_push_target']),
-        successCount: z.number().int().nonnegative(),
-        failedCount: z.number().int().nonnegative(),
-      })
-      .strict(),
+    deliveries: z.array(notificationRecipientResultDeliverySchema),
   })
   .strict()
   .openapi('NotificationRecipientResult');
 
-export const notificationPaginationQuery = paginationQuery(100, 50);
+export const notificationScheduleResultsPaginationSchema = z
+  .object({
+    page: z.number().int().positive(),
+    limit: z.number().int().positive(),
+    totalCount: z.number().int().nonnegative(),
+    totalPages: z.number().int().nonnegative(),
+  })
+  .strict()
+  .openapi('NotificationScheduleResultsPagination');
+
+export const notificationDateRangeQuery = z
+  .object({
+    from: isoDateTimeSchema,
+    to: isoDateTimeSchema,
+  })
+  .strict()
+  .openapi('NotificationDateRangeQuery');
+
+export const notificationResultsQuery = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50).optional(),
+  })
+  .strict()
+  .openapi('NotificationResultsQuery');

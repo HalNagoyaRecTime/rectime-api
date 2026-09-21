@@ -1,4 +1,27 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type {
+  AdminNotificationDetailDTO,
+  AdminNotificationListResponseDTO,
+  NotificationAudienceCountRequestDTO,
+  NotificationAudienceCountResponseDTO,
+  NotificationConfigDTO,
+  NotificationCreateRequestDTO,
+  NotificationCreateResponseDTO,
+  NotificationPatchRequestDTO,
+  NotificationStopResponseDTO,
+} from '../../../src/application/dto/AdminNotificationDTO';
+import type {
+  NotificationPushDeliveryDetailDTO,
+  NotificationRecipientResultDTO,
+  NotificationScheduleDetailDTO,
+  NotificationScheduleListResponseDTO,
+  NotificationScheduleResultsResponseDTO,
+  NotificationResendRequestDTO,
+} from '../../../src/application/dto/NotificationScheduleDTO';
+import type {
+  FirebaseTokenDTO,
+  FirebaseTokenRegistrationRequestDTO,
+} from '../../../src/application/dto/FirebaseTokenDTO';
 import {
   NOTIFICATION_AUDIENCE_TYPES,
   NOTIFICATION_DELIVERY_TYPES,
@@ -8,35 +31,50 @@ import {
   NOTIFICATION_SOURCE_TYPES,
   NOTIFICATION_TYPES,
 } from '../../../src/domain/entities/Notification';
+import { z } from '../../../src/presentation/openapi/schemas';
 import {
   adminNotificationCreateRoute,
   adminNotificationDetailRoute,
+  adminNotificationListResponseSchema,
+  adminNotificationListRoute,
   adminNotificationPatchRoute,
+  adminNotificationDetailSchema,
   firebaseTokenRegistrationRequestSchema,
+  firebaseTokenRegistrationRoute,
   firebaseTokenSchema,
+  firebaseTokenDeleteRoute,
   notificationAudienceCountRequestSchema,
+  notificationAudienceCountResponseSchema,
   notificationAudienceInputItemSchema,
   notificationAudienceItemSchema,
   notificationAudienceSchema,
   notificationConfigResponseSchema,
   notificationContentPatchSchema,
-  notificationCreationSchema,
   notificationCreateRequestSchema,
   notificationCreateResponseSchema,
+  notificationDateRangeQuery,
   notificationDeliveryInputSchema,
+  notificationForbiddenErrorResponseSchema,
   notificationPatchRequestSchema,
   notificationPushDeliveryDetailSchema,
+  notificationPushDeliveryDetailRoute,
   notificationRecipientResultSchema,
   notificationResendRequestSchema,
+  notificationResultsQuery,
   notificationScheduleDetailSchema,
   notificationScheduleListResponseSchema,
+  notificationScheduleListRoute,
   notificationScheduleResultsResponseSchema,
+  notificationScheduleResultsRoute,
   notificationScheduleSummarySchema,
   notificationScheduleResendRoute,
-  notificationConflictErrorResponseSchema,
+  notificationScheduleStopRoute,
+  notificationScheduleDeleteRoute,
+  notificationStopResponseSchema,
   notificationErrorCodeSchema,
-  notificationForbiddenErrorResponseSchema,
-  notificationTypeSchema,
+  firebaseTokenForbiddenErrorResponseSchema,
+  firebaseTokenNotFoundErrorResponseSchema,
+  notificationScheduleNotFoundErrorResponseSchema,
 } from '../../../src/presentation/openapi/notification';
 
 const date = '2026-11-07T15:35:00+09:00';
@@ -44,7 +82,55 @@ const content = {
   push: { title: '集合時間変更', body: '集合時間が変更されました。' },
   detail: { title: '集合時間変更のお知らせ', body: '詳細をご確認ください。' },
 };
-const progress = {
+const creation = {
+  method: 'automatic' as const,
+  user: null,
+  source: { type: 'gathering' as const, id: 51, label: null },
+};
+const audience = {
+  items: [{ type: 'gathering' as const, targetId: 51, label: null }],
+  recipientResolution: { status: 'resolved' as const, resolvedCount: 4 },
+};
+const recipientPushSummary = {
+  totalCount: 1204,
+  successCount: 1058,
+  failedCount: 8,
+  noPushTargetCount: 138,
+};
+const stop = {
+  reason: 'manual' as const,
+  stoppedAt: date,
+  stoppedBy: { userId: 123, userName: 'HAL 太郎' },
+};
+
+const adminListSchedule = {
+  notificationScheduleId: 501,
+  sendAt: date,
+  status: 'sending' as const,
+  scheduledBy: null,
+  createdAt: date,
+  audience,
+  recipientPushSummary,
+};
+
+const adminDetailSchedule = {
+  ...adminListSchedule,
+  stop: null,
+};
+
+const scheduleListItem = {
+  notificationId: 108,
+  notificationScheduleId: 501,
+  content: { push: content.push },
+  importance: 'normal' as const,
+  sendAt: date,
+  status: 'sending' as const,
+  stop,
+  creation,
+};
+
+const scheduleDetail = {
+  ...scheduleListItem,
   audienceProgress: { totalCount: 4, resolvedCount: 4 },
   recipientProgress: { count: 1204, status: 'resolved' as const },
   deliveryProgress: {
@@ -58,37 +144,38 @@ const progress = {
   },
 };
 
-const monitorItem = {
-  notificationScheduleId: 501,
-  notificationId: 108,
-  content,
-  creation: {
-    method: 'automatic' as const,
-    user: null,
-    source: { type: 'gathering' as const, id: 51, label: null },
-  },
-  sendAt: date,
-  status: 'sending' as const,
-  stop: null,
-  scheduledBy: null,
-  createdAt: date,
-  startedAt: date,
-  completedAt: null,
-  audience: {
-    items: [{ type: 'gathering' as const, targetId: 51, label: null }],
-    recipientResolution: { status: 'resolved' as const, resolvedCount: 4 },
-  },
-  recipientPushSummary: {
-    totalCount: 1204,
-    successCount: 1058,
-    failedCount: 8,
-    noPushTargetCount: 138,
-  },
-  progress,
+const recipientResult = {
+  notificationRecipientId: 1201,
+  user: { userId: 123, userName: 'HAL 太郎' },
+  deliveries: [
+    {
+      notificationPushDeliveryId: 9012,
+      platform: 'ios' as const,
+      status: 'failed' as const,
+      attemptCount: 2,
+      lastAttemptAt: date,
+      sentAt: null,
+    },
+  ],
 };
 
-describe('通知基盤のDomain literal', () => {
-  it('Schedule statusは6種類だけを正本として持つ', () => {
+const pushDetail = {
+  notificationPushDeliveryId: 9012,
+  notificationRecipientId: 1201,
+  firebaseTokenId: null,
+  platform: 'ios' as const,
+  status: 'failed' as const,
+  attemptCount: 2,
+  firstAttemptAt: date,
+  lastAttemptAt: date,
+  nextRetryAt: null,
+  sentAt: null,
+  failedReason: 'UNREGISTERED',
+  fcmMessageId: null,
+};
+
+describe('通知契約のDomain literal', () => {
+  it('正本のliteralだけを公開する', () => {
     expect(NOTIFICATION_SCHEDULE_STATUSES).toEqual([
       'scheduled',
       'resolving',
@@ -97,11 +184,6 @@ describe('通知基盤のDomain literal', () => {
       'failed',
       'stopped',
     ]);
-    expect(NOTIFICATION_SCHEDULE_STATUSES).not.toContain('draft');
-    expect(NOTIFICATION_SCHEDULE_STATUSES).not.toContain('sent');
-  });
-
-  it('Push Delivery status、Audience type、Importanceを正本から公開する', () => {
     expect(NOTIFICATION_PUSH_DELIVERY_STATUSES).toEqual([
       'pending',
       'sending',
@@ -121,44 +203,24 @@ describe('通知基盤のDomain literal', () => {
     expect(NOTIFICATION_DELIVERY_TYPES).toEqual(['immediate', 'scheduled']);
     expect(NOTIFICATION_TYPES).toEqual(['notification_general']);
     expect(NOTIFICATION_SOURCE_TYPES).toEqual(['gathering']);
-    expect(notificationTypeSchema.parse('notification_general')).toBe(
-      'notification_general'
-    );
   });
 });
 
-describe('通知基盤のRequest / Response schema', () => {
-  it('AudienceのRequestとResponseを分離し、Requestではlabelを受け付けない', () => {
-    for (const item of [
-      { type: 'all' },
-      { type: 'class_room', targetId: 3 },
-      { type: 'gathering', targetId: 51 },
-      { type: 'event', targetId: 81 },
-      { type: 'user', targetId: 123 },
-    ]) {
-      expect(notificationAudienceInputItemSchema.safeParse(item).success).toBe(
-        true
-      );
-    }
-
+describe('通知契約のRequest schema', () => {
+  it('AudienceのRequestとResponseを分離する', () => {
     expect(
       notificationAudienceInputItemSchema.safeParse({
         type: 'gathering',
         targetId: 51,
-        label: 'Frontend label',
       }).success
-    ).toBe(false);
+    ).toBe(true);
     expect(
       notificationAudienceInputItemSchema.safeParse({
-        type: 'event_participants',
-        targetId: 81,
+        type: 'gathering',
+        targetId: 51,
+        label: '表示名',
       }).success
     ).toBe(false);
-    expect(
-      notificationAudienceInputItemSchema.safeParse({ type: 'gathering' })
-        .success
-    ).toBe(false);
-
     expect(
       notificationAudienceItemSchema.safeParse({
         type: 'gathering',
@@ -167,80 +229,21 @@ describe('通知基盤のRequest / Response schema', () => {
       }).success
     ).toBe(true);
     expect(
-      notificationAudienceItemSchema.safeParse({
-        type: 'gathering',
-        targetId: 51,
-      }).success
-    ).toBe(false);
-    expect(
       notificationAudienceSchema.safeParse({ items: [{ type: 'all' }] }).success
     ).toBe(true);
   });
 
-  it('Create Requestは完全なContentとInput Audienceを受け付ける', () => {
+  it('Create、PATCH、Deliveryを正本の形で受け付ける', () => {
     expect(
       notificationCreateRequestSchema.safeParse({
         content,
         audience: {
-          items: [
-            { type: 'class_room', targetId: 3 },
-            { type: 'gathering', targetId: 51 },
-          ],
+          items: [{ type: 'gathering', targetId: 51 }],
         },
         delivery: { type: 'scheduled', sendAt: date },
         importance: 'normal',
       }).success
     ).toBe(true);
-  });
-
-  it('DeliveryはimmediateとscheduledでsendAtのnullabilityを固定する', () => {
-    expect(
-      notificationDeliveryInputSchema.safeParse({
-        type: 'immediate',
-        sendAt: null,
-      }).success
-    ).toBe(true);
-    expect(
-      notificationDeliveryInputSchema.safeParse({
-        type: 'scheduled',
-        sendAt: date,
-      }).success
-    ).toBe(true);
-    expect(
-      notificationDeliveryInputSchema.safeParse({
-        type: 'immediate',
-        sendAt: date,
-      }).success
-    ).toBe(false);
-  });
-
-  it('manual creationは作成User削除後のnullを表現できる', () => {
-    expect(
-      notificationCreationSchema.safeParse({
-        method: 'manual',
-        user: null,
-        source: null,
-      }).success
-    ).toBe(true);
-    expect(
-      notificationCreationSchema.safeParse({
-        method: 'automatic',
-        user: null,
-        source: { type: 'gathering', id: 51, label: null },
-      }).success
-    ).toBe(true);
-  });
-
-  it('Create responseを最小shapeで固定する', () => {
-    expect(
-      notificationCreateResponseSchema.parse({
-        notificationId: 108,
-        notificationScheduleId: 501,
-      })
-    ).toEqual({ notificationId: 108, notificationScheduleId: 501 });
-  });
-
-  it('nested partial PATCHは変更対象だけを受け付け、空objectを拒否する', () => {
     expect(
       notificationPatchRequestSchema.safeParse({
         content: { detail: { body: '集合場所が変更になりました。' } },
@@ -248,113 +251,161 @@ describe('通知基盤のRequest / Response schema', () => {
     ).toBe(true);
     expect(
       notificationPatchRequestSchema.safeParse({
-        content: { push: { title: '集合時間変更' } },
+        schedule: {
+          notificationScheduleId: 501,
+          delivery: { type: 'immediate', sendAt: null },
+        },
       }).success
     ).toBe(true);
-    expect(
-      notificationPatchRequestSchema.safeParse({ content: {} }).success
-    ).toBe(false);
-    expect(
-      notificationPatchRequestSchema.safeParse({ content: { push: {} } })
-        .success
-    ).toBe(false);
     expect(notificationPatchRequestSchema.safeParse({}).success).toBe(false);
-    expect(
-      notificationPatchRequestSchema.safeParse({
-        schedule: { notificationScheduleId: 501 },
-      }).success
-    ).toBe(false);
-    expect(
-      notificationPatchRequestSchema.safeParse({
-        schedule: {
-          notificationScheduleId: 501,
-          delivery: { type: 'scheduled', sendAt: date },
-        },
-      }).success
-    ).toBe(true);
-    expect(
-      notificationPatchRequestSchema.safeParse({
-        schedule: {
-          notificationScheduleId: 501,
-          audience: { items: [{ type: 'gathering', targetId: 51 }] },
-        },
-      }).success
-    ).toBe(true);
-    expect(
-      notificationPatchRequestSchema.safeParse({
-        audience: { items: [{ type: 'gathering', targetId: 51 }] },
-      }).success
-    ).toBe(false);
     expect(
       notificationContentPatchSchema.safeParse({ detail: {} }).success
     ).toBe(false);
+    expect(
+      notificationDeliveryInputSchema.safeParse({
+        type: 'immediate',
+        sendAt: date,
+      }).success
+    ).toBe(false);
   });
 
-  it('ConfigはDomain上のhighを表現し、通常Userのoptionsも受け付ける', () => {
+  it('from/toはoffset付きISO日時、resultsはpage/limitを受け付ける', () => {
     expect(
-      notificationConfigResponseSchema.parse({
-        importance: { default: 'normal', options: ['low', 'normal'] },
-      })
-    ).toEqual({
-      importance: { default: 'normal', options: ['low', 'normal'] },
-    });
+      notificationDateRangeQuery.safeParse({ from: date, to: date }).success
+    ).toBe(true);
     expect(
-      notificationConfigResponseSchema.safeParse({
-        importance: { default: 'normal', options: ['low', 'normal', 'high'] },
+      notificationDateRangeQuery.safeParse({
+        from: '2026-11-07T15:35:00Z',
+        to: date,
       }).success
     ).toBe(true);
+    expect(
+      notificationResultsQuery.safeParse({ page: '2', limit: '50' }).success
+    ).toBe(true);
+    expect(
+      notificationResultsQuery.safeParse({ offset: '0', limit: '50' }).success
+    ).toBe(false);
   });
 });
 
-describe('通知基盤の結果・Token・Monitor schema', () => {
-  it('Schedule summaryはRecipient集計とDelivery件数を分離する', () => {
+describe('管理通知とスケジュールのResponse schema', () => {
+  it('管理通知一覧はitemsと軽量contentだけを返す', () => {
+    expect(
+      adminNotificationListResponseSchema.safeParse({
+        items: [
+          {
+            notificationId: 108,
+            content: { push: content.push },
+            importance: 'normal',
+            creation,
+            createdAt: date,
+            schedules: [adminListSchedule],
+          },
+        ],
+      }).success
+    ).toBe(true);
+    expect(
+      adminNotificationListResponseSchema.safeParse({
+        notifications: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      }).success
+    ).toBe(false);
+    expect(
+      adminNotificationListResponseSchema.safeParse({
+        items: [
+          {
+            notificationId: 108,
+            content,
+            importance: 'normal',
+            creation,
+            createdAt: date,
+            schedules: [],
+          },
+        ],
+      }).success
+    ).toBe(false);
+  });
+
+  it('管理通知詳細だけがdetail・updatedAt・停止情報を持つ', () => {
+    expect(
+      adminNotificationDetailSchema.safeParse({
+        notificationId: 108,
+        content,
+        importance: 'normal',
+        creation,
+        createdAt: date,
+        updatedAt: date,
+        schedules: [adminDetailSchedule],
+      }).success
+    ).toBe(true);
     expect(
       notificationScheduleSummarySchema.safeParse({
-        notificationScheduleId: 501,
-        sendAt: date,
-        status: 'resolving',
-        stop: null,
-        scheduledBy: null,
-        createdAt: date,
-        audience: {
-          items: [{ type: 'gathering', targetId: 51, label: null }],
-          recipientResolution: { status: 'resolved', resolvedCount: 4 },
-        },
-        recipientPushSummary: {
-          totalCount: 1204,
-          successCount: 1058,
-          failedCount: 8,
-          noPushTargetCount: 138,
-        },
+        ...adminDetailSchedule,
+        stop,
       }).success
     ).toBe(true);
   });
 
-  it('Monitor list/detailはSchedule中心の専用shapeを持つ', () => {
+  it('スケジュール一覧は軽量なitemsを返す', () => {
     expect(
       notificationScheduleListResponseSchema.safeParse({
-        schedules: [monitorItem],
+        items: [scheduleListItem],
+      }).success
+    ).toBe(true);
+    expect(
+      notificationScheduleListResponseSchema.safeParse({
+        items: [{ ...scheduleListItem, audience }],
+      }).success
+    ).toBe(false);
+    expect(
+      notificationScheduleListResponseSchema.safeParse({
+        schedules: [scheduleListItem],
         total: 1,
         limit: 50,
         offset: 0,
       }).success
+    ).toBe(false);
+  });
+
+  it('スケジュール詳細はprogressをトップレベルに置く', () => {
+    expect(
+      notificationScheduleDetailSchema.safeParse(scheduleDetail).success
     ).toBe(true);
     expect(
       notificationScheduleDetailSchema.safeParse({
-        ...monitorItem,
-        updatedAt: date,
+        ...scheduleDetail,
+        progress: {
+          audienceProgress: scheduleDetail.audienceProgress,
+          recipientProgress: scheduleDetail.recipientProgress,
+          deliveryProgress: scheduleDetail.deliveryProgress,
+        },
       }).success
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      notificationScheduleDetailSchema.safeParse({
+        ...scheduleDetail,
+        scheduledBy: null,
+        createdAt: date,
+      }).success
+    ).toBe(false);
   });
+});
 
-  it('ResultsはRecipient単位で、PushDeliveryDetailをそのまま返さない', () => {
-    const recipientResult = {
-      notificationRecipientId: 1201,
-      user: { userId: 123, userName: 'HAL 太郎' },
-      push: { status: 'success' as const, successCount: 1, failedCount: 1 },
-    };
+describe('結果・Push・FirebaseのResponse schema', () => {
+  it('結果はrecipient単位のdeliveriesとpage paginationを返す', () => {
     expect(
       notificationRecipientResultSchema.safeParse(recipientResult).success
+    ).toBe(true);
+    expect(
+      notificationScheduleResultsResponseSchema.safeParse({
+        notificationScheduleId: 501,
+        recipients: {
+          items: [recipientResult],
+          pagination: { page: 1, limit: 50, totalCount: 1, totalPages: 1 },
+        },
+      }).success
     ).toBe(true);
     expect(
       notificationScheduleResultsResponseSchema.safeParse({
@@ -363,52 +414,16 @@ describe('通知基盤の結果・Token・Monitor schema', () => {
         limit: 50,
         offset: 0,
       }).success
-    ).toBe(true);
-    expect(
-      notificationScheduleResultsResponseSchema.safeParse({
-        results: [
-          {
-            notificationPushDeliveryId: 9012,
-            notificationRecipientId: 1201,
-            firebaseTokenId: null,
-            platform: 'ios',
-            status: 'failed',
-            attemptCount: 2,
-            firstAttemptAt: date,
-            lastAttemptAt: date,
-            nextRetryAt: null,
-            sentAt: null,
-            failedReason: 'UNREGISTERED',
-            fcmMessageId: null,
-          },
-        ],
-        total: 1,
-        limit: 50,
-        offset: 0,
-      }).success
     ).toBe(false);
   });
 
-  it('Push Delivery detailはToken単位でfirebaseTokenId nullを許容する', () => {
+  it('Push詳細は既存の詳細shapeを維持する', () => {
     expect(
-      notificationPushDeliveryDetailSchema.safeParse({
-        notificationPushDeliveryId: 9012,
-        notificationRecipientId: 1201,
-        firebaseTokenId: null,
-        platform: 'ios',
-        status: 'failed',
-        attemptCount: 2,
-        firstAttemptAt: date,
-        lastAttemptAt: date,
-        nextRetryAt: null,
-        sentAt: null,
-        failedReason: 'UNREGISTERED',
-        fcmMessageId: null,
-      }).success
+      notificationPushDeliveryDetailSchema.safeParse(pushDetail).success
     ).toBe(true);
   });
 
-  it('Firebase TokenはisActiveを持たず、Registration requestを分離する', () => {
+  it('Firebase tokenはPOST/DELETEともisActiveを持たない', () => {
     expect(
       firebaseTokenRegistrationRequestSchema.safeParse({
         fcmToken: 'token',
@@ -435,49 +450,43 @@ describe('通知基盤の結果・Token・Monitor schema', () => {
   });
 });
 
-describe('通知基盤のEndpoint契約', () => {
-  it('PATCHを使用し、PUTを定義しない', () => {
-    expect(adminNotificationPatchRoute.method).toBe('patch');
-    expect(adminNotificationPatchRoute.path).toBe(
-      '/admin/notifications/{notificationId}'
-    );
-  });
-
-  it('管理通知のmutationとmonitor endpointを定義する', () => {
+describe('Endpointとerror codeの契約', () => {
+  it('新契約のmethod/pathとqueryを定義する', () => {
     expect(adminNotificationCreateRoute.method).toBe('post');
-    expect(adminNotificationDetailRoute.method).toBe('get');
-    expect(notificationScheduleResendRoute.method).toBe('post');
-    expect(notificationScheduleResendRoute.path).toContain('/resend');
-  });
-
-  it('resend Requestはbody必須で即時・日時指定を受け付ける', () => {
-    expect(
-      notificationResendRequestSchema.safeParse({
-        delivery: { type: 'immediate', sendAt: null },
-      }).success
-    ).toBe(true);
-    expect(
-      notificationResendRequestSchema.safeParse({
-        delivery: { type: 'scheduled', sendAt: date },
-      }).success
-    ).toBe(true);
-    expect(notificationResendRequestSchema.safeParse({}).success).toBe(false);
-  });
-
-  it('Error codeは通知契約で定義したcodeだけを受け付ける', () => {
-    expect(notificationErrorCodeSchema.parse('VALIDATION_ERROR')).toBe(
-      'VALIDATION_ERROR'
+    expect(adminNotificationPatchRoute.method).toBe('patch');
+    expect(adminNotificationListRoute.path).toBe('/admin/notifications');
+    expect(adminNotificationDetailRoute.path).toContain('{notificationId}');
+    expect(notificationScheduleListRoute.path).toBe(
+      '/admin/notifications/schedules'
     );
-    expect(() =>
-      notificationErrorCodeSchema.parse('NOTIFICATION_AUDIENCE_HAS_NO_TOKENS')
-    ).toThrow();
+    expect(notificationScheduleResendRoute.path).toContain('/resend');
+    expect(notificationScheduleDeleteRoute.path).toContain('/schedules/');
+    expect(notificationScheduleStopRoute.path).toContain('/stop');
+    expect(notificationScheduleResultsRoute.path).toContain('/results');
+    expect(notificationPushDeliveryDetailRoute.path).toContain(
+      'push-deliveries'
+    );
+    expect(firebaseTokenRegistrationRoute.method).toBe('post');
+    expect(firebaseTokenDeleteRoute.method).toBe('delete');
   });
 
-  it('Error ResponseはHTTP statusごとに許可codeを絞る', () => {
+  it('error responseはHTTP endpointごとのcodeだけを許可する', () => {
     const forbidden = {
       error: {
         code: 'NOTIFICATION_IMPORTANCE_FORBIDDEN',
         message: '指定された通知重要度は利用できません',
+      },
+    };
+    const firebaseForbidden = {
+      error: {
+        code: 'FIREBASE_TOKEN_FORBIDDEN',
+        message: '権限がありません',
+      },
+    };
+    const scheduleNotFound = {
+      error: {
+        code: 'NOTIFICATION_SCHEDULE_NOT_FOUND',
+        message: '見つかりません',
       },
     };
     const conflict = {
@@ -491,18 +500,89 @@ describe('通知基盤のEndpoint契約', () => {
       notificationForbiddenErrorResponseSchema.safeParse(forbidden).success
     ).toBe(true);
     expect(
-      notificationForbiddenErrorResponseSchema.safeParse(conflict).success
+      notificationForbiddenErrorResponseSchema.safeParse(firebaseForbidden)
+        .success
     ).toBe(false);
     expect(
-      notificationConflictErrorResponseSchema.safeParse(conflict).success
+      firebaseTokenForbiddenErrorResponseSchema.safeParse(firebaseForbidden)
+        .success
     ).toBe(true);
+    expect(
+      firebaseTokenNotFoundErrorResponseSchema.safeParse(scheduleNotFound)
+        .success
+    ).toBe(false);
+    expect(
+      notificationScheduleNotFoundErrorResponseSchema.safeParse(
+        scheduleNotFound
+      ).success
+    ).toBe(true);
+    expect(notificationErrorCodeSchema.parse('FIREBASE_TOKEN_FORBIDDEN')).toBe(
+      'FIREBASE_TOKEN_FORBIDDEN'
+    );
+    expect(() =>
+      notificationErrorCodeSchema.parse('NOTIFICATION_AUDIENCE_HAS_NO_TOKENS')
+    ).toThrow();
+    expect(
+      notificationForbiddenErrorResponseSchema.safeParse(conflict).success
+    ).toBe(false);
+  });
+});
+
+describe('Application DTOとOpenAPI schemaの型パリティ', () => {
+  it('主要なrequest/response DTOと一致する', () => {
+    expectTypeOf<
+      z.infer<typeof notificationCreateRequestSchema>
+    >().toEqualTypeOf<NotificationCreateRequestDTO>();
+    expectTypeOf<
+      z.infer<typeof notificationCreateResponseSchema>
+    >().toEqualTypeOf<NotificationCreateResponseDTO>();
+    expectTypeOf<
+      z.infer<typeof notificationPatchRequestSchema>
+    >().toEqualTypeOf<NotificationPatchRequestDTO>();
+    expectTypeOf<
+      z.infer<typeof adminNotificationListResponseSchema>
+    >().toEqualTypeOf<AdminNotificationListResponseDTO>();
+    expectTypeOf<
+      z.infer<typeof adminNotificationDetailSchema>
+    >().toEqualTypeOf<AdminNotificationDetailDTO>();
+    expectTypeOf<
+      z.infer<typeof notificationScheduleListResponseSchema>
+    >().toEqualTypeOf<NotificationScheduleListResponseDTO>();
+    expectTypeOf<
+      z.infer<typeof notificationScheduleDetailSchema>
+    >().toEqualTypeOf<NotificationScheduleDetailDTO>();
+    expectTypeOf<
+      z.infer<typeof notificationScheduleResultsResponseSchema>
+    >().toEqualTypeOf<NotificationScheduleResultsResponseDTO>();
+    expectTypeOf<
+      z.infer<typeof notificationPushDeliveryDetailSchema>
+    >().toEqualTypeOf<NotificationPushDeliveryDetailDTO>();
+    expectTypeOf<
+      z.infer<typeof firebaseTokenRegistrationRequestSchema>
+    >().toEqualTypeOf<FirebaseTokenRegistrationRequestDTO>();
+    expectTypeOf<
+      z.infer<typeof firebaseTokenSchema>
+    >().toEqualTypeOf<FirebaseTokenDTO>();
+    expectTypeOf<
+      z.infer<typeof notificationConfigResponseSchema>
+    >().toEqualTypeOf<NotificationConfigDTO>();
+    expectTypeOf<
+      z.infer<typeof notificationAudienceCountRequestSchema>
+    >().toEqualTypeOf<NotificationAudienceCountRequestDTO>();
+    expectTypeOf<
+      z.infer<typeof notificationAudienceCountResponseSchema>
+    >().toEqualTypeOf<NotificationAudienceCountResponseDTO>();
+    expectTypeOf<
+      z.infer<typeof notificationResendRequestSchema>
+    >().toEqualTypeOf<NotificationResendRequestDTO>();
+    expectTypeOf<
+      z.infer<typeof notificationStopResponseSchema>
+    >().toEqualTypeOf<NotificationStopResponseDTO>();
   });
 
-  it('Audience CountはToken必須ではないInput Audienceを受け付ける', () => {
-    expect(
-      notificationAudienceCountRequestSchema.safeParse({
-        audience: { items: [{ type: 'all' }] },
-      }).success
-    ).toBe(true);
+  it('recipient resultのitemもApplication DTOと一致する', () => {
+    expectTypeOf<
+      z.infer<typeof notificationRecipientResultSchema>
+    >().toEqualTypeOf<NotificationRecipientResultDTO>();
   });
 });

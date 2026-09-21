@@ -1,10 +1,11 @@
 import type {
+  NotificationImportance,
   NotificationPushDeliveryStatus,
   NotificationScheduleStatus,
 } from '../../domain/entities/Notification';
 import type {
   NotificationAudienceDTO,
-  NotificationContentDTO,
+  NotificationContentPushDTO,
   NotificationCreationDTO,
   NotificationDeliveryInputDTO,
   NotificationScheduleStopDTO,
@@ -38,6 +39,27 @@ export interface NotificationScheduleSummaryDTO {
   recipientPushSummary: NotificationRecipientPushSummaryDTO;
 }
 
+export interface NotificationAdminScheduleListItemDTO {
+  notificationScheduleId: number;
+  sendAt: string;
+  status: NotificationScheduleStatus;
+  scheduledBy: NotificationUserReferenceDTO | null;
+  createdAt: string;
+  audience: NotificationScheduleAudienceDTO;
+  recipientPushSummary: NotificationRecipientPushSummaryDTO;
+}
+
+export interface NotificationScheduleListItemDTO {
+  notificationId: number;
+  notificationScheduleId: number;
+  content: { push: NotificationContentPushDTO };
+  importance: NotificationImportance;
+  sendAt: string;
+  status: NotificationScheduleStatus;
+  stop: NotificationScheduleStopDTO | null;
+  creation: NotificationCreationDTO;
+}
+
 export interface NotificationAudienceProgressDTO {
   totalCount: number;
   resolvedCount: number;
@@ -64,17 +86,18 @@ export interface NotificationScheduleProgressDTO {
   deliveryProgress: NotificationDeliveryProgressDTO;
 }
 
-export interface NotificationScheduleMonitorListItemDTO extends NotificationScheduleSummaryDTO {
+export interface NotificationScheduleDetailDTO {
   notificationId: number;
-  content: NotificationContentDTO;
+  notificationScheduleId: number;
+  content: { push: NotificationContentPushDTO };
+  importance: NotificationImportance;
+  sendAt: string;
+  status: NotificationScheduleStatus;
+  stop: NotificationScheduleStopDTO | null;
   creation: NotificationCreationDTO;
-  startedAt: string | null;
-  completedAt: string | null;
-  progress: NotificationScheduleProgressDTO;
-}
-
-export interface NotificationScheduleDetailDTO extends NotificationScheduleMonitorListItemDTO {
-  updatedAt: string;
+  audienceProgress: NotificationAudienceProgressDTO;
+  recipientProgress: NotificationRecipientProgressDTO;
+  deliveryProgress: NotificationDeliveryProgressDTO;
 }
 
 export interface NotificationPushDeliveryDetailDTO {
@@ -92,31 +115,38 @@ export interface NotificationPushDeliveryDetailDTO {
   fcmMessageId: string | null;
 }
 
-export type NotificationRecipientResultStatus =
-  'success' | 'failed' | 'no_push_target';
+export interface NotificationRecipientResultDeliveryDTO {
+  notificationPushDeliveryId: number;
+  platform: 'ios' | 'android';
+  status: NotificationPushDeliveryStatus;
+  attemptCount: number;
+  lastAttemptAt: string | null;
+  sentAt: string | null;
+}
 
 export interface NotificationRecipientResultDTO {
   notificationRecipientId: number;
   user: NotificationUserReferenceDTO;
-  push: {
-    status: NotificationRecipientResultStatus;
-    successCount: number;
-    failedCount: number;
-  };
+  deliveries: NotificationRecipientResultDeliveryDTO[];
+}
+
+export interface NotificationScheduleResultsPaginationDTO {
+  page: number;
+  limit: number;
+  totalCount: number;
+  totalPages: number;
 }
 
 export interface NotificationScheduleResultsResponseDTO {
-  results: NotificationRecipientResultDTO[];
-  total: number;
-  limit: number;
-  offset: number;
+  notificationScheduleId: number;
+  recipients: {
+    items: NotificationRecipientResultDTO[];
+    pagination: NotificationScheduleResultsPaginationDTO;
+  };
 }
 
 export interface NotificationScheduleListResponseDTO {
-  schedules: NotificationScheduleMonitorListItemDTO[];
-  total: number;
-  limit: number;
-  offset: number;
+  items: NotificationScheduleListItemDTO[];
 }
 
 export interface NotificationResendRequestDTO {
