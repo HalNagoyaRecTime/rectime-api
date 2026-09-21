@@ -152,7 +152,21 @@ SELECT
     ) THEN legacy.fcm_token || '#legacy:' || legacy.firebase_token_id
     ELSE legacy.fcm_token
   END,
-  is_firebase_active,
+  CASE
+    WHEN EXISTS (
+      SELECT 1
+      FROM __migration_0033_firebase_tokens candidate
+      WHERE candidate.fcm_token = legacy.fcm_token
+        AND (
+          candidate.is_firebase_active > legacy.is_firebase_active
+          OR (
+            candidate.is_firebase_active = legacy.is_firebase_active
+            AND candidate.firebase_token_id < legacy.firebase_token_id
+          )
+        )
+    ) THEN 0
+    ELSE is_firebase_active
+  END,
   last_seen_at,
   created_at,
   updated_at

@@ -345,6 +345,52 @@ describe('0033_create_notification_v2_schema.sql', () => {
         is_firebase_active: 1,
       },
     ]);
+    const tokenIndexes = await env.DB.prepare(
+      'PRAGMA index_list(firebase_tokens)'
+    ).all<{ name: string; unique: number }>();
+    expect(tokenIndexes.results).toContainEqual(
+      expect.objectContaining({
+        name: 'uq_firebase_tokens_fcm_token',
+        unique: 1,
+      })
+    );
+    expect(tokenIndexes.results.map(index => index.name)).not.toContain(
+      'idx_firebase_tokens_active_fcm_token'
+    );
+
+    const notificationColumns = await env.DB.prepare(
+      'PRAGMA table_info(notifications)'
+    ).all<{ name: string; dflt_value: string | null }>();
+    expect(notificationColumns.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'push_title', dflt_value: null }),
+        expect.objectContaining({ name: 'push_body', dflt_value: null }),
+      ])
+    );
+
+    const scheduleColumns = await env.DB.prepare(
+      'PRAGMA table_info(notification_schedules)'
+    ).all<{ name: string; dflt_value: string | null }>();
+    expect(scheduleColumns.results).toContainEqual(
+      expect.objectContaining({ name: 'send_status', dflt_value: null })
+    );
+
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO firebase_tokens (user_id, platform, fcm_token)
+         VALUES (?, 0, 'invalid-platform-0033-0')`
+      )
+        .bind(currentOwnerUserId)
+        .run()
+    ).rejects.toThrow();
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO firebase_tokens (user_id, platform, fcm_token)
+         VALUES (?, 3, 'invalid-platform-0033-3')`
+      )
+        .bind(currentOwnerUserId)
+        .run()
+    ).rejects.toThrow();
 
     await expect(
       env.DB.prepare(
