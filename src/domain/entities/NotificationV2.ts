@@ -49,6 +49,14 @@ export const NOTIFICATION_IMPORTANCE_LEVELS = [
 export type NotificationImportance =
   (typeof NOTIFICATION_IMPORTANCE_LEVELS)[number];
 
+export const NOTIFICATION_TYPES = ['notification_general'] as const;
+
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export const NOTIFICATION_SOURCE_TYPES = ['gathering'] as const;
+
+export type NotificationSourceType = (typeof NOTIFICATION_SOURCE_TYPES)[number];
+
 export const NOTIFICATION_DELIVERY_TYPES = ['immediate', 'scheduled'] as const;
 
 export type NotificationDeliveryType =

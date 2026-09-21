@@ -16,8 +16,7 @@ export interface NotificationRecipientResolutionDTO {
   resolvedCount: number;
 }
 
-export interface NotificationScheduleAudienceDTO
-  extends NotificationAudienceDTO {
+export interface NotificationScheduleAudienceDTO extends NotificationAudienceDTO {
   recipientResolution: NotificationRecipientResolutionDTO;
 }
 
@@ -65,8 +64,7 @@ export interface NotificationScheduleProgressDTO {
   deliveryProgress: NotificationDeliveryProgressDTO;
 }
 
-export interface NotificationScheduleMonitorListItemDTO
-  extends NotificationScheduleSummaryDTO {
+export interface NotificationScheduleMonitorListItemDTO extends NotificationScheduleSummaryDTO {
   notificationId: number;
   content: NotificationContentDTO;
   creation: NotificationCreationDTO;
@@ -75,8 +73,7 @@ export interface NotificationScheduleMonitorListItemDTO
   progress: NotificationScheduleProgressDTO;
 }
 
-export interface NotificationScheduleDetailDTO
-  extends NotificationScheduleMonitorListItemDTO {
+export interface NotificationScheduleDetailDTO extends NotificationScheduleMonitorListItemDTO {
   updatedAt: string;
 }
 
@@ -96,9 +93,7 @@ export interface NotificationPushDeliveryDetailDTO {
 }
 
 export type NotificationRecipientResultStatus =
-  | 'success'
-  | 'failed'
-  | 'no_push_target';
+  'success' | 'failed' | 'no_push_target';
 
 export interface NotificationRecipientResultDTO {
   notificationRecipientId: number;

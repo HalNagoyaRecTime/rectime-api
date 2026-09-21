@@ -3,6 +3,7 @@ import type {
   NotificationCreationMethod,
   NotificationImportance,
   NotificationScheduleStatus,
+  NotificationSourceType,
   NotificationStopReason,
 } from '../../domain/entities/NotificationV2';
 import type { NotificationScheduleSummaryDTO } from './NotificationScheduleDTO';
@@ -58,20 +59,19 @@ export interface NotificationAudienceDTO {
 }
 
 export type NotificationDeliveryInputDTO =
-  | { type: 'immediate'; sendAt: null }
-  | { type: 'scheduled'; sendAt: string };
+  { type: 'immediate'; sendAt: null } | { type: 'scheduled'; sendAt: string };
 
 export type NotificationCreationDTO =
   | {
       method: Extract<NotificationCreationMethod, 'manual'>;
-      user: NotificationUserReferenceDTO;
+      user: NotificationUserReferenceDTO | null;
       source: null;
     }
   | {
       method: Extract<NotificationCreationMethod, 'automatic'>;
       user: null;
       source: {
-        type: 'gathering';
+        type: NotificationSourceType;
         id: number;
         label: string | null;
       };

@@ -6,44 +6,139 @@ import {
   NOTIFICATION_IMPORTANCE_LEVELS,
   NOTIFICATION_PUSH_DELIVERY_STATUSES,
   NOTIFICATION_SCHEDULE_STATUSES,
+  NOTIFICATION_SOURCE_TYPES,
   NOTIFICATION_STOP_REASONS,
   NOTIFICATION_TARGET_AUDIENCE_TYPES,
+  NOTIFICATION_TYPES,
 } from '../../domain/entities/NotificationV2';
 import {
-  badRequestResponse,
   bearerAuth,
-  conflictResponse,
-  forbiddenResponse,
   internalServerErrorResponse,
   isoDateTimeSchema,
   jsonResponse,
   noContentResponse,
-  notFoundResponse,
   paginationFields,
   paginationQuery,
   positivePathParam,
-  unauthorizedResponse,
   z,
 } from './schemas';
 
-const notificationV2ErrorCodes = [
-  'VALIDATION_ERROR',
-  'UNAUTHORIZED',
+export const notificationV2BadRequestErrorCodeSchema =
+  z.literal('VALIDATION_ERROR');
+export const notificationV2UnauthorizedErrorCodeSchema =
+  z.literal('UNAUTHORIZED');
+export const notificationV2ForbiddenErrorCodeSchema = z.enum([
   'STAFF_REQUIRED',
+  'NOTIFICATION_IMPORTANCE_FORBIDDEN',
+]);
+export const notificationV2NotFoundErrorCodeSchema = z.enum([
   'ADMIN_NOTIFICATION_NOT_FOUND',
   'NOTIFICATION_SCHEDULE_NOT_FOUND',
   'NOTIFICATION_AUDIENCE_NOT_FOUND',
   'FIREBASE_TOKEN_NOT_FOUND',
-  'NOTIFICATION_IMPORTANCE_FORBIDDEN',
   'NOTIFICATION_PUSH_DELIVERY_NOT_FOUND',
+]);
+export const notificationV2ConflictErrorCodeSchema = z.enum([
   'NOTIFICATION_EDIT_NOT_ALLOWED',
   'NOTIFICATION_DELETE_NOT_ALLOWED',
   'NOTIFICATION_SCHEDULE_CANCEL_NOT_ALLOWED',
   'NOTIFICATION_SCHEDULE_STOP_NOT_ALLOWED',
   'NOTIFICATION_RESEND_NOT_ALLOWED',
-] as const;
+]);
 
-export const notificationV2ErrorCodeSchema = z.enum(notificationV2ErrorCodes);
+export const notificationV2ErrorCodeSchema = z.union([
+  notificationV2BadRequestErrorCodeSchema,
+  notificationV2UnauthorizedErrorCodeSchema,
+  notificationV2ForbiddenErrorCodeSchema,
+  notificationV2NotFoundErrorCodeSchema,
+  notificationV2ConflictErrorCodeSchema,
+]);
+
+export const notificationV2BadRequestErrorResponseSchema = z
+  .object({
+    error: z
+      .object({
+        code: notificationV2BadRequestErrorCodeSchema,
+        message: z.string(),
+        details: z.any().optional(),
+      })
+      .strict(),
+  })
+  .strict()
+  .openapi('NotificationV2BadRequestError');
+
+export const notificationV2UnauthorizedErrorResponseSchema = z
+  .object({
+    error: z
+      .object({
+        code: notificationV2UnauthorizedErrorCodeSchema,
+        message: z.string(),
+        details: z.any().optional(),
+      })
+      .strict(),
+  })
+  .strict()
+  .openapi('NotificationV2UnauthorizedError');
+
+export const notificationV2ForbiddenErrorResponseSchema = z
+  .object({
+    error: z
+      .object({
+        code: notificationV2ForbiddenErrorCodeSchema,
+        message: z.string(),
+        details: z.any().optional(),
+      })
+      .strict(),
+  })
+  .strict()
+  .openapi('NotificationV2ForbiddenError');
+
+export const notificationV2NotFoundErrorResponseSchema = z
+  .object({
+    error: z
+      .object({
+        code: notificationV2NotFoundErrorCodeSchema,
+        message: z.string(),
+        details: z.any().optional(),
+      })
+      .strict(),
+  })
+  .strict()
+  .openapi('NotificationV2NotFoundError');
+
+export const notificationV2ConflictErrorResponseSchema = z
+  .object({
+    error: z
+      .object({
+        code: notificationV2ConflictErrorCodeSchema,
+        message: z.string(),
+        details: z.any().optional(),
+      })
+      .strict(),
+  })
+  .strict()
+  .openapi('NotificationV2ConflictError');
+
+const notificationV2BadRequestResponse = jsonResponse(
+  notificationV2BadRequestErrorResponseSchema,
+  '入力が不正'
+);
+const notificationV2UnauthorizedResponse = jsonResponse(
+  notificationV2UnauthorizedErrorResponseSchema,
+  '認証が必要'
+);
+const notificationV2ForbiddenResponse = jsonResponse(
+  notificationV2ForbiddenErrorResponseSchema,
+  '操作が許可されていない'
+);
+const notificationV2NotFoundResponse = jsonResponse(
+  notificationV2NotFoundErrorResponseSchema,
+  '対象が存在しない'
+);
+const notificationV2ConflictResponse = jsonResponse(
+  notificationV2ConflictErrorResponseSchema,
+  '競合している'
+);
 
 export const notificationV2StatusSchemas = {
   schedule: z
@@ -57,6 +152,14 @@ export const notificationV2StatusSchemas = {
 export const notificationImportanceSchema = z
   .enum(NOTIFICATION_IMPORTANCE_LEVELS)
   .openapi('NotificationImportance');
+
+export const notificationTypeSchema = z
+  .enum(NOTIFICATION_TYPES)
+  .openapi('NotificationType');
+
+export const notificationSourceTypeSchema = z
+  .enum(NOTIFICATION_SOURCE_TYPES)
+  .openapi('NotificationSourceType');
 
 export const notificationContentSchema = z
   .object({
@@ -145,7 +248,7 @@ export const notificationCreationSchema = z
     z
       .object({
         method: z.literal(NOTIFICATION_CREATION_METHODS[0]),
-        user: notificationUserReferenceSchema,
+        user: notificationUserReferenceSchema.nullable(),
         source: z.null(),
       })
       .strict(),
@@ -155,7 +258,7 @@ export const notificationCreationSchema = z
         user: z.null(),
         source: z
           .object({
-            type: z.literal('gathering'),
+            type: notificationSourceTypeSchema,
             id: z.number().int().positive(),
             label: z.string().nullable(),
           })
@@ -499,9 +602,9 @@ export const adminNotificationV2ListRoute = createRoute({
   request: { query: notificationV2PaginationQuery },
   responses: {
     200: jsonResponse(adminNotificationListV2ResponseSchema, '通知一覧'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
+    400: notificationV2BadRequestResponse,
+    401: notificationV2UnauthorizedResponse,
+    403: notificationV2ForbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -515,10 +618,10 @@ export const adminNotificationV2DetailRoute = createRoute({
   request: { params: adminNotificationV2IdParams },
   responses: {
     200: jsonResponse(adminNotificationDetailV2Schema, '通知詳細'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
+    400: notificationV2BadRequestResponse,
+    401: notificationV2UnauthorizedResponse,
+    403: notificationV2ForbiddenResponse,
+    404: notificationV2NotFoundResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -539,11 +642,11 @@ export const adminNotificationV2CreateRoute = createRoute({
   },
   responses: {
     201: jsonResponse(notificationCreateResponseSchema, '作成結果'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    409: conflictResponse,
+    400: notificationV2BadRequestResponse,
+    401: notificationV2UnauthorizedResponse,
+    403: notificationV2ForbiddenResponse,
+    404: notificationV2NotFoundResponse,
+    409: notificationV2ConflictResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -565,11 +668,11 @@ export const adminNotificationV2PatchRoute = createRoute({
   },
   responses: {
     200: jsonResponse(adminNotificationDetailV2Schema, '編集後の通知詳細'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    409: conflictResponse,
+    400: notificationV2BadRequestResponse,
+    401: notificationV2UnauthorizedResponse,
+    403: notificationV2ForbiddenResponse,
+    404: notificationV2NotFoundResponse,
+    409: notificationV2ConflictResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -583,11 +686,11 @@ export const adminNotificationV2DeleteRoute = createRoute({
   request: { params: adminNotificationV2IdParams },
   responses: {
     204: noContentResponse,
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    409: conflictResponse,
+    400: notificationV2BadRequestResponse,
+    401: notificationV2UnauthorizedResponse,
+    403: notificationV2ForbiddenResponse,
+    404: notificationV2NotFoundResponse,
+    409: notificationV2ConflictResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -600,8 +703,8 @@ export const notificationConfigRoute = createRoute({
   security: bearerAuth,
   responses: {
     200: jsonResponse(notificationConfigResponseSchema, '通知設定'),
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
+    401: notificationV2UnauthorizedResponse,
+    403: notificationV2ForbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -622,9 +725,9 @@ export const notificationAudienceCountRoute = createRoute({
   },
   responses: {
     200: jsonResponse(notificationAudienceCountResponseSchema, '受信者数'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
+    400: notificationV2BadRequestResponse,
+    401: notificationV2UnauthorizedResponse,
+    403: notificationV2ForbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -641,9 +744,9 @@ export const notificationScheduleListRoute = createRoute({
       notificationScheduleListResponseSchema,
       'スケジュール一覧'
     ),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
+    400: notificationV2BadRequestResponse,
+    401: notificationV2UnauthorizedResponse,
+    403: notificationV2ForbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -657,9 +760,9 @@ export const notificationScheduleDetailRoute = createRoute({
   request: { params: notificationScheduleIdParams },
   responses: {
     200: jsonResponse(notificationScheduleDetailSchema, 'スケジュール詳細'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    404: notFoundResponse,
+    400: notificationV2BadRequestResponse,
+    401: notificationV2UnauthorizedResponse,
+    404: notificationV2NotFoundResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -676,9 +779,9 @@ export const notificationScheduleResultsRoute = createRoute({
   },
   responses: {
     200: jsonResponse(notificationScheduleResultsResponseSchema, '配信結果'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    404: notFoundResponse,
+    400: notificationV2BadRequestResponse,
+    401: notificationV2UnauthorizedResponse,
+    404: notificationV2NotFoundResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -692,10 +795,10 @@ export const notificationScheduleDeleteRoute = createRoute({
   request: { params: notificationScheduleIdParams },
   responses: {
     204: noContentResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    409: conflictResponse,
+    401: notificationV2UnauthorizedResponse,
+    403: notificationV2ForbiddenResponse,
+    404: notificationV2NotFoundResponse,
+    409: notificationV2ConflictResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -717,11 +820,11 @@ export const notificationScheduleResendRoute = createRoute({
   },
   responses: {
     201: jsonResponse(notificationCreateResponseSchema, '再送結果'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    409: conflictResponse,
+    400: notificationV2BadRequestResponse,
+    401: notificationV2UnauthorizedResponse,
+    403: notificationV2ForbiddenResponse,
+    404: notificationV2NotFoundResponse,
+    409: notificationV2ConflictResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -735,10 +838,10 @@ export const notificationScheduleStopRoute = createRoute({
   request: { params: notificationScheduleIdParams },
   responses: {
     200: jsonResponse(notificationStopResponseSchema, '停止結果'),
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    409: conflictResponse,
+    401: notificationV2UnauthorizedResponse,
+    403: notificationV2ForbiddenResponse,
+    404: notificationV2NotFoundResponse,
+    409: notificationV2ConflictResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -752,9 +855,9 @@ export const notificationPushDeliveryDetailRoute = createRoute({
   request: { params: notificationPushDeliveryIdParams },
   responses: {
     200: jsonResponse(notificationPushDeliveryDetailSchema, 'Push配信詳細'),
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
+    401: notificationV2UnauthorizedResponse,
+    403: notificationV2ForbiddenResponse,
+    404: notificationV2NotFoundResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -768,8 +871,8 @@ export const firebaseTokenDeleteRoute = createRoute({
   request: { params: firebaseTokenIdParams },
   responses: {
     204: noContentResponse,
-    401: unauthorizedResponse,
-    404: notFoundResponse,
+    401: notificationV2UnauthorizedResponse,
+    404: notificationV2NotFoundResponse,
     500: internalServerErrorResponse,
   },
 });

@@ -5,6 +5,8 @@ import {
   NOTIFICATION_IMPORTANCE_LEVELS,
   NOTIFICATION_PUSH_DELIVERY_STATUSES,
   NOTIFICATION_SCHEDULE_STATUSES,
+  NOTIFICATION_SOURCE_TYPES,
+  NOTIFICATION_TYPES,
 } from '../../../src/domain/entities/NotificationV2';
 import {
   adminNotificationV2CreateRoute,
@@ -18,6 +20,7 @@ import {
   notificationAudienceSchema,
   notificationConfigResponseSchema,
   notificationContentPatchSchema,
+  notificationCreationSchema,
   notificationCreateRequestSchema,
   notificationCreateResponseSchema,
   notificationDeliveryInputSchema,
@@ -30,7 +33,10 @@ import {
   notificationScheduleResultsResponseSchema,
   notificationScheduleSummarySchema,
   notificationScheduleResendRoute,
+  notificationV2ConflictErrorResponseSchema,
   notificationV2ErrorCodeSchema,
+  notificationV2ForbiddenErrorResponseSchema,
+  notificationTypeSchema,
 } from '../../../src/presentation/openapi/notificationsV2';
 
 const date = '2026-11-07T15:35:00+09:00';
@@ -113,6 +119,11 @@ describe('通知基盤v2のDomain literal', () => {
     ]);
     expect(NOTIFICATION_IMPORTANCE_LEVELS).toEqual(['low', 'normal', 'high']);
     expect(NOTIFICATION_DELIVERY_TYPES).toEqual(['immediate', 'scheduled']);
+    expect(NOTIFICATION_TYPES).toEqual(['notification_general']);
+    expect(NOTIFICATION_SOURCE_TYPES).toEqual(['gathering']);
+    expect(notificationTypeSchema.parse('notification_general')).toBe(
+      'notification_general'
+    );
   });
 });
 
@@ -201,6 +212,23 @@ describe('通知基盤v2のRequest / Response schema', () => {
         sendAt: date,
       }).success
     ).toBe(false);
+  });
+
+  it('manual creationは作成User削除後のnullを表現できる', () => {
+    expect(
+      notificationCreationSchema.safeParse({
+        method: 'manual',
+        user: null,
+        source: null,
+      }).success
+    ).toBe(true);
+    expect(
+      notificationCreationSchema.safeParse({
+        method: 'automatic',
+        user: null,
+        source: { type: 'gathering', id: 51, label: null },
+      }).success
+    ).toBe(true);
   });
 
   it('Create responseを最小shapeで固定する', () => {
@@ -443,6 +471,31 @@ describe('通知基盤v2のEndpoint契約', () => {
     expect(() =>
       notificationV2ErrorCodeSchema.parse('NOTIFICATION_AUDIENCE_HAS_NO_TOKENS')
     ).toThrow();
+  });
+
+  it('Error ResponseはHTTP statusごとに許可codeを絞る', () => {
+    const forbidden = {
+      error: {
+        code: 'NOTIFICATION_IMPORTANCE_FORBIDDEN',
+        message: '指定された通知重要度は利用できません',
+      },
+    };
+    const conflict = {
+      error: {
+        code: 'NOTIFICATION_EDIT_NOT_ALLOWED',
+        message: 'この通知は編集できません',
+      },
+    };
+
+    expect(
+      notificationV2ForbiddenErrorResponseSchema.safeParse(forbidden).success
+    ).toBe(true);
+    expect(
+      notificationV2ForbiddenErrorResponseSchema.safeParse(conflict).success
+    ).toBe(false);
+    expect(
+      notificationV2ConflictErrorResponseSchema.safeParse(conflict).success
+    ).toBe(true);
   });
 
   it('Audience CountはToken必須ではないInput Audienceを受け付ける', () => {
