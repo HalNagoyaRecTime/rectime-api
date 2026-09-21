@@ -11,11 +11,6 @@ export const NotificationLegacyErrors = {
     code: 'INVALID_NOTIFICATION_DATE',
     message: '配信日時はイベント開催日に設定してください',
   },
-  NOTIFICATION_AUDIENCE_NOT_FOUND: {
-    status: 404,
-    code: 'NOTIFICATION_AUDIENCE_NOT_FOUND',
-    message: '選択した通知対象が見つかりません',
-  },
   NOTIFICATION_AUDIENCE_HAS_NO_TOKENS: {
     status: 409,
     code: 'NOTIFICATION_AUDIENCE_HAS_NO_TOKENS',
@@ -40,11 +35,6 @@ export const NotificationLegacyErrors = {
     status: 400,
     code: 'INVALID_NOTIFICATION_ID',
     message: '通知IDが正しくありません',
-  },
-  ADMIN_NOTIFICATION_NOT_FOUND: {
-    status: 404,
-    code: 'ADMIN_NOTIFICATION_NOT_FOUND',
-    message: '通知が見つかりません',
   },
   ADMIN_NOTIFICATION_NOT_DRAFT: {
     status: 409,

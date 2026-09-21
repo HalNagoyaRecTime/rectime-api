@@ -108,14 +108,6 @@ export const notificationForbiddenErrorResponseSchema = notificationErrorBody(
   notificationForbiddenErrorCodeSchema,
   'NotificationForbiddenError'
 );
-export const notificationNotFoundErrorResponseSchema = notificationErrorBody(
-  notificationNotFoundErrorCodeSchema,
-  'NotificationNotFoundError'
-);
-export const notificationConflictErrorResponseSchema = notificationErrorBody(
-  notificationConflictErrorCodeSchema,
-  'NotificationConflictError'
-);
 
 export const notificationStaffForbiddenErrorResponseSchema =
   notificationErrorBody(
@@ -200,24 +192,16 @@ export const notificationForbiddenResponse = jsonResponse(
   notificationForbiddenErrorResponseSchema,
   '操作が許可されていない'
 );
-export const notificationNotFoundResponse = jsonResponse(
-  notificationNotFoundErrorResponseSchema,
-  '対象が存在しない'
-);
-export const notificationConflictResponse = jsonResponse(
-  notificationConflictErrorResponseSchema,
-  '競合している'
-);
 
 export const notificationStaffForbiddenResponse = jsonResponse(
   notificationStaffForbiddenErrorResponseSchema,
   'スタッフ権限が必要'
 );
-export const notificationAdminPatchNotFoundResponse = jsonResponse(
+export const adminNotificationPatchNotFoundResponse = jsonResponse(
   adminNotificationPatchNotFoundErrorResponseSchema,
   '通知更新対象が存在しない'
 );
-export const notificationAdminNotFoundResponse = jsonResponse(
+export const adminNotificationNotFoundResponse = jsonResponse(
   adminNotificationNotFoundErrorResponseSchema,
   '通知が存在しない'
 );

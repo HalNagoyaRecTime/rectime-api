@@ -57,8 +57,20 @@ describe('通知error responseの契約', () => {
     expect(notificationErrorCodeSchema.parse('FIREBASE_TOKEN_FORBIDDEN')).toBe(
       'FIREBASE_TOKEN_FORBIDDEN'
     );
+    expect(
+      notificationErrorCodeSchema.parse('ADMIN_NOTIFICATION_NOT_FOUND')
+    ).toBe('ADMIN_NOTIFICATION_NOT_FOUND');
+    expect(
+      notificationErrorCodeSchema.parse('NOTIFICATION_AUDIENCE_NOT_FOUND')
+    ).toBe('NOTIFICATION_AUDIENCE_NOT_FOUND');
     expect(() =>
       notificationErrorCodeSchema.parse('NOTIFICATION_AUDIENCE_HAS_NO_TOKENS')
+    ).toThrow();
+    expect(() =>
+      notificationErrorCodeSchema.parse('ADMIN_NOTIFICATION_NOT_DRAFT')
+    ).toThrow();
+    expect(() =>
+      notificationErrorCodeSchema.parse('INVALID_NOTIFICATION_DATE')
     ).toThrow();
     expect(
       notificationForbiddenErrorResponseSchema.safeParse(conflict).success

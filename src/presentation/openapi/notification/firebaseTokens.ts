@@ -59,8 +59,6 @@ export const firebaseTokenRegistrationRoute = createRoute({
   },
 });
 
-export const firebaseTokenCreateRoute = firebaseTokenRegistrationRoute;
-
 export const firebaseTokenDeleteRoute = createRoute({
   method: 'delete',
   path: '/firebase-tokens/{firebaseTokenId}',

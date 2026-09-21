@@ -34,20 +34,12 @@ export const mobileNotificationResponseSchema = z
   })
   .openapi('MobileNotification');
 
-export type MobileNotificationResponseDTO = z.infer<
-  typeof mobileNotificationResponseSchema
->;
-
 export const mobileNotificationListResponseSchema = z
   .object({
     notifications: z.array(mobileNotificationResponseSchema),
     ...paginationFields,
   })
   .openapi('MobileNotificationList');
-
-export type MobileNotificationListResponseDTO = z.infer<
-  typeof mobileNotificationListResponseSchema
->;
 
 export const mobileNotificationIdParams = z.object({
   notificationId: positivePathParam('notificationId', '通知ID'),

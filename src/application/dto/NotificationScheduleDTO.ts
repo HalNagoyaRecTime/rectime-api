@@ -39,7 +39,7 @@ export interface NotificationScheduleSummaryDTO {
   recipientPushSummary: NotificationRecipientPushSummaryDTO;
 }
 
-export interface NotificationAdminScheduleListItemDTO {
+export interface AdminNotificationScheduleListItemDTO {
   notificationScheduleId: number;
   sendAt: string;
   status: NotificationScheduleStatus;
@@ -78,12 +78,6 @@ export interface NotificationDeliveryProgressDTO {
   sentCount: number;
   failedCount: number;
   stoppedCount: number;
-}
-
-export interface NotificationScheduleProgressDTO {
-  audienceProgress: NotificationAudienceProgressDTO;
-  recipientProgress: NotificationRecipientProgressDTO;
-  deliveryProgress: NotificationDeliveryProgressDTO;
 }
 
 export interface NotificationScheduleDetailDTO {
@@ -135,6 +129,11 @@ export interface NotificationScheduleResultsPaginationDTO {
   limit: number;
   totalCount: number;
   totalPages: number;
+}
+
+export interface NotificationScheduleResultsQueryDTO {
+  page?: number;
+  limit?: number;
 }
 
 export interface NotificationScheduleResultsResponseDTO {

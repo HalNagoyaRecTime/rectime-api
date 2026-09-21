@@ -7,7 +7,7 @@ import type {
   NotificationStopReason,
 } from '../../domain/entities/Notification';
 import type {
-  NotificationAdminScheduleListItemDTO,
+  AdminNotificationScheduleListItemDTO,
   NotificationScheduleSummaryDTO,
 } from './NotificationScheduleDTO';
 
@@ -63,6 +63,11 @@ export type NotificationAudienceItemDTO =
 
 export interface NotificationAudienceDTO {
   items: NotificationAudienceItemDTO[];
+}
+
+export interface NotificationDateRangeQueryDTO {
+  from: string;
+  to: string;
 }
 
 export type NotificationDeliveryInputDTO =
@@ -126,7 +131,7 @@ export interface AdminNotificationListItemDTO {
   importance: NotificationImportance;
   creation: NotificationCreationDTO;
   createdAt: string;
-  schedules: NotificationAdminScheduleListItemDTO[];
+  schedules: AdminNotificationScheduleListItemDTO[];
 }
 
 export interface AdminNotificationListResponseDTO {

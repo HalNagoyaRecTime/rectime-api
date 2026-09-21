@@ -9,8 +9,8 @@ import {
   z,
 } from '../schemas';
 import {
-  notificationAdminNotFoundResponse,
-  notificationAdminPatchNotFoundResponse,
+  adminNotificationNotFoundResponse,
+  adminNotificationPatchNotFoundResponse,
   notificationAudienceNotFoundResponse,
   notificationBadRequestResponse,
   notificationDeleteConflictResponse,
@@ -20,7 +20,7 @@ import {
   notificationUnauthorizedResponse,
 } from './errors';
 import {
-  notificationAdminScheduleListItemSchema,
+  adminNotificationScheduleListItemSchema,
   notificationAudienceInputSchema,
   notificationContentSchema,
   notificationCreationSchema,
@@ -36,7 +36,7 @@ export const adminNotificationListItemSchema = z
     importance: notificationImportanceSchema,
     creation: notificationCreationSchema,
     createdAt: isoDateTimeSchema,
-    schedules: z.array(notificationAdminScheduleListItemSchema),
+    schedules: z.array(adminNotificationScheduleListItemSchema),
   })
   .strict()
   .openapi('AdminNotificationListItem');
@@ -179,7 +179,7 @@ export const adminNotificationDetailRoute = createRoute({
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
     403: notificationStaffForbiddenResponse,
-    404: notificationAdminNotFoundResponse,
+    404: adminNotificationNotFoundResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -228,7 +228,7 @@ export const adminNotificationPatchRoute = createRoute({
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
     403: notificationForbiddenResponse,
-    404: notificationAdminPatchNotFoundResponse,
+    404: adminNotificationPatchNotFoundResponse,
     409: notificationEditConflictResponse,
     500: internalServerErrorResponse,
   },
@@ -246,7 +246,7 @@ export const adminNotificationDeleteRoute = createRoute({
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
     403: notificationStaffForbiddenResponse,
-    404: notificationAdminNotFoundResponse,
+    404: adminNotificationNotFoundResponse,
     409: notificationDeleteConflictResponse,
     500: internalServerErrorResponse,
   },

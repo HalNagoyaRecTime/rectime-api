@@ -196,7 +196,7 @@ export const notificationScheduleSummarySchema = z
   .strict()
   .openapi('NotificationScheduleSummary');
 
-export const notificationAdminScheduleListItemSchema = z
+export const adminNotificationScheduleListItemSchema = z
   .object({
     notificationScheduleId: z.number().int().positive(),
     sendAt: isoDateTimeSchema,

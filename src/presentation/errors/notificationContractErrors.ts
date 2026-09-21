@@ -11,6 +11,16 @@ export const NotificationContractErrors = {
     code: 'FIREBASE_TOKEN_FORBIDDEN',
     message: 'このFirebaseトークンを操作する権限がありません',
   },
+  ADMIN_NOTIFICATION_NOT_FOUND: {
+    status: 404,
+    code: 'ADMIN_NOTIFICATION_NOT_FOUND',
+    message: '通知が見つかりません',
+  },
+  NOTIFICATION_AUDIENCE_NOT_FOUND: {
+    status: 404,
+    code: 'NOTIFICATION_AUDIENCE_NOT_FOUND',
+    message: '選択した通知対象が見つかりません',
+  },
   NOTIFICATION_PUSH_DELIVERY_NOT_FOUND: {
     status: 404,
     code: 'NOTIFICATION_PUSH_DELIVERY_NOT_FOUND',

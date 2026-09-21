@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { NotificationDateRangeQueryDTO } from '../../../src/application/dto/AdminNotificationDTO';
+import type { NotificationScheduleResultsQueryDTO } from '../../../src/application/dto/NotificationScheduleDTO';
 import {
   NOTIFICATION_AUDIENCE_TYPES,
   NOTIFICATION_DELIVERY_TYPES,
@@ -19,6 +21,7 @@ import {
   notificationPatchRequestSchema,
   notificationResultsQuery,
 } from '../../../src/presentation/openapi/notification';
+import { z } from '../../../src/presentation/openapi/schemas';
 import { content, date } from './notification.fixtures';
 
 describe('通知契約のDomain literal', () => {
@@ -50,6 +53,17 @@ describe('通知契約のDomain literal', () => {
     expect(NOTIFICATION_DELIVERY_TYPES).toEqual(['immediate', 'scheduled']);
     expect(NOTIFICATION_TYPES).toEqual(['notification_general']);
     expect(NOTIFICATION_SOURCE_TYPES).toEqual(['gathering']);
+  });
+});
+
+describe('通知queryのApplication DTOとOpenAPI schemaの型パリティ', () => {
+  it('date rangeとresults queryが一致する', () => {
+    expectTypeOf<
+      z.infer<typeof notificationDateRangeQuery>
+    >().toEqualTypeOf<NotificationDateRangeQueryDTO>();
+    expectTypeOf<
+      z.infer<typeof notificationResultsQuery>
+    >().toEqualTypeOf<NotificationScheduleResultsQueryDTO>();
   });
 });
 
