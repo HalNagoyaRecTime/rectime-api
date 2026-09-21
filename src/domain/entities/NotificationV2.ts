@@ -33,6 +33,9 @@ export const NOTIFICATION_AUDIENCE_TYPES = [
 export type NotificationAudienceType =
   (typeof NOTIFICATION_AUDIENCE_TYPES)[number];
 
+export type NotificationAudienceTargetType =
+  (typeof NOTIFICATION_TARGET_AUDIENCE_TYPES)[number];
+
 export const NOTIFICATION_TARGET_AUDIENCE_TYPES = [
   'class_room',
   'gathering',
