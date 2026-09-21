@@ -38,8 +38,8 @@ describe('NotificationScheduleRepository', () => {
     ).first<{ notification_id: number }>();
     const schedule = await env.DB.prepare(
       `INSERT INTO notification_schedules
-       (created_user_id, event_id, notification_id, firebase_token_id, importance, send_at)
-       VALUES (?, ?, ?, ?, 2, ?) RETURNING notification_schedule_id`
+       (created_user_id, event_id, notification_id, firebase_token_id, importance, send_status, send_at)
+       VALUES (?, ?, ?, ?, 2, 'draft', ?) RETURNING notification_schedule_id`
     )
       .bind(
         user!.user_id,

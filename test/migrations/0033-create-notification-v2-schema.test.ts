@@ -16,6 +16,9 @@ const migrationQueries = (() => {
 const legacyUserName = '0033通知v2移行テスト利用者';
 const legacyNotificationId = 9001;
 const legacyTokenId = 9401;
+const currentOwnerUserName = '0033通知v2移行テスト現在所有者';
+const currentOwnerTokenId = 9402;
+const currentOwnerScheduleId = 9502;
 const legacyScheduleId = 9501;
 
 async function prepareLegacySchema(): Promise<void> {
@@ -25,6 +28,7 @@ async function prepareLegacySchema(): Promise<void> {
     env.DB.prepare('DROP TABLE notification_audiences'),
     env.DB.prepare('DROP INDEX IF EXISTS uq_notifications_source'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_user_id'),
+    env.DB.prepare('DROP INDEX IF EXISTS uq_firebase_tokens_fcm_token'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_active_fcm_token'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_active'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_notification_schedules_due'),
@@ -119,6 +123,7 @@ async function restoreCurrentSchema(): Promise<void> {
       'DROP INDEX IF EXISTS idx_notification_schedules_firebase_token_id'
     ),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_user_id'),
+    env.DB.prepare('DROP INDEX IF EXISTS uq_firebase_tokens_fcm_token'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_active_fcm_token'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_active'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_users_live_active_user_id'),
@@ -146,9 +151,8 @@ async function restoreCurrentSchema(): Promise<void> {
       'CREATE INDEX idx_firebase_tokens_user_id ON firebase_tokens(user_id)'
     ),
     env.DB.prepare(
-      `CREATE UNIQUE INDEX idx_firebase_tokens_active_fcm_token
-       ON firebase_tokens(fcm_token)
-       WHERE is_firebase_active = 1`
+      `CREATE UNIQUE INDEX uq_firebase_tokens_fcm_token
+       ON firebase_tokens(fcm_token)`
     ),
     env.DB.prepare(
       'CREATE INDEX idx_firebase_tokens_active ON firebase_tokens(is_firebase_active)'
@@ -174,13 +178,23 @@ async function restoreCurrentSchema(): Promise<void> {
   ]);
 }
 
-async function createLegacyRows(): Promise<number> {
-  const user = await env.DB.prepare(
+async function createLegacyRows(): Promise<{
+  historyUserId: number;
+  currentOwnerUserId: number;
+}> {
+  const historyUser = await env.DB.prepare(
     'INSERT INTO users (user_name, is_live_active) VALUES (?, 1) RETURNING user_id'
   )
     .bind(legacyUserName)
     .first<{ user_id: number }>();
-  if (!user) throw new Error('failed to create legacy user');
+  const currentOwnerUser = await env.DB.prepare(
+    'INSERT INTO users (user_name, is_live_active) VALUES (?, 1) RETURNING user_id'
+  )
+    .bind(currentOwnerUserName)
+    .first<{ user_id: number }>();
+  if (!historyUser || !currentOwnerUser) {
+    throw new Error('failed to create legacy users');
+  }
 
   await env.DB.batch([
     env.DB.prepare(
@@ -194,9 +208,16 @@ async function createLegacyRows(): Promise<number> {
       `INSERT INTO firebase_tokens (
          firebase_token_id, user_id, platform, fcm_token,
          is_firebase_active, last_seen_at, created_at, updated_at
-       ) VALUES (?, ?, 2, 'legacy-0033-token', 1,
+       ) VALUES (?, ?, 2, 'legacy-0033-token', 0,
          '2026-09-02 01:02:03', '2026-09-02 04:05:06', '2026-09-02 07:08:09')`
-    ).bind(legacyTokenId, user.user_id),
+    ).bind(legacyTokenId, historyUser.user_id),
+    env.DB.prepare(
+      `INSERT INTO firebase_tokens (
+         firebase_token_id, user_id, platform, fcm_token,
+         is_firebase_active, last_seen_at, created_at, updated_at
+       ) VALUES (?, ?, 2, 'legacy-0033-token', 1,
+         '2026-09-02 02:02:03', '2026-09-02 05:05:06', '2026-09-02 08:08:09')`
+    ).bind(currentOwnerTokenId, currentOwnerUser.user_id),
     env.DB.prepare(
       `INSERT INTO notification_schedules (
          notification_schedule_id, created_user_id, notification_id,
@@ -207,15 +228,31 @@ async function createLegacyRows(): Promise<number> {
          '2026-09-03 07:08:09')`
     ).bind(
       legacyScheduleId,
-      user.user_id,
+      historyUser.user_id,
       legacyNotificationId,
       legacyTokenId
     ),
+    env.DB.prepare(
+      `INSERT INTO notification_schedules (
+         notification_schedule_id, created_user_id, notification_id,
+         firebase_token_id, importance, send_status, fcm_message_id,
+         failed_reason, send_at, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, 3, 'sent', 'legacy-current-fcm-id',
+         'legacy-current-error', '2026-09-03 02:02:03',
+         '2026-09-03 05:05:06', '2026-09-03 08:08:09')`
+    ).bind(
+      currentOwnerScheduleId,
+      currentOwnerUser.user_id,
+      legacyNotificationId,
+      currentOwnerTokenId
+    ),
   ]);
 
-  return user.user_id;
+  return {
+    historyUserId: historyUser.user_id,
+    currentOwnerUserId: currentOwnerUser.user_id,
+  };
 }
-
 async function runMigration(): Promise<void> {
   await env.DB.batch(migrationQueries.map(query => env.DB.prepare(query)));
 }
@@ -223,14 +260,14 @@ async function runMigration(): Promise<void> {
 describe('0033_create_notification_v2_schema.sql', () => {
   afterEach(async () => {
     await restoreCurrentSchema();
-    await env.DB.prepare('DELETE FROM users WHERE user_name = ?')
-      .bind(legacyUserName)
+    await env.DB.prepare('DELETE FROM users WHERE user_name LIKE ?')
+      .bind('0033通知v2移行テスト%')
       .run();
   });
 
   it('Legacy行を変換せず保持し、新しいv2構造と制約を作成する', async () => {
     await prepareLegacySchema();
-    const userId = await createLegacyRows();
+    const { historyUserId, currentOwnerUserId } = await createLegacyRows();
 
     await runMigration();
 
@@ -257,7 +294,7 @@ describe('0033_create_notification_v2_schema.sql', () => {
       .first();
     expect(legacySchedule).toMatchObject({
       notification_schedule_id: legacyScheduleId,
-      created_user_id: userId,
+      created_user_id: historyUserId,
       scheduled_by_user_id: null,
       notification_id: legacyNotificationId,
       firebase_token_id: legacyTokenId,
@@ -266,6 +303,59 @@ describe('0033_create_notification_v2_schema.sql', () => {
       fcm_message_id: 'legacy-fcm-id',
       failed_reason: 'legacy-error',
     });
+
+    const currentSchedule = await env.DB.prepare(
+      'SELECT * FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(currentOwnerScheduleId)
+      .first();
+    expect(currentSchedule).toMatchObject({
+      notification_schedule_id: currentOwnerScheduleId,
+      created_user_id: currentOwnerUserId,
+      notification_id: legacyNotificationId,
+      firebase_token_id: currentOwnerTokenId,
+      send_status: 'sent',
+      fcm_message_id: 'legacy-current-fcm-id',
+    });
+
+    const migratedTokens = await env.DB.prepare(
+      `SELECT firebase_token_id, user_id, fcm_token, is_firebase_active
+       FROM firebase_tokens
+       WHERE firebase_token_id IN (?, ?)
+       ORDER BY firebase_token_id`
+    )
+      .bind(legacyTokenId, currentOwnerTokenId)
+      .all<{
+        firebase_token_id: number;
+        user_id: number;
+        fcm_token: string;
+        is_firebase_active: number;
+      }>();
+    expect(migratedTokens.results).toEqual([
+      {
+        firebase_token_id: legacyTokenId,
+        user_id: historyUserId,
+        fcm_token: 'legacy-0033-token#legacy:9401',
+        is_firebase_active: 0,
+      },
+      {
+        firebase_token_id: currentOwnerTokenId,
+        user_id: currentOwnerUserId,
+        fcm_token: 'legacy-0033-token',
+        is_firebase_active: 1,
+      },
+    ]);
+
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO firebase_tokens (
+           user_id, platform, fcm_token, is_firebase_active
+         ) VALUES (?, 1, 'legacy-0033-token', 0)`
+      )
+        .bind(historyUserId)
+        .run()
+    ).rejects.toThrow();
+
 
     const convertedRows = await env.DB.prepare(
       `SELECT
@@ -288,9 +378,9 @@ describe('0033_create_notification_v2_schema.sql', () => {
        VALUES (?, 1, 'new-0033-token')
        RETURNING firebase_token_id`
     )
-      .bind(userId)
+      .bind(currentOwnerUserId)
       .first<{ firebase_token_id: number }>();
-    expect(newToken?.firebase_token_id).toBeGreaterThan(legacyTokenId);
+    expect(newToken?.firebase_token_id).toBeGreaterThan(currentOwnerTokenId);
 
     const newNotification = await env.DB.prepare(
       `INSERT INTO notifications (
@@ -300,22 +390,22 @@ describe('0033_create_notification_v2_schema.sql', () => {
          'high', 'notification_general')
        RETURNING notification_id`
     )
-      .bind(userId)
+      .bind(currentOwnerUserId)
       .first<{ notification_id: number }>();
     if (!newNotification) throw new Error('failed to create v2 notification');
     expect(newNotification.notification_id).toBeGreaterThan(legacyNotificationId);
 
     const newSchedule = await env.DB.prepare(
       `INSERT INTO notification_schedules (
-         notification_id, scheduled_by_user_id, send_at
-       ) VALUES (?, ?, '2026-09-04 01:02:03')
+         notification_id, scheduled_by_user_id, send_status, send_at
+       ) VALUES (?, ?, 'scheduled', '2026-09-04 01:02:03')
        RETURNING notification_schedule_id`
     )
-      .bind(newNotification.notification_id, userId)
+      .bind(newNotification.notification_id, currentOwnerUserId)
       .first<{ notification_schedule_id: number }>();
     if (!newSchedule) throw new Error('failed to create v2 schedule');
     expect(newSchedule.notification_schedule_id).toBeGreaterThan(
-      legacyScheduleId
+      currentOwnerScheduleId
     );
 
     const audience = await env.DB.prepare(
@@ -344,7 +434,7 @@ describe('0033_create_notification_v2_schema.sql', () => {
        ) VALUES (?, ?)
        RETURNING notification_recipient_id`
     )
-      .bind(newSchedule.notification_schedule_id, userId)
+      .bind(newSchedule.notification_schedule_id, currentOwnerUserId)
       .first<{ notification_recipient_id: number }>();
     if (!recipient) throw new Error('failed to create v2 recipient');
 
@@ -354,7 +444,7 @@ describe('0033_create_notification_v2_schema.sql', () => {
            notification_schedule_id, user_id
          ) VALUES (?, ?)`
       )
-        .bind(newSchedule.notification_schedule_id, userId)
+        .bind(newSchedule.notification_schedule_id, currentOwnerUserId)
         .run()
     ).rejects.toThrow();
 
@@ -371,8 +461,8 @@ describe('0033_create_notification_v2_schema.sql', () => {
     await expect(
       env.DB.prepare(
         `INSERT INTO notification_push_deliveries (
-           notification_recipient_id, firebase_token_id, platform
-         ) VALUES (?, ?, 2)`
+           notification_recipient_id, firebase_token_id, platform, status
+         ) VALUES (?, ?, 2, 'pending')`
       )
         .bind(recipient.notification_recipient_id, newToken!.firebase_token_id)
         .run()

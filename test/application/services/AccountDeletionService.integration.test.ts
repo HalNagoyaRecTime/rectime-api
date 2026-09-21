@@ -120,7 +120,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       "INSERT INTO notifications (notification_type, title, body) VALUES ('manual', '件名', '本文') RETURNING notification_id"
     ).first<{ notification_id: number }>();
     const receivedSchedule = await workerEnv.DB.prepare(
-      "INSERT INTO notification_schedules (created_user_id, event_id, notification_id, firebase_token_id, send_at) VALUES (NULL, ?, ?, ?, '2026-07-23T09:00:00.000Z') RETURNING notification_schedule_id"
+      "INSERT INTO notification_schedules (created_user_id, event_id, notification_id, firebase_token_id, send_status, send_at) VALUES (NULL, ?, ?, ?, 'draft', '2026-07-23T09:00:00.000Z') RETURNING notification_schedule_id"
     )
       .bind(
         event!.event_id,
@@ -140,7 +140,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(otherUser!.user_id)
       .first<{ firebase_token_id: number }>();
     const createdSchedule = await workerEnv.DB.prepare(
-      "INSERT INTO notification_schedules (created_user_id, event_id, notification_id, firebase_token_id, send_at) VALUES (?, ?, ?, ?, '2026-07-23T09:00:00.000Z') RETURNING notification_schedule_id"
+      "INSERT INTO notification_schedules (created_user_id, event_id, notification_id, firebase_token_id, send_status, send_at) VALUES (?, ?, ?, ?, 'draft', '2026-07-23T09:00:00.000Z') RETURNING notification_schedule_id"
     )
       .bind(
         user!.user_id,

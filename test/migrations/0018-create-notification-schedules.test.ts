@@ -18,7 +18,8 @@ describe('0018_create_notification_schedules.sql', () => {
         expect.objectContaining({ name: 'firebase_token_id', notnull: 0 }),
         expect.objectContaining({ name: 'notification_id', notnull: 1 }),
         expect.objectContaining({ name: 'importance', notnull: 1, dflt_value: '2' }),
-        expect.objectContaining({ name: 'send_status', notnull: 1, dflt_value: "'draft'" }),
+        // 現行の通知v2契約では、Schedule statusをDB defaultで補完しない。
+        expect.objectContaining({ name: 'send_status', notnull: 1, dflt_value: null }),
         expect.objectContaining({ name: 'fcm_message_id' }),
         expect.objectContaining({ name: 'failed_reason' }),
         expect.objectContaining({ name: 'send_at', notnull: 1 }),

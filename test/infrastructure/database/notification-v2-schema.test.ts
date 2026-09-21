@@ -92,7 +92,20 @@ describe('通知v2のDB Schema', () => {
 
     const scheduleColumns = await env.DB.prepare(
       'PRAGMA table_info(notification_schedules)'
-    ).all<{ name: string }>();
+    ).all<{
+      name: string;
+      notnull: number;
+      dflt_value: string | null;
+    }>();
+    expect(scheduleColumns.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'send_status',
+          notnull: 1,
+          dflt_value: null,
+        }),
+      ])
+    );
     expect(scheduleColumns.results.map(column => column.name)).toEqual(
       expect.arrayContaining([
         'firebase_token_id',
@@ -148,9 +161,18 @@ describe('通知v2のDB Schema', () => {
   it('後続ResolverとWorker向けのindexを持つ', async () => {
     const tokenIndexes = await env.DB.prepare(
       'PRAGMA index_list(firebase_tokens)'
-    ).all<{ name: string }>();
+    ).all<{ name: string; unique: number }>();
     expect(tokenIndexes.results.map(index => index.name)).toContain(
       'idx_firebase_tokens_user_id'
+    );
+    expect(tokenIndexes.results).toContainEqual(
+      expect.objectContaining({
+        name: 'uq_firebase_tokens_fcm_token',
+        unique: 1,
+      })
+    );
+    expect(tokenIndexes.results.map(index => index.name)).not.toContain(
+      'idx_firebase_tokens_active_fcm_token'
     );
 
     const deliveryIndexes = await env.DB.prepare(
@@ -183,6 +205,15 @@ describe('通知v2のDB Schema', () => {
     const notificationId = await createNotification(userId);
     const scheduleId = await createSchedule(notificationId);
 
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO notification_schedules (
+           notification_id, send_at
+         ) VALUES (?, '2026-11-07 06:36:00')`
+      )
+        .bind(notificationId)
+        .run()
+    ).rejects.toThrow();
     const tokenRows = await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO firebase_tokens (user_id, platform, fcm_token)
@@ -250,11 +281,21 @@ describe('通知v2のDB Schema', () => {
       .first<{ notification_push_delivery_id: number }>();
     if (!delivery) throw new Error('failed to create test delivery');
 
+    const androidDelivery = await env.DB.prepare(
+      `INSERT INTO notification_push_deliveries
+         (notification_recipient_id, firebase_token_id, platform, status)
+       VALUES (?, ?, 1, 'pending') RETURNING notification_push_delivery_id`
+    )
+      .bind(recipient.notification_recipient_id, androidTokenId)
+      .first<{ notification_push_delivery_id: number }>();
+    if (!androidDelivery)
+      throw new Error('failed to create Android test delivery');
+
     await expect(
       env.DB.prepare(
         `INSERT INTO notification_push_deliveries
-           (notification_recipient_id, firebase_token_id, platform)
-         VALUES (?, ?, 1)`
+           (notification_recipient_id, firebase_token_id, platform, status)
+         VALUES (?, ?, 1, 'pending')`
       )
         .bind(recipient.notification_recipient_id, androidTokenId)
         .run()
@@ -263,13 +304,12 @@ describe('通知v2のDB Schema', () => {
     await expect(
       env.DB.prepare(
         `INSERT INTO notification_push_deliveries
-           (notification_recipient_id, firebase_token_id, platform)
-         VALUES (?, ?, 1)`
+           (notification_recipient_id, firebase_token_id, platform, status)
+         VALUES (?, ?, 1, 'pending')`
       )
         .bind(recipient.notification_recipient_id, iosTokenId)
         .run()
     ).rejects.toThrow();
-
     await env.DB.prepare(
       'DELETE FROM firebase_tokens WHERE firebase_token_id = ?'
     )

@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
 
 // firebase_tokens は通知v2で1利用者複数端末モデルへ移行した。
-// 旧active flagとpartial uniqueは#460までのexpand互換用に残している。
+// 旧active flagは#460までのexpand互換用に残すが、fcm_tokenは完全UNIQUEとする。
 describe('firebase_tokens テーブルの制約', () => {
   afterEach(async () => {
     await env.DB.prepare(
@@ -49,39 +49,24 @@ describe('firebase_tokens テーブルの制約', () => {
     expect(rows?.count).toBe(2);
   });
 
-  it('同じ fcm_token を持つ有効な行は1つしか作れない', async () => {
-    const ownerId = await createTestUser('Firebaseスキーマテスト端末所有者');
-    const otherId = await createTestUser('Firebaseスキーマテスト別利用者');
-    await insertToken(ownerId, 'schema-token-shared', 1);
+  it('同じ fcm_token はactive/inactiveに関係なく1つしか作れない', async () => {
+    const inactiveOwnerId = await createTestUser(
+      'Firebaseスキーマテストinactive所有者'
+    );
+    const activeOwnerId = await createTestUser(
+      'Firebaseスキーマテストactive所有者'
+    );
 
+    await insertToken(inactiveOwnerId, 'schema-token-shared-inactive', 0);
     await expect(
-      insertToken(otherId, 'schema-token-shared', 1)
+      insertToken(activeOwnerId, 'schema-token-shared-inactive', 1)
+    ).rejects.toThrow();
+
+    await insertToken(activeOwnerId, 'schema-token-shared-active', 1);
+    await expect(
+      insertToken(inactiveOwnerId, 'schema-token-shared-active', 0)
     ).rejects.toThrow();
   });
-
-  it('旧所有者の行が無効なら同じ fcm_token を別の利用者へ付け替えられる', async () => {
-    const previousOwnerId = await createTestUser(
-      'Firebaseスキーマテスト旧所有者'
-    );
-    const newOwnerId = await createTestUser('Firebaseスキーマテスト新所有者');
-    await insertToken(previousOwnerId, 'schema-token-handover', 0);
-
-    await insertToken(newOwnerId, 'schema-token-handover', 1);
-
-    const owners = await env.DB.prepare(
-      `SELECT user_id, is_firebase_active
-       FROM firebase_tokens
-       WHERE fcm_token = ?
-       ORDER BY user_id`
-    )
-      .bind('schema-token-handover')
-      .all<{ user_id: number; is_firebase_active: number }>();
-    expect(owners.results).toHaveLength(2);
-    expect(owners.results.filter(row => row.is_firebase_active === 1)).toEqual([
-      { user_id: newOwnerId, is_firebase_active: 1 },
-    ]);
-  });
-
   it('notification_schedules から firebase_tokens を参照できる', async () => {
     const foreignKeys = await env.DB.prepare(
       'PRAGMA foreign_key_list(notification_schedules)'

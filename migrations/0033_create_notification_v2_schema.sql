@@ -1,7 +1,7 @@
 -- 通知v2のDB基盤を追加するforward migration。
 -- 既存の通知履歴はLegacy行として保持し、Audience/Recipient/Deliveryへ変換しない。
 
--- firebase_tokensはuser_idのUNIQUEだけを解除するため再作成する。
+-- firebase_tokensはuser_idのUNIQUEを解除し、fcm_tokenは完全UNIQUEへ戻すため再作成する。
 -- active flagとLegacy indexは旧Repository互換のため#460まで残す。
 -- notification_schedulesもfirebase_token_idをNULL許容にするため同時に再作成する。
 CREATE TABLE __migration_0033_sequences (
@@ -135,20 +135,35 @@ SELECT
   firebase_token_id,
   user_id,
   platform,
-  fcm_token,
+  CASE
+    -- 旧RepositoryのToken付け替えで生じた重複は、現在所有者を元の値で保持する。
+    -- 履歴行とSchedule FKは削除せず、重複する旧行だけ追跡可能な値へ退避する。
+    WHEN EXISTS (
+      SELECT 1
+      FROM __migration_0033_firebase_tokens candidate
+      WHERE candidate.fcm_token = legacy.fcm_token
+        AND (
+          candidate.is_firebase_active > legacy.is_firebase_active
+          OR (
+            candidate.is_firebase_active = legacy.is_firebase_active
+            AND candidate.firebase_token_id < legacy.firebase_token_id
+          )
+        )
+    ) THEN legacy.fcm_token || '#legacy:' || legacy.firebase_token_id
+    ELSE legacy.fcm_token
+  END,
   is_firebase_active,
   last_seen_at,
   created_at,
   updated_at
-FROM __migration_0033_firebase_tokens;
+FROM __migration_0033_firebase_tokens legacy;
 
 CREATE INDEX idx_firebase_tokens_user_id
   ON firebase_tokens(user_id);
 CREATE INDEX idx_firebase_tokens_active
   ON firebase_tokens(is_firebase_active);
-CREATE UNIQUE INDEX idx_firebase_tokens_active_fcm_token
-  ON firebase_tokens(fcm_token)
-  WHERE is_firebase_active = 1;
+CREATE UNIQUE INDEX uq_firebase_tokens_fcm_token
+  ON firebase_tokens(fcm_token);
 
 CREATE TABLE notification_schedules (
   notification_schedule_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,7 +175,7 @@ CREATE TABLE notification_schedules (
   firebase_token_id INTEGER REFERENCES firebase_tokens(firebase_token_id)
     ON DELETE SET NULL,
   importance INTEGER NOT NULL DEFAULT 2,
-  send_status TEXT NOT NULL DEFAULT 'draft',
+  send_status TEXT NOT NULL,
   fcm_message_id TEXT,
   failed_reason TEXT,
   send_at TEXT NOT NULL,

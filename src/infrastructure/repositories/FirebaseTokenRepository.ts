@@ -43,7 +43,7 @@ export function createFirebaseTokenRepository(
     ): Promise<RegisterFirebaseTokenResult> {
       const platform = firebasePlatformToCode(input.platform);
 
-      const [, updateResult, insertResult] = await db.batch<{
+      const [tokenUpdateResult, updateResult, insertResult] = await db.batch<{
         firebase_token_id: number;
         user_id: number;
         platform: number;
@@ -53,13 +53,21 @@ export function createFirebaseTokenRepository(
         db
           .prepare(
             `UPDATE firebase_tokens
-             SET is_firebase_active = 0,
+             SET user_id = ?,
+                 platform = ?,
+                 fcm_token = ?,
+                 is_firebase_active = 1,
+                 last_seen_at = CURRENT_TIMESTAMP,
                  updated_at = CURRENT_TIMESTAMP
              WHERE fcm_token = ?
-               AND user_id <> ?
-               AND is_firebase_active = 1`
+             RETURNING
+               firebase_token_id,
+               user_id,
+               platform,
+               is_firebase_active,
+               last_seen_at`
           )
-          .bind(input.fcmToken, input.userId),
+          .bind(input.userId, platform, input.fcmToken, input.fcmToken),
         db
           .prepare(
             `UPDATE firebase_tokens
@@ -75,6 +83,10 @@ export function createFirebaseTokenRepository(
                ORDER BY firebase_token_id
                LIMIT 1
              )
+               AND NOT EXISTS (
+                 SELECT 1 FROM firebase_tokens
+                 WHERE fcm_token = ? AND user_id = ?
+               )
              RETURNING
                firebase_token_id,
                user_id,
@@ -82,7 +94,13 @@ export function createFirebaseTokenRepository(
                is_firebase_active,
                last_seen_at`
           )
-          .bind(platform, input.fcmToken, input.userId),
+          .bind(
+            platform,
+            input.fcmToken,
+            input.userId,
+            input.fcmToken,
+            input.userId
+          ),
         db
           .prepare(
             `INSERT INTO firebase_tokens (
@@ -99,6 +117,9 @@ export function createFirebaseTokenRepository(
                AND NOT EXISTS (
                  SELECT 1 FROM firebase_tokens WHERE user_id = ?
                )
+               AND NOT EXISTS (
+                 SELECT 1 FROM firebase_tokens WHERE fcm_token = ?
+               )
              RETURNING
                firebase_token_id,
                user_id,
@@ -106,10 +127,16 @@ export function createFirebaseTokenRepository(
                is_firebase_active,
                last_seen_at`
           )
-          .bind(platform, input.fcmToken, input.userId, input.userId),
+          .bind(
+            platform,
+            input.fcmToken,
+            input.userId,
+            input.userId,
+            input.fcmToken
+          ),
       ]);
-
       const registeredToken =
+        tokenUpdateResult.results[0] ??
         updateResult.results[0] ??
         insertResult.results[0] ??
         (await db

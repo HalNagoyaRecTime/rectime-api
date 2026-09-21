@@ -281,9 +281,7 @@ export const firebase_tokens = sqliteTable(
   },
   table => [
     index('idx_firebase_tokens_user_id').on(table.userId),
-    uniqueIndex('idx_firebase_tokens_active_fcm_token')
-      .on(table.fcmToken)
-      .where(sql`${table.isFirebaseActive} = 1`),
+    uniqueIndex('uq_firebase_tokens_fcm_token').on(table.fcmToken),
     index('idx_firebase_tokens_active').on(table.isFirebaseActive),
   ]
 );
@@ -314,8 +312,7 @@ export const notification_schedules = sqliteTable(
       }
     ),
     importance: integer('importance').notNull().default(2),
-    // #460で旧defaultと旧statusを整理するまでexpand互換用に残す。
-    sendStatus: text('send_status').notNull().default('draft'),
+    sendStatus: text('send_status').notNull(),
     fcmMessageId: text('fcm_message_id'),
     failedReason: text('failed_reason'),
     sendAt: text('send_at').notNull(),

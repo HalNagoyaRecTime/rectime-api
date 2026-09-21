@@ -16,6 +16,7 @@ const migrationQueries = (() => {
 async function prepareLegacySchema() {
   await env.DB.batch([
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_user_id'),
+    env.DB.prepare('DROP INDEX IF EXISTS uq_firebase_tokens_fcm_token'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_active_fcm_token'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_active'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_notification_schedules_due'),
@@ -77,6 +78,7 @@ async function restoreCurrentSchema() {
     env.DB.prepare('DROP TABLE IF EXISTS firebase_tokens_legacy'),
     env.DB.prepare('DROP TABLE IF EXISTS firebase_tokens'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_user_id'),
+    env.DB.prepare('DROP INDEX IF EXISTS uq_firebase_tokens_fcm_token'),
     env.DB.prepare(
       'ALTER TABLE firebase_tokens_backup RENAME TO firebase_tokens'
     ),
@@ -87,9 +89,8 @@ async function restoreCurrentSchema() {
       'CREATE INDEX idx_firebase_tokens_user_id ON firebase_tokens(user_id)'
     ),
     env.DB.prepare(
-      `CREATE UNIQUE INDEX idx_firebase_tokens_active_fcm_token
-        ON firebase_tokens(fcm_token)
-        WHERE is_firebase_active = 1`
+      `CREATE UNIQUE INDEX uq_firebase_tokens_fcm_token
+        ON firebase_tokens(fcm_token)`
     ),
     env.DB.prepare(
       'CREATE INDEX idx_firebase_tokens_active ON firebase_tokens(is_firebase_active)'

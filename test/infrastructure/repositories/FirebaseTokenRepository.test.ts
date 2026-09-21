@@ -171,14 +171,18 @@ describe('FirebaseTokenRepository', () => {
       fcmToken: 'token-handover',
     });
 
+    expect(current.firebase_token_id).toBe(previous.firebase_token_id);
     expect(current.user_id).toBe(newOwnerId);
     expect(current.is_firebase_active).toBe(true);
     const previousRow = await env.DB.prepare(
-      'SELECT is_firebase_active FROM firebase_tokens WHERE firebase_token_id = ?'
+      'SELECT user_id, is_firebase_active FROM firebase_tokens WHERE firebase_token_id = ?'
     )
       .bind(previous.firebase_token_id)
-      .first<{ is_firebase_active: number }>();
-    expect(previousRow?.is_firebase_active).toBe(0);
+      .first<{ user_id: number; is_firebase_active: number }>();
+    expect(previousRow).toEqual({
+      user_id: newOwnerId,
+      is_firebase_active: 1,
+    });
     const activeTokens = await repository.findActiveTokens();
     expect(activeTokens).toHaveLength(1);
     expect(activeTokens[0].user_id).toBe(newOwnerId);
@@ -204,7 +208,8 @@ describe('FirebaseTokenRepository', () => {
       fcmToken: 'token-new-device',
     });
 
-    expect(reregistered.firebase_token_id).toBe(previous.firebase_token_id);
+    expect(reregistered.firebase_token_id).not.toBe(previous.firebase_token_id);
+    expect(reregistered.user_id).toBe(previousOwnerId);
     expect(reregistered.is_firebase_active).toBe(true);
     const rowCount = await env.DB.prepare(
       'SELECT COUNT(*) AS count FROM firebase_tokens WHERE user_id = ?'
@@ -262,7 +267,7 @@ describe('FirebaseTokenRepository', () => {
     )
       .bind('token-simultaneous')
       .all<{ user_id: number; is_firebase_active: number }>();
-    expect(rows.results).toHaveLength(2);
+    expect(rows.results).toHaveLength(1);
     expect(
       rows.results.filter(row => row.is_firebase_active === 1)
     ).toHaveLength(1);
