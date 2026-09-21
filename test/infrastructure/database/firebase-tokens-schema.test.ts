@@ -67,6 +67,27 @@ describe('firebase_tokens テーブルの制約', () => {
       insertToken(inactiveOwnerId, 'schema-token-shared-active', 0)
     ).rejects.toThrow();
   });
+  it('platformは1または2だけを許可する', async () => {
+    const userId = await createTestUser('Firebaseスキーマテストplatform検証');
+
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO firebase_tokens (user_id, platform, fcm_token)
+         VALUES (?, 0, 'schema-token-invalid-platform-0')`
+      )
+        .bind(userId)
+        .run()
+    ).rejects.toThrow();
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO firebase_tokens (user_id, platform, fcm_token)
+         VALUES (?, 3, 'schema-token-invalid-platform-3')`
+      )
+        .bind(userId)
+        .run()
+    ).rejects.toThrow();
+  });
+
   it('notification_schedules から firebase_tokens を参照できる', async () => {
     const foreignKeys = await env.DB.prepare(
       'PRAGMA foreign_key_list(notification_schedules)'
