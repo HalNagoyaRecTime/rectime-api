@@ -320,10 +320,13 @@ export const notificationScheduleResultsPaginationSchema = z
 
 export const notificationDateRangeQuery = z
   .object({
-    from: isoDateTimeSchema,
-    to: isoDateTimeSchema,
+    from: isoDateTimeSchema.optional(),
+    to: isoDateTimeSchema.optional(),
   })
   .strict()
+  .refine(value => (value.from === undefined) === (value.to === undefined), {
+    message: 'fromとtoはセットで指定してください',
+  })
   .openapi('NotificationDateRangeQuery');
 
 export const notificationResultsQuery = z

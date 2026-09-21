@@ -66,8 +66,8 @@ export interface NotificationAudienceDTO {
 }
 
 export interface NotificationDateRangeQueryDTO {
-  from: string;
-  to: string;
+  from?: string;
+  to?: string;
 }
 
 export type NotificationDeliveryInputDTO =

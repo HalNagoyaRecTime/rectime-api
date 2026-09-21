@@ -130,16 +130,32 @@ describe('通知契約のRequest schema', () => {
     ).toBe(false);
   });
 
-  it('from/toはoffset付きISO日時、resultsはpage/limitを受け付ける', () => {
+  it('from/toは両方省略またはセットで指定し、日時形式を維持する', () => {
+    expect(notificationDateRangeQuery.safeParse({}).success).toBe(true);
     expect(
       notificationDateRangeQuery.safeParse({ from: date, to: date }).success
     ).toBe(true);
+    expect(notificationDateRangeQuery.safeParse({ from: date }).success).toBe(
+      false
+    );
+    expect(notificationDateRangeQuery.safeParse({ to: date }).success).toBe(
+      false
+    );
     expect(
       notificationDateRangeQuery.safeParse({
         from: '2026-11-07T15:35:00Z',
         to: date,
       }).success
     ).toBe(true);
+    expect(
+      notificationDateRangeQuery.safeParse({
+        from: '2026-11-07T15:35:00',
+        to: '2026-11-07T16:35:00',
+      }).success
+    ).toBe(false);
+  });
+
+  it('resultsはpage/limitを受け付ける', () => {
     expect(
       notificationResultsQuery.safeParse({ page: '2', limit: '50' }).success
     ).toBe(true);
