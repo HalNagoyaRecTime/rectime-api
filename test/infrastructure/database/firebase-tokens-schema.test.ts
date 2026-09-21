@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
 
-// firebase_tokens は通知v3で1利用者複数端末モデルへ移行した。
+// firebase_tokens は通知v2で1利用者複数端末モデルへ移行した。
 // 旧active flagとpartial uniqueは#460までのexpand互換用に残している。
 describe('firebase_tokens テーブルの制約', () => {
   afterEach(async () => {

@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
 
-const testPrefix = '通知v3スキーマテスト';
+const testPrefix = '通知v2スキーマテスト';
 
 async function createUser(name: string): Promise<number> {
   const row = await env.DB.prepare(
@@ -18,7 +18,7 @@ async function createNotification(userId: number): Promise<number> {
     `INSERT INTO notifications (
        created_by_user_id, push_title, push_body, title, body,
        importance, notification_type, source_type, source_id, source_hash
-     ) VALUES (?, 'push title', 'push body', '通知v3スキーマテストdetail title', 'detail body',
+     ) VALUES (?, 'push title', 'push body', '通知v2スキーマテストdetail title', 'detail body',
        2, 'manual', 'gathering', 9001, 'schema-source-9001')
      RETURNING notification_id`
   )
@@ -41,7 +41,7 @@ async function createSchedule(notificationId: number): Promise<number> {
   return row.notification_schedule_id;
 }
 
-describe('通知v3のDB Schema', () => {
+describe('通知v2のDB Schema', () => {
   afterEach(async () => {
     await env.DB.prepare(
       `DELETE FROM notifications
@@ -96,11 +96,11 @@ describe('通知v3のDB Schema', () => {
     const tokenRows = await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO firebase_tokens (user_id, platform, fcm_token)
-         VALUES (?, 1, 'schema-v3-token-ios')`
+         VALUES (?, 1, 'schema-v2-token-ios')`
       ).bind(userId),
       env.DB.prepare(
         `INSERT INTO firebase_tokens (user_id, platform, fcm_token)
-         VALUES (?, 2, 'schema-v3-token-android')`
+         VALUES (?, 2, 'schema-v2-token-android')`
       ).bind(userId),
     ]);
     expect(tokenRows).toHaveLength(2);
