@@ -14,6 +14,14 @@ const migrationQueries = (() => {
 })();
 
 async function prepareBeforeMigration() {
+  const { results: columns } = await env.DB.prepare(
+    "SELECT name FROM pragma_table_info('events') WHERE name = 'venue'"
+  ).all();
+  if (columns.length === 0) {
+    await env.DB.prepare(
+      "ALTER TABLE events ADD COLUMN venue TEXT NOT NULL DEFAULT ''"
+    ).run();
+  }
   await env.DB.batch([
     env.DB.prepare('DROP TABLE IF EXISTS event_venues'),
     env.DB.prepare('DROP TABLE IF EXISTS venues'),

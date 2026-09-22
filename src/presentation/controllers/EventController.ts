@@ -13,11 +13,17 @@ import {
 } from '../errors/errorResponse';
 
 const eventIdSchema = z.coerce.number().int().positive();
+const venueIdsSchema = z
+  .array(z.number().int().positive())
+  .min(1)
+  .refine(ids => new Set(ids).size === ids.length, {
+    message: 'venue_ids must not contain duplicates',
+  });
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
 const eventBaseSchema = z.object({
   event_name: z.string().trim().min(1).max(100),
   rule_text: z.string().trim().max(1000).nullable().optional(),
-  venue: z.string().trim().min(1).max(100),
+  venue_ids: venueIdsSchema,
   start_time: hhmmSchema,
   end_time: hhmmSchema,
 });
@@ -100,7 +106,10 @@ export function createEventController(eventService: IEventService) {
     if (!parsed.success) return parsed.response;
     try {
       return c.json(await eventService.createEvent(parsed.data), 201);
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Venue not found') {
+        return errorResponse(c, EventErrors.VENUE_NOT_FOUND);
+      }
       return errorResponse(c, EventErrors.EVENT_CREATE_FAILED);
     }
   };
@@ -169,6 +178,9 @@ async function parseEventBody(
 }
 
 function updateEventError(c: Context, error: unknown) {
+  if (error instanceof Error && error.message === 'Venue not found') {
+    return errorResponse(c, EventErrors.VENUE_NOT_FOUND);
+  }
   if (
     error instanceof Error &&
     error.message === 'end_time must be after start_time'

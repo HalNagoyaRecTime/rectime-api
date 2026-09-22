@@ -112,7 +112,7 @@ describe('MobileNotificationRepository', () => {
   it('関連競技を一覧と詳細へ含める', async () => {
     const mine = await createUserWithToken('本人', 'token-mine');
     const event = await env.DB.prepare(
-      "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('綱引き', 'グラウンド', '1030', '1100') RETURNING event_id"
+      "INSERT INTO events (event_name, start_time, end_time) VALUES ('綱引き', '1030', '1100') RETURNING event_id"
     ).first<{ event_id: number }>();
     const firstVenue = await env.DB.prepare(
       "INSERT INTO venues (venue_name) VALUES ('グラウンド') RETURNING venue_id"
@@ -150,7 +150,6 @@ describe('MobileNotificationRepository', () => {
     expect(list.notifications[0].relatedEvent).toEqual({
       id: event!.event_id,
       name: '綱引き',
-      venue: 'グラウンド',
       venues: [
         { venue_id: firstVenue!.venue_id, venue_name: 'グラウンド' },
         { venue_id: secondVenue!.venue_id, venue_name: '第1体育館' },

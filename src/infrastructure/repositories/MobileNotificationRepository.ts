@@ -25,7 +25,6 @@ const selection = {
   scheduled_at: notification_schedules.sendAt,
   event_id: events.id,
   event_name: events.name,
-  venue: events.venue,
   start_time: events.startTime,
   end_time: events.endTime,
 };
@@ -38,7 +37,6 @@ type MobileNotificationRow = {
   scheduled_at: string;
   event_id: number | null;
   event_name: string | null;
-  venue: string | null;
   start_time: string | null;
   end_time: string | null;
 };
@@ -59,7 +57,6 @@ function toEntity(
         : {
             id: row.event_id,
             name: row.event_name!,
-            venue: row.venue!,
             venues: venuesByEventId.get(row.event_id) ?? [],
             startTime: row.start_time!,
             endTime: row.end_time!,

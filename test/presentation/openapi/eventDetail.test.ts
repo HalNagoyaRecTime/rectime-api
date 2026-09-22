@@ -39,27 +39,21 @@ describe('Event詳細取得APIのOpenAPI定義', () => {
     ).toEqual({ $ref: '#/components/schemas/EventDetail' });
   });
 
-  // Eventを$refで取り込む形にしておくと、既存fieldの追随漏れが構造上起きない。
-  it('EventWithVenuesはEventを取り込んだうえでvenuesを必須にする', () => {
-    expect(schemas.EventWithVenues?.allOf).toEqual([
-      { $ref: '#/components/schemas/Event' },
-      {
-        type: 'object',
-        required: ['venues'],
-        properties: {
-          venues: {
-            type: 'array',
-            items: { $ref: '#/components/schemas/EventVenue' },
-            description: 'イベントの実施場所。venue_idの昇順。',
-          },
-        },
+  it('Eventはvenuesを必須にし、venueを持たない', () => {
+    expect(schemas.Event?.required).toContain('venues');
+    expect(schemas.Event?.properties).toMatchObject({
+      venues: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/EventVenue' },
       },
-    ]);
+    });
+    expect(schemas.Event?.properties).not.toHaveProperty('venue');
   });
 
-  it('EventDetailはEventWithVenuesを取り込んだうえでroundsを必須にする', () => {
+  // Eventを$refで取り込む形にしておくと、既存fieldの追随漏れが構造上起きない。
+  it('EventDetailはEventを取り込んだうえでroundsを必須にする', () => {
     expect(schemas.EventDetail?.allOf).toEqual([
-      { $ref: '#/components/schemas/EventWithVenues' },
+      { $ref: '#/components/schemas/Event' },
       {
         type: 'object',
         required: ['rounds'],

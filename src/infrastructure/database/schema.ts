@@ -127,7 +127,6 @@ export const events = sqliteTable('events', {
   id: integer('event_id').primaryKey({ autoIncrement: true }),
   name: text('event_name').notNull(),
   ruleText: text('rule_text'),
-  venue: text('venue').notNull(),
   startTime: text('start_time').notNull(),
   endTime: text('end_time').notNull(),
   createdAt: text('created_at')

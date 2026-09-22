@@ -7,6 +7,7 @@ import {
 
 export interface IVenueRepository {
   findAll: () => Promise<VenueEntity[]>;
+  findExistingIds: (venueIds: number[]) => Promise<Set<number>>;
   findPage: (options: VenueListOptions) => Promise<VenuePage>;
   create: (venueName: string) => Promise<VenueEntity>;
   update: (

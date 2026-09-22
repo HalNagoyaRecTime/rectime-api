@@ -7,21 +7,18 @@ const EVENTS = [
   {
     name: 'バスケットボール大会',
     ruleText: '3on3',
-    venue: '体育館',
     startTime: '1100',
     endTime: '1300',
   },
   {
     name: '文化祭準備',
     ruleText: '展示準備',
-    venue: '第1教室',
     startTime: '1400',
     endTime: '1600',
   },
   {
     name: '英語スピーチコンテスト',
     ruleText: null,
-    venue: '講堂',
     startTime: '1630',
     endTime: '1800',
   },
@@ -32,7 +29,6 @@ export type SeededEvent = {
   name: string;
   startTime: string;
   endTime: string;
-  venue: string;
 };
 export type SeededEventData = { events: SeededEvent[] };
 
@@ -48,7 +44,6 @@ export async function seedEvents(db: D1Database): Promise<SeededEventData> {
       name: row.name,
       startTime: row.startTime,
       endTime: row.endTime,
-      venue: row.venue,
     });
   }
   return { events: seeded };

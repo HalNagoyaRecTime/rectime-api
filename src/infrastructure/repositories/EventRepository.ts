@@ -34,7 +34,6 @@ function toEntity(row: typeof events.$inferSelect): EventEntity {
     event_id: row.id,
     event_name: row.name,
     rule_text: row.ruleText,
-    venue: row.venue,
     start_time: row.startTime,
     end_time: row.endTime,
     created_at: row.createdAt,
@@ -77,6 +76,17 @@ async function findGatheringSummaries(
 
 export function createEventRepository(db: D1Database): IEventRepository {
   const orm = drizzle(db, { schema });
+
+  const findEventWithVenues = async (
+    id: number
+  ): Promise<EventWithVenuesEntity | null> => {
+    const [result, venuesByEventId] = await Promise.all([
+      orm.select().from(events).where(eq(events.id, id)).get(),
+      findVenuesByEventIds(orm, [id]),
+    ]);
+    if (!result) return null;
+    return { ...toEntity(result), venues: venuesByEventId.get(id) ?? [] };
+  };
 
   return {
     async exists(id: number): Promise<boolean> {
@@ -144,16 +154,7 @@ export function createEventRepository(db: D1Database): IEventRepository {
       return result ? toEntity(result) : null;
     },
 
-    async findWithVenuesById(
-      id: number
-    ): Promise<EventWithVenuesEntity | null> {
-      const [result, venuesByEventId] = await Promise.all([
-        orm.select().from(events).where(eq(events.id, id)).get(),
-        findVenuesByEventIds(orm, [id]),
-      ]);
-      if (!result) return null;
-      return { ...toEntity(result), venues: venuesByEventId.get(id) ?? [] };
-    },
+    findWithVenuesById: id => findEventWithVenues(id),
 
     async findByParticipantUserId(
       userId: number
@@ -163,7 +164,6 @@ export function createEventRepository(db: D1Database): IEventRepository {
           id: events.id,
           name: events.name,
           ruleText: events.ruleText,
-          venue: events.venue,
           startTime: events.startTime,
           endTime: events.endTime,
           createdAt: events.createdAt,
@@ -190,40 +190,69 @@ export function createEventRepository(db: D1Database): IEventRepository {
       }));
     },
 
-    async create(event: EventWriteInput): Promise<EventEntity> {
-      const created = await orm
-        .insert(events)
-        .values({
-          name: event.name,
-          ruleText: event.ruleText,
-          venue: event.venue,
-          startTime: event.startTime,
-          endTime: event.endTime,
-        })
-        .returning()
-        .get();
-      if (!created) throw new Error('Failed to create event');
-      return toEntity(created);
+    async create(event: EventWriteInput): Promise<EventWithVenuesEntity> {
+      const [created] = await db.batch<{ event_id: number }>([
+        db
+          .prepare(
+            `INSERT INTO events (event_name, rule_text, start_time, end_time)
+             VALUES (?, ?, ?, ?)
+             RETURNING event_id`
+          )
+          .bind(event.name, event.ruleText, event.startTime, event.endTime),
+        // last_insert_rowid() は event_venues へ1行挿入するたびに変わるため、
+        // 同じbatch内で直前に採番した競技を MAX で参照する。
+        db
+          .prepare(
+            `INSERT INTO event_venues (event_id, venue_id)
+             SELECT (SELECT MAX(event_id) FROM events), value
+             FROM json_each(?)`
+          )
+          .bind(JSON.stringify(event.venueIds)),
+      ]);
+      const eventId = created?.results[0]?.event_id;
+      if (eventId === undefined) throw new Error('Failed to create event');
+      const withVenues = await findEventWithVenues(eventId);
+      if (!withVenues) throw new Error('Failed to create event');
+      return withVenues;
     },
 
     async update(
       id: number,
       event: EventWriteInput
-    ): Promise<EventEntity | null> {
-      const updated = await orm
-        .update(events)
-        .set({
-          name: event.name,
-          ruleText: event.ruleText,
-          venue: event.venue,
-          startTime: event.startTime,
-          endTime: event.endTime,
-          updatedAt: sql`CURRENT_TIMESTAMP`,
-        })
-        .where(eq(events.id, id))
-        .returning()
-        .get();
-      return updated ? toEntity(updated) : null;
+    ): Promise<EventWithVenuesEntity | null> {
+      const venueIdsJson = JSON.stringify(event.venueIds);
+      const [updated] = await db.batch<{ event_id: number }>([
+        db
+          .prepare(
+            `UPDATE events
+             SET event_name = ?,
+                 rule_text = ?,
+                 start_time = ?,
+                 end_time = ?,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE event_id = ?
+             RETURNING event_id`
+          )
+          .bind(event.name, event.ruleText, event.startTime, event.endTime, id),
+        db
+          .prepare(
+            `DELETE FROM event_venues
+             WHERE event_id = ?
+               AND venue_id NOT IN (SELECT value FROM json_each(?))`
+          )
+          .bind(id, venueIdsJson),
+        db
+          .prepare(
+            `INSERT INTO event_venues (event_id, venue_id)
+             SELECT ?, value
+             FROM json_each(?)
+             WHERE EXISTS (SELECT 1 FROM events WHERE event_id = ?)
+             ON CONFLICT (event_id, venue_id) DO NOTHING`
+          )
+          .bind(id, venueIdsJson, id),
+      ]);
+      if (!updated?.results.length) return null;
+      return findEventWithVenues(id);
     },
 
     async delete(id: number): Promise<boolean> {

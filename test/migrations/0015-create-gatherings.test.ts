@@ -80,7 +80,7 @@ describe('集合予定の最終スキーマ', () => {
 
   it('同じ競技に複数の集合を作成でき、存在しない参照先は拒否する', async () => {
     const event = await env.DB.prepare(
-      "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('migration集合イベント', '体育館', '0900', '1000') RETURNING event_id"
+      "INSERT INTO events (event_name, start_time, end_time) VALUES ('migration集合イベント', '0900', '1000') RETURNING event_id"
     ).first<{ event_id: number }>();
     const spot = await env.DB.prepare(
       "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('migration集合場所') RETURNING gathering_spot_id"

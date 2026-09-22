@@ -1,11 +1,14 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc, count, desc, eq, sql } from 'drizzle-orm';
+import { asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { VenueEntity } from '../../domain/entities/Venue';
 import { IVenueRepository } from '../../domain/interfaces/repositories/IVenueRepository';
 import * as schema from '../database/schema';
 import { event_venues, venues } from '../database/schema';
 import { escapeLikePattern } from '../helpers/escapeLikePattern';
+import { chunkArray } from './chunk';
+
+const D1_MAX_BOUND_PARAMETERS = 100;
 
 function toEntity(row: typeof venues.$inferSelect): VenueEntity {
   return {
@@ -27,6 +30,20 @@ export function createVenueRepository(db: D1Database): IVenueRepository {
         .orderBy(asc(venues.id))
         .all();
       return rows.map(toEntity);
+    },
+
+    async findExistingIds(venueIds: number[]): Promise<Set<number>> {
+      const uniqueIds = Array.from(new Set(venueIds));
+      const chunkRows = await Promise.all(
+        chunkArray(uniqueIds, D1_MAX_BOUND_PARAMETERS).map(chunk =>
+          orm
+            .select({ id: venues.id })
+            .from(venues)
+            .where(inArray(venues.id, chunk))
+            .all()
+        )
+      );
+      return new Set(chunkRows.flat().map(row => row.id));
     },
 
     async findPage(options) {

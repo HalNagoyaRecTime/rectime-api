@@ -20,7 +20,7 @@ async function insertUser(): Promise<number> {
 
 async function insertEvent(): Promise<number> {
   const row = await workerEnv.DB.prepare(
-    "INSERT INTO events (event_name, rule_text, venue, start_time, end_time) VALUES ('リレー', 'バトンを使用します。', 'メインコート', '1100', '1230') RETURNING event_id"
+    "INSERT INTO events (event_name, rule_text, start_time, end_time) VALUES ('リレー', 'バトンを使用します。', '1100', '1230') RETURNING event_id"
   ).first<{ event_id: number }>();
   return row!.event_id;
 }
@@ -125,7 +125,6 @@ describe('GET /api/v1/events/:eventId', () => {
       event_id: eventId,
       event_name: 'リレー',
       rule_text: 'バトンを使用します。',
-      venue: 'メインコート',
       venues: [
         { venue_id: mainCourt, venue_name: 'メインコート' },
         { venue_id: subCourt, venue_name: 'サブコート' },

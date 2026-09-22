@@ -5,7 +5,7 @@ export interface EventDTO {
   event_id: number;
   event_name: string;
   rule_text: string | null;
-  venue: string;
+  venues: EventVenueDTO[];
   start_time: string;
   end_time: string;
   created_at: string;
@@ -19,18 +19,10 @@ export interface EventVenueDTO {
 }
 
 /**
- * 実施場所の一覧を含むイベント。
- * 作成・更新のレスポンスへ `venues` を波及させないため、EventDTOとは別に定義する。
- */
-export interface EventWithVenuesDTO extends EventDTO {
-  venues: EventVenueDTO[];
-}
-
-/**
  * GET /events/:eventId のレスポンス本文。
  * 一覧や作成・更新のレスポンスへ `rounds` を波及させないため、EventDTOとは別に定義する。
  */
-export interface EventDetailDTO extends EventWithVenuesDTO {
+export interface EventDetailDTO extends EventDTO {
   rounds: RoundSettingDTO[];
 }
 
@@ -42,7 +34,7 @@ export interface GatheringSummaryDTO {
 }
 
 /** GET /events の一覧項目として返すイベント。 */
-export interface EventListItemDTO extends EventWithVenuesDTO {
+export interface EventListItemDTO extends EventDTO {
   gathering_summary: GatheringSummaryDTO;
 }
 
@@ -57,7 +49,7 @@ export interface GetEventsRequestDTO {
 export interface CreateEventRequestDTO {
   event_name: string;
   rule_text: string | null;
-  venue: string;
+  venue_ids: number[];
   start_time: string;
   end_time: string;
 }

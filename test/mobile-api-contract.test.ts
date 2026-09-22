@@ -57,7 +57,7 @@ describe('mobile API contract', () => {
       [
         'event_id',
         'event_name',
-        'venue',
+        'venues',
         'start_time',
         'end_time',
         'created_at',
@@ -110,10 +110,7 @@ describe('mobile API contract', () => {
       $ref: '#/components/schemas/EventDetail',
     });
     expect(document.components.schemas['EventDetail']?.allOf).toContainEqual({
-      $ref: '#/components/schemas/EventWithVenues',
+      $ref: '#/components/schemas/Event',
     });
-    expect(
-      document.components.schemas['EventWithVenues']?.allOf
-    ).toContainEqual({ $ref: '#/components/schemas/Event' });
   });
 });

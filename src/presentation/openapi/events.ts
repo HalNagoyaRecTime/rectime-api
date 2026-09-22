@@ -1,6 +1,6 @@
 import { createRoute } from '@hono/zod-openapi';
 import type { EventDetailDTO } from '../../application/dto/EventDTO';
-import { eventVenueListResponseSchema } from './eventVenues';
+import { eventVenueListResponseSchema, venueIdsSchema } from './eventVenues';
 import { roundSettingResponseSchema } from './gatheringRounds';
 import { gatheringListResponseSchema } from './gatherings';
 import {
@@ -24,7 +24,7 @@ export const eventResponseSchema = z
     event_id: z.number().int(),
     event_name: z.string(),
     rule_text: z.string().nullable(),
-    venue: z.string(),
+    venues: eventVenueListResponseSchema,
     start_time: hhmmSchema,
     end_time: hhmmSchema,
     created_at: z.string(),
@@ -34,15 +34,8 @@ export const eventResponseSchema = z
 
 export type EventResponseDTO = z.infer<typeof eventResponseSchema>;
 
-// venue は後続Issueで削除するまで残す。複数の実施場所は venues を参照する。
-export const eventWithVenuesResponseSchema = eventResponseSchema
-  .extend({
-    venues: eventVenueListResponseSchema,
-  })
-  .openapi('EventWithVenues');
-
 // Application DTO と食い違うと型エラーになるよう、schemaの出力型をDTOで固定する。
-export const eventDetailResponseSchema = eventWithVenuesResponseSchema
+export const eventDetailResponseSchema = eventResponseSchema
   .extend({
     rounds: z.array(roundSettingResponseSchema),
   })
@@ -56,7 +49,7 @@ export const gatheringSummaryResponseSchema = z
   })
   .openapi('GatheringSummary');
 
-export const eventListItemResponseSchema = eventWithVenuesResponseSchema
+export const eventListItemResponseSchema = eventResponseSchema
   .extend({
     gathering_summary: gatheringSummaryResponseSchema,
   })
@@ -85,7 +78,7 @@ export const eventWriteSchema = z
   .object({
     event_name: z.string().trim().min(1).max(100),
     rule_text: z.string().trim().max(1000).nullable().optional(),
-    venue: z.string().trim().min(1).max(100),
+    venue_ids: venueIdsSchema,
     start_time: hhmmSchema,
     end_time: hhmmSchema,
   })
@@ -179,6 +172,7 @@ export const eventCreateRoute = createRoute({
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
+    404: notFoundResponse,
     500: internalServerErrorResponse,
   },
 });

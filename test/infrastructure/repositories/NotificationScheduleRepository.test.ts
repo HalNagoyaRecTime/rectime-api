@@ -26,7 +26,7 @@ describe('NotificationScheduleRepository', () => {
       "INSERT INTO users (user_name) VALUES ('通知予定ユーザー') RETURNING user_id"
     ).first<{ user_id: number }>();
     const event = await env.DB.prepare(
-      "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('大縄跳び', '体育館', '0900', '1000') RETURNING event_id"
+      "INSERT INTO events (event_name, start_time, end_time) VALUES ('大縄跳び', '0900', '1000') RETURNING event_id"
     ).first<{ event_id: number }>();
     const token = await env.DB.prepare(
       "INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, 'token-a') RETURNING firebase_token_id"
@@ -68,7 +68,7 @@ describe('NotificationScheduleRepository', () => {
       "INSERT INTO notifications (notification_type, title, body) VALUES ('event_reminder', '競技通知', '集合してください') RETURNING notification_id"
     ).first<{ notification_id: number }>();
     const otherEvent = await env.DB.prepare(
-      "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('別競技', '体育館', '1000', '1100') RETURNING event_id"
+      "INSERT INTO events (event_name, start_time, end_time) VALUES ('別競技', '1000', '1100') RETURNING event_id"
     ).first<{ event_id: number }>();
     for (const [eventId, status] of [
       [event!.event_id, 'draft'],

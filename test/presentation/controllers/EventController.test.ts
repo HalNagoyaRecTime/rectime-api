@@ -2,14 +2,16 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { createEventController } from '../../../src/presentation/controllers/EventController';
 import type { IEventService } from '../../../src/application/services/IEventService';
-import type { EventEntity } from '../../../src/domain/entities/Event';
+import type { EventWithVenuesEntity } from '../../../src/domain/entities/Event';
 
-function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
+function buildEvent(
+  overrides: Partial<EventWithVenuesEntity> = {}
+): EventWithVenuesEntity {
   return {
     event_id: 1,
     event_name: '徒競走',
     rule_text: null,
-    venue: 'トラック',
+    venues: [{ venue_id: 2, venue_name: 'トラック' }],
     start_time: '0930',
     end_time: '0950',
     created_at: '2026-01-01',
@@ -250,7 +252,7 @@ describe('EventController', () => {
         body: JSON.stringify({
           event_name: '徒競走',
           rule_text: null,
-          venue: 'トラック',
+          venue_ids: [2],
           start_time: '0930',
           end_time: '0950',
         }),
@@ -259,7 +261,7 @@ describe('EventController', () => {
       expect(eventService.createEvent).toHaveBeenCalledWith({
         event_name: '徒競走',
         rule_text: null,
-        venue: 'トラック',
+        venue_ids: [2],
         start_time: '0930',
         end_time: '0950',
       });
@@ -278,7 +280,7 @@ describe('EventController', () => {
           body: JSON.stringify({
             event_name: '徒競走',
             rule_text: null,
-            venue: 'トラック',
+            venue_ids: [2],
             start_time: invalid,
             end_time: '2359',
           }),
@@ -286,6 +288,83 @@ describe('EventController', () => {
 
         expect(response.status).toBe(400);
         expect(eventService.createEvent).not.toHaveBeenCalled();
+      }
+    );
+  });
+
+  describe('venue_ids', () => {
+    it.each([
+      ['空配列', []],
+      ['重複', [2, 2]],
+      ['0以下', [0]],
+    ])('%sのvenue_idsは400を返す', async (_label, venueIds) => {
+      const { app, eventService } = setup();
+
+      const response = await app.request('/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue_ids: venueIds,
+          start_time: '0930',
+          end_time: '0950',
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(eventService.createEvent).not.toHaveBeenCalled();
+    });
+
+    it('venueを指定しvenue_idsが無い場合は400を返す', async () => {
+      const { app, eventService } = setup();
+
+      const response = await app.request('/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue: 'トラック',
+          start_time: '0930',
+          end_time: '0950',
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(eventService.createEvent).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['POST', '/events', 'createEvent'],
+      ['PUT', '/events/1', 'updateEvent'],
+    ] as const)(
+      '%s で存在しない実施場所を指定した場合は404を返す',
+      async (method, path, serviceMethod) => {
+        const { app, eventService } = setup();
+        (
+          eventService[serviceMethod] as ReturnType<typeof vi.fn>
+        ).mockRejectedValue(new Error('Venue not found'));
+
+        const response = await app.request(path, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event_name: '徒競走',
+            rule_text: null,
+            venue_ids: [99],
+            start_time: '0930',
+            end_time: '0950',
+          }),
+        });
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({
+          error: {
+            code: 'VENUE_NOT_FOUND',
+            message: expect.any(String),
+          },
+        });
       }
     );
   });
@@ -304,7 +383,7 @@ describe('EventController', () => {
         body: JSON.stringify({
           event_name: '更新後の徒競走',
           rule_text: '規則',
-          venue: 'トラック',
+          venue_ids: [2],
           start_time: '1000',
           end_time: '1030',
         }),
@@ -313,7 +392,7 @@ describe('EventController', () => {
       expect(eventService.updateEvent).toHaveBeenCalledWith(1, {
         event_name: '更新後の徒競走',
         rule_text: '規則',
-        venue: 'トラック',
+        venue_ids: [2],
         start_time: '1000',
         end_time: '1030',
       });
@@ -330,7 +409,7 @@ describe('EventController', () => {
         body: JSON.stringify({
           event_name: '徒競走',
           rule_text: null,
-          venue: 'トラック',
+          venue_ids: [2],
           start_time: '0930',
           end_time: '0950',
           notification_enabled: false,
@@ -355,7 +434,7 @@ describe('EventController', () => {
         body: JSON.stringify({
           event_name: '徒競走',
           rule_text: null,
-          venue: 'トラック',
+          venue_ids: [2],
           start_time: '0930',
           end_time: '0950',
           unknown_field: 'x',
@@ -378,7 +457,7 @@ describe('EventController', () => {
         body: JSON.stringify({
           event_name: '徒競走',
           rule_text: null,
-          venue: 'トラック',
+          venue_ids: [2],
           start_time: '0930',
           end_time: '0950',
         }),
@@ -405,7 +484,7 @@ describe('EventController', () => {
         body: JSON.stringify({
           event_name: '徒競走',
           rule_text: null,
-          venue: 'トラック',
+          venue_ids: [2],
           start_time: '0930',
           end_time: '0950',
         }),
@@ -426,7 +505,7 @@ describe('EventController', () => {
         body: JSON.stringify({
           event_name: '徒競走',
           rule_text: null,
-          venue: 'トラック',
+          venue_ids: [2],
           start_time: '0950',
           end_time: '0930',
         }),
