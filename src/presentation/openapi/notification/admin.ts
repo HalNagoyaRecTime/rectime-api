@@ -287,6 +287,7 @@ export const notificationAudienceCountRoute = createRoute({
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
     403: notificationStaffForbiddenResponse,
+    404: notificationAudienceNotFoundResponse,
     500: internalServerErrorResponse,
   },
 });
