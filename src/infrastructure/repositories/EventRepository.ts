@@ -135,19 +135,24 @@ export function createEventRepository(db: D1Database): IEventRepository {
       };
     },
 
-    async findById(id: number): Promise<EventWithVenuesEntity | null> {
+    async findById(id: number): Promise<EventEntity | null> {
       const result = await orm
         .select()
         .from(events)
         .where(eq(events.id, id))
         .get();
-      if (!result) return null;
+      return result ? toEntity(result) : null;
+    },
 
-      const venuesByEventId = await findVenuesByEventIds(orm, [result.id]);
-      return {
-        ...toEntity(result),
-        venues: venuesByEventId.get(result.id) ?? [],
-      };
+    async findWithVenuesById(
+      id: number
+    ): Promise<EventWithVenuesEntity | null> {
+      const [result, venuesByEventId] = await Promise.all([
+        orm.select().from(events).where(eq(events.id, id)).get(),
+        findVenuesByEventIds(orm, [id]),
+      ]);
+      if (!result) return null;
+      return { ...toEntity(result), venues: venuesByEventId.get(id) ?? [] };
     },
 
     async findByParticipantUserId(

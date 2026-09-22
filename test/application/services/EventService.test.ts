@@ -63,6 +63,7 @@ function createRepository(
     exists: vi.fn(),
     findAll: vi.fn(),
     findById: vi.fn(),
+    findWithVenuesById: vi.fn(),
     findByParticipantUserId: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -125,7 +126,7 @@ describe('EventService', () => {
       const event = buildEventWithVenues();
       const repository = createRepository({
         findAll: vi.fn(),
-        findById: vi.fn().mockResolvedValue(event),
+        findWithVenuesById: vi.fn().mockResolvedValue(event),
       });
       const service = createService(repository);
 
@@ -133,7 +134,7 @@ describe('EventService', () => {
         ...event,
         rounds: [],
       });
-      expect(repository.findById).toHaveBeenCalledWith(1);
+      expect(repository.findWithVenuesById).toHaveBeenCalledWith(1);
     });
 
     it('集合予定をRound単位にまとめて返す', async () => {
@@ -160,7 +161,9 @@ describe('EventService', () => {
         }),
       ]);
       const service = createService(
-        createRepository({ findById: vi.fn().mockResolvedValue(event) }),
+        createRepository({
+          findWithVenuesById: vi.fn().mockResolvedValue(event),
+        }),
         gatheringSettingsRepository
       );
 
@@ -215,7 +218,7 @@ describe('EventService', () => {
       ]);
       const service = createService(
         createRepository({
-          findById: vi.fn().mockResolvedValue(buildEventWithVenues()),
+          findWithVenuesById: vi.fn().mockResolvedValue(buildEventWithVenues()),
         }),
         gatheringSettingsRepository
       );
@@ -230,7 +233,7 @@ describe('EventService', () => {
     it('存在しない場合はエラーを投げ、集合予定は取得しない', async () => {
       const repository = createRepository({
         findAll: vi.fn(),
-        findById: vi.fn().mockResolvedValue(null),
+        findWithVenuesById: vi.fn().mockResolvedValue(null),
       });
       const gatheringSettingsRepository = createGatheringSettingsRepository();
 

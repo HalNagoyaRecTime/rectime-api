@@ -92,7 +92,7 @@ export function createEventService(
     },
 
     async getEventById(id) {
-      const event = await eventRepository.findById(id);
+      const event = await eventRepository.findWithVenuesById(id);
       if (!event) {
         throw new Error('Event not found');
       }

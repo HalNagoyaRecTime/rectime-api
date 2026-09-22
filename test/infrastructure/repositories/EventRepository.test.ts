@@ -165,31 +165,6 @@ describe('EventRepository', () => {
   });
 
   describe('findById', () => {
-    it('実施場所をvenue_id昇順で含める', async () => {
-      const target = seeded.events[1];
-      const { venueIds, cleanup } = await linkVenues(target.eventId, [
-        'findById用第1体育館',
-        'findById用グラウンド',
-      ]);
-
-      try {
-        const event = await repo.findById(target.eventId);
-
-        expect(event?.venues).toEqual([
-          { venue_id: venueIds[0], venue_name: 'findById用第1体育館' },
-          { venue_id: venueIds[1], venue_name: 'findById用グラウンド' },
-        ]);
-      } finally {
-        await cleanup();
-      }
-    });
-
-    it('実施場所が無いイベントは空配列を返す', async () => {
-      const event = await repo.findById(seeded.events[0].eventId);
-
-      expect(event?.venues).toEqual([]);
-    });
-
     it('idでイベントを取得できる', async () => {
       const target = seeded.events[0];
       const event = await repo.findById(target.eventId);
@@ -205,6 +180,43 @@ describe('EventRepository', () => {
 
     it('存在しないidの場合はnullを返す', async () => {
       await expect(repo.findById(999999)).resolves.toBeNull();
+    });
+  });
+
+  describe('findWithVenuesById', () => {
+    it('実施場所をvenue_id昇順で含める', async () => {
+      const target = seeded.events[1];
+      const { venueIds, cleanup } = await linkVenues(target.eventId, [
+        'findWithVenuesById用第1体育館',
+        'findWithVenuesById用グラウンド',
+      ]);
+
+      try {
+        const event = await repo.findWithVenuesById(target.eventId);
+
+        expect(event?.venues).toEqual([
+          {
+            venue_id: venueIds[0],
+            venue_name: 'findWithVenuesById用第1体育館',
+          },
+          {
+            venue_id: venueIds[1],
+            venue_name: 'findWithVenuesById用グラウンド',
+          },
+        ]);
+      } finally {
+        await cleanup();
+      }
+    });
+
+    it('実施場所が無いイベントは空配列を返す', async () => {
+      const event = await repo.findWithVenuesById(seeded.events[0].eventId);
+
+      expect(event?.venues).toEqual([]);
+    });
+
+    it('存在しないidの場合はnullを返す', async () => {
+      await expect(repo.findWithVenuesById(999999)).resolves.toBeNull();
     });
   });
 
