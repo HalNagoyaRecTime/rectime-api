@@ -5,6 +5,7 @@ import type { IEventService } from '../../application/services/IEventService';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
+import { venueIdsSchema } from '../openapi/eventVenues';
 import { CommonErrors } from '../errors/commonErrors';
 import { EventErrors } from '../errors/eventErrors';
 import {
@@ -13,12 +14,6 @@ import {
 } from '../errors/errorResponse';
 
 const eventIdSchema = z.coerce.number().int().positive();
-const venueIdsSchema = z
-  .array(z.number().int().positive())
-  .min(1)
-  .refine(ids => new Set(ids).size === ids.length, {
-    message: 'venue_ids must not contain duplicates',
-  });
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
 const eventBaseSchema = z.object({
   event_name: z.string().trim().min(1).max(100),

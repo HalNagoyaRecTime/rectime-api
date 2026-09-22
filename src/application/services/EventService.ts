@@ -112,6 +112,9 @@ export function createEventService(
       if (event.start_time >= event.end_time) {
         throw new Error('end_time must be after start_time');
       }
+      if (!(await eventRepository.exists(id))) {
+        throw new Error('Event not found');
+      }
       await ensureVenuesExist(venueRepository, event.venue_ids);
       const updated = await saveWithVenues(() =>
         eventRepository.update(id, toEventWriteInput(event))

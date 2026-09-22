@@ -297,6 +297,7 @@ describe('EventController', () => {
       ['空配列', []],
       ['重複', [2, 2]],
       ['0以下', [0]],
+      ['21件', Array.from({ length: 21 }, (_, i) => i + 1)],
     ])('%sのvenue_idsは400を返す', async (_label, venueIds) => {
       const { app, eventService } = setup();
 

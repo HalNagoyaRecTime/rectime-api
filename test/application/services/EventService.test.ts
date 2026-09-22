@@ -313,6 +313,7 @@ describe('EventService', () => {
     it('リクエストDTOをDomain入力型へ変換して更新し、Notificationには一切触れない', async () => {
       const updated = buildEventWithVenues({ event_name: '更新後の開会式' });
       const repository = createRepository({
+        exists: vi.fn().mockResolvedValue(true),
         update: vi.fn().mockResolvedValue(updated),
       });
 
@@ -337,6 +338,25 @@ describe('EventService', () => {
 
     it('存在しないイベントの場合はEvent not foundを投げる', async () => {
       const repository = createRepository({
+        exists: vi.fn().mockResolvedValue(false),
+        update: vi.fn(),
+      });
+
+      await expect(
+        createService(repository).updateEvent(999, {
+          event_name: '開会式',
+          rule_text: null,
+          venue_ids: [3],
+          start_time: '0900',
+          end_time: '0930',
+        })
+      ).rejects.toThrow('Event not found');
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('存在確認後に削除され更新できなかった場合はEvent not foundを投げる', async () => {
+      const repository = createRepository({
+        exists: vi.fn().mockResolvedValue(true),
         update: vi.fn().mockResolvedValue(null),
       });
 
@@ -349,6 +369,30 @@ describe('EventService', () => {
           end_time: '0930',
         })
       ).rejects.toThrow('Event not found');
+    });
+
+    it('存在しないイベントに存在しない実施場所を指定した場合はEvent not foundを投げる', async () => {
+      const repository = createRepository({
+        exists: vi.fn().mockResolvedValue(false),
+        update: vi.fn(),
+      });
+      const venueRepository = createVenueRepository([]);
+
+      await expect(
+        createService(
+          repository,
+          createGatheringSettingsRepository(),
+          venueRepository
+        ).updateEvent(999, {
+          event_name: '開会式',
+          rule_text: null,
+          venue_ids: [9],
+          start_time: '0900',
+          end_time: '0930',
+        })
+      ).rejects.toThrow('Event not found');
+      expect(venueRepository.findExistingIds).not.toHaveBeenCalled();
+      expect(repository.update).not.toHaveBeenCalled();
     });
 
     it('開始時刻が終了時刻以降の場合は更新せずエラーを投げる', async () => {
@@ -386,7 +430,10 @@ describe('EventService', () => {
     });
 
     it('更新時に存在しない実施場所を含む場合は保存しない', async () => {
-      const repository = createRepository({ update: vi.fn() });
+      const repository = createRepository({
+        exists: vi.fn().mockResolvedValue(true),
+        update: vi.fn(),
+      });
 
       await expect(
         createService(repository).updateEvent(1, request)
