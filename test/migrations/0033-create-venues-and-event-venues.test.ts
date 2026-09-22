@@ -86,9 +86,13 @@ describe('0033_create_venues_and_event_venues.sql のデータ移行', () => {
     expect(row?.count).toBe(0);
   });
 
-  it('前後に空白を含む実施場所名も同じマスタへまとまる', async () => {
+  it('前後に半角・全角の空白を含む実施場所名も同じマスタへまとまる', async () => {
     const eventId = await insertEvent('0033移行確認競技F', '  0033移行確認武道場  ');
     await insertEvent('0033移行確認競技G', '0033移行確認武道場');
+    const fullWidthEventId = await insertEvent(
+      '0033移行確認競技I',
+      '\u30000033移行確認武道場\u3000'
+    );
 
     await runMigration();
 
@@ -99,6 +103,22 @@ describe('0033_create_venues_and_event_venues.sql のデータ移行', () => {
       .first<{ count: number }>();
     expect(row?.count).toBe(1);
     expect(await venueNamesOf(eventId)).toEqual(['0033移行確認武道場']);
+    expect(await venueNamesOf(fullWidthEventId)).toEqual([
+      '0033移行確認武道場',
+    ]);
+  });
+
+  it('実施場所名の途中にある全角空白は残す', async () => {
+    const eventId = await insertEvent(
+      '0033移行確認競技J',
+      '0033移行確認第1\u3000体育館'
+    );
+
+    await runMigration();
+
+    expect(await venueNamesOf(eventId)).toEqual([
+      '0033移行確認第1\u3000体育館',
+    ]);
   });
 
   it('実施場所が空文字の競技はマスタを作らない', async () => {

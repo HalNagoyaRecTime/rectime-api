@@ -25,12 +25,14 @@ CREATE INDEX idx_event_venues_venue_id ON event_venues(venue_id);
 
 -- events.venue は後続のIssueで削除される。シードを含む既存の競技をここで
 -- 移しておくと、移行後も実施場所が入った状態で開発を続けられる。
+-- SQLite の TRIM() は既定で半角スペースしか除去しないため、アプリ側の
+-- z.string().trim() に合わせて全角スペースと改行・タブも除去対象に含める。
 INSERT INTO venues (venue_name)
-SELECT DISTINCT TRIM(venue)
+SELECT DISTINCT TRIM(venue, ' ' || CHAR(9, 10, 13, 12288))
 FROM events
-WHERE TRIM(venue) <> '';
+WHERE TRIM(venue, ' ' || CHAR(9, 10, 13, 12288)) <> '';
 
 INSERT INTO event_venues (event_id, venue_id)
 SELECT events.event_id, venues.venue_id
 FROM events
-INNER JOIN venues ON venues.venue_name = TRIM(events.venue);
+INNER JOIN venues ON venues.venue_name = TRIM(events.venue, ' ' || CHAR(9, 10, 13, 12288));
