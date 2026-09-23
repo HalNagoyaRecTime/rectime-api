@@ -324,15 +324,32 @@ export const notificationDateRangeQuery = z
     to: isoDateTimeSchema.optional(),
   })
   .strict()
-  .refine(value => (value.from === undefined) === (value.to === undefined), {
-    message: 'fromとtoはセットで指定してください',
+  .superRefine((value, context) => {
+    if ((value.from === undefined) !== (value.to === undefined)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'fromとtoはセットで指定してください',
+      });
+    }
+
+    if (
+      value.from !== undefined &&
+      value.to !== undefined &&
+      Date.parse(value.from) > Date.parse(value.to)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'fromはto以前の日時を指定してください',
+        path: ['from'],
+      });
+    }
   })
   .openapi('NotificationDateRangeQuery');
 
 export const notificationResultsQuery = z
   .object({
-    page: z.coerce.number().int().min(1).default(1).optional(),
-    limit: z.coerce.number().int().min(1).max(100).default(50).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
   })
   .strict()
   .openapi('NotificationResultsQuery');

@@ -130,11 +130,29 @@ describe('通知契約のRequest schema', () => {
     ).toBe(false);
   });
 
-  it('from/toは両方省略またはセットで指定し、日時形式を維持する', () => {
+  it('from/toは両方省略または時系列順でセット指定する', () => {
     expect(notificationDateRangeQuery.safeParse({}).success).toBe(true);
     expect(
       notificationDateRangeQuery.safeParse({ from: date, to: date }).success
     ).toBe(true);
+    expect(
+      notificationDateRangeQuery.safeParse({
+        from: '2026-11-07T15:00:00+09:00',
+        to: '2026-11-07T07:00:00Z',
+      }).success
+    ).toBe(true);
+    expect(
+      notificationDateRangeQuery.safeParse({
+        from: '2026-11-07T15:00:00+09:00',
+        to: '2026-11-07T06:00:00Z',
+      }).success
+    ).toBe(true);
+    expect(
+      notificationDateRangeQuery.safeParse({
+        from: '2026-11-07T07:00:00Z',
+        to: '2026-11-07T15:00:00+09:00',
+      }).success
+    ).toBe(false);
     expect(notificationDateRangeQuery.safeParse({ from: date }).success).toBe(
       false
     );
@@ -143,22 +161,27 @@ describe('通知契約のRequest schema', () => {
     );
     expect(
       notificationDateRangeQuery.safeParse({
-        from: '2026-11-07T15:35:00Z',
-        to: date,
-      }).success
-    ).toBe(true);
-    expect(
-      notificationDateRangeQuery.safeParse({
         from: '2026-11-07T15:35:00',
         to: '2026-11-07T16:35:00',
       }).success
     ).toBe(false);
   });
 
-  it('resultsはpage/limitを受け付ける', () => {
-    expect(
-      notificationResultsQuery.safeParse({ page: '2', limit: '50' }).success
-    ).toBe(true);
+  it('resultsは省略時のpage/limitをdefaultし、範囲を検証する', () => {
+    expect(notificationResultsQuery.parse({})).toEqual({ page: 1, limit: 50 });
+    expect(notificationResultsQuery.parse({ page: '2', limit: '30' })).toEqual({
+      page: 2,
+      limit: 30,
+    });
+    expect(notificationResultsQuery.safeParse({ page: '0' }).success).toBe(
+      false
+    );
+    expect(notificationResultsQuery.safeParse({ limit: '0' }).success).toBe(
+      false
+    );
+    expect(notificationResultsQuery.safeParse({ limit: '101' }).success).toBe(
+      false
+    );
     expect(
       notificationResultsQuery.safeParse({ offset: '0', limit: '50' }).success
     ).toBe(false);

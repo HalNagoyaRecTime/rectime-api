@@ -132,8 +132,8 @@ export interface NotificationScheduleResultsPaginationDTO {
 }
 
 export interface NotificationScheduleResultsQueryDTO {
-  page?: number;
-  limit?: number;
+  page: number;
+  limit: number;
 }
 
 export interface NotificationScheduleResultsResponseDTO {
