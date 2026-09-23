@@ -51,7 +51,7 @@ describe('scheduled handler', () => {
     createDIContainerSpy.mockRestore();
   });
 
-  it('通知cronはEVENT_DATE未設定でもv2 Audience Resolverを起動する', async () => {
+  it('通知cronはEVENT_DATE未設定でもAudience Resolverを起動する', async () => {
     const container = await import('../src/di/container');
     const resolveDueSchedules = vi.fn().mockResolvedValue({
       completed_schedules: [],
@@ -59,10 +59,16 @@ describe('scheduled handler', () => {
       failed_schedule_ids: [],
     });
     const enqueueDueNotifications = vi.fn();
+    const enqueueReadySchedules = vi.fn().mockResolvedValue({
+      queued_schedule_ids: [],
+      completed_schedule_ids: [],
+      failed_schedule_ids: [],
+    });
     const createDIContainerSpy = vi
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
         notificationAudienceResolverService: { resolveDueSchedules },
+        notificationDeliveryService: { enqueueReadySchedules },
         scheduledNotificationService: { enqueueDueNotifications },
       } as unknown as ReturnType<typeof container.createDIContainer>);
 
@@ -77,6 +83,9 @@ describe('scheduled handler', () => {
     await Promise.all(waitUntilPromises);
 
     expect(resolveDueSchedules).toHaveBeenCalledWith(
+      new Date(event.scheduledTime)
+    );
+    expect(enqueueReadySchedules).toHaveBeenCalledWith(
       new Date(event.scheduledTime)
     );
     expect(enqueueDueNotifications).not.toHaveBeenCalled();

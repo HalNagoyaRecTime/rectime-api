@@ -484,7 +484,7 @@ export default {
     ctx.waitUntil(
       container.notificationAudienceResolverService
         .resolveDueSchedules(scheduledAt)
-        .then(result => {
+        .then(async result => {
           if (result.retryable_schedule_ids.length > 0) {
             console.error('[CRON] Notification Audience解決を再試行します', {
               scheduleIds: result.retryable_schedule_ids,
@@ -493,6 +493,15 @@ export default {
           if (result.failed_schedule_ids.length > 0) {
             console.error('[CRON] Notification Audience解決に失敗しました', {
               scheduleIds: result.failed_schedule_ids,
+            });
+          }
+          const deliveryResult =
+            await container.notificationDeliveryService.enqueueReadySchedules(
+              scheduledAt
+            );
+          if (deliveryResult.failed_schedule_ids.length > 0) {
+            console.error('[CRON] Notification Delivery準備に失敗しました', {
+              scheduleIds: deliveryResult.failed_schedule_ids,
             });
           }
         })
@@ -525,7 +534,8 @@ export default {
     const container = createDIContainer(env);
     await consumeNotificationDeliveryQueue(
       batch,
-      container.scheduledNotificationService
+      container.scheduledNotificationService,
+      container.notificationDeliveryService
     );
   },
 };

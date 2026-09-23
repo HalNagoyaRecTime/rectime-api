@@ -1,4 +1,5 @@
 import type { MessageBatch } from '@cloudflare/workers-types';
+import type { INotificationDeliveryService } from '../../application/services/INotificationDeliveryService';
 import type { IScheduledNotificationService } from '../../application/services/IScheduledNotificationService';
 import {
   NOTIFICATION_DELIVERY_MESSAGE_SIZE,
@@ -8,7 +9,8 @@ import {
 
 export async function consumeNotificationDeliveryQueue(
   batch: MessageBatch<NotificationDeliveryMessage>,
-  service: IScheduledNotificationService
+  legacyService: IScheduledNotificationService,
+  notificationDeliveryService: INotificationDeliveryService
 ): Promise<void> {
   for (const message of batch.messages) {
     if (!isNotificationDeliveryMessage(message.body)) {
@@ -20,9 +22,14 @@ export async function consumeNotificationDeliveryQueue(
     }
 
     try {
-      await service.sendQueuedNotifications(
-        message.body.notificationScheduleIds
-      );
+      await Promise.all([
+        legacyService.sendQueuedNotifications(
+          message.body.notificationScheduleIds
+        ),
+        notificationDeliveryService.sendQueuedNotifications(
+          message.body.notificationScheduleIds
+        ),
+      ]);
       message.ack();
     } catch (error) {
       console.error('[NOTIFICATION_QUEUE] Delivery failed; retry scheduled', {
