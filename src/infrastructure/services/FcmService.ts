@@ -16,7 +16,7 @@ type FirebaseConfig = {
   projectId: string;
   clientEmail: string;
   privateKey: string;
-  testFcmToken: string;
+  testFcmToken?: string;
 };
 
 type CachedAccessToken = {
