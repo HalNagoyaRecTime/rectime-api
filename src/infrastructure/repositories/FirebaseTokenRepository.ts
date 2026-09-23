@@ -52,10 +52,7 @@ export function createFirebaseTokenRepository(
       }>([
         db
           .prepare(
-            `UPDATE firebase_tokens
-             SET fcm_token = fcm_token || '#legacy:' || firebase_token_id,
-                 is_firebase_active = 0,
-                 updated_at = CURRENT_TIMESTAMP
+            `DELETE FROM firebase_tokens
              WHERE fcm_token = ?
                AND user_id <> ?`
           )

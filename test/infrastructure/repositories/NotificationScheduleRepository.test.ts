@@ -155,6 +155,50 @@ describe('NotificationScheduleRepository', () => {
     ).resolves.toMatchObject({ send_status: 'draft' });
   });
 
+  it('TokenがNULLのScheduleはEntityで表現し、送信候補・claim対象にしない', async () => {
+    const { event, schedule } = await createFixture();
+    await env.DB.prepare(
+      "UPDATE notifications SET notification_type = 'event_reminder' WHERE notification_id = (SELECT notification_id FROM notification_schedules WHERE notification_schedule_id = ?)"
+    )
+      .bind(schedule.notification_schedule_id)
+      .run();
+    await env.DB.prepare(
+      'UPDATE notification_schedules SET firebase_token_id = NULL WHERE notification_schedule_id = ?'
+    )
+      .bind(schedule.notification_schedule_id)
+      .run();
+
+    const drafts = await repository.findDraftsByEvent(event!.event_id);
+    expect(drafts).toEqual([
+      expect.objectContaining({
+        notification_schedule_id: schedule.notification_schedule_id,
+        firebase_token_id: null,
+        send_status: 'draft',
+      }),
+    ]);
+    await expect(
+      repository.findDeliveryCandidateIds(
+        '2026-07-23T09:05:00.000Z',
+        '2026-07-23T09:01:00.000Z',
+        5000
+      )
+    ).resolves.toEqual([]);
+
+    await expect(
+      repository.claimForDelivery(
+        [schedule.notification_schedule_id],
+        '2026-07-23T09:05:00.000Z',
+        '2026-07-23T09:01:00.000Z'
+      )
+    ).resolves.toEqual([]);
+    await expect(
+      readSchedule(schedule.notification_schedule_id)
+    ).resolves.toMatchObject({
+      firebase_token_id: null,
+      send_status: 'draft',
+    });
+  });
+
   it('指定されたdraftをtoken情報付きで一度だけ確保する', async () => {
     const { schedule } = await createFixture();
     const first = await repository.claimForDelivery(

@@ -15,13 +15,16 @@ const migrationQueries = (() => {
 
 const legacyUserName = '0033通知v2移行テスト利用者';
 const legacyNotificationId = 9001;
-const legacyTokenId = 9401;
+const legacyTokenId = 9402;
 const currentOwnerUserName = '0033通知v2移行テスト現在所有者';
-const currentOwnerTokenId = 9402;
+const currentOwnerTokenId = 9401;
+const inactiveOnlyTokenId = 9403;
+const inactiveDuplicateTokenId = 9404;
 const currentOwnerScheduleId = 9502;
-const legacyScheduleId = 9501;
+const legacyScheduleId = 9999;
 
 async function prepareLegacySchema(): Promise<void> {
+
   await env.DB.batch([
     env.DB.prepare('DROP TABLE notification_push_deliveries'),
     env.DB.prepare('DROP TABLE notification_recipients'),
@@ -131,8 +134,8 @@ async function restoreCurrentSchema(): Promise<void> {
     env.DB.prepare('DROP TABLE IF EXISTS notification_push_deliveries'),
     env.DB.prepare('DROP TABLE IF EXISTS notification_recipients'),
     env.DB.prepare('DROP TABLE IF EXISTS notification_audiences'),
-    env.DB.prepare('DROP TABLE notifications'),
     env.DB.prepare('DROP TABLE notification_schedules'),
+    env.DB.prepare('DROP TABLE notifications'),
     env.DB.prepare('DROP TABLE firebase_tokens'),
     env.DB.prepare(
       'ALTER TABLE __migration_0033_current_notifications RENAME TO notifications'
@@ -182,6 +185,19 @@ async function createLegacyRows(): Promise<{
   historyUserId: number;
   currentOwnerUserId: number;
 }> {
+  const inactiveOnlyUser = await env.DB.prepare(
+    'INSERT INTO users (user_name, is_live_active) VALUES (?, 1) RETURNING user_id'
+  )
+    .bind('0033通知v2移行テストinactive専用')
+    .first<{ user_id: number }>();
+  const inactiveDuplicateUser = await env.DB.prepare(
+    'INSERT INTO users (user_name, is_live_active) VALUES (?, 1) RETURNING user_id'
+  )
+    .bind('0033通知v2移行テストinactive重複')
+    .first<{ user_id: number }>();
+  if (!inactiveOnlyUser || !inactiveDuplicateUser) {
+    throw new Error('failed to create inactive token users');
+  }
   const historyUser = await env.DB.prepare(
     'INSERT INTO users (user_name, is_live_active) VALUES (?, 1) RETURNING user_id'
   )
@@ -218,6 +234,20 @@ async function createLegacyRows(): Promise<{
        ) VALUES (?, ?, 2, 'legacy-0033-token', 1,
          '2026-09-02 02:02:03', '2026-09-02 05:05:06', '2026-09-02 08:08:09')`
     ).bind(currentOwnerTokenId, currentOwnerUser.user_id),
+    env.DB.prepare(
+      `INSERT INTO firebase_tokens (
+         firebase_token_id, user_id, platform, fcm_token,
+         is_firebase_active, last_seen_at, created_at, updated_at
+       ) VALUES (?, ?, 2, 'inactive-only-0033-token', 0,
+         '2026-09-02 03:02:03', '2026-09-02 06:05:06', '2026-09-02 09:08:09')`
+    ).bind(inactiveOnlyTokenId, inactiveOnlyUser.user_id),
+    env.DB.prepare(
+      `INSERT INTO firebase_tokens (
+         firebase_token_id, user_id, platform, fcm_token,
+         is_firebase_active, last_seen_at, created_at, updated_at
+       ) VALUES (?, ?, 2, 'inactive-only-0033-token', 0,
+         '2026-09-02 04:02:03', '2026-09-02 07:05:06', '2026-09-02 10:08:09')`
+    ).bind(inactiveDuplicateTokenId, inactiveDuplicateUser.user_id),
     env.DB.prepare(
       `INSERT INTO notification_schedules (
          notification_schedule_id, created_user_id, notification_id,
@@ -265,7 +295,7 @@ describe('0033_create_notification_v2_schema.sql', () => {
       .run();
   });
 
-  it('Legacy行を変換せず保持し、新しいv2構造と制約を作成する', async () => {
+  it('Legacy inactive TokenとScheduleを破棄し、新しいv2構造と制約を作成する', async () => {
     await prepareLegacySchema();
     const { historyUserId, currentOwnerUserId } = await createLegacyRows();
 
@@ -292,17 +322,7 @@ describe('0033_create_notification_v2_schema.sql', () => {
     )
       .bind(legacyScheduleId)
       .first();
-    expect(legacySchedule).toMatchObject({
-      notification_schedule_id: legacyScheduleId,
-      created_user_id: historyUserId,
-      scheduled_by_user_id: null,
-      notification_id: legacyNotificationId,
-      firebase_token_id: legacyTokenId,
-      importance: 3,
-      send_status: 'sent',
-      fcm_message_id: 'legacy-fcm-id',
-      failed_reason: 'legacy-error',
-    });
+    expect(legacySchedule).toBeNull();
 
     const currentSchedule = await env.DB.prepare(
       'SELECT * FROM notification_schedules WHERE notification_schedule_id = ?'
@@ -321,10 +341,15 @@ describe('0033_create_notification_v2_schema.sql', () => {
     const migratedTokens = await env.DB.prepare(
       `SELECT firebase_token_id, user_id, fcm_token, is_firebase_active
        FROM firebase_tokens
-       WHERE firebase_token_id IN (?, ?)
+       WHERE firebase_token_id IN (?, ?, ?, ?)
        ORDER BY firebase_token_id`
     )
-      .bind(legacyTokenId, currentOwnerTokenId)
+      .bind(
+        legacyTokenId,
+        currentOwnerTokenId,
+        inactiveOnlyTokenId,
+        inactiveDuplicateTokenId
+      )
       .all<{
         firebase_token_id: number;
         user_id: number;
@@ -332,12 +357,6 @@ describe('0033_create_notification_v2_schema.sql', () => {
         is_firebase_active: number;
       }>();
     expect(migratedTokens.results).toEqual([
-      {
-        firebase_token_id: legacyTokenId,
-        user_id: historyUserId,
-        fcm_token: 'legacy-0033-token#legacy:9401',
-        is_firebase_active: 0,
-      },
       {
         firebase_token_id: currentOwnerTokenId,
         user_id: currentOwnerUserId,
@@ -367,6 +386,19 @@ describe('0033_create_notification_v2_schema.sql', () => {
         expect.objectContaining({ name: 'push_body', dflt_value: null }),
       ])
     );
+
+    for (const importance of ['low', 'normal', 'high']) {
+      await env.DB.prepare(
+        "INSERT INTO notifications (push_title, push_body, title, body, importance, notification_type) VALUES ('check', 'body', 'check', 'body', ?, 'manual')"
+      )
+        .bind(importance)
+        .run();
+    }
+    await expect(
+      env.DB.prepare(
+        "INSERT INTO notifications (push_title, push_body, title, body, importance, notification_type) VALUES ('invalid', 'body', 'invalid', 'body', 'urgent', 'manual')"
+      ).run()
+    ).rejects.toThrow();
 
     const scheduleColumns = await env.DB.prepare(
       'PRAGMA table_info(notification_schedules)'
@@ -401,6 +433,21 @@ describe('0033_create_notification_v2_schema.sql', () => {
         .bind(historyUserId)
         .run()
     ).rejects.toThrow();
+    const discardedInactiveTokens = await env.DB.prepare(
+      `SELECT COUNT(*) AS count
+       FROM firebase_tokens
+       WHERE firebase_token_id IN (?, ?, ?)`
+    )
+      .bind(legacyTokenId, inactiveOnlyTokenId, inactiveDuplicateTokenId)
+      .first<{ count: number }>();
+    expect(discardedInactiveTokens?.count).toBe(0);
+    const discardedScheduleCount = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM notification_schedules
+       WHERE notification_schedule_id = ?`
+    )
+      .bind(legacyScheduleId)
+      .first<{ count: number }>();
+    expect(discardedScheduleCount?.count).toBe(0);
 
 
     const convertedRows = await env.DB.prepare(
@@ -426,7 +473,7 @@ describe('0033_create_notification_v2_schema.sql', () => {
     )
       .bind(currentOwnerUserId)
       .first<{ firebase_token_id: number }>();
-    expect(newToken?.firebase_token_id).toBeGreaterThan(currentOwnerTokenId);
+    expect(newToken?.firebase_token_id).toBeGreaterThan(inactiveDuplicateTokenId);
 
     const newNotification = await env.DB.prepare(
       `INSERT INTO notifications (
@@ -450,9 +497,7 @@ describe('0033_create_notification_v2_schema.sql', () => {
       .bind(newNotification.notification_id, currentOwnerUserId)
       .first<{ notification_schedule_id: number }>();
     if (!newSchedule) throw new Error('failed to create v2 schedule');
-    expect(newSchedule.notification_schedule_id).toBeGreaterThan(
-      currentOwnerScheduleId
-    );
+    expect(newSchedule.notification_schedule_id).toBeGreaterThan(legacyScheduleId);
 
     const audience = await env.DB.prepare(
       `INSERT INTO notification_audiences (
@@ -463,6 +508,38 @@ describe('0033_create_notification_v2_schema.sql', () => {
       .bind(newSchedule.notification_schedule_id)
       .first<{ notification_audience_id: number }>();
     if (!audience) throw new Error('failed to create v2 audience');
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO notification_audiences (
+           notification_schedule_id, audience_type
+         ) VALUES (?, 'all')`
+      )
+        .bind(newSchedule.notification_schedule_id)
+        .run()
+    ).rejects.toThrow();
+    for (const audienceType of [
+      'class_room',
+      'gathering',
+      'event',
+      'user',
+    ] as const) {
+      await env.DB.prepare(
+        `INSERT INTO notification_audiences (
+           notification_schedule_id, audience_type, target_id
+         ) VALUES (?, ?, 1)`
+      )
+        .bind(newSchedule.notification_schedule_id, audienceType)
+        .run();
+    }
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO notification_audiences (
+           notification_schedule_id, audience_type, target_id
+         ) VALUES (?, 'invalid', 1)`
+      )
+        .bind(newSchedule.notification_schedule_id)
+        .run()
+    ).rejects.toThrow();
 
     await expect(
       env.DB.prepare(
@@ -503,6 +580,32 @@ describe('0033_create_notification_v2_schema.sql', () => {
       .bind(recipient.notification_recipient_id, newToken!.firebase_token_id)
       .first<{ notification_push_delivery_id: number }>();
     if (!delivery) throw new Error('failed to create v2 delivery');
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO notification_push_deliveries (
+           notification_recipient_id, firebase_token_id, platform, status
+         ) VALUES (?, NULL, 0, 'pending')`
+      )
+        .bind(recipient.notification_recipient_id)
+        .run()
+    ).rejects.toThrow();
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO notification_push_deliveries (
+           notification_recipient_id, firebase_token_id, platform, status,
+           attempt_count
+         ) VALUES (?, NULL, 2, 'pending', -1)`
+      )
+        .bind(recipient.notification_recipient_id)
+        .run()
+    ).rejects.toThrow();
+    await expect(
+      env.DB.prepare(
+        'DELETE FROM notifications WHERE notification_id = ?'
+      )
+        .bind(newNotification.notification_id)
+        .run()
+    ).rejects.toThrow();
 
     await expect(
       env.DB.prepare(
@@ -560,5 +663,17 @@ describe('0033_create_notification_v2_schema.sql', () => {
       recipient_count: 0,
       delivery_count: 0,
     });
+
+    await env.DB.prepare(
+      'DELETE FROM notifications WHERE notification_id = ?'
+    )
+      .bind(newNotification.notification_id)
+      .run();
+    const deletedNotification = await env.DB.prepare(
+      'SELECT notification_id FROM notifications WHERE notification_id = ?'
+    )
+      .bind(newNotification.notification_id)
+      .first();
+    expect(deletedNotification).toBeNull();
   });
 });

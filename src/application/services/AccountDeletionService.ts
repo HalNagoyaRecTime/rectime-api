@@ -106,13 +106,10 @@ export function createAccountDeletionService(deps: {
     // ここでは以下のみ処理する。各ステップは対象が無ければ何もしない
     // (冪等)ため、途中で失敗しても同じuserIdで安全に再実行できる。
     //
-    // firebase_tokensを物理削除する前に、それを参照する
-    // notification_schedules(受信履歴)を先に削除する必要がある
-    // (firebase_token_idはNOT NULL外部キーのため)。
+    // Legacy AccountDeletionの現在の個人データ削除方針を維持するため、
+    // firebase_tokensを物理削除する前にnotification_schedules(受信履歴)を削除する。
     //
-    // レビュー指摘(#265): register()の端末付け替え時は、旧所有者の
-    // firebase_tokens行を無効化するだけで残す(notification_schedulesの
-    // FK参照を保つため物理削除できない、という制約上の理由)。一方
+    // register()の所有者変更では旧Token行を物理削除し、参照DeliveryはFKでNULL化する。
     // ここでは、削除対象ユーザーが受信者だった送信履歴を含めて物理削除
     // する。これは制約の都合による結果ではなく、個人データの削除として
     // 意図的に選んだ方針である。#263(データ保持・削除ルール)の起票者に

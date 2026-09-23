@@ -1,5 +1,5 @@
 -- 通知v2のDB基盤を追加するforward migration。
--- 既存の通知履歴はLegacy行として保持し、Audience/Recipient/Deliveryへ変換しない。
+-- Legacy ScheduleはAudience/Recipient/Deliveryへ変換せず、inactive Token参照行は破棄する。
 
 -- firebase_tokensはuser_idのUNIQUEを解除し、fcm_tokenは完全UNIQUEへ戻すため再作成する。
 -- active flagとLegacy indexは旧Repository互換のため#460まで残す。
@@ -60,6 +60,7 @@ CREATE TABLE notifications (
   source_hash TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK (importance IN ('low', 'normal', 'high')),
   CHECK (
     (
       source_type IS NULL
@@ -135,42 +136,20 @@ SELECT
   firebase_token_id,
   user_id,
   platform,
-  CASE
-    -- 旧RepositoryのToken付け替えで生じた重複は、現在所有者を元の値で保持する。
-    -- 履歴行とSchedule FKは削除せず、重複する旧行だけ追跡可能な値へ退避する。
-    WHEN EXISTS (
-      SELECT 1
-      FROM __migration_0033_firebase_tokens candidate
-      WHERE candidate.fcm_token = legacy.fcm_token
-        AND (
-          candidate.is_firebase_active > legacy.is_firebase_active
-          OR (
-            candidate.is_firebase_active = legacy.is_firebase_active
-            AND candidate.firebase_token_id < legacy.firebase_token_id
-          )
-        )
-    ) THEN legacy.fcm_token || '#legacy:' || legacy.firebase_token_id
-    ELSE legacy.fcm_token
-  END,
-  CASE
-    WHEN EXISTS (
-      SELECT 1
-      FROM __migration_0033_firebase_tokens candidate
-      WHERE candidate.fcm_token = legacy.fcm_token
-        AND (
-          candidate.is_firebase_active > legacy.is_firebase_active
-          OR (
-            candidate.is_firebase_active = legacy.is_firebase_active
-            AND candidate.firebase_token_id < legacy.firebase_token_id
-          )
-        )
-    ) THEN 0
-    ELSE is_firebase_active
-  END,
+  fcm_token,
+  is_firebase_active,
   last_seen_at,
   created_at,
   updated_at
-FROM __migration_0033_firebase_tokens legacy;
+FROM __migration_0033_firebase_tokens legacy
+WHERE legacy.is_firebase_active = 1
+  AND NOT EXISTS (
+    SELECT 1
+    FROM __migration_0033_firebase_tokens candidate
+    WHERE candidate.fcm_token = legacy.fcm_token
+      AND candidate.is_firebase_active = 1
+      AND candidate.firebase_token_id < legacy.firebase_token_id
+  );
 
 CREATE INDEX idx_firebase_tokens_user_id
   ON firebase_tokens(user_id);
@@ -185,7 +164,7 @@ CREATE TABLE notification_schedules (
   scheduled_by_user_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
   event_id INTEGER REFERENCES events(event_id) ON DELETE SET NULL,
   notification_id INTEGER NOT NULL
-    REFERENCES notifications(notification_id) ON DELETE CASCADE,
+    REFERENCES notifications(notification_id),
   firebase_token_id INTEGER REFERENCES firebase_tokens(firebase_token_id)
     ON DELETE SET NULL,
   importance INTEGER NOT NULL DEFAULT 2,
@@ -218,19 +197,25 @@ INSERT INTO notification_schedules (
   updated_at
 )
 SELECT
-  notification_schedule_id,
-  created_user_id,
-  event_id,
-  notification_id,
-  firebase_token_id,
-  importance,
-  send_status,
-  fcm_message_id,
-  failed_reason,
-  send_at,
-  created_at,
-  updated_at
-FROM __migration_0033_notification_schedules;
+  legacy.notification_schedule_id,
+  legacy.created_user_id,
+  legacy.event_id,
+  legacy.notification_id,
+  legacy.firebase_token_id,
+  legacy.importance,
+  legacy.send_status,
+  legacy.fcm_message_id,
+  legacy.failed_reason,
+  legacy.send_at,
+  legacy.created_at,
+  legacy.updated_at
+FROM __migration_0033_notification_schedules legacy
+WHERE legacy.firebase_token_id IS NOT NULL
+  AND EXISTS (
+    SELECT 1
+    FROM firebase_tokens token
+    WHERE token.firebase_token_id = legacy.firebase_token_id
+  );
 
 CREATE INDEX idx_notification_schedules_due
   ON notification_schedules(send_status, send_at);
@@ -261,8 +246,11 @@ CREATE TABLE notification_audiences (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CHECK (
-    (audience_type = 'all' AND target_id IS NULL)
-    OR (audience_type <> 'all' AND target_id IS NOT NULL)
+    audience_type IN ('all', 'class_room', 'gathering', 'event', 'user')
+    AND (
+      (audience_type = 'all' AND target_id IS NULL)
+      OR (audience_type <> 'all' AND target_id IS NOT NULL)
+    )
   )
 );
 

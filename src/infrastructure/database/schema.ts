@@ -305,7 +305,7 @@ export const notification_schedules = sqliteTable(
     }),
     notificationId: integer('notification_id')
       .notNull()
-      .references(() => notifications.notificationId, { onDelete: 'cascade' }),
+      .references(() => notifications.notificationId),
     firebaseTokenId: integer('firebase_token_id').references(
       () => firebase_tokens.firebaseTokenId,
       {
@@ -371,6 +371,10 @@ export const notifications = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`),
   },
   table => [
+    check(
+      'ck_notifications_importance',
+      sql`${table.importance} IN ('low', 'normal', 'high')`
+    ),
     uniqueIndex('uq_notifications_source').on(
       table.sourceType,
       table.sourceId,
@@ -415,6 +419,10 @@ export const notification_audiences = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`),
   },
   table => [
+    check(
+      'ck_notification_audiences_type',
+      sql`${table.audienceType} IN ('all', 'class_room', 'gathering', 'event', 'user')`
+    ),
     check(
       'ck_notification_audiences_target',
       sql`(

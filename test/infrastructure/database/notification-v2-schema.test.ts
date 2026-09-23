@@ -44,6 +44,15 @@ async function createSchedule(notificationId: number): Promise<number> {
 describe('通知v2のDB Schema', () => {
   afterEach(async () => {
     await env.DB.prepare(
+      `DELETE FROM notification_schedules
+       WHERE notification_id IN (
+         SELECT notification_id FROM notifications
+         WHERE title LIKE ? OR push_title LIKE ?
+       )`
+    )
+      .bind(testPrefix + '%', testPrefix + '%')
+      .run();
+    await env.DB.prepare(
       `DELETE FROM notifications
        WHERE title LIKE ? OR push_title LIKE ?`
     )
@@ -204,6 +213,26 @@ describe('通知v2のDB Schema', () => {
     const userId = await createUser('複数Token');
     const notificationId = await createNotification(userId);
     const scheduleId = await createSchedule(notificationId);
+    for (const importance of ['low', 'normal', 'high']) {
+      await env.DB.prepare(
+        `INSERT INTO notifications (
+           push_title, push_body, title, body, importance, notification_type
+         ) VALUES (?, 'check body', ?, 'check body', ?, 'notification_general')`
+      )
+        .bind(
+          testPrefix + ' importance check',
+          testPrefix + ' importance check',
+          importance
+        )
+        .run();
+    }
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO notifications (
+           push_title, push_body, title, body, importance, notification_type
+         ) VALUES ('invalid', 'body', 'invalid', 'body', 'urgent', 'notification_general')`
+      ).run()
+    ).rejects.toThrow();
 
     await expect(
       env.DB.prepare(
@@ -244,6 +273,29 @@ describe('通知v2のDB Schema', () => {
       .bind(scheduleId)
       .first<{ notification_audience_id: number }>();
     expect(audience?.notification_audience_id).toBeTypeOf('number');
+    for (const audienceType of [
+      'class_room',
+      'gathering',
+      'event',
+      'user',
+    ] as const) {
+      await env.DB.prepare(
+        `INSERT INTO notification_audiences
+           (notification_schedule_id, audience_type, target_id)
+         VALUES (?, ?, 1)`
+      )
+        .bind(scheduleId, audienceType)
+        .run();
+    }
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO notification_audiences
+           (notification_schedule_id, audience_type, target_id)
+         VALUES (?, 'invalid', 1)`
+      )
+        .bind(scheduleId)
+        .run()
+    ).rejects.toThrow();
 
     await expect(
       env.DB.prepare(
@@ -325,7 +377,7 @@ describe('通知v2のDB Schema', () => {
     expect(androidTokenId).toBeTypeOf('number');
   });
 
-  it('Notificationのsource重複防止とSchedule削除時のCASCADEを持つ', async () => {
+  it('Notification root削除を拒否し、Schedule以下のCASCADEを維持する', async () => {
     const userId = await createUser('source制約');
     const notificationId = await createNotification(userId);
     const scheduleId = await createSchedule(notificationId);
@@ -356,6 +408,32 @@ describe('通知v2のDB Schema', () => {
     )
       .bind(scheduleId, userId)
       .run();
+    const recipient = await env.DB.prepare(
+      `SELECT notification_recipient_id FROM notification_recipients
+       WHERE notification_schedule_id = ? AND user_id = ?`
+    )
+      .bind(scheduleId, userId)
+      .first<{ notification_recipient_id: number }>();
+    if (!recipient) throw new Error('failed to read test recipient');
+    const token = await env.DB.prepare(
+      "INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, 'schema-v2-root-token') RETURNING firebase_token_id"
+    )
+      .bind(userId)
+      .first<{ firebase_token_id: number }>();
+    if (!token) throw new Error('failed to create test token');
+    const delivery = await env.DB.prepare(
+      "INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status) VALUES (?, ?, 2, 'sent') RETURNING notification_push_delivery_id"
+    )
+      .bind(recipient.notification_recipient_id, token.firebase_token_id)
+      .first<{ notification_push_delivery_id: number }>();
+    if (!delivery) throw new Error('failed to create test delivery');
+
+    await expect(
+      env.DB.prepare('DELETE FROM notifications WHERE notification_id = ?')
+        .bind(notificationId)
+        .run()
+    ).rejects.toThrow();
+
     await env.DB.prepare(
       'DELETE FROM notification_schedules WHERE notification_schedule_id = ?'
     )
@@ -370,5 +448,21 @@ describe('通知v2のDB Schema', () => {
       .bind(scheduleId, scheduleId)
       .first<{ audience_count: number; recipient_count: number }>();
     expect(childCounts).toEqual({ audience_count: 0, recipient_count: 0 });
+    const remainingDeliveries = await env.DB.prepare(
+      'SELECT COUNT(*) AS count FROM notification_push_deliveries WHERE notification_recipient_id = ?'
+    )
+      .bind(recipient.notification_recipient_id)
+      .first<{ count: number }>();
+    expect(remainingDeliveries?.count).toBe(0);
+
+    await env.DB.prepare('DELETE FROM notifications WHERE notification_id = ?')
+      .bind(notificationId)
+      .run();
+    const deletedNotification = await env.DB.prepare(
+      'SELECT notification_id FROM notifications WHERE notification_id = ?'
+    )
+      .bind(notificationId)
+      .first();
+    expect(deletedNotification).toBeNull();
   });
 });
