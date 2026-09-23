@@ -19,11 +19,10 @@ function buildExecutionContext(): {
 
 // index.tsのscheduledハンドラは、通知配信Cron('* * * * *')とアカウント
 // 削除の後片付け再実行Cron('0 18 * * *', #345)をevent.cronの値で
-// 区別する。ここではCron式の分岐が正しく行われることだけを確認する。
-// AccountDeletionService.retryPendingPurges自体の詳細な挙動は
+// 区別する。AccountDeletionService.retryPendingPurges自体の詳細な挙動は
 // AccountDeletionService.test.tsで検証済み。
-describe('scheduled handler (#345 account deletion purge retry cron)', () => {
-  it('event.cronが"0 18 * * *"の場合、EVENT_DATE未設定でもretryPendingPurgesが呼ばれる', async () => {
+describe('scheduled handler', () => {
+  it('account deletion retry cronはEVENT_DATE未設定でもpurgeを再実行する', async () => {
     const container = await import('../src/di/container');
     const retryPendingPurges = vi.fn().mockResolvedValue({
       targetCount: 0,
@@ -50,11 +49,21 @@ describe('scheduled handler (#345 account deletion purge retry cron)', () => {
     createDIContainerSpy.mockRestore();
   });
 
-  it('event.cronが通知配信用("* * * * *")の場合、retryPendingPurgesは呼ばれない', async () => {
+  it('通知cronはEVENT_DATE未設定でもv2 Audience Resolverを起動する', async () => {
     const container = await import('../src/di/container');
-    const createDIContainerSpy = vi.spyOn(container, 'createDIContainer');
+    const resolveDueSchedules = vi.fn().mockResolvedValue({
+      completed_schedules: [],
+      failed_schedule_ids: [],
+    });
+    const enqueueDueNotifications = vi.fn();
+    const createDIContainerSpy = vi
+      .spyOn(container, 'createDIContainer')
+      .mockReturnValue({
+        notificationAudienceResolverService: { resolveDueSchedules },
+        scheduledNotificationService: { enqueueDueNotifications },
+      } as unknown as ReturnType<typeof container.createDIContainer>);
 
-    const { ctx } = buildExecutionContext();
+    const { ctx, waitUntilPromises } = buildExecutionContext();
     const event = {
       cron: '* * * * *',
       scheduledTime: Date.now(),
@@ -62,11 +71,12 @@ describe('scheduled handler (#345 account deletion purge retry cron)', () => {
     } as unknown as ScheduledEvent;
 
     await worker.scheduled(event, { ...workerEnv, EVENT_DATE: '' }, ctx);
+    await Promise.all(waitUntilPromises);
 
-    // EVENT_DATE未設定のため、通知配信経路はDIコンテナすら作らずに
-    // 早期リターンする(既存挙動)。アカウント削除の後片付け再実行経路にも
-    // 入らないことを確認する。
-    expect(createDIContainerSpy).not.toHaveBeenCalled();
+    expect(resolveDueSchedules).toHaveBeenCalledWith(
+      new Date(event.scheduledTime)
+    );
+    expect(enqueueDueNotifications).not.toHaveBeenCalled();
     createDIContainerSpy.mockRestore();
   });
 });
