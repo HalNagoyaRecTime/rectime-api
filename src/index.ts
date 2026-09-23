@@ -479,6 +479,20 @@ export default {
       return;
     }
 
+    const scheduledAt = new Date(event.scheduledTime);
+    const container = createDIContainer(env);
+    ctx.waitUntil(
+      container.notificationAudienceResolverService
+        .resolveDueSchedules(scheduledAt)
+        .then(result => {
+          if (result.failed_schedule_ids.length > 0) {
+            console.error('[CRON] Notification Audience解決に失敗しました', {
+              scheduleIds: result.failed_schedule_ids,
+            });
+          }
+        })
+    );
+
     if (!isValidEventDate(env.EVENT_DATE)) {
       if (!eventDateWarnLogged) {
         console.error(
@@ -488,11 +502,8 @@ export default {
       }
       return;
     }
-
-    const scheduledAt = new Date(event.scheduledTime);
     if (!isEventDate(env.EVENT_DATE, scheduledAt)) return;
 
-    const container = createDIContainer(env);
     ctx.waitUntil(
       container.scheduledNotificationService.enqueueDueNotifications(
         scheduledAt
