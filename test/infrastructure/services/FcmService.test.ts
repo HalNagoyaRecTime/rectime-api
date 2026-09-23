@@ -456,6 +456,28 @@ describe('FcmService', () => {
       );
     });
 
+    it.each([
+      { missingKey: 'FIREBASE_PROJECT_ID', overrides: { projectId: '' } },
+      { missingKey: 'FIREBASE_CLIENT_EMAIL', overrides: { clientEmail: '' } },
+      { missingKey: 'FIREBASE_PRIVATE_KEY', overrides: { privateKey: '' } },
+    ])(
+      '$missingKey が不足している場合は送信前に Missing Cloudflare Secrets エラーを投げる',
+      async ({ missingKey, overrides }) => {
+        const fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
+
+        const service = createFcmService(buildConfig(overrides));
+
+        await expect(
+          service.sendNotificationToToken({
+            token: 'device-token',
+            title: 'タイトル',
+            body: '本文',
+          })
+        ).rejects.toThrow(`Missing Cloudflare Secrets: ${missingKey}`);
+        expect(fetchMock).not.toHaveBeenCalled();
+      }
+    );
     it('通常送信では TEST_FCM_TOKEN が未設定でも送信できる', async () => {
       const fetchMock = vi
         .fn()
