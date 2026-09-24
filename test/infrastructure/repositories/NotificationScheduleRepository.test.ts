@@ -224,6 +224,40 @@ describe('NotificationScheduleRepository', () => {
     expect(second).toEqual([]);
   });
 
+  it('claim直後にTokenが削除されてもsendingのまま残さない', async () => {
+    const { schedule } = await createFixture();
+
+    await env.DB.prepare(
+      `CREATE TRIGGER test_delete_token_after_claim
+       AFTER UPDATE OF send_status ON notification_schedules
+       WHEN NEW.send_status = 'sending'
+       BEGIN
+         DELETE FROM firebase_tokens
+         WHERE firebase_token_id = NEW.firebase_token_id;
+       END`
+    ).run();
+
+    try {
+      await expect(
+        repository.claimForDelivery(
+          [schedule.notification_schedule_id],
+          '2026-07-23T09:05:00.000Z',
+          '2026-07-23T09:01:00.000Z'
+        )
+      ).resolves.toEqual([]);
+
+      await expect(
+        readSchedule(schedule.notification_schedule_id)
+      ).resolves.toMatchObject({
+        send_status: 'failed',
+        firebase_token_id: null,
+        failed_reason: 'Firebase token was removed after delivery claim',
+      });
+    } finally {
+      await env.DB.prepare('DROP TRIGGER test_delete_token_after_claim').run();
+    }
+  });
+
   it('宛先Userが無効化済みなら確保した予定にその状態を含める', async () => {
     const { user, schedule } = await createFixture();
     await env.DB.prepare(
