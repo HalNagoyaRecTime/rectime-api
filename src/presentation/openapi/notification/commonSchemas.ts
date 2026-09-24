@@ -84,6 +84,33 @@ export const notificationAudienceInputSchema = z
     items: z.array(notificationAudienceInputItemSchema).min(1),
   })
   .strict()
+  .superRefine((value, context) => {
+    const seen = new Set<string>();
+
+    value.items.forEach((item, index) => {
+      const key =
+        item.type === 'all' ? item.type : `${item.type}:${item.targetId}`;
+      if (seen.has(key)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: '同じ通知対象を重複して指定できません',
+          path: ['items', index],
+        });
+      }
+      seen.add(key);
+    });
+
+    if (
+      value.items.length > 1 &&
+      value.items.some(item => item.type === 'all')
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'allは他の通知対象と同時に指定できません',
+        path: ['items'],
+      });
+    }
+  })
   .openapi('NotificationAudienceInput');
 
 export const notificationAudienceItemSchema = z

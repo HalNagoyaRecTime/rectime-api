@@ -12,6 +12,7 @@ import {
 } from '../../../src/domain/entities/Notification';
 import {
   notificationAudienceInputItemSchema,
+  notificationAudienceInputSchema,
   notificationAudienceItemSchema,
   notificationAudienceSchema,
   notificationContentPatchSchema,
@@ -91,6 +92,36 @@ describe('通知契約のRequest schema', () => {
     ).toBe(true);
     expect(
       notificationAudienceSchema.safeParse({ items: [{ type: 'all' }] }).success
+    ).toBe(true);
+  });
+
+  it('Audienceは重複を拒否し、allは単独指定だけを許可する', () => {
+    expect(
+      notificationAudienceInputSchema.safeParse({
+        items: [
+          { type: 'class_room', targetId: 1 },
+          { type: 'class_room', targetId: 1 },
+        ],
+      }).success
+    ).toBe(false);
+    expect(
+      notificationAudienceInputSchema.safeParse({
+        items: [{ type: 'all' }, { type: 'user', targetId: 3 }],
+      }).success
+    ).toBe(false);
+    expect(
+      notificationAudienceInputSchema.safeParse({
+        items: [
+          { type: 'class_room', targetId: 1 },
+          { type: 'class_room', targetId: 2 },
+          { type: 'user', targetId: 3 },
+        ],
+      }).success
+    ).toBe(true);
+    expect(
+      notificationAudienceInputSchema.safeParse({
+        items: [{ type: 'all' }],
+      }).success
     ).toBe(true);
   });
 
