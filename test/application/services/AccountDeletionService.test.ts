@@ -82,7 +82,9 @@ function buildDeps() {
     findActiveTokens: vi.fn(),
     deactivate: vi.fn(),
     deactivateByUserId: vi.fn(),
-    findByUserId: vi.fn().mockResolvedValue(null),
+    findByUserId: vi.fn(),
+    findAllByUserId: vi.fn().mockResolvedValue([]),
+    deleteOwnedById: vi.fn(),
     deleteByUserId: vi.fn(),
   };
 
@@ -150,7 +152,7 @@ describe('createAccountDeletionService', () => {
 
       await service.deleteRelatedData('10');
 
-      expect(deps.firebaseTokenRepository.findByUserId).toHaveBeenCalledWith(
+      expect(deps.firebaseTokenRepository.findAllByUserId).toHaveBeenCalledWith(
         10
       );
       expect(
@@ -164,17 +166,29 @@ describe('createAccountDeletionService', () => {
     it('firebase_tokensが存在する場合、通知履歴を先に削除してからToken本体を削除する', async () => {
       const deps = buildDeps();
       (
-        deps.firebaseTokenRepository.findByUserId as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        firebase_token_id: 5,
-        user_id: 10,
-        platform: 2,
-        fcm_token: 'token-x',
-        is_firebase_active: 0,
-        last_seen_at: '2026-01-01 00:00:00',
-        created_at: '2026-01-01 00:00:00',
-        updated_at: '2026-01-01 00:00:00',
-      });
+        deps.firebaseTokenRepository.findAllByUserId as ReturnType<typeof vi.fn>
+      ).mockResolvedValue([
+        {
+          firebase_token_id: 5,
+          user_id: 10,
+          platform: 2,
+          fcm_token: 'token-x',
+          is_firebase_active: 0,
+          last_seen_at: '2026-01-01 00:00:00',
+          created_at: '2026-01-01 00:00:00',
+          updated_at: '2026-01-01 00:00:00',
+        },
+        {
+          firebase_token_id: 6,
+          user_id: 10,
+          platform: 1,
+          fcm_token: 'token-y',
+          is_firebase_active: 1,
+          last_seen_at: '2026-01-01 00:00:00',
+          created_at: '2026-01-01 00:00:00',
+          updated_at: '2026-01-01 00:00:00',
+        },
+      ]);
       const callOrder: string[] = [];
       (
         deps.notificationScheduleRepository
@@ -193,13 +207,20 @@ describe('createAccountDeletionService', () => {
 
       expect(
         deps.notificationScheduleRepository.deleteByFirebaseTokenId
-      ).toHaveBeenCalledWith(5);
+      ).toHaveBeenNthCalledWith(1, 5);
+      expect(
+        deps.notificationScheduleRepository.deleteByFirebaseTokenId
+      ).toHaveBeenNthCalledWith(2, 6);
       expect(deps.firebaseTokenRepository.deleteByUserId).toHaveBeenCalledWith(
         10
       );
-      // notification_schedulesの削除がfirebase_tokens削除より先に実行される
-      // (firebase_token_idはNOT NULL外部キーのため)。
-      expect(callOrder).toEqual(['deleteByFirebaseTokenId', 'deleteByUserId']);
+      // Legacy AccountDeletion方針として、通知スケジュールを先に消してからTokenを削除する。
+
+      expect(callOrder).toEqual([
+        'deleteByFirebaseTokenId',
+        'deleteByFirebaseTokenId',
+        'deleteByUserId',
+      ]);
     });
 
     it('通知の作成者情報をNULL化する', async () => {
@@ -299,17 +320,19 @@ describe('createAccountDeletionService', () => {
         deps.studentRepository.anonymizeByUserId as ReturnType<typeof vi.fn>
       ).mockResolvedValue(false);
       (
-        deps.firebaseTokenRepository.findByUserId as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        firebase_token_id: 5,
-        user_id: 10,
-        platform: 2,
-        fcm_token: 'token-x',
-        is_firebase_active: 0,
-        last_seen_at: '2026-01-01 00:00:00',
-        created_at: '2026-01-01 00:00:00',
-        updated_at: '2026-01-01 00:00:00',
-      });
+        deps.firebaseTokenRepository.findAllByUserId as ReturnType<typeof vi.fn>
+      ).mockResolvedValue([
+        {
+          firebase_token_id: 5,
+          user_id: 10,
+          platform: 2,
+          fcm_token: 'token-x',
+          is_firebase_active: 0,
+          last_seen_at: '2026-01-01 00:00:00',
+          created_at: '2026-01-01 00:00:00',
+          updated_at: '2026-01-01 00:00:00',
+        },
+      ]);
       const consoleLogSpy = vi
         .spyOn(console, 'log')
         .mockImplementation(() => {});

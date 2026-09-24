@@ -86,7 +86,10 @@ import {
   legacyAdminNotificationListRoute,
   legacyAdminNotificationUpdateRoute,
 } from './presentation/openapi/notification/legacy/admin';
-import { firebaseTokenCreateRoute } from './presentation/openapi/notification/legacy/firebaseTokens';
+import {
+  firebaseTokenDeleteRoute,
+  firebaseTokenRegistrationRoute,
+} from './presentation/openapi/notification/firebaseTokens';
 import {
   myNotificationDetailRoute,
   myNotificationListRoute,
@@ -360,8 +363,11 @@ apiV1.openapi(staffOnly(gatheringListRoute), c => {
 });
 
 // Firebase token routes
-apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
+apiV1.openapi(authed(firebaseTokenRegistrationRoute), c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
+});
+apiV1.openapi(authed(firebaseTokenDeleteRoute), c => {
+  return c.get('container').firebaseTokenController.deleteFirebaseToken(c);
 });
 
 // Notification routes
