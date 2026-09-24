@@ -128,9 +128,9 @@ describe('通知契約のRequest schema', () => {
 
   it('Requestはoffset付き日時を許容し、Response日時はUTC Zに固定する', () => {
     expect(notificationUtcDateTimeSchema.safeParse(date).success).toBe(true);
-    expect(
-      notificationUtcDateTimeSchema.safeParse(offsetDate).success
-    ).toBe(false);
+    expect(notificationUtcDateTimeSchema.safeParse(offsetDate).success).toBe(
+      false
+    );
     expect(
       notificationUtcDateTimeSchema.safeParse('2026-11-07 06:35:00').success
     ).toBe(false);
