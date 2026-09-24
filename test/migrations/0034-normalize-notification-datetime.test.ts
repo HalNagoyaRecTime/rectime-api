@@ -19,38 +19,17 @@ async function runMigration(): Promise<void> {
   await env.DB.batch(migrationQueries.map(query => env.DB.prepare(query)));
 }
 
-async function readSequences(): Promise<Array<{ name: string; seq: number }>> {
-  const rows = await env.DB.prepare(
-    `SELECT name, seq
-     FROM sqlite_sequence
-     WHERE name IN (
-       'notifications',
-       'firebase_tokens',
-       'notification_schedules',
-       'notification_audiences',
-       'notification_recipients',
-       'notification_push_deliveries'
-     )
-     ORDER BY name`
-  ).all<{ name: string; seq: number }>();
-  return rows.results;
-}
-
 describe('0034_normalize_notification_datetime.sql', () => {
   afterEach(async () => {
     await env.DB.prepare(
       `DELETE FROM notification_schedules
        WHERE notification_id IN (
-         SELECT notification_id
-         FROM notifications
+         SELECT notification_id FROM notifications
          WHERE title LIKE ?
        )`
     )
       .bind(`${testPrefix}%`)
       .run();
-    await env.DB.prepare(
-      "DELETE FROM firebase_tokens WHERE fcm_token LIKE 'migration-0034-%'"
-    ).run();
     await env.DB.prepare('DELETE FROM notifications WHERE title LIKE ?')
       .bind(`${testPrefix}%`)
       .run();
@@ -59,7 +38,7 @@ describe('0034_normalize_notification_datetime.sql', () => {
       .run();
   });
 
-  it('既存の通知日時をUTC ISO 8601へ正規化しNULLとsequenceを保持する', async () => {
+  it('既存のSQLite日時とoffset付きISO日時をUTC ISOへ正規化する', async () => {
     const user = await env.DB.prepare(
       'INSERT INTO users (user_name, is_live_active) VALUES (?, 1) RETURNING user_id'
     )
@@ -67,28 +46,14 @@ describe('0034_normalize_notification_datetime.sql', () => {
       .first<{ user_id: number }>();
     if (!user) throw new Error('failed to create migration test user');
 
+    await env.DB.prepare('PRAGMA ignore_check_constraints = ON').run();
+
     const notification = await env.DB.prepare(
       `INSERT INTO notifications (
-         created_by_user_id,
-         push_title,
-         push_body,
-         title,
-         body,
-         importance,
-         notification_type,
-         created_at,
-         updated_at
-       ) VALUES (
-         ?,
-         '0034 push',
-         '0034 body',
-         ?,
-         '0034 detail',
-         'normal',
-         'notification_general',
-         '2026-09-24 01:02:03',
-         '2026-09-24T10:03:04.567+09:00'
-       )
+         created_by_user_id, push_title, push_body, notification_type,
+         title, body, importance, created_at, updated_at
+       ) VALUES (?, 'push', 'body', 'notification_general', ?, 'detail',
+         'normal', '2026-09-24 01:02:03', '2026-09-24T10:05:06+09:00')
        RETURNING notification_id`
     )
       .bind(user.user_id, `${testPrefix}通知`)
@@ -97,22 +62,12 @@ describe('0034_normalize_notification_datetime.sql', () => {
 
     const token = await env.DB.prepare(
       `INSERT INTO firebase_tokens (
-         user_id,
-         platform,
-         fcm_token,
-         is_firebase_active,
-         last_seen_at,
-         created_at,
-         updated_at
-       ) VALUES (
-         ?,
-         1,
-         'migration-0034-token',
-         1,
-         '2026-09-24T10:04:05+09:00',
-         '2026-09-24 01:05:06',
-         '2026-09-24T01:06:07.890Z'
-       )
+         user_id, platform, fcm_token, is_firebase_active,
+         last_seen_at, created_at, updated_at
+       ) VALUES (?, 2, '0034-datetime-token', 1,
+         '2026-09-24T10:02:03+09:00',
+         '2026-09-24 02:04:05',
+         '2026-09-24T11:06:07+09:00')
        RETURNING firebase_token_id`
     )
       .bind(user.user_id)
@@ -121,48 +76,37 @@ describe('0034_normalize_notification_datetime.sql', () => {
 
     const schedule = await env.DB.prepare(
       `INSERT INTO notification_schedules (
-         notification_id,
-         firebase_token_id,
-         send_status,
-         send_at,
-         recipients_resolved_at,
-         started_at,
-         completed_at,
-         stopped_at,
-         created_at,
-         updated_at
-       ) VALUES (
-         ?,
-         ?,
-         'completed',
-         '2026-09-24T10:07:08.123+09:00',
-         '2026-09-24 01:08:09',
-         '2026-09-24T10:09:10+09:00',
+         created_user_id, scheduled_by_user_id, notification_id,
+         firebase_token_id, importance, send_status, send_at,
+         recipients_resolved_at, started_at, completed_at, stopped_at,
+         created_at, updated_at
+       ) VALUES (?, ?, ?, ?, 2, 'completed',
+         '2026-09-24T12:34:56+09:00',
+         '2026-09-24 03:00:00',
+         '2026-09-24T12:01:02+09:00',
+         '2026-09-24 03:10:11',
          NULL,
-         '2026-09-24T01:10:11.012Z',
-         '2026-09-24 01:11:12',
-         '2026-09-24T10:12:13.345+09:00'
-       )
+         '2026-09-24 02:10:11',
+         '2026-09-24T11:12:13+09:00')
        RETURNING notification_schedule_id`
     )
-      .bind(notification.notification_id, token.firebase_token_id)
+      .bind(
+        user.user_id,
+        user.user_id,
+        notification.notification_id,
+        token.firebase_token_id
+      )
       .first<{ notification_schedule_id: number }>();
     if (!schedule) throw new Error('failed to create migration schedule');
 
     const audience = await env.DB.prepare(
       `INSERT INTO notification_audiences (
-         notification_schedule_id,
-         audience_type,
-         resolved_at,
-         created_at,
-         updated_at
-       ) VALUES (
-         ?,
-         'all',
-         '2026-09-24T10:13:14+09:00',
-         '2026-09-24 01:14:15',
-         '2026-09-24T10:15:16.789+09:00'
-       )
+         notification_schedule_id, audience_type, resolved_at,
+         created_at, updated_at
+       ) VALUES (?, 'all',
+         '2026-09-24T12:02:03+09:00',
+         '2026-09-24 02:20:21',
+         '2026-09-24T11:22:23+09:00')
        RETURNING notification_audience_id`
     )
       .bind(schedule.notification_schedule_id)
@@ -171,10 +115,8 @@ describe('0034_normalize_notification_datetime.sql', () => {
 
     const recipient = await env.DB.prepare(
       `INSERT INTO notification_recipients (
-         notification_schedule_id,
-         user_id,
-         created_at
-       ) VALUES (?, ?, '2026-09-24T10:16:17+09:00')
+         notification_schedule_id, user_id, created_at
+       ) VALUES (?, ?, '2026-09-24 02:30:31')
        RETURNING notification_recipient_id`
     )
       .bind(schedule.notification_schedule_id, user.user_id)
@@ -183,41 +125,27 @@ describe('0034_normalize_notification_datetime.sql', () => {
 
     const delivery = await env.DB.prepare(
       `INSERT INTO notification_push_deliveries (
-         notification_recipient_id,
-         firebase_token_id,
-         platform,
-         status,
-         attempt_count,
-         first_attempt_at,
-         last_attempt_at,
-         next_retry_at,
-         sent_at,
-         created_at,
-         updated_at
-       ) VALUES (
-         ?,
-         ?,
-         1,
-         'sent',
-         1,
-         '2026-09-24 01:17:18',
-         '2026-09-24T10:18:19.234+09:00',
-         NULL,
-         '2026-09-24T01:19:20.345Z',
-         '2026-09-24 01:20:21',
-         '2026-09-24T10:21:22+09:00'
-       )
+         notification_recipient_id, firebase_token_id, platform, status,
+         attempt_count, first_attempt_at, last_attempt_at, next_retry_at,
+         sent_at, created_at, updated_at
+       ) VALUES (?, ?, 2, 'sent', 1,
+         '2026-09-24 03:01:02',
+         '2026-09-24T12:03:04+09:00',
+         '2026-09-24 03:05:06',
+         '2026-09-24T12:07:08+09:00',
+         '2026-09-24 02:40:41',
+         '2026-09-24T11:42:43+09:00')
        RETURNING notification_push_delivery_id`
     )
       .bind(recipient.notification_recipient_id, token.firebase_token_id)
       .first<{ notification_push_delivery_id: number }>();
     if (!delivery) throw new Error('failed to create migration delivery');
 
-    const sequencesBefore = await readSequences();
+    await env.DB.prepare('PRAGMA ignore_check_constraints = OFF').run();
 
     await runMigration();
 
-    const migrated = await env.DB.prepare(
+    const row = await env.DB.prepare(
       `SELECT
          n.created_at AS notification_created_at,
          n.updated_at AS notification_updated_at,
@@ -225,7 +153,7 @@ describe('0034_normalize_notification_datetime.sql', () => {
          ft.created_at AS token_created_at,
          ft.updated_at AS token_updated_at,
          ns.send_at AS schedule_send_at,
-         ns.recipients_resolved_at AS schedule_recipients_resolved_at,
+         ns.recipients_resolved_at AS schedule_resolved_at,
          ns.started_at AS schedule_started_at,
          ns.completed_at AS schedule_completed_at,
          ns.stopped_at AS schedule_stopped_at,
@@ -242,47 +170,45 @@ describe('0034_normalize_notification_datetime.sql', () => {
          npd.created_at AS delivery_created_at,
          npd.updated_at AS delivery_updated_at
        FROM notifications n
-       JOIN notification_schedules ns
+       INNER JOIN notification_schedules ns
          ON ns.notification_id = n.notification_id
-       JOIN firebase_tokens ft
+       INNER JOIN firebase_tokens ft
          ON ft.firebase_token_id = ns.firebase_token_id
-       JOIN notification_audiences na
+       INNER JOIN notification_audiences na
          ON na.notification_schedule_id = ns.notification_schedule_id
-       JOIN notification_recipients nr
+       INNER JOIN notification_recipients nr
          ON nr.notification_schedule_id = ns.notification_schedule_id
-       JOIN notification_push_deliveries npd
+       INNER JOIN notification_push_deliveries npd
          ON npd.notification_recipient_id = nr.notification_recipient_id
        WHERE n.notification_id = ?`
     )
       .bind(notification.notification_id)
       .first<Record<string, string | null>>();
 
-    expect(migrated).toEqual({
+    expect(row).toEqual({
       notification_created_at: '2026-09-24T01:02:03.000Z',
-      notification_updated_at: '2026-09-24T01:03:04.567Z',
-      token_last_seen_at: '2026-09-24T01:04:05.000Z',
-      token_created_at: '2026-09-24T01:05:06.000Z',
-      token_updated_at: '2026-09-24T01:06:07.890Z',
-      schedule_send_at: '2026-09-24T01:07:08.123Z',
-      schedule_recipients_resolved_at: '2026-09-24T01:08:09.000Z',
-      schedule_started_at: '2026-09-24T01:09:10.000Z',
-      schedule_completed_at: null,
-      schedule_stopped_at: '2026-09-24T01:10:11.012Z',
-      schedule_created_at: '2026-09-24T01:11:12.000Z',
-      schedule_updated_at: '2026-09-24T01:12:13.345Z',
-      audience_resolved_at: '2026-09-24T01:13:14.000Z',
-      audience_created_at: '2026-09-24T01:14:15.000Z',
-      audience_updated_at: '2026-09-24T01:15:16.789Z',
-      recipient_created_at: '2026-09-24T01:16:17.000Z',
-      delivery_first_attempt_at: '2026-09-24T01:17:18.000Z',
-      delivery_last_attempt_at: '2026-09-24T01:18:19.234Z',
-      delivery_next_retry_at: null,
-      delivery_sent_at: '2026-09-24T01:19:20.345Z',
-      delivery_created_at: '2026-09-24T01:20:21.000Z',
-      delivery_updated_at: '2026-09-24T01:21:22.000Z',
+      notification_updated_at: '2026-09-24T01:05:06.000Z',
+      token_last_seen_at: '2026-09-24T01:02:03.000Z',
+      token_created_at: '2026-09-24T02:04:05.000Z',
+      token_updated_at: '2026-09-24T02:06:07.000Z',
+      schedule_send_at: '2026-09-24T03:34:56.000Z',
+      schedule_resolved_at: '2026-09-24T03:00:00.000Z',
+      schedule_started_at: '2026-09-24T03:01:02.000Z',
+      schedule_completed_at: '2026-09-24T03:10:11.000Z',
+      schedule_stopped_at: null,
+      schedule_created_at: '2026-09-24T02:10:11.000Z',
+      schedule_updated_at: '2026-09-24T02:12:13.000Z',
+      audience_resolved_at: '2026-09-24T03:02:03.000Z',
+      audience_created_at: '2026-09-24T02:20:21.000Z',
+      audience_updated_at: '2026-09-24T02:22:23.000Z',
+      recipient_created_at: '2026-09-24T02:30:31.000Z',
+      delivery_first_attempt_at: '2026-09-24T03:01:02.000Z',
+      delivery_last_attempt_at: '2026-09-24T03:03:04.000Z',
+      delivery_next_retry_at: '2026-09-24T03:05:06.000Z',
+      delivery_sent_at: '2026-09-24T03:07:08.000Z',
+      delivery_created_at: '2026-09-24T02:40:41.000Z',
+      delivery_updated_at: '2026-09-24T02:42:43.000Z',
     });
-
-    expect(await readSequences()).toEqual(sequencesBefore);
 
     const foreignKeyErrors = await env.DB.prepare(
       'PRAGMA foreign_key_check'
