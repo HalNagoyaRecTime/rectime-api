@@ -12,6 +12,15 @@ import {
 } from '../../../domain/entities/Notification';
 import { isoDateTimeSchema, z } from '../schemas';
 
+/**
+ * 通知v2のHTTP Response日時はUTCのISO 8601（Z・ミリ秒3桁）で統一する。
+ * RequestではisoDateTimeSchemaを使いoffset付きISO 8601も受け付ける。
+ */
+export const notificationUtcDateTimeSchema = z
+  .string()
+  .datetime({ offset: false, precision: 3 })
+  .openapi('NotificationUtcDateTime');
+
 export const notificationStatusSchemas = {
   schedule: z
     .enum(NOTIFICATION_SCHEDULE_STATUSES)
@@ -178,7 +187,7 @@ export const notificationCreationSchema = z
 export const notificationStopSchema = z
   .object({
     reason: z.enum(NOTIFICATION_STOP_REASONS),
-    stoppedAt: isoDateTimeSchema,
+    stoppedAt: notificationUtcDateTimeSchema,
     stoppedBy: notificationUserReferenceSchema.nullable(),
   })
   .strict()
@@ -212,11 +221,11 @@ export const notificationScheduleAudienceSchema = notificationAudienceSchema
 export const notificationScheduleSummarySchema = z
   .object({
     notificationScheduleId: z.number().int().positive(),
-    sendAt: isoDateTimeSchema,
+    sendAt: notificationUtcDateTimeSchema,
     status: notificationStatusSchemas.schedule,
     stop: notificationStopSchema.nullable(),
     scheduledBy: notificationUserReferenceSchema.nullable(),
-    createdAt: isoDateTimeSchema,
+    createdAt: notificationUtcDateTimeSchema,
     audience: notificationScheduleAudienceSchema,
     recipientPushSummary: notificationRecipientPushSummarySchema,
   })
@@ -226,10 +235,10 @@ export const notificationScheduleSummarySchema = z
 export const adminNotificationScheduleListItemSchema = z
   .object({
     notificationScheduleId: z.number().int().positive(),
-    sendAt: isoDateTimeSchema,
+    sendAt: notificationUtcDateTimeSchema,
     status: notificationStatusSchemas.schedule,
     scheduledBy: notificationUserReferenceSchema.nullable(),
-    createdAt: isoDateTimeSchema,
+    createdAt: notificationUtcDateTimeSchema,
     audience: notificationScheduleAudienceSchema,
     recipientPushSummary: notificationRecipientPushSummarySchema,
   })
@@ -242,7 +251,7 @@ export const notificationScheduleListItemSchema = z
     notificationScheduleId: z.number().int().positive(),
     content: notificationContentPushOnlySchema,
     importance: notificationImportanceSchema,
-    sendAt: isoDateTimeSchema,
+    sendAt: notificationUtcDateTimeSchema,
     status: notificationStatusSchemas.schedule,
     stop: notificationStopSchema.nullable(),
     creation: notificationCreationSchema,
@@ -285,7 +294,7 @@ export const notificationScheduleDetailSchema = z
     notificationScheduleId: z.number().int().positive(),
     content: notificationContentPushOnlySchema,
     importance: notificationImportanceSchema,
-    sendAt: isoDateTimeSchema,
+    sendAt: notificationUtcDateTimeSchema,
     status: notificationStatusSchemas.schedule,
     stop: notificationStopSchema.nullable(),
     creation: notificationCreationSchema,
@@ -304,10 +313,10 @@ export const notificationPushDeliveryDetailSchema = z
     platform: z.enum(['ios', 'android']),
     status: notificationStatusSchemas.pushDelivery,
     attemptCount: z.number().int().nonnegative(),
-    firstAttemptAt: isoDateTimeSchema.nullable(),
-    lastAttemptAt: isoDateTimeSchema.nullable(),
-    nextRetryAt: isoDateTimeSchema.nullable(),
-    sentAt: isoDateTimeSchema.nullable(),
+    firstAttemptAt: notificationUtcDateTimeSchema.nullable(),
+    lastAttemptAt: notificationUtcDateTimeSchema.nullable(),
+    nextRetryAt: notificationUtcDateTimeSchema.nullable(),
+    sentAt: notificationUtcDateTimeSchema.nullable(),
     failedReason: z.string().nullable(),
     fcmMessageId: z.string().nullable(),
   })
@@ -320,8 +329,8 @@ export const notificationRecipientResultDeliverySchema = z
     platform: z.enum(['ios', 'android']),
     status: notificationStatusSchemas.pushDelivery,
     attemptCount: z.number().int().nonnegative(),
-    lastAttemptAt: isoDateTimeSchema.nullable(),
-    sentAt: isoDateTimeSchema.nullable(),
+    lastAttemptAt: notificationUtcDateTimeSchema.nullable(),
+    sentAt: notificationUtcDateTimeSchema.nullable(),
   })
   .strict()
   .openapi('NotificationRecipientResultDelivery');

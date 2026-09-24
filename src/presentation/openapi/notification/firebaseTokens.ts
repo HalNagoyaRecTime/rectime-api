@@ -2,7 +2,6 @@ import { createRoute } from '@hono/zod-openapi';
 import {
   bearerAuth,
   internalServerErrorResponse,
-  isoDateTimeSchema,
   jsonResponse,
   noContentResponse,
   positivePathParam,
@@ -14,6 +13,7 @@ import {
   notificationBadRequestResponse,
   notificationUnauthorizedResponse,
 } from './errors';
+import { notificationUtcDateTimeSchema } from './commonSchemas';
 
 export const firebaseTokenRegistrationRequestSchema = z
   .object({
@@ -28,7 +28,7 @@ export const firebaseTokenSchema = z
     firebaseTokenId: z.number().int().positive(),
     userId: z.number().int().positive(),
     platform: z.enum(['ios', 'android']),
-    lastSeenAt: isoDateTimeSchema,
+    lastSeenAt: notificationUtcDateTimeSchema,
   })
   .strict()
   .openapi('FirebaseToken');

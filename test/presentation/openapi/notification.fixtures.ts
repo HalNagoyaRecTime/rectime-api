@@ -1,4 +1,5 @@
-export const date = '2026-11-07T15:35:00+09:00';
+export const date = '2026-11-07T06:35:00.000Z';
+export const offsetDate = '2026-11-07T15:35:00+09:00';
 
 export const content = {
   push: { title: '集合時間変更', body: '集合時間が変更されました。' },

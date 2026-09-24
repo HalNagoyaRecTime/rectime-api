@@ -21,9 +21,10 @@ import {
   notificationDeliveryInputSchema,
   notificationPatchRequestSchema,
   notificationResultsQuery,
+  notificationUtcDateTimeSchema,
 } from '../../../src/presentation/openapi/notification';
 import { z } from '../../../src/presentation/openapi/schemas';
-import { content, date } from './notification.fixtures';
+import { content, date, offsetDate } from './notification.fixtures';
 
 describe('通知契約のDomain literal', () => {
   it('正本のliteralだけを公開する', () => {
@@ -121,6 +122,22 @@ describe('通知契約のRequest schema', () => {
     expect(
       notificationAudienceInputSchema.safeParse({
         items: [{ type: 'all' }],
+      }).success
+    ).toBe(true);
+  });
+
+  it('Requestはoffset付き日時を許容し、Response日時はUTC Zに固定する', () => {
+    expect(notificationUtcDateTimeSchema.safeParse(date).success).toBe(true);
+    expect(
+      notificationUtcDateTimeSchema.safeParse(offsetDate).success
+    ).toBe(false);
+    expect(
+      notificationUtcDateTimeSchema.safeParse('2026-11-07 06:35:00').success
+    ).toBe(false);
+    expect(
+      notificationDeliveryInputSchema.safeParse({
+        type: 'scheduled',
+        sendAt: offsetDate,
       }).success
     ).toBe(true);
   });

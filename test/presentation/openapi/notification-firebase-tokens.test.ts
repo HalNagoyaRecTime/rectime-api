@@ -8,7 +8,7 @@ import {
   firebaseTokenRegistrationRequestSchema,
   firebaseTokenSchema,
 } from '../../../src/presentation/openapi/notification';
-import { date } from './notification.fixtures';
+import { date, offsetDate } from './notification.fixtures';
 
 describe('Firebase tokenのResponse schema', () => {
   it('POST/DELETEともisActiveを持たない', () => {
@@ -26,6 +26,14 @@ describe('Firebase tokenのResponse schema', () => {
         lastSeenAt: date,
       }).success
     ).toBe(true);
+    expect(
+      firebaseTokenSchema.safeParse({
+        firebaseTokenId: 10,
+        userId: 123,
+        platform: 'ios',
+        lastSeenAt: offsetDate,
+      }).success
+    ).toBe(false);
     expect(
       firebaseTokenSchema.safeParse({
         firebaseTokenId: 10,

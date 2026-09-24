@@ -2,7 +2,6 @@ import { createRoute } from '@hono/zod-openapi';
 import {
   bearerAuth,
   internalServerErrorResponse,
-  isoDateTimeSchema,
   jsonResponse,
   noContentResponse,
   positivePathParam,
@@ -28,6 +27,7 @@ import {
   notificationDeliveryInputSchema,
   notificationImportanceSchema,
   notificationScheduleSummarySchema,
+  notificationUtcDateTimeSchema,
 } from './commonSchemas';
 export const adminNotificationListItemSchema = z
   .object({
@@ -35,7 +35,7 @@ export const adminNotificationListItemSchema = z
     content: z.object({ push: notificationContentSchema.shape.push }).strict(),
     importance: notificationImportanceSchema,
     creation: notificationCreationSchema,
-    createdAt: isoDateTimeSchema,
+    createdAt: notificationUtcDateTimeSchema,
     schedules: z.array(adminNotificationScheduleListItemSchema),
   })
   .strict()
@@ -47,8 +47,8 @@ export const adminNotificationDetailSchema = z
     content: notificationContentSchema,
     importance: notificationImportanceSchema,
     creation: notificationCreationSchema,
-    createdAt: isoDateTimeSchema,
-    updatedAt: isoDateTimeSchema,
+    createdAt: notificationUtcDateTimeSchema,
+    updatedAt: notificationUtcDateTimeSchema,
     schedules: z.array(notificationScheduleSummarySchema),
   })
   .strict()
