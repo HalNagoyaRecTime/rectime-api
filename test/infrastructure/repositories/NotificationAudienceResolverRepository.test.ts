@@ -352,6 +352,44 @@ describe('NotificationAudienceResolverRepository', () => {
       ).run();
     }
   });
+
+  it('恒久的なAudience不整合をfailedへ更新する', async () => {
+    const fixture = await createFixture();
+    const schedule = await createSchedule(fixture.actorUserId, [
+      { type: 'all', target_id: null },
+    ]);
+    expect(await repository.claimScheduled(schedule.scheduleId, NOW)).toBe(
+      true
+    );
+    await expect(
+      repository.failSchedule(
+        schedule.scheduleId,
+        'Audience 2 に対象IDがありません',
+        NOW
+      )
+    ).resolves.toBe(true);
+    await expect(
+      repository.failSchedule(schedule.scheduleId, '再更新', NOW)
+    ).resolves.toBe(false);
+
+    const state = await env.DB.prepare(
+      `SELECT send_status, failed_reason, recipients_resolved_at
+       FROM notification_schedules
+       WHERE notification_schedule_id = ?`
+    )
+      .bind(schedule.scheduleId)
+      .first<{
+        send_status: string;
+        failed_reason: string | null;
+        recipients_resolved_at: string | null;
+      }>();
+    expect(state).toMatchObject({
+      send_status: 'failed',
+      failed_reason: 'Audience 2 に対象IDがありません',
+      recipients_resolved_at: null,
+    });
+  });
+
   it('due scheduleを一度だけclaimし、未来のscheduleはclaimしない', async () => {
     const fixture = await createFixture();
     const due = await createSchedule(fixture.actorUserId, [
