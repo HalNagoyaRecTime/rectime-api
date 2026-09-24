@@ -101,6 +101,24 @@ describe('FirebaseTokenController', () => {
     expect(await response.text()).not.toContain('fcm-secret');
   });
 
+  it('FCM tokenの登録競合は契約どおり500で返す', async () => {
+    const { app, firebaseTokenService } = setup();
+    vi.mocked(firebaseTokenService.registerFirebaseToken).mockRejectedValue(
+      new Error('UNIQUE constraint failed: firebase_tokens.fcm_token')
+    );
+
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fcmToken: 'fcm-abc', platform: 'android' }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'FIREBASE_TOKEN_REGISTRATION_FAILED' },
+    });
+  });
+
   it('DELETEは所有者のTokenを物理削除して204を返す', async () => {
     const { app, firebaseTokenService } = setup();
     const response = await app.request('/firebase-tokens/3', {

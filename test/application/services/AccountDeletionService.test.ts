@@ -5,7 +5,7 @@ import type { IStudentRepository } from '../../../src/domain/interfaces/reposito
 import type { IStaffRepository } from '../../../src/domain/interfaces/repositories/IStaffRepository';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
 import type { IGatheringGroupMemberRepository } from '../../../src/domain/interfaces/repositories/IGatheringGroupMemberRepository';
-import type { INotificationScheduleRepository } from '../../../src/domain/interfaces/repositories/INotificationScheduleRepository';
+import type { INotificationAccountDeletionService } from '../../../src/application/services/INotificationAccountDeletionService';
 import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
 
 function buildDeps() {
@@ -68,15 +68,11 @@ function buildDeps() {
     applyMemberDiff: vi.fn(),
     deleteByUserId: vi.fn(),
   };
-  const notificationScheduleRepository: INotificationScheduleRepository = {
-    findDraftsByEvent: vi.fn(),
-    findDeliveryCandidateIds: vi.fn(),
-    claimForDelivery: vi.fn(),
-    markSent: vi.fn(),
-    markFailed: vi.fn(),
-    anonymizeCreatedUserId: vi.fn(),
-    deleteByFirebaseTokenId: vi.fn(),
-  };
+  const notificationAccountDeletionService: INotificationAccountDeletionService =
+    {
+      deleteUserDeliveryData: vi.fn().mockResolvedValue(undefined),
+      anonymizeUserActorReferences: vi.fn().mockResolvedValue(undefined),
+    };
   const firebaseTokenRepository: IFirebaseTokenRepository = {
     register: vi.fn(),
     findActiveTokens: vi.fn(),
@@ -94,7 +90,7 @@ function buildDeps() {
     staffRepository,
     teacherRepository,
     gatheringGroupMemberRepository,
-    notificationScheduleRepository,
+    notificationAccountDeletionService,
     firebaseTokenRepository,
   };
 }
@@ -146,7 +142,7 @@ describe('createAccountDeletionService', () => {
       expect(deps.userRepository.anonymizeUser).not.toHaveBeenCalled();
     });
 
-    it('firebase_tokensが無い場合は通知履歴の削除・Token削除をスキップする', async () => {
+    it('Tokenが無くてもRecipientを削除し、Token削除は行わない', async () => {
       const deps = buildDeps();
       const service = createAccountDeletionService(deps);
 
@@ -156,14 +152,14 @@ describe('createAccountDeletionService', () => {
         10
       );
       expect(
-        deps.notificationScheduleRepository.deleteByFirebaseTokenId
-      ).not.toHaveBeenCalled();
+        deps.notificationAccountDeletionService.deleteUserDeliveryData
+      ).toHaveBeenCalledWith(10, []);
       expect(
         deps.firebaseTokenRepository.deleteByUserId
       ).not.toHaveBeenCalled();
     });
 
-    it('firebase_tokensが存在する場合、通知履歴を先に削除してからToken本体を削除する', async () => {
+    it('通知データを先にcleanupしてから複数Tokenを削除する', async () => {
       const deps = buildDeps();
       (
         deps.firebaseTokenRepository.findAllByUserId as ReturnType<typeof vi.fn>
@@ -191,10 +187,10 @@ describe('createAccountDeletionService', () => {
       ]);
       const callOrder: string[] = [];
       (
-        deps.notificationScheduleRepository
-          .deleteByFirebaseTokenId as ReturnType<typeof vi.fn>
+        deps.notificationAccountDeletionService
+          .deleteUserDeliveryData as ReturnType<typeof vi.fn>
       ).mockImplementation(async () => {
-        callOrder.push('deleteByFirebaseTokenId');
+        callOrder.push('notificationDeliveryData');
       });
       (
         deps.firebaseTokenRepository.deleteByUserId as ReturnType<typeof vi.fn>
@@ -206,34 +202,24 @@ describe('createAccountDeletionService', () => {
       await service.deleteRelatedData('10');
 
       expect(
-        deps.notificationScheduleRepository.deleteByFirebaseTokenId
-      ).toHaveBeenNthCalledWith(1, 5);
-      expect(
-        deps.notificationScheduleRepository.deleteByFirebaseTokenId
-      ).toHaveBeenNthCalledWith(2, 6);
+        deps.notificationAccountDeletionService.deleteUserDeliveryData
+      ).toHaveBeenCalledWith(10, [5, 6]);
       expect(deps.firebaseTokenRepository.deleteByUserId).toHaveBeenCalledWith(
         10
       );
-      // Legacy AccountDeletion方針として、通知スケジュールを先に消してからTokenを削除する。
-
-      expect(callOrder).toEqual([
-        'deleteByFirebaseTokenId',
-        'deleteByFirebaseTokenId',
-        'deleteByUserId',
-      ]);
+      expect(callOrder).toEqual(['notificationDeliveryData', 'deleteByUserId']);
     });
 
-    it('通知の作成者情報をNULL化する', async () => {
+    it('通知のlegacy/v2 actor情報をNULL化する', async () => {
       const deps = buildDeps();
       const service = createAccountDeletionService(deps);
 
       await service.deleteRelatedData('10');
 
       expect(
-        deps.notificationScheduleRepository.anonymizeCreatedUserId
+        deps.notificationAccountDeletionService.anonymizeUserActorReferences
       ).toHaveBeenCalledWith(10);
     });
-
     it('ロール(staffs/teachers)・所属(gathering_group_members)を削除する', async () => {
       const deps = buildDeps();
       const service = createAccountDeletionService(deps);

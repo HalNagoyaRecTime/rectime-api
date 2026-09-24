@@ -6,6 +6,7 @@ import { createEventRepository } from '../infrastructure/repositories/EventRepos
 import { createClassRoomRepository } from '../infrastructure/repositories/ClassRoomRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
+import { createNotificationAccountDeletionRepository } from '../infrastructure/repositories/NotificationAccountDeletionRepository';
 import { createAdminNotificationRepository } from '../infrastructure/repositories/AdminNotificationRepository';
 import { createAdminNotificationCommandRepository } from '../infrastructure/repositories/AdminNotificationCommandRepository';
 import { createAdminNotificationQueryRepository } from '../infrastructure/repositories/AdminNotificationQueryRepository';
@@ -62,6 +63,7 @@ import { createUserStatusService } from '../application/services/UserStatusServi
 import { createUserStatusController } from '../presentation/controllers/UserStatusController';
 import { createAuthService } from '../application/services/authService';
 import { createAccountDeletionService } from '../application/services/AccountDeletionService';
+import { createNotificationAccountDeletionService } from '../application/services/NotificationAccountDeletionService';
 import { createAuthorizationService } from '../application/services/AuthorizationService';
 import type { Env } from '../lib/env';
 
@@ -79,6 +81,8 @@ export function createDIContainer(env: Env) {
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
   const notificationScheduleRepository =
     createNotificationScheduleRepository(db);
+  const notificationAccountDeletionRepository =
+    createNotificationAccountDeletionRepository(db);
   const adminNotificationRepository = createAdminNotificationRepository(db);
   const adminNotificationManagementRepository =
     createAdminNotificationManagementRepository(db);
@@ -117,13 +121,18 @@ export function createDIContainer(env: Env) {
   // DELETE /auth/me(account.ts)から呼ばれる。retryPendingPurgesは
   // 途中失敗で後片付けが未完了のまま残った利用者を拾い直す(#345)。
   // 呼び出し元はindex.tsのscheduledハンドラ(日次Cron)。
+  const notificationAccountDeletionService =
+    createNotificationAccountDeletionService({
+      notificationScheduleRepository,
+      notificationAccountDeletionRepository,
+    });
   const accountDeletionService = createAccountDeletionService({
     userRepository,
     studentRepository,
     staffRepository,
     teacherRepository,
     gatheringGroupMemberRepository,
-    notificationScheduleRepository,
+    notificationAccountDeletionService,
     firebaseTokenRepository,
   });
   const studentService = createStudentService(

@@ -7,7 +7,7 @@ import type { IStudentRepository } from '../../domain/interfaces/repositories/IS
 import type { IStaffRepository } from '../../domain/interfaces/repositories/IStaffRepository';
 import type { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
 import type { IGatheringGroupMemberRepository } from '../../domain/interfaces/repositories/IGatheringGroupMemberRepository';
-import type { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
+import type { INotificationAccountDeletionService } from './INotificationAccountDeletionService';
 import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 
 export function createAccountDeletionService(deps: {
@@ -16,7 +16,7 @@ export function createAccountDeletionService(deps: {
   staffRepository: IStaffRepository;
   teacherRepository: ITeacherRepository;
   gatheringGroupMemberRepository: IGatheringGroupMemberRepository;
-  notificationScheduleRepository: INotificationScheduleRepository;
+  notificationAccountDeletionService: INotificationAccountDeletionService;
   firebaseTokenRepository: IFirebaseTokenRepository;
 }): IAccountDeletionService {
   const {
@@ -25,7 +25,7 @@ export function createAccountDeletionService(deps: {
     staffRepository,
     teacherRepository,
     gatheringGroupMemberRepository,
-    notificationScheduleRepository,
+    notificationAccountDeletionService,
     firebaseTokenRepository,
   } = deps;
 
@@ -117,22 +117,22 @@ export function createAccountDeletionService(deps: {
     // よりも個人データの消去を優先し、物理削除で問題ないとの判断を得た。
     // このため送信者側(anonymizeCreatedUserId、下記)とは扱いが異なり、
     // 受信者側の履歴は残らない。
+    const firebaseTokens = await step('findFirebaseTokens', () =>
+      firebaseTokenRepository.findAllByUserId(userIdNum)
+    );
+    await step('notificationDeliveryData', () =>
+      notificationAccountDeletionService.deleteUserDeliveryData(
+        userIdNum,
+        firebaseTokens.map(token => token.firebase_token_id)
+      )
+    );
     removed.firebaseToken = await step('firebaseTokens', async () => {
-      const firebaseTokens =
-        await firebaseTokenRepository.findAllByUserId(userIdNum);
       if (firebaseTokens.length === 0) return false;
-      for (const firebaseToken of firebaseTokens) {
-        await notificationScheduleRepository.deleteByFirebaseTokenId(
-          firebaseToken.firebase_token_id
-        );
-      }
       await firebaseTokenRepository.deleteByUserId(userIdNum);
       return true;
     });
-    // 通知の作成者(管理者側)情報を匿名化する。通知自体(他の受信者宛て)は
-    // 残す。
-    await step('anonymizeCreatedUserId', () =>
-      notificationScheduleRepository.anonymizeCreatedUserId(userIdNum)
+    await step('notificationActorReferences', () =>
+      notificationAccountDeletionService.anonymizeUserActorReferences(userIdNum)
     );
 
     // ロール・所属の解除。

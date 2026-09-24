@@ -9,8 +9,16 @@ import {
   firebaseTokenSchema,
 } from '../../../src/presentation/openapi/notification';
 import { date, offsetDate } from './notification.fixtures';
+import { firebaseTokenRegistrationRoute } from '../../../src/presentation/openapi/notification/firebaseTokens';
 
 describe('Firebase tokenのResponse schema', () => {
+  it('POSTのstatus契約をPhase 0に揃える', () => {
+    expect(
+      Object.keys(firebaseTokenRegistrationRoute.responses)
+        .map(Number)
+        .sort((a, b) => a - b)
+    ).toEqual([200, 400, 401, 500]);
+  });
   it('POST/DELETEともisActiveを持たない', () => {
     expect(
       firebaseTokenRegistrationRequestSchema.safeParse({
