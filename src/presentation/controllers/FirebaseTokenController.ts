@@ -9,6 +9,7 @@ import { CommonErrors } from '../errors/commonErrors';
 import { errorResponse } from '../errors/errorResponse';
 import { NotificationErrors } from '../errors/notificationErrors';
 import { UserErrors } from '../errors/userErrors';
+import { firebaseTokenIdParams } from '../openapi/notification/firebaseTokens';
 
 const registerFirebaseTokenSchema = z
   .object({
@@ -16,6 +17,12 @@ const registerFirebaseTokenSchema = z
     platform: z.enum(['ios', 'android']),
   })
   .strict();
+
+const firebaseTokenDeletionFailed = {
+  status: 500,
+  code: 'FIREBASE_TOKEN_DELETION_FAILED',
+  message: 'Firebaseトークンの削除に失敗しました',
+} as const;
 
 type FirebaseTokenContext = Context<{
   Bindings: Env;
@@ -52,17 +59,14 @@ export function createFirebaseTokenController(
       try {
         body = await c.req.json();
       } catch {
-        return errorResponse(
-          c,
-          NotificationErrors.INVALID_FIREBASE_TOKEN_REQUEST
-        );
+        return errorResponse(c, CommonErrors.VALIDATION_ERROR);
       }
 
       const parsedBody = registerFirebaseTokenSchema.safeParse(body);
       if (!parsedBody.success) {
         return errorResponse(
           c,
-          NotificationErrors.INVALID_FIREBASE_TOKEN_REQUEST,
+          CommonErrors.VALIDATION_ERROR,
           parsedBody.error.flatten()
         );
       }
@@ -91,5 +95,35 @@ export function createFirebaseTokenController(
     }
   };
 
-  return { registerFirebaseToken };
+  const deleteFirebaseToken = async (c: FirebaseTokenContext) => {
+    try {
+      const userId = c.get('authenticatedUserId');
+      if (!userId) return errorResponse(c, CommonErrors.UNAUTHORIZED);
+
+      const parsedParams = firebaseTokenIdParams.safeParse({
+        firebaseTokenId: c.req.param('firebaseTokenId'),
+      });
+      if (!parsedParams.success) {
+        return errorResponse(
+          c,
+          CommonErrors.VALIDATION_ERROR,
+          parsedParams.error.flatten()
+        );
+      }
+
+      const result = await firebaseTokenService.deleteFirebaseToken(
+        Number(parsedParams.data.firebaseTokenId),
+        userId
+      );
+      if (result === 'deleted') return c.body(null, 204);
+      if (result === 'forbidden') {
+        return errorResponse(c, NotificationErrors.FIREBASE_TOKEN_FORBIDDEN);
+      }
+      return errorResponse(c, NotificationErrors.FIREBASE_TOKEN_NOT_FOUND);
+    } catch {
+      return errorResponse(c, firebaseTokenDeletionFailed);
+    }
+  };
+
+  return { registerFirebaseToken, deleteFirebaseToken };
 }

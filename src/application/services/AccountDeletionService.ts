@@ -118,16 +118,17 @@ export function createAccountDeletionService(deps: {
     // このため送信者側(anonymizeCreatedUserId、下記)とは扱いが異なり、
     // 受信者側の履歴は残らない。
     removed.firebaseToken = await step('firebaseTokens', async () => {
-      const firebaseToken =
-        await firebaseTokenRepository.findByUserId(userIdNum);
-      if (!firebaseToken) return false;
-      await notificationScheduleRepository.deleteByFirebaseTokenId(
-        firebaseToken.firebase_token_id
-      );
+      const firebaseTokens =
+        await firebaseTokenRepository.findAllByUserId(userIdNum);
+      if (firebaseTokens.length === 0) return false;
+      for (const firebaseToken of firebaseTokens) {
+        await notificationScheduleRepository.deleteByFirebaseTokenId(
+          firebaseToken.firebase_token_id
+        );
+      }
       await firebaseTokenRepository.deleteByUserId(userIdNum);
       return true;
     });
-
     // 通知の作成者(管理者側)情報を匿名化する。通知自体(他の受信者宛て)は
     // 残す。
     await step('anonymizeCreatedUserId', () =>

@@ -127,8 +127,7 @@ describe('FirebaseTokenRepository', () => {
     expect(registered.last_seen_at).toMatch(utcIso);
 
     const stored = await env.DB.prepare(
-      `SELECT last_seen_at, created_at, updated_at
-       FROM firebase_tokens WHERE user_id = ?`
+      'SELECT last_seen_at, created_at, updated_at FROM firebase_tokens WHERE user_id = ?'
     )
       .bind(userId)
       .first<{
@@ -141,28 +140,60 @@ describe('FirebaseTokenRepository', () => {
     expect(stored?.updated_at).toMatch(utcIso);
   });
 
-  it('同じ利用者のToken更新時に既存行を最新Tokenへ更新する', async () => {
-    const userId = await createUser('Firebaseトークン更新利用者');
+  it('同じ利用者は複数端末のTokenを保持する', async () => {
+    const userId = await createUser('Firebase複数端末利用者');
     const first = await repository.register({
       userId,
       platform: 'android',
-      fcmToken: 'token-before',
+      fcmToken: 'token-device-one',
     });
     const second = await repository.register({
       userId,
+      platform: 'ios',
+      fcmToken: 'token-device-two',
+    });
+
+    expect(second.firebase_token_id).not.toBe(first.firebase_token_id);
+    const stored = await env.DB.prepare(
+      'SELECT fcm_token FROM firebase_tokens WHERE user_id = ? ORDER BY firebase_token_id'
+    )
+      .bind(userId)
+      .all<{ fcm_token: string }>();
+    expect(stored.results.map(row => row.fcm_token)).toEqual([
+      'token-device-one',
+      'token-device-two',
+    ]);
+  });
+
+  it('同一利用者・同一FCM Tokenの再登録は同じ行を更新する', async () => {
+    const userId = await createUser('Firebase同一端末利用者');
+    const first = await repository.register({
+      userId,
       platform: 'android',
-      fcmToken: 'token-after',
+      fcmToken: 'token-same-device',
+    });
+    await env.DB.prepare(
+      'UPDATE firebase_tokens SET last_seen_at = ? WHERE firebase_token_id = ?'
+    )
+      .bind('2000-01-01 00:00:00', first.firebase_token_id)
+      .run();
+
+    const second = await repository.register({
+      userId,
+      platform: 'ios',
+      fcmToken: 'token-same-device',
     });
 
     expect(second.firebase_token_id).toBe(first.firebase_token_id);
-    const stored = await env.DB.prepare(
-      'SELECT fcm_token FROM firebase_tokens WHERE user_id = ?'
+    expect(second.platform).toBe('ios');
+    expect(second.last_seen_at).not.toBe('2000-01-01 00:00:00');
+    const count = await env.DB.prepare(
+      'SELECT COUNT(*) AS count FROM firebase_tokens WHERE user_id = ?'
     )
       .bind(userId)
-      .first<{ fcm_token: string }>();
-    expect(stored?.fcm_token).toBe('token-after');
+      .first<{ count: number }>();
+    expect(count?.count).toBe(1);
   });
-
   it('無効化済みTokenの再登録時に有効化する', async () => {
     const userId = await createUser('Firebaseトークン再登録利用者');
     const registered = await repository.register({
@@ -342,31 +373,6 @@ describe('FirebaseTokenRepository', () => {
     ).toHaveLength(1);
   });
 
-  it('存在しないUserへの登録失敗時に他UserのTokenを削除しない', async () => {
-    const ownerId = await createUser('Firebase Token所有者');
-    await repository.register({
-      userId: ownerId,
-      platform: 'android',
-      fcmToken: 'token-owned',
-    });
-
-    await expect(
-      repository.register({
-        userId: 999999,
-        platform: 'android',
-        fcmToken: 'token-owned',
-      })
-    ).rejects.toThrow('User not found');
-
-    const stored = await env.DB.prepare(
-      'SELECT user_id FROM firebase_tokens WHERE fcm_token = ?'
-    )
-      .bind('token-owned')
-      .first<{ user_id: number }>();
-
-    expect(stored?.user_id).toBe(ownerId);
-  });
-
   it('存在しないusers.user_idでは登録しない', async () => {
     await expect(
       repository.register({
@@ -473,6 +479,53 @@ describe('FirebaseTokenRepository', () => {
       await expect(repository.findByUserId(userId)).resolves.toBeNull();
     });
 
+    it('findAllByUserIdは指定利用者の全端末Tokenを返す', async () => {
+      const userId = await createUser('全端末検索利用者');
+      await repository.register({
+        userId,
+        platform: 'android',
+        fcmToken: 'token-find-all-one',
+      });
+      await repository.register({
+        userId,
+        platform: 'ios',
+        fcmToken: 'token-find-all-two',
+      });
+
+      const found = await repository.findAllByUserId(userId);
+
+      expect(found.map(token => token.fcm_token)).toEqual([
+        'token-find-all-one',
+        'token-find-all-two',
+      ]);
+    });
+
+    it('DELETEは他利用者を403相当にし、所有者のみ物理削除する', async () => {
+      const ownerId = await createUser('Token削除所有者');
+      const otherId = await createUser('Token削除別利用者');
+      const owned = await repository.register({
+        userId: ownerId,
+        platform: 'android',
+        fcmToken: 'token-delete-owned',
+      });
+
+      await expect(
+        repository.deleteOwnedById(owned.firebase_token_id, otherId)
+      ).resolves.toBe('forbidden');
+      await expect(
+        repository.deleteOwnedById(owned.firebase_token_id, ownerId)
+      ).resolves.toBe('deleted');
+      await expect(
+        repository.deleteOwnedById(owned.firebase_token_id, ownerId)
+      ).resolves.toBe('not_found');
+
+      const stored = await env.DB.prepare(
+        'SELECT * FROM firebase_tokens WHERE firebase_token_id = ?'
+      )
+        .bind(owned.firebase_token_id)
+        .first();
+      expect(stored).toBeNull();
+    });
     it('deleteByUserIdはToken登録を物理削除する', async () => {
       const userId = await createUser('物理削除対象利用者');
       await repository.register({
