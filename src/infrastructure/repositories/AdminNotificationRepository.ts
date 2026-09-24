@@ -4,6 +4,7 @@ import type {
   ManualNotificationAudienceStatus,
 } from '../../domain/entities/AdminNotification';
 import type { IAdminNotificationRepository } from '../../domain/interfaces/repositories/IAdminNotificationRepository';
+import { normalizeNotificationDateTime } from '../database/notificationDateTime';
 import {
   buildAudienceStatusStatement,
   buildAudienceTokenSelect,
@@ -120,7 +121,7 @@ function buildScheduleInsert(
     .bind(
       input.created_user_id,
       eventId,
-      input.scheduled_at,
+      normalizeNotificationDateTime(input.scheduled_at),
       ...select.bindings
     );
 }

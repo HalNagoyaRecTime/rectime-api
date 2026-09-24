@@ -7,6 +7,7 @@ import type {
 } from '../../domain/entities/NotificationSchedule';
 import type { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
 import * as schema from '../database/schema';
+import { notificationUtcNow } from '../database/notificationDateTime';
 import {
   firebase_tokens,
   notification_schedules,
@@ -140,7 +141,7 @@ export function createNotificationScheduleRepository(
 
       const claimed = await orm
         .update(notification_schedules)
-        .set({ sendStatus: 'sending', updatedAt: sql`CURRENT_TIMESTAMP` })
+        .set({ sendStatus: 'sending', updatedAt: notificationUtcNow() })
         .where(
           and(
             inArray(notification_schedules.id, notificationScheduleIds),
@@ -209,7 +210,7 @@ export function createNotificationScheduleRepository(
           .set({
             sendStatus: 'failed',
             failedReason: 'Firebase token was removed after delivery claim',
-            updatedAt: sql`CURRENT_TIMESTAMP`,
+            updatedAt: notificationUtcNow(),
           })
           .where(
             and(
@@ -231,7 +232,7 @@ export function createNotificationScheduleRepository(
           sendStatus: 'sent',
           fcmMessageId,
           failedReason: null,
-          updatedAt: sql`CURRENT_TIMESTAMP`,
+          updatedAt: notificationUtcNow(),
         })
         .where(
           and(
@@ -248,7 +249,7 @@ export function createNotificationScheduleRepository(
         .set({
           sendStatus: 'failed',
           failedReason: reason,
-          updatedAt: sql`CURRENT_TIMESTAMP`,
+          updatedAt: notificationUtcNow(),
         })
         .where(
           and(
@@ -262,7 +263,7 @@ export function createNotificationScheduleRepository(
     async anonymizeCreatedUserId(userId) {
       await orm
         .update(notification_schedules)
-        .set({ createdUserId: null, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .set({ createdUserId: null, updatedAt: notificationUtcNow() })
         .where(eq(notification_schedules.createdUserId, userId))
         .run();
     },

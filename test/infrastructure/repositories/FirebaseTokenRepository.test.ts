@@ -115,6 +115,32 @@ describe('FirebaseTokenRepository', () => {
     expect(stored?.platform).toBe(1);
   });
 
+  it('登録日時をUTC ISO形式で保存する', async () => {
+    const userId = await createUser('Firebase日時形式');
+    const registered = await repository.register({
+      userId,
+      platform: 'android',
+      fcmToken: 'token-datetime',
+    });
+
+    const utcIso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    expect(registered.last_seen_at).toMatch(utcIso);
+
+    const stored = await env.DB.prepare(
+      `SELECT last_seen_at, created_at, updated_at
+       FROM firebase_tokens WHERE user_id = ?`
+    )
+      .bind(userId)
+      .first<{
+        last_seen_at: string;
+        created_at: string;
+        updated_at: string;
+      }>();
+    expect(stored?.last_seen_at).toMatch(utcIso);
+    expect(stored?.created_at).toMatch(utcIso);
+    expect(stored?.updated_at).toMatch(utcIso);
+  });
+
   it('同じ利用者のToken更新時に既存行を最新Tokenへ更新する', async () => {
     const userId = await createUser('Firebaseトークン更新利用者');
     const first = await repository.register({

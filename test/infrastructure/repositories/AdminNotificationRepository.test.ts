@@ -162,7 +162,7 @@ describe('AdminNotificationRepository', () => {
       event_id: audience.type === 'event_participants' ? fixture.eventId : null,
       importance: 2,
       send_status: 'draft',
-      send_at: '2026-07-23T09:00:00+09:00',
+      send_at: '2026-07-23T00:00:00.000Z',
       notification_type: 'manual',
       title: '集合場所のお知らせ',
       body: '体育館前へ集合してください。',

@@ -73,7 +73,7 @@ async function createFixture(
         notification!.notification_id,
         token!.firebase_token_id,
         statuses[index],
-        '2026-07-23T09:00:00+09:00'
+        '2026-07-23T00:00:00.000Z'
       )
       .run();
   }
@@ -131,7 +131,7 @@ describe('AdminNotificationManagementRepository', () => {
         sent: 1,
         failed: 1,
       },
-      scheduled_at: '2026-07-23T09:00:00+09:00',
+      scheduled_at: '2026-07-23T00:00:00.000Z',
     });
   });
 
@@ -174,8 +174,8 @@ describe('AdminNotificationManagementRepository', () => {
       .all<{ send_at: string }>();
     expect(notification?.title).toBe('変更前');
     expect(schedules.results).toEqual([
-      { send_at: '2026-07-23T09:00:00+09:00' },
-      { send_at: '2026-07-23T09:00:00+09:00' },
+      { send_at: '2026-07-23T00:00:00.000Z' },
+      { send_at: '2026-07-23T00:00:00.000Z' },
     ]);
   });
 
@@ -213,7 +213,7 @@ describe('AdminNotificationManagementRepository', () => {
     const detail = await repository.findById(fixture.notificationId);
     expect(detail).toMatchObject({
       title: '変更後',
-      scheduled_at: '2026-07-23T10:00:00+09:00',
+      scheduled_at: '2026-07-23T01:00:00.000Z',
       recipient_count: 2,
       delivery_summary: { total: 2, draft: 2 },
     });
@@ -272,7 +272,7 @@ describe('AdminNotificationManagementRepository', () => {
     const detail = await repository.findById(fixture.notificationId);
     expect(detail).toMatchObject({
       related_event_id: null,
-      scheduled_at: '2026-07-23T10:00:00+09:00',
+      scheduled_at: '2026-07-23T01:00:00.000Z',
       recipient_count: 2,
       audience: { type: 'resolved_recipients', recipient_count: 2 },
       delivery_summary: { total: 2, draft: 2 },
@@ -322,7 +322,7 @@ describe('AdminNotificationManagementRepository', () => {
 
     const detail = await repository.findById(fixture.notificationId);
     expect(detail).toMatchObject({
-      scheduled_at: '2026-07-23T09:00:00+09:00',
+      scheduled_at: '2026-07-23T00:00:00.000Z',
       recipient_count: 2,
       delivery_summary: { total: 2, draft: 2 },
     });

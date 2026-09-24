@@ -8,6 +8,9 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 
+const notificationUtcIsoNow = () =>
+  sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
+
 export const class_rooms = sqliteTable(
   'class_rooms',
   {
@@ -271,13 +274,13 @@ export const firebase_tokens = sqliteTable(
     isFirebaseActive: integer('is_firebase_active').notNull().default(1),
     lastSeenAt: text('last_seen_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+      .default(notificationUtcIsoNow()),
     createdAt: text('created_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+      .default(notificationUtcIsoNow()),
     updatedAt: text('updated_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+      .default(notificationUtcIsoNow()),
   },
   table => [
     check('ck_firebase_tokens_platform', sql`${table.platform} IN (1, 2)`),
@@ -327,10 +330,10 @@ export const notification_schedules = sqliteTable(
     reason: text('reason'),
     createdAt: text('created_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+      .default(notificationUtcIsoNow()),
     updatedAt: text('updated_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+      .default(notificationUtcIsoNow()),
   },
   table => [
     index('idx_notification_schedules_due').on(table.sendStatus, table.sendAt),
@@ -365,10 +368,10 @@ export const notifications = sqliteTable(
     sourceHash: text('source_hash'),
     createdAt: text('created_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+      .default(notificationUtcIsoNow()),
     updatedAt: text('updated_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+      .default(notificationUtcIsoNow()),
   },
   table => [
     check(
@@ -413,10 +416,10 @@ export const notification_audiences = sqliteTable(
     resolvedAt: text('resolved_at'),
     createdAt: text('created_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+      .default(notificationUtcIsoNow()),
     updatedAt: text('updated_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+      .default(notificationUtcIsoNow()),
   },
   table => [
     check(
@@ -455,7 +458,7 @@ export const notification_recipients = sqliteTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     createdAt: text('created_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+      .default(notificationUtcIsoNow()),
   },
   table => [
     uniqueIndex('uq_notification_recipients_schedule_user').on(
@@ -490,10 +493,10 @@ export const notification_push_deliveries = sqliteTable(
     sentAt: text('sent_at'),
     createdAt: text('created_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+      .default(notificationUtcIsoNow()),
     updatedAt: text('updated_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+      .default(notificationUtcIsoNow()),
   },
   table => [
     check(

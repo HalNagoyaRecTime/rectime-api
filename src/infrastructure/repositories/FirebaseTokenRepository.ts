@@ -1,5 +1,5 @@
 import { D1Database } from '@cloudflare/workers-types';
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import {
   FirebaseTokenEntity,
@@ -11,6 +11,7 @@ import {
 } from '../../domain/entities/FirebaseToken';
 import { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 import * as schema from '../database/schema';
+import { notificationUtcNow } from '../database/notificationDateTime';
 import { firebase_tokens } from '../database/schema';
 
 function toFirebaseTokenEntity(
@@ -42,6 +43,7 @@ export function createFirebaseTokenRepository(
       input: RegisterFirebaseTokenInput
     ): Promise<RegisterFirebaseTokenResult> {
       const platform = firebasePlatformToCode(input.platform);
+      const now = notificationUtcNow();
 
       const [, updateResult, insertResult] = await db.batch<{
         firebase_token_id: number;
@@ -68,8 +70,8 @@ export function createFirebaseTokenRepository(
              SET platform = ?,
                  fcm_token = ?,
                  is_firebase_active = 1,
-                 last_seen_at = CURRENT_TIMESTAMP,
-                 updated_at = CURRENT_TIMESTAMP
+                 last_seen_at = ?,
+                 updated_at = ?
              WHERE firebase_token_id = (
                SELECT firebase_token_id
                FROM firebase_tokens
@@ -86,7 +88,7 @@ export function createFirebaseTokenRepository(
                is_firebase_active,
                last_seen_at`
           )
-          .bind(platform, input.fcmToken, input.userId, input.fcmToken),
+          .bind(platform, input.fcmToken, now, now, input.userId, input.fcmToken),
         db
           .prepare(
             `INSERT INTO firebase_tokens (
@@ -97,7 +99,7 @@ export function createFirebaseTokenRepository(
                last_seen_at,
                updated_at
              )
-             SELECT user_id, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+             SELECT user_id, ?, ?, 1, ?, ?
              FROM users
              WHERE user_id = ?
                AND NOT EXISTS (
@@ -116,6 +118,8 @@ export function createFirebaseTokenRepository(
           .bind(
             platform,
             input.fcmToken,
+            now,
+            now,
             input.userId,
             input.userId,
             input.fcmToken
@@ -165,7 +169,7 @@ export function createFirebaseTokenRepository(
     async deactivate(firebaseTokenId: number): Promise<void> {
       await orm
         .update(firebase_tokens)
-        .set({ isFirebaseActive: 0, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .set({ isFirebaseActive: 0, updatedAt: notificationUtcNow() })
         .where(eq(firebase_tokens.firebaseTokenId, firebaseTokenId))
         .run();
     },
@@ -173,7 +177,7 @@ export function createFirebaseTokenRepository(
     async deactivateByUserId(userId: number): Promise<void> {
       await orm
         .update(firebase_tokens)
-        .set({ isFirebaseActive: 0, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .set({ isFirebaseActive: 0, updatedAt: notificationUtcNow() })
         .where(eq(firebase_tokens.userId, userId))
         .run();
     },

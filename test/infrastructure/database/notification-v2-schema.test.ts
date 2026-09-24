@@ -32,7 +32,7 @@ async function createSchedule(notificationId: number): Promise<number> {
   const row = await env.DB.prepare(
     `INSERT INTO notification_schedules (
        notification_id, send_status, send_at
-     ) VALUES (?, 'scheduled', '2026-11-07 06:35:00')
+     ) VALUES (?, 'scheduled', '2026-11-07T06:35:00.000Z')
      RETURNING notification_schedule_id`
   )
     .bind(notificationId)
@@ -165,6 +165,90 @@ describe('通知v2のDB Schema', () => {
         }),
       ])
     );
+  });
+
+  it('通知v2の6テーブルでDB生成日時をUTC ISOへ統一する', async () => {
+    const userId = await createUser('日時形式');
+    const notificationId = await createNotification(userId);
+    const token = await env.DB.prepare(
+      `INSERT INTO firebase_tokens (user_id, platform, fcm_token)
+       VALUES (?, 1, 'schema-v2-datetime-token')
+       RETURNING firebase_token_id`
+    )
+      .bind(userId)
+      .first<{ firebase_token_id: number }>();
+    if (!token) throw new Error('failed to create datetime token');
+    const scheduleId = await createSchedule(notificationId);
+    await env.DB.prepare(
+      `INSERT INTO notification_audiences
+         (notification_schedule_id, audience_type)
+       VALUES (?, 'all')`
+    )
+      .bind(scheduleId)
+      .run();
+    const recipient = await env.DB.prepare(
+      `INSERT INTO notification_recipients (notification_schedule_id, user_id)
+       VALUES (?, ?) RETURNING notification_recipient_id`
+    )
+      .bind(scheduleId, userId)
+      .first<{ notification_recipient_id: number }>();
+    if (!recipient) throw new Error('failed to create datetime recipient');
+    await env.DB.prepare(
+      `INSERT INTO notification_push_deliveries
+         (notification_recipient_id, firebase_token_id, platform, status)
+       VALUES (?, ?, 1, 'pending')`
+    )
+      .bind(recipient.notification_recipient_id, token.firebase_token_id)
+      .run();
+
+    const row = await env.DB.prepare(
+      `SELECT
+         (SELECT created_at FROM notifications
+          WHERE notification_id = ?) AS notification_created_at,
+         (SELECT updated_at FROM notifications
+          WHERE notification_id = ?) AS notification_updated_at,
+         (SELECT last_seen_at FROM firebase_tokens
+          WHERE firebase_token_id = ?) AS token_last_seen_at,
+         (SELECT created_at FROM firebase_tokens
+          WHERE firebase_token_id = ?) AS token_created_at,
+         (SELECT updated_at FROM firebase_tokens
+          WHERE firebase_token_id = ?) AS token_updated_at,
+         (SELECT created_at FROM notification_schedules
+          WHERE notification_schedule_id = ?) AS schedule_created_at,
+         (SELECT updated_at FROM notification_schedules
+          WHERE notification_schedule_id = ?) AS schedule_updated_at,
+         (SELECT created_at FROM notification_audiences
+          WHERE notification_schedule_id = ?) AS audience_created_at,
+         (SELECT updated_at FROM notification_audiences
+          WHERE notification_schedule_id = ?) AS audience_updated_at,
+         (SELECT created_at FROM notification_recipients
+          WHERE notification_recipient_id = ?) AS recipient_created_at,
+         (SELECT created_at FROM notification_push_deliveries
+          WHERE notification_recipient_id = ?) AS delivery_created_at,
+         (SELECT updated_at FROM notification_push_deliveries
+          WHERE notification_recipient_id = ?) AS delivery_updated_at`
+    )
+      .bind(
+        notificationId,
+        notificationId,
+        token.firebase_token_id,
+        token.firebase_token_id,
+        token.firebase_token_id,
+        scheduleId,
+        scheduleId,
+        scheduleId,
+        scheduleId,
+        recipient.notification_recipient_id,
+        recipient.notification_recipient_id,
+        recipient.notification_recipient_id
+      )
+      .first<Record<string, string>>();
+
+    const utcIso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    expect(row).not.toBeNull();
+    for (const value of Object.values(row ?? {})) {
+      expect(value).toMatch(utcIso);
+    }
   });
 
   it('後続ResolverとWorker向けのindexを持つ', async () => {
