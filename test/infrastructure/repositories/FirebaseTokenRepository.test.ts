@@ -316,6 +316,31 @@ describe('FirebaseTokenRepository', () => {
     ).toHaveLength(1);
   });
 
+  it('存在しないUserへの登録失敗時に他UserのTokenを削除しない', async () => {
+    const ownerId = await createUser('Firebase Token所有者');
+    await repository.register({
+      userId: ownerId,
+      platform: 'android',
+      fcmToken: 'token-owned',
+    });
+
+    await expect(
+      repository.register({
+        userId: 999999,
+        platform: 'android',
+        fcmToken: 'token-owned',
+      })
+    ).rejects.toThrow('User not found');
+
+    const stored = await env.DB.prepare(
+      'SELECT user_id FROM firebase_tokens WHERE fcm_token = ?'
+    )
+      .bind('token-owned')
+      .first<{ user_id: number }>();
+
+    expect(stored?.user_id).toBe(ownerId);
+  });
+
   it('存在しないusers.user_idでは登録しない', async () => {
     await expect(
       repository.register({

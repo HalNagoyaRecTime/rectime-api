@@ -54,9 +54,14 @@ export function createFirebaseTokenRepository(
           .prepare(
             `DELETE FROM firebase_tokens
              WHERE fcm_token = ?
-               AND user_id <> ?`
+               AND user_id <> ?
+               AND EXISTS (
+                 SELECT 1
+                 FROM users
+                 WHERE user_id = ?
+               )`
           )
-          .bind(input.fcmToken, input.userId),
+          .bind(input.fcmToken, input.userId, input.userId),
         db
           .prepare(
             `UPDATE firebase_tokens
