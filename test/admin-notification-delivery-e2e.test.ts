@@ -1,17 +1,19 @@
 import { env as workerEnv } from 'cloudflare:workers';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageBatch } from '@cloudflare/workers-types';
 import type { IFcmService } from '../src/application/services/IFcmService';
-import { createNotificationAudienceResolverService } from '../src/application/services/NotificationAudienceResolverService';
-import { createNotificationDeliveryService } from '../src/application/services/NotificationDeliveryService';
-import type { INotificationDeliveryService } from '../src/application/services/INotificationDeliveryService';
-import type { IScheduledNotificationService } from '../src/application/services/IScheduledNotificationService';
 import type { NotificationDeliveryMessage } from '../src/domain/entities/NotificationDelivery';
 import { signAccessToken } from '../src/infrastructure/auth/jwt';
-import { createNotificationAudienceResolverRepository } from '../src/infrastructure/repositories/NotificationAudienceResolverRepository';
-import { createNotificationDeliveryRepository } from '../src/infrastructure/repositories/NotificationDeliveryRepository';
+import * as fcmServiceModule from '../src/infrastructure/services/FcmService';
 import worker, { app } from '../src/index';
 import type { Env } from '../src/lib/env';
+
+const sendNotificationToTokenMock = vi.fn(
+  async (input: Parameters<IFcmService['sendNotificationToToken']>[0]) => ({
+    success: true as const,
+    messageId: `projects/e2e/messages/${input.token}`,
+  })
+);
 
 const JWT_SECRET = 'e'.repeat(32);
 const testEnv: Env = { ...workerEnv, JWT_SECRET };
@@ -59,6 +61,11 @@ async function createStaffToken(): Promise<string> {
 
 describe('Admin notification POST to FCM', () => {
   beforeEach(async () => {
+    sendNotificationToTokenMock.mockClear();
+    vi.spyOn(fcmServiceModule, 'createFcmService').mockReturnValue({
+      sendTestNotification: vi.fn(),
+      sendNotificationToToken: sendNotificationToTokenMock,
+    });
     await workerEnv.DB.batch([
       workerEnv.DB.prepare('DELETE FROM notification_push_deliveries'),
       workerEnv.DB.prepare('DELETE FROM notification_recipients'),
@@ -77,6 +84,10 @@ describe('Admin notification POST to FCM', () => {
     ]);
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('Admin POSTからCron / Queue entrypointを通りDelivery完了まで処理する', async () => {
     const token = await createStaffToken();
     const recipientUserId = await insertUser('Delivery E2E recipient');
@@ -90,6 +101,20 @@ describe('Admin notification POST to FCM', () => {
          VALUES (?, 2, 'delivery-e2e-android-token')`
       ).bind(recipientUserId),
     ]);
+
+    const messages: NotificationDeliveryMessage[] = [];
+    const queueBinding = {
+      sendBatch: vi.fn(
+        async (batch: { body: NotificationDeliveryMessage }[]) => {
+          messages.push(...batch.map(message => message.body));
+        }
+      ),
+    };
+    const runtimeEnv: Env = {
+      ...testEnv,
+      NOTIFICATION_DELIVERY_QUEUE:
+        queueBinding as unknown as Env['NOTIFICATION_DELIVERY_QUEUE'],
+    };
 
     const response = await app.fetch(
       new Request('http://example.com/api/v1/admin/notifications', {
@@ -109,7 +134,7 @@ describe('Admin notification POST to FCM', () => {
           importance: 'normal',
         }),
       }),
-      testEnv
+      runtimeEnv
     );
     expect(response.status).toBe(201);
     const created = (await response.json()) as {
@@ -117,128 +142,65 @@ describe('Admin notification POST to FCM', () => {
       notificationScheduleId: number;
     };
 
-    const resolver = createNotificationAudienceResolverService(
-      createNotificationAudienceResolverRepository(workerEnv.DB)
+    const scheduledTime = Date.now() + 60_000;
+    const { ctx, waitUntilPromises } = buildExecutionContext();
+    const scheduledEvent = {
+      cron: '* * * * *',
+      scheduledTime,
+      noRetry: () => {},
+    } as unknown as ScheduledEvent;
+
+    await worker.scheduled(
+      scheduledEvent,
+      { ...runtimeEnv, EVENT_DATE: '' },
+      ctx
     );
-    const messages: NotificationDeliveryMessage[] = [];
-    const fcmService: IFcmService = {
-      sendTestNotification: vi.fn(),
-      sendNotificationToToken: vi.fn(async input => ({
-        success: true as const,
-        messageId: `projects/e2e/messages/${input.token}`,
-      })),
+    await Promise.all(waitUntilPromises);
+
+    expect(messages).toEqual([
+      { notificationScheduleIds: [created.notificationScheduleId] },
+    ]);
+    expect(queueBinding.sendBatch).toHaveBeenCalledTimes(1);
+
+    const queueMessage = {
+      id: 'notification-delivery-e2e',
+      timestamp: new Date(),
+      body: messages[0],
+      attempts: 1,
+      ack: vi.fn(),
+      retry: vi.fn(),
     };
-    const deliveryService = createNotificationDeliveryService({
-      notificationDeliveryRepository: createNotificationDeliveryRepository(
-        workerEnv.DB
-      ),
-      notificationDeliveryQueue: {
-        enqueueMany: vi.fn(async batch => {
-          messages.push(...batch);
-        }),
-      },
-      fcmService,
-    });
-    const resolveDueSchedules = vi.fn((now: Date) =>
-      resolver.resolveDueSchedules(now)
+    await worker.queue(
+      {
+        messages: [queueMessage],
+        queue: 'rectime-notification-delivery-dev',
+      } as unknown as MessageBatch<NotificationDeliveryMessage>,
+      runtimeEnv
     );
-    const enqueueReadySchedules = vi.fn((now?: Date) =>
-      deliveryService.enqueueReadySchedules(now)
+    await worker.queue(
+      {
+        messages: [queueMessage],
+        queue: 'rectime-notification-delivery-dev',
+      } as unknown as MessageBatch<NotificationDeliveryMessage>,
+      runtimeEnv
     );
-    const sendQueuedNotifications = vi.fn((ids: number[], now?: Date) =>
-      deliveryService.sendQueuedNotifications(ids, now)
+    expect(sendNotificationToTokenMock).toHaveBeenCalledTimes(2);
+    expect(queueMessage.ack).toHaveBeenCalledTimes(2);
+    expect(queueMessage.retry).not.toHaveBeenCalled();
+    expect(sendNotificationToTokenMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'E2E push title',
+        body: 'E2E push body',
+        importance: 2,
+        data: {
+          type: 'manual',
+          notificationId: String(created.notificationId),
+        },
+      })
     );
-    const runtimeDeliveryService: INotificationDeliveryService = {
-      enqueueReadySchedules,
-      sendQueuedNotifications,
-    };
-    const legacyService: IScheduledNotificationService = {
-      enqueueDueNotifications: vi.fn(),
-      sendQueuedNotifications: vi.fn().mockResolvedValue({
-        checkedEvents: 0,
-        sent: 0,
-        failed: 0,
-      }),
-    };
-    const containerModule = await import('../src/di/container');
-    const createDIContainerSpy = vi
-      .spyOn(containerModule, 'createDIContainer')
-      .mockReturnValue({
-        notificationAudienceResolverService: { resolveDueSchedules },
-        notificationDeliveryService: runtimeDeliveryService,
-        scheduledNotificationService: legacyService,
-      } as unknown as ReturnType<typeof containerModule.createDIContainer>);
 
-    try {
-      const scheduledTime = Date.now() + 60_000;
-      const scheduleTime = new Date(scheduledTime);
-      const { ctx, waitUntilPromises } = buildExecutionContext();
-      const scheduledEvent = {
-        cron: '* * * * *',
-        scheduledTime,
-        noRetry: () => {},
-      } as unknown as ScheduledEvent;
-
-      await worker.scheduled(
-        scheduledEvent,
-        { ...testEnv, EVENT_DATE: '' },
-        ctx
-      );
-      await Promise.all(waitUntilPromises);
-
-      expect(resolveDueSchedules).toHaveBeenCalledWith(scheduleTime);
-      expect(enqueueReadySchedules).toHaveBeenCalledWith(scheduleTime);
-      expect(messages).toEqual([
-        { notificationScheduleIds: [created.notificationScheduleId] },
-      ]);
-
-      const queueMessage = {
-        id: 'notification-delivery-e2e',
-        timestamp: new Date(),
-        body: messages[0],
-        attempts: 1,
-        ack: vi.fn(),
-        retry: vi.fn(),
-      };
-      await worker.queue(
-        {
-          messages: [queueMessage],
-          queue: 'rectime-notification-delivery-dev',
-        } as unknown as MessageBatch<NotificationDeliveryMessage>,
-        testEnv
-      );
-
-      expect(sendQueuedNotifications).toHaveBeenCalledWith([
-        created.notificationScheduleId,
-      ]);
-      await worker.queue(
-        {
-          messages: [queueMessage],
-          queue: 'rectime-notification-delivery-dev',
-        } as unknown as MessageBatch<NotificationDeliveryMessage>,
-        testEnv
-      );
-      expect(fcmService.sendNotificationToToken).toHaveBeenCalledTimes(2);
-      expect(queueMessage.ack).toHaveBeenCalledTimes(2);
-      expect(queueMessage.retry).not.toHaveBeenCalled();
-      expect(legacyService.sendQueuedNotifications).toHaveBeenCalledWith([
-        created.notificationScheduleId,
-      ]);
-      expect(fcmService.sendNotificationToToken).toHaveBeenCalledTimes(2);
-      expect(fcmService.sendNotificationToToken).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'E2E push title',
-          body: 'E2E push body',
-          importance: 2,
-          data: {
-            type: 'manual',
-            notificationId: String(created.notificationId),
-          },
-        })
-      );
-
-      const saved = await workerEnv.DB.prepare(
-        `SELECT s.send_status, s.completed_at, COUNT(d.notification_push_delivery_id) AS delivery_count,
+    const saved = await workerEnv.DB.prepare(
+      `SELECT s.send_status, s.completed_at, COUNT(d.notification_push_delivery_id) AS delivery_count,
                 SUM(CASE WHEN d.status = 'sent' THEN 1 ELSE 0 END) AS sent_count,
                 MIN(d.attempt_count) AS min_attempt_count
          FROM notification_schedules s
@@ -249,18 +211,15 @@ describe('Admin notification POST to FCM', () => {
            )
          WHERE s.notification_schedule_id = ?
          GROUP BY s.notification_schedule_id`
-      )
-        .bind(created.notificationScheduleId)
-        .first<Record<string, unknown>>();
-      expect(saved).toMatchObject({
-        send_status: 'completed',
-        delivery_count: 2,
-        sent_count: 2,
-        min_attempt_count: 1,
-      });
-      expect(saved?.completed_at).not.toBeNull();
-    } finally {
-      createDIContainerSpy.mockRestore();
-    }
+    )
+      .bind(created.notificationScheduleId)
+      .first<Record<string, unknown>>();
+    expect(saved).toMatchObject({
+      send_status: 'completed',
+      delivery_count: 2,
+      sent_count: 2,
+      min_attempt_count: 1,
+    });
+    expect(saved?.completed_at).not.toBeNull();
   });
 });
