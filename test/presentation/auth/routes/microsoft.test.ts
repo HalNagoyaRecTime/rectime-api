@@ -403,7 +403,20 @@ describe('GET /auth/microsoft/login origin', () => {
 });
 
 describe('GET /auth/microsoft/callback', () => {
-  it('errorクエリがある場合はログイン画面へリダイレクトする', async () => {
+  it('state付きのerrorクエリはフロントエンドのcallbackへ中継する', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      '/callback?error=access_denied&state=state%2B123',
+      {},
+      buildEnv()
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      'https://app.example.com/auth/callback?error=access_denied&state=state%2B123'
+    );
+  });
+
+  it('stateが無いerrorクエリはログイン画面へリダイレクトする', async () => {
     const app = buildApp();
     const res = await app.request(
       '/callback?error=access_denied',
@@ -463,7 +476,7 @@ describe('GET /auth/microsoft/callback', () => {
     expect(await env.AUTH_KV.get(`pkce:${state}`)).toBeTruthy();
   });
 
-  it('Microsoftのerror時も有効なstateのoriginを復元する', async () => {
+  it('Microsoftのerror時も有効なstateのoriginを復元してcallbackへ中継する', async () => {
     const env = buildEnv({
       ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
     });
@@ -488,7 +501,7 @@ describe('GET /auth/microsoft/callback', () => {
 
     expect(res.status).toBe(302);
     expect(res.headers.get('Location')).toBe(
-      'https://pr-296.recwatch.pages.dev/login?error=auth_failed'
+      `https://pr-296.recwatch.pages.dev/auth/callback?error=access_denied&state=${state}`
     );
   });
 
