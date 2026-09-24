@@ -2,8 +2,14 @@ import type {
   D1Database,
   D1PreparedStatement,
 } from '@cloudflare/workers-types';
-import type { NotificationAudienceType } from '../../domain/entities/Notification';
-import type { UnresolvedNotificationAudience } from '../../domain/entities/NotificationAudienceResolver';
+import {
+  NOTIFICATION_AUDIENCE_TYPES,
+  type NotificationAudienceType,
+} from '../../domain/entities/Notification';
+import {
+  UnresolvableNotificationAudienceError,
+  type UnresolvedNotificationAudience,
+} from '../../domain/entities/NotificationAudienceResolver';
 import type { INotificationAudienceResolverRepository } from '../../domain/interfaces/repositories/INotificationAudienceResolverRepository';
 
 interface CandidateRow {
@@ -85,7 +91,10 @@ export function createNotificationAudienceResolverRepository(
         .all<AudienceRow>();
       return rows.results.map(row => ({
         notification_audience_id: row.notification_audience_id,
-        audience_type: row.audience_type as NotificationAudienceType,
+        audience_type: assertAudienceType(
+          row.audience_type,
+          row.notification_audience_id
+        ),
         target_id: row.target_id,
       }));
     },
@@ -119,6 +128,20 @@ export function createNotificationAudienceResolverRepository(
         );
 
       await db.batch([insert, markResolved]);
+    },
+
+    async failSchedule(scheduleId, reason, now) {
+      const result = await db
+        .prepare(
+          `UPDATE notification_schedules
+           SET send_status = 'failed', failed_reason = ?, updated_at = ?
+           WHERE notification_schedule_id = ?
+             AND send_status = 'resolving'
+             AND recipients_resolved_at IS NULL`
+        )
+        .bind(reason, now, scheduleId)
+        .run();
+      return result.meta.changes === 1;
     },
 
     async completeScheduleIfResolved(scheduleId, now) {
@@ -199,8 +222,7 @@ function buildRecipientInsert(
           audience.target_id
         );
     case 'class_room': {
-      if (audience.target_id === null)
-        throw new Error('class_room target_idがありません');
+      const targetId = requireTargetId(audience);
       return db
         .prepare(
           insertPrefix +
@@ -212,7 +234,7 @@ function buildRecipientInsert(
         .bind(
           scheduleId,
           now,
-          audience.target_id,
+          targetId,
           audience.notification_audience_id,
           scheduleId,
           audience.audience_type,
@@ -220,8 +242,7 @@ function buildRecipientInsert(
         );
     }
     case 'gathering': {
-      if (audience.target_id === null)
-        throw new Error('gathering target_idがありません');
+      const targetId = requireTargetId(audience);
       const select =
         'SELECT ?, u.user_id, ? FROM gathering_group_members member ' +
         'JOIN users u ON u.user_id = member.user_id ' +
@@ -231,7 +252,7 @@ function buildRecipientInsert(
         .bind(
           scheduleId,
           now,
-          audience.target_id,
+          targetId,
           audience.notification_audience_id,
           scheduleId,
           audience.audience_type,
@@ -239,8 +260,7 @@ function buildRecipientInsert(
         );
     }
     case 'event': {
-      if (audience.target_id === null)
-        throw new Error('event target_idがありません');
+      const targetId = requireTargetId(audience);
       const select =
         'SELECT DISTINCT ?, u.user_id, ? FROM gatherings g ' +
         'JOIN gathering_group_members member ON member.gathering_id = g.gathering_id ' +
@@ -251,7 +271,7 @@ function buildRecipientInsert(
         .bind(
           scheduleId,
           now,
-          audience.target_id,
+          targetId,
           audience.notification_audience_id,
           scheduleId,
           audience.audience_type,
@@ -259,8 +279,7 @@ function buildRecipientInsert(
         );
     }
     case 'user': {
-      if (audience.target_id === null)
-        throw new Error('user target_idがありません');
+      const targetId = requireTargetId(audience);
       return db
         .prepare(
           insertPrefix +
@@ -272,12 +291,42 @@ function buildRecipientInsert(
         .bind(
           scheduleId,
           now,
-          audience.target_id,
+          targetId,
           audience.notification_audience_id,
           scheduleId,
           audience.audience_type,
           audience.target_id
         );
     }
+    default:
+      throw new UnresolvableNotificationAudienceError(
+        audience.notification_audience_id,
+        `Audience ${audience.notification_audience_id} の種別がサポートされていません`
+      );
   }
+}
+
+function assertAudienceType(
+  value: string,
+  audienceId: number
+): NotificationAudienceType {
+  if (
+    !NOTIFICATION_AUDIENCE_TYPES.includes(value as NotificationAudienceType)
+  ) {
+    throw new UnresolvableNotificationAudienceError(
+      audienceId,
+      `Audience ${audienceId} の種別がサポートされていません`
+    );
+  }
+  return value as NotificationAudienceType;
+}
+
+function requireTargetId(audience: UnresolvedNotificationAudience): number {
+  if (audience.target_id === null) {
+    throw new UnresolvableNotificationAudienceError(
+      audience.notification_audience_id,
+      `Audience ${audience.notification_audience_id} に対象IDがありません`
+    );
+  }
+  return audience.target_id;
 }

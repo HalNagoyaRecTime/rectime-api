@@ -1,5 +1,6 @@
 import {
   NOTIFICATION_AUDIENCE_RESOLVER_SCHEDULE_LIMIT,
+  UnresolvableNotificationAudienceError,
   type NotificationAudienceResolverResult,
 } from '../../domain/entities/NotificationAudienceResolver';
 import type { INotificationAudienceResolverRepository } from '../../domain/interfaces/repositories/INotificationAudienceResolverRepository';
@@ -46,8 +47,19 @@ export function createNotificationAudienceResolverService(
               recipient_count: recipientCount,
             });
           }
-        } catch {
-          // resolvingのまま残し、次のCronで未解決Audienceから再開する。
+        } catch (error) {
+          if (error instanceof UnresolvableNotificationAudienceError) {
+            try {
+              await repository.failSchedule(
+                scheduleId,
+                error.message,
+                timestamp
+              );
+            } catch {
+              // DB更新に失敗した場合はresolvingに残り、次回Cronで再試行する。
+            }
+          }
+          // 一時障害はresolvingに残し、次回Cronで未解決Audienceから再開する。
           result.failed_schedule_ids.push(scheduleId);
         }
       }

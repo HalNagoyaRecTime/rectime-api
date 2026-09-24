@@ -17,6 +17,11 @@ export interface INotificationAudienceResolverRepository {
     audience: UnresolvedNotificationAudience,
     now: string
   ): Promise<void>;
+  failSchedule(
+    scheduleId: number,
+    reason: string,
+    now: string
+  ): Promise<boolean>;
   completeScheduleIfResolved(scheduleId: number, now: string): Promise<boolean>;
   countRecipients(scheduleId: number): Promise<number>;
 }

@@ -3,6 +3,7 @@ import type {
   NotificationAudienceResolverCandidate,
   UnresolvedNotificationAudience,
 } from '../../../src/domain/entities/NotificationAudienceResolver';
+import { UnresolvableNotificationAudienceError } from '../../../src/domain/entities/NotificationAudienceResolver';
 import type { INotificationAudienceResolverRepository } from '../../../src/domain/interfaces/repositories/INotificationAudienceResolverRepository';
 import { createNotificationAudienceResolverService } from '../../../src/application/services/NotificationAudienceResolverService';
 
@@ -20,6 +21,7 @@ function buildRepository(
     claimScheduled: vi.fn().mockResolvedValue(true),
     findUnresolvedAudiences: vi.fn().mockResolvedValue([audience]),
     resolveAudience: vi.fn().mockResolvedValue(undefined),
+    failSchedule: vi.fn().mockResolvedValue(true),
     completeScheduleIfResolved: vi.fn().mockResolvedValue(true),
     countRecipients: vi.fn().mockResolvedValue(3),
     ...overrides,
@@ -118,9 +120,39 @@ describe('NotificationAudienceResolverService', () => {
       failed_schedule_ids: [10],
     });
     expect(repository.completeScheduleIfResolved).toHaveBeenCalledTimes(1);
+    expect(repository.failSchedule).not.toHaveBeenCalled();
     expect(repository.completeScheduleIfResolved).toHaveBeenCalledWith(
       11,
       '2026-09-24T12:00:00.000Z'
     );
+  });
+
+  it('恒久的なAudience不整合はscheduleをfailedにする', async () => {
+    const repository = buildRepository({
+      findDueCandidates: vi
+        .fn()
+        .mockResolvedValue([candidate(12, 'resolving')]),
+      resolveAudience: vi
+        .fn()
+        .mockRejectedValue(
+          new UnresolvableNotificationAudienceError(
+            2,
+            'Audience 2 に対象IDがありません'
+          )
+        ),
+    });
+    const service = createNotificationAudienceResolverService(repository);
+    const now = new Date('2026-09-24T12:00:00.000Z');
+
+    await expect(service.resolveDueSchedules(now)).resolves.toEqual({
+      completed_schedules: [],
+      failed_schedule_ids: [12],
+    });
+    expect(repository.failSchedule).toHaveBeenCalledWith(
+      12,
+      'Audience 2 に対象IDがありません',
+      now.toISOString()
+    );
+    expect(repository.completeScheduleIfResolved).not.toHaveBeenCalled();
   });
 });

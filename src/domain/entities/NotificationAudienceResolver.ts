@@ -13,6 +13,16 @@ export interface UnresolvedNotificationAudience {
   target_id: number | null;
 }
 
+export class UnresolvableNotificationAudienceError extends Error {
+  constructor(
+    readonly audienceId: number,
+    message: string
+  ) {
+    super(message);
+    this.name = 'UnresolvableNotificationAudienceError';
+  }
+}
+
 export interface ResolvedNotificationSchedule {
   notification_schedule_id: number;
   recipient_count: number;
