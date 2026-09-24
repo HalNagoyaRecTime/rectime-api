@@ -221,6 +221,12 @@ describe('通知契約のRequest schema', () => {
     expect(notificationResultsQuery.safeParse({ page: '0' }).success).toBe(
       false
     );
+    expect(notificationResultsQuery.safeParse({ page: '1e2' }).success).toBe(
+      false
+    );
+    expect(notificationResultsQuery.safeParse({ page: '1.0' }).success).toBe(
+      false
+    );
     expect(notificationResultsQuery.safeParse({ limit: '0' }).success).toBe(
       false
     );

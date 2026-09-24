@@ -120,7 +120,7 @@ export type AdminNotificationSummaryDTO = z.infer<
   typeof adminNotificationSummarySchema
 >;
 
-export const adminNotificationListResponseSchema = z
+export const legacyAdminNotificationListResponseSchema = z
   .object({
     notifications: z.array(adminNotificationSummarySchema),
     ...paginationFields,
@@ -128,10 +128,10 @@ export const adminNotificationListResponseSchema = z
   .openapi('AdminNotificationList');
 
 export type AdminNotificationListResponseDTO = z.infer<
-  typeof adminNotificationListResponseSchema
+  typeof legacyAdminNotificationListResponseSchema
 >;
 
-export const adminNotificationIdParams = z.object({
+export const legacyAdminNotificationIdParams = z.object({
   notificationId: positivePathParam('notificationId', '通知ID'),
 });
 
@@ -153,7 +153,7 @@ export const updateManualNotificationSchema = z
   })
   .openapi('UpdateManualNotificationRequest');
 
-export const adminNotificationListQuery = z
+export const legacyAdminNotificationListQuery = z
   .object({
     sendStatus: sendStatusSchema.optional(),
     eventId: z.coerce.number().int().positive().optional(),
@@ -162,7 +162,7 @@ export const adminNotificationListQuery = z
   })
   .merge(paginationQuery(100, 50));
 
-export const adminNotificationCreateRoute = createRoute({
+export const legacyAdminNotificationCreateRoute = createRoute({
   method: 'post',
   path: '/admin/notifications',
   tags: ['Admin notifications'],
@@ -187,15 +187,18 @@ export const adminNotificationCreateRoute = createRoute({
   },
 });
 
-export const adminNotificationListRoute = createRoute({
+export const legacyAdminNotificationListRoute = createRoute({
   method: 'get',
   path: '/admin/notifications',
   tags: ['Admin notifications'],
   summary: '管理者通知一覧を取得する',
   security: bearerAuth,
-  request: { query: adminNotificationListQuery },
+  request: { query: legacyAdminNotificationListQuery },
   responses: {
-    200: jsonResponse(adminNotificationListResponseSchema, '管理者通知一覧'),
+    200: jsonResponse(
+      legacyAdminNotificationListResponseSchema,
+      '管理者通知一覧'
+    ),
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
@@ -203,13 +206,13 @@ export const adminNotificationListRoute = createRoute({
   },
 });
 
-export const adminNotificationDetailRoute = createRoute({
+export const legacyAdminNotificationDetailRoute = createRoute({
   method: 'get',
   path: '/admin/notifications/{notificationId}',
   tags: ['Admin notifications'],
   summary: '管理者通知を取得する',
   security: bearerAuth,
-  request: { params: adminNotificationIdParams },
+  request: { params: legacyAdminNotificationIdParams },
   responses: {
     200: jsonResponse(adminNotificationSummarySchema, '管理者通知'),
     400: badRequestResponse,
@@ -221,14 +224,14 @@ export const adminNotificationDetailRoute = createRoute({
   },
 });
 
-export const adminNotificationUpdateRoute = createRoute({
+export const legacyAdminNotificationUpdateRoute = createRoute({
   method: 'put',
   path: '/admin/notifications/{notificationId}',
   tags: ['Admin notifications'],
   summary: '管理者通知を更新する',
   security: bearerAuth,
   request: {
-    params: adminNotificationIdParams,
+    params: legacyAdminNotificationIdParams,
     body: {
       content: {
         'application/json': { schema: updateManualNotificationSchema },
@@ -247,13 +250,13 @@ export const adminNotificationUpdateRoute = createRoute({
   },
 });
 
-export const adminNotificationDeleteRoute = createRoute({
+export const legacyAdminNotificationDeleteRoute = createRoute({
   method: 'delete',
   path: '/admin/notifications/{notificationId}',
   tags: ['Admin notifications'],
   summary: '管理者通知を削除する',
   security: bearerAuth,
-  request: { params: adminNotificationIdParams },
+  request: { params: legacyAdminNotificationIdParams },
   responses: {
     204: noContentResponse,
     400: badRequestResponse,

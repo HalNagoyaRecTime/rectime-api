@@ -10,7 +10,12 @@ import {
   NOTIFICATION_TARGET_AUDIENCE_TYPES,
   NOTIFICATION_TYPES,
 } from '../../../domain/entities/Notification';
-import { isoDateTimeSchema, utcDateTimeSchema, z } from '../schemas';
+import {
+  digitsOnlyInteger,
+  isoDateTimeSchema,
+  utcDateTimeSchema,
+  z,
+} from '../schemas';
 
 export const notificationStatusSchemas = {
   schedule: z
@@ -375,8 +380,8 @@ export const notificationDateRangeQuery = z
 
 export const notificationResultsQuery = z
   .object({
-    page: z.coerce.number().int().min(1).default(1),
-    limit: z.coerce.number().int().min(1).max(100).default(50),
+    page: digitsOnlyInteger(1, undefined, 1),
+    limit: digitsOnlyInteger(1, 100, 50),
   })
   .strict()
   .openapi('NotificationResultsQuery');

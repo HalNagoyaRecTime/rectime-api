@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  legacyAdminNotificationCreateRoute,
+  legacyAdminNotificationDeleteRoute,
+  legacyAdminNotificationDetailRoute,
+  legacyAdminNotificationListRoute,
+  legacyAdminNotificationUpdateRoute,
+} from '../../../src/presentation/openapi/notification/legacy/admin';
+import {
   adminNotificationCreateRoute,
   adminNotificationDetailRoute,
   adminNotificationListRoute,
@@ -17,6 +24,14 @@ import {
 } from '../../../src/presentation/openapi/notification';
 
 describe('通知endpointの契約', () => {
+  it('legacy管理通知ルートを明示名で分離する', () => {
+    expect(legacyAdminNotificationCreateRoute.method).toBe('post');
+    expect(legacyAdminNotificationListRoute.method).toBe('get');
+    expect(legacyAdminNotificationDetailRoute.method).toBe('get');
+    expect(legacyAdminNotificationUpdateRoute.method).toBe('put');
+    expect(legacyAdminNotificationDeleteRoute.method).toBe('delete');
+  });
+
   it('新契約のmethod/pathとqueryを定義する', () => {
     expect(adminNotificationCreateRoute.method).toBe('post');
     expect(adminNotificationPatchRoute.method).toBe('patch');
