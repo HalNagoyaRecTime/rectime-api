@@ -1,11 +1,9 @@
 import { createRoute } from '@hono/zod-openapi';
 import {
   bearerAuth,
-  conflictResponse,
   internalServerErrorResponse,
   jsonResponse,
   noContentResponse,
-  notFoundResponse,
   positivePathParam,
   utcDateTimeSchema,
   z,
@@ -57,8 +55,6 @@ export const firebaseTokenRegistrationRoute = createRoute({
     200: jsonResponse(firebaseTokenSchema, '登録結果'),
     400: notificationBadRequestResponse,
     401: notificationUnauthorizedResponse,
-    409: conflictResponse,
-    404: notFoundResponse,
     500: internalServerErrorResponse,
   },
 });

@@ -6,6 +6,8 @@ import { createStaffRepository } from '../../../src/infrastructure/repositories/
 import { createTeacherRepository } from '../../../src/infrastructure/repositories/TeacherRepository';
 import { createGatheringGroupMemberRepository } from '../../../src/infrastructure/repositories/GatheringGroupMemberRepository';
 import { createNotificationScheduleRepository } from '../../../src/infrastructure/repositories/NotificationScheduleRepository';
+import { createNotificationAccountDeletionRepository } from '../../../src/infrastructure/repositories/NotificationAccountDeletionRepository';
+import { createNotificationAccountDeletionService } from '../../../src/application/services/NotificationAccountDeletionService';
 import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
 import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 import type { IGatheringGroupMemberRepository } from '../../../src/domain/interfaces/repositories/IGatheringGroupMemberRepository';
@@ -44,6 +46,14 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     };
   }
 
+  function buildNotificationAccountDeletionService(db = workerEnv.DB) {
+    return createNotificationAccountDeletionService({
+      notificationScheduleRepository: createNotificationScheduleRepository(db),
+      notificationAccountDeletionRepository:
+        createNotificationAccountDeletionRepository(db),
+    });
+  }
+
   function buildService() {
     const db = workerEnv.DB;
     return createAccountDeletionService({
@@ -52,7 +62,8 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       staffRepository: createStaffRepository(db),
       teacherRepository: createTeacherRepository(db),
       gatheringGroupMemberRepository: createGatheringGroupMemberRepository(db),
-      notificationScheduleRepository: createNotificationScheduleRepository(db),
+      notificationAccountDeletionService:
+        buildNotificationAccountDeletionService(db),
       firebaseTokenRepository: createFirebaseTokenRepository(db),
     });
   }
@@ -80,6 +91,86 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .first<{ deletion_status: string; purged_at: string | null }>();
     return row!;
   }
+
+  it('通知Recipientを削除し、通知v2 actor参照をNULL化する', async () => {
+    const targetUser = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('通知削除対象') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const otherUser = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('通知Recipient保持対象') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const notification = await workerEnv.DB.prepare(
+      "INSERT INTO notifications (created_by_user_id, notification_type, push_title, push_body, title, body) VALUES (?, 'manual', '件名', '本文', '件名', '本文') RETURNING notification_id"
+    )
+      .bind(targetUser!.user_id)
+      .first<{ notification_id: number }>();
+    const schedule = await workerEnv.DB.prepare(
+      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, stopped_by_user_id, notification_id, send_status, send_at) VALUES (?, ?, ?, ?, 'draft', '2026-09-24T09:00:00.000Z') RETURNING notification_schedule_id"
+    )
+      .bind(
+        targetUser!.user_id,
+        targetUser!.user_id,
+        targetUser!.user_id,
+        notification!.notification_id
+      )
+      .first<{ notification_schedule_id: number }>();
+    const removedRecipient = await workerEnv.DB.prepare(
+      'INSERT INTO notification_recipients (notification_schedule_id, user_id) VALUES (?, ?) RETURNING notification_recipient_id'
+    )
+      .bind(schedule!.notification_schedule_id, targetUser!.user_id)
+      .first<{ notification_recipient_id: number }>();
+    const keptRecipient = await workerEnv.DB.prepare(
+      'INSERT INTO notification_recipients (notification_schedule_id, user_id) VALUES (?, ?) RETURNING notification_recipient_id'
+    )
+      .bind(schedule!.notification_schedule_id, otherUser!.user_id)
+      .first<{ notification_recipient_id: number }>();
+    await workerEnv.DB.batch([
+      workerEnv.DB.prepare(
+        "INSERT INTO notification_push_deliveries (notification_recipient_id, platform, status) VALUES (?, 1, 'pending')"
+      ).bind(removedRecipient!.notification_recipient_id),
+      workerEnv.DB.prepare(
+        "INSERT INTO notification_push_deliveries (notification_recipient_id, platform, status) VALUES (?, 2, 'pending')"
+      ).bind(keptRecipient!.notification_recipient_id),
+    ]);
+    await markAsDeleted(targetUser!.user_id);
+
+    await buildService().deleteRelatedData(String(targetUser!.user_id));
+
+    const remainingRecipients = await workerEnv.DB.prepare(
+      'SELECT user_id FROM notification_recipients WHERE notification_schedule_id = ? ORDER BY user_id'
+    )
+      .bind(schedule!.notification_schedule_id)
+      .all<{ user_id: number }>();
+    expect(remainingRecipients.results.map(row => row.user_id)).toEqual([
+      otherUser!.user_id,
+    ]);
+    const remainingDeliveries = await workerEnv.DB.prepare(
+      'SELECT notification_recipient_id FROM notification_push_deliveries ORDER BY notification_recipient_id'
+    ).all<{ notification_recipient_id: number }>();
+    expect(
+      remainingDeliveries.results.map(row => row.notification_recipient_id)
+    ).toEqual([keptRecipient!.notification_recipient_id]);
+    const notificationActor = await workerEnv.DB.prepare(
+      'SELECT created_by_user_id FROM notifications WHERE notification_id = ?'
+    )
+      .bind(notification!.notification_id)
+      .first<{ created_by_user_id: number | null }>();
+    expect(notificationActor?.created_by_user_id).toBeNull();
+    const scheduleActors = await workerEnv.DB.prepare(
+      'SELECT created_user_id, scheduled_by_user_id, stopped_by_user_id FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(schedule!.notification_schedule_id)
+      .first<{
+        created_user_id: number | null;
+        scheduled_by_user_id: number | null;
+        stopped_by_user_id: number | null;
+      }>();
+    expect(scheduleActors).toEqual({
+      created_user_id: null,
+      scheduled_by_user_id: null,
+      stopped_by_user_id: null,
+    });
+  });
 
   it('学生ユーザーの関連データを削除・匿名化し、再実行しても安全である', async () => {
     const classRoom = await workerEnv.DB.prepare(
@@ -349,7 +440,8 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       teacherRepository: createTeacherRepository(db),
       gatheringGroupMemberRepository:
         buildFailingGatheringGroupMemberRepository(),
-      notificationScheduleRepository: createNotificationScheduleRepository(db),
+      notificationAccountDeletionService:
+        buildNotificationAccountDeletionService(db),
       firebaseTokenRepository: createFirebaseTokenRepository(db),
     });
 
@@ -581,8 +673,8 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
         teacherRepository: createTeacherRepository(db),
         gatheringGroupMemberRepository:
           buildFailingGatheringGroupMemberRepository(),
-        notificationScheduleRepository:
-          createNotificationScheduleRepository(db),
+        notificationAccountDeletionService:
+          buildNotificationAccountDeletionService(db),
         firebaseTokenRepository: createFirebaseTokenRepository(db),
       });
 
