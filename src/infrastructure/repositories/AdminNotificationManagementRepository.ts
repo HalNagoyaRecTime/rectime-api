@@ -306,7 +306,7 @@ function buildContentUpdateStatements(
                  AND guarded.send_status <> 'draft'
              )`
         )
-.bind(
+        .bind(
           normalizeNotificationDateTime(input.scheduled_at),
           notificationUtcNow(),
           input.notification_id,

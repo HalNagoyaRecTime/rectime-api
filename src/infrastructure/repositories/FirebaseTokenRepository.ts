@@ -88,7 +88,14 @@ export function createFirebaseTokenRepository(
                is_firebase_active,
                last_seen_at`
           )
-          .bind(platform, input.fcmToken, now, now, input.userId, input.fcmToken),
+          .bind(
+            platform,
+            input.fcmToken,
+            now,
+            now,
+            input.userId,
+            input.fcmToken
+          ),
         db
           .prepare(
             `INSERT INTO firebase_tokens (

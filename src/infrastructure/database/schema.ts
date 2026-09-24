@@ -272,15 +272,9 @@ export const firebase_tokens = sqliteTable(
     fcmToken: text('fcm_token').notNull(),
     // 1利用者N端末を実現するための旧active flagは#460で整理する。
     isFirebaseActive: integer('is_firebase_active').notNull().default(1),
-    lastSeenAt: text('last_seen_at')
-      .notNull()
-      .default(notificationUtcIsoNow()),
-    createdAt: text('created_at')
-      .notNull()
-      .default(notificationUtcIsoNow()),
-    updatedAt: text('updated_at')
-      .notNull()
-      .default(notificationUtcIsoNow()),
+    lastSeenAt: text('last_seen_at').notNull().default(notificationUtcIsoNow()),
+    createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
+    updatedAt: text('updated_at').notNull().default(notificationUtcIsoNow()),
   },
   table => [
     check('ck_firebase_tokens_platform', sql`${table.platform} IN (1, 2)`),
@@ -328,12 +322,8 @@ export const notification_schedules = sqliteTable(
       onDelete: 'set null',
     }),
     reason: text('reason'),
-    createdAt: text('created_at')
-      .notNull()
-      .default(notificationUtcIsoNow()),
-    updatedAt: text('updated_at')
-      .notNull()
-      .default(notificationUtcIsoNow()),
+    createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
+    updatedAt: text('updated_at').notNull().default(notificationUtcIsoNow()),
   },
   table => [
     index('idx_notification_schedules_due').on(table.sendStatus, table.sendAt),
@@ -366,12 +356,8 @@ export const notifications = sqliteTable(
     sourceType: text('source_type'),
     sourceId: integer('source_id'),
     sourceHash: text('source_hash'),
-    createdAt: text('created_at')
-      .notNull()
-      .default(notificationUtcIsoNow()),
-    updatedAt: text('updated_at')
-      .notNull()
-      .default(notificationUtcIsoNow()),
+    createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
+    updatedAt: text('updated_at').notNull().default(notificationUtcIsoNow()),
   },
   table => [
     check(
@@ -414,12 +400,8 @@ export const notification_audiences = sqliteTable(
     audienceType: text('audience_type').notNull(),
     targetId: integer('target_id'),
     resolvedAt: text('resolved_at'),
-    createdAt: text('created_at')
-      .notNull()
-      .default(notificationUtcIsoNow()),
-    updatedAt: text('updated_at')
-      .notNull()
-      .default(notificationUtcIsoNow()),
+    createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
+    updatedAt: text('updated_at').notNull().default(notificationUtcIsoNow()),
   },
   table => [
     check(
@@ -456,9 +438,7 @@ export const notification_recipients = sqliteTable(
     userId: integer('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    createdAt: text('created_at')
-      .notNull()
-      .default(notificationUtcIsoNow()),
+    createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
   },
   table => [
     uniqueIndex('uq_notification_recipients_schedule_user').on(
@@ -491,12 +471,8 @@ export const notification_push_deliveries = sqliteTable(
     failedReason: text('failed_reason'),
     fcmMessageId: text('fcm_message_id'),
     sentAt: text('sent_at'),
-    createdAt: text('created_at')
-      .notNull()
-      .default(notificationUtcIsoNow()),
-    updatedAt: text('updated_at')
-      .notNull()
-      .default(notificationUtcIsoNow()),
+    createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
+    updatedAt: text('updated_at').notNull().default(notificationUtcIsoNow()),
   },
   table => [
     check(
