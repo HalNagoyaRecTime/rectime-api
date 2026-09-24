@@ -1,14 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import {
-  and,
-  asc,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  or,
-  sql,
-} from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type {
   DueNotificationSchedule,
@@ -207,9 +198,7 @@ export function createNotificationScheduleRepository(
         )
         .all();
 
-      const loadedIds = new Set(
-        rows.map(row => row.notification_schedule_id)
-      );
+      const loadedIds = new Set(rows.map(row => row.notification_schedule_id));
       const tokenLostIds = claimed
         .map(row => row.id)
         .filter(id => !loadedIds.has(id));
