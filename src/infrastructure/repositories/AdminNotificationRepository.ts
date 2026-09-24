@@ -67,13 +67,19 @@ function buildNotificationInsert(
   const select = buildAudienceTokenSelect(input.audience);
   return db
     .prepare(
-      `INSERT INTO notifications (notification_type, title, body)
-       SELECT 'manual', ?, ?
+      `INSERT INTO notifications (
+         notification_type,
+         push_title,
+         push_body,
+         title,
+         body
+       )
+       SELECT 'manual', ?, ?, ?, ?
        WHERE EXISTS (
          SELECT 1 FROM (${select.sql})
        )`
     )
-    .bind(input.title, input.body, ...select.bindings);
+    .bind(input.title, input.body, input.title, input.body, ...select.bindings);
 }
 
 function buildScheduleInsert(

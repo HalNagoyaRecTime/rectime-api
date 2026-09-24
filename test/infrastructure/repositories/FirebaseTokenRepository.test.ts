@@ -156,7 +156,7 @@ describe('FirebaseTokenRepository', () => {
     await expect(repository.findActiveTokens()).resolves.toHaveLength(1);
   });
 
-  it('同じ端末で別利用者がログインしたら旧所有者の登録を無効化して付け替える', async () => {
+  it('同じTokenを別利用者が登録したら旧Tokenを削除し、Delivery参照をNULLにする', async () => {
     const previousOwnerId = await createUser('Firebase Token旧所有者');
     const newOwnerId = await createUser('Firebase Token新所有者');
     const previous = await repository.register({
@@ -165,26 +165,73 @@ describe('FirebaseTokenRepository', () => {
       fcmToken: 'token-handover',
     });
 
+    const notification = await env.DB.prepare(
+      "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('manual', 'handover', 'body', 'handover', 'body') RETURNING notification_id"
+    ).first<{ notification_id: number }>();
+    if (!notification)
+      throw new Error('failed to create handover notification');
+    const schedule = await env.DB.prepare(
+      "INSERT INTO notification_schedules (notification_id, firebase_token_id, send_status, send_at) VALUES (?, ?, 'draft', CURRENT_TIMESTAMP) RETURNING notification_schedule_id"
+    )
+      .bind(notification.notification_id, previous.firebase_token_id)
+      .first<{ notification_schedule_id: number }>();
+    if (!schedule) throw new Error('failed to create handover schedule');
+    const recipient = await env.DB.prepare(
+      'INSERT INTO notification_recipients (notification_schedule_id, user_id) VALUES (?, ?) RETURNING notification_recipient_id'
+    )
+      .bind(schedule.notification_schedule_id, previousOwnerId)
+      .first<{ notification_recipient_id: number }>();
+    if (!recipient) throw new Error('failed to create handover recipient');
+    const delivery = await env.DB.prepare(
+      "INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status) VALUES (?, ?, 2, 'sent') RETURNING notification_push_delivery_id"
+    )
+      .bind(recipient.notification_recipient_id, previous.firebase_token_id)
+      .first<{ notification_push_delivery_id: number }>();
+    if (!delivery) throw new Error('failed to create handover delivery');
+
     const current = await repository.register({
       userId: newOwnerId,
       platform: 'android',
       fcmToken: 'token-handover',
     });
 
+    expect(current.firebase_token_id).not.toBe(previous.firebase_token_id);
     expect(current.user_id).toBe(newOwnerId);
     expect(current.is_firebase_active).toBe(true);
     const previousRow = await env.DB.prepare(
-      'SELECT is_firebase_active FROM firebase_tokens WHERE firebase_token_id = ?'
+      'SELECT user_id FROM firebase_tokens WHERE firebase_token_id = ?'
     )
       .bind(previous.firebase_token_id)
-      .first<{ is_firebase_active: number }>();
-    expect(previousRow?.is_firebase_active).toBe(0);
+      .first();
+    expect(previousRow).toBeNull();
+
+    const detachedDelivery = await env.DB.prepare(
+      'SELECT firebase_token_id FROM notification_push_deliveries WHERE notification_push_delivery_id = ?'
+    )
+      .bind(delivery.notification_push_delivery_id)
+      .first<{ firebase_token_id: number | null }>();
+    expect(detachedDelivery).toEqual({ firebase_token_id: null });
+    const detachedSchedule = await env.DB.prepare(
+      'SELECT firebase_token_id FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(schedule.notification_schedule_id)
+      .first<{ firebase_token_id: number | null }>();
+    expect(detachedSchedule).toEqual({ firebase_token_id: null });
+
     const activeTokens = await repository.findActiveTokens();
     expect(activeTokens).toHaveLength(1);
     expect(activeTokens[0].user_id).toBe(newOwnerId);
-  });
 
-  it('付け替え後に旧所有者が別端末で登録しても既存行を再利用する', async () => {
+    await env.DB.prepare(
+      'DELETE FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(schedule.notification_schedule_id)
+      .run();
+    await env.DB.prepare('DELETE FROM notifications WHERE notification_id = ?')
+      .bind(notification.notification_id)
+      .run();
+  });
+  it('Token所有権変更後に旧所有者が別端末を登録すると新しいrowを作る', async () => {
     const previousOwnerId = await createUser('Firebase Token再登録旧所有者');
     const newOwnerId = await createUser('Firebase Token再登録新所有者');
     const previous = await repository.register({
@@ -204,7 +251,8 @@ describe('FirebaseTokenRepository', () => {
       fcmToken: 'token-new-device',
     });
 
-    expect(reregistered.firebase_token_id).toBe(previous.firebase_token_id);
+    expect(reregistered.firebase_token_id).not.toBe(previous.firebase_token_id);
+    expect(reregistered.user_id).toBe(previousOwnerId);
     expect(reregistered.is_firebase_active).toBe(true);
     const rowCount = await env.DB.prepare(
       'SELECT COUNT(*) AS count FROM firebase_tokens WHERE user_id = ?'
@@ -262,7 +310,7 @@ describe('FirebaseTokenRepository', () => {
     )
       .bind('token-simultaneous')
       .all<{ user_id: number; is_firebase_active: number }>();
-    expect(rows.results).toHaveLength(2);
+    expect(rows.results).toHaveLength(1);
     expect(
       rows.results.filter(row => row.is_firebase_active === 1)
     ).toHaveLength(1);

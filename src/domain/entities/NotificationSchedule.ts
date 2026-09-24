@@ -5,7 +5,7 @@ export interface NotificationScheduleEntity {
   created_user_id: number | null;
   event_id: number | null;
   notification_id: number;
-  firebase_token_id: number;
+  firebase_token_id: number | null;
   importance: number;
   notification_type: string;
   title: string;
@@ -18,7 +18,11 @@ export interface NotificationScheduleEntity {
   updated_at: string;
 }
 
-export interface DueNotificationSchedule extends NotificationScheduleEntity {
+export interface DueNotificationSchedule extends Omit<
+  NotificationScheduleEntity,
+  'firebase_token_id'
+> {
+  firebase_token_id: number;
   fcm_token: string;
   platform: 1 | 2;
   is_firebase_active: number;

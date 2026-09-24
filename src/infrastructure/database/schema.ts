@@ -1,5 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import {
+  check,
   integer,
   index,
   sqliteTable,
@@ -63,27 +64,39 @@ export const users = sqliteTable(
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
   },
-  table => [index('idx_users_deletion_status').on(table.deletionStatus)]
+  table => [
+    index('idx_users_deletion_status').on(table.deletionStatus),
+    index('idx_users_live_active_user_id').on(table.isLiveActive, table.id),
+  ]
 );
 
-export const students = sqliteTable('students', {
-  id: integer('student_id').primaryKey({ autoIncrement: true }),
-  userId: integer('user_id')
-    .notNull()
-    .references(() => users.id)
-    .unique(),
-  classRoomId: integer('class_room_id')
-    .notNull()
-    .references(() => class_rooms.id),
-  attendanceNumber: integer('attendance_number').notNull(),
-  studentIdNumber: text('student_id_number').notNull().unique(),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const students = sqliteTable(
+  'students',
+  {
+    id: integer('student_id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id)
+      .unique(),
+    classRoomId: integer('class_room_id')
+      .notNull()
+      .references(() => class_rooms.id),
+    attendanceNumber: integer('attendance_number').notNull(),
+    studentIdNumber: text('student_id_number').notNull().unique(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    index('idx_students_class_room_id_user_id').on(
+      table.classRoomId,
+      table.userId
+    ),
+  ]
+);
 
 // staffs/teachers はまだ専用のリポジトリ層を持たない。1ユーザーにつき
 // 最大1行（user_id にUNIQUE）だが、staffs と teachers は相互排他ではなく、
@@ -251,10 +264,10 @@ export const firebase_tokens = sqliteTable(
     }),
     userId: integer('user_id')
       .notNull()
-      .references(() => users.id)
-      .unique(),
+      .references(() => users.id, { onDelete: 'cascade' }),
     platform: integer('platform').notNull(),
     fcmToken: text('fcm_token').notNull(),
+    // 1利用者N端末を実現するための旧active flagは#460で整理する。
     isFirebaseActive: integer('is_firebase_active').notNull().default(1),
     lastSeenAt: text('last_seen_at')
       .notNull()
@@ -267,9 +280,9 @@ export const firebase_tokens = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`),
   },
   table => [
-    uniqueIndex('idx_firebase_tokens_active_fcm_token')
-      .on(table.fcmToken)
-      .where(sql`${table.isFirebaseActive} = 1`),
+    check('ck_firebase_tokens_platform', sql`${table.platform} IN (1, 2)`),
+    index('idx_firebase_tokens_user_id').on(table.userId),
+    uniqueIndex('uq_firebase_tokens_fcm_token').on(table.fcmToken),
     index('idx_firebase_tokens_active').on(table.isFirebaseActive),
   ]
 );
@@ -280,19 +293,38 @@ export const notification_schedules = sqliteTable(
     id: integer('notification_schedule_id').primaryKey({
       autoIncrement: true,
     }),
-    createdUserId: integer('created_user_id').references(() => users.id),
-    eventId: integer('event_id').references(() => events.id),
+    createdUserId: integer('created_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    scheduledByUserId: integer('scheduled_by_user_id').references(
+      () => users.id,
+      { onDelete: 'set null' }
+    ),
+    eventId: integer('event_id').references(() => events.id, {
+      onDelete: 'set null',
+    }),
     notificationId: integer('notification_id')
       .notNull()
       .references(() => notifications.notificationId),
-    firebaseTokenId: integer('firebase_token_id')
-      .notNull()
-      .references(() => firebase_tokens.firebaseTokenId),
+    firebaseTokenId: integer('firebase_token_id').references(
+      () => firebase_tokens.firebaseTokenId,
+      {
+        onDelete: 'set null',
+      }
+    ),
     importance: integer('importance').notNull().default(2),
-    sendStatus: text('send_status').notNull().default('draft'),
+    sendStatus: text('send_status').notNull(),
     fcmMessageId: text('fcm_message_id'),
     failedReason: text('failed_reason'),
     sendAt: text('send_at').notNull(),
+    recipientsResolvedAt: text('recipients_resolved_at'),
+    startedAt: text('started_at'),
+    completedAt: text('completed_at'),
+    stoppedAt: text('stopped_at'),
+    stoppedByUserId: integer('stopped_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    reason: text('reason'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
@@ -312,20 +344,178 @@ export const notification_schedules = sqliteTable(
   ]
 );
 
-export const notifications = sqliteTable('notifications', {
-  notificationId: integer('notification_id').primaryKey({
-    autoIncrement: true,
-  }),
-  notificationType: text('notification_type').notNull(),
-  title: text('title').notNull(),
-  body: text('body').notNull(),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
+export const notifications = sqliteTable(
+  'notifications',
+  {
+    notificationId: integer('notification_id').primaryKey({
+      autoIncrement: true,
+    }),
+    createdByUserId: integer('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    pushTitle: text('push_title').notNull(),
+    pushBody: text('push_body').notNull(),
+    // アプリ内通知詳細の表示内容。pushTitle/pushBodyとは別の最終フィールド。
+    notificationType: text('notification_type').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    importance: text('importance').notNull().default('normal'),
+    sourceType: text('source_type'),
+    sourceId: integer('source_id'),
+    sourceHash: text('source_hash'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    check(
+      'ck_notifications_importance',
+      sql`${table.importance} IN ('low', 'normal', 'high')`
+    ),
+    uniqueIndex('uq_notifications_source').on(
+      table.sourceType,
+      table.sourceId,
+      table.notificationType,
+      table.sourceHash
+    ),
+    check(
+      'ck_notifications_source_complete',
+      sql`(
+        (
+          ${table.sourceType} IS NULL
+          AND ${table.sourceId} IS NULL
+          AND ${table.sourceHash} IS NULL
+        )
+        OR (
+          ${table.sourceType} IS NOT NULL
+          AND ${table.sourceId} IS NOT NULL
+          AND ${table.sourceHash} IS NOT NULL
+        )
+      )`
+    ),
+  ]
+);
+
+export const notification_audiences = sqliteTable(
+  'notification_audiences',
+  {
+    id: integer('notification_audience_id').primaryKey({
+      autoIncrement: true,
+    }),
+    notificationScheduleId: integer('notification_schedule_id')
+      .notNull()
+      .references(() => notification_schedules.id, { onDelete: 'cascade' }),
+    audienceType: text('audience_type').notNull(),
+    targetId: integer('target_id'),
+    resolvedAt: text('resolved_at'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    check(
+      'ck_notification_audiences_type',
+      sql`${table.audienceType} IN ('all', 'class_room', 'gathering', 'event', 'user')`
+    ),
+    check(
+      'ck_notification_audiences_target',
+      sql`(
+        (${table.audienceType} = 'all' AND ${table.targetId} IS NULL)
+        OR (${table.audienceType} <> 'all' AND ${table.targetId} IS NOT NULL)
+      )`
+    ),
+    uniqueIndex('uq_notification_audiences_schedule_target').on(
+      table.notificationScheduleId,
+      table.audienceType,
+      table.targetId
+    ),
+    uniqueIndex('uq_notification_audiences_schedule_all')
+      .on(table.notificationScheduleId)
+      .where(sql`${table.audienceType} = 'all'`),
+  ]
+);
+
+export const notification_recipients = sqliteTable(
+  'notification_recipients',
+  {
+    id: integer('notification_recipient_id').primaryKey({
+      autoIncrement: true,
+    }),
+    notificationScheduleId: integer('notification_schedule_id')
+      .notNull()
+      .references(() => notification_schedules.id, { onDelete: 'cascade' }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    uniqueIndex('uq_notification_recipients_schedule_user').on(
+      table.notificationScheduleId,
+      table.userId
+    ),
+    index('idx_notification_recipients_user_id').on(table.userId),
+  ]
+);
+
+export const notification_push_deliveries = sqliteTable(
+  'notification_push_deliveries',
+  {
+    id: integer('notification_push_delivery_id').primaryKey({
+      autoIncrement: true,
+    }),
+    notificationRecipientId: integer('notification_recipient_id')
+      .notNull()
+      .references(() => notification_recipients.id, { onDelete: 'cascade' }),
+    firebaseTokenId: integer('firebase_token_id').references(
+      () => firebase_tokens.firebaseTokenId,
+      { onDelete: 'set null' }
+    ),
+    platform: integer('platform').notNull(),
+    status: text('status').notNull(),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    firstAttemptAt: text('first_attempt_at'),
+    lastAttemptAt: text('last_attempt_at'),
+    nextRetryAt: text('next_retry_at'),
+    failedReason: text('failed_reason'),
+    fcmMessageId: text('fcm_message_id'),
+    sentAt: text('sent_at'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    check(
+      'ck_notification_push_deliveries_platform',
+      sql`${table.platform} IN (1, 2)`
+    ),
+    check(
+      'ck_notification_push_deliveries_attempt_count',
+      sql`${table.attemptCount} >= 0`
+    ),
+    uniqueIndex('uq_notification_push_deliveries_recipient_token')
+      .on(table.notificationRecipientId, table.firebaseTokenId)
+      .where(sql`${table.firebaseTokenId} IS NOT NULL`),
+    index('idx_notification_push_deliveries_firebase_token_id').on(
+      table.firebaseTokenId
+    ),
+    index('idx_notification_push_deliveries_retry').on(
+      table.status,
+      table.nextRetryAt
+    ),
+  ]
+);
 
 export const microsoft_account_links = sqliteTable('microsoft_account_links', {
   id: integer('microsoft_account_link_id').primaryKey({
