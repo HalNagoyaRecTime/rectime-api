@@ -5,6 +5,7 @@ import {
   jsonResponse,
   noContentResponse,
   positivePathParam,
+  utcDateTimeSchema,
   z,
 } from '../schemas';
 import {
@@ -13,7 +14,6 @@ import {
   notificationBadRequestResponse,
   notificationUnauthorizedResponse,
 } from './errors';
-import { notificationUtcDateTimeSchema } from './commonSchemas';
 
 export const firebaseTokenRegistrationRequestSchema = z
   .object({
@@ -28,7 +28,7 @@ export const firebaseTokenSchema = z
     firebaseTokenId: z.number().int().positive(),
     userId: z.number().int().positive(),
     platform: z.enum(['ios', 'android']),
-    lastSeenAt: notificationUtcDateTimeSchema,
+    lastSeenAt: utcDateTimeSchema,
   })
   .strict()
   .openapi('FirebaseToken');

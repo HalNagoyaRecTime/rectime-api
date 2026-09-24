@@ -1,3 +1,4 @@
+import { z } from '@hono/zod-openapi';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { NotificationDateRangeQueryDTO } from '../../../src/application/dto/AdminNotificationDTO';
 import type { NotificationScheduleResultsQueryDTO } from '../../../src/application/dto/NotificationScheduleDTO';
@@ -21,9 +22,8 @@ import {
   notificationDeliveryInputSchema,
   notificationPatchRequestSchema,
   notificationResultsQuery,
-  notificationUtcDateTimeSchema,
 } from '../../../src/presentation/openapi/notification';
-import { z } from '../../../src/presentation/openapi/schemas';
+import { utcDateTimeSchema } from '../../../src/presentation/openapi/schemas';
 import { content, date, offsetDate } from './notification.fixtures';
 
 describe('通知契約のDomain literal', () => {
@@ -127,13 +127,10 @@ describe('通知契約のRequest schema', () => {
   });
 
   it('Requestはoffset付き日時を許容し、Response日時はUTC Zに固定する', () => {
-    expect(notificationUtcDateTimeSchema.safeParse(date).success).toBe(true);
-    expect(notificationUtcDateTimeSchema.safeParse(offsetDate).success).toBe(
-      false
-    );
-    expect(
-      notificationUtcDateTimeSchema.safeParse('2026-11-07 06:35:00').success
-    ).toBe(false);
+    expect(utcDateTimeSchema.safeParse(date).success).toBe(true);
+    expect(utcDateTimeSchema.safeParse(offsetDate).success).toBe(false);
+    const sqliteDateTime = '2026-11-07 06:35:00';
+    expect(utcDateTimeSchema.safeParse(sqliteDateTime).success).toBe(false);
     expect(
       notificationDeliveryInputSchema.safeParse({
         type: 'scheduled',

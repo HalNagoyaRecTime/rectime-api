@@ -5,6 +5,7 @@ import {
   jsonResponse,
   noContentResponse,
   positivePathParam,
+  utcDateTimeSchema,
   z,
 } from '../schemas';
 import {
@@ -27,7 +28,6 @@ import {
   notificationDeliveryInputSchema,
   notificationImportanceSchema,
   notificationScheduleSummarySchema,
-  notificationUtcDateTimeSchema,
 } from './commonSchemas';
 export const adminNotificationListItemSchema = z
   .object({
@@ -35,7 +35,7 @@ export const adminNotificationListItemSchema = z
     content: z.object({ push: notificationContentSchema.shape.push }).strict(),
     importance: notificationImportanceSchema,
     creation: notificationCreationSchema,
-    createdAt: notificationUtcDateTimeSchema,
+    createdAt: utcDateTimeSchema,
     schedules: z.array(adminNotificationScheduleListItemSchema),
   })
   .strict()
@@ -47,8 +47,8 @@ export const adminNotificationDetailSchema = z
     content: notificationContentSchema,
     importance: notificationImportanceSchema,
     creation: notificationCreationSchema,
-    createdAt: notificationUtcDateTimeSchema,
-    updatedAt: notificationUtcDateTimeSchema,
+    createdAt: utcDateTimeSchema,
+    updatedAt: utcDateTimeSchema,
     schedules: z.array(notificationScheduleSummarySchema),
   })
   .strict()
