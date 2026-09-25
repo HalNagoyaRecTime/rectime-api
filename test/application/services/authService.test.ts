@@ -23,6 +23,7 @@ function buildFirebaseTokenRepository(): IFirebaseTokenRepository {
     findByUserId: vi.fn(),
     findAllByUserId: vi.fn().mockResolvedValue([]),
     deleteOwnedById: vi.fn(),
+    deleteByUserIdAndFcmToken: vi.fn().mockResolvedValue(undefined),
     deleteByUserId: vi.fn(),
   };
 }

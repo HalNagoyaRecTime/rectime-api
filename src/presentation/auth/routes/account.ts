@@ -218,8 +218,7 @@ account.get('/me/photo', async c => {
 });
 
 // POST /auth/logout
-// mobile/web共通: refresh_token_id が保持するMicrosoftリフレッシュトークンの
-// KVエントリを破棄する。
+// 認証UserのFCM Token cleanupとRefresh Session cleanupをApplication Serviceへ委譲する。
 account.post('/logout', async c => {
   const clientType = getClientType(c);
   if (clientType !== 'web' && clientType !== 'mobile') {
@@ -232,26 +231,29 @@ account.post('/logout', async c => {
 
   const body = (await c.req.json().catch(() => null)) as {
     refresh_token_id?: unknown;
+    fcm_token?: unknown;
   } | null;
   if (
-    body &&
-    typeof body.refresh_token_id === 'string' &&
-    body.refresh_token_id.length > 0
+    body?.fcm_token !== undefined &&
+    body.fcm_token !== null &&
+    (typeof body.fcm_token !== 'string' || body.fcm_token.length === 0)
   ) {
-    // 呼び出し元が認証されたユーザー自身のrefresh_token_idのみを削除できる
-    // ようにする(他ユーザーのrefresh_token_idを渡された場合に誤って
-    // そのセッションを破棄してしまわないようにするための所有者チェック)。
-    const refreshRaw = await c.env.AUTH_KV.get(
-      `mobile_refresh:${body.refresh_token_id}`
-    );
-    if (refreshRaw) {
-      const entry = JSON.parse(refreshRaw) as MobileRefreshEntry;
-      if (entry.user_id === claims.sub) {
-        await c.env.AUTH_KV.delete(`mobile_refresh:${body.refresh_token_id}`);
-      }
-    }
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
   }
-  await c.env.AUTH_KV.delete(`mobile_refresh_by_user:${claims.sub}`);
+
+  const refreshTokenId =
+    typeof body?.refresh_token_id === 'string' &&
+    body.refresh_token_id.length > 0
+      ? body.refresh_token_id
+      : undefined;
+  const fcmToken =
+    typeof body?.fcm_token === 'string' ? body.fcm_token : undefined;
+
+  await c.get('container').logoutService.logout({
+    userId: claims.sub,
+    refreshTokenId,
+    fcmToken,
+  });
 
   return c.json({ message: 'Logged out successfully' });
 });

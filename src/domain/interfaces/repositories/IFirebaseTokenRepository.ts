@@ -27,6 +27,11 @@ export interface IFirebaseTokenRepository {
     firebaseTokenId: number,
     userId: number
   ) => Promise<'deleted' | 'forbidden' | 'not_found'>;
+  // 認証Userが所有するFCM Tokenだけをlogout用に物理削除する。
+  deleteByUserIdAndFcmToken: (
+    userId: number,
+    fcmToken: string
+  ) => Promise<void>;
   // アカウント削除(#265 PR4)専用。fcm_token(端末識別子)は個人情報に
   // 近いため、無効化(deactivateByUserId)だけでなく行自体を物理削除する。
   // Legacy AccountDeletionの現在の個人データ削除方針を維持するため、呼び出し元は

@@ -63,6 +63,7 @@ describe('ScheduledNotificationService', () => {
       findByUserId: vi.fn(),
       findAllByUserId: vi.fn().mockResolvedValue([]),
       deleteOwnedById: vi.fn(),
+      deleteByUserIdAndFcmToken: vi.fn().mockResolvedValue(undefined),
       deleteByUserId: vi.fn(),
     };
     const notificationDeliveryQueue: INotificationDeliveryQueue = {

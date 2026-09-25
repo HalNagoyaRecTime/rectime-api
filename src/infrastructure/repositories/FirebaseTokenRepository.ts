@@ -64,13 +64,7 @@ export function createFirebaseTokenRepository(
             .prepare(
               'UPDATE firebase_tokens SET platform = ?, is_firebase_active = 1, last_seen_at = ?, updated_at = ? WHERE user_id = ? AND fcm_token = ? RETURNING firebase_token_id, user_id, platform, is_firebase_active, last_seen_at'
             )
-            .bind(
-              platform,
-              now,
-              now,
-              input.userId,
-              input.fcmToken
-            ),
+            .bind(platform, now, now, input.userId, input.fcmToken),
           db
             .prepare(
               'INSERT INTO firebase_tokens (user_id, platform, fcm_token, is_firebase_active, last_seen_at, created_at, updated_at) SELECT user_id, ?, ?, 1, ?, ?, ? FROM users WHERE user_id = ? AND NOT EXISTS (SELECT 1 FROM firebase_tokens WHERE user_id = ? AND fcm_token = ?) RETURNING firebase_token_id, user_id, platform, is_firebase_active, last_seen_at'
@@ -174,6 +168,18 @@ export function createFirebaseTokenRepository(
         .first<{ user_id: number }>();
       if (!existing) return 'not_found';
       return existing.user_id === userId ? 'not_found' : 'forbidden';
+    },
+
+    async deleteByUserIdAndFcmToken(
+      userId: number,
+      fcmToken: string
+    ): Promise<void> {
+      await db
+        .prepare(
+          'DELETE FROM firebase_tokens WHERE user_id = ? AND fcm_token = ?'
+        )
+        .bind(userId, fcmToken)
+        .run();
     },
 
     async deleteByUserId(userId: number): Promise<void> {

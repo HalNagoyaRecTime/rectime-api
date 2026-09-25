@@ -62,6 +62,7 @@ import { createUserStatusRepository } from '../infrastructure/repositories/UserS
 import { createUserStatusService } from '../application/services/UserStatusService';
 import { createUserStatusController } from '../presentation/controllers/UserStatusController';
 import { createAuthService } from '../application/services/authService';
+import { createLogoutService } from '../application/services/LogoutService';
 import { createAccountDeletionService } from '../application/services/AccountDeletionService';
 import { createNotificationAccountDeletionService } from '../application/services/NotificationAccountDeletionService';
 import { createAuthorizationService } from '../application/services/AuthorizationService';
@@ -114,6 +115,10 @@ export function createDIContainer(env: Env) {
     env.STUDENT_EMAIL_DOMAIN,
     env.AUTH_KV,
     firebaseTokenRepository
+  );
+  const logoutService = createLogoutService(
+    firebaseTokenRepository,
+    env.AUTH_KV
   );
   const userStatusService = createUserStatusService(userStatusRepository);
   const authorizationService = createAuthorizationService(userRepository);
@@ -252,6 +257,7 @@ export function createDIContainer(env: Env) {
     // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
     userStatusRepository,
     authService,
+    logoutService,
     userStatusController,
     accountDeletionService,
     authorizationService,
