@@ -266,7 +266,7 @@ function toDetailDTO(
           source: {
             type: snapshot.source_type,
             id: snapshot.source_id!,
-            label: null,
+            label: snapshot.source_label,
           },
         };
 

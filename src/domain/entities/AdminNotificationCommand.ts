@@ -100,6 +100,7 @@ export interface AdminNotificationSnapshot {
   importance: NotificationImportance;
   source_type: NotificationSourceType | null;
   source_id: number | null;
+  source_label: string | null;
   created_by: NotificationUserSnapshot | null;
   created_at: string;
   updated_at: string;

@@ -20,6 +20,7 @@ const notificationDetail: AdminNotificationSnapshot = {
   importance: 'normal',
   source_type: null,
   source_id: null,
+  source_label: null,
   created_by: null,
   created_at: '2026-09-24T09:00:00.000Z',
   updated_at: '2026-09-24T09:00:00.000Z',

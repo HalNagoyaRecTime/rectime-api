@@ -438,4 +438,126 @@ describe('AdminNotificationCommandRepository', () => {
       .first<{ push_title: string }>();
     expect(root?.push_title).toBe('Push title');
   });
+  it('詳細でRecipient単位集計とSource labelを返し、Audienceを一括取得する', async () => {
+    const fixture = await createFixture();
+    const created = await repository.create(
+      buildCommand(fixture.actorUserId, [
+        { type: 'gathering', target_id: fixture.gatheringId },
+      ])
+    );
+    await env.DB.prepare(
+      "UPDATE notifications SET source_type = 'gathering', source_id = ?, source_hash = 'test-source' WHERE notification_id = ?"
+    )
+      .bind(fixture.gatheringId, created.notification_id)
+      .run();
+
+    const secondSchedule = await env.DB.prepare(
+      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, event_id, notification_id, importance, send_status, send_at, created_at, updated_at) VALUES (?, ?, NULL, ?, 1, 'scheduled', ?, ?, ?) RETURNING notification_schedule_id"
+    )
+      .bind(
+        fixture.actorUserId,
+        fixture.actorUserId,
+        created.notification_id,
+        '2026-09-24T11:00:00.000Z',
+        '2026-09-24T09:00:00.000Z',
+        '2026-09-24T09:00:00.000Z'
+      )
+      .first<{ notification_schedule_id: number }>();
+    if (!secondSchedule) throw new Error('追加Scheduleを作成できませんでした');
+
+    await env.DB.prepare(
+      "INSERT INTO notification_audiences (notification_schedule_id, audience_type, target_id, created_at, updated_at) VALUES (?, 'user', ?, ?, ?)"
+    )
+      .bind(
+        secondSchedule.notification_schedule_id,
+        fixture.actorUserId,
+        '2026-09-24T09:00:00.000Z',
+        '2026-09-24T09:00:00.000Z'
+      )
+      .run();
+
+    const recipientUserIds = [fixture.actorUserId];
+    for (let index = 1; index < 4; index += 1) {
+      const user = await env.DB.prepare(
+        'INSERT INTO users (user_name, is_live_active) VALUES (?, 1) RETURNING user_id'
+      )
+        .bind('通知Command集計対象 ' + index)
+        .first<{ user_id: number }>();
+      if (!user) throw new Error('集計対象Userを作成できませんでした');
+      recipientUserIds.push(user.user_id);
+    }
+
+    const recipientIds: number[] = [];
+    for (const userId of recipientUserIds) {
+      const recipient = await env.DB.prepare(
+        'INSERT INTO notification_recipients (notification_schedule_id, user_id, created_at) VALUES (?, ?, ?) RETURNING notification_recipient_id'
+      )
+        .bind(
+          created.notification_schedule_id,
+          userId,
+          '2026-09-24T09:00:00.000Z'
+        )
+        .first<{ notification_recipient_id: number }>();
+      if (!recipient) throw new Error('Recipientを作成できませんでした');
+      recipientIds.push(recipient.notification_recipient_id);
+    }
+
+    const deliveryStatuses: Array<[number, string]> = [
+      [0, 'pending'],
+      [1, 'retry_wait'],
+      [1, 'stopped'],
+      [3, 'sent'],
+      [3, 'failed'],
+    ];
+    for (const [recipientIndex, status] of deliveryStatuses) {
+      await env.DB.prepare(
+        'INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status, attempt_count, created_at, updated_at) VALUES (?, NULL, 1, ?, 0, ?, ?)'
+      )
+        .bind(
+          recipientIds[recipientIndex],
+          status,
+          '2026-09-24T09:00:00.000Z',
+          '2026-09-24T09:00:00.000Z'
+        )
+        .run();
+    }
+
+    let audienceQueryCount = 0;
+    const countedDb = new Proxy(env.DB, {
+      get(target, property, receiver) {
+        if (property === 'prepare') {
+          return (query: string) => {
+            if (query.includes('FROM notification_audiences a')) {
+              audienceQueryCount += 1;
+            }
+            return target.prepare(query);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const detail = await createAdminNotificationCommandRepository(
+      countedDb
+    ).findDetail(created.notification_id);
+    if (!detail) throw new Error('作成したNotification detailがありません');
+
+    expect(detail.schedules).toHaveLength(2);
+    expect(audienceQueryCount).toBe(1);
+    expect(detail.source_label).toBe('通知Command集合場所');
+    expect(detail.schedules[0]).toMatchObject({
+      recipient_count: 4,
+      success_count: 1,
+      failed_count: 2,
+      no_push_target_count: 1,
+    });
+
+    await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
+      .bind(fixture.gatheringId)
+      .run();
+    const afterSourceDelete = await repository.findDetail(
+      created.notification_id
+    );
+    expect(afterSourceDelete?.source_label).toBeNull();
+  });
 });

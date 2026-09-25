@@ -1,5 +1,6 @@
 import type { D1Database, D1Result } from '@cloudflare/workers-types';
 import type {
+  NotificationAudienceSnapshot,
   NotificationDeleteResult,
   NotificationScheduleSnapshot,
   NotificationUserSnapshot,
@@ -32,6 +33,7 @@ interface NotificationRootRow {
   importance: string;
   source_type: string | null;
   source_id: number | null;
+  source_label: string | null;
   created_by_user_id: number | null;
   created_by_user_name: string | null;
   created_at: string;
@@ -57,6 +59,7 @@ interface NotificationScheduleRow {
 }
 
 interface AudienceRow {
+  notification_schedule_id: number;
   audience_type: string;
   target_id: number | null;
   label: string | null;
@@ -431,11 +434,18 @@ export function createAdminNotificationCommandRepository(
         .prepare(
           `SELECT
              n.notification_id, n.push_title, n.push_body, n.title, n.body,
-             n.importance, n.source_type, n.source_id, n.created_by_user_id,
+             n.importance, n.source_type, n.source_id,
+             source_spot.gathering_spot_name AS source_label,
+             n.created_by_user_id,
              creator.user_name AS created_by_user_name,
              n.created_at, n.updated_at
            FROM notifications n
            LEFT JOIN users creator ON creator.user_id = n.created_by_user_id
+           LEFT JOIN gatherings source_gathering
+             ON n.source_type = 'gathering'
+            AND source_gathering.gathering_id = n.source_id
+           LEFT JOIN gathering_spots source_spot
+             ON source_spot.gathering_spot_id = source_gathering.gathering_spot_id
            WHERE n.notification_id = ?
              AND n.notification_type = 'notification_general'`
         )
@@ -476,7 +486,6 @@ export function createAdminNotificationCommandRepository(
                  AND EXISTS (
                    SELECT 1 FROM notification_push_deliveries d
                    WHERE d.notification_recipient_id = r.notification_recipient_id
-                     AND d.status = 'failed'
                  )
              ) AS failed_count,
              (SELECT COUNT(*)
@@ -498,41 +507,58 @@ export function createAdminNotificationCommandRepository(
         .bind(notificationId)
         .all<NotificationScheduleRow>();
 
-      const schedules: NotificationScheduleSnapshot[] = [];
-      for (const row of scheduleRows.results) {
-        const audienceRows = await db
-          .prepare(
-            `SELECT
-               a.audience_type, a.target_id, a.resolved_at,
-               CASE
-                 WHEN a.audience_type = 'class_room' THEN cr.class_name
-                 WHEN a.audience_type = 'gathering' THEN gs.gathering_spot_name
-                 WHEN a.audience_type = 'event' THEN e.event_name
-                 WHEN a.audience_type = 'user' THEN target_user.user_name
-                 ELSE NULL
-               END AS label
-             FROM notification_audiences a
-             LEFT JOIN class_rooms cr
-               ON a.audience_type = 'class_room'
-              AND cr.class_room_id = a.target_id
-             LEFT JOIN gatherings g
-               ON a.audience_type = 'gathering'
-              AND g.gathering_id = a.target_id
-             LEFT JOIN gathering_spots gs
-               ON gs.gathering_spot_id = g.gathering_spot_id
-             LEFT JOIN events e
-               ON a.audience_type = 'event'
-              AND e.event_id = a.target_id
-             LEFT JOIN users target_user
-               ON a.audience_type = 'user'
-              AND target_user.user_id = a.target_id
-             WHERE a.notification_schedule_id = ?
-             ORDER BY a.notification_audience_id`
-          )
-          .bind(row.notification_schedule_id)
-          .all<AudienceRow>();
+      const audienceRows = await db
+        .prepare(
+          `SELECT
+             a.notification_schedule_id, a.audience_type, a.target_id,
+             a.resolved_at,
+             CASE
+               WHEN a.audience_type = 'class_room' THEN cr.class_name
+               WHEN a.audience_type = 'gathering' THEN gs.gathering_spot_name
+               WHEN a.audience_type = 'event' THEN e.event_name
+               WHEN a.audience_type = 'user' THEN target_user.user_name
+               ELSE NULL
+             END AS label
+           FROM notification_audiences a
+           JOIN notification_schedules s
+             ON s.notification_schedule_id = a.notification_schedule_id
+           LEFT JOIN class_rooms cr
+             ON a.audience_type = 'class_room'
+            AND cr.class_room_id = a.target_id
+           LEFT JOIN gatherings g
+             ON a.audience_type = 'gathering'
+            AND g.gathering_id = a.target_id
+           LEFT JOIN gathering_spots gs
+             ON gs.gathering_spot_id = g.gathering_spot_id
+           LEFT JOIN events e
+             ON a.audience_type = 'event'
+            AND e.event_id = a.target_id
+           LEFT JOIN users target_user
+             ON a.audience_type = 'user'
+            AND target_user.user_id = a.target_id
+           WHERE s.notification_id = ?
+           ORDER BY a.notification_schedule_id, a.notification_audience_id`
+        )
+        .bind(notificationId)
+        .all<AudienceRow>();
+      const audiencesBySchedule = new Map<
+        number,
+        NotificationAudienceSnapshot[]
+      >();
+      for (const audience of audienceRows.results) {
+        const audiences =
+          audiencesBySchedule.get(audience.notification_schedule_id) ?? [];
+        audiences.push({
+          type: audience.audience_type as NotificationAudienceType,
+          target_id: audience.target_id,
+          label: audience.label,
+          resolved_at: audience.resolved_at,
+        });
+        audiencesBySchedule.set(audience.notification_schedule_id, audiences);
+      }
 
-        schedules.push({
+      const schedules: NotificationScheduleSnapshot[] =
+        scheduleRows.results.map(row => ({
           notification_schedule_id: row.notification_schedule_id,
           send_at: row.send_at,
           status: row.send_status as NotificationScheduleStatus,
@@ -548,18 +574,13 @@ export function createAdminNotificationCommandRepository(
           ),
           created_at: row.created_at,
           recipients_resolved_at: row.recipients_resolved_at,
-          audiences: audienceRows.results.map(audience => ({
-            type: audience.audience_type as NotificationAudienceType,
-            target_id: audience.target_id,
-            label: audience.label,
-            resolved_at: audience.resolved_at,
-          })),
+          audiences:
+            audiencesBySchedule.get(row.notification_schedule_id) ?? [],
           recipient_count: row.recipient_count,
           success_count: row.success_count,
           failed_count: row.failed_count,
           no_push_target_count: row.no_push_target_count,
-        });
-      }
+        }));
 
       return {
         notification_id: root.notification_id,
@@ -570,6 +591,7 @@ export function createAdminNotificationCommandRepository(
         importance: root.importance as NotificationImportance,
         source_type: root.source_type as NotificationSourceType | null,
         source_id: root.source_id,
+        source_label: root.source_label,
         created_by: toUserSnapshot(
           root.created_by_user_id,
           root.created_by_user_name
