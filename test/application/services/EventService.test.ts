@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createEventService } from '../../../src/application/services/EventService';
 import type { IEventGatheringSettingsRepository } from '../../../src/domain/interfaces/repositories/IEventGatheringSettingsRepository';
 import type { IEventRepository } from '../../../src/domain/interfaces/repositories/IEventRepository';
+import type { IVenueRepository } from '../../../src/domain/interfaces/repositories/IVenueRepository';
 import type {
   EventEntity,
   EventWithGatheringSummaryEntity,
@@ -14,7 +15,6 @@ function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
     event_id: 1,
     event_name: '開会式',
     rule_text: null,
-    venue: '体育館',
     start_time: '0900',
     end_time: '0930',
     created_at: '2026-01-01',
@@ -82,11 +82,30 @@ function createGatheringSettingsRepository(
   };
 }
 
+function createVenueRepository(
+  existingIds: number[] = [3, 4]
+): IVenueRepository {
+  return {
+    findAll: vi.fn(),
+    findExistingIds: vi.fn().mockResolvedValue(new Set(existingIds)),
+    findPage: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    hasEvents: vi.fn(),
+  };
+}
+
 function createService(
   repository: IEventRepository,
-  gatheringSettingsRepository = createGatheringSettingsRepository()
+  gatheringSettingsRepository = createGatheringSettingsRepository(),
+  venueRepository = createVenueRepository()
 ) {
-  return createEventService(repository, gatheringSettingsRepository);
+  return createEventService(
+    repository,
+    gatheringSettingsRepository,
+    venueRepository
+  );
 }
 
 describe('EventService', () => {
@@ -238,10 +257,7 @@ describe('EventService', () => {
       const gatheringSettingsRepository = createGatheringSettingsRepository();
 
       await expect(
-        createEventService(
-          repository,
-          gatheringSettingsRepository
-        ).getEventById(999)
+        createService(repository, gatheringSettingsRepository).getEventById(999)
       ).rejects.toThrow('Event not found');
       expect(gatheringSettingsRepository.findByEventId).not.toHaveBeenCalled();
     });
@@ -266,7 +282,9 @@ describe('EventService', () => {
 
   describe('createEvent', () => {
     it('リクエストDTOをDomain入力型へ変換して作成する', async () => {
-      const event = buildEvent();
+      const event = buildEventWithVenues({
+        venues: [{ venue_id: 3, venue_name: '体育館' }],
+      });
       const repository = createRepository({
         create: vi.fn().mockResolvedValue(event),
       });
@@ -275,7 +293,7 @@ describe('EventService', () => {
         createService(repository).createEvent({
           event_name: '開会式',
           rule_text: null,
-          venue: '体育館',
+          venue_ids: [3],
           start_time: '0900',
           end_time: '0930',
         })
@@ -284,7 +302,7 @@ describe('EventService', () => {
       expect(repository.create).toHaveBeenCalledWith({
         name: '開会式',
         ruleText: null,
-        venue: '体育館',
+        venueIds: [3],
         startTime: '0900',
         endTime: '0930',
       });
@@ -293,8 +311,9 @@ describe('EventService', () => {
 
   describe('updateEvent', () => {
     it('リクエストDTOをDomain入力型へ変換して更新し、Notificationには一切触れない', async () => {
-      const updated = buildEvent({ event_name: '更新後の開会式' });
+      const updated = buildEventWithVenues({ event_name: '更新後の開会式' });
       const repository = createRepository({
+        exists: vi.fn().mockResolvedValue(true),
         update: vi.fn().mockResolvedValue(updated),
       });
 
@@ -302,7 +321,7 @@ describe('EventService', () => {
         createService(repository).updateEvent(1, {
           event_name: '更新後の開会式',
           rule_text: null,
-          venue: '体育館',
+          venue_ids: [3],
           start_time: '0900',
           end_time: '0930',
         })
@@ -311,7 +330,7 @@ describe('EventService', () => {
       expect(repository.update).toHaveBeenCalledWith(1, {
         name: '更新後の開会式',
         ruleText: null,
-        venue: '体育館',
+        venueIds: [3],
         startTime: '0900',
         endTime: '0930',
       });
@@ -319,6 +338,25 @@ describe('EventService', () => {
 
     it('存在しないイベントの場合はEvent not foundを投げる', async () => {
       const repository = createRepository({
+        exists: vi.fn().mockResolvedValue(false),
+        update: vi.fn(),
+      });
+
+      await expect(
+        createService(repository).updateEvent(999, {
+          event_name: '開会式',
+          rule_text: null,
+          venue_ids: [3],
+          start_time: '0900',
+          end_time: '0930',
+        })
+      ).rejects.toThrow('Event not found');
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('存在確認後に削除され更新できなかった場合はEvent not foundを投げる', async () => {
+      const repository = createRepository({
+        exists: vi.fn().mockResolvedValue(true),
         update: vi.fn().mockResolvedValue(null),
       });
 
@@ -326,11 +364,35 @@ describe('EventService', () => {
         createService(repository).updateEvent(999, {
           event_name: '開会式',
           rule_text: null,
-          venue: '体育館',
+          venue_ids: [3],
           start_time: '0900',
           end_time: '0930',
         })
       ).rejects.toThrow('Event not found');
+    });
+
+    it('存在しないイベントに存在しない実施場所を指定した場合はEvent not foundを投げる', async () => {
+      const repository = createRepository({
+        exists: vi.fn().mockResolvedValue(false),
+        update: vi.fn(),
+      });
+      const venueRepository = createVenueRepository([]);
+
+      await expect(
+        createService(
+          repository,
+          createGatheringSettingsRepository(),
+          venueRepository
+        ).updateEvent(999, {
+          event_name: '開会式',
+          rule_text: null,
+          venue_ids: [9],
+          start_time: '0900',
+          end_time: '0930',
+        })
+      ).rejects.toThrow('Event not found');
+      expect(venueRepository.findExistingIds).not.toHaveBeenCalled();
+      expect(repository.update).not.toHaveBeenCalled();
     });
 
     it('開始時刻が終了時刻以降の場合は更新せずエラーを投げる', async () => {
@@ -340,12 +402,59 @@ describe('EventService', () => {
         createService(repository).updateEvent(1, {
           event_name: '開会式',
           rule_text: null,
-          venue: '体育館',
+          venue_ids: [3],
           start_time: '0930',
           end_time: '0900',
         })
       ).rejects.toThrow('end_time must be after start_time');
       expect(repository.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('実施場所の存在確認', () => {
+    const request = {
+      event_name: '開会式',
+      rule_text: null,
+      venue_ids: [3, 9],
+      start_time: '0900',
+      end_time: '0930',
+    };
+
+    it('作成時に存在しない実施場所を含む場合は保存しない', async () => {
+      const repository = createRepository({ create: vi.fn() });
+
+      await expect(
+        createService(repository).createEvent(request)
+      ).rejects.toThrow('Venue not found');
+      expect(repository.create).not.toHaveBeenCalled();
+    });
+
+    it('更新時に存在しない実施場所を含む場合は保存しない', async () => {
+      const repository = createRepository({
+        exists: vi.fn().mockResolvedValue(true),
+        update: vi.fn(),
+      });
+
+      await expect(
+        createService(repository).updateEvent(1, request)
+      ).rejects.toThrow('Venue not found');
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('保存中に実施場所が削除され外部キー制約で失敗した場合はVenue not foundにする', async () => {
+      const repository = createRepository({
+        create: vi
+          .fn()
+          .mockRejectedValue(
+            new Error(
+              'D1_ERROR: FOREIGN KEY constraint failed: SQLITE_CONSTRAINT'
+            )
+          ),
+      });
+
+      await expect(
+        createService(repository).createEvent({ ...request, venue_ids: [3] })
+      ).rejects.toThrow('Venue not found');
     });
   });
 

@@ -5,6 +5,7 @@ import type { IVenueRepository } from '../../../src/domain/interfaces/repositori
 function setup(overrides: Partial<IVenueRepository> = {}) {
   const repository: IVenueRepository = {
     findAll: vi.fn(),
+    findExistingIds: vi.fn(),
     findPage: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),

@@ -14,7 +14,6 @@ function toDTO(notification: MobileNotificationEntity): MobileNotificationDTO {
       ? {
           event_id: notification.relatedEvent.id,
           event_name: notification.relatedEvent.name,
-          venue: notification.relatedEvent.venue,
           venues: notification.relatedEvent.venues.map(venue => ({
             venue_id: venue.venue_id,
             venue_name: venue.venue_name,

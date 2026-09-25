@@ -23,9 +23,9 @@ describe('venues/event_venues テーブルの制約', () => {
 
   async function createTestEvent(name: string): Promise<number> {
     const row = await env.DB.prepare(
-      'INSERT INTO events (event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?) RETURNING event_id'
+      'INSERT INTO events (event_name, start_time, end_time) VALUES (?, ?, ?) RETURNING event_id'
     )
-      .bind(name, '第1体育館', '10:00', '11:00')
+      .bind(name, '10:00', '11:00')
       .first<{ event_id: number }>();
     if (!row) throw new Error('failed to create test event');
     return row.event_id;

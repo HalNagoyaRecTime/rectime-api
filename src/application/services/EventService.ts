@@ -1,5 +1,4 @@
 import type {
-  EventEntity,
   EventListOptions,
   EventWithGatheringSummaryEntity,
   EventWithVenuesEntity,
@@ -11,19 +10,23 @@ import type {
   CreateEventRequestDTO,
   EventDTO,
   EventListItemDTO,
-  EventWithVenuesDTO,
   GetEventsRequestDTO,
   UpdateEventRequestDTO,
 } from '../dto/EventDTO';
 import { buildRoundSettings } from './eventGatheringRounds';
+import { ensureVenuesExist, saveWithVenues } from './eventVenueIds';
+import type { IVenueRepository } from '../../domain/interfaces/repositories/IVenueRepository';
 import type { IEventService } from './IEventService';
 
-function toEventDTO(event: EventEntity): EventDTO {
+function toEventDTO(event: EventWithVenuesEntity): EventDTO {
   return {
     event_id: event.event_id,
     event_name: event.event_name,
     rule_text: event.rule_text,
-    venue: event.venue,
+    venues: event.venues.map(venue => ({
+      venue_id: venue.venue_id,
+      venue_name: venue.venue_name,
+    })),
     start_time: event.start_time,
     end_time: event.end_time,
     created_at: event.created_at,
@@ -31,23 +34,11 @@ function toEventDTO(event: EventEntity): EventDTO {
   };
 }
 
-function toEventWithVenuesDTO(
-  event: EventWithVenuesEntity
-): EventWithVenuesDTO {
-  return {
-    ...toEventDTO(event),
-    venues: event.venues.map(venue => ({
-      venue_id: venue.venue_id,
-      venue_name: venue.venue_name,
-    })),
-  };
-}
-
 function toEventListItemDTO(
   event: EventWithGatheringSummaryEntity
 ): EventListItemDTO {
   return {
-    ...toEventWithVenuesDTO(event),
+    ...toEventDTO(event),
     gathering_summary: {
       gathering_count: event.gathering_summary.gathering_count,
       configured_gathering_count:
@@ -61,7 +52,7 @@ function toEventWriteInput(event: CreateEventRequestDTO): EventWriteInput {
   return {
     name: event.event_name,
     ruleText: event.rule_text,
-    venue: event.venue,
+    venueIds: event.venue_ids,
     startTime: event.start_time,
     endTime: event.end_time,
   };
@@ -77,7 +68,8 @@ function toEventListOptions(options: GetEventsRequestDTO): EventListOptions {
 
 export function createEventService(
   eventRepository: IEventRepository,
-  eventGatheringSettingsRepository: IEventGatheringSettingsRepository
+  eventGatheringSettingsRepository: IEventGatheringSettingsRepository,
+  venueRepository: IVenueRepository
 ): IEventService {
   return {
     async getAllEvents(options) {
@@ -100,24 +92,32 @@ export function createEventService(
       const gatherings =
         await eventGatheringSettingsRepository.findByEventId(id);
       return {
-        ...toEventWithVenuesDTO(event),
+        ...toEventDTO(event),
         rounds: buildRoundSettings(gatherings),
       };
     },
     async getMyEvents(userId) {
       const events = await eventRepository.findByParticipantUserId(userId);
-      return events.map(toEventWithVenuesDTO);
+      return events.map(toEventDTO);
     },
     async createEvent(event) {
-      return toEventDTO(await eventRepository.create(toEventWriteInput(event)));
+      await ensureVenuesExist(venueRepository, event.venue_ids);
+      return toEventDTO(
+        await saveWithVenues(() =>
+          eventRepository.create(toEventWriteInput(event))
+        )
+      );
     },
     async updateEvent(id: number, event: UpdateEventRequestDTO) {
       if (event.start_time >= event.end_time) {
         throw new Error('end_time must be after start_time');
       }
-      const updated = await eventRepository.update(
-        id,
-        toEventWriteInput(event)
+      if (!(await eventRepository.exists(id))) {
+        throw new Error('Event not found');
+      }
+      await ensureVenuesExist(venueRepository, event.venue_ids);
+      const updated = await saveWithVenues(() =>
+        eventRepository.update(id, toEventWriteInput(event))
       );
       if (!updated) {
         throw new Error('Event not found');

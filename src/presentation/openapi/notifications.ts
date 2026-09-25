@@ -180,7 +180,6 @@ export const mobileNotificationEventSchema = z
   .object({
     event_id: z.number().int(),
     event_name: z.string(),
-    venue: z.string(),
     venues: eventVenueListResponseSchema,
     start_time: z.string(),
     end_time: z.string(),
