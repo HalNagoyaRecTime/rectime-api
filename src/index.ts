@@ -88,6 +88,10 @@ import {
 } from './presentation/openapi/notification/legacy/admin';
 import { firebaseTokenCreateRoute } from './presentation/openapi/notification/legacy/firebaseTokens';
 import {
+  notificationScheduleDetailRoute,
+  notificationScheduleListRoute,
+} from './presentation/openapi/notification/schedules';
+import {
   myNotificationDetailRoute,
   myNotificationListRoute,
 } from './presentation/openapi/notification/mobileNotifications';
@@ -389,6 +393,17 @@ apiV1.openapi(staffOnly(legacyAdminNotificationDeleteRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.deleteAdminNotification(c);
+});
+
+apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleQueryController.getNotificationSchedules(c);
+});
+apiV1.openapi(staffOnly(notificationScheduleDetailRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleQueryController.getNotificationScheduleById(c);
 });
 
 apiV1.openapi(authed(myNotificationListRoute), c => {

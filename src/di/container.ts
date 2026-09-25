@@ -6,6 +6,7 @@ import { createEventRepository } from '../infrastructure/repositories/EventRepos
 import { createClassRoomRepository } from '../infrastructure/repositories/ClassRoomRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
+import { createNotificationScheduleQueryRepository } from '../infrastructure/repositories/NotificationScheduleQueryRepository';
 import { createAdminNotificationRepository } from '../infrastructure/repositories/AdminNotificationRepository';
 import { createAdminNotificationManagementRepository } from '../infrastructure/repositories/AdminNotificationManagementRepository';
 import { createMobileNotificationRepository } from '../infrastructure/repositories/MobileNotificationRepository';
@@ -24,6 +25,7 @@ import { createMasterImportService } from '../application/services/MasterImportS
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
+import { createNotificationScheduleQueryService } from '../application/services/NotificationScheduleQueryService';
 import { createAdminNotificationService } from '../application/services/AdminNotificationService';
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
@@ -40,6 +42,7 @@ import { createClassRoomController } from '../presentation/controllers/ClassRoom
 import { createMasterImportController } from '../presentation/controllers/MasterImportController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
+import { createNotificationScheduleQueryController } from '../presentation/controllers/NotificationScheduleQueryController';
 import { createAdminNotificationController } from '../presentation/controllers/AdminNotificationController';
 import { createAdminNotificationManagementController } from '../presentation/controllers/AdminNotificationManagementController';
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
@@ -71,6 +74,8 @@ export function createDIContainer(env: Env) {
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
   const notificationScheduleRepository =
     createNotificationScheduleRepository(db);
+  const notificationScheduleQueryRepository =
+    createNotificationScheduleQueryRepository(db);
   const adminNotificationRepository = createAdminNotificationRepository(db);
   const adminNotificationManagementRepository =
     createAdminNotificationManagementRepository(db);
@@ -144,6 +149,8 @@ export function createDIContainer(env: Env) {
     privateKey: env.FIREBASE_PRIVATE_KEY,
     testFcmToken: env.TEST_FCM_TOKEN,
   });
+  const notificationScheduleQueryService =
+    createNotificationScheduleQueryService(notificationScheduleQueryRepository);
   const scheduledNotificationService = createScheduledNotificationService({
     firebaseTokenRepository,
     notificationScheduleRepository,
@@ -187,6 +194,8 @@ export function createDIContainer(env: Env) {
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
   const notificationController = createNotificationController(fcmService);
+  const notificationScheduleQueryController =
+    createNotificationScheduleQueryController(notificationScheduleQueryService);
   const adminNotificationController = createAdminNotificationController(
     adminNotificationService
   );
@@ -223,6 +232,7 @@ export function createDIContainer(env: Env) {
     masterImportController,
     firebaseTokenController,
     notificationController,
+    notificationScheduleQueryController,
     adminNotificationController,
     adminNotificationManagementController,
     mobileNotificationController,
