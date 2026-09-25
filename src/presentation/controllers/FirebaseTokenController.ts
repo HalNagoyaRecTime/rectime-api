@@ -1,5 +1,4 @@
 import { Context } from 'hono';
-import { z } from 'zod';
 import { IFirebaseTokenService } from '../../application/services/IFirebaseTokenService';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
@@ -8,25 +7,21 @@ import type { AuthVariables } from '../middleware/requireAuth';
 import { CommonErrors } from '../errors/commonErrors';
 import { errorResponse } from '../errors/errorResponse';
 import { NotificationErrors } from '../errors/notificationErrors';
-import { firebaseTokenIdParams } from '../openapi/notification/firebaseTokens';
+import {
+  firebaseTokenIdParams,
+  firebaseTokenRegistrationRequestSchema,
+} from '../openapi/notification/firebaseTokens';
 
-const registerFirebaseTokenSchema = z
-  .object({
-    fcmToken: z.string().min(1),
-    platform: z.enum(['ios', 'android']),
-  })
-  .strict();
+type FirebaseTokenContext = Context<{
+  Bindings: Env;
+  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
+}>;
 
 const firebaseTokenDeletionFailed = {
   status: 500,
   code: 'FIREBASE_TOKEN_DELETION_FAILED',
   message: 'Firebaseトークンの削除に失敗しました',
 } as const;
-
-type FirebaseTokenContext = Context<{
-  Bindings: Env;
-  Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
-}>;
 
 export function createFirebaseTokenController(
   firebaseTokenService: IFirebaseTokenService
@@ -43,7 +38,7 @@ export function createFirebaseTokenController(
         return errorResponse(c, CommonErrors.VALIDATION_ERROR);
       }
 
-      const parsedBody = registerFirebaseTokenSchema.safeParse(body);
+      const parsedBody = firebaseTokenRegistrationRequestSchema.safeParse(body);
       if (!parsedBody.success) {
         return errorResponse(
           c,

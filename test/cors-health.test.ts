@@ -67,6 +67,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/events/{eventId}',
       '/api/v1/events/{eventId}/gatherings',
       '/api/v1/firebase-tokens',
+      '/api/v1/firebase-tokens/{firebaseTokenId}',
       '/api/v1/gathering-spots',
       '/api/v1/gathering-spots/{gatheringSpotId}',
       '/api/v1/gatherings',
@@ -161,7 +162,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(50);
+    expect(documentedOperations).toHaveLength(51);
     expect(document.components.schemas).not.toHaveProperty(
       'AdminUserSearchItem'
     );

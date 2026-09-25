@@ -20,6 +20,7 @@ describe('FirebaseTokenService', () => {
       findByUserId: vi.fn(),
       findAllByUserId: vi.fn(),
       deleteOwnedById: vi.fn(),
+      deleteByUserIdAndFcmToken: vi.fn().mockResolvedValue(undefined),
       deleteByUserId: vi.fn(),
     };
     const service = createFirebaseTokenService(repository);
@@ -47,6 +48,7 @@ describe('FirebaseTokenService', () => {
       findByUserId: vi.fn(),
       findAllByUserId: vi.fn(),
       deleteOwnedById: vi.fn().mockResolvedValue('deleted'),
+      deleteByUserIdAndFcmToken: vi.fn().mockResolvedValue(undefined),
       deleteByUserId: vi.fn(),
     };
 
