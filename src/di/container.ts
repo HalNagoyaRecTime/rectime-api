@@ -45,7 +45,6 @@ import { createEventController } from '../presentation/controllers/EventControll
 import { createClassRoomController } from '../presentation/controllers/ClassRoomController';
 import { createMasterImportController } from '../presentation/controllers/MasterImportController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
-import { createNotificationController } from '../presentation/controllers/NotificationController';
 import { createAdminNotificationController } from '../presentation/controllers/AdminNotificationController';
 import { createAdminNotificationManagementController } from '../presentation/controllers/AdminNotificationManagementController';
 import { createAdminNotificationCommandController } from '../presentation/controllers/AdminNotificationCommandController';
@@ -155,7 +154,6 @@ export function createDIContainer(env: Env) {
     projectId: env.FIREBASE_PROJECT_ID,
     clientEmail: env.FIREBASE_CLIENT_EMAIL,
     privateKey: env.FIREBASE_PRIVATE_KEY,
-    testFcmToken: env.TEST_FCM_TOKEN,
   });
   const scheduledNotificationService = createScheduledNotificationService({
     firebaseTokenRepository,
@@ -211,7 +209,6 @@ export function createDIContainer(env: Env) {
     createMasterImportController(masterImportService);
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
-  const notificationController = createNotificationController(fcmService);
   const adminNotificationController = createAdminNotificationController(
     adminNotificationService
   );
@@ -249,7 +246,6 @@ export function createDIContainer(env: Env) {
     classRoomController,
     masterImportController,
     firebaseTokenController,
-    notificationController,
     adminNotificationController,
     adminNotificationManagementController,
     adminNotificationCommandController,

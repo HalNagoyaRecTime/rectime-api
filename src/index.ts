@@ -94,7 +94,6 @@ import {
   myNotificationDetailRoute,
   myNotificationListRoute,
 } from './presentation/openapi/notification/mobileNotifications';
-import { testNotificationRoute } from './presentation/openapi/notification/testNotification';
 import { adminUserStatusUpdateRoute } from './presentation/openapi/adminUsers';
 const app = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationDefaultHook,
@@ -167,7 +166,6 @@ app.openapi(apiOverviewRoute, c => {
         firebaseTokens: '/api/v1/firebase-tokens',
         adminNotifications: '/api/v1/admin/notifications',
         myNotifications: '/api/v1/me/notifications',
-        testNotification: '/api/v1/notifications/test',
         myEvents: '/api/v1/me/events',
       },
       // 非公開の環境で存在しないエンドポイントを案内しないよう、
@@ -413,10 +411,6 @@ apiV1.openapi(authed(myNotificationListRoute), c => {
 });
 apiV1.openapi(authed(myNotificationDetailRoute), c => {
   return c.get('container').mobileNotificationController.getNotificationById(c);
-});
-
-apiV1.openapi(staffOnly(testNotificationRoute), c => {
-  return c.get('container').notificationController.sendTestNotification(c);
 });
 
 // Auth routes

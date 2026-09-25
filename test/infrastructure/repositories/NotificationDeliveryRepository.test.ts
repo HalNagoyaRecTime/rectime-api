@@ -90,7 +90,6 @@ function createHarness(fcmService?: IFcmService) {
   const fcm =
     fcmService ??
     ({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken: vi.fn(async () => ({
         success: true as const,
         messageId: 'projects/test/messages/default',
@@ -305,7 +304,6 @@ describe('NotificationDeliveryRepository and Service', () => {
       };
     });
     const { service, messages } = createHarness({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken,
     });
 
