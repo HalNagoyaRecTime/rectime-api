@@ -80,12 +80,15 @@ import {
   venueUpdateRoute,
 } from './presentation/openapi/venues';
 import {
-  legacyAdminNotificationCreateRoute,
-  legacyAdminNotificationDeleteRoute,
   legacyAdminNotificationDetailRoute,
   legacyAdminNotificationListRoute,
   legacyAdminNotificationUpdateRoute,
 } from './presentation/openapi/notification/legacy/admin';
+import {
+  adminNotificationCreateRoute,
+  adminNotificationDeleteRoute,
+  adminNotificationPatchRoute,
+} from './presentation/openapi/notification/admin';
 import { firebaseTokenCreateRoute } from './presentation/openapi/notification/legacy/firebaseTokens';
 import {
   myNotificationDetailRoute,
@@ -365,10 +368,13 @@ apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
 });
 
 // Notification routes
-apiV1.openapi(staffOnly(legacyAdminNotificationCreateRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
   return c
     .get('container')
-    .adminNotificationController.createManualNotification(c);
+    .adminNotificationCommandController.createNotification(
+      c,
+      c.req.valid('json')
+    );
 });
 apiV1.openapi(staffOnly(legacyAdminNotificationListRoute), c => {
   return c
@@ -385,12 +391,23 @@ apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
     .get('container')
     .adminNotificationManagementController.updateAdminNotification(c);
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationDeleteRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationPatchRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.deleteAdminNotification(c);
+    .adminNotificationCommandController.patchNotification(
+      c,
+      Number(c.req.valid('param').notificationId),
+      c.req.valid('json')
+    );
 });
-
+apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
+  return c
+    .get('container')
+    .adminNotificationCommandController.deleteNotification(
+      c,
+      Number(c.req.valid('param').notificationId)
+    );
+});
 apiV1.openapi(authed(myNotificationListRoute), c => {
   return c.get('container').mobileNotificationController.getNotifications(c);
 });
