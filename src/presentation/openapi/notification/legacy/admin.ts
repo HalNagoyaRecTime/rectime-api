@@ -1,5 +1,4 @@
 import { createRoute } from '@hono/zod-openapi';
-import { eventVenueListResponseSchema } from './eventVenues';
 import {
   badRequestResponse,
   bearerAuth,
@@ -17,49 +16,8 @@ import {
   timestampSchema,
   unauthorizedResponse,
   z,
-} from './schemas';
+} from '../../schemas';
 
-// --- 通知予定 ---
-
-export const notificationScheduleResponseSchema = z
-  .object({
-    notification_schedule_id: z.number().int(),
-    created_user_id: z.number().int().nullable(),
-    event_id: z.number().int().nullable(),
-    notification_id: z.number().int(),
-    firebase_token_id: z.number().int(),
-    importance: z.number().int(),
-    notification_type: z.string(),
-    title: z.string(),
-    body: z.string(),
-    send_status: sendStatusSchema,
-    fcm_message_id: z.string().nullable(),
-    failed_reason: z.string().nullable(),
-    send_at: isoDateTimeSchema,
-    created_at: timestampSchema,
-    updated_at: timestampSchema,
-  })
-  .openapi('NotificationSchedule');
-
-// --- Firebaseトークン ---
-
-export const firebaseTokenRegistrationResponseSchema = z
-  .object({
-    firebase_token_id: z.number().int(),
-    user_id: z.number().int(),
-    platform: z.enum(['ios', 'android']),
-    is_firebase_active: z.boolean(),
-    last_seen_at: timestampSchema,
-  })
-  .openapi('RegisterFirebaseTokenResponse');
-
-export type FirebaseTokenRegistrationResponseDTO = z.infer<
-  typeof firebaseTokenRegistrationResponseSchema
->;
-
-// --- 管理者通知 ---
-
-/** 送信対象の指定。HTTPリクエストではキャメルケースで受け取る。 */
 export const manualNotificationAudienceRequestSchema = z
   .discriminatedUnion('type', [
     z.object({ type: z.literal('all') }),
@@ -78,7 +36,6 @@ export const manualNotificationAudienceRequestSchema = z
   ])
   .openapi('ManualNotificationAudienceRequest');
 
-/** 送信対象の指定。応答ではスネークケースで返す。 */
 export const manualNotificationAudienceResponseSchema = z
   .discriminatedUnion('type', [
     z.object({ type: z.literal('all') }),
@@ -163,7 +120,7 @@ export type AdminNotificationSummaryDTO = z.infer<
   typeof adminNotificationSummarySchema
 >;
 
-export const adminNotificationListResponseSchema = z
+export const legacyAdminNotificationListResponseSchema = z
   .object({
     notifications: z.array(adminNotificationSummarySchema),
     ...paginationFields,
@@ -171,72 +128,12 @@ export const adminNotificationListResponseSchema = z
   .openapi('AdminNotificationList');
 
 export type AdminNotificationListResponseDTO = z.infer<
-  typeof adminNotificationListResponseSchema
+  typeof legacyAdminNotificationListResponseSchema
 >;
 
-// --- 利用者向け通知 ---
-
-export const mobileNotificationEventSchema = z
-  .object({
-    event_id: z.number().int(),
-    event_name: z.string(),
-    venues: eventVenueListResponseSchema,
-    start_time: z.string(),
-    end_time: z.string(),
-  })
-  .openapi('MobileNotificationEvent');
-
-export const mobileNotificationResponseSchema = z
-  .object({
-    notification_id: z.number().int(),
-    notification_type: z.string(),
-    title: z.string(),
-    body: z.string(),
-    scheduled_at: isoDateTimeSchema,
-    related_event: mobileNotificationEventSchema.nullable(),
-  })
-  .openapi('MobileNotification');
-
-export type MobileNotificationResponseDTO = z.infer<
-  typeof mobileNotificationResponseSchema
->;
-
-export const mobileNotificationListResponseSchema = z
-  .object({
-    notifications: z.array(mobileNotificationResponseSchema),
-    ...paginationFields,
-  })
-  .openapi('MobileNotificationList');
-
-export type MobileNotificationListResponseDTO = z.infer<
-  typeof mobileNotificationListResponseSchema
->;
-
-// --- FCM ---
-
-export const fcmNotificationResponseSchema = z
-  .object({ success: z.literal(true), messageId: z.string() })
-  .openapi('FcmNotificationResult');
-
-export type FcmNotificationResponseDTO = z.infer<
-  typeof fcmNotificationResponseSchema
->;
-
-// --- パラメータ・リクエスト本文 ---
-
-export const adminNotificationIdParams = z.object({
+export const legacyAdminNotificationIdParams = z.object({
   notificationId: positivePathParam('notificationId', '通知ID'),
 });
-export const mobileNotificationIdParams = z.object({
-  notificationId: positivePathParam('notificationId', '通知ID'),
-});
-
-export const registerFirebaseTokenSchema = z
-  .object({
-    fcmToken: z.string().min(1),
-    platform: z.enum(['ios', 'android']),
-  })
-  .openapi('RegisterFirebaseTokenRequest');
 
 export const createManualNotificationSchema = z
   .object({
@@ -256,7 +153,7 @@ export const updateManualNotificationSchema = z
   })
   .openapi('UpdateManualNotificationRequest');
 
-export const adminNotificationListQuery = z
+export const legacyAdminNotificationListQuery = z
   .object({
     sendStatus: sendStatusSchema.optional(),
     eventId: z.coerce.number().int().positive().optional(),
@@ -265,38 +162,7 @@ export const adminNotificationListQuery = z
   })
   .merge(paginationQuery(100, 50));
 
-export const testNotificationSchema = z
-  .object({
-    title: z.string().min(1),
-    body: z.string().min(1),
-  })
-  .openapi('TestNotificationRequest');
-
-// --- ルート定義 ---
-
-export const firebaseTokenCreateRoute = createRoute({
-  method: 'post',
-  path: '/firebase-tokens',
-  tags: ['Firebase tokens'],
-  summary: 'Firebaseトークンを登録する',
-  security: bearerAuth,
-  request: {
-    body: {
-      content: { 'application/json': { schema: registerFirebaseTokenSchema } },
-      required: true,
-    },
-  },
-  responses: {
-    200: jsonResponse(firebaseTokenRegistrationResponseSchema, '登録結果'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    404: notFoundResponse,
-    409: conflictResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const adminNotificationCreateRoute = createRoute({
+export const legacyAdminNotificationCreateRoute = createRoute({
   method: 'post',
   path: '/admin/notifications',
   tags: ['Admin notifications'],
@@ -321,15 +187,18 @@ export const adminNotificationCreateRoute = createRoute({
   },
 });
 
-export const adminNotificationListRoute = createRoute({
+export const legacyAdminNotificationListRoute = createRoute({
   method: 'get',
   path: '/admin/notifications',
   tags: ['Admin notifications'],
   summary: '管理者通知一覧を取得する',
   security: bearerAuth,
-  request: { query: adminNotificationListQuery },
+  request: { query: legacyAdminNotificationListQuery },
   responses: {
-    200: jsonResponse(adminNotificationListResponseSchema, '管理者通知一覧'),
+    200: jsonResponse(
+      legacyAdminNotificationListResponseSchema,
+      '管理者通知一覧'
+    ),
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
@@ -337,33 +206,32 @@ export const adminNotificationListRoute = createRoute({
   },
 });
 
-export const adminNotificationDetailRoute = createRoute({
+export const legacyAdminNotificationDetailRoute = createRoute({
   method: 'get',
   path: '/admin/notifications/{notificationId}',
   tags: ['Admin notifications'],
   summary: '管理者通知を取得する',
   security: bearerAuth,
-  request: { params: adminNotificationIdParams },
+  request: { params: legacyAdminNotificationIdParams },
   responses: {
     200: jsonResponse(adminNotificationSummarySchema, '管理者通知'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
     404: notFoundResponse,
-    // 取得系でも共通のエラーハンドラを経由するため、409を返す可能性がある。
     409: conflictResponse,
     500: internalServerErrorResponse,
   },
 });
 
-export const adminNotificationUpdateRoute = createRoute({
+export const legacyAdminNotificationUpdateRoute = createRoute({
   method: 'put',
   path: '/admin/notifications/{notificationId}',
   tags: ['Admin notifications'],
   summary: '管理者通知を更新する',
   security: bearerAuth,
   request: {
-    params: adminNotificationIdParams,
+    params: legacyAdminNotificationIdParams,
     body: {
       content: {
         'application/json': { schema: updateManualNotificationSchema },
@@ -382,13 +250,13 @@ export const adminNotificationUpdateRoute = createRoute({
   },
 });
 
-export const adminNotificationDeleteRoute = createRoute({
+export const legacyAdminNotificationDeleteRoute = createRoute({
   method: 'delete',
   path: '/admin/notifications/{notificationId}',
   tags: ['Admin notifications'],
   summary: '管理者通知を削除する',
   security: bearerAuth,
-  request: { params: adminNotificationIdParams },
+  request: { params: legacyAdminNotificationIdParams },
   responses: {
     204: noContentResponse,
     400: badRequestResponse,
@@ -396,58 +264,6 @@ export const adminNotificationDeleteRoute = createRoute({
     403: forbiddenResponse,
     404: notFoundResponse,
     409: conflictResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const myNotificationListRoute = createRoute({
-  method: 'get',
-  path: '/me/notifications',
-  tags: ['My notifications'],
-  summary: '自分宛の通知一覧を取得する',
-  security: bearerAuth,
-  request: { query: paginationQuery(100, 50) },
-  responses: {
-    200: jsonResponse(mobileNotificationListResponseSchema, '通知一覧'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const myNotificationDetailRoute = createRoute({
-  method: 'get',
-  path: '/me/notifications/{notificationId}',
-  tags: ['My notifications'],
-  summary: '自分宛の通知を取得する',
-  security: bearerAuth,
-  request: { params: mobileNotificationIdParams },
-  responses: {
-    200: jsonResponse(mobileNotificationResponseSchema, '通知'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const testNotificationRoute = createRoute({
-  method: 'post',
-  path: '/notifications/test',
-  tags: ['Notifications'],
-  summary: 'テスト通知を送信する',
-  security: bearerAuth,
-  request: {
-    body: {
-      content: { 'application/json': { schema: testNotificationSchema } },
-      required: true,
-    },
-  },
-  responses: {
-    200: jsonResponse(fcmNotificationResponseSchema, '送信結果'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
     500: internalServerErrorResponse,
   },
 });

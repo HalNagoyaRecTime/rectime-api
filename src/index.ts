@@ -80,18 +80,19 @@ import {
   venueUpdateRoute,
 } from './presentation/openapi/venues';
 import {
-  adminNotificationCreateRoute,
-  adminNotificationDeleteRoute,
-  adminNotificationDetailRoute,
-  adminNotificationListRoute,
-  adminNotificationUpdateRoute,
-  firebaseTokenCreateRoute,
+  legacyAdminNotificationCreateRoute,
+  legacyAdminNotificationDeleteRoute,
+  legacyAdminNotificationDetailRoute,
+  legacyAdminNotificationListRoute,
+  legacyAdminNotificationUpdateRoute,
+} from './presentation/openapi/notification/legacy/admin';
+import { firebaseTokenCreateRoute } from './presentation/openapi/notification/legacy/firebaseTokens';
+import {
   myNotificationDetailRoute,
   myNotificationListRoute,
-  testNotificationRoute,
-} from './presentation/openapi/notifications';
+} from './presentation/openapi/notification/mobileNotifications';
+import { testNotificationRoute } from './presentation/openapi/notification/testNotification';
 import { adminUserStatusUpdateRoute } from './presentation/openapi/adminUsers';
-
 const app = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationDefaultHook,
 });
@@ -158,7 +159,6 @@ app.openapi(apiOverviewRoute, c => {
         events: '/api/v1/events',
         classRooms: '/api/v1/classrooms',
         gatheringSpots: '/api/v1/gathering-spots',
-        venues: '/api/v1/venues',
         gatherings: '/api/v1/gatherings',
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
         firebaseTokens: '/api/v1/firebase-tokens',
@@ -365,27 +365,27 @@ apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
 });
 
 // Notification routes
-apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
+apiV1.openapi(staffOnly(legacyAdminNotificationCreateRoute), c => {
   return c
     .get('container')
     .adminNotificationController.createManualNotification(c);
 });
-apiV1.openapi(staffOnly(adminNotificationListRoute), c => {
+apiV1.openapi(staffOnly(legacyAdminNotificationListRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.getAdminNotifications(c);
 });
-apiV1.openapi(staffOnly(adminNotificationDetailRoute), c => {
+apiV1.openapi(staffOnly(legacyAdminNotificationDetailRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.getAdminNotificationById(c);
 });
-apiV1.openapi(staffOnly(adminNotificationUpdateRoute), c => {
+apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.updateAdminNotification(c);
 });
-apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
+apiV1.openapi(staffOnly(legacyAdminNotificationDeleteRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.deleteAdminNotification(c);
