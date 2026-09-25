@@ -92,6 +92,7 @@ describe('FcmService', () => {
         title: 'タイトル',
         body: '本文',
       });
+      expect(sentBody.message).not.toHaveProperty('data');
     });
 
     it('FCM レスポンスに name が無い場合 messageId は空文字になる', async () => {

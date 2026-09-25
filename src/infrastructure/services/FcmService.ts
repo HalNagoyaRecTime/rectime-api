@@ -74,9 +74,7 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
               title: input.title,
               body: input.body,
             },
-            data: input.data ?? {
-              type: 'test',
-            },
+            ...(input.data ? { data: input.data } : {}),
             ...buildPlatformConfig(input.platform, input.importance),
           },
         }),
