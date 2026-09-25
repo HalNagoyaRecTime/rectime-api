@@ -75,7 +75,6 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
     FIREBASE_PROJECT_ID: 'project',
     FIREBASE_CLIENT_EMAIL: 'sa@example.iam.gserviceaccount.com',
     FIREBASE_PRIVATE_KEY: 'dummy-key',
-    TEST_FCM_TOKEN: 'test-token',
     MICROSOFT_CLIENT_ID: 'client-id',
     MICROSOFT_CLIENT_PRIVATE_KEY: 'dummy-key',
     MICROSOFT_CERT_THUMBPRINT: 'thumbprint',
