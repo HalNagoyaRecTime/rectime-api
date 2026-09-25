@@ -1,4 +1,5 @@
 import { createRoute } from '@hono/zod-openapi';
+import { MasterImportErrors } from '../errors/masterImportErrors';
 import {
   badRequestResponse,
   bearerAuth,
@@ -83,6 +84,13 @@ export const masterImportCreateSchema = z
   })
   .openapi('CreateMasterImportRequest');
 
+const commitInProgressErrorSchema = z.object({
+  error: z.object({
+    code: z.literal(MasterImportErrors.COMMIT_IN_PROGRESS.code),
+    message: z.string(),
+  }),
+});
+
 export const masterImportCreateRoute = createRoute({
   method: 'post',
   path: '/master-imports',
@@ -145,12 +153,17 @@ export const masterImportCommitRoute = createRoute({
       '検証エラーが残っているため確定できない'
     ),
     500: internalServerErrorResponse,
-    503: jsonResponse(
-      z.object({
-        error: z.string(),
-        error_code: z.literal('COMMIT_IN_PROGRESS'),
-      }),
-      '確定処理が進行中。Retry-Afterヘッダの秒数を空けて再試行する'
-    ),
+    503: {
+      ...jsonResponse(
+        commitInProgressErrorSchema,
+        '確定処理が進行中。Retry-Afterヘッダーの秒数後に再試行する'
+      ),
+      headers: {
+        'Retry-After': {
+          description: '再試行まで待機する秒数',
+          schema: { type: 'string', example: '3' },
+        },
+      },
+    },
   },
 });

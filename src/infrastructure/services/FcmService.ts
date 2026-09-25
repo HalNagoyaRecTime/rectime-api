@@ -3,7 +3,9 @@ import {
   FcmNotificationInput,
   FcmTestNotificationInput,
   FcmNotificationResult,
+  FcmRequestError,
 } from '../../application/services/IFcmService';
+import type { FirebasePlatformName } from '../../domain/entities/FirebaseToken';
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
@@ -56,7 +58,7 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
   const sendNotificationToToken = async (
     input: FcmNotificationInput
   ): Promise<FcmNotificationResult> => {
-    validateConfig(config);
+    validateFirebaseCredentials(config);
 
     const accessToken = await getAccessToken();
     const response = await fetch(
@@ -77,6 +79,7 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
             data: input.data ?? {
               type: 'test',
             },
+            ...buildPlatformConfig(input.platform, input.importance),
           },
         }),
       }
@@ -85,7 +88,14 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
     const responseBody = await response.json();
 
     if (!response.ok) {
-      throw new Error(`FCM request failed: ${JSON.stringify(responseBody)}`);
+      const fcmErrorCode = extractFcmErrorCode(responseBody);
+      throw new FcmRequestError(
+        response.status,
+        fcmErrorCode,
+        `FCM request failed: HTTP ${response.status}${
+          fcmErrorCode ? ` ${fcmErrorCode}` : ''
+        }`
+      );
     }
 
     const messageName =
@@ -105,6 +115,10 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
   const sendTestNotification = async (
     input: FcmTestNotificationInput
   ): Promise<FcmNotificationResult> => {
+    if (!config.testFcmToken) {
+      throw new Error('Missing Cloudflare Secrets: TEST_FCM_TOKEN');
+    }
+
     return sendNotificationToToken({
       token: config.testFcmToken,
       title: input.title,
@@ -121,6 +135,65 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
   };
 }
 
+function buildPlatformConfig(
+  platform: FirebasePlatformName | undefined,
+  importance = 2
+): Record<string, unknown> {
+  if (platform === 'ios') {
+    const interruptionLevel =
+      IOS_INTERRUPTION_LEVEL_BY_IMPORTANCE[importance] ?? 'active';
+    return {
+      apns: {
+        headers: {
+          'apns-priority': '10',
+          'apns-push-type': 'alert',
+        },
+        payload: {
+          aps: {
+            sound: 'default',
+            'interruption-level': interruptionLevel,
+          },
+        },
+      },
+    };
+  }
+
+  return {};
+}
+
+/** 保存時の制約で重要度は1〜4。段階ごとの表示レベルを明示的に対応付ける。 */
+const IOS_INTERRUPTION_LEVEL_BY_IMPORTANCE: Record<number, string> = {
+  1: 'passive',
+  2: 'active',
+  3: 'time-sensitive',
+  4: 'time-sensitive',
+};
+
+function extractFcmErrorCode(responseBody: unknown): string | null {
+  if (!responseBody || typeof responseBody !== 'object') return null;
+  if (!('error' in responseBody)) return null;
+
+  const error = responseBody.error;
+  if (!error || typeof error !== 'object') return null;
+
+  if ('details' in error && Array.isArray(error.details)) {
+    for (const detail of error.details) {
+      if (
+        detail &&
+        typeof detail === 'object' &&
+        'errorCode' in detail &&
+        typeof detail.errorCode === 'string'
+      ) {
+        return detail.errorCode;
+      }
+    }
+  }
+
+  return 'status' in error && typeof error.status === 'string'
+    ? error.status
+    : null;
+}
+
 function getAccessTokenCacheEntry(cacheKey: string): AccessTokenCacheEntry {
   const existing = accessTokenCache.get(cacheKey);
   if (existing) return existing;
@@ -130,12 +203,11 @@ function getAccessTokenCacheEntry(cacheKey: string): AccessTokenCacheEntry {
   return created;
 }
 
-function validateConfig(config: FirebaseConfig) {
+function validateFirebaseCredentials(config: FirebaseConfig) {
   const missingKeys = [
     ['FIREBASE_PROJECT_ID', config.projectId],
     ['FIREBASE_CLIENT_EMAIL', config.clientEmail],
     ['FIREBASE_PRIVATE_KEY', config.privateKey],
-    ['TEST_FCM_TOKEN', config.testFcmToken],
   ]
     .filter(([, value]) => !value)
     .map(([key]) => key);

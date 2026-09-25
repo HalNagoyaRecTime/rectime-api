@@ -9,11 +9,13 @@ import { TeacherSearchFilter } from '../../domain/entities/Teacher';
 
 export interface TeacherCreateRequest {
   userName: string;
+  email: string;
   classRoomIds: number[];
 }
 
 export interface TeacherUpdateRequest {
   userName: string;
+  email: string;
   classRoomIds: number[];
 }
 
@@ -25,7 +27,6 @@ export interface ITeacherService {
     id: number,
     input: TeacherUpdateRequest
   ) => Promise<TeacherDTO>;
-  deleteTeacher: (id: number) => Promise<void>;
   validateTeacherImport: (
     input: TeacherImportInput
   ) => Promise<TeacherImportValidationResult>;

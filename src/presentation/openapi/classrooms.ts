@@ -3,12 +3,13 @@ import {
   badRequestResponse,
   bearerAuth,
   conflictResponse,
+  digitsOnlyInteger,
+  forbiddenResponse,
   internalServerErrorResponse,
   jsonResponse,
   noContentResponse,
   notFoundResponse,
   paginationFields,
-  paginationQuery,
   positivePathParam,
   unauthorizedResponse,
   z,
@@ -36,7 +37,7 @@ export type ClassRoomResponseDTO = z.infer<typeof classRoomResponseSchema>;
 
 export const classRoomPageResponseSchema = z
   .object({
-    classrooms: z.array(classRoomResponseSchema),
+    items: z.array(classRoomResponseSchema),
     ...paginationFields,
   })
   .openapi('ClassRoomPage');
@@ -49,7 +50,39 @@ export const classIdParams = z.object({
   classId: positivePathParam('classId', '教室ID'),
 });
 
-export const classRoomListQuery = paginationQuery(100, 20);
+export const classRoomListQuery = z
+  .object({
+    search: z.string().trim().min(1).optional(),
+    sortBy: z
+      .enum([
+        'classRoomId',
+        'classCode',
+        'className',
+        'teacherName',
+        'studentCount',
+      ])
+      .default('classRoomId')
+      .openapi({
+        param: { name: 'sortBy', in: 'query' },
+        example: 'classRoomId',
+      }),
+    sortOrder: z
+      .enum(['asc', 'desc'])
+      .default('asc')
+      .openapi({
+        param: { name: 'sortOrder', in: 'query' },
+        example: 'asc',
+      }),
+    limit: digitsOnlyInteger(1, 100, 50).openapi({
+      param: { name: 'limit', in: 'query' },
+      example: 50,
+    }),
+    offset: digitsOnlyInteger(0, undefined, 0).openapi({
+      param: { name: 'offset', in: 'query' },
+      example: 0,
+    }),
+  })
+  .strict();
 
 export const classRoomWriteSchema = z
   .object({
@@ -57,6 +90,7 @@ export const classRoomWriteSchema = z
     className: z.string().trim().min(1),
     teacherId: z.number().int().positive().nullable(),
   })
+  .strict()
   .openapi('ClassRoomWriteRequest');
 
 export const classRoomListRoute = createRoute({
@@ -70,6 +104,7 @@ export const classRoomListRoute = createRoute({
     200: jsonResponse(classRoomPageResponseSchema, '教室一覧'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
@@ -85,6 +120,7 @@ export const classRoomDetailRoute = createRoute({
     200: jsonResponse(classRoomResponseSchema, '教室'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     500: internalServerErrorResponse,
   },
@@ -106,6 +142,7 @@ export const classRoomCreateRoute = createRoute({
     201: jsonResponse(classRoomResponseSchema, '作成した教室'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     409: conflictResponse,
     500: internalServerErrorResponse,
@@ -117,6 +154,13 @@ export const classRoomUpdateRoute = createRoute({
   path: '/classrooms/{classId}',
   tags: ['Classrooms'],
   summary: '教室を更新する',
+  description: [
+    '`teacherId` に `null` を指定すると担任を外す。',
+    'ただし現在の担任が無効化された教員の場合は、取得APIが担任を返しておらず',
+    '`null` が「外す指定」なのか「担任なしをそのまま送り返しただけ」なのかを',
+    '区別できないため、割り当てを据え置く。',
+    '無効化された教員を担任から外すには、先にその教員を有効化する。',
+  ].join('\n'),
   security: bearerAuth,
   request: {
     params: classIdParams,
@@ -129,6 +173,7 @@ export const classRoomUpdateRoute = createRoute({
     200: jsonResponse(classRoomResponseSchema, '更新した教室'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     409: conflictResponse,
     500: internalServerErrorResponse,
@@ -146,6 +191,7 @@ export const classRoomDeleteRoute = createRoute({
     204: noContentResponse,
     400: badRequestResponse,
     401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     409: conflictResponse,
     500: internalServerErrorResponse,

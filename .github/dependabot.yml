@@ -1,0 +1,20 @@
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    # version updateは事前検証workflowへ集約する。
+    # Security Updatesはリポジトリ設定側で別に管理され、この値の対象外。
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      time: "09:10"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 0

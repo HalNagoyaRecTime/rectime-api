@@ -1,4 +1,5 @@
 import { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
+import { firebasePlatformToName } from '../../domain/entities/FirebaseToken';
 import { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
 import type { INotificationDeliveryQueue } from '../../domain/interfaces/queues/INotificationDeliveryQueue';
 import {
@@ -6,7 +7,7 @@ import {
   NOTIFICATION_DELIVERY_LEASE_TIMEOUT_MS,
   NOTIFICATION_DELIVERY_MESSAGE_SIZE,
 } from '../../domain/entities/NotificationDelivery';
-import { IFcmService } from './IFcmService';
+import { IFcmService, isPermanentFcmTokenError } from './IFcmService';
 import { IScheduledNotificationService } from './IScheduledNotificationService';
 
 const MAX_CONCURRENT_FCM_REQUESTS = 5;
@@ -75,13 +76,22 @@ export function createScheduledNotificationService(deps: {
             );
             return 'failed' as const;
           }
+          if (schedule.is_user_live_active !== 1) {
+            await notificationScheduleRepository.markFailed(
+              schedule.notification_schedule_id,
+              'User is inactive'
+            );
+            return 'failed' as const;
+          }
 
           let result;
           try {
             result = await fcmService.sendNotificationToToken({
               token: schedule.fcm_token,
+              platform: firebasePlatformToName(schedule.platform),
               title: schedule.title,
               body: schedule.body,
+              importance: schedule.importance,
               data: {
                 type: schedule.notification_type,
                 ...(schedule.notification_type === 'manual'
@@ -162,10 +172,5 @@ async function mapWithConcurrency<T, R>(
 }
 
 function shouldDeactivateToken(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return (
-    message.includes('UNREGISTERED') ||
-    message.includes('invalid token') ||
-    message.includes('INVALID_ARGUMENT')
-  );
+  return isPermanentFcmTokenError(error);
 }

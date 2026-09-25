@@ -9,6 +9,7 @@ type OpenApiOperation = {
 
 type OpenApiSchema = {
   required?: string[];
+  allOf?: unknown[];
 };
 
 type OpenApiDocument = {
@@ -56,7 +57,7 @@ describe('mobile API contract', () => {
       [
         'event_id',
         'event_name',
-        'venue',
+        'venues',
         'start_time',
         'end_time',
         'created_at',
@@ -97,4 +98,19 @@ describe('mobile API contract', () => {
       );
     }
   );
+
+  // GET /events/{eventId} のレスポンスはEventDetailへ差し替えた。Eventを$refで
+  // 取り込む形を保つことで、mobileが参照するfieldはEventの検証がそのまま効く。
+  it('keeps the event detail response built on top of Event', () => {
+    const schema = document.paths['/api/v1/events/{eventId}']?.get?.responses?.[
+      '200'
+    ] as { content?: Record<string, { schema?: unknown }> } | undefined;
+
+    expect(schema?.content?.['application/json']?.schema).toEqual({
+      $ref: '#/components/schemas/EventDetail',
+    });
+    expect(document.components.schemas['EventDetail']?.allOf).toContainEqual({
+      $ref: '#/components/schemas/Event',
+    });
+  });
 });

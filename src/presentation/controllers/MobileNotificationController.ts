@@ -5,6 +5,9 @@ import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import type { AuthVariables } from '../middleware/requireAuth';
+import { CommonErrors } from '../errors/commonErrors';
+import { errorResponse } from '../errors/errorResponse';
+import { NotificationErrors } from '../errors/notificationErrors';
 
 type MobileNotificationContext = Context<{
   Bindings: Env;
@@ -22,7 +25,7 @@ export function createMobileNotificationController(
 ) {
   const getAuthenticatedUserId = (c: MobileNotificationContext) => {
     const userId = c.get('authenticatedUserId');
-    return userId ?? c.json({ error: 'Authentication required' }, 401);
+    return userId ?? errorResponse(c, CommonErrors.UNAUTHORIZED);
   };
 
   const getNotifications = async (c: MobileNotificationContext) => {
@@ -34,12 +37,10 @@ export function createMobileNotificationController(
       offset: c.req.query('offset'),
     });
     if (!parsedQuery.success) {
-      return c.json(
-        {
-          error: 'Invalid notification list query',
-          details: parsedQuery.error.flatten(),
-        },
-        400
+      return errorResponse(
+        c,
+        NotificationErrors.INVALID_NOTIFICATION_LIST_QUERY,
+        parsedQuery.error.flatten()
       );
     }
 
@@ -50,7 +51,7 @@ export function createMobileNotificationController(
       );
       return c.json(result, 200);
     } catch {
-      return c.json({ error: 'Failed to fetch notifications' }, 500);
+      return errorResponse(c, NotificationErrors.NOTIFICATION_LIST_FAILED);
     }
   };
 
@@ -62,7 +63,7 @@ export function createMobileNotificationController(
       c.req.param('notificationId')
     );
     if (!parsedId.success) {
-      return c.json({ error: 'Invalid notification ID' }, 400);
+      return errorResponse(c, NotificationErrors.INVALID_NOTIFICATION_ID);
     }
 
     try {
@@ -78,9 +79,9 @@ export function createMobileNotificationController(
         error instanceof Error &&
         error.message === 'Notification not found'
       ) {
-        return c.json({ error: 'Notification not found' }, 404);
+        return errorResponse(c, NotificationErrors.NOTIFICATION_NOT_FOUND);
       }
-      return c.json({ error: 'Failed to fetch notification' }, 500);
+      return errorResponse(c, NotificationErrors.NOTIFICATION_FETCH_FAILED);
     }
   };
 

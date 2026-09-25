@@ -22,7 +22,9 @@ function buildSchedule(
     notification_id: 4,
     firebase_token_id: 9,
     fcm_token: 'token-a',
+    platform: 2,
     is_firebase_active: 1,
+    is_user_live_active: 1,
     notification_type: 'event_reminder',
     title: '集合のお知らせ',
     body: '集合時刻です。',
@@ -43,25 +45,23 @@ describe('ScheduledNotificationService', () => {
     schedules?: DueNotificationSchedule[];
   }) {
     const notificationScheduleRepository: INotificationScheduleRepository = {
-      create: vi.fn(),
-      findAll: vi.fn(),
-      findById: vi.fn(),
-      deleteDraft: vi.fn(),
       findDraftsByEvent: vi.fn(),
-      existsFirebaseToken: vi.fn(),
-      existsEvent: vi.fn(),
-      existsNotification: vi.fn(),
       findDeliveryCandidateIds: vi
         .fn()
         .mockResolvedValue(options?.candidateIds ?? []),
       claimForDelivery: vi.fn().mockResolvedValue(options?.schedules ?? []),
       markSent: vi.fn(),
       markFailed: vi.fn(),
+      anonymizeCreatedUserId: vi.fn(),
+      deleteByFirebaseTokenId: vi.fn(),
     };
     const firebaseTokenRepository: IFirebaseTokenRepository = {
       register: vi.fn(),
       findActiveTokens: vi.fn(),
       deactivate: vi.fn(),
+      deactivateByUserId: vi.fn(),
+      findByUserId: vi.fn(),
+      deleteByUserId: vi.fn(),
     };
     const notificationDeliveryQueue: INotificationDeliveryQueue = {
       enqueueMany: vi.fn(),
@@ -160,8 +160,10 @@ describe('ScheduledNotificationService', () => {
     );
     expect(fcmService.sendNotificationToToken).toHaveBeenCalledWith({
       token: 'token-a',
+      platform: 'android',
       title: '集合のお知らせ',
       body: '集合時刻です。',
+      importance: 2,
       data: {
         type: 'event_reminder',
         eventId: '2',
@@ -189,13 +191,31 @@ describe('ScheduledNotificationService', () => {
 
     expect(fcmService.sendNotificationToToken).toHaveBeenCalledWith({
       token: 'token-a',
+      platform: 'android',
       title: '集合のお知らせ',
       body: '集合時刻です。',
+      importance: 2,
       data: {
         type: 'manual',
         notificationId: '12',
       },
     });
+  });
+
+  it('iOS端末にはplatformとimportanceを渡して送信する', async () => {
+    const { service, fcmService } = setup({
+      schedules: [buildSchedule({ platform: 1, importance: 3 })],
+    });
+
+    await service.sendQueuedNotifications([1]);
+
+    expect(fcmService.sendNotificationToToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        token: 'token-a',
+        platform: 'ios',
+        importance: 3,
+      })
+    );
   });
 
   it('1件が失敗しても同じmessageの残りを続けて送信する', async () => {
@@ -249,6 +269,21 @@ describe('ScheduledNotificationService', () => {
     expect(notificationScheduleRepository.markFailed).toHaveBeenCalledWith(
       1,
       'Firebase token is inactive'
+    );
+    expect(result).toEqual({ checkedEvents: 1, sent: 0, failed: 1 });
+  });
+
+  it('無効化済みUser宛ては送らず予定をfailedにする', async () => {
+    const { service, notificationScheduleRepository, fcmService } = setup({
+      schedules: [buildSchedule({ is_user_live_active: 0 })],
+    });
+
+    const result = await service.sendQueuedNotifications([1]);
+
+    expect(fcmService.sendNotificationToToken).not.toHaveBeenCalled();
+    expect(notificationScheduleRepository.markFailed).toHaveBeenCalledWith(
+      1,
+      'User is inactive'
     );
     expect(result).toEqual({ checkedEvents: 1, sent: 0, failed: 1 });
   });

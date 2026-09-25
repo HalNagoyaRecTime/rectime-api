@@ -1,12 +1,10 @@
 import type { IAdminNotificationRepository } from '../../domain/interfaces/repositories/IAdminNotificationRepository';
 import type { IAdminNotificationManagementRepository } from '../../domain/interfaces/repositories/IAdminNotificationManagementRepository';
-import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAdminNotificationManagementService } from './IAdminNotificationManagementService';
 
 export function createAdminNotificationManagementService(
   managementRepository: IAdminNotificationManagementRepository,
-  adminNotificationRepository: IAdminNotificationRepository,
-  userRepository: IUserRepository
+  adminNotificationRepository: IAdminNotificationRepository
 ): IAdminNotificationManagementService {
   const getById = async (notificationId: number) => {
     const notification = await managementRepository.findById(notificationId);
@@ -15,10 +13,6 @@ export function createAdminNotificationManagementService(
   };
 
   return {
-    canManageAdminNotifications(userId) {
-      return userRepository.isStaffOrTeacher(userId);
-    },
-
     getAdminNotifications(options) {
       return managementRepository.findAll(options);
     },
@@ -44,14 +38,22 @@ export function createAdminNotificationManagementService(
         }
       }
 
-      const result = await managementRepository.update({
-        ...command,
-        scheduled_at:
-          command.audience && command.scheduled_at === undefined
-            ? current.scheduled_at
-            : command.scheduled_at,
-        created_user_id: current.created_user_id,
-      });
+      const result = command.audience
+        ? await managementRepository.update({
+            notification_id: command.notification_id,
+            title: command.title,
+            body: command.body,
+            audience: command.audience,
+            scheduled_at: command.scheduled_at ?? current.scheduled_at,
+            created_user_id: current.created_user_id,
+          })
+        : await managementRepository.update({
+            notification_id: command.notification_id,
+            title: command.title,
+            body: command.body,
+            scheduled_at: command.scheduled_at,
+            created_user_id: current.created_user_id,
+          });
       if (result === 'not_found') {
         throw new Error('Admin notification not found');
       }

@@ -7,8 +7,6 @@ function setup() {
   const service: IGatheringService = {
     getAllGatherings: vi.fn(),
     getGatheringsByEventId: vi.fn(),
-    createGathering: vi.fn(),
-    deleteGathering: vi.fn(),
   };
   const controller = createGatheringController(service);
   const app = new Hono();
@@ -16,8 +14,6 @@ function setup() {
   app.get('/events/:eventId/gatherings', c =>
     controller.getGatheringsByEventId(c)
   );
-  app.post('/gatherings', c => controller.createGathering(c));
-  app.delete('/gatherings/:gatheringId', c => controller.deleteGathering(c));
   return { app, service };
 }
 
@@ -70,115 +66,6 @@ describe('GatheringController', () => {
 
     const invalid = await app.request('/events/invalid/gatherings');
     const notFound = await app.request('/events/999999/gatherings');
-
-    expect(invalid.status).toBe(400);
-    expect(notFound.status).toBe(404);
-  });
-
-  it('作成リクエストをServiceへ変換して201を返す', async () => {
-    const { app, service } = setup();
-    (service.createGathering as ReturnType<typeof vi.fn>).mockResolvedValue({
-      gathering_id: 1,
-    });
-
-    const response = await app.request('/gatherings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        eventId: 2,
-        gatheringSpotId: 3,
-        gatheringTime: '08:50',
-        round: 1,
-      }),
-    });
-
-    expect(response.status).toBe(201);
-    expect(service.createGathering).toHaveBeenCalledWith({
-      event_id: 2,
-      gathering_spot_id: 3,
-      gathering_time: '08:50',
-      round: 1,
-    });
-  });
-
-  it('任意の集合時刻と回数を省略できる', async () => {
-    const { app, service } = setup();
-    (service.createGathering as ReturnType<typeof vi.fn>).mockResolvedValue({
-      gathering_id: 1,
-    });
-
-    const response = await app.request('/gatherings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eventId: 2, gatheringSpotId: 3 }),
-    });
-
-    expect(response.status).toBe(201);
-    expect(service.createGathering).toHaveBeenCalledWith({
-      event_id: 2,
-      gathering_spot_id: 3,
-      gathering_time: undefined,
-      round: undefined,
-    });
-  });
-
-  it.each([
-    [{ gatheringSpotId: 3 }, '必須のイベントID欠落'],
-    [{ eventId: 2 }, '必須の集合場所ID欠落'],
-    [{ eventId: 2, gatheringSpotId: 3, gatheringTime: '0900' }, '時刻形式'],
-    [{ eventId: 2, gatheringSpotId: 3, round: 0 }, '回数下限'],
-    [{ eventId: 2, gatheringSpotId: 3, round: 100 }, '回数上限'],
-  ])('%sは400で拒否する', async (body, _description) => {
-    const { app, service } = setup();
-
-    const response = await app.request('/gatherings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    expect(response.status).toBe(400);
-    expect(service.createGathering).not.toHaveBeenCalled();
-  });
-
-  it('参照先が存在しない場合は404を返す', async () => {
-    const { app, service } = setup();
-    (service.createGathering as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error('Event not found')
-    );
-
-    const response = await app.request('/gatherings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eventId: 2, gatheringSpotId: 3 }),
-    });
-
-    expect(response.status).toBe(404);
-  });
-
-  it('集合予定を削除して204を返す', async () => {
-    const { app, service } = setup();
-
-    const response = await app.request('/gatherings/1', {
-      method: 'DELETE',
-    });
-
-    expect(response.status).toBe(204);
-    expect(service.deleteGathering).toHaveBeenCalledWith(1);
-  });
-
-  it('不正な集合IDは400、存在しない集合は404を返す', async () => {
-    const { app, service } = setup();
-    (service.deleteGathering as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error('Gathering not found')
-    );
-
-    const invalid = await app.request('/gatherings/invalid', {
-      method: 'DELETE',
-    });
-    const notFound = await app.request('/gatherings/999', {
-      method: 'DELETE',
-    });
 
     expect(invalid.status).toBe(400);
     expect(notFound.status).toBe(404);

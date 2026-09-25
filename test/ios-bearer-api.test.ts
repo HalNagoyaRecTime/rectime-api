@@ -41,7 +41,7 @@ describe('iOS Bearer authentication API flow', () => {
       "INSERT INTO users (user_name) VALUES ('iOSテストユーザー') RETURNING user_id"
     ).first<{ user_id: number }>();
     const event = await workerEnv.DB.prepare(
-      "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('リレー', 'グラウンド', '1030', '1100') RETURNING event_id"
+      "INSERT INTO events (event_name, start_time, end_time) VALUES ('リレー', '1030', '1100') RETURNING event_id"
     ).first<{ event_id: number }>();
     const token = await createMobileAccessToken(user!.user_id);
     const headers = mobileHeaders(token);
@@ -85,7 +85,6 @@ describe('iOS Bearer authentication API flow', () => {
     expect(await eventResponse.json()).toMatchObject({
       event_id: event!.event_id,
       event_name: 'リレー',
-      venue: 'グラウンド',
       start_time: '1030',
       end_time: '1100',
     });
@@ -103,7 +102,7 @@ describe('iOS Bearer authentication API flow', () => {
 
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({
-      error: { code: 'INVALID_TOKEN', message: 'トークンが不正です。' },
+      error: { code: 'INVALID_TOKEN', message: '認証トークンが不正です' },
     });
   });
 
@@ -121,7 +120,8 @@ describe('iOS Bearer authentication API flow', () => {
     expect(await response.json()).toEqual({
       error: {
         code: 'SESSION_EXPIRED',
-        message: 'セッションの有効期限が切れました。',
+        message:
+          'セッションの有効期限が切れました。もう一度ログインしてください',
       },
     });
   });
@@ -139,7 +139,7 @@ describe('iOS Bearer authentication API flow', () => {
 
     expect(response.status).toBe(401);
     expect(body).toEqual({
-      error: { code: 'INVALID_TOKEN', message: 'トークンが不正です。' },
+      error: { code: 'INVALID_TOKEN', message: '認証トークンが不正です' },
     });
     expect(JSON.stringify(body)).not.toContain(invalidToken);
   });

@@ -45,7 +45,10 @@
     ],
   },
   "triggers": {
-    "crons": ["* * * * *"],
+    // "* * * * *": 通知配信(EVENT_DATE当日のみ実際に動く)。
+    // "0 18 * * *" (UTC 18:00 = JST 3:00): アカウント削除の後片付け
+    // 再実行(#345)。event.cronの値でindex.tsのscheduledハンドラが分岐する。
+    "crons": ["* * * * *", "0 18 * * *"],
   },
   "queues": {
     "producers": [

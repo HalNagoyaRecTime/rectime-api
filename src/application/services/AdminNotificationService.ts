@@ -1,16 +1,10 @@
 import type { IAdminNotificationRepository } from '../../domain/interfaces/repositories/IAdminNotificationRepository';
-import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAdminNotificationService } from './IAdminNotificationService';
 
 export function createAdminNotificationService(
-  adminNotificationRepository: IAdminNotificationRepository,
-  userRepository: IUserRepository
+  adminNotificationRepository: IAdminNotificationRepository
 ): IAdminNotificationService {
   return {
-    canCreateManualNotification(userId) {
-      return userRepository.isStaffOrTeacher(userId);
-    },
-
     async createManualNotification(input) {
       const audienceStatus =
         await adminNotificationRepository.getAudienceStatus(input.audience);

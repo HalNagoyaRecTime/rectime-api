@@ -1,6 +1,8 @@
 import { z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import type { ZodError, ZodSchema } from 'zod';
+import { CommonErrors } from '../errors/commonErrors';
+import { toValidationErrorDetails } from '../errors/validationErrorDetails';
 
 export { z };
 
@@ -22,28 +24,37 @@ export const jsonResponse = <Schema extends ZodSchema>(
     description,
   }) as const;
 
+/**
+ * リクエスト本文・クエリの検証で返すエラー詳細。
+ *
+ * 検証ライブラリが変わってもクライアントが安定したAPI契約を利用できるよう、
+ * Zod内部の`issues`表現から独立した形を維持する。
+ */
+export const validationErrorDetailsSchema = z
+  .object({
+    fieldErrors: z.record(z.array(z.string())),
+    formErrors: z.array(z.string()),
+  })
+  .openapi('ValidationErrorDetails');
+
+export type { ValidationErrorDetails } from '../errors/validationErrorDetails';
+
 export const errorResponseSchema = z
   .object({
-    error: z.string(),
-    code: z.string().optional(),
-    error_code: z.string().optional(),
-    details: z
-      .union([
-        z.string(),
-        z.object({
-          formErrors: z.array(z.string()),
-          fieldErrors: z.record(z.array(z.string()).optional()),
-        }),
-      ])
-      .optional(),
+    error: z.object({
+      code: z.string(),
+      message: z.string(),
+      // 検証エラーにはvalidationErrorDetailsSchemaを使用する。2つ目の分岐として
+      // `z.any()`を残し、既存のエラー固有の拡張との後方互換性を維持する。
+      details: z.union([validationErrorDetailsSchema, z.any()]).optional(),
+    }),
   })
   .openapi('Error');
 
 export type ErrorResponseDTO = z.infer<typeof errorResponseSchema>;
 
 type ValidationHookResult =
-  | { success: true }
-  | { success: false; error: ZodError };
+  { success: true } | { success: false; error: ZodError };
 
 /**
  * OpenAPI側のZodスキーマがリクエストを弾いたときの400応答。
@@ -58,11 +69,13 @@ export const validationDefaultHook = (
 ): Response | undefined => {
   if (result.success) return;
   const body: ErrorResponseDTO = {
-    error: 'Invalid request',
-    code: 'VALIDATION_ERROR',
-    details: result.error.flatten(),
+    error: {
+      code: CommonErrors.VALIDATION_ERROR.code,
+      message: CommonErrors.VALIDATION_ERROR.message,
+      details: toValidationErrorDetails(result.error),
+    },
   };
-  return c.json(body, 400);
+  return c.json(body, CommonErrors.VALIDATION_ERROR.status);
 };
 
 export const badRequestResponse = jsonResponse(
@@ -109,6 +122,12 @@ export const isoDateTimeSchema = z
   .datetime({ offset: true })
   .openapi({ example: '2026-07-16T09:00:00.000Z' });
 
+/** UTCのISO 8601形式（Z・ミリ秒3桁）。 */
+export const utcDateTimeSchema = z
+  .string()
+  .datetime({ offset: false, precision: 3 })
+  .openapi('UtcDateTime');
+
 /** JSTのHHMM形式。 */
 export const hhmmSchema = z
   .string()
@@ -125,6 +144,41 @@ export const positivePathParam = (name: string, description: string) =>
     .regex(/^[1-9]\d*$/)
     .openapi({ param: { name, in: 'path' }, description, example: '1' });
 
+/**
+ * QueryはHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
+ * OpenAPIとControllerが同じschemaをsafeParseすることで、受理範囲を一致させる。
+ */
+const digitsOnlyNumber = (minimum: number, maximum?: number) => {
+  const numberSchema = z.number().int().min(minimum);
+  const boundedSchema =
+    maximum === undefined ? numberSchema : numberSchema.max(maximum);
+
+  return z.preprocess(
+    value =>
+      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
+    boundedSchema
+  );
+};
+
+/** 最小値だけを持つdigits-onlyクエリ。 */
+export const digitsOnlyQuery = (minimum: number) => digitsOnlyNumber(minimum);
+
+/** 最小値・最大値を持つdigits-onlyクエリ。上限エラーの文言を維持する。 */
+export const limitedDigitsOnlyQuery = (minimum: number, maximum: number) =>
+  digitsOnlyQuery(minimum).refine(value => value <= maximum, {
+    message: `値は${minimum}から${maximum}の範囲で指定してください`,
+  });
+
+/** default付きのdigits-only整数。ClassRoomの既存エラー契約を維持する。 */
+export const digitsOnlyInteger = (
+  minimum: number,
+  maximum: number | undefined,
+  defaultValue: number
+) => digitsOnlyNumber(minimum, maximum).default(defaultValue);
+
+/** digits-only整数クエリ。既存の共通名と互換性のある別名。 */
+export const digitsOnlyIntegerQuery = (minimum: number, maximum?: number) =>
+  digitsOnlyNumber(minimum, maximum);
 /** 件数指定のクエリ。上限と既定値はエンドポイントごとに異なる。 */
 export const paginationQuery = (limitMax: number, limitDefault: number) =>
   z.object({

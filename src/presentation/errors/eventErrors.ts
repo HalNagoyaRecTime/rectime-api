@@ -1,0 +1,204 @@
+import type { ApiErrorDefinition } from './errorResponse';
+
+export const EventErrors = {
+  INVALID_START_TIME: {
+    status: 400,
+    code: 'INVALID_START_TIME',
+    message: '開始時刻の指定が正しくありません',
+  },
+  INVALID_EVENT_ID: {
+    status: 400,
+    code: 'INVALID_EVENT_ID',
+    message: '競技IDが正しくありません',
+  },
+  INVALID_EVENT_REQUEST: {
+    status: 400,
+    code: 'INVALID_EVENT_REQUEST',
+    message: '競技情報の入力内容が正しくありません',
+  },
+  INVALID_EVENT_TIME_RANGE: {
+    status: 400,
+    code: 'INVALID_EVENT_TIME_RANGE',
+    message: '終了時刻は開始時刻より後に設定してください',
+  },
+  EVENT_NOT_FOUND: {
+    status: 404,
+    code: 'EVENT_NOT_FOUND',
+    message: '競技が見つかりません',
+  },
+  EVENT_IN_USE: {
+    status: 409,
+    code: 'EVENT_IN_USE',
+    message: '使用中の競技は削除できません',
+  },
+  EVENT_LIST_FAILED: {
+    status: 500,
+    code: 'EVENT_LIST_FAILED',
+    message: '競技一覧の取得に失敗しました',
+  },
+  MY_EVENT_LIST_FAILED: {
+    status: 500,
+    code: 'MY_EVENT_LIST_FAILED',
+    message: '参加競技一覧の取得に失敗しました',
+  },
+  EVENT_FETCH_FAILED: {
+    status: 500,
+    code: 'EVENT_FETCH_FAILED',
+    message: '競技の取得に失敗しました',
+  },
+  EVENT_CREATE_FAILED: {
+    status: 500,
+    code: 'EVENT_CREATE_FAILED',
+    message: '競技の登録に失敗しました',
+  },
+  EVENT_UPDATE_FAILED: {
+    status: 500,
+    code: 'EVENT_UPDATE_FAILED',
+    message: '競技の更新に失敗しました',
+  },
+  EVENT_DELETE_FAILED: {
+    status: 500,
+    code: 'EVENT_DELETE_FAILED',
+    message: '競技の削除に失敗しました',
+  },
+  INVALID_GATHERING_ID: {
+    status: 400,
+    code: 'INVALID_GATHERING_ID',
+    message: '集合グループIDが正しくありません',
+  },
+  GATHERING_NOT_FOUND: {
+    status: 404,
+    code: 'GATHERING_NOT_FOUND',
+    message: '集合グループが見つかりません',
+  },
+  GATHERING_IN_USE: {
+    status: 409,
+    code: 'GATHERING_IN_USE',
+    message: '参加者がいる集合グループは削除できません',
+  },
+  EVENT_GATHERINGS_UPDATE_FAILED: {
+    status: 500,
+    code: 'EVENT_GATHERINGS_UPDATE_FAILED',
+    message: '競技の集合設定の更新に失敗しました',
+  },
+  GATHERING_LIST_FAILED: {
+    status: 500,
+    code: 'GATHERING_LIST_FAILED',
+    message: '集合グループ一覧の取得に失敗しました',
+  },
+  EVENT_GATHERING_LIST_FAILED: {
+    status: 500,
+    code: 'EVENT_GATHERING_LIST_FAILED',
+    message: '競技の集合グループ一覧の取得に失敗しました',
+  },
+  INVALID_GATHERING_MEMBER_REQUEST: {
+    status: 400,
+    code: 'INVALID_GATHERING_MEMBER_REQUEST',
+    message: '集合メンバーの入力内容が正しくありません',
+  },
+  GATHERING_MEMBER_LIST_FAILED: {
+    status: 500,
+    code: 'GATHERING_MEMBER_LIST_FAILED',
+    message: '集合メンバー一覧の取得に失敗しました',
+  },
+  GATHERING_MEMBER_UPDATE_FAILED: {
+    status: 500,
+    code: 'GATHERING_MEMBER_UPDATE_FAILED',
+    message: '集合メンバーの更新に失敗しました',
+  },
+  INVALID_GATHERING_SPOT_LIST_QUERY: {
+    status: 400,
+    code: 'INVALID_GATHERING_SPOT_LIST_QUERY',
+    message: '集合場所一覧の検索条件が正しくありません',
+  },
+  INVALID_GATHERING_SPOT_ID: {
+    status: 400,
+    code: 'INVALID_GATHERING_SPOT_ID',
+    message: '集合場所IDが正しくありません',
+  },
+  INVALID_GATHERING_SPOT_REQUEST: {
+    status: 400,
+    code: 'INVALID_GATHERING_SPOT_REQUEST',
+    message: '集合場所の入力内容が正しくありません',
+  },
+  GATHERING_SPOT_NOT_FOUND: {
+    status: 404,
+    code: 'GATHERING_SPOT_NOT_FOUND',
+    message: '集合場所が見つかりません',
+  },
+  GATHERING_SPOT_IN_USE: {
+    status: 409,
+    code: 'GATHERING_SPOT_IN_USE',
+    message: '使用中の集合場所は削除できません',
+  },
+  GATHERING_SPOT_LIST_FAILED: {
+    status: 500,
+    code: 'GATHERING_SPOT_LIST_FAILED',
+    message: '集合場所一覧の取得に失敗しました',
+  },
+  GATHERING_SPOT_CREATE_FAILED: {
+    status: 500,
+    code: 'GATHERING_SPOT_CREATE_FAILED',
+    message: '集合場所の登録に失敗しました',
+  },
+  GATHERING_SPOT_UPDATE_FAILED: {
+    status: 500,
+    code: 'GATHERING_SPOT_UPDATE_FAILED',
+    message: '集合場所の更新に失敗しました',
+  },
+  GATHERING_SPOT_DELETE_FAILED: {
+    status: 500,
+    code: 'GATHERING_SPOT_DELETE_FAILED',
+    message: '集合場所の削除に失敗しました',
+  },
+  INVALID_VENUE_LIST_QUERY: {
+    status: 400,
+    code: 'INVALID_VENUE_LIST_QUERY',
+    message: '実施場所一覧の検索条件が正しくありません',
+  },
+  INVALID_VENUE_ID: {
+    status: 400,
+    code: 'INVALID_VENUE_ID',
+    message: '実施場所IDが正しくありません',
+  },
+  INVALID_VENUE_REQUEST: {
+    status: 400,
+    code: 'INVALID_VENUE_REQUEST',
+    message: '実施場所の入力内容が正しくありません',
+  },
+  VENUE_NOT_FOUND: {
+    status: 404,
+    code: 'VENUE_NOT_FOUND',
+    message: '実施場所が見つかりません',
+  },
+  VENUE_NAME_ALREADY_EXISTS: {
+    status: 409,
+    code: 'VENUE_NAME_ALREADY_EXISTS',
+    message: '同じ名前の実施場所が既に存在します',
+  },
+  VENUE_IN_USE: {
+    status: 409,
+    code: 'VENUE_IN_USE',
+    message: '競技から参照されている実施場所は削除できません',
+  },
+  VENUE_LIST_FAILED: {
+    status: 500,
+    code: 'VENUE_LIST_FAILED',
+    message: '実施場所一覧の取得に失敗しました',
+  },
+  VENUE_CREATE_FAILED: {
+    status: 500,
+    code: 'VENUE_CREATE_FAILED',
+    message: '実施場所の登録に失敗しました',
+  },
+  VENUE_UPDATE_FAILED: {
+    status: 500,
+    code: 'VENUE_UPDATE_FAILED',
+    message: '実施場所の更新に失敗しました',
+  },
+  VENUE_DELETE_FAILED: {
+    status: 500,
+    code: 'VENUE_DELETE_FAILED',
+    message: '実施場所の削除に失敗しました',
+  },
+} as const satisfies Record<string, ApiErrorDefinition>;

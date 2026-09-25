@@ -69,11 +69,18 @@ async function captureDuplicateFcmTokenError(): Promise<unknown> {
   );
 }
 
-async function captureDuplicateUserIdError(): Promise<unknown> {
-  const userId = await createUser('Firebaseコントローラ確認重複利用者');
-  await insertActiveToken(userId, 'controller-first-token');
+async function captureOtherUniqueError(): Promise<unknown> {
+  await env.DB.prepare(
+    `INSERT INTO notifications (
+       notification_type, push_title, push_body, title, body, source_type, source_id, source_hash
+     ) VALUES ('automatic', 'Firebaseコントローラ確認通知', '確認', 'Firebaseコントローラ確認通知', '確認', 'gathering', 9901, 'controller-source')`
+  ).run();
   return captureError(() =>
-    insertActiveToken(userId, 'controller-second-token')
+    env.DB.prepare(
+      `INSERT INTO notifications (
+         notification_type, push_title, push_body, title, body, source_type, source_id, source_hash
+       ) VALUES ('automatic', 'Firebaseコントローラ確認通知2', '確認', 'Firebaseコントローラ確認通知2', '確認', 'gathering', 9901, 'controller-source')`
+    ).run()
   );
 }
 
@@ -87,6 +94,9 @@ const result: RegisterFirebaseTokenResult = {
 
 describe('FirebaseTokenController', () => {
   afterEach(async () => {
+    await env.DB.prepare(
+      "DELETE FROM notifications WHERE title LIKE 'Firebaseコントローラ確認通知%'"
+    ).run();
     await env.DB.prepare(
       "DELETE FROM firebase_tokens WHERE user_id IN (SELECT user_id FROM users WHERE user_name LIKE 'Firebaseコントローラ確認%')"
     ).run();
@@ -119,6 +129,31 @@ describe('FirebaseTokenController', () => {
     expect(await response.json()).toEqual(result);
   });
 
+  it('iOS TokenをServiceへ渡す', async () => {
+    const { app, firebaseTokenService } = setup();
+    const iosResult = { ...result, platform: 'ios' as const };
+    (
+      firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(iosResult);
+
+    const response = await app.request('/firebase-tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fcmToken: 'ios-fcm-token',
+        platform: 'ios',
+      }),
+    });
+
+    expect(firebaseTokenService.registerFirebaseToken).toHaveBeenCalledWith({
+      userId: 7,
+      platform: 'ios',
+      fcmToken: 'ios-fcm-token',
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(iosResult);
+  });
+
   it('未認証の場合は401を返す', async () => {
     const { app, firebaseTokenService } = setup(null);
 
@@ -138,7 +173,7 @@ describe('FirebaseTokenController', () => {
   it.each([
     {},
     { fcmToken: '', platform: 'android' },
-    { fcmToken: 'fcm-abc', platform: 'ios' },
+    { fcmToken: 'fcm-abc', platform: 'windows' },
     { fcmToken: 'fcm-abc', platform: 2 },
     { fcmToken: 'fcm-abc', platform: 'android', userId: 999 },
     {
@@ -170,7 +205,9 @@ describe('FirebaseTokenController', () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
-      error: 'Invalid Firebase token request body',
+      error: expect.objectContaining({
+        code: 'INVALID_FIREBASE_TOKEN_REQUEST',
+      }),
     });
     expect(firebaseTokenService.registerFirebaseToken).not.toHaveBeenCalled();
   });
@@ -210,7 +247,9 @@ describe('FirebaseTokenController', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: 'Firebase token is being registered by another request',
+      error: expect.objectContaining({
+        code: 'FIREBASE_TOKEN_REGISTRATION_CONFLICT',
+      }),
     });
   });
 
@@ -235,7 +274,9 @@ describe('FirebaseTokenController', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: 'Firebase token is being registered by another request',
+      error: expect.objectContaining({
+        code: 'FIREBASE_TOKEN_REGISTRATION_CONFLICT',
+      }),
     });
   });
 
@@ -243,7 +284,7 @@ describe('FirebaseTokenController', () => {
     const { app, firebaseTokenService } = setup();
     (
       firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
-    ).mockRejectedValue(await captureDuplicateUserIdError());
+    ).mockRejectedValue(await captureOtherUniqueError());
 
     const response = await app.request('/firebase-tokens', {
       method: 'POST',
@@ -256,7 +297,9 @@ describe('FirebaseTokenController', () => {
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({
-      error: 'Failed to register Firebase token',
+      error: expect.objectContaining({
+        code: 'FIREBASE_TOKEN_REGISTRATION_FAILED',
+      }),
     });
   });
 

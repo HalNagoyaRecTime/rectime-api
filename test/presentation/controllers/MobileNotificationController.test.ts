@@ -16,7 +16,7 @@ const notification = {
   related_event: {
     event_id: 3,
     event_name: '綱引き',
-    venue: 'グラウンド',
+    venues: [{ venue_id: 2, venue_name: 'グラウンド' }],
     start_time: '1030',
     end_time: '1100',
   },
@@ -134,7 +134,10 @@ describe('MobileNotificationController', () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({
-      error: 'Notification not found',
+      error: {
+        code: 'NOTIFICATION_NOT_FOUND',
+        message: '通知が見つかりません',
+      },
     });
   });
 
@@ -170,7 +173,10 @@ describe('MobileNotificationController', () => {
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({
-      error: 'Failed to fetch notifications',
+      error: {
+        code: 'NOTIFICATION_LIST_FAILED',
+        message: '通知一覧の取得に失敗しました',
+      },
     });
   });
 });

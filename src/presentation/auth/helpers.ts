@@ -15,6 +15,8 @@ import {
 } from '../../infrastructure/auth/microsoftClient';
 import { createUserRepository } from '../../infrastructure/repositories/UserRepository';
 import { createStudentRepository } from '../../infrastructure/repositories/StudentRepository';
+import { createTeacherRepository } from '../../infrastructure/repositories/TeacherRepository';
+import { createFirebaseTokenRepository } from '../../infrastructure/repositories/FirebaseTokenRepository';
 import { createAuthService } from '../../application/services/authService';
 import type { IStudentService } from '../../application/services/IStudentService';
 import type { StudentDTO } from '../../application/dto/StudentDTO';
@@ -159,10 +161,15 @@ export async function upsertUser(
 ): Promise<AppUser> {
   const userRepository = createUserRepository(c.env.DB);
   const studentRepository = createStudentRepository(c.env.DB);
+  const teacherRepository = createTeacherRepository(c.env.DB);
+  const firebaseTokenRepository = createFirebaseTokenRepository(c.env.DB);
   const authService = createAuthService(
     userRepository,
     studentRepository,
-    c.env.STUDENT_EMAIL_DOMAIN
+    teacherRepository,
+    c.env.STUDENT_EMAIL_DOMAIN,
+    c.env.AUTH_KV,
+    firebaseTokenRepository
   );
   return authService.upsertUser(claims);
 }

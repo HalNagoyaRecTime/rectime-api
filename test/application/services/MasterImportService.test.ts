@@ -9,7 +9,6 @@ import type { MasterImportCommitLock } from '../../../src/infrastructure/masterI
 import type { IStudentService } from '../../../src/application/services/IStudentService';
 import type { IClassRoomService } from '../../../src/application/services/IClassRoomService';
 import type { ITeacherService } from '../../../src/application/services/ITeacherService';
-import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 
 const OWNER_USER_ID = 1;
 const OTHER_USER_ID = 2;
@@ -75,11 +74,11 @@ function buildClassRoomService(
   overrides: Partial<IClassRoomService> = {}
 ): IClassRoomService {
   return {
-    getAllClassrooms: vi.fn(),
-    getClassroomById: vi.fn(),
-    createClassroom: vi.fn(),
-    updateClassroom: vi.fn(),
-    deleteClassroom: vi.fn(),
+    getAllClassRooms: vi.fn(),
+    getClassRoomById: vi.fn(),
+    createClassRoom: vi.fn(),
+    updateClassRoom: vi.fn(),
+    deleteClassRoom: vi.fn(),
     validateClassRoomImport: vi.fn(),
     commitClassRoomImport: vi.fn(),
     ...overrides,
@@ -94,27 +93,8 @@ function buildTeacherService(
     getTeacherById: vi.fn(),
     getAllTeachers: vi.fn(),
     updateTeacher: vi.fn(),
-    deleteTeacher: vi.fn(),
     validateTeacherImport: vi.fn(),
     commitTeacherImport: vi.fn(),
-    ...overrides,
-  };
-}
-
-function buildUserRepository(
-  overrides: Partial<IUserRepository> = {}
-): IUserRepository {
-  return {
-    exists: vi.fn(),
-    isStaffOrTeacher: vi.fn().mockResolvedValue(true),
-    isStaff: vi.fn().mockResolvedValue(true),
-    getUserCategories: vi.fn(),
-    findUserIdByMicrosoftAccount: vi.fn(),
-    getDeletionStatus: vi.fn(),
-    createUserWithMicrosoftLink: vi.fn(),
-    updateUser: vi.fn(),
-    linkMicrosoftAccount: vi.fn(),
-    markAsDeleted: vi.fn(),
     ...overrides,
   };
 }
@@ -135,8 +115,7 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         studentService,
         buildClassRoomService(),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       const file = csvFile(
@@ -186,8 +165,7 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService({ validateClassRoomImport }),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       const session = await service.createImport({
@@ -211,8 +189,7 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       const file = csvFile('class_code,class_name\n,3年Cクラス\n', 'x.csv');
@@ -237,8 +214,7 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       await expect(
@@ -271,8 +247,7 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       const session = await service.getImport(
@@ -300,8 +275,7 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService({ validateClassRoomImport }),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       const created = await service.createImport({
@@ -336,8 +310,7 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       await expect(
@@ -361,8 +334,7 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         classRoomService,
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       const file = csvFile(
@@ -406,8 +378,7 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         classRoomService,
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       const file = csvFile('class_code,class_name\n13A,A\n', 'c.csv');
@@ -436,8 +407,7 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       await expect(
@@ -465,10 +435,8 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         buildStudentService(),
         buildClassRoomService(),
-        teacherService,
-        buildUserRepository()
+        teacherService
       );
-
       // わざとバリデーション後にエラーが発生したセッションを模倣するため、
       // 検査結果自体にエラーがあるパターンをテストする
       validateTeacherImport.mockResolvedValueOnce({
@@ -478,7 +446,10 @@ describe('MasterImportService', () => {
         errors: [{ row_index: 0, reason: 'dummy' }],
       });
 
-      const file = csvFile('last_name,first_name\n田中,太郎\n', 't.csv');
+      const file = csvFile(
+        'last_name,first_name,email\n田中,太郎,tanaka@example.ac.jp\n',
+        't.csv'
+      );
       const created = await service.createImport({
         createUserId: OWNER_USER_ID,
         type: 'teachers',
@@ -518,8 +489,7 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         studentService,
         buildClassRoomService(),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       const file = csvFile(
@@ -579,8 +549,7 @@ describe('MasterImportService', () => {
           createFakeCommitLock(),
           buildStudentService({ validateStudentImport, commitStudentImport }),
           buildClassRoomService(),
-          buildTeacherService(),
-          buildUserRepository()
+          buildTeacherService()
         );
 
         vi.setSystemTime(new Date('2026-08-20T00:00:00.000Z'));
@@ -655,8 +624,7 @@ describe('MasterImportService', () => {
         commitLock,
         studentService,
         buildClassRoomService(),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       const file = csvFile(
@@ -719,8 +687,7 @@ describe('MasterImportService', () => {
         commitLock,
         studentService,
         buildClassRoomService(),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       const file = csvFile(
@@ -776,8 +743,7 @@ describe('MasterImportService', () => {
         commitLock,
         studentService,
         buildClassRoomService(),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       const file = csvFile(
@@ -822,8 +788,7 @@ describe('MasterImportService', () => {
         createFakeCommitLock(),
         studentService,
         buildClassRoomService(),
-        buildTeacherService(),
-        buildUserRepository()
+        buildTeacherService()
       );
 
       const file = csvFile(
