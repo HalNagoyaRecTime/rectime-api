@@ -41,19 +41,29 @@ interface PushDeliveryRow {
 }
 
 const scheduleResultsSql = [
-  'WITH recipient_totals AS (',
+  'WITH target_schedule AS (',
+  '  SELECT ns.notification_schedule_id',
+  '  FROM notification_schedules ns',
+  '  INNER JOIN notifications n',
+  '    ON n.notification_id = ns.notification_id',
+  "   AND n.notification_type = 'notification_general'",
+  '  WHERE ns.notification_schedule_id = ?',
+  '),',
+  'recipient_totals AS (',
   '  SELECT COUNT(*) AS total_count',
-  '  FROM notification_recipients',
-  '  WHERE notification_schedule_id = ?',
+  '  FROM notification_recipients nr',
+  '  INNER JOIN target_schedule ts',
+  '    ON ts.notification_schedule_id = nr.notification_schedule_id',
   '),',
   'paged_recipients AS (',
-  '  SELECT notification_recipient_id, user_id',
-  '  FROM notification_recipients',
-  '  WHERE notification_schedule_id = ?',
-  '  ORDER BY notification_recipient_id',
+  '  SELECT nr.notification_recipient_id, nr.user_id',
+  '  FROM notification_recipients nr',
+  '  INNER JOIN target_schedule ts',
+  '    ON ts.notification_schedule_id = nr.notification_schedule_id',
+  '  ORDER BY nr.notification_recipient_id',
   '  LIMIT ? OFFSET ?',
   ')',
-  'SELECT ns.notification_schedule_id,',
+  'SELECT ts.notification_schedule_id,',
   '       (SELECT total_count FROM recipient_totals) AS total_count,',
   '       pr.notification_recipient_id,',
   '       pr.user_id,',
@@ -64,12 +74,11 @@ const scheduleResultsSql = [
   '       d.attempt_count,',
   '       d.last_attempt_at,',
   '       d.sent_at',
-  'FROM notification_schedules ns',
+  'FROM target_schedule ts',
   'LEFT JOIN paged_recipients pr ON 1 = 1',
   'LEFT JOIN users u ON u.user_id = pr.user_id',
   'LEFT JOIN notification_push_deliveries d',
   '  ON d.notification_recipient_id = pr.notification_recipient_id',
-  'WHERE ns.notification_schedule_id = ?',
   'ORDER BY pr.notification_recipient_id, d.notification_push_delivery_id',
 ].join('\n');
 
@@ -101,10 +110,8 @@ export function createNotificationResultQueryRepository(
         .prepare(scheduleResultsSql)
         .bind(
           notificationScheduleId,
-          notificationScheduleId,
           options.limit,
-          (options.page - 1) * options.limit,
-          notificationScheduleId
+          (options.page - 1) * options.limit
         )
         .all<ScheduleResultsRow>();
       const firstRow = result.results[0];

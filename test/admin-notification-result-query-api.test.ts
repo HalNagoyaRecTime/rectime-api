@@ -7,8 +7,28 @@ import type { Env } from '../src/lib/env';
 const JWT_SECRET = 's'.repeat(32);
 const testEnv: Env = { ...workerEnv, JWT_SECRET };
 let userIds: number[] = [];
+let notificationIds: number[] = [];
+let scheduleIds: number[] = [];
 
 afterEach(async () => {
+  if (scheduleIds.length > 0) {
+    await workerEnv.DB.batch(
+      scheduleIds.map(id =>
+        workerEnv.DB.prepare(
+          'DELETE FROM notification_schedules WHERE notification_schedule_id = ?'
+        ).bind(id)
+      )
+    );
+  }
+  if (notificationIds.length > 0) {
+    await workerEnv.DB.batch(
+      notificationIds.map(id =>
+        workerEnv.DB.prepare(
+          'DELETE FROM notifications WHERE notification_id = ?'
+        ).bind(id)
+      )
+    );
+  }
   if (userIds.length > 0) {
     await workerEnv.DB.batch(
       userIds.flatMap(id => [
@@ -18,6 +38,8 @@ afterEach(async () => {
     );
   }
   userIds = [];
+  notificationIds = [];
+  scheduleIds = [];
 });
 
 async function insertUser(name: string, staff = false): Promise<number> {
@@ -34,6 +56,23 @@ async function insertUser(name: string, staff = false): Promise<number> {
       .run();
   }
   return row.user_id;
+}
+
+async function insertLegacySchedule(): Promise<number> {
+  const notification = await workerEnv.DB.prepare(
+    "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('manual', 'Legacy push title', 'Legacy push body', 'Legacy title', 'Legacy body') RETURNING notification_id"
+  ).first<{ notification_id: number }>();
+  if (!notification) throw new Error('Legacy通知を作成できませんでした');
+  notificationIds.push(notification.notification_id);
+
+  const schedule = await workerEnv.DB.prepare(
+    "INSERT INTO notification_schedules (notification_id, send_status, send_at) VALUES (?, 'sent', '2026-07-23T00:00:00.000Z') RETURNING notification_schedule_id"
+  )
+    .bind(notification.notification_id)
+    .first<{ notification_schedule_id: number }>();
+  if (!schedule) throw new Error('Legacy Scheduleを作成できませんでした');
+  scheduleIds.push(schedule.notification_schedule_id);
+  return schedule.notification_schedule_id;
 }
 
 async function requestAs(userId: number, path: string): Promise<Response> {
@@ -89,6 +128,20 @@ describe('管理用Recipient Results・Push Delivery Detail APIの認可', () =>
     expect(missingDelivery.status).toBe(404);
     expect(await missingDelivery.json()).toMatchObject({
       error: { code: 'NOTIFICATION_PUSH_DELIVERY_NOT_FOUND' },
+    });
+  });
+
+  it('staffでもLegacy ScheduleのResultsは404 NOTIFICATION_SCHEDULE_NOT_FOUNDを返す', async () => {
+    const staffId = await insertUser('Legacy Schedule結果照会staff', true);
+    const legacyScheduleId = await insertLegacySchedule();
+
+    const response = await requestAs(
+      staffId,
+      '/api/v1/admin/notifications/schedules/' + legacyScheduleId + '/results'
+    );
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'NOTIFICATION_SCHEDULE_NOT_FOUND' },
     });
   });
 

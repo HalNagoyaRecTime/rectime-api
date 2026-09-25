@@ -14,10 +14,14 @@ async function insertUser(userName: string): Promise<number> {
   return row.user_id;
 }
 
-async function insertNotification(): Promise<number> {
+async function insertNotification(
+  notificationType: 'notification_general' | 'manual' = 'notification_general'
+): Promise<number> {
   const row = await env.DB.prepare(
-    "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('notification_general', 'Push title', 'Push body', 'Detail title', 'Detail body') RETURNING notification_id"
-  ).first<{ notification_id: number }>();
+    "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES (?, 'Push title', 'Push body', 'Detail title', 'Detail body') RETURNING notification_id"
+  )
+    .bind(notificationType)
+    .first<{ notification_id: number }>();
   if (!row) throw new Error('通知を作成できませんでした');
   return row.notification_id;
 }
@@ -111,6 +115,18 @@ describe('NotificationResultQueryRepository', () => {
       env.DB.prepare('DELETE FROM students'),
       env.DB.prepare('DELETE FROM users'),
     ]);
+  });
+
+  it('Legacy Notification配下のScheduleはResults対象外としてnullを返す', async () => {
+    const notificationId = await insertNotification('manual');
+    const legacyScheduleId = await insertSchedule(notificationId);
+
+    await expect(
+      repository.findScheduleResults(legacyScheduleId, {
+        page: 1,
+        limit: 50,
+      })
+    ).resolves.toBeNull();
   });
 
   it('Recipient基準でページングし、0 Tokenと複数Delivery・status混在を返す', async () => {
