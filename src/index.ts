@@ -88,6 +88,10 @@ import {
 } from './presentation/openapi/notification/legacy/admin';
 import { firebaseTokenCreateRoute } from './presentation/openapi/notification/legacy/firebaseTokens';
 import {
+  notificationScheduleDetailRoute,
+  notificationScheduleListRoute,
+} from './presentation/openapi/notification/schedules';
+import {
   myNotificationDetailRoute,
   myNotificationListRoute,
 } from './presentation/openapi/notification/mobileNotifications';
@@ -365,6 +369,18 @@ apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
 });
 
 // Notification routes
+// 通知IDの動的経路と競合する固定経路を先に登録する。
+apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleQueryController.getNotificationSchedules(c);
+});
+apiV1.openapi(staffOnly(notificationScheduleDetailRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleQueryController.getNotificationScheduleById(c);
+});
+
 apiV1.openapi(staffOnly(legacyAdminNotificationCreateRoute), c => {
   return c
     .get('container')

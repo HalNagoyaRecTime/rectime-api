@@ -55,38 +55,42 @@ describe('OpenAPI documentation', () => {
       paths: Record<string, Record<string, unknown>>;
     };
 
-    expect(Object.keys(document.paths).sort()).toEqual([
-      '/',
-      '/api/v1/admin/notifications',
-      '/api/v1/admin/notifications/{notificationId}',
-      '/api/v1/admin/users/{userId}',
-      '/api/v1/admin/users/{userId}/staff',
-      '/api/v1/classrooms',
-      '/api/v1/classrooms/{classId}',
-      '/api/v1/events',
-      '/api/v1/events/{eventId}',
-      '/api/v1/events/{eventId}/gatherings',
-      '/api/v1/firebase-tokens',
-      '/api/v1/gathering-spots',
-      '/api/v1/gathering-spots/{gatheringSpotId}',
-      '/api/v1/gatherings',
-      '/api/v1/gatherings/{gatheringId}/members',
-      '/api/v1/master-imports',
-      '/api/v1/master-imports/{validatedFileId}',
-      '/api/v1/master-imports/{validatedFileId}/commit',
-      '/api/v1/me/notifications',
-      '/api/v1/me/notifications/{notificationId}',
-      '/api/v1/notifications/test',
-      '/api/v1/staffs',
-      '/api/v1/staffs/{staffId}',
-      '/api/v1/students',
-      '/api/v1/students/{studentId}',
-      '/api/v1/teachers',
-      '/api/v1/teachers/{teacherId}',
-      '/api/v1/venues',
-      '/api/v1/venues/{venueId}',
-      '/health',
-    ]);
+    expect(Object.keys(document.paths).sort()).toEqual(
+      [
+        '/',
+        '/api/v1/admin/notifications',
+        '/api/v1/admin/notifications/{notificationId}',
+        '/api/v1/admin/notifications/schedules',
+        '/api/v1/admin/notifications/schedules/{notificationScheduleId}',
+        '/api/v1/admin/users/{userId}',
+        '/api/v1/admin/users/{userId}/staff',
+        '/api/v1/classrooms',
+        '/api/v1/classrooms/{classId}',
+        '/api/v1/events',
+        '/api/v1/events/{eventId}',
+        '/api/v1/events/{eventId}/gatherings',
+        '/api/v1/firebase-tokens',
+        '/api/v1/gathering-spots',
+        '/api/v1/gathering-spots/{gatheringSpotId}',
+        '/api/v1/gatherings',
+        '/api/v1/gatherings/{gatheringId}/members',
+        '/api/v1/master-imports',
+        '/api/v1/master-imports/{validatedFileId}',
+        '/api/v1/master-imports/{validatedFileId}/commit',
+        '/api/v1/me/notifications',
+        '/api/v1/me/notifications/{notificationId}',
+        '/api/v1/notifications/test',
+        '/api/v1/staffs',
+        '/api/v1/staffs/{staffId}',
+        '/api/v1/students',
+        '/api/v1/students/{studentId}',
+        '/api/v1/teachers',
+        '/api/v1/teachers/{teacherId}',
+        '/api/v1/venues',
+        '/api/v1/venues/{venueId}',
+        '/health',
+      ].sort()
+    );
     expect(document.components.schemas.Event.properties?.rule_text).toEqual({
       type: 'string',
       nullable: true,
@@ -161,7 +165,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(50);
+    expect(documentedOperations).toHaveLength(52);
     expect(document.components.schemas).not.toHaveProperty(
       'AdminUserSearchItem'
     );
