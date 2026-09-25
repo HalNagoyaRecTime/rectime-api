@@ -69,11 +69,18 @@ async function captureDuplicateFcmTokenError(): Promise<unknown> {
   );
 }
 
-async function captureDuplicateUserIdError(): Promise<unknown> {
-  const userId = await createUser('Firebaseコントローラ確認重複利用者');
-  await insertActiveToken(userId, 'controller-first-token');
+async function captureOtherUniqueError(): Promise<unknown> {
+  await env.DB.prepare(
+    `INSERT INTO notifications (
+       notification_type, push_title, push_body, title, body, source_type, source_id, source_hash
+     ) VALUES ('automatic', 'Firebaseコントローラ確認通知', '確認', 'Firebaseコントローラ確認通知', '確認', 'gathering', 9901, 'controller-source')`
+  ).run();
   return captureError(() =>
-    insertActiveToken(userId, 'controller-second-token')
+    env.DB.prepare(
+      `INSERT INTO notifications (
+         notification_type, push_title, push_body, title, body, source_type, source_id, source_hash
+       ) VALUES ('automatic', 'Firebaseコントローラ確認通知2', '確認', 'Firebaseコントローラ確認通知2', '確認', 'gathering', 9901, 'controller-source')`
+    ).run()
   );
 }
 
@@ -87,6 +94,9 @@ const result: RegisterFirebaseTokenResult = {
 
 describe('FirebaseTokenController', () => {
   afterEach(async () => {
+    await env.DB.prepare(
+      "DELETE FROM notifications WHERE title LIKE 'Firebaseコントローラ確認通知%'"
+    ).run();
     await env.DB.prepare(
       "DELETE FROM firebase_tokens WHERE user_id IN (SELECT user_id FROM users WHERE user_name LIKE 'Firebaseコントローラ確認%')"
     ).run();
@@ -274,7 +284,7 @@ describe('FirebaseTokenController', () => {
     const { app, firebaseTokenService } = setup();
     (
       firebaseTokenService.registerFirebaseToken as ReturnType<typeof vi.fn>
-    ).mockRejectedValue(await captureDuplicateUserIdError());
+    ).mockRejectedValue(await captureOtherUniqueError());
 
     const response = await app.request('/firebase-tokens', {
       method: 'POST',

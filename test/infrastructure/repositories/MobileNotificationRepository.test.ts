@@ -48,9 +48,14 @@ describe('MobileNotificationRepository', () => {
     eventId?: number;
   }) {
     const notification = await env.DB.prepare(
-      "INSERT INTO notifications (notification_type, title, body) VALUES ('manual', ?, ?) RETURNING notification_id"
+      "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('manual', ?, ?, ?, ?) RETURNING notification_id"
     )
-      .bind(input.title, `${input.title}本文`)
+      .bind(
+        input.title,
+        `${input.title}本文`,
+        input.title,
+        `${input.title}本文`
+      )
       .first<{ notification_id: number }>();
     await env.DB.prepare(
       `INSERT INTO notification_schedules
