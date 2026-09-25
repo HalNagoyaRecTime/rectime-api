@@ -1,10 +1,5 @@
 import type { FirebasePlatformName } from '../../domain/entities/FirebaseToken';
 
-export interface FcmTestNotificationInput {
-  title: string;
-  body: string;
-}
-
 export interface FcmNotificationInput {
   token: string;
   platform?: FirebasePlatformName;
@@ -40,9 +35,6 @@ export function isPermanentFcmTokenError(error: unknown): boolean {
 }
 
 export interface IFcmService {
-  sendTestNotification: (
-    input: FcmTestNotificationInput
-  ) => Promise<FcmNotificationResult>;
   sendNotificationToToken: (
     input: FcmNotificationInput
   ) => Promise<FcmNotificationResult>;

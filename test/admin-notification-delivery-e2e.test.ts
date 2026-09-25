@@ -63,7 +63,6 @@ describe('Admin notification POST to FCM', () => {
   beforeEach(async () => {
     sendNotificationToTokenMock.mockClear();
     vi.spyOn(fcmServiceModule, 'createFcmService').mockReturnValue({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken: sendNotificationToTokenMock,
     });
     await workerEnv.DB.batch([

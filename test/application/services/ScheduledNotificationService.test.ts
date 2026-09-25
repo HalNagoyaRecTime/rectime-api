@@ -67,7 +67,6 @@ describe('ScheduledNotificationService', () => {
       enqueueMany: vi.fn(),
     };
     const fcmService: IFcmService = {
-      sendTestNotification: vi.fn(),
       sendNotificationToToken: vi
         .fn()
         .mockResolvedValue({ success: true, messageId: 'message-1' }),

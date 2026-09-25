@@ -37,7 +37,6 @@ function buildConfig(overrides: Partial<Record<string, string>> = {}) {
     projectId: 'project-1',
     clientEmail: `sa-${configSequence}@project-1.iam.gserviceaccount.com`,
     privateKey: privateKeyPem,
-    testFcmToken: 'test-fcm-token',
     ...overrides,
   };
 }
@@ -478,81 +477,5 @@ describe('FcmService', () => {
         expect(fetchMock).not.toHaveBeenCalled();
       }
     );
-    it('通常送信では TEST_FCM_TOKEN が未設定でも送信できる', async () => {
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ access_token: 'token-a' }), {
-            status: 200,
-          })
-        )
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ name: 'projects/x/messages/1' }), {
-            status: 200,
-          })
-        );
-      vi.stubGlobal('fetch', fetchMock);
-
-      const service = createFcmService(buildConfig({ testFcmToken: '' }));
-      await expect(
-        service.sendNotificationToToken({
-          token: 'device-token',
-          title: 'タイトル',
-          body: '本文',
-        })
-      ).resolves.toEqual({
-        success: true,
-        messageId: 'projects/x/messages/1',
-      });
-    });
-  });
-
-  describe('sendTestNotification', () => {
-    it('config.testFcmToken 宛に data: { type: "test" } を付けて送信する', async () => {
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ access_token: 'token-a' }), {
-            status: 200,
-          })
-        )
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ name: 'projects/x/messages/2' }), {
-            status: 200,
-          })
-        );
-      vi.stubGlobal('fetch', fetchMock);
-
-      const service = createFcmService(buildConfig());
-      const result = await service.sendTestNotification({
-        title: 'テスト',
-        body: 'テスト本文',
-      });
-
-      expect(result).toEqual({
-        success: true,
-        messageId: 'projects/x/messages/2',
-      });
-
-      const [, secondInit] = fetchMock.mock.calls[1];
-      const sentBody = JSON.parse(secondInit.body as string);
-      expect(sentBody.message.token).toBe('test-fcm-token');
-      expect(sentBody.message.data).toEqual({ type: 'test' });
-    });
-
-    it('TEST_FCM_TOKEN が未設定の場合は送信前にエラーを投げる', async () => {
-      const fetchMock = vi.fn();
-      vi.stubGlobal('fetch', fetchMock);
-
-      const service = createFcmService(buildConfig({ testFcmToken: '' }));
-
-      await expect(
-        service.sendTestNotification({
-          title: 'テスト',
-          body: 'テスト本文',
-        })
-      ).rejects.toThrow('Missing Cloudflare Secrets: TEST_FCM_TOKEN');
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
   });
 });

@@ -166,7 +166,6 @@ app.openapi(apiOverviewRoute, c => {
         firebaseTokens: '/api/v1/firebase-tokens',
         adminNotifications: '/api/v1/admin/notifications',
         myNotifications: '/api/v1/me/notifications',
-        testNotification: '/api/v1/notifications/test',
         myEvents: '/api/v1/me/events',
       },
       // 非公開の環境で存在しないエンドポイントを案内しないよう、
