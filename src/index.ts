@@ -82,10 +82,12 @@ import {
 import {
   legacyAdminNotificationCreateRoute,
   legacyAdminNotificationDeleteRoute,
-  legacyAdminNotificationDetailRoute,
-  legacyAdminNotificationListRoute,
   legacyAdminNotificationUpdateRoute,
 } from './presentation/openapi/notification/legacy/admin';
+import {
+  adminNotificationDetailRoute,
+  adminNotificationListRoute,
+} from './presentation/openapi/notification/admin';
 import { firebaseTokenCreateRoute } from './presentation/openapi/notification/legacy/firebaseTokens';
 import {
   myNotificationDetailRoute,
@@ -370,15 +372,15 @@ apiV1.openapi(staffOnly(legacyAdminNotificationCreateRoute), c => {
     .get('container')
     .adminNotificationController.createManualNotification(c);
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationListRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationListRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotifications(c);
+    .adminNotificationQueryController.getAdminNotifications(c);
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationDetailRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationDetailRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotificationById(c);
+    .adminNotificationQueryController.getAdminNotificationById(c);
 });
 apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
   return c
