@@ -32,6 +32,7 @@ import {
 import type { ContainerVariables } from '../../middleware/diContainer';
 import { createUserRepository } from '../../../infrastructure/repositories/UserRepository';
 import { AuthErrors } from '../../errors/authErrors';
+import { CommonErrors } from '../../errors/commonErrors';
 import { errorResponse } from '../../errors/errorResponse';
 
 const DELETION_CONFIRMATION_TTL_SEC = 600;
@@ -365,6 +366,24 @@ microsoft.post('/token', async c => {
       return errorResponse(c, AuthErrors.USER_DEACTIVATED);
     }
     throw err;
+  }
+
+  if (clientType === 'web') {
+    let isStaff: boolean;
+    try {
+      isStaff = await c
+        .get('container')
+        .authorizationService.isStaff(Number(user.id));
+    } catch {
+      return errorResponse(c, {
+        status: 500,
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'staff権限の確認に失敗しました',
+      });
+    }
+    if (!isStaff) {
+      return errorResponse(c, CommonErrors.STAFF_REQUIRED);
+    }
   }
 
   const { studentService } = c.get('container');
