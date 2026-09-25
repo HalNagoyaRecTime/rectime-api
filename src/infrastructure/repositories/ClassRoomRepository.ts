@@ -300,8 +300,7 @@ export function createClassRoomRepository(
           ),
       ]);
       const row = classRoomResult.results[0] as
-        | { class_room_id: number }
-        | undefined;
+        { class_room_id: number } | undefined;
       if (!row) throw new Error('Failed to create class');
       const created = await findOne(eq(class_rooms.id, row.class_room_id));
       if (!created) throw new Error('Failed to fetch created class');
@@ -453,8 +452,7 @@ export function createClassRoomRepository(
         throw unwrapDatabaseError(error);
       }
       const row = updateResult.results[0] as
-        | { class_room_id: number }
-        | undefined;
+        { class_room_id: number } | undefined;
       return row ? findOne(eq(class_rooms.id, row.class_room_id)) : null;
     },
 
