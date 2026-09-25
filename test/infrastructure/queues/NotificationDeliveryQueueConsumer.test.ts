@@ -1,5 +1,6 @@
 import type { MessageBatch } from '@cloudflare/workers-types';
 import { describe, expect, it, vi } from 'vitest';
+import type { INotificationDeliveryService } from '../../../src/application/services/INotificationDeliveryService';
 import type { IScheduledNotificationService } from '../../../src/application/services/IScheduledNotificationService';
 import {
   NOTIFICATION_DELIVERY_MESSAGE_SIZE,
@@ -26,33 +27,57 @@ function createBatch(message: ReturnType<typeof createMessage>) {
   } as unknown as MessageBatch<NotificationDeliveryMessage>;
 }
 
-function createService(): IScheduledNotificationService {
+function createLegacyService(): IScheduledNotificationService {
   return {
     enqueueDueNotifications: vi.fn(),
     sendQueuedNotifications: vi.fn(),
   };
 }
 
+function createDeliveryServiceStub(): INotificationDeliveryService {
+  return {
+    enqueueReadySchedules: vi.fn(),
+    sendQueuedNotifications: vi.fn().mockResolvedValue({
+      claimed: 0,
+      sent: 0,
+      failed: 0,
+    }),
+  };
+}
+
 describe('NotificationDeliveryQueueConsumer', () => {
-  it('送信と状態保存が完了したmessageをackする', async () => {
+  it('legacyと新通知の送信・状態保存が完了したmessageをackする', async () => {
     const message = createMessage({ notificationScheduleIds: [1, 2] });
-    const service = createService();
+    const legacyService = createLegacyService();
+    const deliveryService = createDeliveryServiceStub();
 
-    await consumeNotificationDeliveryQueue(createBatch(message), service);
+    await consumeNotificationDeliveryQueue(
+      createBatch(message),
+      legacyService,
+      deliveryService
+    );
 
-    expect(service.sendQueuedNotifications).toHaveBeenCalledWith([1, 2]);
+    expect(legacyService.sendQueuedNotifications).toHaveBeenCalledWith([1, 2]);
+    expect(deliveryService.sendQueuedNotifications).toHaveBeenCalledWith([
+      1, 2,
+    ]);
     expect(message.ack).toHaveBeenCalledOnce();
     expect(message.retry).not.toHaveBeenCalled();
   });
 
   it('処理失敗時は5分後にretryする', async () => {
     const message = createMessage({ notificationScheduleIds: [1] });
-    const service = createService();
-    vi.mocked(service.sendQueuedNotifications).mockRejectedValueOnce(
+    const legacyService = createLegacyService();
+    const deliveryService = createDeliveryServiceStub();
+    vi.mocked(deliveryService.sendQueuedNotifications).mockRejectedValueOnce(
       new Error('D1 unavailable')
     );
 
-    await consumeNotificationDeliveryQueue(createBatch(message), service);
+    await consumeNotificationDeliveryQueue(
+      createBatch(message),
+      legacyService,
+      deliveryService
+    );
 
     expect(message.retry).toHaveBeenCalledWith({
       delaySeconds: NOTIFICATION_DELIVERY_RETRY_DELAY_SECONDS,
@@ -62,11 +87,17 @@ describe('NotificationDeliveryQueueConsumer', () => {
 
   it('不正なmessageは再試行せずackする', async () => {
     const message = createMessage({ notificationScheduleIds: [] });
-    const service = createService();
+    const legacyService = createLegacyService();
+    const deliveryService = createDeliveryServiceStub();
 
-    await consumeNotificationDeliveryQueue(createBatch(message), service);
+    await consumeNotificationDeliveryQueue(
+      createBatch(message),
+      legacyService,
+      deliveryService
+    );
 
-    expect(service.sendQueuedNotifications).not.toHaveBeenCalled();
+    expect(legacyService.sendQueuedNotifications).not.toHaveBeenCalled();
+    expect(deliveryService.sendQueuedNotifications).not.toHaveBeenCalled();
     expect(message.ack).toHaveBeenCalledOnce();
   });
 
@@ -77,11 +108,17 @@ describe('NotificationDeliveryQueueConsumer', () => {
         (_, index) => index + 1
       ),
     });
-    const service = createService();
+    const legacyService = createLegacyService();
+    const deliveryService = createDeliveryServiceStub();
 
-    await consumeNotificationDeliveryQueue(createBatch(message), service);
+    await consumeNotificationDeliveryQueue(
+      createBatch(message),
+      legacyService,
+      deliveryService
+    );
 
-    expect(service.sendQueuedNotifications).not.toHaveBeenCalled();
+    expect(legacyService.sendQueuedNotifications).not.toHaveBeenCalled();
+    expect(deliveryService.sendQueuedNotifications).not.toHaveBeenCalled();
     expect(message.ack).toHaveBeenCalledOnce();
     expect(message.retry).not.toHaveBeenCalled();
   });

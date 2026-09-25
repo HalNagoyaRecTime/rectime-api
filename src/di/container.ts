@@ -9,6 +9,7 @@ import { createNotificationScheduleRepository } from '../infrastructure/reposito
 import { createAdminNotificationRepository } from '../infrastructure/repositories/AdminNotificationRepository';
 import { createAdminNotificationCommandRepository } from '../infrastructure/repositories/AdminNotificationCommandRepository';
 import { createNotificationAudienceResolverRepository } from '../infrastructure/repositories/NotificationAudienceResolverRepository';
+import { createNotificationDeliveryRepository } from '../infrastructure/repositories/NotificationDeliveryRepository';
 import { createAdminNotificationManagementRepository } from '../infrastructure/repositories/AdminNotificationManagementRepository';
 import { createMobileNotificationRepository } from '../infrastructure/repositories/MobileNotificationRepository';
 import { createGatheringSpotRepository } from '../infrastructure/repositories/GatheringSpotRepository';
@@ -27,6 +28,7 @@ import { createFirebaseTokenService } from '../application/services/FirebaseToke
 import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
 import { createNotificationAudienceResolverService } from '../application/services/NotificationAudienceResolverService';
+import { createNotificationDeliveryService } from '../application/services/NotificationDeliveryService';
 import { createAdminNotificationService } from '../application/services/AdminNotificationService';
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createAdminNotificationCommandService } from '../application/services/AdminNotificationCommandService';
@@ -83,6 +85,8 @@ export function createDIContainer(env: Env) {
     createAdminNotificationCommandRepository(db);
   const notificationAudienceResolverRepository =
     createNotificationAudienceResolverRepository(db);
+  const notificationDeliveryRepository =
+    createNotificationDeliveryRepository(db);
   const mobileNotificationRepository = createMobileNotificationRepository(db);
   const gatheringSpotRepository = createGatheringSpotRepository(db);
   const venueRepository = createVenueRepository(db);
@@ -163,6 +167,11 @@ export function createDIContainer(env: Env) {
     createNotificationAudienceResolverService(
       notificationAudienceResolverRepository
     );
+  const notificationDeliveryService = createNotificationDeliveryService({
+    notificationDeliveryRepository,
+    notificationDeliveryQueue,
+    fcmService,
+  });
   const adminNotificationService = createAdminNotificationService(
     adminNotificationRepository
   );
@@ -247,6 +256,7 @@ export function createDIContainer(env: Env) {
     mobileNotificationController,
     scheduledNotificationService,
     notificationAudienceResolverService,
+    notificationDeliveryService,
     gatheringSpotController,
     venueController,
     gatheringGroupMemberController,
