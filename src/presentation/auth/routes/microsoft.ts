@@ -224,7 +224,14 @@ microsoft.get('/callback', async c => {
   const frontendUrl =
     (await getStoredFrontendOrigin(c, state)) ?? c.env.FRONTEND_URL;
 
-  if (error || !code || !state) {
+  if (error && state) {
+    return c.redirect(
+      `${frontendUrl}/auth/callback?error=${encodeURIComponent(error)}&state=${encodeURIComponent(state)}`,
+      302
+    );
+  }
+
+  if (!code || !state) {
     return c.redirect(`${frontendUrl}/login?error=auth_failed`, 302);
   }
 

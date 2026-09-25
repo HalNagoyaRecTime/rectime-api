@@ -11,6 +11,73 @@ describe('EventRepository', () => {
     seeded = await seedEvents(env.DB);
   });
 
+  async function linkVenues(
+    eventId: number,
+    names: string[]
+  ): Promise<{ venueIds: number[]; cleanup: () => Promise<void> }> {
+    const venueIds: number[] = [];
+    for (const name of names) {
+      const venue = await env.DB.prepare(
+        'INSERT INTO venues (venue_name) VALUES (?) RETURNING venue_id'
+      )
+        .bind(name)
+        .first<{ venue_id: number }>();
+      venueIds.push(venue!.venue_id);
+    }
+    // venue_idの昇順で返ることを確かめるため、紐づけは昇順と逆に行う。
+    for (const venueId of [...venueIds].reverse()) {
+      await env.DB.prepare(
+        'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)'
+      )
+        .bind(eventId, venueId)
+        .run();
+    }
+    return {
+      venueIds,
+      cleanup: async () => {
+        for (const venueId of venueIds) {
+          await env.DB.prepare('DELETE FROM event_venues WHERE venue_id = ?')
+            .bind(venueId)
+            .run();
+          await env.DB.prepare('DELETE FROM venues WHERE venue_id = ?')
+            .bind(venueId)
+            .run();
+        }
+      },
+    };
+  }
+
+  async function createVenues(
+    names: string[]
+  ): Promise<{ venueIds: number[]; cleanup: () => Promise<void> }> {
+    const venueIds: number[] = [];
+    for (const name of names) {
+      const venue = await env.DB.prepare(
+        'INSERT INTO venues (venue_name) VALUES (?) RETURNING venue_id'
+      )
+        .bind(name)
+        .first<{ venue_id: number }>();
+      venueIds.push(venue!.venue_id);
+    }
+    return {
+      venueIds,
+      cleanup: async () => {
+        for (const venueId of venueIds) {
+          await env.DB.prepare('DELETE FROM venues WHERE venue_id = ?')
+            .bind(venueId)
+            .run();
+        }
+      },
+    };
+  }
+
+  async function deleteEvent(eventId: number | undefined) {
+    if (eventId === undefined) return;
+    await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
+      .bind(eventId)
+      .run();
+  }
+
   describe('findAll', () => {
     it('全件をstart_time昇順で返し、totalも返す', async () => {
       const result = await repo.findAll({});
@@ -33,6 +100,28 @@ describe('EventRepository', () => {
       expect(
         result.events.every(event => event.start_time === target.startTime)
       ).toBe(true);
+    });
+
+    it('各イベントの実施場所をvenue_id昇順で含める', async () => {
+      const target = seeded.events[0];
+      const { venueIds, cleanup } = await linkVenues(target.eventId, [
+        'findAll用第1体育館',
+        'findAll用グラウンド',
+      ]);
+
+      try {
+        const result = await repo.findAll({});
+        const event = result.events.find(e => e.event_id === target.eventId);
+        const others = result.events.filter(e => e.event_id !== target.eventId);
+
+        expect(event?.venues).toEqual([
+          { venue_id: venueIds[0], venue_name: 'findAll用第1体育館' },
+          { venue_id: venueIds[1], venue_name: 'findAll用グラウンド' },
+        ]);
+        expect(others.every(e => e.venues.length === 0)).toBe(true);
+      } finally {
+        await cleanup();
+      }
     });
 
     it('limitとoffsetでページネーションできる', async () => {
@@ -116,12 +205,48 @@ describe('EventRepository', () => {
         event_name: target.name,
         start_time: target.startTime,
         end_time: target.endTime,
-        venue: target.venue,
       });
     });
 
     it('存在しないidの場合はnullを返す', async () => {
       await expect(repo.findById(999999)).resolves.toBeNull();
+    });
+  });
+
+  describe('findWithVenuesById', () => {
+    it('実施場所をvenue_id昇順で含める', async () => {
+      const target = seeded.events[1];
+      const { venueIds, cleanup } = await linkVenues(target.eventId, [
+        'findWithVenuesById用第1体育館',
+        'findWithVenuesById用グラウンド',
+      ]);
+
+      try {
+        const event = await repo.findWithVenuesById(target.eventId);
+
+        expect(event?.venues).toEqual([
+          {
+            venue_id: venueIds[0],
+            venue_name: 'findWithVenuesById用第1体育館',
+          },
+          {
+            venue_id: venueIds[1],
+            venue_name: 'findWithVenuesById用グラウンド',
+          },
+        ]);
+      } finally {
+        await cleanup();
+      }
+    });
+
+    it('実施場所が無いイベントは空配列を返す', async () => {
+      const event = await repo.findWithVenuesById(seeded.events[0].eventId);
+
+      expect(event?.venues).toEqual([]);
+    });
+
+    it('存在しないidの場合はnullを返す', async () => {
+      await expect(repo.findWithVenuesById(999999)).resolves.toBeNull();
     });
   });
 
@@ -134,12 +259,66 @@ describe('EventRepository', () => {
     });
   });
 
+  describe('create', () => {
+    it('実施場所を紐づけて作成し、venue_id昇順のvenuesを含めて返す', async () => {
+      const { venueIds, cleanup } = await createVenues([
+        'create用第1体育館',
+        'create用グラウンド',
+      ]);
+      let createdId: number | undefined;
+
+      try {
+        const created = await repo.create({
+          name: 'create用イベント',
+          ruleText: null,
+          venueIds: [...venueIds].reverse(),
+          startTime: '0900',
+          endTime: '0930',
+        });
+        createdId = created.event_id;
+
+        expect(created).toMatchObject({
+          event_name: 'create用イベント',
+          venues: [
+            { venue_id: venueIds[0], venue_name: 'create用第1体育館' },
+            { venue_id: venueIds[1], venue_name: 'create用グラウンド' },
+          ],
+        });
+      } finally {
+        await deleteEvent(createdId);
+        await cleanup();
+      }
+    });
+
+    it('存在しない実施場所を含む場合は競技も作成しない', async () => {
+      await expect(
+        repo.create({
+          name: 'create失敗用イベント',
+          ruleText: null,
+          venueIds: [999999],
+          startTime: '0900',
+          endTime: '0930',
+        })
+      ).rejects.toThrow();
+
+      const row = await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM events WHERE event_name = 'create失敗用イベント'"
+      ).first<{ count: number }>();
+      expect(row?.count).toBe(0);
+    });
+  });
+
   describe('update', () => {
-    it('Event本体を更新し、更新後のEventを返す', async () => {
+    it('Event本体を更新し、実施場所を全置換する', async () => {
+      const { venueIds, cleanup } = await createVenues([
+        'update用第1体育館',
+        'update用グラウンド',
+        'update用トラック',
+      ]);
       const created = await repo.create({
         name: 'update用イベント',
         ruleText: null,
-        venue: '体育館',
+        venueIds: [venueIds[0], venueIds[1]],
         startTime: '0900',
         endTime: '0930',
       });
@@ -148,7 +327,7 @@ describe('EventRepository', () => {
         const updated = await repo.update(created.event_id, {
           name: '更新後のイベント',
           ruleText: '規則',
-          venue: 'トラック',
+          venueIds: [venueIds[1], venueIds[2]],
           startTime: '1000',
           endTime: '1030',
         });
@@ -157,27 +336,41 @@ describe('EventRepository', () => {
           event_id: created.event_id,
           event_name: '更新後のイベント',
           rule_text: '規則',
-          venue: 'トラック',
+          venues: [
+            { venue_id: venueIds[1], venue_name: 'update用グラウンド' },
+            { venue_id: venueIds[2], venue_name: 'update用トラック' },
+          ],
           start_time: '1000',
           end_time: '1030',
         });
       } finally {
-        await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
-          .bind(created.event_id)
-          .run();
+        await deleteEvent(created.event_id);
+        await cleanup();
       }
     });
 
-    it('存在しないidの場合はnullを返す', async () => {
-      const updated = await repo.update(999999, {
-        name: '更新後のイベント',
-        ruleText: null,
-        venue: 'トラック',
-        startTime: '1000',
-        endTime: '1030',
-      });
+    it('存在しないidの場合はnullを返し、紐づけも作らない', async () => {
+      const { venueIds, cleanup } = await createVenues(['update不在用体育館']);
 
-      expect(updated).toBeNull();
+      try {
+        const updated = await repo.update(999999, {
+          name: '更新後のイベント',
+          ruleText: null,
+          venueIds,
+          startTime: '1000',
+          endTime: '1030',
+        });
+
+        expect(updated).toBeNull();
+        const row = await env.DB.prepare(
+          'SELECT COUNT(*) AS count FROM event_venues WHERE venue_id = ?'
+        )
+          .bind(venueIds[0])
+          .first<{ count: number }>();
+        expect(row?.count).toBe(0);
+      } finally {
+        await cleanup();
+      }
     });
   });
 
@@ -206,6 +399,7 @@ describe('EventRepository', () => {
 
         expect(result).toHaveLength(1);
         expect(result[0].event_id).toBe(target.eventId);
+        expect(result[0].venues).toEqual([]);
       } finally {
         await env.DB.prepare(
           'DELETE FROM gathering_group_members WHERE gathering_id = ?'

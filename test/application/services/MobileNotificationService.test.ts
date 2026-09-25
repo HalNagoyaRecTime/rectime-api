@@ -66,7 +66,10 @@ describe('MobileNotificationService', () => {
           relatedEvent: {
             id: 3,
             name: '綱引き',
-            venue: 'グラウンド',
+            venues: [
+              { venue_id: 2, venue_name: 'グラウンド' },
+              { venue_id: 7, venue_name: '第1体育館' },
+            ],
             startTime: '1030',
             endTime: '1100',
           },
@@ -86,7 +89,10 @@ describe('MobileNotificationService', () => {
           related_event: {
             event_id: 3,
             event_name: '綱引き',
-            venue: 'グラウンド',
+            venues: [
+              { venue_id: 2, venue_name: 'グラウンド' },
+              { venue_id: 7, venue_name: '第1体育館' },
+            ],
             start_time: '1030',
             end_time: '1100',
           },

@@ -11,6 +11,8 @@ describe('MobileNotificationRepository', () => {
       env.DB.prepare('DELETE FROM notifications'),
       env.DB.prepare('DELETE FROM gathering_group_members'),
       env.DB.prepare('DELETE FROM gatherings'),
+      env.DB.prepare('DELETE FROM event_venues'),
+      env.DB.prepare('DELETE FROM venues'),
       env.DB.prepare('DELETE FROM firebase_tokens'),
       env.DB.prepare('DELETE FROM microsoft_account_links'),
       env.DB.prepare('DELETE FROM events'),
@@ -110,8 +112,23 @@ describe('MobileNotificationRepository', () => {
   it('関連競技を一覧と詳細へ含める', async () => {
     const mine = await createUserWithToken('本人', 'token-mine');
     const event = await env.DB.prepare(
-      "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('綱引き', 'グラウンド', '1030', '1100') RETURNING event_id"
+      "INSERT INTO events (event_name, start_time, end_time) VALUES ('綱引き', '1030', '1100') RETURNING event_id"
     ).first<{ event_id: number }>();
+    const firstVenue = await env.DB.prepare(
+      "INSERT INTO venues (venue_name) VALUES ('グラウンド') RETURNING venue_id"
+    ).first<{ venue_id: number }>();
+    const secondVenue = await env.DB.prepare(
+      "INSERT INTO venues (venue_name) VALUES ('第1体育館') RETURNING venue_id"
+    ).first<{ venue_id: number }>();
+    // venue_id の昇順で返ることを確かめるため、登録は昇順と逆に行う。
+    await env.DB.batch([
+      env.DB.prepare(
+        'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)'
+      ).bind(event!.event_id, secondVenue!.venue_id),
+      env.DB.prepare(
+        'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)'
+      ).bind(event!.event_id, firstVenue!.venue_id),
+    ]);
     const notificationId = await createNotificationSchedule({
       firebaseTokenId: mine.firebaseTokenId,
       title: '競技通知',
@@ -133,7 +150,10 @@ describe('MobileNotificationRepository', () => {
     expect(list.notifications[0].relatedEvent).toEqual({
       id: event!.event_id,
       name: '綱引き',
-      venue: 'グラウンド',
+      venues: [
+        { venue_id: firstVenue!.venue_id, venue_name: 'グラウンド' },
+        { venue_id: secondVenue!.venue_id, venue_name: '第1体育館' },
+      ],
       startTime: '1030',
       endTime: '1100',
     });

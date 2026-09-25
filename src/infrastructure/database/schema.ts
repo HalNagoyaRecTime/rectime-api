@@ -127,7 +127,6 @@ export const events = sqliteTable('events', {
   id: integer('event_id').primaryKey({ autoIncrement: true }),
   name: text('event_name').notNull(),
   ruleText: text('rule_text'),
-  venue: text('venue').notNull(),
   startTime: text('start_time').notNull(),
   endTime: text('end_time').notNull(),
   createdAt: text('created_at')
@@ -137,6 +136,44 @@ export const events = sqliteTable('events', {
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const venues = sqliteTable(
+  'venues',
+  {
+    id: integer('venue_id').primaryKey({ autoIncrement: true }),
+    name: text('venue_name').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [uniqueIndex('uq_venues_venue_name').on(table.name)]
+);
+
+export const event_venues = sqliteTable(
+  'event_venues',
+  {
+    id: integer('event_venue_id').primaryKey({ autoIncrement: true }),
+    eventId: integer('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    venueId: integer('venue_id')
+      .notNull()
+      .references(() => venues.id),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [
+    uniqueIndex('uq_event_venues_event_venue').on(table.eventId, table.venueId),
+    index('idx_event_venues_venue_id').on(table.venueId),
+  ]
+);
 
 export const gatherings = sqliteTable(
   'gatherings',
@@ -215,6 +252,22 @@ export const gatheringSpotsRelations = relations(
 
 export const eventsRelations = relations(events, ({ many }) => ({
   gatherings: many(gatherings),
+  eventVenues: many(event_venues),
+}));
+
+export const venuesRelations = relations(venues, ({ many }) => ({
+  eventVenues: many(event_venues),
+}));
+
+export const eventVenuesRelations = relations(event_venues, ({ one }) => ({
+  event: one(events, {
+    fields: [event_venues.eventId],
+    references: [events.id],
+  }),
+  venue: one(venues, {
+    fields: [event_venues.venueId],
+    references: [venues.id],
+  }),
 }));
 
 export const gatheringsRelations = relations(gatherings, ({ one, many }) => ({

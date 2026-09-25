@@ -151,4 +151,54 @@ export const EventErrors = {
     code: 'GATHERING_SPOT_DELETE_FAILED',
     message: '集合場所の削除に失敗しました',
   },
+  INVALID_VENUE_LIST_QUERY: {
+    status: 400,
+    code: 'INVALID_VENUE_LIST_QUERY',
+    message: '実施場所一覧の検索条件が正しくありません',
+  },
+  INVALID_VENUE_ID: {
+    status: 400,
+    code: 'INVALID_VENUE_ID',
+    message: '実施場所IDが正しくありません',
+  },
+  INVALID_VENUE_REQUEST: {
+    status: 400,
+    code: 'INVALID_VENUE_REQUEST',
+    message: '実施場所の入力内容が正しくありません',
+  },
+  VENUE_NOT_FOUND: {
+    status: 404,
+    code: 'VENUE_NOT_FOUND',
+    message: '実施場所が見つかりません',
+  },
+  VENUE_NAME_ALREADY_EXISTS: {
+    status: 409,
+    code: 'VENUE_NAME_ALREADY_EXISTS',
+    message: '同じ名前の実施場所が既に存在します',
+  },
+  VENUE_IN_USE: {
+    status: 409,
+    code: 'VENUE_IN_USE',
+    message: '競技から参照されている実施場所は削除できません',
+  },
+  VENUE_LIST_FAILED: {
+    status: 500,
+    code: 'VENUE_LIST_FAILED',
+    message: '実施場所一覧の取得に失敗しました',
+  },
+  VENUE_CREATE_FAILED: {
+    status: 500,
+    code: 'VENUE_CREATE_FAILED',
+    message: '実施場所の登録に失敗しました',
+  },
+  VENUE_UPDATE_FAILED: {
+    status: 500,
+    code: 'VENUE_UPDATE_FAILED',
+    message: '実施場所の更新に失敗しました',
+  },
+  VENUE_DELETE_FAILED: {
+    status: 500,
+    code: 'VENUE_DELETE_FAILED',
+    message: '実施場所の削除に失敗しました',
+  },
 } as const satisfies Record<string, ApiErrorDefinition>;

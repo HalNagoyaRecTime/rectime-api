@@ -20,9 +20,9 @@ describe('GatheringGroupMemberRepository', () => {
     spotIds.push(spot!.gathering_spot_id);
 
     const event = await env.DB.prepare(
-      'INSERT INTO events (event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?) RETURNING event_id'
+      'INSERT INTO events (event_name, start_time, end_time) VALUES (?, ?, ?) RETURNING event_id'
     )
-      .bind(`集合メンバーテスト競技-${suffix}`, '体育館', '0900', '1000')
+      .bind(`集合メンバーテスト競技-${suffix}`, '0900', '1000')
       .first<{ event_id: number }>();
     eventIds.push(event!.event_id);
 

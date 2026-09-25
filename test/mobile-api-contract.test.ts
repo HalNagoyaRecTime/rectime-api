@@ -57,7 +57,7 @@ describe('mobile API contract', () => {
       [
         'event_id',
         'event_name',
-        'venue',
+        'venues',
         'start_time',
         'end_time',
         'created_at',

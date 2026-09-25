@@ -27,7 +27,7 @@ async function createFixture(): Promise<Fixture> {
     "INSERT INTO users (user_name, is_live_active) VALUES ('無効利用者', 0) RETURNING user_id"
   ).first<{ user_id: number }>();
   const event = await env.DB.prepare(
-    "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('大縄跳び', '体育館', '1000', '1030') RETURNING event_id"
+    "INSERT INTO events (event_name, start_time, end_time) VALUES ('大縄跳び', '1000', '1030') RETURNING event_id"
   ).first<{ event_id: number }>();
   const spot = await env.DB.prepare(
     "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('体育館前') RETURNING gathering_spot_id"

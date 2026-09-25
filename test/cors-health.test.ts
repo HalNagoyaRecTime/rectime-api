@@ -83,6 +83,8 @@ describe('OpenAPI documentation', () => {
       '/api/v1/students/{studentId}',
       '/api/v1/teachers',
       '/api/v1/teachers/{teacherId}',
+      '/api/v1/venues',
+      '/api/v1/venues/{venueId}',
       '/health',
     ]);
     expect(document.components.schemas.Event.properties?.rule_text).toEqual({
@@ -159,7 +161,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(46);
+    expect(documentedOperations).toHaveLength(50);
     expect(document.components.schemas).not.toHaveProperty(
       'AdminUserSearchItem'
     );

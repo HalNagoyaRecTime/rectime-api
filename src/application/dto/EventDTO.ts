@@ -5,11 +5,17 @@ export interface EventDTO {
   event_id: number;
   event_name: string;
   rule_text: string | null;
-  venue: string;
+  venues: EventVenueDTO[];
   start_time: string;
   end_time: string;
   created_at: string;
   updated_at: string;
+}
+
+/** イベントに紐づく実施場所。venue_id昇順で返す。 */
+export interface EventVenueDTO {
+  venue_id: number;
+  venue_name: string;
 }
 
 /**
@@ -43,7 +49,7 @@ export interface GetEventsRequestDTO {
 export interface CreateEventRequestDTO {
   event_name: string;
   rule_text: string | null;
-  venue: string;
+  venue_ids: number[];
   start_time: string;
   end_time: string;
 }

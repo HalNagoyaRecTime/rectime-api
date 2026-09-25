@@ -95,7 +95,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .run();
 
     const event = await workerEnv.DB.prepare(
-      "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('統合削除競技', '体育館', '0900', '1000') RETURNING event_id"
+      "INSERT INTO events (event_name, start_time, end_time) VALUES ('統合削除競技', '0900', '1000') RETURNING event_id"
     ).first<{ event_id: number }>();
     const spot = await workerEnv.DB.prepare(
       "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('統合削除集合場所') RETURNING gathering_spot_id"

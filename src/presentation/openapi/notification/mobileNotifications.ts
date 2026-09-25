@@ -1,4 +1,5 @@
 import { createRoute } from '@hono/zod-openapi';
+import { eventVenueListResponseSchema } from '../eventVenues';
 import {
   badRequestResponse,
   bearerAuth,
@@ -17,7 +18,7 @@ export const mobileNotificationEventSchema = z
   .object({
     event_id: z.number().int(),
     event_name: z.string(),
-    venue: z.string(),
+    venues: eventVenueListResponseSchema,
     start_time: z.string(),
     end_time: z.string(),
   })
