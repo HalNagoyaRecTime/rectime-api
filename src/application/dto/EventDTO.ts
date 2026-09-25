@@ -12,11 +12,25 @@ export interface EventDTO {
   updated_at: string;
 }
 
+/** イベントに紐づく実施場所。venue_id昇順で返す。 */
+export interface EventVenueDTO {
+  venue_id: number;
+  venue_name: string;
+}
+
+/**
+ * 実施場所の一覧を含むイベント。
+ * 作成・更新のレスポンスへ `venues` を波及させないため、EventDTOとは別に定義する。
+ */
+export interface EventWithVenuesDTO extends EventDTO {
+  venues: EventVenueDTO[];
+}
+
 /**
  * GET /events/:eventId のレスポンス本文。
  * 一覧や作成・更新のレスポンスへ `rounds` を波及させないため、EventDTOとは別に定義する。
  */
-export interface EventDetailDTO extends EventDTO {
+export interface EventDetailDTO extends EventWithVenuesDTO {
   rounds: RoundSettingDTO[];
 }
 
@@ -28,7 +42,7 @@ export interface GatheringSummaryDTO {
 }
 
 /** GET /events の一覧項目として返すイベント。 */
-export interface EventListItemDTO extends EventDTO {
+export interface EventListItemDTO extends EventWithVenuesDTO {
   gathering_summary: GatheringSummaryDTO;
 }
 

@@ -1,7 +1,10 @@
+import type { EventVenueEntity } from './Event';
+
 export interface MobileNotificationEvent {
   id: number;
   name: string;
   venue: string;
+  venues: EventVenueEntity[];
   startTime: string;
   endTime: string;
 }

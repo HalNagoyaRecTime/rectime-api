@@ -34,6 +34,23 @@ async function insertSpot(name: string): Promise<number> {
   return row!.gathering_spot_id;
 }
 
+async function insertVenue(name: string): Promise<number> {
+  const row = await workerEnv.DB.prepare(
+    'INSERT INTO venues (venue_name) VALUES (?) RETURNING venue_id'
+  )
+    .bind(name)
+    .first<{ venue_id: number }>();
+  return row!.venue_id;
+}
+
+async function linkVenue(eventId: number, venueId: number): Promise<void> {
+  await workerEnv.DB.prepare(
+    'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)'
+  )
+    .bind(eventId, venueId)
+    .run();
+}
+
 async function insertGathering(
   eventId: number,
   spotId: number,
@@ -88,6 +105,11 @@ describe('GET /api/v1/events/:eventId', () => {
     const eventId = await insertEvent();
     const entrance1 = await insertSpot('出入口①');
     const entrance2 = await insertSpot('出入口②');
+    const mainCourt = await insertVenue('メインコート');
+    const subCourt = await insertVenue('サブコート');
+    // venue_idの昇順で返ることを確かめるため、紐づけは昇順と逆に行う。
+    await linkVenue(eventId, subCourt);
+    await linkVenue(eventId, mainCourt);
 
     // 挿入順とレスポンスの並び順が一致しないよう、あえてRoundを前後させる。
     const round2 = await insertGathering(eventId, entrance1, 2, '11:30');
@@ -104,6 +126,10 @@ describe('GET /api/v1/events/:eventId', () => {
       event_name: 'リレー',
       rule_text: 'バトンを使用します。',
       venue: 'メインコート',
+      venues: [
+        { venue_id: mainCourt, venue_name: 'メインコート' },
+        { venue_id: subCourt, venue_name: 'サブコート' },
+      ],
       start_time: '1100',
       end_time: '1230',
       rounds: [
@@ -159,6 +185,7 @@ describe('GET /api/v1/events/:eventId', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       event_id: eventId,
+      venues: [],
       rounds: [],
     });
   });

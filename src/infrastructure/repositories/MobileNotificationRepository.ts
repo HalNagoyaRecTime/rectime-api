@@ -7,6 +7,7 @@ import type {
   MobileNotificationListResult,
 } from '../../domain/entities/MobileNotification';
 import type { IMobileNotificationRepository } from '../../domain/interfaces/repositories/IMobileNotificationRepository';
+import type { EventVenueEntity } from '../../domain/entities/Event';
 import * as schema from '../database/schema';
 import {
   events,
@@ -14,6 +15,7 @@ import {
   notification_schedules,
   notifications,
 } from '../database/schema';
+import { findVenuesByEventIds } from './eventVenues';
 
 const selection = {
   notification_id: notifications.notificationId,
@@ -41,7 +43,10 @@ type MobileNotificationRow = {
   end_time: string | null;
 };
 
-function toEntity(row: MobileNotificationRow): MobileNotificationEntity {
+function toEntity(
+  row: MobileNotificationRow,
+  venuesByEventId: Map<number, EventVenueEntity[]>
+): MobileNotificationEntity {
   return {
     id: row.notification_id,
     type: row.notification_type,
@@ -55,6 +60,7 @@ function toEntity(row: MobileNotificationRow): MobileNotificationEntity {
             id: row.event_id,
             name: row.event_name!,
             venue: row.venue!,
+            venues: venuesByEventId.get(row.event_id) ?? [],
             startTime: row.start_time!,
             endTime: row.end_time!,
           },
@@ -117,8 +123,18 @@ export function createMobileNotificationRepository(
           .get(),
       ]);
 
+      const notificationRows = rows as MobileNotificationRow[];
+      const venuesByEventId = await findVenuesByEventIds(
+        orm,
+        notificationRows
+          .map(row => row.event_id)
+          .filter((eventId): eventId is number => eventId !== null)
+      );
+
       return {
-        notifications: (rows as MobileNotificationRow[]).map(toEntity),
+        notifications: notificationRows.map(row =>
+          toEntity(row, venuesByEventId)
+        ),
         total: totalResult?.total ?? 0,
       };
     },
@@ -151,7 +167,13 @@ export function createMobileNotificationRepository(
         .orderBy(desc(notification_schedules.id))
         .get();
 
-      return row ? toEntity(row as MobileNotificationRow) : null;
+      if (!row) return null;
+      const notificationRow = row as MobileNotificationRow;
+      const venuesByEventId = await findVenuesByEventIds(
+        orm,
+        notificationRow.event_id === null ? [] : [notificationRow.event_id]
+      );
+      return toEntity(notificationRow, venuesByEventId);
     },
   };
 }

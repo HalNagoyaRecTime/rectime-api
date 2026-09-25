@@ -39,6 +39,7 @@ function setup(
     exists: vi.fn().mockResolvedValue(options.eventExists ?? true),
     findAll: vi.fn(),
     findById: vi.fn(),
+    findWithVenuesById: vi.fn(),
     findByParticipantUserId: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),

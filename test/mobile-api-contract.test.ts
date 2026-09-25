@@ -110,7 +110,10 @@ describe('mobile API contract', () => {
       $ref: '#/components/schemas/EventDetail',
     });
     expect(document.components.schemas['EventDetail']?.allOf).toContainEqual({
-      $ref: '#/components/schemas/Event',
+      $ref: '#/components/schemas/EventWithVenues',
     });
+    expect(
+      document.components.schemas['EventWithVenues']?.allOf
+    ).toContainEqual({ $ref: '#/components/schemas/Event' });
   });
 });

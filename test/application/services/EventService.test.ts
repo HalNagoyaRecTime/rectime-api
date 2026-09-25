@@ -5,6 +5,7 @@ import type { IEventRepository } from '../../../src/domain/interfaces/repositori
 import type {
   EventEntity,
   EventWithGatheringSummaryEntity,
+  EventWithVenuesEntity,
 } from '../../../src/domain/entities/Event';
 import type { EventGatheringEntity } from '../../../src/domain/entities/EventGathering';
 
@@ -20,6 +21,12 @@ function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
     updated_at: '2026-01-01',
     ...overrides,
   };
+}
+
+function buildEventWithVenues(
+  overrides: Partial<EventWithVenuesEntity> = {}
+): EventWithVenuesEntity {
+  return { ...buildEvent(overrides), venues: [], ...overrides };
 }
 
 function buildGathering(
@@ -39,7 +46,7 @@ function buildEventWithGatheringSummary(
   overrides: Partial<EventWithGatheringSummaryEntity> = {}
 ): EventWithGatheringSummaryEntity {
   return {
-    ...buildEvent(overrides),
+    ...buildEventWithVenues(overrides),
     gathering_summary: {
       gathering_count: 0,
       configured_gathering_count: 0,
@@ -56,6 +63,7 @@ function createRepository(
     exists: vi.fn(),
     findAll: vi.fn(),
     findById: vi.fn(),
+    findWithVenuesById: vi.fn(),
     findByParticipantUserId: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -115,10 +123,10 @@ describe('EventService', () => {
 
   describe('getEventById', () => {
     it('集合予定が無い場合も既存fieldをそのまま返し、roundsは空配列にする', async () => {
-      const event = buildEvent();
+      const event = buildEventWithVenues();
       const repository = createRepository({
         findAll: vi.fn(),
-        findById: vi.fn().mockResolvedValue(event),
+        findWithVenuesById: vi.fn().mockResolvedValue(event),
       });
       const service = createService(repository);
 
@@ -126,11 +134,16 @@ describe('EventService', () => {
         ...event,
         rounds: [],
       });
-      expect(repository.findById).toHaveBeenCalledWith(1);
+      expect(repository.findWithVenuesById).toHaveBeenCalledWith(1);
     });
 
     it('集合予定をRound単位にまとめて返す', async () => {
-      const event = buildEvent();
+      const event = buildEventWithVenues({
+        venues: [
+          { venue_id: 2, venue_name: 'グラウンド' },
+          { venue_id: 5, venue_name: '第1体育館' },
+        ],
+      });
       const gatheringSettingsRepository = createGatheringSettingsRepository([
         buildGathering({ gathering_id: 101, round: 1, member_count: 16 }),
         buildGathering({
@@ -148,7 +161,9 @@ describe('EventService', () => {
         }),
       ]);
       const service = createService(
-        createRepository({ findById: vi.fn().mockResolvedValue(event) }),
+        createRepository({
+          findWithVenuesById: vi.fn().mockResolvedValue(event),
+        }),
         gatheringSettingsRepository
       );
 
@@ -202,7 +217,9 @@ describe('EventService', () => {
         buildGathering({ gathering_id: 102, gathering_time: '11:00' }),
       ]);
       const service = createService(
-        createRepository({ findById: vi.fn().mockResolvedValue(buildEvent()) }),
+        createRepository({
+          findWithVenuesById: vi.fn().mockResolvedValue(buildEventWithVenues()),
+        }),
         gatheringSettingsRepository
       );
 
@@ -216,7 +233,7 @@ describe('EventService', () => {
     it('存在しない場合はエラーを投げ、集合予定は取得しない', async () => {
       const repository = createRepository({
         findAll: vi.fn(),
-        findById: vi.fn().mockResolvedValue(null),
+        findWithVenuesById: vi.fn().mockResolvedValue(null),
       });
       const gatheringSettingsRepository = createGatheringSettingsRepository();
 
@@ -232,7 +249,11 @@ describe('EventService', () => {
 
   describe('getMyEvents', () => {
     it('指定したuserIdが参加するイベントをDTOへ変換して返す', async () => {
-      const events = [buildEvent()];
+      const events = [
+        buildEventWithVenues({
+          venues: [{ venue_id: 3, venue_name: '第2体育館' }],
+        }),
+      ];
       const repository = createRepository({
         findByParticipantUserId: vi.fn().mockResolvedValue(events),
       });

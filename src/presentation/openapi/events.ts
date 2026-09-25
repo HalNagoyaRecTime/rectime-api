@@ -1,5 +1,6 @@
 import { createRoute } from '@hono/zod-openapi';
 import type { EventDetailDTO } from '../../application/dto/EventDTO';
+import { eventVenueListResponseSchema } from './eventVenues';
 import { roundSettingResponseSchema } from './gatheringRounds';
 import { gatheringListResponseSchema } from './gatherings';
 import {
@@ -33,8 +34,15 @@ export const eventResponseSchema = z
 
 export type EventResponseDTO = z.infer<typeof eventResponseSchema>;
 
+// venue は後続Issueで削除するまで残す。複数の実施場所は venues を参照する。
+export const eventWithVenuesResponseSchema = eventResponseSchema
+  .extend({
+    venues: eventVenueListResponseSchema,
+  })
+  .openapi('EventWithVenues');
+
 // Application DTO と食い違うと型エラーになるよう、schemaの出力型をDTOで固定する。
-export const eventDetailResponseSchema = eventResponseSchema
+export const eventDetailResponseSchema = eventWithVenuesResponseSchema
   .extend({
     rounds: z.array(roundSettingResponseSchema),
   })
@@ -48,7 +56,7 @@ export const gatheringSummaryResponseSchema = z
   })
   .openapi('GatheringSummary');
 
-export const eventListItemResponseSchema = eventResponseSchema
+export const eventListItemResponseSchema = eventWithVenuesResponseSchema
   .extend({
     gathering_summary: gatheringSummaryResponseSchema,
   })

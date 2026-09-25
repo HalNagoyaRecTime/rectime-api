@@ -13,10 +13,12 @@ import type {
   EventEntity,
   EventListOptions,
   EventWithGatheringSummaryEntity,
+  EventWithVenuesEntity,
   EventWriteInput,
   GatheringSummaryEntity,
 } from '../../domain/entities/Event';
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
+import { findVenuesByEventIds } from './eventVenues';
 
 // 集合時刻が未設定であることを表すsentinel値。gatherings.gathering_timeのデフォルト。
 const UNSET_GATHERING_TIME = '99:59';
@@ -116,14 +118,16 @@ export function createEventRepository(db: D1Database): IEventRepository {
       ]);
 
       const eventEntities = rows.map(toEntity);
-      const summaries = await findGatheringSummaries(
-        orm,
-        eventEntities.map(event => event.event_id)
-      );
+      const eventIds = eventEntities.map(event => event.event_id);
+      const [summaries, venuesByEventId] = await Promise.all([
+        findGatheringSummaries(orm, eventIds),
+        findVenuesByEventIds(orm, eventIds),
+      ]);
 
       return {
         events: eventEntities.map(event => ({
           ...event,
+          venues: venuesByEventId.get(event.event_id) ?? [],
           gathering_summary:
             summaries.get(event.event_id) ?? EMPTY_GATHERING_SUMMARY,
         })),
@@ -137,11 +141,23 @@ export function createEventRepository(db: D1Database): IEventRepository {
         .from(events)
         .where(eq(events.id, id))
         .get();
-
       return result ? toEntity(result) : null;
     },
 
-    async findByParticipantUserId(userId: number): Promise<EventEntity[]> {
+    async findWithVenuesById(
+      id: number
+    ): Promise<EventWithVenuesEntity | null> {
+      const [result, venuesByEventId] = await Promise.all([
+        orm.select().from(events).where(eq(events.id, id)).get(),
+        findVenuesByEventIds(orm, [id]),
+      ]);
+      if (!result) return null;
+      return { ...toEntity(result), venues: venuesByEventId.get(id) ?? [] };
+    },
+
+    async findByParticipantUserId(
+      userId: number
+    ): Promise<EventWithVenuesEntity[]> {
       const rows = await orm
         .selectDistinct({
           id: events.id,
@@ -163,7 +179,15 @@ export function createEventRepository(db: D1Database): IEventRepository {
         .orderBy(asc(events.startTime))
         .all();
 
-      return rows.map(toEntity);
+      const eventEntities = rows.map(toEntity);
+      const venuesByEventId = await findVenuesByEventIds(
+        orm,
+        eventEntities.map(event => event.event_id)
+      );
+      return eventEntities.map(event => ({
+        ...event,
+        venues: venuesByEventId.get(event.event_id) ?? [],
+      }));
     },
 
     async create(event: EventWriteInput): Promise<EventEntity> {
