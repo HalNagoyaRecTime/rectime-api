@@ -4,6 +4,7 @@ import { IGatheringGroupMemberService } from '../../application/services/IGather
 import { errorResponse } from '../errors/errorResponse';
 import { EventErrors } from '../errors/eventErrors';
 import { UserErrors } from '../errors/userErrors';
+import { replaceGatheringMembersSchema } from '../openapi/gatherings';
 
 const addGatheringMemberSchema = z.object({
   userId: z.number().int().positive(),
@@ -97,9 +98,44 @@ export function createGatheringGroupMemberController(
     }
   };
 
+  const replaceGatheringMembers = async (c: Context) => {
+    const gatheringId = getGatheringId(c);
+    if (gatheringId === null) {
+      return errorResponse(c, EventErrors.INVALID_GATHERING_ID);
+    }
+    const body = await c.req.json().catch(() => undefined);
+    const parsedBody = replaceGatheringMembersSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return errorResponse(
+        c,
+        EventErrors.INVALID_GATHERING_MEMBER_REQUEST,
+        parsedBody.error.flatten()
+      );
+    }
+
+    try {
+      const result = await gatheringGroupMemberService.replaceGatheringMembers(
+        gatheringId,
+        parsedBody.data.user_ids
+      );
+      return c.json(result, 200);
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message === 'Gathering not found') {
+          return errorResponse(c, EventErrors.GATHERING_NOT_FOUND);
+        }
+        if (error.message === 'User not found') {
+          return errorResponse(c, UserErrors.USER_NOT_FOUND);
+        }
+      }
+      return errorResponse(c, EventErrors.GATHERING_MEMBER_UPDATE_FAILED);
+    }
+  };
+
   return {
     getGatheringMembers,
     addGatheringMember,
     removeGatheringMember,
+    replaceGatheringMembers,
   };
 }

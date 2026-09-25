@@ -1,11 +1,46 @@
 export interface StudentEntity {
-  student_id: number;
-  user_id: number;
-  user_name: string;
-  class_room_id: number;
-  class_room_name: string;
-  team_id: number;
-  attendance_number: number;
-  student_id_number: string;
-  is_live_active: boolean;
+  studentId: number;
+  userId: number;
+  userName: string;
+  classRoomId: number;
+  classRoomCode: string;
+  classRoomName: string;
+  teamId: number;
+  attendanceNumber: number;
+  studentIdNumber: string;
+  isLiveActive: boolean;
+  isStaff: boolean;
+}
+
+export interface StudentPage {
+  items: StudentEntity[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface StudentWriteInput {
+  displayName: string;
+  classRoomId: number;
+  attendanceNumber: number;
+  studentIdNumber: string;
+}
+
+export interface StudentSearchFilter {
+  search?: string;
+  classRoomId?: number;
+  isStaff?: boolean;
+  isLiveActive?: boolean;
+  sortBy?:
+    | 'studentId'
+    | 'studentIdNumber'
+    | 'displayName'
+    | 'classCode'
+    | 'className'
+    | 'attendanceNumber'
+    | 'isStaff'
+    | 'isLiveActive';
+  sortOrder?: 'asc' | 'desc';
+  limit?: number;
+  offset?: number;
 }

@@ -1,79 +1,26 @@
 import { Context } from 'hono';
-import { z } from 'zod';
 import { ITeacherService } from '../../application/services/ITeacherService';
-import { TeacherSearchFilter } from '../../domain/entities/Teacher';
+import { CommonErrors } from '../errors/commonErrors';
 import { errorResponse } from '../errors/errorResponse';
 import { UserErrors } from '../errors/userErrors';
-
-const MAX_LIMIT = 100;
-
-const integerQuery = (minimum: number) =>
-  z.preprocess(
-    value =>
-      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
-    z.number().int().min(minimum)
-  );
-
-const teacherListQuerySchema = z
-  .object({
-    teacherId: integerQuery(1).optional(),
-    userName: z.string().trim().min(1).optional(),
-    classRoomId: integerQuery(1).optional(),
-    isLiveActive: z
-      .enum(['true', 'false'])
-      .transform(value => value === 'true')
-      .optional(),
-    search: z.string().trim().min(1).optional(),
-    sortBy: z.enum(['teacherId', 'displayName']).default('teacherId'),
-    sortOrder: z.enum(['asc', 'desc']).default('asc'),
-    limit: integerQuery(1)
-      .refine(value => value <= MAX_LIMIT, {
-        message: 'limit must be between 1 and 100',
-      })
-      .default(50),
-    offset: integerQuery(0).default(0),
-  })
-  .strict();
-
-const createTeacherSchema = z
-  .object({
-    userName: z.string().min(1),
-    classRoomIds: z
-      .array(z.number().int().positive())
-      .refine(ids => new Set(ids).size === ids.length, {
-        message: 'classRoomIds must not contain duplicate values',
-      }),
-  })
-  .strict();
-
-const updateTeacherSchema = z
-  .object({
-    userName: z.string().min(1),
-    classRoomIds: z
-      .array(z.number().int().positive())
-      .refine(ids => new Set(ids).size === ids.length, {
-        message: 'classRoomIds must not contain duplicate values',
-      }),
-  })
-  .strict();
+import {
+  teacherCreateSchema,
+  teacherIdParams,
+  teacherListQuery,
+  teacherUpdateSchema,
+} from '../openapi/teachers';
 
 function getTeacherId(c: Context): number | null {
-  const id = Number(c.req.param('teacherId') || c.req.param('id'));
-  return Number.isInteger(id) && id > 0 ? id : null;
-}
-
-function parseSearchFilter(c: Context): TeacherSearchFilter {
-  const parsed = teacherListQuerySchema.safeParse(c.req.query());
-  if (!parsed.success) {
-    throw new Error('Invalid teacher list query');
-  }
-  return parsed.data;
+  const parsed = teacherIdParams.safeParse({
+    teacherId: c.req.param('teacherId'),
+  });
+  return parsed.success ? Number(parsed.data.teacherId) : null;
 }
 
 export function createTeacherController(teacherService: ITeacherService) {
   const createTeacher = async (c: Context) => {
     const body = await c.req.json().catch(() => undefined);
-    const parsedBody = createTeacherSchema.safeParse(body);
+    const parsedBody = teacherCreateSchema.safeParse(body);
     if (!parsedBody.success) {
       return errorResponse(
         c,
@@ -88,6 +35,12 @@ export function createTeacherController(teacherService: ITeacherService) {
     } catch (error) {
       if (error instanceof Error && error.message === 'Class room not found') {
         return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'Teacher email already exists'
+      ) {
+        return errorResponse(c, UserErrors.TEACHER_EMAIL_ALREADY_EXISTS);
       }
       return errorResponse(c, UserErrors.TEACHER_CREATE_FAILED);
     }
@@ -112,17 +65,27 @@ export function createTeacherController(teacherService: ITeacherService) {
   };
 
   const getAllTeachers = async (c: Context) => {
+    const parsedQuery = teacherListQuery.safeParse(c.req.query());
+    if (!parsedQuery.success) {
+      return errorResponse(
+        c,
+        CommonErrors.VALIDATION_ERROR,
+        parsedQuery.error.flatten()
+      );
+    }
+
     try {
-      const filter = parseSearchFilter(c);
+      const { isStaff, isLiveActive, ...query } = parsedQuery.data;
+      const filter = {
+        ...query,
+        ...(isStaff === 'all' ? {} : { isStaff: isStaff === 'true' }),
+        ...(isLiveActive === 'all'
+          ? {}
+          : { isLiveActive: isLiveActive === 'true' }),
+      };
       const teachers = await teacherService.getAllTeachers(filter);
       return c.json(teachers, 200);
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === 'Invalid teacher list query'
-      ) {
-        return errorResponse(c, UserErrors.INVALID_TEACHER_LIST_QUERY);
-      }
+    } catch {
       return errorResponse(c, UserErrors.TEACHER_LIST_FAILED);
     }
   };
@@ -134,7 +97,7 @@ export function createTeacherController(teacherService: ITeacherService) {
     }
 
     const body = await c.req.json().catch(() => undefined);
-    const parsedBody = updateTeacherSchema.safeParse(body);
+    const parsedBody = teacherUpdateSchema.safeParse(body);
     if (!parsedBody.success) {
       return errorResponse(
         c,
@@ -156,24 +119,13 @@ export function createTeacherController(teacherService: ITeacherService) {
       if (error instanceof Error && error.message === 'Class room not found') {
         return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
       }
-      return errorResponse(c, UserErrors.TEACHER_UPDATE_FAILED);
-    }
-  };
-
-  const deleteTeacher = async (c: Context) => {
-    const teacherId = getTeacherId(c);
-    if (teacherId === null) {
-      return errorResponse(c, UserErrors.INVALID_TEACHER_ID);
-    }
-
-    try {
-      await teacherService.deleteTeacher(teacherId);
-      return c.body(null, 204);
-    } catch (error) {
-      if (error instanceof Error && error.message === 'Teacher not found') {
-        return errorResponse(c, UserErrors.TEACHER_NOT_FOUND);
+      if (
+        error instanceof Error &&
+        error.message === 'Teacher email already exists'
+      ) {
+        return errorResponse(c, UserErrors.TEACHER_EMAIL_ALREADY_EXISTS);
       }
-      return errorResponse(c, UserErrors.TEACHER_DELETE_FAILED);
+      return errorResponse(c, UserErrors.TEACHER_UPDATE_FAILED);
     }
   };
 
@@ -182,6 +134,5 @@ export function createTeacherController(teacherService: ITeacherService) {
     getTeacherById,
     getAllTeachers,
     updateTeacher,
-    deleteTeacher,
   };
 }

@@ -1,11 +1,6 @@
 import { Context } from 'hono';
 import { z } from 'zod';
-import type {
-  CreateEventRequestDTO,
-  PatchEventRequestDTO,
-  UpdateEventRequestDTO,
-} from '../../application/dto/EventDTO';
-import type { IEventScheduleService } from '../../application/services/IEventScheduleService';
+import type { CreateEventRequestDTO } from '../../application/dto/EventDTO';
 import type { IEventService } from '../../application/services/IEventService';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
@@ -19,54 +14,33 @@ import {
 
 const eventIdSchema = z.coerce.number().int().positive();
 const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
-const eventWriteSchema = z
-  .object({
-    event_name: z.string().trim().min(1).max(100),
-    rule_text: z.string().trim().max(1000).nullable().optional(),
-    venue: z.string().trim().min(1).max(100),
-    start_time: hhmmSchema,
-    end_time: hhmmSchema,
-  })
-  .refine(data => data.start_time < data.end_time, {
-    message: 'end_time must be after start_time',
-    path: ['end_time'],
-  });
+const eventBaseSchema = z.object({
+  event_name: z.string().trim().min(1).max(100),
+  rule_text: z.string().trim().max(1000).nullable().optional(),
+  venue: z.string().trim().min(1).max(100),
+  start_time: hhmmSchema,
+  end_time: hhmmSchema,
+});
+const timeRangeRefinement: [
+  (data: { start_time: string; end_time: string }) => boolean,
+  { message: string; path: string[] },
+] = [
+  data => data.start_time < data.end_time,
+  { message: 'end_time must be after start_time', path: ['end_time'] },
+];
 
-const eventUpdateSchema = eventWriteSchema.and(
-  z.object({ notification_enabled: z.boolean().optional() })
-);
-const eventPatchSchema = z
-  .object({
-    event_name: z.string().trim().min(1).max(100).optional(),
-    rule_text: z.string().trim().max(1000).nullable().optional(),
-    venue: z.string().trim().min(1).max(100).optional(),
-    start_time: hhmmSchema.optional(),
-    end_time: hhmmSchema.optional(),
-    notification_enabled: z.boolean().optional(),
-  })
-  .refine(data => Object.values(data).some(value => value !== undefined), {
-    message: 'At least one field is required',
-  })
-  .refine(
-    data =>
-      data.start_time === undefined ||
-      data.end_time === undefined ||
-      data.start_time < data.end_time,
-    {
-      message: 'end_time must be after start_time',
-      path: ['end_time'],
-    }
-  );
+const eventWriteSchema = eventBaseSchema.refine(...timeRangeRefinement);
+
+const eventUpdateSchema = eventBaseSchema
+  .strict()
+  .refine(...timeRangeRefinement);
 
 type EventContext = Context<{
   Bindings: Env;
   Variables: ContainerVariables & AuthenticationVariables;
 }>;
 
-export function createEventController(
-  eventService: IEventService,
-  eventScheduleService: IEventScheduleService
-) {
+export function createEventController(eventService: IEventService) {
   const getAllEvents = async (c: Context) => {
     try {
       const startTime = c.req.query('start_time');
@@ -122,7 +96,7 @@ export function createEventController(
   };
 
   const createEvent = async (c: Context) => {
-    const parsed = await parseEventBody(c);
+    const parsed = await parseEventBody(c, eventWriteSchema);
     if (!parsed.success) return parsed.response;
     try {
       return c.json(await eventService.createEvent(parsed.data), 201);
@@ -135,75 +109,15 @@ export function createEventController(
     const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
     if (!parsedId.success)
       return errorResponse(c, EventErrors.INVALID_EVENT_ID);
-    const body = await c.req.json().catch(() => undefined);
-    const parsed = eventUpdateSchema.safeParse(body);
-    if (!parsed.success) {
-      return errorResponse(
-        c,
-        EventErrors.INVALID_EVENT_REQUEST,
-        parsed.error.flatten()
-      );
-    }
-    const request = {
-      ...parsed.data,
-      rule_text: parsed.data.rule_text ?? null,
-    } satisfies UpdateEventRequestDTO;
-    const eventContext = c as EventContext;
-    const userId = eventContext.get('authenticatedUserId');
-    if (userId === null) {
-      return errorResponse(c, CommonErrors.UNAUTHORIZED);
-    }
+    const parsed = await parseEventBody(c, eventUpdateSchema);
+    if (!parsed.success) return parsed.response;
     try {
       return c.json(
-        await eventScheduleService.updateEventSchedule({
-          event_id: parsedId.data,
-          user_id: userId,
-          event_name: request.event_name,
-          rule_text: request.rule_text,
-          venue: request.venue,
-          start_time: request.start_time,
-          end_time: request.end_time,
-          notification_enabled: request.notification_enabled,
-          event_date: eventContext.env?.EVENT_DATE,
-        }),
+        await eventService.updateEvent(parsedId.data, parsed.data),
         200
       );
     } catch (error) {
-      return eventError(c, error, EventErrors.EVENT_UPDATE_FAILED);
-    }
-  };
-
-  const patchEvent = async (c: Context) => {
-    const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
-    if (!parsedId.success)
-      return errorResponse(c, EventErrors.INVALID_EVENT_ID);
-    const body = await c.req.json().catch(() => undefined);
-    const parsed = eventPatchSchema.safeParse(body);
-    if (!parsed.success) {
-      return errorResponse(
-        c,
-        EventErrors.INVALID_EVENT_REQUEST,
-        parsed.error.flatten()
-      );
-    }
-    const request = parsed.data satisfies PatchEventRequestDTO;
-    const eventContext = c as EventContext;
-    const userId = eventContext.get('authenticatedUserId');
-    if (userId === null) {
-      return errorResponse(c, CommonErrors.UNAUTHORIZED);
-    }
-    try {
-      return c.json(
-        await eventScheduleService.updateEventSchedule({
-          event_id: parsedId.data,
-          user_id: userId,
-          ...request,
-          event_date: eventContext.env?.EVENT_DATE,
-        }),
-        200
-      );
-    } catch (error) {
-      return eventError(c, error, EventErrors.EVENT_UPDATE_FAILED);
+      return updateEventError(c, error);
     }
   };
 
@@ -225,14 +139,16 @@ export function createEventController(
     getMyEvents,
     createEvent,
     updateEvent,
-    patchEvent,
     deleteEvent,
   };
 }
 
-async function parseEventBody(c: Context) {
+async function parseEventBody(
+  c: Context,
+  schema: typeof eventWriteSchema | typeof eventUpdateSchema
+) {
   const body = await c.req.json().catch(() => undefined);
-  const parsed = eventWriteSchema.safeParse(body);
+  const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return {
       success: false as const,
@@ -252,6 +168,19 @@ async function parseEventBody(c: Context) {
   };
 }
 
+function updateEventError(c: Context, error: unknown) {
+  if (
+    error instanceof Error &&
+    error.message === 'end_time must be after start_time'
+  ) {
+    return errorResponse(c, EventErrors.INVALID_EVENT_TIME_RANGE);
+  }
+  if (error instanceof Error && error.message === 'Event not found') {
+    return errorResponse(c, EventErrors.EVENT_NOT_FOUND);
+  }
+  return errorResponse(c, EventErrors.EVENT_UPDATE_FAILED);
+}
+
 function eventError(
   c: Context,
   error: unknown,
@@ -268,18 +197,6 @@ function eventError(
   }
   if (error instanceof Error && error.message === 'Event is in use') {
     return errorResponse(c, EventErrors.EVENT_IN_USE);
-  }
-  if (error instanceof Error && error.message === 'Schedule update forbidden') {
-    return errorResponse(c, CommonErrors.STAFF_REQUIRED);
-  }
-  if (error instanceof Error && error.message === 'Event update conflict') {
-    return errorResponse(c, EventErrors.EVENT_UPDATE_CONFLICT);
-  }
-  if (
-    error instanceof Error &&
-    error.message === 'EVENT_DATE is not configured correctly'
-  ) {
-    return errorResponse(c, CommonErrors.EVENT_DATE_INVALID);
   }
   return errorResponse(c, fallback);
 }

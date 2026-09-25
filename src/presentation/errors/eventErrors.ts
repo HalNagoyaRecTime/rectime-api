@@ -31,12 +31,6 @@ export const EventErrors = {
     code: 'EVENT_IN_USE',
     message: '使用中の競技は削除できません',
   },
-  EVENT_UPDATE_CONFLICT: {
-    status: 409,
-    code: 'EVENT_UPDATE_CONFLICT',
-    message:
-      '競技情報の更新が競合しました。再読み込みしてから再度お試しください',
-  },
   EVENT_LIST_FAILED: {
     status: 500,
     code: 'EVENT_LIST_FAILED',
@@ -67,35 +61,25 @@ export const EventErrors = {
     code: 'EVENT_DELETE_FAILED',
     message: '競技の削除に失敗しました',
   },
-  INVALID_EVENT_SCHEDULE_REQUEST: {
-    status: 400,
-    code: 'INVALID_EVENT_SCHEDULE_REQUEST',
-    message: '競技スケジュールの入力内容が正しくありません',
-  },
-  EVENT_SCHEDULE_UPDATE_FAILED: {
-    status: 500,
-    code: 'EVENT_SCHEDULE_UPDATE_FAILED',
-    message: '競技スケジュールの更新に失敗しました',
-  },
-  EVENT_NOTIFICATION_SUMMARY_FAILED: {
-    status: 500,
-    code: 'EVENT_NOTIFICATION_SUMMARY_FAILED',
-    message: '競技の通知状況の取得に失敗しました',
-  },
   INVALID_GATHERING_ID: {
     status: 400,
     code: 'INVALID_GATHERING_ID',
     message: '集合グループIDが正しくありません',
   },
-  INVALID_GATHERING_REQUEST: {
-    status: 400,
-    code: 'INVALID_GATHERING_REQUEST',
-    message: '集合グループの入力内容が正しくありません',
-  },
   GATHERING_NOT_FOUND: {
     status: 404,
     code: 'GATHERING_NOT_FOUND',
     message: '集合グループが見つかりません',
+  },
+  GATHERING_IN_USE: {
+    status: 409,
+    code: 'GATHERING_IN_USE',
+    message: '参加者がいる集合グループは削除できません',
+  },
+  EVENT_GATHERINGS_UPDATE_FAILED: {
+    status: 500,
+    code: 'EVENT_GATHERINGS_UPDATE_FAILED',
+    message: '競技の集合設定の更新に失敗しました',
   },
   GATHERING_LIST_FAILED: {
     status: 500,
@@ -106,16 +90,6 @@ export const EventErrors = {
     status: 500,
     code: 'EVENT_GATHERING_LIST_FAILED',
     message: '競技の集合グループ一覧の取得に失敗しました',
-  },
-  GATHERING_CREATE_FAILED: {
-    status: 500,
-    code: 'GATHERING_CREATE_FAILED',
-    message: '集合グループの登録に失敗しました',
-  },
-  GATHERING_DELETE_FAILED: {
-    status: 500,
-    code: 'GATHERING_DELETE_FAILED',
-    message: '集合グループの削除に失敗しました',
   },
   INVALID_GATHERING_MEMBER_REQUEST: {
     status: 400,
@@ -152,6 +126,11 @@ export const EventErrors = {
     code: 'GATHERING_MEMBER_REMOVE_FAILED',
     message: '集合メンバーの削除に失敗しました',
   },
+  GATHERING_MEMBER_UPDATE_FAILED: {
+    status: 500,
+    code: 'GATHERING_MEMBER_UPDATE_FAILED',
+    message: '集合メンバーの更新に失敗しました',
+  },
   INVALID_GATHERING_SPOT_LIST_QUERY: {
     status: 400,
     code: 'INVALID_GATHERING_SPOT_LIST_QUERY',
@@ -181,11 +160,6 @@ export const EventErrors = {
     status: 500,
     code: 'GATHERING_SPOT_LIST_FAILED',
     message: '集合場所一覧の取得に失敗しました',
-  },
-  GATHERING_SPOT_FETCH_FAILED: {
-    status: 500,
-    code: 'GATHERING_SPOT_FETCH_FAILED',
-    message: '集合場所の取得に失敗しました',
   },
   GATHERING_SPOT_CREATE_FAILED: {
     status: 500,

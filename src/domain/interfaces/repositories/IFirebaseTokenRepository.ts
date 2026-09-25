@@ -16,4 +16,21 @@ export interface IFirebaseTokenRepository {
   // 以後の配信対象から外れる(該当のfirebase_token_id自体を保持したまま
   // 無効化する)。
   deactivateByUserId: (userId: number) => Promise<void>;
+  // アカウント削除(#265 PR4)専用。user_idに紐づくfirebase_tokens行を
+  // 探す。notification_schedules.deleteByFirebaseTokenIdを呼ぶ前に
+  // firebase_token_idを特定するために使う。
+  findByUserId: (userId: number) => Promise<FirebaseTokenEntity | null>;
+  // アカウント削除(#265 PR4)専用。fcm_token(端末識別子)は個人情報に
+  // 近いため、無効化(deactivateByUserId)だけでなく行自体を物理削除する。
+  // notification_schedules.firebase_token_idがNOT NULL外部キーで参照して
+  // いるため、呼び出し元は必ず先にdeleteByFirebaseTokenIdで該当する
+  // notification_schedules行を削除しておく必要がある。対象が無ければ
+  // 何もしない(冪等)。
+  //
+  // register()の端末付け替え時(上のdeactivateByUserId参照)とは異なり
+  // 行を物理削除するのは、外部キー制約上の都合ではなく意図的な判断。
+  // 本人からの削除要求に対しては、送信実績の集計・監査よりも個人データの
+  // 消去を優先する方針を#263の起票者に確認済み(AccountDeletionService.
+  // deleteRelatedData参照)。
+  deleteByUserId: (userId: number) => Promise<void>;
 }

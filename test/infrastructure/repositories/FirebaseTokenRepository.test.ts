@@ -71,8 +71,10 @@ describe('FirebaseTokenRepository', () => {
           .bind(userId)
           .run();
       } else {
-        await env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
-          .bind(userId)
+        await env.DB.prepare(
+          'INSERT INTO teachers (user_id, email) VALUES (?, ?)'
+        )
+          .bind(userId, `teacher-${userId}@example.test`)
           .run();
       }
 
@@ -346,6 +348,54 @@ describe('FirebaseTokenRepository', () => {
       await expect(
         repository.deactivateByUserId(userId)
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('findByUserId / deleteByUserId', () => {
+    it('findByUserIdは指定user_idのToken登録を返す', async () => {
+      const userId = await createUser('検索対象利用者');
+      await repository.register({
+        userId,
+        platform: 'android',
+        fcmToken: 'token-findable',
+      });
+
+      const found = await repository.findByUserId(userId);
+
+      expect(found).toMatchObject({
+        user_id: userId,
+        fcm_token: 'token-findable',
+      });
+    });
+
+    it('findByUserIdは登録が無い場合はnullを返す', async () => {
+      const userId = await createUser('Token未登録利用者2');
+
+      await expect(repository.findByUserId(userId)).resolves.toBeNull();
+    });
+
+    it('deleteByUserIdはToken登録を物理削除する', async () => {
+      const userId = await createUser('物理削除対象利用者');
+      await repository.register({
+        userId,
+        platform: 'android',
+        fcmToken: 'token-to-delete',
+      });
+
+      await repository.deleteByUserId(userId);
+
+      const stored = await env.DB.prepare(
+        'SELECT * FROM firebase_tokens WHERE user_id = ?'
+      )
+        .bind(userId)
+        .first();
+      expect(stored).toBeNull();
+    });
+
+    it('deleteByUserIdは登録が無くてもエラーにならない(冪等)', async () => {
+      const userId = await createUser('Token未登録利用者3');
+
+      await expect(repository.deleteByUserId(userId)).resolves.toBeUndefined();
     });
   });
 });

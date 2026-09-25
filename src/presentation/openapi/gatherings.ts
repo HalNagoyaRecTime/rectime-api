@@ -119,21 +119,21 @@ export const addGatheringMemberSchema = z
   })
   .openapi('AddGatheringMemberRequest');
 
-export const createGatheringSchema = z
+export const replaceGatheringMembersSchema = z
   .object({
-    eventId: z.number().int().positive(),
-    gatheringSpotId: z.number().int().positive(),
-    gatheringTime: z
-      .string()
-      .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$|^99:59$/)
-      .optional()
-      .openapi({
-        description: 'HH:MM形式。99:59は集合時刻が未設定であることを表す。',
-        example: '08:45',
+    // 1集合(=1チーム)の参加者は最大30人の運用のため上限を設ける。
+    // D1は1クエリあたりのバインド変数が100個までで、追加1人につき
+    // gathering_id/user_idの2個を消費するため、30人(=60個)を超えると
+    // 51人以上の追加でPUTが500になる。件数上限はWorkerの実行時間と
+    // D1負荷を抑える目的も兼ねる。
+    user_ids: z
+      .array(z.number().int().positive())
+      .max(30, { message: 'user_idsは30件までです' })
+      .refine(ids => new Set(ids).size === ids.length, {
+        message: 'user_idsに重複があります',
       }),
-    round: z.number().int().min(1).max(99).optional(),
   })
-  .openapi('CreateGatheringRequest');
+  .openapi('ReplaceGatheringMembersRequest');
 
 export const gatheringSpotListRoute = createRoute({
   method: 'get',
@@ -194,6 +194,24 @@ export const gatheringSpotUpdateRoute = createRoute({
   },
 });
 
+export const gatheringSpotDeleteRoute = createRoute({
+  method: 'delete',
+  path: '/gathering-spots/{gatheringSpotId}',
+  tags: ['Gathering spots'],
+  summary: '集合場所を削除する',
+  security: bearerAuth,
+  request: { params: gatheringSpotIdParams },
+  responses: {
+    204: noContentResponse,
+    400: badRequestResponse,
+    401: unauthorizedResponse,
+    403: forbiddenResponse,
+    404: notFoundResponse,
+    409: conflictResponse,
+    500: internalServerErrorResponse,
+  },
+});
+
 export const gatheringMemberListRoute = createRoute({
   method: 'get',
   path: '/gatherings/{gatheringId}/members',
@@ -205,6 +223,31 @@ export const gatheringMemberListRoute = createRoute({
     200: jsonResponse(gatheringMemberListResponseSchema, '参加者一覧'),
     400: badRequestResponse,
     401: unauthorizedResponse,
+    404: notFoundResponse,
+    500: internalServerErrorResponse,
+  },
+});
+
+export const gatheringMemberReplaceRoute = createRoute({
+  method: 'put',
+  path: '/gatherings/{gatheringId}/members',
+  tags: ['Gathering members'],
+  summary: '集合予定の参加者集合を一括で置き換える',
+  security: bearerAuth,
+  request: {
+    params: gatheringIdParams,
+    body: {
+      content: {
+        'application/json': { schema: replaceGatheringMembersSchema },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: jsonResponse(gatheringMemberListResponseSchema, '更新後の参加者一覧'),
+    400: badRequestResponse,
+    401: unauthorizedResponse,
+    403: forbiddenResponse,
     404: notFoundResponse,
     500: internalServerErrorResponse,
   },
@@ -261,45 +304,6 @@ export const gatheringListRoute = createRoute({
     200: jsonResponse(gatheringListResponseSchema, '集合予定一覧'),
     401: unauthorizedResponse,
     403: forbiddenResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const gatheringCreateRoute = createRoute({
-  method: 'post',
-  path: '/gatherings',
-  tags: ['Gatherings'],
-  summary: '集合予定を作成する',
-  security: bearerAuth,
-  request: {
-    body: {
-      content: { 'application/json': { schema: createGatheringSchema } },
-      required: true,
-    },
-  },
-  responses: {
-    201: jsonResponse(gatheringResponseSchema, '作成した集合予定'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const gatheringDeleteRoute = createRoute({
-  method: 'delete',
-  path: '/gatherings/{gatheringId}',
-  tags: ['Gatherings'],
-  summary: '集合予定を削除する',
-  security: bearerAuth,
-  request: { params: gatheringIdParams },
-  responses: {
-    204: noContentResponse,
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
     500: internalServerErrorResponse,
   },
 });
