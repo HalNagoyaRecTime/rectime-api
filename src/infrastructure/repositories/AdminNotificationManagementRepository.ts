@@ -5,6 +5,7 @@ import type {
 import type {
   AdminNotificationListOptions,
   AdminNotificationSummary,
+  UpdateAdminNotificationAudienceInput,
   UpdateAdminNotificationInput,
 } from '../../domain/entities/AdminNotificationManagement';
 import type { IAdminNotificationManagementRepository } from '../../domain/interfaces/repositories/IAdminNotificationManagementRepository';
@@ -319,9 +320,9 @@ function buildContentUpdateStatements(
 
 function buildAudienceUpdateStatements(
   db: D1Database,
-  input: UpdateAdminNotificationInput
+  input: UpdateAdminNotificationAudienceInput
 ): D1PreparedStatement[] {
-  const audience = input.audience!;
+  const audience = input.audience;
   const tokenSelect = buildAudienceTokenSelect(audience);
   const eventId =
     audience.type === 'event_participants' ? audience.event_id : null;
@@ -385,7 +386,7 @@ function buildAudienceUpdateStatements(
         input.created_user_id,
         eventId,
         input.notification_id,
-        normalizeNotificationDateTime(input.scheduled_at!),
+        normalizeNotificationDateTime(input.scheduled_at),
         ...tokenSelect.bindings
       ),
   ];
