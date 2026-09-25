@@ -351,8 +351,75 @@ describe('GET /auth/microsoft/login', () => {
   });
 });
 
+describe('GET /auth/microsoft/login origin', () => {
+  it('webは許可済みRefererのoriginをPKCE stateに保存する', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const app = buildApp();
+
+    const res = await app.request(
+      '/login',
+      {
+        headers: {
+          Referer: 'https://pr-296.recwatch.pages.dev/login',
+        },
+      },
+      env
+    );
+
+    expect(res.status).toBe(302);
+    const state = new URL(res.headers.get('Location') ?? '').searchParams.get(
+      'state'
+    ) as string;
+    const stored = JSON.parse(
+      (await env.AUTH_KV.get(`pkce:${state}`)) as string
+    ) as PkceEntry;
+    expect(stored.frontend_origin).toBe('https://pr-296.recwatch.pages.dev');
+  });
+
+  it('webは未許可RefererのoriginをPKCE stateに保存しない', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const app = buildApp();
+
+    const res = await app.request(
+      '/login',
+      {
+        headers: {
+          Referer: 'https://evil.example/login',
+        },
+      },
+      env
+    );
+
+    expect(res.status).toBe(302);
+    const state = new URL(res.headers.get('Location') ?? '').searchParams.get(
+      'state'
+    ) as string;
+    const stored = JSON.parse(
+      (await env.AUTH_KV.get(`pkce:${state}`)) as string
+    ) as PkceEntry;
+    expect(stored.frontend_origin).toBeUndefined();
+  });
+});
+
 describe('GET /auth/microsoft/callback', () => {
-  it('errorクエリがある場合はログイン画面へリダイレクトする', async () => {
+  it('state付きのerrorクエリはフロントエンドのcallbackへ中継する', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      '/callback?error=access_denied&state=state%2B123',
+      {},
+      buildEnv()
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      'https://app.example.com/auth/callback?error=access_denied&state=state%2B123'
+    );
+  });
+
+  it('stateが無いerrorクエリはログイン画面へリダイレクトする', async () => {
     const app = buildApp();
     const res = await app.request(
       '/callback?error=access_denied',
@@ -384,6 +451,85 @@ describe('GET /auth/microsoft/callback', () => {
     expect(res.status).toBe(302);
     expect(res.headers.get('Location')).toBe(
       'https://app.example.com/auth/callback?code=abc%2B123&state=xyz789'
+    );
+  });
+  it('有効なstateのoriginを成功時に復元し、callbackでstateを消費しない', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const state = 'state-preview';
+    await env.AUTH_KV.put(
+      `pkce:${state}`,
+      JSON.stringify({
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'login',
+        frontend_origin: 'https://pr-296.recwatch.pages.dev',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(`/callback?code=abc&state=${state}`, {}, env);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      `https://pr-296.recwatch.pages.dev/auth/callback?code=abc&state=${state}`
+    );
+    expect(await env.AUTH_KV.get(`pkce:${state}`)).toBeTruthy();
+  });
+
+  it('Microsoftのerror時も有効なstateのoriginを復元してcallbackへ中継する', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const state = 'state-preview-error';
+    await env.AUTH_KV.put(
+      `pkce:${state}`,
+      JSON.stringify({
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'login',
+        frontend_origin: 'https://pr-296.recwatch.pages.dev',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      `/callback?error=access_denied&state=${state}`,
+      {},
+      env
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      `https://pr-296.recwatch.pages.dev/auth/callback?error=access_denied&state=${state}`
+    );
+  });
+
+  it('stateの未許可originはFRONTEND_URLへフォールバックする', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const state = 'state-untrusted-origin';
+    await env.AUTH_KV.put(
+      `pkce:${state}`,
+      JSON.stringify({
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'login',
+        frontend_origin: 'https://evil.example',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(`/callback?code=abc&state=${state}`, {}, env);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      `https://app.example.com/auth/callback?code=abc&state=${state}`
     );
   });
 });
@@ -1632,6 +1778,31 @@ describe('GET /auth/microsoft/delete-login', () => {
     expect(stored.code_verifier).toBeTruthy();
   });
 
+  it('delete-loginは許可済みRefererのoriginをPKCE stateに保存する', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const app = buildApp();
+
+    const res = await app.request(
+      '/delete-login',
+      {
+        headers: {
+          Referer: 'https://pr-296.recwatch.pages.dev/delete-account',
+        },
+      },
+      env
+    );
+
+    expect(res.status).toBe(302);
+    const state = new URL(res.headers.get('Location') ?? '').searchParams.get(
+      'state'
+    ) as string;
+    const stored = JSON.parse(
+      (await env.AUTH_KV.get(`pkce:${state}`)) as string
+    ) as PkceEntry;
+    expect(stored.frontend_origin).toBe('https://pr-296.recwatch.pages.dev');
+  });
   it('mobileは有効なパラメータでauth_urlを返しKVにpurpose: account_deletionで保存し、prompt=loginを含むauth_urlを返す', async () => {
     const env = buildEnv();
     const state = generateRandom(32);

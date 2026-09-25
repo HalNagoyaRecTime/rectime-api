@@ -1,0 +1,183 @@
+name: 検証済み依存関係更新PRの作成
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: monthly-dependency-pr-publish
+  cancel-in-progress: false
+
+jobs:
+  verify-candidate:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      startsWith(github.event.workflow_run.head_branch, 'automation/monthly-dependencies-') &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.actor.login == 'github-actions[bot]'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 最新のdevelopを取得
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: 検証済み候補commitを再確認
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch origin "refs/heads/${BRANCH}:refs/remotes/origin/dependency-candidate"
+          candidate_sha=$(git rev-parse refs/remotes/origin/dependency-candidate)
+          base_sha=$(git rev-parse HEAD)
+
+          if [ "$candidate_sha" != "$EXPECTED_SHA" ]; then
+            echo "::error::CI後に候補branchが更新されています。"
+            exit 1
+          fi
+          if [ "$(git rev-list --count "${base_sha}..${candidate_sha}")" != "1" ]; then
+            echo "::error::候補branchはdevelop直上の1commitではありません。"
+            exit 1
+          fi
+          if [ "$(git rev-parse "${candidate_sha}^")" != "$base_sha" ]; then
+            echo "::error::CI中にdevelopが更新されたため、安全のためPRを作成しません。"
+            exit 1
+          fi
+          if [ "$(git show -s --format=%ae "$candidate_sha")" != "41898282+github-actions[bot]@users.noreply.github.com" ]; then
+            echo "::error::候補commitの作成者が不正です。"
+            exit 1
+          fi
+
+          BASE_REF="$base_sha" CANDIDATE_REF="$candidate_sha" \
+            node .github/scripts/verify-dependency-update.mjs
+
+  open-pr:
+    needs: verify-candidate
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Pull Requestを作成
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          CI_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          current_head=$(gh api "repos/${GH_REPO}/git/ref/heads/${BRANCH}" --jq '.object.sha')
+          expected_base=$(gh api "repos/${GH_REPO}/commits/${EXPECTED_SHA}" --jq '.parents[0].sha')
+          current_base=$(gh api "repos/${GH_REPO}/git/ref/heads/develop" --jq '.object.sha')
+          if [ "$current_head" != "$EXPECTED_SHA" ] || [ "$current_base" != "$expected_base" ]; then
+            echo "::error::事前検証後に候補branchまたはdevelopが更新されたため、PRを作成しません。"
+            exit 1
+          fi
+
+          existing=$(gh pr list \
+            --base develop \
+            --head "$BRANCH" \
+            --state open \
+            --json number \
+            --jq 'length')
+          if [ "$existing" -gt 0 ]; then
+            echo "この候補branchのPRは既に存在します。"
+            exit 0
+          fi
+
+          blocking=$(gh pr list \
+            --base develop \
+            --state open \
+            --limit 1000 \
+            --json headRefName \
+            --jq '[.[] | select((.headRefName | startswith("automation/monthly-dependencies-")) or (.headRefName | startswith("dependabot/")))] | length')
+          if [ "$blocking" -gt 0 ]; then
+            echo "既存の自動依存関係更新PRがあるためPRを作成しません。候補branchは保持し、open PRがなければ7日後の定期実行で削除します。"
+            exit 0
+          fi
+
+          cat > "$RUNNER_TEMP/pr-body.md" <<EOF
+          # 依存関係の定期更新
+
+          ## 背景(この項目はPR作成者が記載するため、AIによる自動生成の対象外)
+
+          依存関係を安全に保つための月次更新です。
+
+          ### 関連 Issue
+
+          なし
+
+          ## このPRで良くなること
+
+          現在のmajor versionと互換性があるminor・patch更新をまとめて適用できます。0.xの依存関係は破壊的変更を避けるためpatch更新だけを対象にしています。
+
+          ## 変更した内容を簡潔に
+
+          npm依存関係とGitHub Actionsを互換範囲内で更新しました。公開から7日未満のversionと、事前検証できない依存関係は対象外です。
+
+          ## 再現方法
+
+          1. 候補commitで \`npm ci\` が成功すること
+          2. format・lint・type check・testがすべて成功すること
+          3. Wranglerのdry runと更新対象Actionのsmoke testが成功すること
+          4. 検証結果: ${CI_URL}
+          EOF
+
+          if ! gh pr create \
+              --base develop \
+              --head "$BRANCH" \
+              --title "chore(deps): 依存関係を定期更新" \
+              --body-file "$RUNNER_TEMP/pr-body.md"; then
+            echo "::error::PR作成に失敗しました。検証済み候補branchは調査・再実行のため保持し、open PRがなければ7日後に削除します。"
+            exit 1
+          fi
+
+  cleanup-failed-candidate:
+    needs: verify-candidate
+    if: >-
+      always() &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      startsWith(github.event.workflow_run.head_branch, 'automation/monthly-dependencies-') &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.actor.login == 'github-actions[bot]' &&
+      (github.event.workflow_run.conclusion != 'success' ||
+       needs.verify-candidate.result == 'failure')
+    permissions:
+      contents: write
+      pull-requests: read
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 失敗した候補branchを削除
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          open_prs=$(gh pr list --head "$BRANCH" --state open --json number --jq 'length')
+          if [ "$open_prs" -gt 0 ]; then
+            echo "open中のPRがあるため候補branchを削除しません。"
+            exit 0
+          fi
+          current_sha=$(gh api "repos/${GH_REPO}/git/ref/heads/${BRANCH}" --jq '.object.sha' 2>/dev/null || true)
+          if [ -z "$current_sha" ]; then
+            echo "候補branchは既に削除されています。"
+            exit 0
+          fi
+          if [ "$current_sha" != "$EXPECTED_SHA" ]; then
+            echo "::error::CI後に候補branchが更新されたため削除しません。"
+            exit 1
+          fi
+          gh api --method DELETE "repos/${GH_REPO}/git/refs/heads/${BRANCH}"
+          echo "失敗した候補branchを削除しました: ${BRANCH}"

@@ -1,29 +1,10 @@
 import type {
-  CreateNotificationScheduleInput,
-  DeleteDraftNotificationScheduleResult,
   DueNotificationSchedule,
   NotificationScheduleEntity,
-  NotificationScheduleListOptions,
-  NotificationScheduleListResult,
 } from '../../entities/NotificationSchedule';
 
 export interface INotificationScheduleRepository {
-  create: (
-    input: CreateNotificationScheduleInput
-  ) => Promise<NotificationScheduleEntity>;
-  findAll: (
-    options: NotificationScheduleListOptions
-  ) => Promise<NotificationScheduleListResult>;
-  findById: (
-    notificationScheduleId: number
-  ) => Promise<NotificationScheduleEntity | null>;
-  deleteDraft: (
-    notificationScheduleId: number
-  ) => Promise<DeleteDraftNotificationScheduleResult>;
   findDraftsByEvent: (eventId: number) => Promise<NotificationScheduleEntity[]>;
-  existsFirebaseToken: (firebaseTokenId: number) => Promise<boolean>;
-  existsEvent: (eventId: number) => Promise<boolean>;
-  existsNotification: (notificationId: number) => Promise<boolean>;
   findDeliveryCandidateIds: (
     dueAt: string,
     staleBefore: string,
@@ -42,8 +23,8 @@ export interface INotificationScheduleRepository {
   anonymizeCreatedUserId: (userId: number) => Promise<void>;
   // アカウント削除(#265 PR4)専用。指定firebase_token_idに紐づく
   // notification_schedules行(削除対象ユーザーが受信者だった送信履歴)を
-  // 物理削除する。firebase_token_idはNOT NULL外部キーのため、
-  // firebase_tokens行を削除する前に必ず呼ぶ必要がある。対象が無ければ
+  // 物理削除する。Legacy AccountDeletionの現在の個人データ削除方針を維持するため、
+  // firebase_tokens行の削除前に呼び出す。FK制約上の必須順序ではない。対象が無ければ
   // 何もしない(冪等)。
   //
   // 「誰が何をいつ受け取ったか」の記録がここで失われるが、本人からの

@@ -15,6 +15,8 @@ const migrationQueries = (() => {
 
 async function prepareLegacySchema() {
   await env.DB.batch([
+    env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_user_id'),
+    env.DB.prepare('DROP INDEX IF EXISTS uq_firebase_tokens_fcm_token'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_active_fcm_token'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_active'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_notification_schedules_due'),
@@ -76,6 +78,7 @@ async function restoreCurrentSchema() {
     env.DB.prepare('DROP TABLE IF EXISTS firebase_tokens_legacy'),
     env.DB.prepare('DROP TABLE IF EXISTS firebase_tokens'),
     env.DB.prepare('DROP INDEX IF EXISTS idx_firebase_tokens_user_id'),
+    env.DB.prepare('DROP INDEX IF EXISTS uq_firebase_tokens_fcm_token'),
     env.DB.prepare(
       'ALTER TABLE firebase_tokens_backup RENAME TO firebase_tokens'
     ),
@@ -83,9 +86,11 @@ async function restoreCurrentSchema() {
       'ALTER TABLE notification_schedules_backup RENAME TO notification_schedules'
     ),
     env.DB.prepare(
-      `CREATE UNIQUE INDEX idx_firebase_tokens_active_fcm_token
-        ON firebase_tokens(fcm_token)
-        WHERE is_firebase_active = 1`
+      'CREATE INDEX idx_firebase_tokens_user_id ON firebase_tokens(user_id)'
+    ),
+    env.DB.prepare(
+      `CREATE UNIQUE INDEX uq_firebase_tokens_fcm_token
+        ON firebase_tokens(fcm_token)`
     ),
     env.DB.prepare(
       'CREATE INDEX idx_firebase_tokens_active ON firebase_tokens(is_firebase_active)'
@@ -121,8 +126,9 @@ async function createUser(userName: string): Promise<number> {
 
 async function createNotification(): Promise<number> {
   const row = await env.DB.prepare(
-    `INSERT INTO notifications (notification_type, title, body)
-     VALUES ('manual', '0029移行確認', '0029移行確認')
+    `INSERT INTO notifications (
+       notification_type, push_title, push_body, title, body
+     ) VALUES ('manual', '0029移行確認', '0029移行確認', '0029移行確認', '0029移行確認')
      RETURNING notification_id`
   ).first<{ notification_id: number }>();
   if (!row) throw new Error('failed to create notification');

@@ -4,12 +4,8 @@ export interface IGatheringGroupMemberService {
   getGatheringMembers: (
     gatheringId: number
   ) => Promise<GatheringGroupMemberEntity[]>;
-  addGatheringMember: (
+  replaceGatheringMembers: (
     gatheringId: number,
-    userId: number
-  ) => Promise<GatheringGroupMemberEntity>;
-  removeGatheringMember: (
-    gatheringId: number,
-    userId: number
-  ) => Promise<boolean>;
+    userIds: number[]
+  ) => Promise<GatheringGroupMemberEntity[]>;
 }

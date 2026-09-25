@@ -22,7 +22,7 @@ async function createFixture(
     "INSERT INTO users (user_name) VALUES ('管理者') RETURNING user_id"
   ).first<{ user_id: number }>();
   const event = await env.DB.prepare(
-    "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('大縄跳び', '体育館', '1000', '1030') RETURNING event_id"
+    "INSERT INTO events (event_name, start_time, end_time) VALUES ('大縄跳び', '1000', '1030') RETURNING event_id"
   ).first<{ event_id: number }>();
   const spot = await env.DB.prepare(
     "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('体育館前') RETURNING gathering_spot_id"
@@ -33,7 +33,7 @@ async function createFixture(
     .bind(event!.event_id, spot!.gathering_spot_id)
     .first<{ gathering_id: number }>();
   const notification = await env.DB.prepare(
-    "INSERT INTO notifications (notification_type, title, body) VALUES (?, '変更前', '本文') RETURNING notification_id"
+    "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES (?, '変更前', '本文', '変更前', '本文') RETURNING notification_id"
   )
     .bind(notificationType)
     .first<{ notification_id: number }>();
@@ -73,7 +73,7 @@ async function createFixture(
         notification!.notification_id,
         token!.firebase_token_id,
         statuses[index],
-        '2026-07-23T09:00:00+09:00'
+        '2026-07-23T00:00:00.000Z'
       )
       .run();
   }
@@ -131,7 +131,7 @@ describe('AdminNotificationManagementRepository', () => {
         sent: 1,
         failed: 1,
       },
-      scheduled_at: '2026-07-23T09:00:00+09:00',
+      scheduled_at: '2026-07-23T00:00:00.000Z',
     });
   });
 
@@ -174,8 +174,8 @@ describe('AdminNotificationManagementRepository', () => {
       .all<{ send_at: string }>();
     expect(notification?.title).toBe('変更前');
     expect(schedules.results).toEqual([
-      { send_at: '2026-07-23T09:00:00+09:00' },
-      { send_at: '2026-07-23T09:00:00+09:00' },
+      { send_at: '2026-07-23T00:00:00.000Z' },
+      { send_at: '2026-07-23T00:00:00.000Z' },
     ]);
   });
 
@@ -213,7 +213,7 @@ describe('AdminNotificationManagementRepository', () => {
     const detail = await repository.findById(fixture.notificationId);
     expect(detail).toMatchObject({
       title: '変更後',
-      scheduled_at: '2026-07-23T10:00:00+09:00',
+      scheduled_at: '2026-07-23T01:00:00.000Z',
       recipient_count: 2,
       delivery_summary: { total: 2, draft: 2 },
     });
@@ -272,7 +272,7 @@ describe('AdminNotificationManagementRepository', () => {
     const detail = await repository.findById(fixture.notificationId);
     expect(detail).toMatchObject({
       related_event_id: null,
-      scheduled_at: '2026-07-23T10:00:00+09:00',
+      scheduled_at: '2026-07-23T01:00:00.000Z',
       recipient_count: 2,
       audience: { type: 'resolved_recipients', recipient_count: 2 },
       delivery_summary: { total: 2, draft: 2 },
@@ -322,7 +322,7 @@ describe('AdminNotificationManagementRepository', () => {
 
     const detail = await repository.findById(fixture.notificationId);
     expect(detail).toMatchObject({
-      scheduled_at: '2026-07-23T09:00:00+09:00',
+      scheduled_at: '2026-07-23T00:00:00.000Z',
       recipient_count: 2,
       delivery_summary: { total: 2, draft: 2 },
     });

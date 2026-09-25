@@ -3,7 +3,6 @@ import { createStudentRepository } from '../infrastructure/repositories/StudentR
 import { createStaffRepository } from '../infrastructure/repositories/StaffRepository';
 import { createTeacherRepository } from '../infrastructure/repositories/TeacherRepository';
 import { createEventRepository } from '../infrastructure/repositories/EventRepository';
-import { createEventScheduleRepository } from '../infrastructure/repositories/EventScheduleRepository';
 import { createClassRoomRepository } from '../infrastructure/repositories/ClassRoomRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
@@ -11,58 +10,51 @@ import { createAdminNotificationRepository } from '../infrastructure/repositorie
 import { createAdminNotificationManagementRepository } from '../infrastructure/repositories/AdminNotificationManagementRepository';
 import { createMobileNotificationRepository } from '../infrastructure/repositories/MobileNotificationRepository';
 import { createGatheringSpotRepository } from '../infrastructure/repositories/GatheringSpotRepository';
+import { createVenueRepository } from '../infrastructure/repositories/VenueRepository';
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringRepository } from '../infrastructure/repositories/GatheringRepository';
 import { createEventGatheringSettingsRepository } from '../infrastructure/repositories/EventGatheringSettingsRepository';
-import { createScheduleRepository } from '../infrastructure/repositories/ScheduleRepository';
 import { createNotificationDeliveryQueue } from '../infrastructure/queues/NotificationDeliveryQueue';
 import { createStudentService } from '../application/services/StudentService';
 import { createStaffService } from '../application/services/StaffService';
 import { createTeacherService } from '../application/services/TeacherService';
 import { createEventService } from '../application/services/EventService';
-import { createEventScheduleService } from '../application/services/EventScheduleService';
 import { createClassRoomService } from '../application/services/ClassRoomService';
 import { createMasterImportService } from '../application/services/MasterImportService';
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
-import { createNotificationScheduleService } from '../application/services/NotificationScheduleService';
 import { createAdminNotificationService } from '../application/services/AdminNotificationService';
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
 import { createGatheringSpotService } from '../application/services/GatheringSpotService';
+import { createVenueService } from '../application/services/VenueService';
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createGatheringService } from '../application/services/GatheringService';
 import { createEventGatheringSettingsService } from '../application/services/EventGatheringSettingsService';
-import { createScheduleService } from '../application/services/ScheduleService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createStaffController } from '../presentation/controllers/StaffController';
 import { createTeacherController } from '../presentation/controllers/TeacherController';
 import { createEventController } from '../presentation/controllers/EventController';
-import { createEventScheduleController } from '../presentation/controllers/EventScheduleController';
 import { createClassRoomController } from '../presentation/controllers/ClassRoomController';
 import { createMasterImportController } from '../presentation/controllers/MasterImportController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
 import { createNotificationController } from '../presentation/controllers/NotificationController';
 import { createAdminNotificationController } from '../presentation/controllers/AdminNotificationController';
 import { createAdminNotificationManagementController } from '../presentation/controllers/AdminNotificationManagementController';
-import { createNotificationScheduleController } from '../presentation/controllers/NotificationScheduleController';
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
+import { createVenueController } from '../presentation/controllers/VenueController';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createGatheringController } from '../presentation/controllers/GatheringController';
 import { createEventGatheringSettingsController } from '../presentation/controllers/EventGatheringSettingsController';
-import { createScheduleController } from '../presentation/controllers/ScheduleController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createUserStatusRepository } from '../infrastructure/repositories/UserStatusRepository';
 import { createUserStatusService } from '../application/services/UserStatusService';
 import { createUserStatusController } from '../presentation/controllers/UserStatusController';
-import { createUserSearchRepository } from '../infrastructure/repositories/UserSearchRepository';
 import { createAuthService } from '../application/services/authService';
 import { createAccountDeletionService } from '../application/services/AccountDeletionService';
 import { createAuthorizationService } from '../application/services/AuthorizationService';
-import { createUserSearchService } from '../application/services/UserSearchService';
-import { createUserSearchController } from '../presentation/controllers/UserSearchController';
 import type { Env } from '../lib/env';
 
 export function createDIContainer(env: Env) {
@@ -71,12 +63,10 @@ export function createDIContainer(env: Env) {
   // Repositories
   const userRepository = createUserRepository(db);
   const userStatusRepository = createUserStatusRepository(db);
-  const userSearchRepository = createUserSearchRepository(db);
   const studentRepository = createStudentRepository(db);
   const staffRepository = createStaffRepository(db);
   const teacherRepository = createTeacherRepository(db);
   const eventRepository = createEventRepository(db);
-  const eventScheduleRepository = createEventScheduleRepository(db);
   const classRoomRepository = createClassRoomRepository(db);
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
   const notificationScheduleRepository =
@@ -86,14 +76,12 @@ export function createDIContainer(env: Env) {
     createAdminNotificationManagementRepository(db);
   const mobileNotificationRepository = createMobileNotificationRepository(db);
   const gatheringSpotRepository = createGatheringSpotRepository(db);
-  const gatheringGroupMemberRepository = createGatheringGroupMemberRepository(
-    db,
-    userRepository
-  );
+  const venueRepository = createVenueRepository(db);
+  const gatheringGroupMemberRepository =
+    createGatheringGroupMemberRepository(db);
   const gatheringRepository = createGatheringRepository(db, eventRepository);
   const eventGatheringSettingsRepository =
     createEventGatheringSettingsRepository(db);
-  const scheduleRepository = createScheduleRepository(db);
   const notificationDeliveryQueue = createNotificationDeliveryQueue(
     env.NOTIFICATION_DELIVERY_QUEUE
   );
@@ -122,7 +110,6 @@ export function createDIContainer(env: Env) {
     notificationScheduleRepository,
     firebaseTokenRepository,
   });
-  const userSearchService = createUserSearchService(userSearchRepository);
   const studentService = createStudentService(
     studentRepository,
     classRoomRepository
@@ -134,13 +121,9 @@ export function createDIContainer(env: Env) {
   );
   const eventService = createEventService(
     eventRepository,
-    eventGatheringSettingsRepository
+    eventGatheringSettingsRepository,
+    venueRepository
   );
-  const eventScheduleService = createEventScheduleService({
-    eventRepository,
-    eventScheduleRepository,
-    notificationScheduleRepository,
-  });
   const classRoomService = createClassRoomService(
     classRoomRepository,
     teacherRepository
@@ -167,9 +150,6 @@ export function createDIContainer(env: Env) {
     notificationDeliveryQueue,
     fcmService,
   });
-  const notificationScheduleService = createNotificationScheduleService(
-    notificationScheduleRepository
-  );
   const adminNotificationService = createAdminNotificationService(
     adminNotificationRepository
   );
@@ -184,6 +164,7 @@ export function createDIContainer(env: Env) {
   const gatheringSpotService = createGatheringSpotService(
     gatheringSpotRepository
   );
+  const venueService = createVenueService(venueRepository);
   const gatheringGroupMemberService = createGatheringGroupMemberService(
     gatheringGroupMemberRepository
   );
@@ -193,19 +174,13 @@ export function createDIContainer(env: Env) {
     gatheringSpotRepository,
     eventGatheringSettingsRepository
   );
-  const scheduleService = createScheduleService(scheduleRepository);
 
   // Controllers
   const userStatusController = createUserStatusController(userStatusService);
   const studentController = createStudentController(studentService);
   const staffController = createStaffController(staffService);
   const teacherController = createTeacherController(teacherService);
-  const eventController = createEventController(
-    eventService,
-    eventScheduleService
-  );
-  const eventScheduleController =
-    createEventScheduleController(eventScheduleService);
+  const eventController = createEventController(eventService);
   const classRoomController = createClassRoomController(classRoomService);
   const masterImportController =
     createMasterImportController(masterImportService);
@@ -219,22 +194,18 @@ export function createDIContainer(env: Env) {
     createAdminNotificationManagementController(
       adminNotificationManagementService
     );
-  const userSearchController = createUserSearchController(userSearchService);
-  const notificationScheduleController = createNotificationScheduleController(
-    notificationScheduleService
-  );
   const mobileNotificationController = createMobileNotificationController(
     mobileNotificationService
   );
   const gatheringSpotController =
     createGatheringSpotController(gatheringSpotService);
+  const venueController = createVenueController(venueService);
   const gatheringGroupMemberController = createGatheringGroupMemberController(
     gatheringGroupMemberService
   );
   const gatheringController = createGatheringController(gatheringService);
   const eventGatheringSettingsController =
     createEventGatheringSettingsController(eventGatheringSettingsService);
-  const scheduleController = createScheduleController(scheduleService);
 
   return {
     // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
@@ -248,22 +219,19 @@ export function createDIContainer(env: Env) {
     staffController,
     teacherController,
     eventController,
-    eventScheduleController,
     classRoomController,
     masterImportController,
     firebaseTokenController,
     notificationController,
     adminNotificationController,
     adminNotificationManagementController,
-    userSearchController,
-    notificationScheduleController,
     mobileNotificationController,
     scheduledNotificationService,
     gatheringSpotController,
+    venueController,
     gatheringGroupMemberController,
     gatheringController,
     eventGatheringSettingsController,
-    scheduleController,
   };
 }
 

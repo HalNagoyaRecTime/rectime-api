@@ -54,8 +54,7 @@ export const errorResponseSchema = z
 export type ErrorResponseDTO = z.infer<typeof errorResponseSchema>;
 
 type ValidationHookResult =
-  | { success: true }
-  | { success: false; error: ZodError };
+  { success: true } | { success: false; error: ZodError };
 
 /**
  * OpenAPI側のZodスキーマがリクエストを弾いたときの400応答。
@@ -122,6 +121,12 @@ export const isoDateTimeSchema = z
   .string()
   .datetime({ offset: true })
   .openapi({ example: '2026-07-16T09:00:00.000Z' });
+
+/** UTCのISO 8601形式（Z・ミリ秒3桁）。 */
+export const utcDateTimeSchema = z
+  .string()
+  .datetime({ offset: false, precision: 3 })
+  .openapi('UtcDateTime');
 
 /** JSTのHHMM形式。 */
 export const hhmmSchema = z

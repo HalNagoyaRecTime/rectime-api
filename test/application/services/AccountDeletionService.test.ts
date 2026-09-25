@@ -63,21 +63,13 @@ function buildDeps() {
   };
   const gatheringGroupMemberRepository: IGatheringGroupMemberRepository = {
     existsGathering: vi.fn(),
-    existsUser: vi.fn(),
     findByGatheringId: vi.fn(),
-    create: vi.fn(),
-    remove: vi.fn(),
+    findMissingUserIds: vi.fn(),
+    applyMemberDiff: vi.fn(),
     deleteByUserId: vi.fn(),
   };
   const notificationScheduleRepository: INotificationScheduleRepository = {
-    create: vi.fn(),
-    findAll: vi.fn(),
-    findById: vi.fn(),
-    deleteDraft: vi.fn(),
     findDraftsByEvent: vi.fn(),
-    existsFirebaseToken: vi.fn(),
-    existsEvent: vi.fn(),
-    existsNotification: vi.fn(),
     findDeliveryCandidateIds: vi.fn(),
     claimForDelivery: vi.fn(),
     markSent: vi.fn(),

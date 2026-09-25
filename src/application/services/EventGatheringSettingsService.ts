@@ -12,6 +12,7 @@ import type {
   RoundSettingInputDTO,
 } from '../dto/EventGatheringSettingsDTO';
 import { buildEventGatheringSettings } from './eventGatheringRounds';
+import { isForeignKeyError } from './foreignKeyError';
 import type {
   IEventGatheringSettingsService,
   SaveEventGatheringSettingsCommand,
@@ -43,19 +44,6 @@ function isUnchanged(
     current.gathering_time === requested.gathering_time &&
     current.gathering_spot_id === requested.gathering_spot_id
   );
-}
-
-// D1のエラーはDrizzleに包まれて cause に元のエラーが入ることがあるため、
-// 連鎖をたどって文面を集める。
-function isForeignKeyError(error: unknown): boolean {
-  const visited = new Set<Error>();
-  let current = error;
-  while (current instanceof Error && !visited.has(current)) {
-    if (current.message.includes('FOREIGN KEY constraint failed')) return true;
-    visited.add(current);
-    current = current.cause;
-  }
-  return false;
 }
 
 export function createEventGatheringSettingsService(

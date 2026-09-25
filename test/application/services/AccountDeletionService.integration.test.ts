@@ -35,12 +35,9 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
   function buildFailingGatheringGroupMemberRepository(): IGatheringGroupMemberRepository {
     return {
       existsGathering: async () => false,
-      existsUser: async () => false,
       findByGatheringId: async () => [],
-      create: async () => {
-        throw new Error('NOT_IMPLEMENTED_IN_TEST_STUB');
-      },
-      remove: async () => false,
+      findMissingUserIds: async () => [],
+      applyMemberDiff: async () => [],
       deleteByUserId: async () => {
         throw new Error('SIMULATED_FAILURE');
       },
@@ -54,10 +51,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       studentRepository: createStudentRepository(db),
       staffRepository: createStaffRepository(db),
       teacherRepository: createTeacherRepository(db),
-      gatheringGroupMemberRepository: createGatheringGroupMemberRepository(
-        db,
-        createUserRepository(db)
-      ),
+      gatheringGroupMemberRepository: createGatheringGroupMemberRepository(db),
       notificationScheduleRepository: createNotificationScheduleRepository(db),
       firebaseTokenRepository: createFirebaseTokenRepository(db),
     });
@@ -101,7 +95,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .run();
 
     const event = await workerEnv.DB.prepare(
-      "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('統合削除競技', '体育館', '0900', '1000') RETURNING event_id"
+      "INSERT INTO events (event_name, start_time, end_time) VALUES ('統合削除競技', '0900', '1000') RETURNING event_id"
     ).first<{ event_id: number }>();
     const spot = await workerEnv.DB.prepare(
       "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('統合削除集合場所') RETURNING gathering_spot_id"
@@ -123,10 +117,10 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(user!.user_id)
       .first<{ firebase_token_id: number }>();
     const notification = await workerEnv.DB.prepare(
-      "INSERT INTO notifications (notification_type, title, body) VALUES ('manual', '件名', '本文') RETURNING notification_id"
+      "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('manual', '件名', '本文', '件名', '本文') RETURNING notification_id"
     ).first<{ notification_id: number }>();
     const receivedSchedule = await workerEnv.DB.prepare(
-      "INSERT INTO notification_schedules (created_user_id, event_id, notification_id, firebase_token_id, send_at) VALUES (NULL, ?, ?, ?, '2026-07-23T09:00:00.000Z') RETURNING notification_schedule_id"
+      "INSERT INTO notification_schedules (created_user_id, event_id, notification_id, firebase_token_id, send_status, send_at) VALUES (NULL, ?, ?, ?, 'draft', '2026-07-23T09:00:00.000Z') RETURNING notification_schedule_id"
     )
       .bind(
         event!.event_id,
@@ -146,7 +140,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(otherUser!.user_id)
       .first<{ firebase_token_id: number }>();
     const createdSchedule = await workerEnv.DB.prepare(
-      "INSERT INTO notification_schedules (created_user_id, event_id, notification_id, firebase_token_id, send_at) VALUES (?, ?, ?, ?, '2026-07-23T09:00:00.000Z') RETURNING notification_schedule_id"
+      "INSERT INTO notification_schedules (created_user_id, event_id, notification_id, firebase_token_id, send_status, send_at) VALUES (?, ?, ?, ?, 'draft', '2026-07-23T09:00:00.000Z') RETURNING notification_schedule_id"
     )
       .bind(
         user!.user_id,

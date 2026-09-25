@@ -7,6 +7,7 @@ import { createDIContainer } from './di/container';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
 import { isDocsEnabled, type Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
+import { getAllowedOriginRules, isAllowedOrigin } from './lib/allowedOrigins';
 import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
 import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
 import {
@@ -48,9 +49,6 @@ import {
   eventDetailRoute,
   eventGatheringListRoute,
   eventListRoute,
-  eventNotificationSummaryRoute,
-  eventPatchRoute,
-  eventScheduleUpdateRoute,
   eventUpdateRoute,
 } from './presentation/openapi/events';
 import { eventGatheringSettingsUpdateRoute } from './presentation/openapi/eventGatheringSettings';
@@ -68,40 +66,38 @@ import {
 } from './presentation/openapi/masterImports';
 import {
   gatheringListRoute,
-  gatheringMemberCreateRoute,
-  gatheringMemberDeleteRoute,
   gatheringMemberListRoute,
+  gatheringMemberReplaceRoute,
   gatheringSpotCreateRoute,
+  gatheringSpotDeleteRoute,
   gatheringSpotListRoute,
   gatheringSpotUpdateRoute,
 } from './presentation/openapi/gatherings';
 import {
-  adminNotificationCreateRoute,
-  adminNotificationDeleteRoute,
-  adminNotificationDetailRoute,
-  adminNotificationListRoute,
-  adminNotificationUpdateRoute,
-  firebaseTokenCreateRoute,
+  venueCreateRoute,
+  venueDeleteRoute,
+  venueListRoute,
+  venueUpdateRoute,
+} from './presentation/openapi/venues';
+import {
+  legacyAdminNotificationCreateRoute,
+  legacyAdminNotificationDeleteRoute,
+  legacyAdminNotificationDetailRoute,
+  legacyAdminNotificationListRoute,
+  legacyAdminNotificationUpdateRoute,
+} from './presentation/openapi/notification/legacy/admin';
+import { firebaseTokenCreateRoute } from './presentation/openapi/notification/legacy/firebaseTokens';
+import {
   myNotificationDetailRoute,
   myNotificationListRoute,
-  notificationScheduleCreateRoute,
-  notificationScheduleDeleteRoute,
-  notificationScheduleDetailRoute,
-  notificationScheduleListRoute,
-  scheduleUpdateRoute,
-  testNotificationRoute,
-} from './presentation/openapi/notifications';
-import {
-  adminUserSearchRoute,
-  adminUserStatusUpdateRoute,
-} from './presentation/openapi/adminUsers';
-
+} from './presentation/openapi/notification/mobileNotifications';
+import { testNotificationRoute } from './presentation/openapi/notification/testNotification';
+import { adminUserStatusUpdateRoute } from './presentation/openapi/adminUsers';
 const app = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationDefaultHook,
 });
 
 let corsWarnLogged = false;
-const allowedOriginRulesCache = new Map<string, AllowedOriginRule[]>();
 let tenantWarnLogged = false;
 let eventDateWarnLogged = false;
 
@@ -165,13 +161,10 @@ app.openapi(apiOverviewRoute, c => {
         gatheringSpots: '/api/v1/gathering-spots',
         gatherings: '/api/v1/gatherings',
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
-        schedules: '/api/v1/notification/schedules',
         firebaseTokens: '/api/v1/firebase-tokens',
         adminNotifications: '/api/v1/admin/notifications',
-        adminUsers: '/api/v1/admin/users',
         myNotifications: '/api/v1/me/notifications',
         testNotification: '/api/v1/notifications/test',
-        notificationSchedules: '/api/v1/notification-schedules',
         myEvents: '/api/v1/me/events',
       },
       // 非公開の環境で存在しないエンドポイントを案内しないよう、
@@ -285,19 +278,8 @@ apiV1.openapi(staffOnly(eventCreateRoute), c => {
 apiV1.openapi(staffOnly(eventUpdateRoute), c => {
   return c.get('container').eventController.updateEvent(c);
 });
-apiV1.openapi(staffOnly(eventPatchRoute), c => {
-  return c.get('container').eventController.patchEvent(c);
-});
 apiV1.openapi(staffOnly(eventDeleteRoute), c => {
   return c.get('container').eventController.deleteEvent(c);
-});
-apiV1.openapi(staffOnly(eventScheduleUpdateRoute), c => {
-  return c.get('container').eventScheduleController.updateEventSchedule(c);
-});
-apiV1.openapi(staffOnly(eventNotificationSummaryRoute), c => {
-  return c
-    .get('container')
-    .eventScheduleController.getEventNotificationSummary(c);
 });
 
 // Classroom routes
@@ -338,14 +320,23 @@ apiV1.openapi(staffOnly(gatheringSpotCreateRoute), c => {
 apiV1.openapi(staffOnly(gatheringSpotUpdateRoute), c => {
   return c.get('container').gatheringSpotController.updateGatheringSpot(c);
 });
-apiV1.delete(
-  '/gathering-spots/:gatheringSpotId',
-  requireAuth,
-  requireStaff,
-  c => {
-    return c.get('container').gatheringSpotController.deleteGatheringSpot(c);
-  }
-);
+apiV1.openapi(staffOnly(gatheringSpotDeleteRoute), c => {
+  return c.get('container').gatheringSpotController.deleteGatheringSpot(c);
+});
+
+// Venue routes
+apiV1.openapi(staffOnly(venueListRoute), c => {
+  return c.get('container').venueController.getAllVenues(c);
+});
+apiV1.openapi(staffOnly(venueCreateRoute), c => {
+  return c.get('container').venueController.createVenue(c);
+});
+apiV1.openapi(staffOnly(venueUpdateRoute), c => {
+  return c.get('container').venueController.updateVenue(c);
+});
+apiV1.openapi(staffOnly(venueDeleteRoute), c => {
+  return c.get('container').venueController.deleteVenue(c);
+});
 
 // Gathering member routes
 //
@@ -357,15 +348,10 @@ apiV1.openapi(authed(gatheringMemberListRoute), c => {
     .get('container')
     .gatheringGroupMemberController.getGatheringMembers(c);
 });
-apiV1.openapi(staffOnly(gatheringMemberCreateRoute), c => {
+apiV1.openapi(staffOnly(gatheringMemberReplaceRoute), c => {
   return c
     .get('container')
-    .gatheringGroupMemberController.addGatheringMember(c);
-});
-apiV1.openapi(staffOnly(gatheringMemberDeleteRoute), c => {
-  return c
-    .get('container')
-    .gatheringGroupMemberController.removeGatheringMember(c);
+    .gatheringGroupMemberController.replaceGatheringMembers(c);
 });
 
 // Gathering routes
@@ -378,37 +364,28 @@ apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
 });
 
-// Notification schedule routes
-apiV1.openapi(staffOnly(scheduleUpdateRoute), c => {
-  return c.get('container').scheduleController.updateSchedule(c);
-});
-
-apiV1.openapi(staffOnly(adminUserSearchRoute), c => {
-  return c.get('container').userSearchController.searchUsers(c);
-});
-
 // Notification routes
-apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
+apiV1.openapi(staffOnly(legacyAdminNotificationCreateRoute), c => {
   return c
     .get('container')
     .adminNotificationController.createManualNotification(c);
 });
-apiV1.openapi(staffOnly(adminNotificationListRoute), c => {
+apiV1.openapi(staffOnly(legacyAdminNotificationListRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.getAdminNotifications(c);
 });
-apiV1.openapi(staffOnly(adminNotificationDetailRoute), c => {
+apiV1.openapi(staffOnly(legacyAdminNotificationDetailRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.getAdminNotificationById(c);
 });
-apiV1.openapi(staffOnly(adminNotificationUpdateRoute), c => {
+apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.updateAdminNotification(c);
 });
-apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
+apiV1.openapi(staffOnly(legacyAdminNotificationDeleteRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.deleteAdminNotification(c);
@@ -419,27 +396,6 @@ apiV1.openapi(authed(myNotificationListRoute), c => {
 });
 apiV1.openapi(authed(myNotificationDetailRoute), c => {
   return c.get('container').mobileNotificationController.getNotificationById(c);
-});
-
-apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
-  return c
-    .get('container')
-    .notificationScheduleController.getAllNotificationSchedules(c);
-});
-apiV1.openapi(staffOnly(notificationScheduleCreateRoute), c => {
-  return c
-    .get('container')
-    .notificationScheduleController.createNotificationSchedule(c);
-});
-apiV1.openapi(staffOnly(notificationScheduleDetailRoute), c => {
-  return c
-    .get('container')
-    .notificationScheduleController.getNotificationScheduleById(c);
-});
-apiV1.openapi(staffOnly(notificationScheduleDeleteRoute), c => {
-  return c
-    .get('container')
-    .notificationScheduleController.deleteNotificationSchedule(c);
 });
 
 apiV1.openapi(staffOnly(testNotificationRoute), c => {
@@ -537,63 +493,3 @@ export default {
     );
   },
 };
-
-type AllowedOriginRule =
-  | {
-      type: 'exact';
-      origin: string;
-    }
-  | {
-      type: 'pattern';
-      pattern: RegExp;
-    };
-
-function getAllowedOriginRules(allowedOrigins: string): AllowedOriginRule[] {
-  const cachedRules = allowedOriginRulesCache.get(allowedOrigins);
-  if (cachedRules) {
-    return cachedRules;
-  }
-
-  const rules = allowedOrigins
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean)
-    .map(createAllowedOriginRule);
-
-  allowedOriginRulesCache.set(allowedOrigins, rules);
-  return rules;
-}
-
-function createAllowedOriginRule(allowedOrigin: string): AllowedOriginRule {
-  if (!allowedOrigin.includes('*')) {
-    return {
-      type: 'exact',
-      origin: allowedOrigin,
-    };
-  }
-
-  const allowedOriginPattern = escapeRegExp(allowedOrigin).replace(
-    /\\\*/g,
-    '[^.]+'
-  );
-  return {
-    type: 'pattern',
-    pattern: new RegExp(`^${allowedOriginPattern}$`),
-  };
-}
-
-function isAllowedOrigin(
-  origin: string,
-  allowedOriginRules: AllowedOriginRule[]
-): boolean {
-  return allowedOriginRules.some(rule => {
-    if (rule.type === 'exact') {
-      return origin === rule.origin;
-    }
-    return rule.pattern.test(origin);
-  });
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
