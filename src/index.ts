@@ -369,6 +369,18 @@ apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
 });
 
 // Notification routes
+// 通知IDの動的経路と競合する固定経路を先に登録する。
+apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleQueryController.getNotificationSchedules(c);
+});
+apiV1.openapi(staffOnly(notificationScheduleDetailRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleQueryController.getNotificationScheduleById(c);
+});
+
 apiV1.openapi(staffOnly(legacyAdminNotificationCreateRoute), c => {
   return c
     .get('container')
@@ -393,17 +405,6 @@ apiV1.openapi(staffOnly(legacyAdminNotificationDeleteRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.deleteAdminNotification(c);
-});
-
-apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
-  return c
-    .get('container')
-    .notificationScheduleQueryController.getNotificationSchedules(c);
-});
-apiV1.openapi(staffOnly(notificationScheduleDetailRoute), c => {
-  return c
-    .get('container')
-    .notificationScheduleQueryController.getNotificationScheduleById(c);
 });
 
 apiV1.openapi(authed(myNotificationListRoute), c => {

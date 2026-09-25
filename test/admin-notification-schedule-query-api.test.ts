@@ -65,7 +65,7 @@ describe('管理用通知スケジュール照会APIの認可と入力検証', (
     expect(response.status).toBe(401);
   });
 
-  it('staff以外は403となり、staffはControllerの404応答まで到達する', async () => {
+  it('非staffのSchedule一覧を403とし、staffのScheduleと数値Notification IDを処理する', async () => {
     const userId = await insertUser('通知schedule照会一般ユーザー');
     const staffId = await insertUser('通知schedule照会staff', true);
 
@@ -75,6 +75,13 @@ describe('管理用通知スケジュール照会APIの認可と入力検証', (
     );
     expect(forbidden.status).toBe(403);
 
+    const list = await requestAs(
+      staffId,
+      '/api/v1/admin/notifications/schedules'
+    );
+    expect(list.status).toBe(200);
+    expect(await list.json()).toEqual({ items: expect.any(Array) });
+
     const missing = await requestAs(
       staffId,
       '/api/v1/admin/notifications/schedules/999999'
@@ -82,6 +89,15 @@ describe('管理用通知スケジュール照会APIの認可と入力検証', (
     expect(missing.status).toBe(404);
     expect(await missing.json()).toMatchObject({
       error: { code: 'NOTIFICATION_SCHEDULE_NOT_FOUND' },
+    });
+
+    const missingNotification = await requestAs(
+      staffId,
+      '/api/v1/admin/notifications/999999'
+    );
+    expect(missingNotification.status).toBe(404);
+    expect(await missingNotification.json()).toMatchObject({
+      error: { code: 'ADMIN_NOTIFICATION_NOT_FOUND' },
     });
   });
 
