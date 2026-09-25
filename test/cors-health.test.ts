@@ -58,6 +58,8 @@ describe('OpenAPI documentation', () => {
     expect(Object.keys(document.paths).sort()).toEqual([
       '/',
       '/api/v1/admin/notifications',
+      '/api/v1/admin/notifications/push-deliveries/{notificationPushDeliveryId}',
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}/results',
       '/api/v1/admin/notifications/{notificationId}',
       '/api/v1/admin/users/{userId}',
       '/api/v1/admin/users/{userId}/staff',
@@ -161,7 +163,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(50);
+    expect(documentedOperations).toHaveLength(52);
     expect(document.components.schemas).not.toHaveProperty(
       'AdminUserSearchItem'
     );
