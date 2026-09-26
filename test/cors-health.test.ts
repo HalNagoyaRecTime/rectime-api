@@ -49,7 +49,10 @@ describe('OpenAPI documentation', () => {
     expect(res.status).toBe(200);
     const document = (await res.json()) as {
       components: {
-        schemas: Record<string, { properties?: Record<string, unknown> }>;
+        schemas: Record<
+          string,
+          { description?: string; properties?: Record<string, unknown> }
+        >;
         securitySchemes?: Record<string, unknown>;
       };
       paths: Record<string, Record<string, unknown>>;
@@ -91,6 +94,48 @@ describe('OpenAPI documentation', () => {
       type: 'string',
       nullable: true,
     });
+    expect(document.components.schemas.EventWriteRequest.description).toContain(
+      'start_timeはend_timeより前の時刻を指定する'
+    );
+    expect(
+      document.components.schemas.EventUpdateRequest.description
+    ).toContain('start_timeはend_timeより前の時刻を指定する');
+    const venueListParameters = (
+      document.paths['/api/v1/venues'].get as {
+        parameters?: Array<{
+          name: string;
+          in: string;
+          schema?: { minimum?: number; maximum?: number; default?: unknown };
+        }>;
+      }
+    ).parameters;
+    expect(venueListParameters?.map(param => param.name)).toEqual([
+      'limit',
+      'offset',
+      'name',
+      'sortBy',
+      'sortOrder',
+    ]);
+    expect(
+      venueListParameters?.find(param => param.name === 'limit')?.schema
+    ).toMatchObject({
+      minimum: 1,
+      maximum: 100,
+      default: 20,
+    });
+
+    const gatheringSpotListParameters = (
+      document.paths['/api/v1/gathering-spots'].get as {
+        parameters?: Array<{ name: string; in: string }>;
+      }
+    ).parameters;
+    expect(gatheringSpotListParameters?.map(param => param.name)).toEqual([
+      'limit',
+      'offset',
+      'name',
+      'sortBy',
+      'sortOrder',
+    ]);
 
     const teacherListParameters = (
       document.paths['/api/v1/teachers'].get as {
