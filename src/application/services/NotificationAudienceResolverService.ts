@@ -19,6 +19,7 @@ export function createNotificationAudienceResolverService(
       );
       const result: NotificationAudienceResolverResult = {
         completed_schedules: [],
+        retryable_schedule_ids: [],
         failed_schedule_ids: [],
       };
 
@@ -50,17 +51,31 @@ export function createNotificationAudienceResolverService(
         } catch (error) {
           if (error instanceof UnresolvableNotificationAudienceError) {
             try {
-              await repository.failSchedule(
-                scheduleId,
-                error.message,
-                timestamp
-              );
+              if (
+                await repository.failSchedule(
+                  scheduleId,
+                  error.message,
+                  timestamp
+                )
+              ) {
+                result.failed_schedule_ids.push(scheduleId);
+                continue;
+              }
             } catch {
-              // DB更新に失敗した場合はresolvingに残り、次回Cronで再試行する。
+              // DB更新に失敗した場合は次回Cronで再試行する。
+              result.retryable_schedule_ids.push(scheduleId);
+              continue;
             }
           }
-          // 一時障害はresolvingに残し、次回Cronで未解決Audienceから再開する。
-          result.failed_schedule_ids.push(scheduleId);
+
+          try {
+            if (await repository.isScheduleRetryable(scheduleId)) {
+              result.retryable_schedule_ids.push(scheduleId);
+            }
+          } catch {
+            // 状態を確認できない場合は次回Cronで再試行する。
+            result.retryable_schedule_ids.push(scheduleId);
+          }
         }
       }
 
