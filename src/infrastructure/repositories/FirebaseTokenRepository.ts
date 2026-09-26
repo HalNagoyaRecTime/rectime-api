@@ -1,5 +1,5 @@
 import { D1Database } from '@cloudflare/workers-types';
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import {
   FirebaseTokenEntity,
@@ -171,9 +171,10 @@ export function createFirebaseTokenRepository(
     },
 
     async deactivateByUserId(userId: number): Promise<void> {
+      const now = notificationUtcNow();
       await orm
         .update(firebase_tokens)
-        .set({ isFirebaseActive: 0, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .set({ isFirebaseActive: 0, updatedAt: now })
         .where(eq(firebase_tokens.userId, userId))
         .run();
     },

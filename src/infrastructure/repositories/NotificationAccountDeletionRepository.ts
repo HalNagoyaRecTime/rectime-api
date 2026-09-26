@@ -1,7 +1,8 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { eq, or, sql } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { INotificationAccountDeletionRepository } from '../../domain/interfaces/repositories/INotificationAccountDeletionRepository';
+import { notificationUtcNow } from '../database/notificationDateTime';
 import * as schema from '../database/schema';
 import {
   notification_recipients,
@@ -23,11 +24,12 @@ export function createNotificationAccountDeletionRepository(
     },
 
     async anonymizeV2ActorReferences(userId) {
+      const now = notificationUtcNow();
       await orm
         .update(notifications)
         .set({
           createdByUserId: null,
-          updatedAt: sql`CURRENT_TIMESTAMP`,
+          updatedAt: now,
         })
         .where(eq(notifications.createdByUserId, userId))
         .run();
@@ -37,7 +39,7 @@ export function createNotificationAccountDeletionRepository(
         .set({
           scheduledByUserId: null,
           stoppedByUserId: null,
-          updatedAt: sql`CURRENT_TIMESTAMP`,
+          updatedAt: now,
         })
         .where(
           or(
