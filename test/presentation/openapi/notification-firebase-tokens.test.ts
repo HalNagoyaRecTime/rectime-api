@@ -19,7 +19,7 @@ describe('Firebase tokenのResponse schema', () => {
         .sort((a, b) => a - b)
     ).toEqual([200, 400, 401, 500]);
   });
-  it('POST/DELETEともisActiveを持たない', () => {
+  it('POST契約はlegacy isActiveを持たない', () => {
     expect(
       firebaseTokenRegistrationRequestSchema.safeParse({
         fcmToken: 'token',

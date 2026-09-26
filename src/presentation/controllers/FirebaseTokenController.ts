@@ -7,10 +7,7 @@ import type { AuthVariables } from '../middleware/requireAuth';
 import { CommonErrors } from '../errors/commonErrors';
 import { errorResponse } from '../errors/errorResponse';
 import { NotificationErrors } from '../errors/notificationErrors';
-import {
-  firebaseTokenIdParams,
-  firebaseTokenRegistrationRequestSchema,
-} from '../openapi/notification/firebaseTokens';
+import { firebaseTokenRegistrationRequestSchema } from '../openapi/notification/firebaseTokens';
 
 type FirebaseTokenContext = Context<{
   Bindings: Env;
@@ -56,38 +53,5 @@ export function createFirebaseTokenController(
     }
   };
 
-  const deleteFirebaseToken = async (c: FirebaseTokenContext) => {
-    try {
-      const userId = c.get('authenticatedUserId');
-      if (!userId) return errorResponse(c, CommonErrors.UNAUTHORIZED);
-
-      const parsedParams = firebaseTokenIdParams.safeParse({
-        firebaseTokenId: c.req.param('firebaseTokenId'),
-      });
-      if (!parsedParams.success) {
-        return errorResponse(
-          c,
-          CommonErrors.VALIDATION_ERROR,
-          parsedParams.error.flatten()
-        );
-      }
-
-      const result = await firebaseTokenService.deleteFirebaseToken(
-        Number(parsedParams.data.firebaseTokenId),
-        userId
-      );
-      if (result === 'deleted') return c.body(null, 204);
-      if (result === 'forbidden') {
-        return errorResponse(c, NotificationErrors.FIREBASE_TOKEN_FORBIDDEN);
-      }
-      return errorResponse(c, NotificationErrors.FIREBASE_TOKEN_NOT_FOUND);
-    } catch {
-      return errorResponse(
-        c,
-        NotificationErrors.FIREBASE_TOKEN_DELETION_FAILED
-      );
-    }
-  };
-
-  return { registerFirebaseToken, deleteFirebaseToken };
+  return { registerFirebaseToken };
 }
