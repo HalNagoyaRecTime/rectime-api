@@ -58,9 +58,10 @@ describe('ScheduledNotificationService', () => {
     const firebaseTokenRepository: IFirebaseTokenRepository = {
       register: vi.fn(),
       findActiveTokens: vi.fn(),
-      deactivate: vi.fn(),
+      deleteById: vi.fn(),
       deactivateByUserId: vi.fn(),
-      findByUserId: vi.fn(),
+      findAllByUserId: vi.fn().mockResolvedValue([]),
+      deleteByUserIdAndFcmToken: vi.fn().mockResolvedValue(undefined),
       deleteByUserId: vi.fn(),
     };
     const notificationDeliveryQueue: INotificationDeliveryQueue = {
@@ -250,7 +251,7 @@ describe('ScheduledNotificationService', () => {
     const result = await service.sendQueuedNotifications([1, 2, 3]);
 
     expect(fcmService.sendNotificationToToken).toHaveBeenCalledTimes(3);
-    expect(firebaseTokenRepository.deactivate).toHaveBeenCalledWith(10);
+    expect(firebaseTokenRepository.deleteById).toHaveBeenCalledWith(10);
     expect(notificationScheduleRepository.markFailed).toHaveBeenCalledWith(
       2,
       'UNREGISTERED'

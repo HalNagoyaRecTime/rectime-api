@@ -4,20 +4,21 @@ import type { RegisterFirebaseTokenResult } from '../../../src/domain/entities/F
 import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
 
 describe('FirebaseTokenService', () => {
-  it('認証済みuserIdを含む入力をRepositoryへ渡す', async () => {
+  it('FirebaseTokenDTOへ変換し、認証済みuserIdをRepositoryへ渡す', async () => {
     const result: RegisterFirebaseTokenResult = {
       firebase_token_id: 1,
       user_id: 7,
       platform: 'android',
       is_firebase_active: true,
-      last_seen_at: '2026-07-24 00:00:00',
+      last_seen_at: '2026-09-24 01:02:03',
     };
     const repository: IFirebaseTokenRepository = {
       register: vi.fn().mockResolvedValue(result),
       findActiveTokens: vi.fn(),
-      deactivate: vi.fn(),
+      deleteById: vi.fn(),
       deactivateByUserId: vi.fn(),
-      findByUserId: vi.fn(),
+      findAllByUserId: vi.fn(),
+      deleteByUserIdAndFcmToken: vi.fn().mockResolvedValue(undefined),
       deleteByUserId: vi.fn(),
     };
     const service = createFirebaseTokenService(repository);
@@ -27,7 +28,12 @@ describe('FirebaseTokenService', () => {
       fcmToken: 'token-a',
     };
 
-    await expect(service.registerFirebaseToken(input)).resolves.toEqual(result);
+    await expect(service.registerFirebaseToken(input)).resolves.toEqual({
+      firebaseTokenId: 1,
+      userId: 7,
+      platform: 'android',
+      lastSeenAt: '2026-09-24T01:02:03.000Z',
+    });
     expect(repository.register).toHaveBeenCalledWith(input);
   });
 });

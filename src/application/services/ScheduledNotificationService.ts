@@ -103,8 +103,8 @@ export function createScheduledNotificationService(deps: {
               },
             });
           } catch (error) {
-            if (shouldDeactivateToken(error)) {
-              await firebaseTokenRepository.deactivate(
+            if (shouldDeleteToken(error)) {
+              await firebaseTokenRepository.deleteById(
                 schedule.firebase_token_id
               );
             }
@@ -171,6 +171,6 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-function shouldDeactivateToken(error: unknown): boolean {
+function shouldDeleteToken(error: unknown): boolean {
   return isPermanentFcmTokenError(error);
 }

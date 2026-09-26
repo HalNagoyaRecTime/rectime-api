@@ -11,7 +11,6 @@ import {
   adminNotificationDetailRoute,
   adminNotificationListRoute,
   adminNotificationPatchRoute,
-  firebaseTokenDeleteRoute,
   firebaseTokenRegistrationRoute,
   notificationAudienceCountRoute,
   notificationAudienceNotFoundErrorResponseSchema,
@@ -48,7 +47,6 @@ describe('通知endpointの契約', () => {
       'push-deliveries'
     );
     expect(firebaseTokenRegistrationRoute.method).toBe('post');
-    expect(firebaseTokenDeleteRoute.method).toBe('delete');
   });
 
   it('Audience Countは対象不存在の404と固有Error schemaを定義する', () => {

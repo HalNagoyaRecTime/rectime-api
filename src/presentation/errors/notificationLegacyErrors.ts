@@ -136,16 +136,6 @@ export const NotificationLegacyErrors = {
     code: 'INVALID_FIREBASE_TOKEN_REQUEST',
     message: 'Firebaseトークンの入力内容が正しくありません',
   },
-  FIREBASE_TOKEN_REGISTRATION_CONFLICT: {
-    status: 409,
-    code: 'FIREBASE_TOKEN_REGISTRATION_CONFLICT',
-    message: '別のリクエストでFirebaseトークンを登録中です',
-  },
-  FIREBASE_TOKEN_REGISTRATION_FAILED: {
-    status: 500,
-    code: 'FIREBASE_TOKEN_REGISTRATION_FAILED',
-    message: 'Firebaseトークンの登録に失敗しました',
-  },
   INVALID_SCHEDULE_DATA: {
     status: 400,
     code: 'INVALID_SCHEDULE_DATA',

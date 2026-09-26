@@ -91,7 +91,9 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
   };
 }
 
-function createMockKv(): KVNamespace {
+function createMockKv(
+  beforeDelete?: (key: string) => void | Promise<void>
+): KVNamespace {
   const store = new Map<string, string>();
   return {
     put: async (key: string, value: string) => {
@@ -99,6 +101,7 @@ function createMockKv(): KVNamespace {
     },
     get: async (key: string) => store.get(key) ?? null,
     delete: async (key: string) => {
+      await beforeDelete?.(key);
       store.delete(key);
     },
   } as unknown as KVNamespace;
@@ -120,6 +123,59 @@ async function insertUser(isLiveActive = 1): Promise<string> {
     .bind('田中太郎', isLiveActive)
     .first<{ user_id: number }>();
   return String(row!.user_id);
+}
+
+async function buildLogoutToken(
+  userId: string,
+  clientType: 'web' | 'mobile' = 'mobile'
+): Promise<string> {
+  return signAccessToken(
+    {
+      sub: userId,
+      oid: 'oid-logout',
+      email: 'logout@example.com',
+      display_name: 'Logout User',
+      client_type: clientType,
+    },
+    JWT_SECRET,
+    3600
+  );
+}
+
+async function postLogout(
+  env: Env,
+  userId: string,
+  body: Record<string, unknown>,
+  clientType: 'web' | 'mobile' = 'mobile'
+) {
+  const token = await buildLogoutToken(userId, clientType);
+  return buildApp().request(
+    '/logout',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Client-Type': clientType,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    },
+    env
+  );
+}
+
+function refreshEntry(userId: string): MobileRefreshEntry {
+  return {
+    user_id: userId,
+    oid: 'oid-logout',
+    tid: 'tid-logout',
+    sub: userId,
+    email: 'logout@example.com',
+    display_name: 'Logout User',
+    client_type: 'mobile',
+    ms_refresh_token: 'ms-refresh-logout',
+    created_at: new Date().toISOString(),
+  };
 }
 
 async function buildWebToken(): Promise<string> {
@@ -478,6 +534,108 @@ describe('GET /auth/me/photo', () => {
 });
 
 describe('POST /auth/logout', () => {
+  it('mobileは要求元ユーザーの指定FCM Tokenだけを削除し、refresh sessionも掃除する', async () => {
+    const userId = await insertUser();
+    const otherUserId = await insertUser();
+    const env = buildEnv();
+    for (const [ownerId, tokenValue] of [
+      [userId, 'logout-current-token'],
+      [userId, 'logout-other-device-token'],
+      [otherUserId, 'logout-other-user-token'],
+    ] as const) {
+      await workerEnv.DB.prepare(
+        'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, ?)'
+      )
+        .bind(Number(ownerId), tokenValue)
+        .run();
+    }
+    const entry = refreshEntry(userId);
+    await env.AUTH_KV.put(
+      'mobile_refresh:logout-refresh',
+      JSON.stringify(entry)
+    );
+    await env.AUTH_KV.put(`mobile_refresh_by_user:${userId}`, 'logout-refresh');
+
+    const res = await postLogout(env, userId, {
+      refresh_token_id: 'logout-refresh',
+      fcm_token: 'logout-current-token',
+    });
+
+    expect(res.status).toBe(200);
+    const rows = await workerEnv.DB.prepare(
+      'SELECT user_id, fcm_token FROM firebase_tokens ORDER BY user_id, fcm_token'
+    ).all<{ user_id: number; fcm_token: string }>();
+    expect(rows.results).toEqual([
+      { user_id: Number(userId), fcm_token: 'logout-other-device-token' },
+      { user_id: Number(otherUserId), fcm_token: 'logout-other-user-token' },
+    ]);
+    expect(await env.AUTH_KV.get('mobile_refresh:logout-refresh')).toBeNull();
+    expect(
+      await env.AUTH_KV.get(`mobile_refresh_by_user:${userId}`)
+    ).toBeNull();
+  });
+
+  it('他ユーザーのFCM Tokenは要求元ユーザーのlogoutで削除しない', async () => {
+    const userId = await insertUser();
+    const otherUserId = await insertUser();
+    const env = buildEnv();
+    await workerEnv.DB.prepare(
+      'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, ?)'
+    )
+      .bind(Number(otherUserId), 'logout-foreign-token')
+      .run();
+
+    const res = await postLogout(env, userId, {
+      fcm_token: 'logout-foreign-token',
+    });
+
+    expect(res.status).toBe(200);
+    const token = await workerEnv.DB.prepare(
+      'SELECT user_id FROM firebase_tokens WHERE fcm_token = ?'
+    )
+      .bind('logout-foreign-token')
+      .first<{ user_id: number }>();
+    expect(token?.user_id).toBe(Number(otherUserId));
+  });
+
+  it('FCM Tokenやrefresh sessionが無くても繰り返し成功する', async () => {
+    const userId = await insertUser();
+    const env = buildEnv();
+
+    const first = await postLogout(env, userId, {});
+    const second = await postLogout(env, userId, {});
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+  });
+
+  it('一部のKV削除が失敗しても他のcleanupを試み、再試行できる', async () => {
+    const userId = await insertUser();
+    let failRefreshDelete = true;
+    const authKv = createMockKv(key => {
+      if (key === 'mobile_refresh:logout-retry' && failRefreshDelete) {
+        failRefreshDelete = false;
+        throw new Error('KV unavailable');
+      }
+    });
+    const env = buildEnv({ AUTH_KV: authKv });
+    await authKv.put(
+      'mobile_refresh:logout-retry',
+      JSON.stringify(refreshEntry(userId))
+    );
+    await authKv.put(`mobile_refresh_by_user:${userId}`, 'logout-retry');
+
+    const failed = await postLogout(env, userId, {});
+    expect(failed.status).toBe(500);
+    expect(await authKv.get(`mobile_refresh_by_user:${userId}`)).toBe(
+      'logout-retry'
+    );
+    expect(await authKv.get('mobile_refresh:logout-retry')).not.toBeNull();
+
+    const retried = await postLogout(env, userId, {});
+    expect(retried.status).toBe(200);
+    expect(await authKv.get('mobile_refresh:logout-retry')).toBeNull();
+  });
   it('webはBearerトークンが無い場合は401を返す', async () => {
     const app = buildApp();
 
