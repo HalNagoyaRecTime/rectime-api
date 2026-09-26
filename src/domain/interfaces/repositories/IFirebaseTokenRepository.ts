@@ -16,10 +16,6 @@ export interface IFirebaseTokenRepository {
   // 以後の配信対象から外れる(該当のfirebase_token_id自体を保持したまま
   // 無効化する)。
   deactivateByUserId: (userId: number) => Promise<void>;
-  // アカウント削除(#265 PR4)専用。user_idに紐づくfirebase_tokens行を
-  // 探す。notification_schedules.deleteByFirebaseTokenIdを呼ぶ前に
-  // firebase_token_idを特定するために使う。
-  findByUserId: (userId: number) => Promise<FirebaseTokenEntity | null>;
   // アカウント削除時に複数端末分の通知スケジュールを処理するために使う。
   findAllByUserId: (userId: number) => Promise<FirebaseTokenEntity[]>;
   // 指定利用者が所有するTokenだけを物理削除し、結果を区別する。

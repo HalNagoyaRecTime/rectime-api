@@ -456,29 +456,7 @@ describe('FirebaseTokenRepository', () => {
     });
   });
 
-  describe('findByUserId / deleteByUserId', () => {
-    it('findByUserIdは指定user_idのToken登録を返す', async () => {
-      const userId = await createUser('検索対象利用者');
-      await repository.register({
-        userId,
-        platform: 'android',
-        fcmToken: 'token-findable',
-      });
-
-      const found = await repository.findByUserId(userId);
-
-      expect(found).toMatchObject({
-        user_id: userId,
-        fcm_token: 'token-findable',
-      });
-    });
-
-    it('findByUserIdは登録が無い場合はnullを返す', async () => {
-      const userId = await createUser('Token未登録利用者2');
-
-      await expect(repository.findByUserId(userId)).resolves.toBeNull();
-    });
-
+  describe('findAllByUserId / deleteByUserId', () => {
     it('findAllByUserIdは指定利用者の全端末Tokenを返す', async () => {
       const userId = await createUser('全端末検索利用者');
       await repository.register({
