@@ -40,27 +40,33 @@ describe('VenueController', () => {
       venues: [],
       total: 0,
       limit: 20,
-      offset: 0,
+      offset: 10,
     });
 
     const response = await app.request(
-      '/venues?name=体育&limit=20&sortBy=name&sortOrder=desc'
+      '/venues?name=体育&limit=20&offset=10&sortBy=name&sortOrder=desc'
     );
 
     expect(response.status).toBe(200);
     expect(venueService.getVenuePage).toHaveBeenCalledWith({
       name: '体育',
       limit: 20,
-      offset: 0,
+      offset: 10,
       sortBy: 'name',
       sortOrder: 'desc',
     });
   });
 
-  it('検索条件が不正なら400を返す', async () => {
+  it.each([
+    'limit=0',
+    'limit=101',
+    'offset=-1',
+    'sortBy=invalid',
+    'sortOrder=ascending',
+  ])('不正な検索条件 %s は400を返す', async query => {
     const { app } = setup();
 
-    const response = await app.request('/venues?limit=0');
+    const response = await app.request('/venues?' + query);
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({

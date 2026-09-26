@@ -1,40 +1,22 @@
-import { Context } from 'hono';
-import { z } from 'zod';
+import type { Context } from 'hono';
 import type { CreateEventRequestDTO } from '../../application/dto/EventDTO';
 import type { IEventService } from '../../application/services/IEventService';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
-import { venueIdsSchema } from '../openapi/eventVenues';
+import {
+  eventIdParams,
+  eventListQuery,
+  eventUpdateSchema,
+  eventWriteSchema,
+} from '../openapi/events';
+import { positivePathParamToNumber } from '../openapi/schemas';
 import { CommonErrors } from '../errors/commonErrors';
 import { EventErrors } from '../errors/eventErrors';
 import {
   errorResponse,
   type ApiErrorDefinition,
 } from '../errors/errorResponse';
-
-const eventIdSchema = z.coerce.number().int().positive();
-const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
-const eventBaseSchema = z.object({
-  event_name: z.string().trim().min(1).max(100),
-  rule_text: z.string().trim().max(1000).nullable().optional(),
-  venue_ids: venueIdsSchema,
-  start_time: hhmmSchema,
-  end_time: hhmmSchema,
-});
-const timeRangeRefinement: [
-  (data: { start_time: string; end_time: string }) => boolean,
-  { message: string; path: string[] },
-] = [
-  data => data.start_time < data.end_time,
-  { message: 'end_time must be after start_time', path: ['end_time'] },
-];
-
-const eventWriteSchema = eventBaseSchema.refine(...timeRangeRefinement);
-
-const eventUpdateSchema = eventBaseSchema
-  .strict()
-  .refine(...timeRangeRefinement);
 
 type EventContext = Context<{
   Bindings: Env;
@@ -43,20 +25,31 @@ type EventContext = Context<{
 
 export function createEventController(eventService: IEventService) {
   const getAllEvents = async (c: Context) => {
-    try {
-      const startTime = c.req.query('start_time');
-      const limit = c.req.query('limit');
-      const offset = c.req.query('offset');
-
-      if (startTime !== undefined && !hhmmSchema.safeParse(startTime).success) {
+    const query = {
+      start_time: c.req.query('start_time'),
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+    };
+    const parsedQuery = eventListQuery.safeParse(query);
+    if (!parsedQuery.success) {
+      if (
+        parsedQuery.error.issues.some(issue => issue.path[0] === 'start_time')
+      ) {
         return errorResponse(c, EventErrors.INVALID_START_TIME);
       }
+      return errorResponse(
+        c,
+        CommonErrors.VALIDATION_ERROR,
+        parsedQuery.error.flatten()
+      );
+    }
 
+    try {
       return c.json(
         await eventService.getAllEvents({
-          start_time: startTime,
-          limit: limit ? parseInt(limit) : undefined,
-          offset: offset ? parseInt(offset) : undefined,
+          start_time: parsedQuery.data.start_time,
+          limit: query.limit ? parseInt(query.limit) : undefined,
+          offset: query.offset ? parseInt(query.offset) : undefined,
         }),
         200
       );
@@ -64,15 +57,19 @@ export function createEventController(eventService: IEventService) {
       return errorResponse(c, EventErrors.EVENT_LIST_FAILED);
     }
   };
-
   const getEventById = async (c: Context) => {
     try {
-      const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
-      if (!parsedId.success) {
+      const parsedParams = eventIdParams.safeParse({
+        eventId: c.req.param('eventId'),
+      });
+      const eventId = parsedParams.success
+        ? positivePathParamToNumber(parsedParams.data.eventId)
+        : undefined;
+      if (eventId === undefined) {
         return errorResponse(c, EventErrors.INVALID_EVENT_ID);
       }
 
-      const event = await eventService.getEventById(parsedId.data);
+      const event = await eventService.getEventById(eventId);
       return c.json(event, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {
@@ -110,27 +107,36 @@ export function createEventController(eventService: IEventService) {
   };
 
   const updateEvent = async (c: Context) => {
-    const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
-    if (!parsedId.success)
+    const parsedParams = eventIdParams.safeParse({
+      eventId: c.req.param('eventId'),
+    });
+    const eventId = parsedParams.success
+      ? positivePathParamToNumber(parsedParams.data.eventId)
+      : undefined;
+    if (eventId === undefined) {
       return errorResponse(c, EventErrors.INVALID_EVENT_ID);
+    }
     const parsed = await parseEventBody(c, eventUpdateSchema);
     if (!parsed.success) return parsed.response;
     try {
-      return c.json(
-        await eventService.updateEvent(parsedId.data, parsed.data),
-        200
-      );
+      return c.json(await eventService.updateEvent(eventId, parsed.data), 200);
     } catch (error) {
       return updateEventError(c, error);
     }
   };
 
   const deleteEvent = async (c: Context) => {
-    const parsedId = eventIdSchema.safeParse(c.req.param('eventId'));
-    if (!parsedId.success)
+    const parsedParams = eventIdParams.safeParse({
+      eventId: c.req.param('eventId'),
+    });
+    const eventId = parsedParams.success
+      ? positivePathParamToNumber(parsedParams.data.eventId)
+      : undefined;
+    if (eventId === undefined) {
       return errorResponse(c, EventErrors.INVALID_EVENT_ID);
+    }
     try {
-      await eventService.deleteEvent(parsedId.data);
+      await eventService.deleteEvent(eventId);
       return c.body(null, 204);
     } catch (error) {
       return eventError(c, error, EventErrors.EVENT_DELETE_FAILED);

@@ -97,6 +97,41 @@ describe('EventController', () => {
       });
     });
 
+    it.each(['limit=-1', 'offset=-1', 'limit=1.5'])(
+      '不正なEvent list query %s は400を返しServiceを呼ばない',
+      async query => {
+        const { app, eventService } = setup();
+
+        const response = await app.request('/events?' + query);
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          error: { code: 'VALIDATION_ERROR', details: { fieldErrors: {} } },
+        });
+        expect(eventService.getAllEvents).not.toHaveBeenCalled();
+      }
+    );
+
+    it('既存のquery-to-service変換を維持する', async () => {
+      const { app, eventService } = setup();
+      (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
+        {
+          events: [],
+          total: 0,
+          limit: 1,
+          offset: 0,
+        }
+      );
+
+      const response = await app.request('/events?limit=1e2&offset=0');
+
+      expect(response.status).toBe(200);
+      expect(eventService.getAllEvents).toHaveBeenCalledWith({
+        start_time: undefined,
+        limit: 1,
+        offset: 0,
+      });
+    });
     it.each(['2460', '2360', '9999'])(
       'HHMMとして不正なstart_timeクエリ %s は400を返す',
       async invalid => {
@@ -269,6 +304,27 @@ describe('EventController', () => {
       expect(await response.json()).toEqual(event);
     });
 
+    it('開始時刻が終了時刻以降の作成は400を返す', async () => {
+      const { app, eventService } = setup();
+
+      const response = await app.request('/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue_ids: [2],
+          start_time: '0950',
+          end_time: '0930',
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'INVALID_EVENT_REQUEST' },
+      });
+      expect(eventService.createEvent).not.toHaveBeenCalled();
+    });
     it.each(['2460', '2360', '9999'])(
       'HHMMとして不正な時刻 %s は400を返す',
       async invalid => {

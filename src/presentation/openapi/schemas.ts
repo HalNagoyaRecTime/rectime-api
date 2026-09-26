@@ -145,6 +145,17 @@ export const positivePathParam = (name: string, description: string) =>
     .openapi({ param: { name, in: 'path' }, description, example: '1' });
 
 /**
+ * positivePathParamで検証した文字列IDをService用の数値へ変換する。
+ * 桁数が大きくNumberで表現できない値は、境界で拒否する。
+ */
+export const positivePathParamToNumber = (
+  value: string
+): number | undefined => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+/**
  * QueryはHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
  * OpenAPIとControllerが同じschemaをsafeParseすることで、受理範囲を一致させる。
  */
