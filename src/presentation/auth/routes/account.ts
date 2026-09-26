@@ -22,6 +22,8 @@ import {
   ACCOUNT_PHOTO_PATH,
 } from '../../../domain/auth/types';
 import { GRAPH_ME_PHOTO_URL } from '../../../infrastructure/auth/microsoftClient';
+import { logoutRequestDtoSchema } from '../../../application/dto/LogoutRequestDto';
+import { LogoutCleanupFailedError } from '../../../application/errors/LogoutCleanupFailedError';
 import { createUserRepository } from '../../../infrastructure/repositories/UserRepository';
 import { AuthErrors } from '../../errors/authErrors';
 import { CommonErrors } from '../../errors/commonErrors';
@@ -229,31 +231,31 @@ account.post('/logout', async c => {
   if (!auth.ok) return auth.response;
   const { claims } = auth;
 
-  const body = (await c.req.json().catch(() => null)) as {
-    refresh_token_id?: unknown;
-    fcm_token?: unknown;
-  } | null;
-  if (
-    body?.fcm_token !== undefined &&
-    body.fcm_token !== null &&
-    (typeof body.fcm_token !== 'string' || body.fcm_token.length === 0)
-  ) {
+  let body: unknown = {};
+  const rawBody = await c.req.text();
+  if (rawBody.trim().length > 0) {
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return errorResponse(c, AuthErrors.INVALID_REQUEST);
+    }
+  }
+  const parsedBody = logoutRequestDtoSchema.safeParse(body);
+  if (!parsedBody.success) {
     return errorResponse(c, AuthErrors.INVALID_REQUEST);
   }
 
-  const refreshTokenId =
-    typeof body?.refresh_token_id === 'string' &&
-    body.refresh_token_id.length > 0
-      ? body.refresh_token_id
-      : undefined;
-  const fcmToken =
-    typeof body?.fcm_token === 'string' ? body.fcm_token : undefined;
-
-  await c.get('container').logoutService.logout({
-    userId: claims.sub,
-    refreshTokenId,
-    fcmToken,
-  });
+  try {
+    await c.get('container').logoutService.logout({
+      userId: claims.sub,
+      ...parsedBody.data,
+    });
+  } catch (error) {
+    if (error instanceof LogoutCleanupFailedError) {
+      return errorResponse(c, AuthErrors.LOGOUT_FAILED);
+    }
+    throw error;
+  }
 
   return c.json({ message: 'Logged out successfully' });
 });

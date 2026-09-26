@@ -625,16 +625,14 @@ describe('POST /auth/logout', () => {
     );
     await authKv.put(`mobile_refresh_by_user:${userId}`, 'logout-retry');
 
-    const failed = await postLogout(env, userId, {
-      refresh_token_id: 'logout-retry',
-    });
+    const failed = await postLogout(env, userId, {});
     expect(failed.status).toBe(500);
-    expect(await authKv.get(`mobile_refresh_by_user:${userId}`)).toBeNull();
+    expect(await authKv.get(`mobile_refresh_by_user:${userId}`)).toBe(
+      'logout-retry'
+    );
     expect(await authKv.get('mobile_refresh:logout-retry')).not.toBeNull();
 
-    const retried = await postLogout(env, userId, {
-      refresh_token_id: 'logout-retry',
-    });
+    const retried = await postLogout(env, userId, {});
     expect(retried.status).toBe(200);
     expect(await authKv.get('mobile_refresh:logout-retry')).toBeNull();
   });

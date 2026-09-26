@@ -128,16 +128,6 @@ export function createFirebaseTokenRepository(
         .run();
     },
 
-    async findByUserId(userId: number): Promise<FirebaseTokenEntity | null> {
-      const row = await orm
-        .select()
-        .from(firebase_tokens)
-        .where(eq(firebase_tokens.userId, userId))
-        .orderBy(asc(firebase_tokens.firebaseTokenId))
-        .get();
-      return row ? toFirebaseTokenEntity(row) : null;
-    },
-
     async findAllByUserId(userId: number): Promise<FirebaseTokenEntity[]> {
       const rows = await orm
         .select()

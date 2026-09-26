@@ -55,6 +55,7 @@ import { createUserStatusService } from '../application/services/UserStatusServi
 import { createUserStatusController } from '../presentation/controllers/UserStatusController';
 import { createAuthService } from '../application/services/authService';
 import { createLogoutService } from '../application/services/LogoutService';
+import { createKvRefreshSessionRepository } from '../infrastructure/repositories/KvRefreshSessionRepository';
 import { createAccountDeletionService } from '../application/services/AccountDeletionService';
 import { createNotificationAccountDeletionService } from '../application/services/NotificationAccountDeletionService';
 import { createAuthorizationService } from '../application/services/AuthorizationService';
@@ -102,7 +103,7 @@ export function createDIContainer(env: Env) {
   );
   const logoutService = createLogoutService(
     firebaseTokenRepository,
-    env.AUTH_KV
+    createKvRefreshSessionRepository(env.AUTH_KV)
   );
   const userStatusService = createUserStatusService(userStatusRepository);
   const authorizationService = createAuthorizationService(userRepository);
@@ -112,6 +113,7 @@ export function createDIContainer(env: Env) {
   // 呼び出し元はindex.tsのscheduledハンドラ(日次Cron)。
   const notificationAccountDeletionService =
     createNotificationAccountDeletionService({
+      firebaseTokenRepository,
       notificationScheduleRepository,
       notificationAccountDeletionRepository,
     });
@@ -122,7 +124,6 @@ export function createDIContainer(env: Env) {
     teacherRepository,
     gatheringGroupMemberRepository,
     notificationAccountDeletionService,
-    firebaseTokenRepository,
   });
   const studentService = createStudentService(
     studentRepository,

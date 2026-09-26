@@ -141,6 +141,11 @@ export const NotificationLegacyErrors = {
     code: 'FIREBASE_TOKEN_REGISTRATION_FAILED',
     message: 'Firebaseトークンの登録に失敗しました',
   },
+  FIREBASE_TOKEN_DELETION_FAILED: {
+    status: 500,
+    code: 'FIREBASE_TOKEN_DELETION_FAILED',
+    message: 'Firebaseトークンの削除に失敗しました',
+  },
   INVALID_SCHEDULE_DATA: {
     status: 400,
     code: 'INVALID_SCHEDULE_DATA',

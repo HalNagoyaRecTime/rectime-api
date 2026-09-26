@@ -48,6 +48,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
 
   function buildNotificationAccountDeletionService(db = workerEnv.DB) {
     return createNotificationAccountDeletionService({
+      firebaseTokenRepository: createFirebaseTokenRepository(db),
       notificationScheduleRepository: createNotificationScheduleRepository(db),
       notificationAccountDeletionRepository:
         createNotificationAccountDeletionRepository(db),
@@ -64,7 +65,6 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       gatheringGroupMemberRepository: createGatheringGroupMemberRepository(db),
       notificationAccountDeletionService:
         buildNotificationAccountDeletionService(db),
-      firebaseTokenRepository: createFirebaseTokenRepository(db),
     });
   }
 
@@ -442,7 +442,6 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
         buildFailingGatheringGroupMemberRepository(),
       notificationAccountDeletionService:
         buildNotificationAccountDeletionService(db),
-      firebaseTokenRepository: createFirebaseTokenRepository(db),
     });
 
     await expect(
@@ -675,7 +674,6 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
           buildFailingGatheringGroupMemberRepository(),
         notificationAccountDeletionService:
           buildNotificationAccountDeletionService(db),
-        firebaseTokenRepository: createFirebaseTokenRepository(db),
       });
 
       const firstResult = await failingService.retryPendingPurges(100);

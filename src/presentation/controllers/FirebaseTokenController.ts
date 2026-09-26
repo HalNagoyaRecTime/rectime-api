@@ -17,12 +17,6 @@ type FirebaseTokenContext = Context<{
   Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>;
 
-const firebaseTokenDeletionFailed = {
-  status: 500,
-  code: 'FIREBASE_TOKEN_DELETION_FAILED',
-  message: 'Firebaseトークンの削除に失敗しました',
-} as const;
-
 export function createFirebaseTokenController(
   firebaseTokenService: IFirebaseTokenService
 ) {
@@ -88,7 +82,10 @@ export function createFirebaseTokenController(
       }
       return errorResponse(c, NotificationErrors.FIREBASE_TOKEN_NOT_FOUND);
     } catch {
-      return errorResponse(c, firebaseTokenDeletionFailed);
+      return errorResponse(
+        c,
+        NotificationErrors.FIREBASE_TOKEN_DELETION_FAILED
+      );
     }
   };
 

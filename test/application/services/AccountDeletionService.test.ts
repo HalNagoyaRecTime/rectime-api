@@ -6,7 +6,6 @@ import type { IStaffRepository } from '../../../src/domain/interfaces/repositori
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
 import type { IGatheringGroupMemberRepository } from '../../../src/domain/interfaces/repositories/IGatheringGroupMemberRepository';
 import type { INotificationAccountDeletionService } from '../../../src/application/services/INotificationAccountDeletionService';
-import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
 
 function buildDeps() {
   const userRepository: IUserRepository = {
@@ -70,20 +69,10 @@ function buildDeps() {
   };
   const notificationAccountDeletionService: INotificationAccountDeletionService =
     {
-      deleteUserDeliveryData: vi.fn().mockResolvedValue(undefined),
-      anonymizeUserActorReferences: vi.fn().mockResolvedValue(undefined),
+      purgeUserNotificationData: vi
+        .fn()
+        .mockResolvedValue({ firebaseTokensDeleted: false }),
     };
-  const firebaseTokenRepository: IFirebaseTokenRepository = {
-    register: vi.fn(),
-    findActiveTokens: vi.fn(),
-    deactivate: vi.fn(),
-    deactivateByUserId: vi.fn(),
-    findByUserId: vi.fn(),
-    findAllByUserId: vi.fn().mockResolvedValue([]),
-    deleteOwnedById: vi.fn(),
-    deleteByUserIdAndFcmToken: vi.fn().mockResolvedValue(undefined),
-    deleteByUserId: vi.fn(),
-  };
 
   return {
     userRepository,
@@ -92,7 +81,6 @@ function buildDeps() {
     teacherRepository,
     gatheringGroupMemberRepository,
     notificationAccountDeletionService,
-    firebaseTokenRepository,
   };
 }
 
@@ -111,7 +99,9 @@ describe('createAccountDeletionService', () => {
       await expect(service.deleteRelatedData('10')).rejects.toThrow(
         'ACCOUNT_DELETION_NOT_STARTED'
       );
-      expect(deps.firebaseTokenRepository.findByUserId).not.toHaveBeenCalled();
+      expect(
+        deps.notificationAccountDeletionService.purgeUserNotificationData
+      ).not.toHaveBeenCalled();
       expect(deps.staffRepository.deleteByUserId).not.toHaveBeenCalled();
       expect(deps.userRepository.markAsPurged).not.toHaveBeenCalled();
     });
@@ -143,84 +133,17 @@ describe('createAccountDeletionService', () => {
       expect(deps.userRepository.anonymizeUser).not.toHaveBeenCalled();
     });
 
-    it('Tokenが無くてもRecipientを削除し、Token削除は行わない', async () => {
-      const deps = buildDeps();
-      const service = createAccountDeletionService(deps);
-
-      await service.deleteRelatedData('10');
-
-      expect(deps.firebaseTokenRepository.findAllByUserId).toHaveBeenCalledWith(
-        10
-      );
-      expect(
-        deps.notificationAccountDeletionService.deleteUserDeliveryData
-      ).toHaveBeenCalledWith(10, []);
-      expect(
-        deps.firebaseTokenRepository.deleteByUserId
-      ).not.toHaveBeenCalled();
-    });
-
-    it('通知データを先にcleanupしてから複数Tokenを削除する', async () => {
-      const deps = buildDeps();
-      (
-        deps.firebaseTokenRepository.findAllByUserId as ReturnType<typeof vi.fn>
-      ).mockResolvedValue([
-        {
-          firebase_token_id: 5,
-          user_id: 10,
-          platform: 2,
-          fcm_token: 'token-x',
-          is_firebase_active: 0,
-          last_seen_at: '2026-01-01 00:00:00',
-          created_at: '2026-01-01 00:00:00',
-          updated_at: '2026-01-01 00:00:00',
-        },
-        {
-          firebase_token_id: 6,
-          user_id: 10,
-          platform: 1,
-          fcm_token: 'token-y',
-          is_firebase_active: 1,
-          last_seen_at: '2026-01-01 00:00:00',
-          created_at: '2026-01-01 00:00:00',
-          updated_at: '2026-01-01 00:00:00',
-        },
-      ]);
-      const callOrder: string[] = [];
-      (
-        deps.notificationAccountDeletionService
-          .deleteUserDeliveryData as ReturnType<typeof vi.fn>
-      ).mockImplementation(async () => {
-        callOrder.push('notificationDeliveryData');
-      });
-      (
-        deps.firebaseTokenRepository.deleteByUserId as ReturnType<typeof vi.fn>
-      ).mockImplementation(async () => {
-        callOrder.push('deleteByUserId');
-      });
-      const service = createAccountDeletionService(deps);
-
-      await service.deleteRelatedData('10');
-
-      expect(
-        deps.notificationAccountDeletionService.deleteUserDeliveryData
-      ).toHaveBeenCalledWith(10, [5, 6]);
-      expect(deps.firebaseTokenRepository.deleteByUserId).toHaveBeenCalledWith(
-        10
-      );
-      expect(callOrder).toEqual(['notificationDeliveryData', 'deleteByUserId']);
-    });
-
-    it('通知のlegacy/v2 actor情報をNULL化する', async () => {
+    it('通知cleanupを通知Application Serviceへ委譲し、Token削除結果を受け取る', async () => {
       const deps = buildDeps();
       const service = createAccountDeletionService(deps);
 
       await service.deleteRelatedData('10');
 
       expect(
-        deps.notificationAccountDeletionService.anonymizeUserActorReferences
+        deps.notificationAccountDeletionService.purgeUserNotificationData
       ).toHaveBeenCalledWith(10);
     });
+
     it('ロール(staffs/teachers)・所属(gathering_group_members)を削除する', async () => {
       const deps = buildDeps();
       const service = createAccountDeletionService(deps);
@@ -307,19 +230,9 @@ describe('createAccountDeletionService', () => {
         deps.studentRepository.anonymizeByUserId as ReturnType<typeof vi.fn>
       ).mockResolvedValue(false);
       (
-        deps.firebaseTokenRepository.findAllByUserId as ReturnType<typeof vi.fn>
-      ).mockResolvedValue([
-        {
-          firebase_token_id: 5,
-          user_id: 10,
-          platform: 2,
-          fcm_token: 'token-x',
-          is_firebase_active: 0,
-          last_seen_at: '2026-01-01 00:00:00',
-          created_at: '2026-01-01 00:00:00',
-          updated_at: '2026-01-01 00:00:00',
-        },
-      ]);
+        deps.notificationAccountDeletionService
+          .purgeUserNotificationData as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ firebaseTokensDeleted: true });
       const consoleLogSpy = vi
         .spyOn(console, 'log')
         .mockImplementation(() => {});
