@@ -1,5 +1,9 @@
 import { createRoute } from '@hono/zod-openapi';
-import type { EventDetailDTO } from '../../application/dto/EventDTO';
+import type {
+  CreateEventRequestDTO,
+  EventDetailDTO,
+  GetEventsRequestDTO,
+} from '../../application/dto/EventDTO';
 import { eventVenueListResponseSchema, venueIdsSchema } from './eventVenues';
 import { roundSettingResponseSchema } from './gatheringRounds';
 import { gatheringListResponseSchema } from './gatherings';
@@ -72,23 +76,43 @@ export const eventListQuery = z.object({
   start_time: hhmmSchema.optional(),
   limit: z.coerce.number().int().min(0).optional(),
   offset: z.coerce.number().int().min(0).optional(),
+}) satisfies z.ZodType<GetEventsRequestDTO, z.ZodTypeDef, unknown>;
+
+type EventWriteRequest = Omit<CreateEventRequestDTO, 'rule_text'> & {
+  rule_text?: CreateEventRequestDTO['rule_text'];
+};
+
+const eventTimeRangeRefinement = {
+  message: 'end_time must be after start_time',
+  path: ['end_time'],
+};
+const isValidEventTimeRange = (data: {
+  start_time: string;
+  end_time: string;
+}) => data.start_time < data.end_time;
+
+const eventBaseSchema = z.object({
+  event_name: z.string().trim().min(1).max(100),
+  rule_text: z.string().trim().max(1000).nullable().optional(),
+  venue_ids: venueIdsSchema,
+  start_time: hhmmSchema,
+  end_time: hhmmSchema,
 });
 
-export const eventWriteSchema = z
-  .object({
-    event_name: z.string().trim().min(1).max(100),
-    rule_text: z.string().trim().max(1000).nullable().optional(),
-    venue_ids: venueIdsSchema,
-    start_time: hhmmSchema,
-    end_time: hhmmSchema,
-  })
-  .openapi('EventWriteRequest');
+export const eventWriteSchema = eventBaseSchema
+  .refine(isValidEventTimeRange, eventTimeRangeRefinement)
+  .openapi('EventWriteRequest', {
+    description: 'start_timeはend_timeより前の時刻を指定する。',
+  }) satisfies z.ZodType<EventWriteRequest>;
 
 // notification_enabled等の未知fieldを黙って無視すると「通知を止めたつもりが
 // 実は止まっていない」事故につながるため、PUTはstrictで未知fieldを拒否する(#388)。
-export const eventUpdateSchema = eventWriteSchema
+export const eventUpdateSchema = eventBaseSchema
   .strict()
-  .openapi('EventUpdateRequest');
+  .refine(isValidEventTimeRange, eventTimeRangeRefinement)
+  .openapi('EventUpdateRequest', {
+    description: 'start_timeはend_timeより前の時刻を指定する。',
+  }) satisfies z.ZodType<EventWriteRequest>;
 
 export const eventListRoute = createRoute({
   method: 'get',

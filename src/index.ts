@@ -4,6 +4,8 @@ import { swaggerUI } from '@hono/swagger-ui';
 import { OpenAPIHono, type RouteConfig } from '@hono/zod-openapi';
 import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
+import { CommonErrors } from './presentation/errors/commonErrors';
+import { EventErrors } from './presentation/errors/eventErrors';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
 import { isDocsEnabled, type Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
@@ -23,7 +25,12 @@ import {
   bearerAuthenticationMiddleware,
   type AuthenticationVariables,
 } from './presentation/middleware/bearerAuthentication';
-import { validationDefaultHook } from './presentation/openapi/schemas';
+import {
+  validationDefaultHook,
+  type ErrorResponseDTO,
+} from './presentation/openapi/schemas';
+import { toValidationErrorDetails } from './presentation/errors/validationErrorDetails';
+import type { ZodError } from 'zod';
 import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
 import {
   studentCreateRoute,
@@ -205,6 +212,17 @@ const staffOnly = <R extends RouteConfig>(route: R) => ({
   middleware: [requireAuth, requireStaff],
 });
 
+const validationErrorBody = (
+  definition: { code: string; message: string },
+  error: ZodError
+): ErrorResponseDTO => ({
+  error: {
+    code: definition.code,
+    message: definition.message,
+    details: toValidationErrorDetails(error),
+  },
+});
+
 // Admin user routes
 apiV1.openapi(staffOnly(adminUserStatusUpdateRoute), c => {
   return c.get('container').userStatusController.updateUserStatus(c);
@@ -272,12 +290,48 @@ apiV1.openapi(staffOnly(eventGatheringSettingsUpdateRoute), c => {
     .get('container')
     .eventGatheringSettingsController.saveEventGatheringSettings(c);
 });
-apiV1.openapi(staffOnly(eventCreateRoute), c => {
-  return c.get('container').eventController.createEvent(c);
-});
-apiV1.openapi(staffOnly(eventUpdateRoute), c => {
-  return c.get('container').eventController.updateEvent(c);
-});
+apiV1.openapi(
+  staffOnly(eventCreateRoute),
+  c => c.get('container').eventController.createEvent(c),
+  (result, c) => {
+    if (result.success) return;
+    if (
+      result.error.issues.some(
+        issue => issue.message === 'end_time must be after start_time'
+      )
+    ) {
+      return c.json(
+        validationErrorBody(EventErrors.INVALID_EVENT_REQUEST, result.error),
+        400
+      );
+    }
+    return c.json(
+      validationErrorBody(CommonErrors.VALIDATION_ERROR, result.error),
+      400
+    );
+  }
+);
+apiV1.openapi(
+  staffOnly(eventUpdateRoute),
+  c => c.get('container').eventController.updateEvent(c),
+  (result, c) => {
+    if (result.success) return;
+    if (
+      result.error.issues.some(
+        issue => issue.message === 'end_time must be after start_time'
+      )
+    ) {
+      return c.json(
+        validationErrorBody(EventErrors.INVALID_EVENT_REQUEST, result.error),
+        400
+      );
+    }
+    return c.json(
+      validationErrorBody(CommonErrors.VALIDATION_ERROR, result.error),
+      400
+    );
+  }
+);
 apiV1.openapi(staffOnly(eventDeleteRoute), c => {
   return c.get('container').eventController.deleteEvent(c);
 });
@@ -311,9 +365,20 @@ apiV1.openapi(staffOnly(masterImportCommitRoute), c => {
 });
 
 // Gathering spot routes
-apiV1.openapi(staffOnly(gatheringSpotListRoute), c => {
-  return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
-});
+apiV1.openapi(
+  staffOnly(gatheringSpotListRoute),
+  c => c.get('container').gatheringSpotController.getAllGatheringSpots(c),
+  (result, c) => {
+    if (result.success) return;
+    return c.json(
+      validationErrorBody(
+        EventErrors.INVALID_GATHERING_SPOT_LIST_QUERY,
+        result.error
+      ),
+      400
+    );
+  }
+);
 apiV1.openapi(staffOnly(gatheringSpotCreateRoute), c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
@@ -325,9 +390,17 @@ apiV1.openapi(staffOnly(gatheringSpotDeleteRoute), c => {
 });
 
 // Venue routes
-apiV1.openapi(staffOnly(venueListRoute), c => {
-  return c.get('container').venueController.getAllVenues(c);
-});
+apiV1.openapi(
+  staffOnly(venueListRoute),
+  c => c.get('container').venueController.getAllVenues(c),
+  (result, c) => {
+    if (result.success) return;
+    return c.json(
+      validationErrorBody(EventErrors.INVALID_VENUE_LIST_QUERY, result.error),
+      400
+    );
+  }
+);
 apiV1.openapi(staffOnly(venueCreateRoute), c => {
   return c.get('container').venueController.createVenue(c);
 });
