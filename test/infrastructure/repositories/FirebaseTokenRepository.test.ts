@@ -196,12 +196,12 @@ describe('FirebaseTokenRepository', () => {
   });
   it('無効化済みTokenの再登録時に有効化する', async () => {
     const userId = await createUser('Firebaseトークン再登録利用者');
-    const registered = await repository.register({
+    await repository.register({
       userId,
       platform: 'android',
       fcmToken: 'token-reactivate',
     });
-    await repository.deactivate(registered.firebase_token_id);
+    await repository.deactivateByUserId(userId);
 
     const reactivated = await repository.register({
       userId,
@@ -288,6 +288,69 @@ describe('FirebaseTokenRepository', () => {
       .bind(notification.notification_id)
       .run();
   });
+  it('UNREGISTERED後の内部物理削除で通知履歴のToken参照を外す', async () => {
+    const userId = await createUser('Firebase UNREGISTERED利用者');
+    const token = await repository.register({
+      userId,
+      platform: 'android',
+      fcmToken: 'token-unregistered',
+    });
+    const notification = await env.DB.prepare(
+      "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('manual', 'unregistered', 'body', 'unregistered', 'body') RETURNING notification_id"
+    ).first<{ notification_id: number }>();
+    if (!notification)
+      throw new Error('failed to create unregistered notification');
+    const schedule = await env.DB.prepare(
+      "INSERT INTO notification_schedules (notification_id, firebase_token_id, send_status, send_at) VALUES (?, ?, 'draft', CURRENT_TIMESTAMP) RETURNING notification_schedule_id"
+    )
+      .bind(notification.notification_id, token.firebase_token_id)
+      .first<{ notification_schedule_id: number }>();
+    if (!schedule) throw new Error('failed to create unregistered schedule');
+    const recipient = await env.DB.prepare(
+      'INSERT INTO notification_recipients (notification_schedule_id, user_id) VALUES (?, ?) RETURNING notification_recipient_id'
+    )
+      .bind(schedule.notification_schedule_id, userId)
+      .first<{ notification_recipient_id: number }>();
+    if (!recipient) throw new Error('failed to create unregistered recipient');
+    const delivery = await env.DB.prepare(
+      "INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status) VALUES (?, ?, 2, 'sent') RETURNING notification_push_delivery_id"
+    )
+      .bind(recipient.notification_recipient_id, token.firebase_token_id)
+      .first<{ notification_push_delivery_id: number }>();
+    if (!delivery) throw new Error('failed to create unregistered delivery');
+
+    await repository.deleteById(token.firebase_token_id);
+
+    const storedToken = await env.DB.prepare(
+      'SELECT firebase_token_id FROM firebase_tokens WHERE firebase_token_id = ?'
+    )
+      .bind(token.firebase_token_id)
+      .first();
+    const detachedSchedule = await env.DB.prepare(
+      'SELECT firebase_token_id FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(schedule.notification_schedule_id)
+      .first<{ firebase_token_id: number | null }>();
+    const detachedDelivery = await env.DB.prepare(
+      'SELECT firebase_token_id FROM notification_push_deliveries WHERE notification_push_delivery_id = ?'
+    )
+      .bind(delivery.notification_push_delivery_id)
+      .first<{ firebase_token_id: number | null }>();
+
+    expect(storedToken).toBeNull();
+    expect(detachedSchedule).toEqual({ firebase_token_id: null });
+    expect(detachedDelivery).toEqual({ firebase_token_id: null });
+
+    await env.DB.prepare(
+      'DELETE FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(schedule.notification_schedule_id)
+      .run();
+    await env.DB.prepare('DELETE FROM notifications WHERE notification_id = ?')
+      .bind(notification.notification_id)
+      .run();
+  });
+
   it('Token所有権変更後に旧所有者が別端末を登録すると新しいrowを作る', async () => {
     const previousOwnerId = await createUser('Firebase Token再登録旧所有者');
     const newOwnerId = await createUser('Firebase Token再登録新所有者');
@@ -391,12 +454,12 @@ describe('FirebaseTokenRepository', () => {
       platform: 'android',
       fcmToken: 'token-active',
     });
-    const inactive = await repository.register({
+    await repository.register({
       userId: secondUserId,
       platform: 'android',
       fcmToken: 'token-inactive',
     });
-    await repository.deactivate(inactive.firebase_token_id);
+    await repository.deactivateByUserId(secondUserId);
 
     const tokens = await repository.findActiveTokens();
 
@@ -478,32 +541,6 @@ describe('FirebaseTokenRepository', () => {
       ]);
     });
 
-    it('DELETEは他利用者を403相当にし、所有者のみ物理削除する', async () => {
-      const ownerId = await createUser('Token削除所有者');
-      const otherId = await createUser('Token削除別利用者');
-      const owned = await repository.register({
-        userId: ownerId,
-        platform: 'android',
-        fcmToken: 'token-delete-owned',
-      });
-
-      await expect(
-        repository.deleteOwnedById(owned.firebase_token_id, otherId)
-      ).resolves.toBe('forbidden');
-      await expect(
-        repository.deleteOwnedById(owned.firebase_token_id, ownerId)
-      ).resolves.toBe('deleted');
-      await expect(
-        repository.deleteOwnedById(owned.firebase_token_id, ownerId)
-      ).resolves.toBe('not_found');
-
-      const stored = await env.DB.prepare(
-        'SELECT * FROM firebase_tokens WHERE firebase_token_id = ?'
-      )
-        .bind(owned.firebase_token_id)
-        .first();
-      expect(stored).toBeNull();
-    });
     it('deleteByUserIdはToken登録を物理削除する', async () => {
       const userId = await createUser('物理削除対象利用者');
       await repository.register({

@@ -24,6 +24,8 @@ export function createNotificationAccountDeletionService(deps: {
     async purgeUserNotificationData(userId) {
       const firebaseTokens =
         await firebaseTokenRepository.findAllByUserId(userId);
+      // Legacy履歴は個人情報削除方針に従い先に消す。v2 Delivery履歴は保持し、
+      // Token削除後にFK参照だけをNULLにするため、履歴を新Tokenへ移さない。
       for (const token of firebaseTokens) {
         await notificationScheduleRepository.deleteByFirebaseTokenId(
           token.firebase_token_id
@@ -33,6 +35,7 @@ export function createNotificationAccountDeletionService(deps: {
         userId
       );
       if (firebaseTokens.length > 0) {
+        // logoutやFCM UNREGISTEREDとは別のAccount deletion内部経路で全Tokenを消す。
         await firebaseTokenRepository.deleteByUserId(userId);
       }
       await notificationScheduleRepository.anonymizeCreatedUserId(userId);

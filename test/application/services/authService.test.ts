@@ -18,10 +18,9 @@ function buildFirebaseTokenRepository(): IFirebaseTokenRepository {
   return {
     register: vi.fn(),
     findActiveTokens: vi.fn(),
-    deactivate: vi.fn(),
+    deleteById: vi.fn(),
     deactivateByUserId: vi.fn(),
     findAllByUserId: vi.fn().mockResolvedValue([]),
-    deleteOwnedById: vi.fn(),
     deleteByUserIdAndFcmToken: vi.fn().mockResolvedValue(undefined),
     deleteByUserId: vi.fn(),
   };

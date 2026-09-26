@@ -14,10 +14,6 @@ export const notificationForbiddenErrorCodeSchema = z.enum([
   'STAFF_REQUIRED',
   'NOTIFICATION_IMPORTANCE_FORBIDDEN',
 ]);
-export const firebaseTokenForbiddenErrorCodeSchema = z.literal(
-  'FIREBASE_TOKEN_FORBIDDEN'
-);
-
 export const adminNotificationPatchNotFoundErrorCodeSchema = z.enum([
   'ADMIN_NOTIFICATION_NOT_FOUND',
   'NOTIFICATION_SCHEDULE_NOT_FOUND',
@@ -32,9 +28,6 @@ export const notificationScheduleNotFoundErrorCodeSchema = z.literal(
 export const notificationAudienceNotFoundErrorCodeSchema = z.literal(
   'NOTIFICATION_AUDIENCE_NOT_FOUND'
 );
-export const firebaseTokenNotFoundErrorCodeSchema = z.literal(
-  'FIREBASE_TOKEN_NOT_FOUND'
-);
 export const notificationPushDeliveryNotFoundErrorCodeSchema = z.literal(
   'NOTIFICATION_PUSH_DELIVERY_NOT_FOUND'
 );
@@ -42,7 +35,6 @@ export const notificationNotFoundErrorCodeSchema = z.enum([
   'ADMIN_NOTIFICATION_NOT_FOUND',
   'NOTIFICATION_SCHEDULE_NOT_FOUND',
   'NOTIFICATION_AUDIENCE_NOT_FOUND',
-  'FIREBASE_TOKEN_NOT_FOUND',
   'NOTIFICATION_PUSH_DELIVERY_NOT_FOUND',
 ]);
 
@@ -73,7 +65,6 @@ export const notificationErrorCodeSchema = z.union([
   notificationBadRequestErrorCodeSchema,
   notificationUnauthorizedErrorCodeSchema,
   notificationForbiddenErrorCodeSchema,
-  firebaseTokenForbiddenErrorCodeSchema,
   notificationNotFoundErrorCodeSchema,
   notificationConflictErrorCodeSchema,
 ]);
@@ -119,10 +110,6 @@ export const notificationImportanceForbiddenErrorResponseSchema =
     notificationImportanceForbiddenErrorCodeSchema,
     'NotificationImportanceForbiddenError'
   );
-export const firebaseTokenForbiddenErrorResponseSchema = notificationErrorBody(
-  firebaseTokenForbiddenErrorCodeSchema,
-  'FirebaseTokenForbiddenError'
-);
 
 export const adminNotificationNotFoundErrorResponseSchema =
   notificationErrorBody(
@@ -144,10 +131,6 @@ export const notificationAudienceNotFoundErrorResponseSchema =
     notificationAudienceNotFoundErrorCodeSchema,
     'NotificationAudienceNotFoundError'
   );
-export const firebaseTokenNotFoundErrorResponseSchema = notificationErrorBody(
-  firebaseTokenNotFoundErrorCodeSchema,
-  'FirebaseTokenNotFoundError'
-);
 export const notificationPushDeliveryNotFoundErrorResponseSchema =
   notificationErrorBody(
     notificationPushDeliveryNotFoundErrorCodeSchema,
@@ -212,14 +195,6 @@ export const notificationScheduleNotFoundResponse = jsonResponse(
 export const notificationAudienceNotFoundResponse = jsonResponse(
   notificationAudienceNotFoundErrorResponseSchema,
   '通知対象が存在しない'
-);
-export const firebaseTokenForbiddenResponse = jsonResponse(
-  firebaseTokenForbiddenErrorResponseSchema,
-  'Firebaseトークンを操作できない'
-);
-export const firebaseTokenNotFoundResponse = jsonResponse(
-  firebaseTokenNotFoundErrorResponseSchema,
-  'Firebaseトークンが存在しない'
 );
 export const notificationPushDeliveryNotFoundResponse = jsonResponse(
   notificationPushDeliveryNotFoundErrorResponseSchema,

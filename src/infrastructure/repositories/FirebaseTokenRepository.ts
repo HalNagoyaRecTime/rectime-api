@@ -53,21 +53,71 @@ export function createFirebaseTokenRepository(
       const platform = firebasePlatformToCode(input.platform);
       const now = notificationUtcNow();
 
+      // D1 batchで所有者移転・同一UserのUPSERT・新規作成をまとめる。
+      // 旧owner rowを削除するため、過去Delivery FKはNULLになり、新rowへ移らない。
       const [, updateResult, insertResult] =
         await db.batch<FirebaseTokenRegistrationRow>([
           db
             .prepare(
-              'DELETE FROM firebase_tokens WHERE fcm_token = ? AND user_id <> ? AND EXISTS (SELECT 1 FROM users WHERE user_id = ?)'
+              `
+            DELETE FROM firebase_tokens
+            WHERE fcm_token = ?
+              AND user_id <> ?
+              AND EXISTS (
+                SELECT 1
+                FROM users
+                WHERE user_id = ?
+              )
+          `
             )
             .bind(input.fcmToken, input.userId, input.userId),
           db
             .prepare(
-              'UPDATE firebase_tokens SET platform = ?, is_firebase_active = 1, last_seen_at = ?, updated_at = ? WHERE user_id = ? AND fcm_token = ? RETURNING firebase_token_id, user_id, platform, is_firebase_active, last_seen_at'
+              `
+            UPDATE firebase_tokens
+            SET platform = ?,
+                is_firebase_active = 1,
+                last_seen_at = ?,
+                updated_at = ?
+            WHERE user_id = ?
+              AND fcm_token = ?
+            RETURNING
+              firebase_token_id,
+              user_id,
+              platform,
+              is_firebase_active,
+              last_seen_at
+          `
             )
             .bind(platform, now, now, input.userId, input.fcmToken),
           db
             .prepare(
-              'INSERT INTO firebase_tokens (user_id, platform, fcm_token, is_firebase_active, last_seen_at, created_at, updated_at) SELECT user_id, ?, ?, 1, ?, ?, ? FROM users WHERE user_id = ? AND NOT EXISTS (SELECT 1 FROM firebase_tokens WHERE user_id = ? AND fcm_token = ?) RETURNING firebase_token_id, user_id, platform, is_firebase_active, last_seen_at'
+              `
+            INSERT INTO firebase_tokens (
+              user_id,
+              platform,
+              fcm_token,
+              is_firebase_active,
+              last_seen_at,
+              created_at,
+              updated_at
+            )
+            SELECT user_id, ?, ?, 1, ?, ?, ?
+            FROM users
+            WHERE user_id = ?
+              AND NOT EXISTS (
+                SELECT 1
+                FROM firebase_tokens
+                WHERE user_id = ?
+                  AND fcm_token = ?
+              )
+            RETURNING
+              firebase_token_id,
+              user_id,
+              platform,
+              is_firebase_active,
+              last_seen_at
+          `
             )
             .bind(
               platform,
@@ -112,10 +162,10 @@ export function createFirebaseTokenRepository(
       return tokens.map(toFirebaseTokenEntity);
     },
 
-    async deactivate(firebaseTokenId: number): Promise<void> {
+    // FKのON DELETE SET NULLにより、Legacy予定とv2配信履歴はToken参照を失う。
+    async deleteById(firebaseTokenId: number): Promise<void> {
       await orm
-        .update(firebase_tokens)
-        .set({ isFirebaseActive: 0, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .delete(firebase_tokens)
         .where(eq(firebase_tokens.firebaseTokenId, firebaseTokenId))
         .run();
     },
@@ -138,35 +188,18 @@ export function createFirebaseTokenRepository(
       return rows.map(toFirebaseTokenEntity);
     },
 
-    async deleteOwnedById(
-      firebaseTokenId: number,
-      userId: number
-    ): Promise<'deleted' | 'forbidden' | 'not_found'> {
-      const deleted = await db
-        .prepare(
-          'DELETE FROM firebase_tokens WHERE firebase_token_id = ? AND user_id = ? RETURNING firebase_token_id'
-        )
-        .bind(firebaseTokenId, userId)
-        .first<{ firebase_token_id: number }>();
-      if (deleted) return 'deleted';
-
-      const existing = await db
-        .prepare(
-          'SELECT user_id FROM firebase_tokens WHERE firebase_token_id = ?'
-        )
-        .bind(firebaseTokenId)
-        .first<{ user_id: number }>();
-      if (!existing) return 'not_found';
-      return existing.user_id === userId ? 'not_found' : 'forbidden';
-    },
-
+    // logoutはownerと現在Tokenを限定して物理削除する。既に無くても成功する。
     async deleteByUserIdAndFcmToken(
       userId: number,
       fcmToken: string
     ): Promise<void> {
       await db
         .prepare(
-          'DELETE FROM firebase_tokens WHERE user_id = ? AND fcm_token = ?'
+          `
+          DELETE FROM firebase_tokens
+          WHERE user_id = ?
+            AND fcm_token = ?
+        `
         )
         .bind(userId, fcmToken)
         .run();
