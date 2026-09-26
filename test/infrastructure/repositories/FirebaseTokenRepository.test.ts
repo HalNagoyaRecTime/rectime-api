@@ -479,11 +479,14 @@ describe('FirebaseTokenRepository', () => {
       await repository.deactivateByUserId(userId);
 
       const stored = await env.DB.prepare(
-        'SELECT is_firebase_active FROM firebase_tokens WHERE user_id = ?'
+        'SELECT is_firebase_active, updated_at FROM firebase_tokens WHERE user_id = ?'
       )
         .bind(userId)
-        .first<{ is_firebase_active: number }>();
+        .first<{ is_firebase_active: number; updated_at: string }>();
       expect(stored?.is_firebase_active).toBe(0);
+      expect(stored?.updated_at).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+      );
     });
 
     it('他のuser_idのToken登録には影響しない', async () => {

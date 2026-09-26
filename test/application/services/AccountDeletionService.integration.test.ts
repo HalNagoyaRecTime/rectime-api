@@ -151,25 +151,33 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       remainingDeliveries.results.map(row => row.notification_recipient_id)
     ).toEqual([keptRecipient!.notification_recipient_id]);
     const notificationActor = await workerEnv.DB.prepare(
-      'SELECT created_by_user_id FROM notifications WHERE notification_id = ?'
+      'SELECT created_by_user_id, updated_at FROM notifications WHERE notification_id = ?'
     )
       .bind(notification!.notification_id)
-      .first<{ created_by_user_id: number | null }>();
+      .first<{ created_by_user_id: number | null; updated_at: string }>();
     expect(notificationActor?.created_by_user_id).toBeNull();
+    expect(notificationActor?.updated_at).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+    );
     const scheduleActors = await workerEnv.DB.prepare(
-      'SELECT created_user_id, scheduled_by_user_id, stopped_by_user_id FROM notification_schedules WHERE notification_schedule_id = ?'
+      'SELECT created_user_id, scheduled_by_user_id, stopped_by_user_id, updated_at FROM notification_schedules WHERE notification_schedule_id = ?'
     )
       .bind(schedule!.notification_schedule_id)
       .first<{
         created_user_id: number | null;
         scheduled_by_user_id: number | null;
         stopped_by_user_id: number | null;
+        updated_at: string;
       }>();
     expect(scheduleActors).toEqual({
       created_user_id: null,
       scheduled_by_user_id: null,
       stopped_by_user_id: null,
+      updated_at: notificationActor!.updated_at,
     });
+    expect(scheduleActors?.updated_at).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+    );
   });
 
   it('学生ユーザーの関連データを削除・匿名化し、再実行しても安全である', async () => {
