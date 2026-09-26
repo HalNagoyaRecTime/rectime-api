@@ -30,5 +30,6 @@ export interface ResolvedNotificationSchedule {
 
 export interface NotificationAudienceResolverResult {
   completed_schedules: ResolvedNotificationSchedule[];
+  retryable_schedule_ids: number[];
   failed_schedule_ids: number[];
 }

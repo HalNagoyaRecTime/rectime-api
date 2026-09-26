@@ -134,7 +134,7 @@ export function createNotificationAudienceResolverRepository(
       const result = await db
         .prepare(
           `UPDATE notification_schedules
-           SET send_status = 'failed', failed_reason = ?, updated_at = ?
+           SET send_status = 'failed', reason = ?, updated_at = ?
            WHERE notification_schedule_id = ?
              AND send_status = 'resolving'
              AND recipients_resolved_at IS NULL`
@@ -142,6 +142,20 @@ export function createNotificationAudienceResolverRepository(
         .bind(reason, now, scheduleId)
         .run();
       return result.meta.changes === 1;
+    },
+
+    async isScheduleRetryable(scheduleId) {
+      const row = await db
+        .prepare(
+          `SELECT 1
+           FROM notification_schedules
+           WHERE notification_schedule_id = ?
+             AND send_status IN ('scheduled', 'resolving')
+             AND recipients_resolved_at IS NULL`
+        )
+        .bind(scheduleId)
+        .first();
+      return row !== null;
     },
 
     async completeScheduleIfResolved(scheduleId, now) {

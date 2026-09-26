@@ -206,6 +206,7 @@ describe('NotificationAudienceResolverRepository', () => {
 
     const result = await service.resolveDueSchedules(new Date(NOW));
 
+    expect(result.retryable_schedule_ids).toEqual([]);
     expect(result.failed_schedule_ids).toEqual([]);
     expect(result.completed_schedules).toHaveLength(schedules.length);
     expect(await recipientIds(schedules[0].scheduleId)).toEqual(
@@ -275,6 +276,9 @@ describe('NotificationAudienceResolverRepository', () => {
       service.resolveDueSchedules(new Date(NOW)),
     ]);
 
+    expect(results.flatMap(result => result.retryable_schedule_ids)).toEqual(
+      []
+    );
     expect(results.flatMap(result => result.failed_schedule_ids)).toEqual([]);
     expect(
       results
@@ -322,7 +326,8 @@ describe('NotificationAudienceResolverRepository', () => {
 
     try {
       const result = await service.resolveDueSchedules(new Date(NOW));
-      expect(result.failed_schedule_ids).toEqual([schedule.scheduleId]);
+      expect(result.retryable_schedule_ids).toEqual([schedule.scheduleId]);
+      expect(result.failed_schedule_ids).toEqual([]);
       expect(result.completed_schedules).toEqual([]);
       const state = await env.DB.prepare(
         `SELECT s.send_status, s.recipients_resolved_at,
@@ -362,6 +367,9 @@ describe('NotificationAudienceResolverRepository', () => {
       true
     );
     await expect(
+      repository.isScheduleRetryable(schedule.scheduleId)
+    ).resolves.toBe(true);
+    await expect(
       repository.failSchedule(
         schedule.scheduleId,
         'Audience 2 に対象IDがありません',
@@ -371,21 +379,24 @@ describe('NotificationAudienceResolverRepository', () => {
     await expect(
       repository.failSchedule(schedule.scheduleId, '再更新', NOW)
     ).resolves.toBe(false);
+    await expect(
+      repository.isScheduleRetryable(schedule.scheduleId)
+    ).resolves.toBe(false);
 
     const state = await env.DB.prepare(
-      `SELECT send_status, failed_reason, recipients_resolved_at
+      `SELECT send_status, reason, recipients_resolved_at
        FROM notification_schedules
        WHERE notification_schedule_id = ?`
     )
       .bind(schedule.scheduleId)
       .first<{
         send_status: string;
-        failed_reason: string | null;
+        reason: string | null;
         recipients_resolved_at: string | null;
       }>();
     expect(state).toMatchObject({
       send_status: 'failed',
-      failed_reason: 'Audience 2 に対象IDがありません',
+      reason: 'Audience 2 に対象IDがありません',
       recipients_resolved_at: null,
     });
   });
@@ -449,6 +460,7 @@ describe('NotificationAudienceResolverRepository', () => {
 
     const resumed = await service.resolveDueSchedules(new Date(NOW));
 
+    expect(resumed.retryable_schedule_ids).toEqual([]);
     expect(resumed.failed_schedule_ids).toEqual([]);
     expect(resumed.completed_schedules).toEqual([
       { notification_schedule_id: schedule.scheduleId, recipient_count: 5 },
@@ -465,7 +477,11 @@ describe('NotificationAudienceResolverRepository', () => {
 
     await expect(
       service.resolveDueSchedules(new Date('2026-09-24T12:01:00.000Z'))
-    ).resolves.toEqual({ completed_schedules: [], failed_schedule_ids: [] });
+    ).resolves.toEqual({
+      completed_schedules: [],
+      retryable_schedule_ids: [],
+      failed_schedule_ids: [],
+    });
     expect(await recipientIds(schedule.scheduleId)).toHaveLength(5);
   });
 });

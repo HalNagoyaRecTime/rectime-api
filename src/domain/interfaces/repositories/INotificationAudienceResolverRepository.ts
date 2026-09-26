@@ -22,6 +22,7 @@ export interface INotificationAudienceResolverRepository {
     reason: string,
     now: string
   ): Promise<boolean>;
+  isScheduleRetryable(scheduleId: number): Promise<boolean>;
   completeScheduleIfResolved(scheduleId: number, now: string): Promise<boolean>;
   countRecipients(scheduleId: number): Promise<number>;
 }

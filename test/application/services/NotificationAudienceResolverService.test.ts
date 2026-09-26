@@ -22,6 +22,7 @@ function buildRepository(
     findUnresolvedAudiences: vi.fn().mockResolvedValue([audience]),
     resolveAudience: vi.fn().mockResolvedValue(undefined),
     failSchedule: vi.fn().mockResolvedValue(true),
+    isScheduleRetryable: vi.fn().mockResolvedValue(true),
     completeScheduleIfResolved: vi.fn().mockResolvedValue(true),
     countRecipients: vi.fn().mockResolvedValue(3),
     ...overrides,
@@ -48,6 +49,7 @@ describe('NotificationAudienceResolverService', () => {
       completed_schedules: [
         { notification_schedule_id: 7, recipient_count: 3 },
       ],
+      retryable_schedule_ids: [],
       failed_schedule_ids: [],
     });
     expect(repository.findDueCandidates).toHaveBeenCalledWith(
@@ -90,7 +92,11 @@ describe('NotificationAudienceResolverService', () => {
 
     await expect(
       service.resolveDueSchedules(new Date('2026-09-24T12:00:00.000Z'))
-    ).resolves.toEqual({ completed_schedules: [], failed_schedule_ids: [] });
+    ).resolves.toEqual({
+      completed_schedules: [],
+      retryable_schedule_ids: [],
+      failed_schedule_ids: [],
+    });
     expect(repository.findUnresolvedAudiences).not.toHaveBeenCalled();
     expect(repository.completeScheduleIfResolved).not.toHaveBeenCalled();
   });
@@ -117,7 +123,8 @@ describe('NotificationAudienceResolverService', () => {
       completed_schedules: [
         { notification_schedule_id: 11, recipient_count: 4 },
       ],
-      failed_schedule_ids: [10],
+      retryable_schedule_ids: [10],
+      failed_schedule_ids: [],
     });
     expect(repository.completeScheduleIfResolved).toHaveBeenCalledTimes(1);
     expect(repository.failSchedule).not.toHaveBeenCalled();
@@ -146,6 +153,7 @@ describe('NotificationAudienceResolverService', () => {
 
     await expect(service.resolveDueSchedules(now)).resolves.toEqual({
       completed_schedules: [],
+      retryable_schedule_ids: [],
       failed_schedule_ids: [12],
     });
     expect(repository.failSchedule).toHaveBeenCalledWith(
@@ -154,5 +162,85 @@ describe('NotificationAudienceResolverService', () => {
       now.toISOString()
     );
     expect(repository.completeScheduleIfResolved).not.toHaveBeenCalled();
+  });
+
+  it('恒久失敗のDB更新自体が失敗した場合は再試行対象にする', async () => {
+    const repository = buildRepository({
+      findDueCandidates: vi
+        .fn()
+        .mockResolvedValue([candidate(13, 'resolving')]),
+      resolveAudience: vi
+        .fn()
+        .mockRejectedValue(
+          new UnresolvableNotificationAudienceError(
+            2,
+            'Audience 2 に対象IDがありません'
+          )
+        ),
+      failSchedule: vi.fn().mockRejectedValue(new Error('database failure')),
+    });
+    const service = createNotificationAudienceResolverService(repository);
+
+    await expect(
+      service.resolveDueSchedules(new Date('2026-09-24T12:00:00.000Z'))
+    ).resolves.toEqual({
+      completed_schedules: [],
+      retryable_schedule_ids: [13],
+      failed_schedule_ids: [],
+    });
+  });
+
+  it('failScheduleがfalseでも再開可能な状態なら再試行対象にする', async () => {
+    const repository = buildRepository({
+      findDueCandidates: vi
+        .fn()
+        .mockResolvedValue([candidate(14, 'resolving')]),
+      resolveAudience: vi
+        .fn()
+        .mockRejectedValue(
+          new UnresolvableNotificationAudienceError(
+            2,
+            'Audience 2 に対象IDがありません'
+          )
+        ),
+      failSchedule: vi.fn().mockResolvedValue(false),
+      isScheduleRetryable: vi.fn().mockResolvedValue(true),
+    });
+    const service = createNotificationAudienceResolverService(repository);
+
+    await expect(
+      service.resolveDueSchedules(new Date('2026-09-24T12:00:00.000Z'))
+    ).resolves.toEqual({
+      completed_schedules: [],
+      retryable_schedule_ids: [14],
+      failed_schedule_ids: [],
+    });
+  });
+
+  it('failScheduleがfalseで他Workerが状態を確定済みなら結果に含めない', async () => {
+    const repository = buildRepository({
+      findDueCandidates: vi
+        .fn()
+        .mockResolvedValue([candidate(15, 'resolving')]),
+      resolveAudience: vi
+        .fn()
+        .mockRejectedValue(
+          new UnresolvableNotificationAudienceError(
+            2,
+            'Audience 2 に対象IDがありません'
+          )
+        ),
+      failSchedule: vi.fn().mockResolvedValue(false),
+      isScheduleRetryable: vi.fn().mockResolvedValue(false),
+    });
+    const service = createNotificationAudienceResolverService(repository);
+
+    await expect(
+      service.resolveDueSchedules(new Date('2026-09-24T12:00:00.000Z'))
+    ).resolves.toEqual({
+      completed_schedules: [],
+      retryable_schedule_ids: [],
+      failed_schedule_ids: [],
+    });
   });
 });

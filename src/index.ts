@@ -485,11 +485,19 @@ export default {
       container.notificationAudienceResolverService
         .resolveDueSchedules(scheduledAt)
         .then(result => {
+          if (result.retryable_schedule_ids.length > 0) {
+            console.error('[CRON] Notification Audience解決を再試行します', {
+              scheduleIds: result.retryable_schedule_ids,
+            });
+          }
           if (result.failed_schedule_ids.length > 0) {
             console.error('[CRON] Notification Audience解決に失敗しました', {
               scheduleIds: result.failed_schedule_ids,
             });
           }
+        })
+        .catch(error => {
+          console.error('[CRON] Notification Audience Resolver error', error);
         })
     );
 
