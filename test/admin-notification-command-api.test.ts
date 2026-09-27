@@ -140,7 +140,44 @@ describe('管理通知Command  API', () => {
     expect(detailPatch.status).toBe(200);
     expect(await detailPatch.json()).toMatchObject({
       notificationId: created.notificationId,
-      content: { detail: { title: 'Patch detail' } },
+      content: {
+        push: { title: 'Push title', body: 'Push body' },
+        detail: { title: 'Patch detail', body: 'Detail body' },
+      },
+      importance: 'normal',
+      creation: {
+        method: 'manual',
+        user: {
+          userId: expect.any(Number),
+          userName: 'Notification Command API staff',
+        },
+        source: null,
+      },
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String),
+      schedules: [
+        {
+          notificationScheduleId: created.notificationScheduleId,
+          sendAt: expect.any(String),
+          status: 'scheduled',
+          stop: null,
+          scheduledBy: {
+            userId: expect.any(Number),
+            userName: 'Notification Command API staff',
+          },
+          createdAt: expect.any(String),
+          audience: {
+            items: [{ type: 'all' }],
+            recipientResolution: { status: 'pending', resolvedCount: 0 },
+          },
+          recipientPushSummary: {
+            totalCount: 0,
+            successCount: 0,
+            failedCount: 0,
+            noPushTargetCount: 0,
+          },
+        },
+      ],
     });
 
     const pushPatch = await app.fetch(

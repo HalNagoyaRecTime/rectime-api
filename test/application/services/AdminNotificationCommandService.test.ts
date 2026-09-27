@@ -1,29 +1,29 @@
 import { describe, expect, it, vi } from 'vitest';
 import type {
-  AdminNotificationSnapshot,
   CreateNotificationCommand,
   NotificationMutationSnapshot,
 } from '../../../src/domain/entities/AdminNotificationCommand';
-import type { NotificationPatchRequestDTO } from '../../../src/application/dto/AdminNotificationDTO';
+import type {
+  AdminNotificationDetailDTO,
+  NotificationPatchRequestDTO,
+} from '../../../src/application/dto/AdminNotificationDTO';
 import type { IAdminNotificationCommandRepository } from '../../../src/domain/interfaces/repositories/IAdminNotificationCommandRepository';
+import type { IAdminNotificationQueryService } from '../../../src/application/services/IAdminNotificationQueryService';
 import {
   AdminNotificationCommandError,
   createAdminNotificationCommandService,
 } from '../../../src/application/services/AdminNotificationCommandService';
 
-const notificationDetail: AdminNotificationSnapshot = {
-  notification_id: 10,
-  push_title: 'Push title',
-  push_body: 'Push body',
-  detail_title: 'Detail title',
-  detail_body: 'Detail body',
+const notificationDetail: AdminNotificationDetailDTO = {
+  notificationId: 10,
+  content: {
+    push: { title: 'Push title', body: 'Push body' },
+    detail: { title: 'Detail title', body: 'Detail body' },
+  },
   importance: 'normal',
-  source_type: null,
-  source_id: null,
-  source_label: null,
-  created_by: null,
-  created_at: '2026-09-24T09:00:00.000Z',
-  updated_at: '2026-09-24T09:00:00.000Z',
+  creation: { method: 'manual', user: null, source: null },
+  createdAt: '2026-09-24T09:00:00.000Z',
+  updatedAt: '2026-09-24T09:00:00.000Z',
   schedules: [],
 };
 
@@ -39,9 +39,21 @@ function buildRepository(
     findMutationSnapshot: vi.fn(),
     update: vi.fn().mockResolvedValue('updated'),
     deleteUnstartedManual: vi.fn().mockResolvedValue('deleted'),
-    findDetail: vi.fn().mockResolvedValue(notificationDetail),
     ...overrides,
   };
+}
+
+function buildQueryService(
+  overrides: Partial<IAdminNotificationQueryService> = {}
+): IAdminNotificationQueryService {
+  return {
+    getNotificationDetail: vi.fn().mockResolvedValue(notificationDetail),
+    ...overrides,
+  };
+}
+
+function buildService(repository: IAdminNotificationCommandRepository) {
+  return createAdminNotificationCommandService(repository, buildQueryService());
 }
 
 const createRequest = {
@@ -73,7 +85,7 @@ function mutationSnapshot(
 describe('AdminNotificationCommandService', () => {
   it('immediateを受付時刻へ変換し、Audience重複を除いて作成する', async () => {
     const repository = buildRepository();
-    const service = createAdminNotificationCommandService(repository);
+    const service = buildService(repository);
     const before = Date.now();
 
     await expect(service.createNotification(3, createRequest)).resolves.toEqual(
@@ -96,7 +108,7 @@ describe('AdminNotificationCommandService', () => {
 
   it('scheduledの指定時刻をUTCへ正規化する', async () => {
     const repository = buildRepository();
-    const service = createAdminNotificationCommandService(repository);
+    const service = buildService(repository);
 
     await service.createNotification(3, {
       ...createRequest,
@@ -113,7 +125,7 @@ describe('AdminNotificationCommandService', () => {
 
   it('上位権限契約がないhighは作成前に拒否する', async () => {
     const repository = buildRepository();
-    const service = createAdminNotificationCommandService(repository);
+    const service = buildService(repository);
 
     await expect(
       service.createNotification(3, { ...createRequest, importance: 'high' })
@@ -123,22 +135,35 @@ describe('AdminNotificationCommandService', () => {
     expect(repository.create).not.toHaveBeenCalled();
   });
 
-  it('開始済み通知でもdetailだけを編集できる', async () => {
+  it('更新成功後にQuery Serviceからdetail DTOを取得する', async () => {
+    const callOrder: string[] = [];
     const repository = buildRepository({
       findMutationSnapshot: vi
         .fn()
         .mockResolvedValue(mutationSnapshot('2026-09-24T10:00:00.000Z')),
+      update: vi.fn().mockImplementation(async () => {
+        callOrder.push('update');
+        return 'updated';
+      }),
     });
-    const service = createAdminNotificationCommandService(repository);
+    const queryService = buildQueryService({
+      getNotificationDetail: vi.fn().mockImplementation(async () => {
+        callOrder.push('detail');
+        return notificationDetail;
+      }),
+    });
+    const service = createAdminNotificationCommandService(
+      repository,
+      queryService
+    );
 
     await expect(
       service.patchNotification(10, {
         content: { detail: { title: '更新detail' } },
       })
-    ).resolves.toMatchObject({
-      notificationId: 10,
-      content: { detail: { title: 'Detail title', body: 'Detail body' } },
-    });
+    ).resolves.toEqual(notificationDetail);
+    expect(callOrder).toEqual(['update', 'detail']);
+    expect(queryService.getNotificationDetail).toHaveBeenCalledWith(10);
     expect(repository.update).toHaveBeenCalledWith(
       expect.objectContaining({
         notification_id: 10,
@@ -175,7 +200,7 @@ describe('AdminNotificationCommandService', () => {
         .fn()
         .mockResolvedValue(mutationSnapshot('2026-09-24T10:00:00.000Z')),
     });
-    const service = createAdminNotificationCommandService(repository);
+    const service = buildService(repository);
 
     await expect(
       service.patchNotification(10, request as NotificationPatchRequestDTO)
@@ -189,8 +214,7 @@ describe('AdminNotificationCommandService', () => {
         .fn()
         .mockResolvedValue(mutationSnapshot('2026-09-24T10:00:00.000Z')),
     });
-    const startedService =
-      createAdminNotificationCommandService(startedRepository);
+    const startedService = buildService(startedRepository);
     await expect(startedService.deleteNotification(10)).rejects.toMatchObject({
       code: 'NOTIFICATION_DELETE_NOT_ALLOWED',
     });
@@ -203,8 +227,7 @@ describe('AdminNotificationCommandService', () => {
     const automaticRepository = buildRepository({
       findMutationSnapshot: vi.fn().mockResolvedValue(automaticSnapshot),
     });
-    const automaticService =
-      createAdminNotificationCommandService(automaticRepository);
+    const automaticService = buildService(automaticRepository);
     await expect(automaticService.deleteNotification(10)).rejects.toMatchObject(
       { code: 'NOTIFICATION_DELETE_NOT_ALLOWED' }
     );
@@ -214,7 +237,7 @@ describe('AdminNotificationCommandService', () => {
     const repository = buildRepository({
       findMutationSnapshot: vi.fn().mockResolvedValue(mutationSnapshot(null)),
     });
-    const service = createAdminNotificationCommandService(repository);
+    const service = buildService(repository);
 
     await expect(
       service.patchNotification(10, {

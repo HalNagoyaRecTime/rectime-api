@@ -1,5 +1,4 @@
 import type {
-  AdminNotificationSnapshot,
   CreateNotificationCommand,
   CreateNotificationResult,
   NotificationAudienceTarget,
@@ -23,5 +22,4 @@ export interface IAdminNotificationCommandRepository {
   deleteUnstartedManual(
     notificationId: number
   ): Promise<NotificationDeleteResult>;
-  findDetail(notificationId: number): Promise<AdminNotificationSnapshot | null>;
 }
