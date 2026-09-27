@@ -108,6 +108,10 @@ export function createAdminNotificationCommandRepository(
     },
 
     async create(command) {
+      if (command.audiences.length === 0) {
+        throw new Error('Audienceは1件以上必要です');
+      }
+
       const audiencesJson = JSON.stringify(
         command.audiences.map(target => ({
           type: target.type,
@@ -177,12 +181,7 @@ export function createAdminNotificationCommandRepository(
 
       const notificationId = getReturnedId(results[0], 'notification_id');
       const scheduleId = getReturnedId(results[1], 'notification_schedule_id');
-      const createdAudiences = results[2]?.meta.changes ?? 0;
-      if (
-        notificationId === null ||
-        scheduleId === null ||
-        createdAudiences !== command.audiences.length
-      ) {
+      if (notificationId === null || scheduleId === null) {
         throw new Error('通知の作成結果が不完全です');
       }
 

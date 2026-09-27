@@ -97,6 +97,8 @@ describe('AdminNotificationCommandRepository', () => {
     const created = await repository.create(
       buildCommand(fixture.actorUserId, audiences)
     );
+    expect(created.notification_id).toBeGreaterThan(0);
+    expect(created.notification_schedule_id).toBeGreaterThan(0);
 
     const root = await env.DB.prepare(
       `SELECT created_by_user_id, push_title, push_body, title, body,
@@ -160,6 +162,22 @@ describe('AdminNotificationCommandRepository', () => {
       .bind(created.notification_schedule_id, created.notification_schedule_id)
       .first<{ recipients: number; deliveries: number }>();
     expect(childCounts).toEqual({ recipients: 0, deliveries: 0 });
+  });
+
+  it('空Audienceではbatchを実行せず作成しない', async () => {
+    const fixture = await createFixture();
+
+    await expect(
+      repository.create(buildCommand(fixture.actorUserId, []))
+    ).rejects.toThrow('Audienceは1件以上必要です');
+
+    const counts = await env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM notifications) AS notifications,
+         (SELECT COUNT(*) FROM notification_schedules) AS schedules,
+         (SELECT COUNT(*) FROM notification_audiences) AS audiences`
+    ).first<{ notifications: number; schedules: number; audiences: number }>();
+    expect(counts).toEqual({ notifications: 0, schedules: 0, audiences: 0 });
   });
 
   it('Audience挿入が失敗した場合はNotificationとScheduleも残さない', async () => {
