@@ -226,6 +226,12 @@ export function createAdminNotificationCommandRepository(
     async update(command) {
       const assignments: string[] = [];
       const bindings: unknown[] = [];
+      const scheduleUnstartedGuard = command.requires_unstarted_schedules
+        ? buildUnstartedSchedulesGuard('notification_schedules.notification_id')
+        : '';
+      const audienceUnstartedGuard = command.requires_unstarted_schedules
+        ? buildUnstartedSchedulesGuard('s.notification_id')
+        : '';
       addAssignment(assignments, bindings, 'push_title', command.push_title);
       addAssignment(assignments, bindings, 'push_body', command.push_body);
       addAssignment(assignments, bindings, 'title', command.detail_title);
@@ -238,10 +244,7 @@ export function createAdminNotificationCommandRepository(
       bindings.push(command.notification_id);
       if (command.requires_unstarted_schedules) {
         rootWhere +=
-          ' AND NOT EXISTS (' +
-          'SELECT 1 FROM notification_schedules s ' +
-          'WHERE s.notification_id = notifications.notification_id ' +
-          'AND s.started_at IS NOT NULL)';
+          ' ' + buildUnstartedSchedulesGuard('notifications.notification_id');
       }
       if (command.schedule) {
         rootWhere +=
@@ -271,6 +274,7 @@ export function createAdminNotificationCommandRepository(
                SET importance = ?, updated_at = ?
                WHERE notification_id = ?
                  AND started_at IS NULL
+                 ${scheduleUnstartedGuard}
                  AND EXISTS (
                    SELECT 1 FROM notifications n
                    WHERE n.notification_id = ?
@@ -295,6 +299,7 @@ export function createAdminNotificationCommandRepository(
                WHERE notification_schedule_id = ?
                  AND notification_id = ?
                  AND started_at IS NULL
+                 ${scheduleUnstartedGuard}
                  AND EXISTS (
                    SELECT 1 FROM notifications n
                    WHERE n.notification_id = ?
@@ -323,6 +328,7 @@ export function createAdminNotificationCommandRepository(
                    WHERE s.notification_schedule_id = ?
                      AND s.notification_id = ?
                      AND s.started_at IS NULL
+                     ${audienceUnstartedGuard}
                  )`
             )
             .bind(scheduleId, scheduleId, command.notification_id),
@@ -344,6 +350,7 @@ export function createAdminNotificationCommandRepository(
                  WHERE s.notification_schedule_id = ?
                    AND s.notification_id = ?
                    AND s.started_at IS NULL
+                   ${audienceUnstartedGuard}
                )`
             )
             .bind(
@@ -602,6 +609,16 @@ export function createAdminNotificationCommandRepository(
       };
     },
   };
+}
+
+function buildUnstartedSchedulesGuard(
+  notificationIdExpression: string
+): string {
+  return `AND NOT EXISTS (
+    SELECT 1 FROM notification_schedules started
+    WHERE started.notification_id = ${notificationIdExpression}
+      AND started.started_at IS NOT NULL
+  )`;
 }
 
 function importanceToSchedule(importance: NotificationImportance): number {

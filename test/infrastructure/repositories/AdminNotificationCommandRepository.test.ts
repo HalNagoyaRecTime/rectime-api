@@ -368,6 +368,126 @@ describe('AdminNotificationCommandRepository', () => {
     ]);
   });
 
+  it('別Schedule開始済みの競合ではPATCH更新を一切残さない', async () => {
+    const fixture = await createFixture();
+    const created = await repository.create(
+      buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+    );
+    const secondSchedule = await env.DB.prepare(
+      `INSERT INTO notification_schedules (
+         created_user_id, scheduled_by_user_id, event_id, notification_id,
+         importance, send_status, send_at, created_at, updated_at
+       ) VALUES (?, ?, NULL, ?, 1, 'scheduled', ?, ?, ?)
+       RETURNING notification_schedule_id`
+    )
+      .bind(
+        fixture.actorUserId,
+        fixture.actorUserId,
+        created.notification_id,
+        '2026-09-26T10:00:00.000Z',
+        '2026-09-24T09:00:00.000Z',
+        '2026-09-24T09:00:00.000Z'
+      )
+      .first<{ notification_schedule_id: number }>();
+    if (!secondSchedule) throw new Error('追加Scheduleを作成できませんでした');
+
+    const secondScheduleStartedAt = '2026-09-24T09:30:00.000Z';
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE notification_schedules SET started_at = ?
+         WHERE notification_schedule_id = ?`
+      ).bind(secondScheduleStartedAt, secondSchedule.notification_schedule_id),
+      env.DB.prepare(
+        `INSERT INTO notification_audiences (
+           notification_schedule_id, audience_type, target_id, created_at, updated_at
+         ) VALUES (?, 'class_room', ?, ?, ?)`
+      ).bind(
+        secondSchedule.notification_schedule_id,
+        fixture.classRoomId,
+        '2026-09-24T09:00:00.000Z',
+        '2026-09-24T09:00:00.000Z'
+      ),
+    ]);
+
+    await expect(
+      repository.update({
+        notification_id: created.notification_id,
+        updated_at: '2026-09-24T11:00:00.000Z',
+        push_title: '競合後のPush title',
+        importance: 'normal',
+        schedule: {
+          notification_schedule_id: created.notification_schedule_id,
+          send_at: '2026-09-27T10:00:00.000Z',
+          audiences: [{ type: 'user', target_id: fixture.actorUserId }],
+        },
+        requires_unstarted_schedules: true,
+      })
+    ).resolves.toBe('not_allowed');
+
+    const root = await env.DB.prepare(
+      `SELECT push_title, importance FROM notifications
+       WHERE notification_id = ?`
+    )
+      .bind(created.notification_id)
+      .first<{ push_title: string; importance: string }>();
+    expect(root).toEqual({ push_title: 'Push title', importance: 'low' });
+
+    const schedules = await env.DB.prepare(
+      `SELECT notification_schedule_id, importance, send_at, started_at
+       FROM notification_schedules WHERE notification_id = ?
+       ORDER BY notification_schedule_id`
+    )
+      .bind(created.notification_id)
+      .all<{
+        notification_schedule_id: number;
+        importance: number;
+        send_at: string;
+        started_at: string | null;
+      }>();
+    expect(schedules.results).toEqual([
+      {
+        notification_schedule_id: created.notification_schedule_id,
+        importance: 1,
+        send_at: '2026-09-24T10:00:00.000Z',
+        started_at: null,
+      },
+      {
+        notification_schedule_id: secondSchedule.notification_schedule_id,
+        importance: 1,
+        send_at: '2026-09-26T10:00:00.000Z',
+        started_at: secondScheduleStartedAt,
+      },
+    ]);
+
+    const audiences = await env.DB.prepare(
+      `SELECT notification_schedule_id, audience_type, target_id
+       FROM notification_audiences
+       WHERE notification_schedule_id IN (?, ?)
+       ORDER BY notification_schedule_id, audience_type`
+    )
+      .bind(
+        created.notification_schedule_id,
+        secondSchedule.notification_schedule_id
+      )
+      .all<{
+        notification_schedule_id: number;
+        audience_type: string;
+        target_id: number | null;
+      }>();
+    expect(audiences.results).toEqual([
+      {
+        notification_schedule_id: created.notification_schedule_id,
+        audience_type: 'all',
+        target_id: null,
+      },
+      {
+        notification_schedule_id: secondSchedule.notification_schedule_id,
+        audience_type: 'class_room',
+        target_id: fixture.classRoomId,
+      },
+    ]);
+  });
+
   it('Audience再作成が失敗した更新は全項目をロールバックする', async () => {
     const fixture = await createFixture();
     const created = await repository.create(
