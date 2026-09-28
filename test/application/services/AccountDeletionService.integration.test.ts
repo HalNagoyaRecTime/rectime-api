@@ -92,7 +92,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     return row!;
   }
 
-  it('通知Recipientを削除し、通知v2 actor参照をNULL化する', async () => {
+  it('直接User Audienceを先に削除し、他Audience・履歴・actor参照を維持する', async () => {
     const targetUser = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('通知削除対象') RETURNING user_id"
     ).first<{ user_id: number }>();
@@ -114,6 +114,53 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
         notification!.notification_id
       )
       .first<{ notification_schedule_id: number }>();
+    const otherNotification = await workerEnv.DB.prepare(
+      "INSERT INTO notifications (created_by_user_id, notification_type, push_title, push_body, title, body) VALUES (?, 'manual', '別件名', '別本文', '別件名', '別本文') RETURNING notification_id"
+    )
+      .bind(otherUser!.user_id)
+      .first<{ notification_id: number }>();
+    const completedSchedule = await workerEnv.DB.prepare(
+      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, stopped_by_user_id, notification_id, send_status, send_at, recipients_resolved_at, started_at, completed_at) VALUES (?, ?, ?, ?, 'completed', '2026-09-24T09:00:00.000Z', '2026-09-24T09:01:00.000Z', '2026-09-24T09:02:00.000Z', '2026-09-24T09:03:00.000Z') RETURNING notification_schedule_id"
+    )
+      .bind(
+        otherUser!.user_id,
+        otherUser!.user_id,
+        otherUser!.user_id,
+        otherNotification!.notification_id
+      )
+      .first<{ notification_schedule_id: number }>();
+    await workerEnv.DB.batch([
+      workerEnv.DB.prepare(
+        'INSERT INTO notification_audiences (notification_schedule_id, audience_type, target_id) VALUES (?, ?, ?)'
+      ).bind(schedule!.notification_schedule_id, 'user', targetUser!.user_id),
+      workerEnv.DB.prepare(
+        'INSERT INTO notification_audiences (notification_schedule_id, audience_type, target_id) VALUES (?, ?, ?)'
+      ).bind(schedule!.notification_schedule_id, 'user', otherUser!.user_id),
+      // polymorphicなtarget_idの数値が同じでも、class_room Audienceは残す。
+      workerEnv.DB.prepare(
+        'INSERT INTO notification_audiences (notification_schedule_id, audience_type, target_id) VALUES (?, ?, ?)'
+      ).bind(
+        schedule!.notification_schedule_id,
+        'class_room',
+        targetUser!.user_id
+      ),
+      workerEnv.DB.prepare(
+        'INSERT INTO notification_audiences (notification_schedule_id, audience_type, target_id) VALUES (?, ?, ?)'
+      ).bind(schedule!.notification_schedule_id, 'gathering', 9001),
+      workerEnv.DB.prepare(
+        'INSERT INTO notification_audiences (notification_schedule_id, audience_type, target_id) VALUES (?, ?, ?)'
+      ).bind(schedule!.notification_schedule_id, 'event', 9002),
+      workerEnv.DB.prepare(
+        "INSERT INTO notification_audiences (notification_schedule_id, audience_type, target_id) VALUES (?, 'all', NULL)"
+      ).bind(schedule!.notification_schedule_id),
+      workerEnv.DB.prepare(
+        'INSERT INTO notification_audiences (notification_schedule_id, audience_type, target_id) VALUES (?, ?, ?)'
+      ).bind(
+        completedSchedule!.notification_schedule_id,
+        'user',
+        targetUser!.user_id
+      ),
+    ]);
     const removedRecipient = await workerEnv.DB.prepare(
       'INSERT INTO notification_recipients (notification_schedule_id, user_id) VALUES (?, ?) RETURNING notification_recipient_id'
     )
@@ -135,6 +182,57 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     await markAsDeleted(targetUser!.user_id);
 
     await buildService().deleteRelatedData(String(targetUser!.user_id));
+    const targetAudiencesAfterFirstPurge = await workerEnv.DB.prepare(
+      "SELECT COUNT(*) AS count FROM notification_audiences WHERE audience_type = 'user' AND target_id = ?"
+    )
+      .bind(targetUser!.user_id)
+      .first<{ count: number }>();
+    expect(targetAudiencesAfterFirstPurge?.count).toBe(0);
+    // Account deletion全体の完了後も、通知cleanup単体は再実行できる。
+    await buildNotificationAccountDeletionService().purgeUserNotificationData(
+      targetUser!.user_id
+    );
+
+    const remainingAudiences = await workerEnv.DB.prepare(
+      'SELECT notification_schedule_id, audience_type, target_id FROM notification_audiences ORDER BY notification_schedule_id, audience_type, target_id'
+    ).all<{
+      notification_schedule_id: number;
+      audience_type: string;
+      target_id: number | null;
+    }>();
+    expect(remainingAudiences.results).toEqual([
+      {
+        notification_schedule_id: schedule!.notification_schedule_id,
+        audience_type: 'all',
+        target_id: null,
+      },
+      {
+        notification_schedule_id: schedule!.notification_schedule_id,
+        audience_type: 'class_room',
+        target_id: targetUser!.user_id,
+      },
+      {
+        notification_schedule_id: schedule!.notification_schedule_id,
+        audience_type: 'event',
+        target_id: 9002,
+      },
+      {
+        notification_schedule_id: schedule!.notification_schedule_id,
+        audience_type: 'gathering',
+        target_id: 9001,
+      },
+      {
+        notification_schedule_id: schedule!.notification_schedule_id,
+        audience_type: 'user',
+        target_id: otherUser!.user_id,
+      },
+    ]);
+    const remainingTargetAudiences = await workerEnv.DB.prepare(
+      "SELECT COUNT(*) AS count FROM notification_audiences WHERE audience_type = 'user' AND target_id = ?"
+    )
+      .bind(targetUser!.user_id)
+      .first<{ count: number }>();
+    expect(remainingTargetAudiences?.count).toBe(0);
 
     const remainingRecipients = await workerEnv.DB.prepare(
       'SELECT user_id FROM notification_recipients WHERE notification_schedule_id = ? ORDER BY user_id'
@@ -178,6 +276,38 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     expect(scheduleActors?.updated_at).toMatch(
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
     );
+    const otherNotificationActor = await workerEnv.DB.prepare(
+      'SELECT created_by_user_id FROM notifications WHERE notification_id = ?'
+    )
+      .bind(otherNotification!.notification_id)
+      .first<{ created_by_user_id: number | null }>();
+    expect(otherNotificationActor?.created_by_user_id).toBe(otherUser!.user_id);
+    const completedScheduleState = await workerEnv.DB.prepare(
+      'SELECT created_user_id, scheduled_by_user_id, stopped_by_user_id, send_status, recipients_resolved_at, started_at, completed_at FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(completedSchedule!.notification_schedule_id)
+      .first();
+    expect(completedScheduleState).toEqual({
+      created_user_id: otherUser!.user_id,
+      scheduled_by_user_id: otherUser!.user_id,
+      stopped_by_user_id: otherUser!.user_id,
+      send_status: 'completed',
+      recipients_resolved_at: '2026-09-24T09:01:00.000Z',
+      started_at: '2026-09-24T09:02:00.000Z',
+      completed_at: '2026-09-24T09:03:00.000Z',
+    });
+    const retainedCompletedSchedule = await workerEnv.DB.prepare(
+      'SELECT notification_schedule_id FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(completedSchedule!.notification_schedule_id)
+      .first();
+    expect(retainedCompletedSchedule).not.toBeNull();
+    const retainedNotification = await workerEnv.DB.prepare(
+      'SELECT notification_id FROM notifications WHERE notification_id = ?'
+    )
+      .bind(otherNotification!.notification_id)
+      .first();
+    expect(retainedNotification).not.toBeNull();
   });
 
   it('学生ユーザーの関連データを削除・匿名化し、再実行しても安全である', async () => {
@@ -435,6 +565,19 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('例外テスト太郎') RETURNING user_id"
     ).first<{ user_id: number }>();
+    const notification = await workerEnv.DB.prepare(
+      "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('manual', '件名', '本文', '件名', '本文') RETURNING notification_id"
+    ).first<{ notification_id: number }>();
+    const schedule = await workerEnv.DB.prepare(
+      "INSERT INTO notification_schedules (notification_id, send_status, send_at) VALUES (?, 'draft', '2026-09-24T09:00:00.000Z') RETURNING notification_schedule_id"
+    )
+      .bind(notification!.notification_id)
+      .first<{ notification_schedule_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO notification_audiences (notification_schedule_id, audience_type, target_id) VALUES (?, 'user', ?)"
+    )
+      .bind(schedule!.notification_schedule_id, user!.user_id)
+      .run();
     await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
       .bind(user!.user_id)
       .run();
@@ -467,6 +610,12 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(user!.user_id)
       .first();
     expect(staffRow).toBeNull();
+    const audienceAfterFailure = await workerEnv.DB.prepare(
+      'SELECT notification_audience_id FROM notification_audiences WHERE notification_schedule_id = ?'
+    )
+      .bind(schedule!.notification_schedule_id)
+      .first();
+    expect(audienceAfterFailure).toBeNull();
 
     const unpurgedUsers = await workerEnv.DB.prepare(
       "SELECT user_id FROM users WHERE deletion_status = 'deleted' AND purged_at IS NULL"
