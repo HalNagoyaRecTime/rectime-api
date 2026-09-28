@@ -197,12 +197,13 @@ function buildRecipientInsert(
   audience: UnresolvedNotificationAudience,
   now: string
 ): D1PreparedStatement {
-  const selectColumns =
-    'SELECT ?, u.user_id, ? FROM users u WHERE u.is_live_active = 1';
+  const activeUserCondition =
+    "u.is_live_active = 1 AND u.deletion_status = 'active'";
+  const selectColumns = `SELECT ?, u.user_id, ? FROM users u WHERE ${activeUserCondition}`;
   const fromUserJoin =
     'SELECT ?, u.user_id, ? FROM students student ' +
     'JOIN users u ON u.user_id = student.user_id ' +
-    'WHERE u.is_live_active = 1';
+    `WHERE ${activeUserCondition}`;
   const audienceGuard = `
     AND EXISTS (
       SELECT 1
@@ -260,7 +261,7 @@ function buildRecipientInsert(
       const select =
         'SELECT ?, u.user_id, ? FROM gathering_group_members member ' +
         'JOIN users u ON u.user_id = member.user_id ' +
-        'WHERE u.is_live_active = 1 AND member.gathering_id = ?';
+        `WHERE ${activeUserCondition} AND member.gathering_id = ?`;
       return db
         .prepare(insertPrefix + select + audienceGuard + insertSuffix)
         .bind(
@@ -279,7 +280,7 @@ function buildRecipientInsert(
         'SELECT DISTINCT ?, u.user_id, ? FROM gatherings g ' +
         'JOIN gathering_group_members member ON member.gathering_id = g.gathering_id ' +
         'JOIN users u ON u.user_id = member.user_id ' +
-        'WHERE u.is_live_active = 1 AND g.event_id = ?';
+        `WHERE ${activeUserCondition} AND g.event_id = ?`;
       return db
         .prepare(insertPrefix + select + audienceGuard + insertSuffix)
         .bind(

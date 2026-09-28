@@ -14,6 +14,8 @@ interface Fixture {
   actorUserId: number;
   activeStudentId: number;
   inactiveStudentId: number;
+  deletionPendingStudentId: number;
+  deletedStudentId: number;
   activeGatheringMemberId: number;
   activeEventMemberId: number;
   teacherUserId: number;
@@ -22,11 +24,15 @@ interface Fixture {
   eventId: number;
 }
 
-async function insertUser(name: string, isLiveActive = 1): Promise<number> {
+async function insertUser(
+  name: string,
+  isLiveActive = 1,
+  deletionStatus: 'active' | 'deletion_pending' | 'deleted' = 'active'
+): Promise<number> {
   const row = await env.DB.prepare(
-    'INSERT INTO users (user_name, is_live_active) VALUES (?, ?) RETURNING user_id'
+    'INSERT INTO users (user_name, is_live_active, deletion_status) VALUES (?, ?, ?) RETURNING user_id'
   )
-    .bind(`AudienceResolver-${name}`, isLiveActive)
+    .bind(`AudienceResolver-${name}`, isLiveActive, deletionStatus)
     .first<{ user_id: number }>();
   if (!row) throw new Error('Resolver用Userを作成できませんでした');
   return row.user_id;
@@ -36,6 +42,12 @@ async function createFixture(): Promise<Fixture> {
   const actorUserId = await insertUser('actor');
   const activeStudentId = await insertUser('active-student');
   const inactiveStudentId = await insertUser('inactive-student', 0);
+  const deletionPendingStudentId = await insertUser(
+    'deletion-pending-student',
+    1,
+    'deletion_pending'
+  );
+  const deletedStudentId = await insertUser('deleted-student', 1, 'deleted');
   const activeGatheringMemberId = await insertUser('active-gathering-member');
   const activeEventMemberId = await insertUser('active-event-member');
   const teacherUserId = await insertUser('teacher');
@@ -52,6 +64,14 @@ async function createFixture(): Promise<Fixture> {
       `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
        VALUES (?, ?, 2, 'AR-S002')`
     ).bind(inactiveStudentId, classRoom.class_room_id),
+    env.DB.prepare(
+      `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
+       VALUES (?, ?, 3, 'AR-S003')`
+    ).bind(deletionPendingStudentId, classRoom.class_room_id),
+    env.DB.prepare(
+      `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
+       VALUES (?, ?, 4, 'AR-S004')`
+    ).bind(deletedStudentId, classRoom.class_room_id),
     env.DB.prepare('INSERT INTO teachers (user_id, email) VALUES (?, ?)').bind(
       teacherUserId,
       'audience-resolver-teacher@example.com'
@@ -103,6 +123,12 @@ async function createFixture(): Promise<Fixture> {
     ).bind(firstGatheringId, inactiveStudentId),
     env.DB.prepare(
       'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+    ).bind(firstGatheringId, deletionPendingStudentId),
+    env.DB.prepare(
+      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+    ).bind(firstGatheringId, deletedStudentId),
+    env.DB.prepare(
+      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
     ).bind(firstGatheringId, activeGatheringMemberId),
     env.DB.prepare(
       'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
@@ -116,6 +142,8 @@ async function createFixture(): Promise<Fixture> {
     actorUserId,
     activeStudentId,
     inactiveStudentId,
+    deletionPendingStudentId,
+    deletedStudentId,
     activeGatheringMemberId,
     activeEventMemberId,
     teacherUserId,
@@ -177,7 +205,7 @@ describe('NotificationAudienceResolverRepository', () => {
     ]);
   });
 
-  it('5種類を解決し、inactiveを除き、class_roomへ教師を含めない', async () => {
+  it('5種類すべてでactive Userだけを解決し、class_roomへ教師を含めない', async () => {
     const fixture = await createFixture();
     const schedules = [
       await createSchedule(fixture.actorUserId, [
@@ -201,6 +229,12 @@ describe('NotificationAudienceResolverRepository', () => {
       await createSchedule(fixture.actorUserId, [
         { type: 'gathering', target_id: fixture.firstGatheringId },
         { type: 'event', target_id: fixture.eventId },
+      ]),
+      await createSchedule(fixture.actorUserId, [
+        { type: 'user', target_id: fixture.deletionPendingStudentId },
+      ]),
+      await createSchedule(fixture.actorUserId, [
+        { type: 'user', target_id: fixture.deletedStudentId },
       ]),
     ];
 
@@ -237,6 +271,20 @@ describe('NotificationAudienceResolverRepository', () => {
       fixture.activeEventMemberId,
     ]);
     expect(await recipientIds(schedules[5].scheduleId)).toEqual([]);
+    expect(await recipientIds(schedules[7].scheduleId)).toEqual([]);
+    expect(await recipientIds(schedules[8].scheduleId)).toEqual([]);
+
+    const excludedUserIds = [
+      fixture.inactiveStudentId,
+      fixture.deletionPendingStudentId,
+      fixture.deletedStudentId,
+    ];
+    for (const schedule of schedules.slice(0, 4)) {
+      const recipients = await recipientIds(schedule.scheduleId);
+      for (const userId of excludedUserIds) {
+        expect(recipients).not.toContain(userId);
+      }
+    }
 
     const overlap = result.completed_schedules.find(
       row => row.notification_schedule_id === schedules[6].scheduleId
