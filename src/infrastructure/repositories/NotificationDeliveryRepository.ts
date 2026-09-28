@@ -147,6 +147,28 @@ export function createNotificationDeliveryRepository(
       return row?.delivery_count ?? 0;
     },
 
+    async markPendingDeliveriesWithoutTokenFailed(scheduleId, reason, now) {
+      const result = await db
+        .prepare(
+          `UPDATE notification_push_deliveries
+           SET status = 'failed',
+               failed_reason = ?,
+               sent_at = NULL,
+               next_retry_at = NULL,
+               updated_at = ?
+           WHERE status = 'pending'
+             AND firebase_token_id IS NULL
+             AND notification_recipient_id IN (
+               SELECT notification_recipient_id
+               FROM notification_recipients
+               WHERE notification_schedule_id = ?
+             )`
+        )
+        .bind(reason, now, scheduleId)
+        .run();
+      return result.meta.changes;
+    },
+
     async claimPendingDeliveries(scheduleIds, now, limit) {
       if (scheduleIds.length === 0) return [];
       const schedulePlaceholders = scheduleIds.map(() => '?').join(', ');

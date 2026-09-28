@@ -97,10 +97,12 @@ describe('scheduled handler', () => {
     const error = new Error('database unavailable');
     const resolveDueSchedules = vi.fn().mockRejectedValue(error);
     const enqueueDueNotifications = vi.fn();
+    const enqueueReadySchedules = vi.fn();
     const createDIContainerSpy = vi
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
         notificationAudienceResolverService: { resolveDueSchedules },
+        notificationDeliveryService: { enqueueReadySchedules },
         scheduledNotificationService: { enqueueDueNotifications },
       } as unknown as ReturnType<typeof container.createDIContainer>);
     const consoleErrorSpy = vi
@@ -121,6 +123,56 @@ describe('scheduled handler', () => {
       new Date(event.scheduledTime)
     );
     expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[CRON] Notification Audience Resolver error',
+      error
+    );
+    expect(enqueueDueNotifications).not.toHaveBeenCalled();
+    expect(enqueueReadySchedules).not.toHaveBeenCalled();
+    createDIContainerSpy.mockRestore();
+  });
+
+  it('Delivery準備のrejectはDelivery preparation errorとして記録する', async () => {
+    const container = await import('../src/di/container');
+    const error = new Error('database unavailable');
+    const resolveDueSchedules = vi.fn().mockResolvedValue({
+      completed_schedules: [],
+      retryable_schedule_ids: [],
+      failed_schedule_ids: [],
+    });
+    const enqueueReadySchedules = vi.fn().mockRejectedValue(error);
+    const enqueueDueNotifications = vi.fn();
+    const createDIContainerSpy = vi
+      .spyOn(container, 'createDIContainer')
+      .mockReturnValue({
+        notificationAudienceResolverService: { resolveDueSchedules },
+        notificationDeliveryService: { enqueueReadySchedules },
+        scheduledNotificationService: { enqueueDueNotifications },
+      } as unknown as ReturnType<typeof container.createDIContainer>);
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+
+    const { ctx, waitUntilPromises } = buildExecutionContext();
+    const event = {
+      cron: '* * * * *',
+      scheduledTime: Date.now(),
+      noRetry: () => {},
+    } as unknown as ScheduledEvent;
+
+    await worker.scheduled(event, { ...workerEnv, EVENT_DATE: '' }, ctx);
+    await expect(Promise.all(waitUntilPromises)).resolves.toBeDefined();
+
+    expect(resolveDueSchedules).toHaveBeenCalledWith(
+      new Date(event.scheduledTime)
+    );
+    expect(enqueueReadySchedules).toHaveBeenCalledWith(
+      new Date(event.scheduledTime)
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[CRON] Notification Delivery preparation error',
+      error
+    );
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
       '[CRON] Notification Audience Resolver error',
       error
     );

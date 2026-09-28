@@ -184,6 +184,217 @@ describe('NotificationDeliveryRepository and Service', () => {
     ]);
   });
 
+  it('Token削除でpending + NULLになったDeliveryをfailedにしてScheduleを完了する', async () => {
+    const fixture = await createSchedule();
+    const tokenId = await insertToken(
+      fixture.recipientUserId,
+      'delivery-removed-before-cron-token',
+      1
+    );
+    await resolve(fixture.scheduleId);
+    await deliveryRepository.prepareResolvedSchedule(fixture.scheduleId, NOW);
+    await env.DB.prepare(
+      'DELETE FROM firebase_tokens WHERE firebase_token_id = ?'
+    )
+      .bind(tokenId)
+      .run();
+
+    expect(await deliveryRows(fixture.scheduleId)).toMatchObject([
+      { firebase_token_id: null, status: 'pending' },
+    ]);
+
+    const sendNotificationToToken = vi.fn(async () => ({
+      success: true as const,
+      messageId: 'projects/test/messages/unused',
+    }));
+    const { service, messages } = createHarness({
+      sendTestNotification: vi.fn(),
+      sendNotificationToToken,
+    });
+    const result = await service.enqueueReadySchedules(new Date(NOW));
+
+    expect(result.queued_schedule_ids).toEqual([]);
+    expect(result.completed_schedule_ids).toEqual([fixture.scheduleId]);
+    expect(result.failed_schedule_ids).toEqual([]);
+    expect(messages).toEqual([]);
+    expect(sendNotificationToToken).not.toHaveBeenCalled();
+    expect(await deliveryRows(fixture.scheduleId)).toMatchObject([
+      {
+        firebase_token_id: null,
+        status: 'failed',
+        failed_reason: 'Firebase token was removed before delivery',
+        sent_at: null,
+        next_retry_at: null,
+      },
+    ]);
+    expect(await scheduleStatus(fixture.scheduleId)).toMatchObject({
+      send_status: 'completed',
+    });
+  });
+
+  it('有効Tokenと削除済みTokenが混在する場合は有効分だけQueueへ積む', async () => {
+    const fixture = await createSchedule();
+    const activeTokenId = await insertToken(
+      fixture.recipientUserId,
+      'delivery-active-token',
+      1
+    );
+    const removedTokenId = await insertToken(
+      fixture.recipientUserId,
+      'delivery-removed-token',
+      2
+    );
+    await resolve(fixture.scheduleId);
+    await deliveryRepository.prepareResolvedSchedule(fixture.scheduleId, NOW);
+    await env.DB.prepare(
+      'DELETE FROM firebase_tokens WHERE firebase_token_id = ?'
+    )
+      .bind(removedTokenId)
+      .run();
+
+    const sendNotificationToToken = vi.fn(async (input: { token: string }) => ({
+      success: true as const,
+      messageId: `projects/test/messages/${input.token}`,
+    }));
+    const { service, messages } = createHarness({
+      sendTestNotification: vi.fn(),
+      sendNotificationToToken,
+    });
+    const prepared = await service.enqueueReadySchedules(new Date(NOW));
+
+    expect(prepared.queued_schedule_ids).toEqual([fixture.scheduleId]);
+    expect(prepared.completed_schedule_ids).toEqual([]);
+    expect(messages).toEqual([
+      { notificationScheduleIds: [fixture.scheduleId] },
+    ]);
+    expect(await deliveryRows(fixture.scheduleId)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          firebase_token_id: activeTokenId,
+          status: 'pending',
+        }),
+        expect.objectContaining({
+          firebase_token_id: null,
+          status: 'failed',
+          failed_reason: 'Firebase token was removed before delivery',
+        }),
+      ])
+    );
+    expect(await scheduleStatus(fixture.scheduleId)).toMatchObject({
+      send_status: 'sending',
+    });
+
+    const sent = await service.sendQueuedNotifications(
+      [fixture.scheduleId],
+      new Date(NOW)
+    );
+
+    expect(sent).toEqual({ claimed: 1, sent: 1, failed: 0 });
+    expect(sendNotificationToToken).toHaveBeenCalledOnce();
+    expect(sendNotificationToToken).toHaveBeenCalledWith(
+      expect.objectContaining({ token: 'delivery-active-token' })
+    );
+    expect(await deliveryRows(fixture.scheduleId)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          firebase_token_id: activeTokenId,
+          status: 'sent',
+        }),
+        expect.objectContaining({ firebase_token_id: null, status: 'failed' }),
+      ])
+    );
+    expect(await scheduleStatus(fixture.scheduleId)).toMatchObject({
+      send_status: 'completed',
+    });
+  });
+
+  it('sending + NULL Deliveryはfailedへ変更せずScheduleもsendingのままにする', async () => {
+    const fixture = await createSchedule();
+    const tokenId = await insertToken(
+      fixture.recipientUserId,
+      'delivery-removed-after-claim-token',
+      1
+    );
+    await resolve(fixture.scheduleId);
+    await deliveryRepository.prepareResolvedSchedule(fixture.scheduleId, NOW);
+    await expect(
+      deliveryRepository.claimPendingDeliveries([fixture.scheduleId], NOW, 100)
+    ).resolves.toHaveLength(1);
+    await env.DB.prepare(
+      'DELETE FROM firebase_tokens WHERE firebase_token_id = ?'
+    )
+      .bind(tokenId)
+      .run();
+
+    const sendNotificationToToken = vi.fn(async () => ({
+      success: true as const,
+      messageId: 'projects/test/messages/unused',
+    }));
+    const { service } = createHarness({
+      sendTestNotification: vi.fn(),
+      sendNotificationToToken,
+    });
+    const result = await service.sendQueuedNotifications(
+      [fixture.scheduleId],
+      new Date(NOW)
+    );
+
+    expect(result).toEqual({ claimed: 0, sent: 0, failed: 0 });
+    expect(sendNotificationToToken).not.toHaveBeenCalled();
+    expect(await deliveryRows(fixture.scheduleId)).toMatchObject([
+      { firebase_token_id: null, status: 'sending' },
+    ]);
+    expect(await scheduleStatus(fixture.scheduleId)).toMatchObject({
+      send_status: 'sending',
+    });
+  });
+
+  it('Queue作成後にTokenが削除されたDeliveryを送信せずfailedに終端化する', async () => {
+    const fixture = await createSchedule();
+    const tokenId = await insertToken(
+      fixture.recipientUserId,
+      'delivery-removed-after-queue-token',
+      1
+    );
+    await resolve(fixture.scheduleId);
+    const sendNotificationToToken = vi.fn(async () => ({
+      success: true as const,
+      messageId: 'projects/test/messages/unused',
+    }));
+    const { service, messages } = createHarness({
+      sendTestNotification: vi.fn(),
+      sendNotificationToToken,
+    });
+    const prepared = await service.enqueueReadySchedules(new Date(NOW));
+    expect(prepared.queued_schedule_ids).toEqual([fixture.scheduleId]);
+
+    await env.DB.prepare(
+      'DELETE FROM firebase_tokens WHERE firebase_token_id = ?'
+    )
+      .bind(tokenId)
+      .run();
+    const result = await service.sendQueuedNotifications(
+      [fixture.scheduleId],
+      new Date(NOW)
+    );
+
+    expect(result).toEqual({ claimed: 0, sent: 0, failed: 1 });
+    expect(messages).toEqual([
+      { notificationScheduleIds: [fixture.scheduleId] },
+    ]);
+    expect(sendNotificationToToken).not.toHaveBeenCalled();
+    expect(await deliveryRows(fixture.scheduleId)).toMatchObject([
+      {
+        firebase_token_id: null,
+        status: 'failed',
+        failed_reason: 'Firebase token was removed before delivery',
+      },
+    ]);
+    expect(await scheduleStatus(fixture.scheduleId)).toMatchObject({
+      send_status: 'completed',
+    });
+  });
+
   it('有効Tokenごとにplatformを固定し、再実行と後から追加したTokenを重複登録しない', async () => {
     const fixture = await createSchedule('low');
     const iosTokenId = await insertToken(

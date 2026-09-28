@@ -495,14 +495,21 @@ export default {
               scheduleIds: result.failed_schedule_ids,
             });
           }
-          const deliveryResult =
-            await container.notificationDeliveryService.enqueueReadySchedules(
-              scheduledAt
+          try {
+            const deliveryResult =
+              await container.notificationDeliveryService.enqueueReadySchedules(
+                scheduledAt
+              );
+            if (deliveryResult.failed_schedule_ids.length > 0) {
+              console.error('[CRON] Notification Delivery準備に失敗しました', {
+                scheduleIds: deliveryResult.failed_schedule_ids,
+              });
+            }
+          } catch (error) {
+            console.error(
+              '[CRON] Notification Delivery preparation error',
+              error
             );
-          if (deliveryResult.failed_schedule_ids.length > 0) {
-            console.error('[CRON] Notification Delivery準備に失敗しました', {
-              scheduleIds: deliveryResult.failed_schedule_ids,
-            });
           }
         })
         .catch(error => {

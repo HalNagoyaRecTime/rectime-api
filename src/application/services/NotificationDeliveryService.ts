@@ -10,6 +10,8 @@ import type { IFcmService } from './IFcmService';
 import type { INotificationDeliveryService } from './INotificationDeliveryService';
 
 const MAX_CONCURRENT_FCM_REQUESTS = 5;
+const TOKEN_REMOVED_BEFORE_DELIVERY_REASON =
+  'Firebase token was removed before delivery';
 
 export function createNotificationDeliveryService(deps: {
   notificationDeliveryRepository: INotificationDeliveryRepository;
@@ -21,6 +23,12 @@ export function createNotificationDeliveryService(deps: {
     notificationDeliveryQueue,
     fcmService,
   } = deps;
+  const failPendingDeliveriesWithoutToken = (scheduleId: number, now: string) =>
+    notificationDeliveryRepository.markPendingDeliveriesWithoutTokenFailed(
+      scheduleId,
+      TOKEN_REMOVED_BEFORE_DELIVERY_REASON,
+      now
+    );
 
   return {
     async enqueueReadySchedules(now = new Date()) {
@@ -74,6 +82,7 @@ export function createNotificationDeliveryService(deps: {
               throw error;
             }
           }
+          await failPendingDeliveriesWithoutToken(scheduleId, nowIso);
           const pendingCount =
             await notificationDeliveryRepository.countPendingDeliveries(
               scheduleId
@@ -113,6 +122,10 @@ export function createNotificationDeliveryService(deps: {
         .filter(id => Number.isSafeInteger(id) && id > 0)
         .slice(0, NOTIFICATION_DELIVERY_MESSAGE_SIZE);
       const nowIso = now.toISOString();
+      let failed = 0;
+      for (const scheduleId of uniqueScheduleIds) {
+        failed += await failPendingDeliveriesWithoutToken(scheduleId, nowIso);
+      }
       const deliveries =
         await notificationDeliveryRepository.claimPendingDeliveries(
           uniqueScheduleIds,
@@ -120,7 +133,6 @@ export function createNotificationDeliveryService(deps: {
           NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT
         );
       let sent = 0;
-      let failed = 0;
 
       await mapWithConcurrency(
         deliveries,
@@ -160,6 +172,7 @@ export function createNotificationDeliveryService(deps: {
       );
 
       for (const scheduleId of uniqueScheduleIds) {
+        failed += await failPendingDeliveriesWithoutToken(scheduleId, nowIso);
         await notificationDeliveryRepository.completeScheduleIfDone(
           scheduleId,
           nowIso

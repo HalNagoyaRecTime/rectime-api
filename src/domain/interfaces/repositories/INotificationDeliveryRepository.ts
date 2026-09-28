@@ -10,6 +10,11 @@ export interface INotificationDeliveryRepository {
   ): Promise<NotificationDeliveryScheduleCandidate[]>;
   prepareResolvedSchedule(scheduleId: number, now: string): Promise<boolean>;
   countPendingDeliveries(scheduleId: number): Promise<number>;
+  markPendingDeliveriesWithoutTokenFailed(
+    scheduleId: number,
+    reason: string,
+    now: string
+  ): Promise<number>;
   claimPendingDeliveries(
     scheduleIds: number[],
     now: string,
