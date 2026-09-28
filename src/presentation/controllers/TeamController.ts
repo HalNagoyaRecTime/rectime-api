@@ -26,6 +26,7 @@ const teamWriteSchema = z
     team_name: z.string().trim().min(1),
     class_codes: z
       .array(z.string().trim().min(1))
+      .min(1)
       .refine(codes => new Set(codes).size === codes.length, {
         message: 'class_codes must not contain duplicate values',
       }),

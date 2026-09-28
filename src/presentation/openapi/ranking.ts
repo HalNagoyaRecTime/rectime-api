@@ -88,9 +88,9 @@ export const teamScoreAddSchema = z
 export const teamWriteSchema = z
   .object({
     team_name: z.string().trim().min(1),
-    class_codes: z.array(z.string().trim().min(1)).max(500).openapi({
+    class_codes: z.array(z.string().trim().min(1)).min(1).max(500).openapi({
       description:
-        '所属させるクラスのclass_code一覧。重複した値は含められない。最大500件。',
+        '所属させるクラスのclass_code一覧。1件以上必須。重複した値は含められない。最大500件。',
     }),
   })
   .openapi('TeamWriteRequest');

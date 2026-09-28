@@ -188,7 +188,7 @@ describe('TeamController', () => {
       const response = await app.request('/teams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_name: '既存チーム', class_codes: [] }),
+        body: JSON.stringify({ team_name: '既存チーム', class_codes: ['1A'] }),
       });
 
       expect(response.status).toBe(409);
@@ -229,7 +229,10 @@ describe('TeamController', () => {
       const response = await app.request('/teams/999', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_name: '更新後チーム', class_codes: [] }),
+        body: JSON.stringify({
+          team_name: '更新後チーム',
+          class_codes: ['1A'],
+        }),
       });
 
       expect(response.status).toBe(404);
