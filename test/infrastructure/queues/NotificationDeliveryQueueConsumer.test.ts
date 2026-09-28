@@ -65,7 +65,28 @@ describe('NotificationDeliveryQueueConsumer', () => {
     expect(message.retry).not.toHaveBeenCalled();
   });
 
-  it('処理失敗時は5分後にretryする', async () => {
+  it('legacyのreject後もDelivery処理の完了を待ってからretryする', async () => {
+    const message = createMessage({ notificationScheduleIds: [1] });
+    const legacyService = createLegacyService();
+    const deliveryService = createDeliveryServiceStub();
+    vi.mocked(legacyService.sendQueuedNotifications).mockRejectedValueOnce(
+      new Error('legacy unavailable')
+    );
+
+    await consumeNotificationDeliveryQueue(
+      createBatch(message),
+      legacyService,
+      deliveryService
+    );
+
+    expect(deliveryService.sendQueuedNotifications).toHaveBeenCalledOnce();
+    expect(message.retry).toHaveBeenCalledWith({
+      delaySeconds: NOTIFICATION_DELIVERY_RETRY_DELAY_SECONDS,
+    });
+    expect(message.ack).not.toHaveBeenCalled();
+  });
+
+  it('Deliveryのreject時はlegacy完了後にretryしackしない', async () => {
     const message = createMessage({ notificationScheduleIds: [1] });
     const legacyService = createLegacyService();
     const deliveryService = createDeliveryServiceStub();
@@ -78,6 +99,52 @@ describe('NotificationDeliveryQueueConsumer', () => {
       legacyService,
       deliveryService
     );
+
+    expect(message.retry).toHaveBeenCalledWith({
+      delaySeconds: NOTIFICATION_DELIVERY_RETRY_DELAY_SECONDS,
+    });
+    expect(message.ack).not.toHaveBeenCalled();
+  });
+
+  it('片方が即rejectしても、もう片方の遅延完了まではretryしない', async () => {
+    const message = createMessage({ notificationScheduleIds: [1] });
+    const legacyService = createLegacyService();
+    const deliveryService = createDeliveryServiceStub();
+    vi.mocked(legacyService.sendQueuedNotifications).mockRejectedValueOnce(
+      new Error('legacy unavailable')
+    );
+
+    let finishDelivery!: () => void;
+    let deliveryStarted!: () => void;
+    const deliveryStartedPromise = new Promise<void>(resolve => {
+      deliveryStarted = resolve;
+    });
+    const deliveryCompletion = new Promise<void>(resolve => {
+      finishDelivery = resolve;
+    });
+    vi.mocked(deliveryService.sendQueuedNotifications).mockImplementationOnce(
+      () => {
+        deliveryStarted();
+        return deliveryCompletion.then(() => ({
+          claimed: 1,
+          sent: 1,
+          failed: 0,
+        }));
+      }
+    );
+
+    const consumePromise = consumeNotificationDeliveryQueue(
+      createBatch(message),
+      legacyService,
+      deliveryService
+    );
+    await deliveryStartedPromise;
+
+    expect(message.retry).not.toHaveBeenCalled();
+    expect(message.ack).not.toHaveBeenCalled();
+
+    finishDelivery();
+    await consumePromise;
 
     expect(message.retry).toHaveBeenCalledWith({
       delaySeconds: NOTIFICATION_DELIVERY_RETRY_DELAY_SECONDS,
