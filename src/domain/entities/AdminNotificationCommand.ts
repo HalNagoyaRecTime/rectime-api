@@ -56,9 +56,6 @@ export interface UpdateNotificationCommand {
 }
 
 export type NotificationMutationResult =
-  | 'updated'
-  | 'not_found'
-  | 'not_allowed'
-  | 'schedule_not_found';
+  'updated' | 'not_found' | 'not_allowed' | 'schedule_not_found';
 
 export type NotificationDeleteResult = 'deleted' | 'not_found' | 'not_allowed';
