@@ -31,6 +31,9 @@ export function createNotificationAccountDeletionService(deps: {
           token.firebase_token_id
         );
       }
+      await notificationAccountDeletionRepository.deleteDirectUserAudiencesByUserId(
+        userId
+      );
       await notificationAccountDeletionRepository.deleteRecipientsByUserId(
         userId
       );

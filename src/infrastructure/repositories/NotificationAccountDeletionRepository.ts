@@ -1,10 +1,11 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { eq, or } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { INotificationAccountDeletionRepository } from '../../domain/interfaces/repositories/INotificationAccountDeletionRepository';
 import { notificationUtcNow } from '../database/notificationDateTime';
 import * as schema from '../database/schema';
 import {
+  notification_audiences,
   notification_recipients,
   notification_schedules,
   notifications,
@@ -16,6 +17,18 @@ export function createNotificationAccountDeletionRepository(
   const orm = drizzle(db, { schema });
 
   return {
+    async deleteDirectUserAudiencesByUserId(userId) {
+      await orm
+        .delete(notification_audiences)
+        .where(
+          and(
+            eq(notification_audiences.audienceType, 'user'),
+            eq(notification_audiences.targetId, userId)
+          )
+        )
+        .run();
+    },
+
     async deleteRecipientsByUserId(userId) {
       await orm
         .delete(notification_recipients)
