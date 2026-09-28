@@ -72,28 +72,28 @@ describe('EventController', () => {
       });
     });
 
-    it('start_time、limit、offsetクエリを解析してサービスに渡す', async () => {
+    it('start_time、limit、offsetクエリの値をサービスに渡す', async () => {
       const { app, eventService } = setup();
       const events = [buildEvent()];
       (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
-        { events, total: 1, limit: 10, offset: 5 }
+        { events, total: 1, limit: 10, offset: 20 }
       );
 
       const response = await app.request(
-        '/events?start_time=0930&limit=10&offset=5'
+        '/events?start_time=0930&limit=10&offset=20'
       );
 
       expect(eventService.getAllEvents).toHaveBeenCalledWith({
         start_time: '0930',
         limit: 10,
-        offset: 5,
+        offset: 20,
       });
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
         events,
         total: 1,
         limit: 10,
-        offset: 5,
+        offset: 20,
       });
     });
 
@@ -112,13 +112,13 @@ describe('EventController', () => {
       }
     );
 
-    it('既存のquery-to-service変換を維持する', async () => {
+    it('共有Schemaの変換結果をサービスへ渡す', async () => {
       const { app, eventService } = setup();
       (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
         {
           events: [],
           total: 0,
-          limit: 1,
+          limit: 100,
           offset: 0,
         }
       );
@@ -128,7 +128,7 @@ describe('EventController', () => {
       expect(response.status).toBe(200);
       expect(eventService.getAllEvents).toHaveBeenCalledWith({
         start_time: undefined,
-        limit: 1,
+        limit: 100,
         offset: 0,
       });
     });

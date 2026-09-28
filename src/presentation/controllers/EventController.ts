@@ -45,14 +45,7 @@ export function createEventController(eventService: IEventService) {
     }
 
     try {
-      return c.json(
-        await eventService.getAllEvents({
-          start_time: parsedQuery.data.start_time,
-          limit: query.limit ? parseInt(query.limit) : undefined,
-          offset: query.offset ? parseInt(query.offset) : undefined,
-        }),
-        200
-      );
+      return c.json(await eventService.getAllEvents(parsedQuery.data), 200);
     } catch {
       return errorResponse(c, EventErrors.EVENT_LIST_FAILED);
     }
