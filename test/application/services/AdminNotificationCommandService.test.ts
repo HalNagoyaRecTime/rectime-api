@@ -47,6 +47,8 @@ function buildQueryService(
   overrides: Partial<IAdminNotificationQueryService> = {}
 ): IAdminNotificationQueryService {
   return {
+    getAdminNotifications: vi.fn().mockResolvedValue({ items: [] }),
+    getAdminNotificationById: vi.fn().mockResolvedValue(notificationDetail),
     getNotificationDetail: vi.fn().mockResolvedValue(notificationDetail),
     ...overrides,
   };

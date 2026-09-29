@@ -117,6 +117,58 @@ describe('管理通知Command  API', () => {
     });
     expect(Date.parse(String(stored?.send_at))).toBeGreaterThan(0);
 
+    const detailResponse = await app.fetch(
+      new Request(
+        `http://example.com/api/v1/admin/notifications/${created.notificationId}`,
+        { headers: requestHeaders(token) }
+      ),
+      testEnv
+    );
+    expect(detailResponse.status).toBe(200);
+    expect(await detailResponse.json()).toMatchObject({
+      notificationId: created.notificationId,
+      content: {
+        push: { title: 'Push title', body: 'Push body' },
+        detail: { title: 'Detail title', body: 'Detail body' },
+      },
+      importance: 'normal',
+      creation: {
+        method: 'manual',
+        user: {
+          userId: expect.any(Number),
+          userName: 'Notification Command API staff',
+        },
+        source: null,
+      },
+      schedules: [
+        {
+          notificationScheduleId: created.notificationScheduleId,
+          audience: { items: [{ type: 'all' }] },
+        },
+      ],
+    });
+
+    const listResponse = await app.fetch(
+      new Request(
+        'http://example.com/api/v1/admin/notifications?from=2000-01-01T00%3A00%3A00.000Z&to=2100-01-01T00%3A00%3A00.000Z',
+        { headers: requestHeaders(token) }
+      ),
+      testEnv
+    );
+    expect(listResponse.status).toBe(200);
+    expect(await listResponse.json()).toMatchObject({
+      items: [
+        {
+          notificationId: created.notificationId,
+          content: { push: { title: 'Push title', body: 'Push body' } },
+          importance: 'normal',
+          schedules: [
+            { notificationScheduleId: created.notificationScheduleId },
+          ],
+        },
+      ],
+    });
+
     await workerEnv.DB.prepare(
       `UPDATE notification_schedules SET started_at = CURRENT_TIMESTAMP
        WHERE notification_schedule_id = ?`

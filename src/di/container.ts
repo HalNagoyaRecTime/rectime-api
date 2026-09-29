@@ -51,6 +51,7 @@ import { createFirebaseTokenController } from '../presentation/controllers/Fireb
 import { createAdminNotificationController } from '../presentation/controllers/AdminNotificationController';
 import { createAdminNotificationManagementController } from '../presentation/controllers/AdminNotificationManagementController';
 import { createAdminNotificationCommandController } from '../presentation/controllers/AdminNotificationCommandController';
+import { createAdminNotificationQueryController } from '../presentation/controllers/AdminNotificationQueryController';
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
 import { createVenueController } from '../presentation/controllers/VenueController';
@@ -242,6 +243,8 @@ export function createDIContainer(env: Env) {
     );
   const adminNotificationCommandController =
     createAdminNotificationCommandController(adminNotificationCommandService);
+  const adminNotificationQueryController =
+    createAdminNotificationQueryController(adminNotificationQueryService);
   const mobileNotificationController = createMobileNotificationController(
     mobileNotificationService
   );
@@ -275,6 +278,7 @@ export function createDIContainer(env: Env) {
     adminNotificationManagementController,
     adminNotificationQueryService,
     adminNotificationCommandController,
+    adminNotificationQueryController,
     mobileNotificationController,
     scheduledNotificationService,
     notificationAudienceResolverService,

@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAdminNotificationCommandRepository } from '../../../src/infrastructure/repositories/AdminNotificationCommandRepository';
 import { createAdminNotificationQueryRepository } from '../../../src/infrastructure/repositories/AdminNotificationQueryRepository';
 import {
@@ -38,7 +38,7 @@ describe('AdminNotificationQueryRepository', () => {
     );
 
     await expect(
-      repository.findDetail(created.notification_id)
+      repository.findById(created.notification_id)
     ).resolves.toMatchObject({
       notification_id: created.notification_id,
       source_type: null,
@@ -59,6 +59,13 @@ describe('AdminNotificationQueryRepository', () => {
         },
       ],
     });
+
+    await expect(
+      repository.findAll({
+        from: '2026-09-24T00:00:00+09:00',
+        to: '2026-09-24T23:59:59+09:00',
+      })
+    ).resolves.toHaveLength(1);
   });
   it('詳細でRecipient単位集計とSource labelを返し、Audienceを一括取得する', async () => {
     const fixture = await createFixture();
@@ -149,7 +156,7 @@ describe('AdminNotificationQueryRepository', () => {
       get(target, property, receiver) {
         if (property === 'prepare') {
           return (query: string) => {
-            if (query.includes('FROM notification_audiences a')) {
+            if (query.includes('FROM notification_audiences')) {
               audienceQueryCount += 1;
             }
             return target.prepare(query);
@@ -161,7 +168,7 @@ describe('AdminNotificationQueryRepository', () => {
     });
     const detail = await createAdminNotificationQueryRepository(
       countedDb
-    ).findDetail(created.notification_id);
+    ).findById(created.notification_id);
     if (!detail) throw new Error('作成したNotification detailがありません');
 
     expect(detail.schedules).toHaveLength(2);
@@ -177,9 +184,63 @@ describe('AdminNotificationQueryRepository', () => {
     await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
       .bind(fixture.gatheringId)
       .run();
-    const afterSourceDelete = await repository.findDetail(
+    const afterSourceDelete = await repository.findById(
       created.notification_id
     );
     expect(afterSourceDelete?.source_label).toBeNull();
+    expect(afterSourceDelete?.schedules[0]?.audiences[0]?.label).toBeNull();
+  });
+
+  it('一覧はScheduleのsend_atで期間判定し、期間内Scheduleだけを一括取得する', async () => {
+    const fixture = await createFixture();
+    const start = await commandRepository.create(
+      buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+    );
+    const excluded = await commandRepository.create(
+      buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+    );
+    const mixed = await commandRepository.create(
+      buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+    );
+
+    await env.DB.batch([
+      env.DB.prepare(
+        'UPDATE notification_schedules SET send_at = ? WHERE notification_schedule_id = ?'
+      ).bind('2026-09-24T00:00:00+09:00', start.notification_schedule_id),
+      env.DB.prepare(
+        'UPDATE notification_schedules SET send_at = ? WHERE notification_schedule_id = ?'
+      ).bind('2026-09-25T00:00:00+09:00', excluded.notification_schedule_id),
+      env.DB.prepare(
+        'UPDATE notification_schedules SET send_at = ? WHERE notification_schedule_id = ?'
+      ).bind('2026-09-24T23:59:59+09:00', mixed.notification_schedule_id),
+      env.DB.prepare(
+        `INSERT INTO notification_schedules (
+           created_user_id, scheduled_by_user_id, event_id, notification_id,
+           importance, send_status, send_at, created_at, updated_at
+         )
+         SELECT created_user_id, scheduled_by_user_id, event_id, notification_id,
+                importance, 'scheduled', ?, created_at, updated_at
+         FROM notification_schedules
+         WHERE notification_schedule_id = ?`
+      ).bind('2026-09-25T00:00:00+09:00', mixed.notification_schedule_id),
+    ]);
+
+    const batchSpy = vi.spyOn(env.DB, 'batch');
+    const listed = await repository.findAll({
+      from: '2026-09-24T00:00:00+09:00',
+      to: '2026-09-24T23:59:59+09:00',
+    });
+
+    expect(listed.map(notification => notification.notification_id)).toEqual([
+      mixed.notification_id,
+      start.notification_id,
+    ]);
+    expect(listed[0]?.schedules).toHaveLength(1);
+    expect(listed[0]?.schedules[0]?.notification_schedule_id).toBe(
+      mixed.notification_schedule_id
+    );
+    expect(batchSpy).toHaveBeenCalledTimes(1);
+    expect(batchSpy.mock.calls[0]?.[0]).toHaveLength(4);
+    batchSpy.mockRestore();
   });
 });

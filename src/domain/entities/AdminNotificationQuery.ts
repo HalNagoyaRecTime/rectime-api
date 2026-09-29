@@ -50,3 +50,8 @@ export interface AdminNotificationSnapshot {
   updated_at: string;
   schedules: NotificationScheduleSnapshot[];
 }
+
+export interface AdminNotificationQueryOptions {
+  from: string;
+  to: string;
+}

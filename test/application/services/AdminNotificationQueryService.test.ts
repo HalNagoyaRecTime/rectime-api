@@ -42,12 +42,82 @@ function buildRepository(
   overrides: Partial<IAdminNotificationQueryRepository> = {}
 ): IAdminNotificationQueryRepository {
   return {
-    findDetail: vi.fn().mockResolvedValue(manualSnapshot),
+    findAll: vi.fn().mockResolvedValue([]),
+    findById: vi.fn().mockResolvedValue(manualSnapshot),
     ...overrides,
   };
 }
 
 describe('AdminNotificationQueryService', () => {
+  it('一覧DTOはcontent.pushと期間内Scheduleだけを返す', async () => {
+    const repository = buildRepository({
+      findAll: vi.fn().mockResolvedValue([manualSnapshot]),
+    });
+    const service = createAdminNotificationQueryService(repository);
+
+    await expect(
+      service.getAdminNotifications({
+        from: '2026-09-25T00:00:00+09:00',
+        to: '2026-09-25T23:59:59+09:00',
+      })
+    ).resolves.toEqual({
+      items: [
+        {
+          notificationId: 10,
+          content: { push: { title: 'Push title', body: 'Push body' } },
+          importance: 'normal',
+          creation: {
+            method: 'manual',
+            user: { userId: 3, userName: '作成者' },
+            source: null,
+          },
+          createdAt: '2026-09-24T09:00:00.000Z',
+          schedules: [
+            {
+              notificationScheduleId: 11,
+              sendAt: '2026-09-25T10:00:00.000Z',
+              status: 'scheduled',
+              scheduledBy: { userId: 3, userName: '作成者' },
+              createdAt: '2026-09-24T09:00:00.000Z',
+              audience: {
+                items: [{ type: 'all' }],
+                recipientResolution: {
+                  status: 'pending',
+                  resolvedCount: 3,
+                },
+              },
+              recipientPushSummary: {
+                totalCount: 3,
+                successCount: 1,
+                failedCount: 1,
+                noPushTargetCount: 1,
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(repository.findAll).toHaveBeenCalledWith({
+      from: '2026-09-25T00:00:00+09:00',
+      to: '2026-09-25T23:59:59+09:00',
+    });
+  });
+
+  it('一覧の期間未指定時はJST当日の範囲をRepositoryへ渡す', async () => {
+    const repository = buildRepository();
+    const service = createAdminNotificationQueryService(
+      repository,
+      () => new Date('2026-09-24T06:00:00.000Z')
+    );
+
+    await service.getAdminNotifications({});
+
+    expect(repository.findAll).toHaveBeenCalledWith({
+      from: '2026-09-24T00:00:00.000+09:00',
+      to: '2026-09-24T23:59:59.999+09:00',
+    });
+  });
+
   it('manual Notification detailをAdminNotificationDetailDTOへ変換する', async () => {
     const repository = buildRepository();
     const service = createAdminNotificationQueryService(repository);
@@ -87,12 +157,12 @@ describe('AdminNotificationQueryService', () => {
         },
       ],
     });
-    expect(repository.findDetail).toHaveBeenCalledWith(10);
+    expect(repository.findById).toHaveBeenCalledWith(10);
   });
 
   it('存在しないNotificationはnullを返す', async () => {
     const repository = buildRepository({
-      findDetail: vi.fn().mockResolvedValue(null),
+      findById: vi.fn().mockResolvedValue(null),
     });
     const service = createAdminNotificationQueryService(repository);
 

@@ -86,14 +86,12 @@ import {
   venueListRoute,
   venueUpdateRoute,
 } from './presentation/openapi/venues';
-import {
-  legacyAdminNotificationDetailRoute,
-  legacyAdminNotificationListRoute,
-  legacyAdminNotificationUpdateRoute,
-} from './presentation/openapi/notification/legacy/admin';
+import { legacyAdminNotificationUpdateRoute } from './presentation/openapi/notification/legacy/admin';
 import {
   adminNotificationCreateRoute,
+  adminNotificationDetailRoute,
   adminNotificationDeleteRoute,
+  adminNotificationListRoute,
   adminNotificationPatchRoute,
 } from './presentation/openapi/notification/admin';
 import { firebaseTokenRegistrationRoute } from './presentation/openapi/notification/firebaseTokens';
@@ -447,15 +445,15 @@ apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
       c.req.valid('json')
     );
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationListRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationListRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotifications(c);
+    .adminNotificationQueryController.getAdminNotifications(c);
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationDetailRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationDetailRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotificationById(c);
+    .adminNotificationQueryController.getAdminNotificationById(c);
 });
 apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
   return c
