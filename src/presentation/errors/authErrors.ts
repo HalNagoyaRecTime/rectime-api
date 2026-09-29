@@ -6,6 +6,11 @@ export const AuthErrors = {
     code: 'INVALID_CLIENT_TYPE',
     message: 'クライアント種別が不正です',
   },
+  LOGOUT_FAILED: {
+    status: 500,
+    code: 'LOGOUT_FAILED',
+    message: 'ログアウト処理に失敗しました',
+  },
   INVALID_REQUEST: {
     status: 400,
     code: 'INVALID_REQUEST',

@@ -41,7 +41,6 @@
       "FIREBASE_PROJECT_ID",
       "FIREBASE_CLIENT_EMAIL",
       "FIREBASE_PRIVATE_KEY",
-      "TEST_FCM_TOKEN",
     ],
   },
   "triggers": {
@@ -151,7 +150,7 @@
       // 10秒タイムアウトし、テストスイートが不安定になることを確認したため。
       // ただし実デプロイ先としても使う以上、以下は実際には必須(`wrangler secret put <NAME> --env development`
       // で登録すること): MICROSOFT_CLIENT_PRIVATE_KEY / MICROSOFT_CERT_THUMBPRINT / JWT_SECRET /
-      // FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY / TEST_FCM_TOKEN
+      // FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY
       // (secrets.requiredを宣言しない代償として、デプロイ時の事前検証は効かない)。
       "kv_namespaces": [
         {
@@ -238,7 +237,6 @@
           "FIREBASE_PROJECT_ID",
           "FIREBASE_CLIENT_EMAIL",
           "FIREBASE_PRIVATE_KEY",
-          "TEST_FCM_TOKEN",
         ],
       },
       // 本番相当のcronを検証したくなった時点で有効化を検討する。まずは無効で始める。

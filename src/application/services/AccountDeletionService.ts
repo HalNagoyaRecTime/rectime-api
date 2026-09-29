@@ -7,8 +7,7 @@ import type { IStudentRepository } from '../../domain/interfaces/repositories/IS
 import type { IStaffRepository } from '../../domain/interfaces/repositories/IStaffRepository';
 import type { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
 import type { IGatheringGroupMemberRepository } from '../../domain/interfaces/repositories/IGatheringGroupMemberRepository';
-import type { INotificationScheduleRepository } from '../../domain/interfaces/repositories/INotificationScheduleRepository';
-import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
+import type { INotificationAccountDeletionService } from './INotificationAccountDeletionService';
 
 export function createAccountDeletionService(deps: {
   userRepository: IUserRepository;
@@ -16,8 +15,7 @@ export function createAccountDeletionService(deps: {
   staffRepository: IStaffRepository;
   teacherRepository: ITeacherRepository;
   gatheringGroupMemberRepository: IGatheringGroupMemberRepository;
-  notificationScheduleRepository: INotificationScheduleRepository;
-  firebaseTokenRepository: IFirebaseTokenRepository;
+  notificationAccountDeletionService: INotificationAccountDeletionService;
 }): IAccountDeletionService {
   const {
     userRepository,
@@ -25,8 +23,7 @@ export function createAccountDeletionService(deps: {
     staffRepository,
     teacherRepository,
     gatheringGroupMemberRepository,
-    notificationScheduleRepository,
-    firebaseTokenRepository,
+    notificationAccountDeletionService,
   } = deps;
 
   const deleteRelatedData = async (userId: string): Promise<void> => {
@@ -106,33 +103,13 @@ export function createAccountDeletionService(deps: {
     // ここでは以下のみ処理する。各ステップは対象が無ければ何もしない
     // (冪等)ため、途中で失敗しても同じuserIdで安全に再実行できる。
     //
-    // Legacy AccountDeletionの現在の個人データ削除方針を維持するため、
-    // firebase_tokensを物理削除する前にnotification_schedules(受信履歴)を削除する。
-    //
-    // register()の所有者変更では旧Token行を物理削除し、参照DeliveryはFKでNULL化する。
-    // ここでは、削除対象ユーザーが受信者だった送信履歴を含めて物理削除
-    // する。これは制約の都合による結果ではなく、個人データの削除として
-    // 意図的に選んだ方針である。#263(データ保持・削除ルール)の起票者に
-    // 確認した結果、本人からの削除要求に対しては送信実績の集計・監査
-    // よりも個人データの消去を優先し、物理削除で問題ないとの判断を得た。
-    // このため送信者側(anonymizeCreatedUserId、下記)とは扱いが異なり、
-    // 受信者側の履歴は残らない。
-    removed.firebaseToken = await step('firebaseTokens', async () => {
-      const firebaseToken =
-        await firebaseTokenRepository.findByUserId(userIdNum);
-      if (!firebaseToken) return false;
-      await notificationScheduleRepository.deleteByFirebaseTokenId(
-        firebaseToken.firebase_token_id
-      );
-      await firebaseTokenRepository.deleteByUserId(userIdNum);
-      return true;
-    });
-
-    // 通知の作成者(管理者側)情報を匿名化する。通知自体(他の受信者宛て)は
-    // 残す。
-    await step('anonymizeCreatedUserId', () =>
-      notificationScheduleRepository.anonymizeCreatedUserId(userIdNum)
+    // 通知領域の削除・匿名化は専用Application Serviceへ委譲する。
+    // Token、受信者、送信者参照の扱いをここに漏らさず、完了ログに必要な
+    // Firebase Token削除有無だけを受け取る。
+    const notificationCleanup = await step('notificationData', () =>
+      notificationAccountDeletionService.purgeUserNotificationData(userIdNum)
     );
+    removed.firebaseToken = notificationCleanup.firebaseTokensDeleted;
 
     // ロール・所属の解除。
     removed.staff = await step('staff', () =>
