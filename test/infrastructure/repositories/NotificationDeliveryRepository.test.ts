@@ -207,7 +207,6 @@ describe('NotificationDeliveryRepository and Service', () => {
       messageId: 'projects/test/messages/unused',
     }));
     const { service, messages } = createHarness({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken,
     });
     const result = await service.enqueueReadySchedules(new Date(NOW));
@@ -256,7 +255,6 @@ describe('NotificationDeliveryRepository and Service', () => {
       messageId: `projects/test/messages/${input.token}`,
     }));
     const { service, messages } = createHarness({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken,
     });
     const prepared = await service.enqueueReadySchedules(new Date(NOW));
@@ -330,7 +328,6 @@ describe('NotificationDeliveryRepository and Service', () => {
       messageId: 'projects/test/messages/unused',
     }));
     const { service } = createHarness({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken,
     });
     const result = await service.sendQueuedNotifications(
@@ -361,7 +358,6 @@ describe('NotificationDeliveryRepository and Service', () => {
       messageId: 'projects/test/messages/unused',
     }));
     const { service, messages } = createHarness({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken,
     });
     const prepared = await service.enqueueReadySchedules(new Date(NOW));
