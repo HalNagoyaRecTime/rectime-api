@@ -6,6 +6,7 @@ import {
   type ApiErrorDefinition,
 } from '../errors/errorResponse';
 import { TeamErrors } from '../errors/teamErrors';
+import { teamWriteSchema } from '../openapi/ranking';
 
 const MAX_LIMIT = 100;
 
@@ -18,18 +19,6 @@ const teamListQuerySchema = z
     offset: z.coerce.number().int().min(0).optional(),
     sortBy: z.enum(['teamName', 'registeredAt', 'updatedAt']).optional(),
     sortOrder: z.enum(['asc', 'desc']).optional(),
-  })
-  .strict();
-
-const teamWriteSchema = z
-  .object({
-    team_name: z.string().trim().min(1),
-    class_codes: z
-      .array(z.string().trim().min(1))
-      .min(1)
-      .refine(codes => new Set(codes).size === codes.length, {
-        message: 'class_codes must not contain duplicate values',
-      }),
   })
   .strict();
 

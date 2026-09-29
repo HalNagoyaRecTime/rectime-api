@@ -88,11 +88,19 @@ export const teamScoreAddSchema = z
 export const teamWriteSchema = z
   .object({
     team_name: z.string().trim().min(1),
-    class_codes: z.array(z.string().trim().min(1)).min(1).max(500).openapi({
-      description:
-        '所属させるクラスのclass_code一覧。1件以上必須。重複した値は含められない。最大500件。',
-    }),
+    class_codes: z
+      .array(z.string().trim().min(1))
+      .min(1)
+      .max(500)
+      .refine(codes => new Set(codes).size === codes.length, {
+        message: 'class_codes must not contain duplicate values',
+      })
+      .openapi({
+        description:
+          '所属させるクラスのclass_code一覧。1件以上必須。重複した値は含められない。最大500件。',
+      }),
   })
+  .strict()
   .openapi('TeamWriteRequest');
 
 export const rankingListRoute = createRoute({
