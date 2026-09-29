@@ -8,6 +8,10 @@ import { createFirebaseTokenRepository } from '../infrastructure/repositories/Fi
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
 import { createNotificationAccountDeletionRepository } from '../infrastructure/repositories/NotificationAccountDeletionRepository';
 import { createAdminNotificationRepository } from '../infrastructure/repositories/AdminNotificationRepository';
+import { createAdminNotificationCommandRepository } from '../infrastructure/repositories/AdminNotificationCommandRepository';
+import { createAdminNotificationQueryRepository } from '../infrastructure/repositories/AdminNotificationQueryRepository';
+import { createNotificationAudienceResolverRepository } from '../infrastructure/repositories/NotificationAudienceResolverRepository';
+import { createNotificationDeliveryRepository } from '../infrastructure/repositories/NotificationDeliveryRepository';
 import { createAdminNotificationManagementRepository } from '../infrastructure/repositories/AdminNotificationManagementRepository';
 import { createMobileNotificationRepository } from '../infrastructure/repositories/MobileNotificationRepository';
 import { createGatheringSpotRepository } from '../infrastructure/repositories/GatheringSpotRepository';
@@ -25,8 +29,12 @@ import { createMasterImportService } from '../application/services/MasterImportS
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
+import { createNotificationAudienceResolverService } from '../application/services/NotificationAudienceResolverService';
+import { createNotificationDeliveryService } from '../application/services/NotificationDeliveryService';
 import { createAdminNotificationService } from '../application/services/AdminNotificationService';
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
+import { createAdminNotificationCommandService } from '../application/services/AdminNotificationCommandService';
+import { createAdminNotificationQueryService } from '../application/services/AdminNotificationQueryService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
 import { createGatheringSpotService } from '../application/services/GatheringSpotService';
 import { createVenueService } from '../application/services/VenueService';
@@ -43,6 +51,7 @@ import { createFirebaseTokenController } from '../presentation/controllers/Fireb
 import { createNotificationController } from '../presentation/controllers/NotificationController';
 import { createAdminNotificationController } from '../presentation/controllers/AdminNotificationController';
 import { createAdminNotificationManagementController } from '../presentation/controllers/AdminNotificationManagementController';
+import { createAdminNotificationCommandController } from '../presentation/controllers/AdminNotificationCommandController';
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
 import { createVenueController } from '../presentation/controllers/VenueController';
@@ -80,6 +89,14 @@ export function createDIContainer(env: Env) {
   const adminNotificationRepository = createAdminNotificationRepository(db);
   const adminNotificationManagementRepository =
     createAdminNotificationManagementRepository(db);
+  const adminNotificationCommandRepository =
+    createAdminNotificationCommandRepository(db);
+  const adminNotificationQueryRepository =
+    createAdminNotificationQueryRepository(db);
+  const notificationAudienceResolverRepository =
+    createNotificationAudienceResolverRepository(db);
+  const notificationDeliveryRepository =
+    createNotificationDeliveryRepository(db);
   const mobileNotificationRepository = createMobileNotificationRepository(db);
   const gatheringSpotRepository = createGatheringSpotRepository(db);
   const venueRepository = createVenueRepository(db);
@@ -165,6 +182,15 @@ export function createDIContainer(env: Env) {
     notificationDeliveryQueue,
     fcmService,
   });
+  const notificationAudienceResolverService =
+    createNotificationAudienceResolverService(
+      notificationAudienceResolverRepository
+    );
+  const notificationDeliveryService = createNotificationDeliveryService({
+    notificationDeliveryRepository,
+    notificationDeliveryQueue,
+    fcmService,
+  });
   const adminNotificationService = createAdminNotificationService(
     adminNotificationRepository
   );
@@ -173,6 +199,13 @@ export function createDIContainer(env: Env) {
       adminNotificationManagementRepository,
       adminNotificationRepository
     );
+  const adminNotificationQueryService = createAdminNotificationQueryService(
+    adminNotificationQueryRepository
+  );
+  const adminNotificationCommandService = createAdminNotificationCommandService(
+    adminNotificationCommandRepository,
+    adminNotificationQueryService
+  );
   const mobileNotificationService = createMobileNotificationService(
     mobileNotificationRepository
   );
@@ -209,6 +242,8 @@ export function createDIContainer(env: Env) {
     createAdminNotificationManagementController(
       adminNotificationManagementService
     );
+  const adminNotificationCommandController =
+    createAdminNotificationCommandController(adminNotificationCommandService);
   const mobileNotificationController = createMobileNotificationController(
     mobileNotificationService
   );
@@ -241,8 +276,12 @@ export function createDIContainer(env: Env) {
     notificationController,
     adminNotificationController,
     adminNotificationManagementController,
+    adminNotificationQueryService,
+    adminNotificationCommandController,
     mobileNotificationController,
     scheduledNotificationService,
+    notificationAudienceResolverService,
+    notificationDeliveryService,
     gatheringSpotController,
     venueController,
     gatheringGroupMemberController,
