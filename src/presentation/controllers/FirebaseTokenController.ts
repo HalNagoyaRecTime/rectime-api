@@ -1,5 +1,4 @@
 import { Context } from 'hono';
-import { z } from 'zod';
 import { IFirebaseTokenService } from '../../application/services/IFirebaseTokenService';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
@@ -8,37 +7,12 @@ import type { AuthVariables } from '../middleware/requireAuth';
 import { CommonErrors } from '../errors/commonErrors';
 import { errorResponse } from '../errors/errorResponse';
 import { NotificationErrors } from '../errors/notificationErrors';
-import { UserErrors } from '../errors/userErrors';
-
-const registerFirebaseTokenSchema = z
-  .object({
-    fcmToken: z.string().min(1),
-    platform: z.enum(['ios', 'android']),
-  })
-  .strict();
+import { firebaseTokenRegistrationRequestSchema } from '../openapi/notification/firebaseTokens';
 
 type FirebaseTokenContext = Context<{
   Bindings: Env;
   Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>;
-
-function isFirebaseTokenUniqueConstraintError(error: unknown): boolean {
-  const visited = new Set<Error>();
-  let current = error;
-
-  while (current instanceof Error && !visited.has(current)) {
-    visited.add(current);
-    if (
-      current.message.includes('UNIQUE constraint failed') &&
-      current.message.includes('firebase_tokens.fcm_token')
-    ) {
-      return true;
-    }
-    current = current.cause;
-  }
-
-  return false;
-}
 
 export function createFirebaseTokenController(
   firebaseTokenService: IFirebaseTokenService
@@ -52,17 +26,14 @@ export function createFirebaseTokenController(
       try {
         body = await c.req.json();
       } catch {
-        return errorResponse(
-          c,
-          NotificationErrors.INVALID_FIREBASE_TOKEN_REQUEST
-        );
+        return errorResponse(c, CommonErrors.VALIDATION_ERROR);
       }
 
-      const parsedBody = registerFirebaseTokenSchema.safeParse(body);
+      const parsedBody = firebaseTokenRegistrationRequestSchema.safeParse(body);
       if (!parsedBody.success) {
         return errorResponse(
           c,
-          NotificationErrors.INVALID_FIREBASE_TOKEN_REQUEST,
+          CommonErrors.VALIDATION_ERROR,
           parsedBody.error.flatten()
         );
       }
@@ -74,16 +45,7 @@ export function createFirebaseTokenController(
       });
 
       return c.json(result, 200);
-    } catch (error) {
-      if (error instanceof Error && error.message === 'User not found') {
-        return errorResponse(c, UserErrors.USER_NOT_FOUND);
-      }
-      if (isFirebaseTokenUniqueConstraintError(error)) {
-        return errorResponse(
-          c,
-          NotificationErrors.FIREBASE_TOKEN_REGISTRATION_CONFLICT
-        );
-      }
+    } catch {
       return errorResponse(
         c,
         NotificationErrors.FIREBASE_TOKEN_REGISTRATION_FAILED

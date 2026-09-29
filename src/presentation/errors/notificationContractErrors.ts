@@ -6,10 +6,10 @@ export const NotificationContractErrors = {
     code: 'NOTIFICATION_IMPORTANCE_FORBIDDEN',
     message: '指定された通知重要度は利用できません',
   },
-  FIREBASE_TOKEN_FORBIDDEN: {
-    status: 403,
-    code: 'FIREBASE_TOKEN_FORBIDDEN',
-    message: 'このFirebaseトークンを操作する権限がありません',
+  FIREBASE_TOKEN_REGISTRATION_FAILED: {
+    status: 500,
+    code: 'FIREBASE_TOKEN_REGISTRATION_FAILED',
+    message: 'Firebaseトークンの登録に失敗しました',
   },
   ADMIN_NOTIFICATION_NOT_FOUND: {
     status: 404,
@@ -30,11 +30,6 @@ export const NotificationContractErrors = {
     status: 404,
     code: 'NOTIFICATION_SCHEDULE_NOT_FOUND',
     message: '通知スケジュールが見つかりません',
-  },
-  FIREBASE_TOKEN_NOT_FOUND: {
-    status: 404,
-    code: 'FIREBASE_TOKEN_NOT_FOUND',
-    message: 'Firebaseトークンが見つかりません',
   },
   NOTIFICATION_EDIT_NOT_ALLOWED: {
     status: 409,
