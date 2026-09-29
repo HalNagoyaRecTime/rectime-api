@@ -347,7 +347,8 @@ export function createAuthService(
       }
       await authKv.delete(`mobile_refresh_by_user:${userId}`);
 
-      // 3. Firebase Token登録をPush通知対象から除外する。
+      // 3. purge完了までPush対象から即時除外する。物理削除は後段の
+      //    Account deletion内部処理がLegacy履歴整理後に行う。
       await firebaseTokenRepository.deactivateByUserId(Number(userId));
     },
   };

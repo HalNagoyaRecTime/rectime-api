@@ -10,9 +10,9 @@ describe('EventGatheringSettingsRepository', () => {
 
   async function insertEvent(name: string): Promise<number> {
     const row = await env.DB.prepare(
-      'INSERT INTO events (event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?) RETURNING event_id'
+      'INSERT INTO events (event_name, start_time, end_time) VALUES (?, ?, ?) RETURNING event_id'
     )
-      .bind(name, '体育館', '0900', '1000')
+      .bind(name, '0900', '1000')
       .first<{ event_id: number }>();
     eventIds.push(row!.event_id);
     return row!.event_id;

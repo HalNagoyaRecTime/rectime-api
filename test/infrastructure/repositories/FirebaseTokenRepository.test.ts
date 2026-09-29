@@ -115,36 +115,93 @@ describe('FirebaseTokenRepository', () => {
     expect(stored?.platform).toBe(1);
   });
 
-  it('同じ利用者のToken更新時に既存行を最新Tokenへ更新する', async () => {
-    const userId = await createUser('Firebaseトークン更新利用者');
+  it('登録日時をUTC ISO形式で保存する', async () => {
+    const userId = await createUser('Firebase日時形式');
+    const registered = await repository.register({
+      userId,
+      platform: 'android',
+      fcmToken: 'token-datetime',
+    });
+
+    const utcIso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    expect(registered.last_seen_at).toMatch(utcIso);
+
+    const stored = await env.DB.prepare(
+      'SELECT last_seen_at, created_at, updated_at FROM firebase_tokens WHERE user_id = ?'
+    )
+      .bind(userId)
+      .first<{
+        last_seen_at: string;
+        created_at: string;
+        updated_at: string;
+      }>();
+    expect(stored?.last_seen_at).toMatch(utcIso);
+    expect(stored?.created_at).toMatch(utcIso);
+    expect(stored?.updated_at).toMatch(utcIso);
+  });
+
+  it('同じ利用者は複数端末のTokenを保持する', async () => {
+    const userId = await createUser('Firebase複数端末利用者');
     const first = await repository.register({
       userId,
       platform: 'android',
-      fcmToken: 'token-before',
+      fcmToken: 'token-device-one',
     });
     const second = await repository.register({
       userId,
+      platform: 'ios',
+      fcmToken: 'token-device-two',
+    });
+
+    expect(second.firebase_token_id).not.toBe(first.firebase_token_id);
+    const stored = await env.DB.prepare(
+      'SELECT fcm_token FROM firebase_tokens WHERE user_id = ? ORDER BY firebase_token_id'
+    )
+      .bind(userId)
+      .all<{ fcm_token: string }>();
+    expect(stored.results.map(row => row.fcm_token)).toEqual([
+      'token-device-one',
+      'token-device-two',
+    ]);
+  });
+
+  it('同一利用者・同一FCM Tokenの再登録は同じ行を更新する', async () => {
+    const userId = await createUser('Firebase同一端末利用者');
+    const first = await repository.register({
+      userId,
       platform: 'android',
-      fcmToken: 'token-after',
+      fcmToken: 'token-same-device',
+    });
+    await env.DB.prepare(
+      'UPDATE firebase_tokens SET last_seen_at = ? WHERE firebase_token_id = ?'
+    )
+      .bind('2000-01-01 00:00:00', first.firebase_token_id)
+      .run();
+
+    const second = await repository.register({
+      userId,
+      platform: 'ios',
+      fcmToken: 'token-same-device',
     });
 
     expect(second.firebase_token_id).toBe(first.firebase_token_id);
-    const stored = await env.DB.prepare(
-      'SELECT fcm_token FROM firebase_tokens WHERE user_id = ?'
+    expect(second.platform).toBe('ios');
+    expect(second.last_seen_at).not.toBe('2000-01-01 00:00:00');
+    const count = await env.DB.prepare(
+      'SELECT COUNT(*) AS count FROM firebase_tokens WHERE user_id = ?'
     )
       .bind(userId)
-      .first<{ fcm_token: string }>();
-    expect(stored?.fcm_token).toBe('token-after');
+      .first<{ count: number }>();
+    expect(count?.count).toBe(1);
   });
-
   it('無効化済みTokenの再登録時に有効化する', async () => {
     const userId = await createUser('Firebaseトークン再登録利用者');
-    const registered = await repository.register({
+    await repository.register({
       userId,
       platform: 'android',
       fcmToken: 'token-reactivate',
     });
-    await repository.deactivate(registered.firebase_token_id);
+    await repository.deactivateByUserId(userId);
 
     const reactivated = await repository.register({
       userId,
@@ -156,7 +213,7 @@ describe('FirebaseTokenRepository', () => {
     await expect(repository.findActiveTokens()).resolves.toHaveLength(1);
   });
 
-  it('同じ端末で別利用者がログインしたら旧所有者の登録を無効化して付け替える', async () => {
+  it('同じTokenを別利用者が登録したら旧Tokenを削除し、Delivery参照をNULLにする', async () => {
     const previousOwnerId = await createUser('Firebase Token旧所有者');
     const newOwnerId = await createUser('Firebase Token新所有者');
     const previous = await repository.register({
@@ -165,26 +222,136 @@ describe('FirebaseTokenRepository', () => {
       fcmToken: 'token-handover',
     });
 
+    const notification = await env.DB.prepare(
+      "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('manual', 'handover', 'body', 'handover', 'body') RETURNING notification_id"
+    ).first<{ notification_id: number }>();
+    if (!notification)
+      throw new Error('failed to create handover notification');
+    const schedule = await env.DB.prepare(
+      "INSERT INTO notification_schedules (notification_id, firebase_token_id, send_status, send_at) VALUES (?, ?, 'draft', CURRENT_TIMESTAMP) RETURNING notification_schedule_id"
+    )
+      .bind(notification.notification_id, previous.firebase_token_id)
+      .first<{ notification_schedule_id: number }>();
+    if (!schedule) throw new Error('failed to create handover schedule');
+    const recipient = await env.DB.prepare(
+      'INSERT INTO notification_recipients (notification_schedule_id, user_id) VALUES (?, ?) RETURNING notification_recipient_id'
+    )
+      .bind(schedule.notification_schedule_id, previousOwnerId)
+      .first<{ notification_recipient_id: number }>();
+    if (!recipient) throw new Error('failed to create handover recipient');
+    const delivery = await env.DB.prepare(
+      "INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status) VALUES (?, ?, 2, 'sent') RETURNING notification_push_delivery_id"
+    )
+      .bind(recipient.notification_recipient_id, previous.firebase_token_id)
+      .first<{ notification_push_delivery_id: number }>();
+    if (!delivery) throw new Error('failed to create handover delivery');
+
     const current = await repository.register({
       userId: newOwnerId,
       platform: 'android',
       fcmToken: 'token-handover',
     });
 
+    expect(current.firebase_token_id).not.toBe(previous.firebase_token_id);
     expect(current.user_id).toBe(newOwnerId);
     expect(current.is_firebase_active).toBe(true);
     const previousRow = await env.DB.prepare(
-      'SELECT is_firebase_active FROM firebase_tokens WHERE firebase_token_id = ?'
+      'SELECT user_id FROM firebase_tokens WHERE firebase_token_id = ?'
     )
       .bind(previous.firebase_token_id)
-      .first<{ is_firebase_active: number }>();
-    expect(previousRow?.is_firebase_active).toBe(0);
+      .first();
+    expect(previousRow).toBeNull();
+
+    const detachedDelivery = await env.DB.prepare(
+      'SELECT firebase_token_id FROM notification_push_deliveries WHERE notification_push_delivery_id = ?'
+    )
+      .bind(delivery.notification_push_delivery_id)
+      .first<{ firebase_token_id: number | null }>();
+    expect(detachedDelivery).toEqual({ firebase_token_id: null });
+    const detachedSchedule = await env.DB.prepare(
+      'SELECT firebase_token_id FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(schedule.notification_schedule_id)
+      .first<{ firebase_token_id: number | null }>();
+    expect(detachedSchedule).toEqual({ firebase_token_id: null });
+
     const activeTokens = await repository.findActiveTokens();
     expect(activeTokens).toHaveLength(1);
     expect(activeTokens[0].user_id).toBe(newOwnerId);
+
+    await env.DB.prepare(
+      'DELETE FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(schedule.notification_schedule_id)
+      .run();
+    await env.DB.prepare('DELETE FROM notifications WHERE notification_id = ?')
+      .bind(notification.notification_id)
+      .run();
+  });
+  it('UNREGISTERED後の内部物理削除で通知履歴のToken参照を外す', async () => {
+    const userId = await createUser('Firebase UNREGISTERED利用者');
+    const token = await repository.register({
+      userId,
+      platform: 'android',
+      fcmToken: 'token-unregistered',
+    });
+    const notification = await env.DB.prepare(
+      "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('manual', 'unregistered', 'body', 'unregistered', 'body') RETURNING notification_id"
+    ).first<{ notification_id: number }>();
+    if (!notification)
+      throw new Error('failed to create unregistered notification');
+    const schedule = await env.DB.prepare(
+      "INSERT INTO notification_schedules (notification_id, firebase_token_id, send_status, send_at) VALUES (?, ?, 'draft', CURRENT_TIMESTAMP) RETURNING notification_schedule_id"
+    )
+      .bind(notification.notification_id, token.firebase_token_id)
+      .first<{ notification_schedule_id: number }>();
+    if (!schedule) throw new Error('failed to create unregistered schedule');
+    const recipient = await env.DB.prepare(
+      'INSERT INTO notification_recipients (notification_schedule_id, user_id) VALUES (?, ?) RETURNING notification_recipient_id'
+    )
+      .bind(schedule.notification_schedule_id, userId)
+      .first<{ notification_recipient_id: number }>();
+    if (!recipient) throw new Error('failed to create unregistered recipient');
+    const delivery = await env.DB.prepare(
+      "INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status) VALUES (?, ?, 2, 'sent') RETURNING notification_push_delivery_id"
+    )
+      .bind(recipient.notification_recipient_id, token.firebase_token_id)
+      .first<{ notification_push_delivery_id: number }>();
+    if (!delivery) throw new Error('failed to create unregistered delivery');
+
+    await repository.deleteById(token.firebase_token_id);
+
+    const storedToken = await env.DB.prepare(
+      'SELECT firebase_token_id FROM firebase_tokens WHERE firebase_token_id = ?'
+    )
+      .bind(token.firebase_token_id)
+      .first();
+    const detachedSchedule = await env.DB.prepare(
+      'SELECT firebase_token_id FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(schedule.notification_schedule_id)
+      .first<{ firebase_token_id: number | null }>();
+    const detachedDelivery = await env.DB.prepare(
+      'SELECT firebase_token_id FROM notification_push_deliveries WHERE notification_push_delivery_id = ?'
+    )
+      .bind(delivery.notification_push_delivery_id)
+      .first<{ firebase_token_id: number | null }>();
+
+    expect(storedToken).toBeNull();
+    expect(detachedSchedule).toEqual({ firebase_token_id: null });
+    expect(detachedDelivery).toEqual({ firebase_token_id: null });
+
+    await env.DB.prepare(
+      'DELETE FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(schedule.notification_schedule_id)
+      .run();
+    await env.DB.prepare('DELETE FROM notifications WHERE notification_id = ?')
+      .bind(notification.notification_id)
+      .run();
   });
 
-  it('付け替え後に旧所有者が別端末で登録しても既存行を再利用する', async () => {
+  it('Token所有権変更後に旧所有者が別端末を登録すると新しいrowを作る', async () => {
     const previousOwnerId = await createUser('Firebase Token再登録旧所有者');
     const newOwnerId = await createUser('Firebase Token再登録新所有者');
     const previous = await repository.register({
@@ -204,7 +371,8 @@ describe('FirebaseTokenRepository', () => {
       fcmToken: 'token-new-device',
     });
 
-    expect(reregistered.firebase_token_id).toBe(previous.firebase_token_id);
+    expect(reregistered.firebase_token_id).not.toBe(previous.firebase_token_id);
+    expect(reregistered.user_id).toBe(previousOwnerId);
     expect(reregistered.is_firebase_active).toBe(true);
     const rowCount = await env.DB.prepare(
       'SELECT COUNT(*) AS count FROM firebase_tokens WHERE user_id = ?'
@@ -262,7 +430,7 @@ describe('FirebaseTokenRepository', () => {
     )
       .bind('token-simultaneous')
       .all<{ user_id: number; is_firebase_active: number }>();
-    expect(rows.results).toHaveLength(2);
+    expect(rows.results).toHaveLength(1);
     expect(
       rows.results.filter(row => row.is_firebase_active === 1)
     ).toHaveLength(1);
@@ -286,12 +454,12 @@ describe('FirebaseTokenRepository', () => {
       platform: 'android',
       fcmToken: 'token-active',
     });
-    const inactive = await repository.register({
+    await repository.register({
       userId: secondUserId,
       platform: 'android',
       fcmToken: 'token-inactive',
     });
-    await repository.deactivate(inactive.firebase_token_id);
+    await repository.deactivateByUserId(secondUserId);
 
     const tokens = await repository.findActiveTokens();
 
@@ -311,11 +479,14 @@ describe('FirebaseTokenRepository', () => {
       await repository.deactivateByUserId(userId);
 
       const stored = await env.DB.prepare(
-        'SELECT is_firebase_active FROM firebase_tokens WHERE user_id = ?'
+        'SELECT is_firebase_active, updated_at FROM firebase_tokens WHERE user_id = ?'
       )
         .bind(userId)
-        .first<{ is_firebase_active: number }>();
+        .first<{ is_firebase_active: number; updated_at: string }>();
       expect(stored?.is_firebase_active).toBe(0);
+      expect(stored?.updated_at).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+      );
     });
 
     it('他のuser_idのToken登録には影響しない', async () => {
@@ -351,27 +522,26 @@ describe('FirebaseTokenRepository', () => {
     });
   });
 
-  describe('findByUserId / deleteByUserId', () => {
-    it('findByUserIdは指定user_idのToken登録を返す', async () => {
-      const userId = await createUser('検索対象利用者');
+  describe('findAllByUserId / deleteByUserId', () => {
+    it('findAllByUserIdは指定利用者の全端末Tokenを返す', async () => {
+      const userId = await createUser('全端末検索利用者');
       await repository.register({
         userId,
         platform: 'android',
-        fcmToken: 'token-findable',
+        fcmToken: 'token-find-all-one',
+      });
+      await repository.register({
+        userId,
+        platform: 'ios',
+        fcmToken: 'token-find-all-two',
       });
 
-      const found = await repository.findByUserId(userId);
+      const found = await repository.findAllByUserId(userId);
 
-      expect(found).toMatchObject({
-        user_id: userId,
-        fcm_token: 'token-findable',
-      });
-    });
-
-    it('findByUserIdは登録が無い場合はnullを返す', async () => {
-      const userId = await createUser('Token未登録利用者2');
-
-      await expect(repository.findByUserId(userId)).resolves.toBeNull();
+      expect(found.map(token => token.fcm_token)).toEqual([
+        'token-find-all-one',
+        'token-find-all-two',
+      ]);
     });
 
     it('deleteByUserIdはToken登録を物理削除する', async () => {

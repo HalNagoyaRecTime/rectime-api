@@ -9,28 +9,24 @@ export interface IFirebaseTokenRepository {
     input: RegisterFirebaseTokenInput
   ) => Promise<RegisterFirebaseTokenResult>;
   findActiveTokens: () => Promise<FirebaseTokenEntity[]>;
-  deactivate: (firebaseTokenId: number) => Promise<void>;
+  // FCMがUNREGISTEREDを返したTokenは内部処理で物理削除する。
+  deleteById: (firebaseTokenId: number) => Promise<void>;
   // アカウント削除時、対象ユーザーのFirebase Token登録をPush通知対象から
   // 除外する。notification_schedulesはfirebase_tokensとJOINして
   // is_firebase_activeを参照するため、これを落とすだけで
   // 以後の配信対象から外れる(該当のfirebase_token_id自体を保持したまま
   // 無効化する)。
   deactivateByUserId: (userId: number) => Promise<void>;
-  // アカウント削除(#265 PR4)専用。user_idに紐づくfirebase_tokens行を
-  // 探す。notification_schedules.deleteByFirebaseTokenIdを呼ぶ前に
-  // firebase_token_idを特定するために使う。
-  findByUserId: (userId: number) => Promise<FirebaseTokenEntity | null>;
-  // アカウント削除(#265 PR4)専用。fcm_token(端末識別子)は個人情報に
-  // 近いため、無効化(deactivateByUserId)だけでなく行自体を物理削除する。
-  // notification_schedules.firebase_token_idがNOT NULL外部キーで参照して
-  // いるため、呼び出し元は必ず先にdeleteByFirebaseTokenIdで該当する
-  // notification_schedules行を削除しておく必要がある。対象が無ければ
-  // 何もしない(冪等)。
-  //
-  // register()の端末付け替え時(上のdeactivateByUserId参照)とは異なり
-  // 行を物理削除するのは、外部キー制約上の都合ではなく意図的な判断。
-  // 本人からの削除要求に対しては、送信実績の集計・監査よりも個人データの
-  // 消去を優先する方針を#263の起票者に確認済み(AccountDeletionService.
-  // deleteRelatedData参照)。
+  // アカウント削除時に複数端末分の通知スケジュールを処理するために使う。
+  findAllByUserId: (userId: number) => Promise<FirebaseTokenEntity[]>;
+  // 認証Userが所有するFCM Tokenだけをlogout用に物理削除する。
+  deleteByUserIdAndFcmToken: (
+    userId: number,
+    fcmToken: string
+  ) => Promise<void>;
+  // アカウント削除ではLegacy通知履歴を先に消し、Token rowを物理削除する。
+  // v2 Delivery履歴は保持し、FKのON DELETE SET NULLでToken参照だけを外す。
+  // register()の所有者変更も旧rowを削除して新rowを作るため、過去Deliveryを
+  // 新所有者のTokenへ付け替えない。対象が無ければ何もしない(冪等)。
   deleteByUserId: (userId: number) => Promise<void>;
 }

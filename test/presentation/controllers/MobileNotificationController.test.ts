@@ -16,7 +16,7 @@ const notification = {
   related_event: {
     event_id: 3,
     event_name: '綱引き',
-    venue: 'グラウンド',
+    venues: [{ venue_id: 2, venue_name: 'グラウンド' }],
     start_time: '1030',
     end_time: '1100',
   },

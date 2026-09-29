@@ -1,10 +1,8 @@
-import {
-  RegisterFirebaseTokenInput,
-  RegisterFirebaseTokenResult,
-} from '../../domain/entities/FirebaseToken';
+import type { FirebaseTokenDTO } from '../dto/FirebaseTokenDTO';
+import { RegisterFirebaseTokenInput } from '../../domain/entities/FirebaseToken';
 
 export interface IFirebaseTokenService {
   registerFirebaseToken: (
     input: RegisterFirebaseTokenInput
-  ) => Promise<RegisterFirebaseTokenResult>;
+  ) => Promise<FirebaseTokenDTO>;
 }

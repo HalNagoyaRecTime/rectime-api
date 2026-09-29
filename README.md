@@ -196,3 +196,22 @@ VITE_BACKEND_BASE_URL=https://rectime-api.rectime-project.workers.dev
 - Prettier/ESLintの全体確認と全テストはCIで実行し、CIを最終的な品質保証とする
 
 hook を手動で再設定する場合は `npm run prepare` を実行する。
+
+## 依存関係の定期更新
+
+Dependabotの通常のversion update PRは停止し、毎月1日09:30（JST）に
+`.github/workflows/dependency-update-prepare.yml`で更新候補を作成する。
+
+- 1.0以上のnpm依存関係とGitHub Actionsは、現在のmajor version内だけを更新する。
+- 0.xの依存関係はminor更新を破壊的変更として扱い、現在のminor version内だけを更新する。
+- 公開から7日未満のversionは候補に含めない。
+- `wrangler`、`@cloudflare/workers-types`、`@cloudflare/vitest-pool-workers`は、peer dependencyを安全に一括更新できるまで動作確認済みversionへ完全固定し、月次対象から除外する。
+- 更新処理に使う`npm-check-updates`自体もversionを固定し、月次対象から除外する。
+- 候補branchでは`npm ci`、format、lint、type check、test、Wrangler dry runを実行する。
+- CIがすべて成功し、検証中に`develop`が変わっていない場合だけPRを作成する。
+- 更新失敗、CI失敗、既存の更新PRがある場合は新しいPRを作成しない。
+
+GitHub Actionsは可動tagを直接参照せず、正確なversionをコメントに残したfull commit SHAで固定する。
+自動検証できない`actions/add-to-project`は月次更新から除外する。
+major更新はこの月次workflowの対象外とし、別途事前検証してから実施する。
+2026年12月1日の定期実行は、同日のmajor更新と重複しないよう自動的にskipする。

@@ -63,7 +63,6 @@ describe('OpenAPI documentation', () => {
       '/',
       '/api/v1/admin/notifications',
       '/api/v1/admin/notifications/{notificationId}',
-      '/api/v1/admin/users',
       '/api/v1/admin/users/{userId}',
       '/api/v1/admin/users/{userId}/staff',
       '/api/v1/classrooms',
@@ -71,25 +70,23 @@ describe('OpenAPI documentation', () => {
       '/api/v1/events',
       '/api/v1/events/{eventId}',
       '/api/v1/events/{eventId}/gatherings',
-      '/api/v1/events/{eventId}/notification-summary',
-      '/api/v1/events/{eventId}/schedule',
       '/api/v1/firebase-tokens',
       '/api/v1/gathering-spots',
       '/api/v1/gathering-spots/{gatheringSpotId}',
       '/api/v1/gatherings/{gatheringId}/members',
-      '/api/v1/gatherings/{gatheringId}/members/{userId}',
       '/api/v1/master-imports',
       '/api/v1/master-imports/{validatedFileId}',
       '/api/v1/master-imports/{validatedFileId}/commit',
       '/api/v1/me/notifications',
       '/api/v1/me/notifications/{notificationId}',
-      '/api/v1/notifications/test',
       '/api/v1/staffs',
       '/api/v1/staffs/{staffId}',
       '/api/v1/students',
       '/api/v1/students/{studentId}',
       '/api/v1/teachers',
       '/api/v1/teachers/{teacherId}',
+      '/api/v1/venues',
+      '/api/v1/venues/{venueId}',
       '/health',
     ]);
 
@@ -185,11 +182,32 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-
     expect(documentedOperations).toHaveLength(49);
     expect(document.paths['/api/v1/gatherings']).toBeUndefined();
+    expect(
+      document.paths['/api/v1/admin/notifications/{notificationId}']
+    ).toHaveProperty('patch');
+    expect(document.components.schemas).not.toHaveProperty(
+      'AdminUserSearchItem'
+    );
+    expect(document.components.schemas).not.toHaveProperty(
+      'AdminUserSearchResponse'
+    );
+    expect(
+      Object.keys(document.paths['/api/v1/gatherings/{gatheringId}/members'])
+    ).toEqual(['get', 'put']);
+    expect(document.paths).not.toHaveProperty(
+      '/api/v1/gatherings/{gatheringId}/members/{userId}'
+    );
     expect(document.components.schemas).not.toHaveProperty(
       'CreateGatheringRequest'
+    );
+    expect(document.paths['/api/v1/events/{eventId}']).not.toHaveProperty(
+      'patch'
+    );
+    expect(document.paths['/api/v1/events/{eventId}']).toHaveProperty('put');
+    expect(document.components.schemas).not.toHaveProperty(
+      'AddGatheringMemberRequest'
     );
   });
 
@@ -215,11 +233,9 @@ describe('OpenAPI documentation', () => {
     expect(document.paths['/api/v1/students'].get?.security).toEqual([
       { Bearer: [] },
     ]);
-
-    expect(document.paths['/api/v1/admin/users'].get?.security).toEqual([
-      { Bearer: [] },
-    ]);
-
+    expect(
+      document.paths['/api/v1/admin/users/{userId}'].patch?.security
+    ).toEqual([{ Bearer: [] }]);
     // 認証を要さないルートにはsecurityを付けない。
     expect(document.paths['/health'].get?.security).toBeUndefined();
   });
@@ -308,6 +324,43 @@ describe('OpenAPIスキーマと実レスポンスの一致', () => {
   });
 });
 
+describe('管理画面向けUser横断検索APIの廃止', () => {
+  it('認証の有無にかかわらず検索APIを公開しない', async () => {
+    for (const headers of [{}, await bearerHeaders()]) {
+      const response = await app.fetch(
+        new Request('http://example.com/api/v1/admin/users', { headers }),
+        authEnv
+      );
+      expect(response.status).toBe(404);
+    }
+  });
+
+  it('API概要で廃止した検索APIを案内しない', async () => {
+    const response = await app.fetch(new Request('http://example.com/'), env);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      endpoints: Record<string, string>;
+    };
+    expect(body.endpoints).not.toHaveProperty('adminUsers');
+    expect(Object.values(body.endpoints)).not.toContain('/api/v1/admin/users');
+  });
+
+  it('User状態変更APIと認証を維持する', async () => {
+    const response = await app.fetch(
+      new Request('http://example.com/api/v1/admin/users/1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_live_active: false }),
+      }),
+      env
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
+  });
+});
+
 describe('通知配信の実行経路', () => {
   it('HTTP経由のschedule/runを公開しない', async () => {
     const res = await app.fetch(
@@ -361,8 +414,6 @@ describe('通知予定管理APIの廃止', () => {
     ['GET', '/api/v1/admin/notifications/1'],
     ['PUT', '/api/v1/admin/notifications/1'],
     ['DELETE', '/api/v1/admin/notifications/1'],
-    ['GET', '/api/v1/events/1/notification-summary'],
-    ['PUT', '/api/v1/events/1/schedule'],
     ['GET', '/api/v1/me/notifications'],
     ['GET', '/api/v1/me/notifications/1'],
   ])('利用中の通知APIと認証を維持する（%s %s）', async (method, path) => {
@@ -373,6 +424,40 @@ describe('通知予定管理APIの廃止', () => {
 
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+    });
+  });
+});
+
+describe('旧Event操作APIの廃止', () => {
+  it.each([
+    ['PATCH', '/api/v1/events/1'],
+    ['PUT', '/api/v1/events/1/schedule'],
+    ['GET', '/api/v1/events/1/notification-summary'],
+  ])('削除した旧APIを公開しない（%s %s）', async (method, path) => {
+    const res = await app.fetch(
+      new Request(`http://example.com${path}`, {
+        method,
+        headers: await bearerHeaders(),
+      }),
+      authEnv
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it('維持対象のPUT /api/v1/events/1は未認証時に401になる', async () => {
+    const res = await app.fetch(
+      new Request('http://example.com/api/v1/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+      env
+    );
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
       error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
     });
   });
@@ -444,21 +529,45 @@ describe('集合APIの実ルーティング', () => {
     expect(res.status).toBe(404);
   });
 
-  it('集合ID配下のメンバーAPIは公開されているが認証が必要', async () => {
-    const res = await app.fetch(
-      new Request('http://example.com/api/v1/gatherings/999999/members'),
-      env
-    );
+  it.each(['GET', 'PUT'])(
+    '集合ID配下のメンバー%s APIは公開されているが認証が必要',
+    async method => {
+      const res = await app.fetch(
+        new Request('http://example.com/api/v1/gatherings/999999/members', {
+          method,
+        }),
+        env
+      );
 
-    expect(res.status).toBe(401);
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({
+        error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+      });
+    }
+  );
 
-    expect(await res.json()).toEqual({
-      error: {
-        code: 'UNAUTHORIZED',
-        message: '認証が必要です',
-      },
-    });
-  });
+  it.each([
+    ['POST', '/api/v1/gatherings/1/members'],
+    ['DELETE', '/api/v1/gatherings/1/members/1'],
+  ])(
+    '旧Gathering Members個別更新APIを公開しない（%s %s）',
+    async (method, path) => {
+      for (const headers of [{}, await bearerHeaders()]) {
+        const res = await app.fetch(
+          new Request(`http://example.com${path}`, {
+            method,
+            headers: { ...headers, 'Content-Type': 'application/json' },
+            ...(method === 'POST' && {
+              body: JSON.stringify({ userId: 1 }),
+            }),
+          }),
+          authEnv
+        );
+
+        expect(res.status).toBe(404);
+      }
+    }
+  );
 
   it('競技ID配下の集合一覧APIは公開されているが認証が必要', async () => {
     const res = await app.fetch(

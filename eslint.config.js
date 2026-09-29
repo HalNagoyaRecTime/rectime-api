@@ -54,6 +54,18 @@ export default [
       'no-var': 'error',
     },
   },
+  {
+    files: ['.github/scripts/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        console: 'readonly',
+        fetch: 'readonly',
+        process: 'readonly',
+      },
+    },
+  },
   prettier,
   {
     ignores: ['node_modules/', 'dist/', '.wrangler/', 'migrations/'],

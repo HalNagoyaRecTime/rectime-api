@@ -22,6 +22,8 @@ import {
   ACCOUNT_PHOTO_PATH,
 } from '../../../domain/auth/types';
 import { GRAPH_ME_PHOTO_URL } from '../../../infrastructure/auth/microsoftClient';
+import { logoutRequestDtoSchema } from '../../../application/dto/LogoutRequestDto';
+import { LogoutCleanupFailedError } from '../../../application/errors/LogoutCleanupFailedError';
 import { createUserRepository } from '../../../infrastructure/repositories/UserRepository';
 import { AuthErrors } from '../../errors/authErrors';
 import { CommonErrors } from '../../errors/commonErrors';
@@ -218,8 +220,7 @@ account.get('/me/photo', async c => {
 });
 
 // POST /auth/logout
-// mobile/web共通: refresh_token_id が保持するMicrosoftリフレッシュトークンの
-// KVエントリを破棄する。
+// 認証UserのFCM Token cleanupとRefresh Session cleanupをApplication Serviceへ委譲する。
 account.post('/logout', async c => {
   const clientType = getClientType(c);
   if (clientType !== 'web' && clientType !== 'mobile') {
@@ -230,28 +231,31 @@ account.post('/logout', async c => {
   if (!auth.ok) return auth.response;
   const { claims } = auth;
 
-  const body = (await c.req.json().catch(() => null)) as {
-    refresh_token_id?: unknown;
-  } | null;
-  if (
-    body &&
-    typeof body.refresh_token_id === 'string' &&
-    body.refresh_token_id.length > 0
-  ) {
-    // 呼び出し元が認証されたユーザー自身のrefresh_token_idのみを削除できる
-    // ようにする(他ユーザーのrefresh_token_idを渡された場合に誤って
-    // そのセッションを破棄してしまわないようにするための所有者チェック)。
-    const refreshRaw = await c.env.AUTH_KV.get(
-      `mobile_refresh:${body.refresh_token_id}`
-    );
-    if (refreshRaw) {
-      const entry = JSON.parse(refreshRaw) as MobileRefreshEntry;
-      if (entry.user_id === claims.sub) {
-        await c.env.AUTH_KV.delete(`mobile_refresh:${body.refresh_token_id}`);
-      }
+  let body: unknown = {};
+  const rawBody = await c.req.text();
+  if (rawBody.trim().length > 0) {
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return errorResponse(c, AuthErrors.INVALID_REQUEST);
     }
   }
-  await c.env.AUTH_KV.delete(`mobile_refresh_by_user:${claims.sub}`);
+  const parsedBody = logoutRequestDtoSchema.safeParse(body);
+  if (!parsedBody.success) {
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
+  }
+
+  try {
+    await c.get('container').logoutService.logout({
+      userId: claims.sub,
+      ...parsedBody.data,
+    });
+  } catch (error) {
+    if (error instanceof LogoutCleanupFailedError) {
+      return errorResponse(c, AuthErrors.LOGOUT_FAILED);
+    }
+    throw error;
+  }
 
   return c.json({ message: 'Logged out successfully' });
 });

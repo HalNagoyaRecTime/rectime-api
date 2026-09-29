@@ -181,21 +181,6 @@ export const UserErrors = {
     code: 'CLASS_ROOM_DELETE_FAILED',
     message: 'クラスの削除に失敗しました',
   },
-  USER_SEARCH_FORBIDDEN: {
-    status: 403,
-    code: 'USER_SEARCH_FORBIDDEN',
-    message: 'ユーザーを検索する権限がありません',
-  },
-  INVALID_USER_SEARCH_QUERY: {
-    status: 400,
-    code: 'INVALID_USER_SEARCH_QUERY',
-    message: 'ユーザーの検索条件が正しくありません',
-  },
-  USER_SEARCH_FAILED: {
-    status: 500,
-    code: 'USER_SEARCH_FAILED',
-    message: 'ユーザーの検索に失敗しました',
-  },
   CANNOT_DEACTIVATE_SELF: {
     status: 400,
     code: 'CANNOT_DEACTIVATE_SELF',
