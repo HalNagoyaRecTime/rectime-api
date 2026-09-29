@@ -146,13 +146,13 @@ export const positivePathParam = (name: string, description: string) =>
 
 /**
  * positivePathParamで検証した文字列IDをService用の数値へ変換する。
- * 桁数が大きくNumberで表現できない値は、境界で拒否する。
+ * Numberのsafe integer範囲を超える値は、境界で拒否する。
  */
 export const positivePathParamToNumber = (
   value: string
 ): number | undefined => {
   const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 };
 
 /**
