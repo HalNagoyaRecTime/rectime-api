@@ -63,12 +63,9 @@ function buildDeps() {
   };
   const gatheringGroupMemberRepository: IGatheringGroupMemberRepository = {
     existsGathering: vi.fn(),
-    existsUser: vi.fn(),
     findByGatheringId: vi.fn(),
     findMissingUserIds: vi.fn(),
     applyMemberDiff: vi.fn(),
-    create: vi.fn(),
-    remove: vi.fn(),
     deleteByUserId: vi.fn(),
   };
   const notificationScheduleRepository: INotificationScheduleRepository = {

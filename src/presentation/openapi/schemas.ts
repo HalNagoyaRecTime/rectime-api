@@ -122,6 +122,12 @@ export const isoDateTimeSchema = z
   .datetime({ offset: true })
   .openapi({ example: '2026-07-16T09:00:00.000Z' });
 
+/** UTCのISO 8601形式（Z・ミリ秒3桁）。 */
+export const utcDateTimeSchema = z
+  .string()
+  .datetime({ offset: false, precision: 3 })
+  .openapi('UtcDateTime');
+
 /** JSTのHHMM形式。 */
 export const hhmmSchema = z
   .string()

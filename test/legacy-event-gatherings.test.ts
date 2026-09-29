@@ -35,7 +35,7 @@ beforeAll(async () => {
   headers = { Authorization: `Bearer ${token}`, 'X-Client-Type': 'mobile' };
   const insertEvent = () =>
     env.DB.prepare(
-      "INSERT INTO events (event_name, venue, start_time, end_time) VALUES ('互換テスト', '体育館', '10:00', '11:00') RETURNING event_id"
+      "INSERT INTO events (event_name, start_time, end_time) VALUES ('互換テスト', '10:00', '11:00') RETURNING event_id"
     ).first<{ event_id: number }>();
   eventId = (await insertEvent())!.event_id;
   emptyEventId = (await insertEvent())!.event_id;

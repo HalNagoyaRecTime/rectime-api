@@ -191,21 +191,6 @@ export const UserErrors = {
     code: 'TEAM_NAME_ALREADY_EXISTS',
     message: '同じ編成名が既に存在します',
   },
-  USER_SEARCH_FORBIDDEN: {
-    status: 403,
-    code: 'USER_SEARCH_FORBIDDEN',
-    message: 'ユーザーを検索する権限がありません',
-  },
-  INVALID_USER_SEARCH_QUERY: {
-    status: 400,
-    code: 'INVALID_USER_SEARCH_QUERY',
-    message: 'ユーザーの検索条件が正しくありません',
-  },
-  USER_SEARCH_FAILED: {
-    status: 500,
-    code: 'USER_SEARCH_FAILED',
-    message: 'ユーザーの検索に失敗しました',
-  },
   CANNOT_DEACTIVATE_SELF: {
     status: 400,
     code: 'CANNOT_DEACTIVATE_SELF',

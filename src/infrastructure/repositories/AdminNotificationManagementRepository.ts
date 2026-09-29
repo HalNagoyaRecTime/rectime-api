@@ -5,9 +5,14 @@ import type {
 import type {
   AdminNotificationListOptions,
   AdminNotificationSummary,
+  UpdateAdminNotificationAudienceInput,
   UpdateAdminNotificationInput,
 } from '../../domain/entities/AdminNotificationManagement';
 import type { IAdminNotificationManagementRepository } from '../../domain/interfaces/repositories/IAdminNotificationManagementRepository';
+import {
+  normalizeNotificationDateTime,
+  notificationUtcNow,
+} from '../database/notificationDateTime';
 import { buildAudienceTokenSelect } from './AdminNotificationAudienceQuery';
 
 interface AdminNotificationRow {
@@ -285,7 +290,7 @@ function buildContentUpdateStatements(
       db
         .prepare(
           `UPDATE notification_schedules
-           SET send_at = ?, updated_at = CURRENT_TIMESTAMP
+           SET send_at = ?, updated_at = ?
            WHERE notification_id = ?
              AND send_status = 'draft'
              AND EXISTS (
@@ -302,7 +307,12 @@ function buildContentUpdateStatements(
                  AND guarded.send_status <> 'draft'
              )`
         )
-        .bind(input.scheduled_at, input.notification_id, input.notification_id)
+        .bind(
+          normalizeNotificationDateTime(input.scheduled_at),
+          notificationUtcNow(),
+          input.notification_id,
+          input.notification_id
+        )
     );
   }
   return statements;
@@ -310,9 +320,9 @@ function buildContentUpdateStatements(
 
 function buildAudienceUpdateStatements(
   db: D1Database,
-  input: UpdateAdminNotificationInput
+  input: UpdateAdminNotificationAudienceInput
 ): D1PreparedStatement[] {
-  const audience = input.audience!;
+  const audience = input.audience;
   const tokenSelect = buildAudienceTokenSelect(audience);
   const eventId =
     audience.type === 'event_participants' ? audience.event_id : null;
@@ -376,7 +386,7 @@ function buildAudienceUpdateStatements(
         input.created_user_id,
         eventId,
         input.notification_id,
-        input.scheduled_at!,
+        normalizeNotificationDateTime(input.scheduled_at),
         ...tokenSelect.bindings
       ),
   ];
@@ -395,7 +405,7 @@ function buildGuardedNotificationUpdate(
       `UPDATE notifications
        SET title = COALESCE(?, title),
            body = COALESCE(?, body),
-           updated_at = CURRENT_TIMESTAMP
+           updated_at = ?
        WHERE notification_id = ?
          AND notification_type = 'manual'
          AND EXISTS (
@@ -415,6 +425,7 @@ function buildGuardedNotificationUpdate(
     .bind(
       input.title ?? null,
       input.body ?? null,
+      notificationUtcNow(),
       input.notification_id,
       ...(tokenSelect?.bindings ?? [])
     );

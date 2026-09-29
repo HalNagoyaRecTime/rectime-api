@@ -2,15 +2,9 @@ import { GatheringGroupMemberEntity } from '../../entities/GatheringGroupMember'
 
 export interface IGatheringGroupMemberRepository {
   existsGathering: (gatheringId: number) => Promise<boolean>;
-  existsUser: (userId: number) => Promise<boolean>;
   findByGatheringId: (
     gatheringId: number
   ) => Promise<GatheringGroupMemberEntity[]>;
-  create: (
-    gatheringId: number,
-    userId: number
-  ) => Promise<GatheringGroupMemberEntity>;
-  remove: (gatheringId: number, userId: number) => Promise<boolean>;
   // 指定されたuserIdsのうち実在しないものを返す。PUTでの一括置換前の検証に使う。
   findMissingUserIds: (userIds: number[]) => Promise<number[]>;
   // 差分(addUserIds/removeUserIds)だけをgatheringId配下へ反映する。

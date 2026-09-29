@@ -39,6 +39,17 @@ describe('Event詳細取得APIのOpenAPI定義', () => {
     ).toEqual({ $ref: '#/components/schemas/EventDetail' });
   });
 
+  it('Eventはvenuesを必須にし、venueを持たない', () => {
+    expect(schemas.Event?.required).toContain('venues');
+    expect(schemas.Event?.properties).toMatchObject({
+      venues: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/EventVenue' },
+      },
+    });
+    expect(schemas.Event?.properties).not.toHaveProperty('venue');
+  });
+
   // Eventを$refで取り込む形にしておくと、既存fieldの追随漏れが構造上起きない。
   it('EventDetailはEventを取り込んだうえでroundsを必須にする', () => {
     expect(schemas.EventDetail?.allOf).toEqual([

@@ -1,5 +1,6 @@
 import { createRoute } from '@hono/zod-openapi';
 import type { EventDetailDTO } from '../../application/dto/EventDTO';
+import { eventVenueListResponseSchema, venueIdsSchema } from './eventVenues';
 import { roundSettingResponseSchema } from './gatheringRounds';
 import { gatheringListResponseSchema } from './gatherings';
 import {
@@ -23,7 +24,7 @@ export const eventResponseSchema = z
     event_id: z.number().int(),
     event_name: z.string(),
     rule_text: z.string().nullable(),
-    venue: z.string(),
+    venues: eventVenueListResponseSchema,
     start_time: hhmmSchema,
     end_time: hhmmSchema,
     created_at: z.string(),
@@ -77,7 +78,7 @@ export const eventWriteSchema = z
   .object({
     event_name: z.string().trim().min(1).max(100),
     rule_text: z.string().trim().max(1000).nullable().optional(),
-    venue: z.string().trim().min(1).max(100),
+    venue_ids: venueIdsSchema,
     start_time: hhmmSchema,
     end_time: hhmmSchema,
   })
@@ -171,6 +172,7 @@ export const eventCreateRoute = createRoute({
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,
+    404: notFoundResponse,
     500: internalServerErrorResponse,
   },
 });

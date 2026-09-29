@@ -5,6 +5,7 @@ import type { IEventService } from '../../application/services/IEventService';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
+import { venueIdsSchema } from '../openapi/eventVenues';
 import { CommonErrors } from '../errors/commonErrors';
 import { EventErrors } from '../errors/eventErrors';
 import {
@@ -17,7 +18,7 @@ const hhmmSchema = z.string().regex(/^([01]\d|2[0-3])[0-5]\d$/);
 const eventBaseSchema = z.object({
   event_name: z.string().trim().min(1).max(100),
   rule_text: z.string().trim().max(1000).nullable().optional(),
-  venue: z.string().trim().min(1).max(100),
+  venue_ids: venueIdsSchema,
   start_time: hhmmSchema,
   end_time: hhmmSchema,
 });
@@ -100,7 +101,10 @@ export function createEventController(eventService: IEventService) {
     if (!parsed.success) return parsed.response;
     try {
       return c.json(await eventService.createEvent(parsed.data), 201);
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Venue not found') {
+        return errorResponse(c, EventErrors.VENUE_NOT_FOUND);
+      }
       return errorResponse(c, EventErrors.EVENT_CREATE_FAILED);
     }
   };
@@ -169,6 +173,9 @@ async function parseEventBody(
 }
 
 function updateEventError(c: Context, error: unknown) {
+  if (error instanceof Error && error.message === 'Venue not found') {
+    return errorResponse(c, EventErrors.VENUE_NOT_FOUND);
+  }
   if (
     error instanceof Error &&
     error.message === 'end_time must be after start_time'

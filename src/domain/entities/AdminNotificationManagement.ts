@@ -51,14 +51,28 @@ export interface AdminNotificationListResult {
   total: number;
 }
 
-export interface UpdateAdminNotificationInput {
+type UpdateAdminNotificationBaseInput = {
   notification_id: number;
   title?: string;
   body?: string;
-  scheduled_at?: string;
-  audience?: ManualNotificationAudience;
   created_user_id: number | null;
-}
+};
+
+export type UpdateAdminNotificationAudienceInput =
+  UpdateAdminNotificationBaseInput & {
+    audience: ManualNotificationAudience;
+    scheduled_at: string;
+  };
+
+type UpdateAdminNotificationWithoutAudienceInput =
+  UpdateAdminNotificationBaseInput & {
+    audience?: never;
+    scheduled_at?: string;
+  };
+
+export type UpdateAdminNotificationInput =
+  | UpdateAdminNotificationAudienceInput
+  | UpdateAdminNotificationWithoutAudienceInput;
 
 export type UpdateAdminNotificationResult =
   'updated' | 'not_found' | 'not_draft' | 'no_active_tokens';
