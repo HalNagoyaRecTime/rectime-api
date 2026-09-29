@@ -76,7 +76,6 @@ describe('OpenAPI documentation', () => {
       '/api/v1/master-imports/{validatedFileId}/commit',
       '/api/v1/me/notifications',
       '/api/v1/me/notifications/{notificationId}',
-      '/api/v1/notifications/test',
       '/api/v1/staffs',
       '/api/v1/staffs/{staffId}',
       '/api/v1/students',
@@ -161,7 +160,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(51);
+    expect(documentedOperations).toHaveLength(50);
     expect(
       document.paths['/api/v1/admin/notifications/{notificationId}']
     ).toHaveProperty('patch');

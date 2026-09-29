@@ -61,11 +61,6 @@ export const NotificationLegacyErrors = {
     code: 'ADMIN_NOTIFICATION_DELETE_FAILED',
     message: '通知の削除に失敗しました',
   },
-  INVALID_NOTIFICATION_REQUEST: {
-    status: 400,
-    code: 'INVALID_NOTIFICATION_REQUEST',
-    message: '通知の入力内容が正しくありません',
-  },
   INVALID_NOTIFICATION_LIST_QUERY: {
     status: 400,
     code: 'INVALID_NOTIFICATION_LIST_QUERY',
@@ -85,11 +80,6 @@ export const NotificationLegacyErrors = {
     status: 500,
     code: 'NOTIFICATION_FETCH_FAILED',
     message: '通知の取得に失敗しました',
-  },
-  TEST_NOTIFICATION_SEND_FAILED: {
-    status: 500,
-    code: 'TEST_NOTIFICATION_SEND_FAILED',
-    message: 'テスト通知の送信に失敗しました',
   },
   INVALID_NOTIFICATION_SCHEDULE_QUERY: {
     status: 400,
