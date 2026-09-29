@@ -310,6 +310,65 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     expect(retainedNotification).not.toBeNull();
   });
 
+  it.each([
+    {
+      caseName: 'scheduled=A / stopped=B',
+      scheduledActor: 'target' as const,
+      stoppedActor: 'other' as const,
+    },
+    {
+      caseName: 'scheduled=B / stopped=A',
+      scheduledActor: 'other' as const,
+      stoppedActor: 'target' as const,
+    },
+  ])(
+    '$caseNameのSchedule actorは対象列だけNULL化する',
+    async ({ scheduledActor, stoppedActor }) => {
+      const targetUser = await workerEnv.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('actor匿名化対象') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const otherUser = await workerEnv.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('actor保持対象') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const notification = await workerEnv.DB.prepare(
+        "INSERT INTO notifications (created_by_user_id, notification_type, push_title, push_body, title, body) VALUES (?, 'manual', 'actor件名', 'actor本文', 'actor件名', 'actor本文') RETURNING notification_id"
+      )
+        .bind(otherUser!.user_id)
+        .first<{ notification_id: number }>();
+      const actorId = (actor: 'target' | 'other') =>
+        actor === 'target' ? targetUser!.user_id : otherUser!.user_id;
+      const schedule = await workerEnv.DB.prepare(
+        "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, stopped_by_user_id, notification_id, send_status, send_at) VALUES (?, ?, ?, ?, 'draft', '2026-09-24T09:00:00.000Z') RETURNING notification_schedule_id"
+      )
+        .bind(
+          otherUser!.user_id,
+          actorId(scheduledActor),
+          actorId(stoppedActor),
+          notification!.notification_id
+        )
+        .first<{ notification_schedule_id: number }>();
+
+      await buildNotificationAccountDeletionService().purgeUserNotificationData(
+        targetUser!.user_id
+      );
+
+      const actors = await workerEnv.DB.prepare(
+        'SELECT scheduled_by_user_id, stopped_by_user_id FROM notification_schedules WHERE notification_schedule_id = ?'
+      )
+        .bind(schedule!.notification_schedule_id)
+        .first<{
+          scheduled_by_user_id: number | null;
+          stopped_by_user_id: number | null;
+        }>();
+      expect(actors).toEqual({
+        scheduled_by_user_id:
+          scheduledActor === 'target' ? null : otherUser!.user_id,
+        stopped_by_user_id:
+          stoppedActor === 'target' ? null : otherUser!.user_id,
+      });
+    }
+  );
+
   it('学生ユーザーの関連データを削除・匿名化し、再実行しても安全である', async () => {
     const classRoom = await workerEnv.DB.prepare(
       "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-1', '削除統合テストクラス') RETURNING class_room_id"

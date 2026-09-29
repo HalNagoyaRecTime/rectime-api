@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, eq, or } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { INotificationAccountDeletionRepository } from '../../domain/interfaces/repositories/INotificationAccountDeletionRepository';
 import { notificationUtcNow } from '../database/notificationDateTime';
@@ -51,15 +51,18 @@ export function createNotificationAccountDeletionRepository(
         .update(notification_schedules)
         .set({
           scheduledByUserId: null,
+          updatedAt: now,
+        })
+        .where(eq(notification_schedules.scheduledByUserId, userId))
+        .run();
+
+      await orm
+        .update(notification_schedules)
+        .set({
           stoppedByUserId: null,
           updatedAt: now,
         })
-        .where(
-          or(
-            eq(notification_schedules.scheduledByUserId, userId),
-            eq(notification_schedules.stoppedByUserId, userId)
-          )
-        )
+        .where(eq(notification_schedules.stoppedByUserId, userId))
         .run();
     },
   };

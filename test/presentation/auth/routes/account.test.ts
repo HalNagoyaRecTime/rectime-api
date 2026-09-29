@@ -574,6 +574,50 @@ describe('POST /auth/logout', () => {
     ).toBeNull();
   });
 
+  it('前後空白を含むFCM Tokenは保存値との完全一致でlogout削除する', async () => {
+    const userId = await insertUser();
+    const env = buildEnv();
+    const fcmToken = ' token-with-space ';
+    await workerEnv.DB.prepare(
+      'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, ?)'
+    )
+      .bind(Number(userId), fcmToken)
+      .run();
+
+    const res = await postLogout(env, userId, { fcm_token: fcmToken });
+
+    expect(res.status).toBe(200);
+    const token = await workerEnv.DB.prepare(
+      'SELECT firebase_token_id FROM firebase_tokens WHERE user_id = ? AND fcm_token = ?'
+    )
+      .bind(Number(userId), fcmToken)
+      .first<{ firebase_token_id: number }>();
+    expect(token).toBeNull();
+  });
+
+  it('前後空白を含むFCM Tokenをtrim後の値としては削除しない', async () => {
+    const userId = await insertUser();
+    const env = buildEnv();
+    const storedToken = ' token-with-space ';
+    await workerEnv.DB.prepare(
+      'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, ?)'
+    )
+      .bind(Number(userId), storedToken)
+      .run();
+
+    const res = await postLogout(env, userId, {
+      fcm_token: 'token-with-space',
+    });
+
+    expect(res.status).toBe(200);
+    const token = await workerEnv.DB.prepare(
+      'SELECT firebase_token_id FROM firebase_tokens WHERE user_id = ? AND fcm_token = ?'
+    )
+      .bind(Number(userId), storedToken)
+      .first<{ firebase_token_id: number }>();
+    expect(token).not.toBeNull();
+  });
+
   it('他ユーザーのFCM Tokenは要求元ユーザーのlogoutで削除しない', async () => {
     const userId = await insertUser();
     const otherUserId = await insertUser();
