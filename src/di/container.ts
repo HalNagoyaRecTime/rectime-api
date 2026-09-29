@@ -9,6 +9,7 @@ import { createNotificationScheduleRepository } from '../infrastructure/reposito
 import { createNotificationAccountDeletionRepository } from '../infrastructure/repositories/NotificationAccountDeletionRepository';
 import { createAdminNotificationRepository } from '../infrastructure/repositories/AdminNotificationRepository';
 import { createAdminNotificationCommandRepository } from '../infrastructure/repositories/AdminNotificationCommandRepository';
+import { createNotificationConfigRepository } from '../infrastructure/repositories/NotificationConfigRepository';
 import { createAdminNotificationQueryRepository } from '../infrastructure/repositories/AdminNotificationQueryRepository';
 import { createNotificationAudienceResolverRepository } from '../infrastructure/repositories/NotificationAudienceResolverRepository';
 import { createNotificationDeliveryRepository } from '../infrastructure/repositories/NotificationDeliveryRepository';
@@ -34,6 +35,7 @@ import { createNotificationDeliveryService } from '../application/services/Notif
 import { createAdminNotificationService } from '../application/services/AdminNotificationService';
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createAdminNotificationCommandService } from '../application/services/AdminNotificationCommandService';
+import { createNotificationConfigService } from '../application/services/NotificationConfigService';
 import { createAdminNotificationQueryService } from '../application/services/AdminNotificationQueryService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
 import { createGatheringSpotService } from '../application/services/GatheringSpotService';
@@ -51,6 +53,7 @@ import { createFirebaseTokenController } from '../presentation/controllers/Fireb
 import { createAdminNotificationController } from '../presentation/controllers/AdminNotificationController';
 import { createAdminNotificationManagementController } from '../presentation/controllers/AdminNotificationManagementController';
 import { createAdminNotificationCommandController } from '../presentation/controllers/AdminNotificationCommandController';
+import { createNotificationConfigController } from '../presentation/controllers/NotificationConfigController';
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
 import { createVenueController } from '../presentation/controllers/VenueController';
@@ -90,6 +93,7 @@ export function createDIContainer(env: Env) {
     createAdminNotificationManagementRepository(db);
   const adminNotificationCommandRepository =
     createAdminNotificationCommandRepository(db);
+  const notificationConfigRepository = createNotificationConfigRepository(db);
   const adminNotificationQueryRepository =
     createAdminNotificationQueryRepository(db);
   const notificationAudienceResolverRepository =
@@ -205,6 +209,9 @@ export function createDIContainer(env: Env) {
     adminNotificationCommandRepository,
     adminNotificationQueryService
   );
+  const notificationConfigService = createNotificationConfigService(
+    notificationConfigRepository
+  );
   const mobileNotificationService = createMobileNotificationService(
     mobileNotificationRepository
   );
@@ -242,6 +249,9 @@ export function createDIContainer(env: Env) {
     );
   const adminNotificationCommandController =
     createAdminNotificationCommandController(adminNotificationCommandService);
+  const notificationConfigController = createNotificationConfigController(
+    notificationConfigService
+  );
   const mobileNotificationController = createMobileNotificationController(
     mobileNotificationService
   );
@@ -275,6 +285,7 @@ export function createDIContainer(env: Env) {
     adminNotificationManagementController,
     adminNotificationQueryService,
     adminNotificationCommandController,
+    notificationConfigController,
     mobileNotificationController,
     scheduledNotificationService,
     notificationAudienceResolverService,

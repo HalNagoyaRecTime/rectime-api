@@ -95,6 +95,8 @@ import {
   adminNotificationCreateRoute,
   adminNotificationDeleteRoute,
   adminNotificationPatchRoute,
+  notificationAudienceCountRoute,
+  notificationConfigRoute,
 } from './presentation/openapi/notification/admin';
 import { firebaseTokenRegistrationRoute } from './presentation/openapi/notification/firebaseTokens';
 import {
@@ -439,6 +441,15 @@ apiV1.openapi(authed(firebaseTokenRegistrationRoute), c => {
 });
 
 // Notification routes
+// /{notificationId} より先に登録し、固定パスを優先する。
+apiV1.openapi(staffOnly(notificationConfigRoute), c => {
+  return c.get('container').notificationConfigController.getConfig(c);
+});
+apiV1.openapi(staffOnly(notificationAudienceCountRoute), c => {
+  return c
+    .get('container')
+    .notificationConfigController.countAudience(c, c.req.valid('json'));
+});
 apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
   return c
     .get('container')
