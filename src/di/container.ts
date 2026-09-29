@@ -186,6 +186,7 @@ export function createDIContainer(env: Env) {
     );
   const notificationDeliveryService = createNotificationDeliveryService({
     notificationDeliveryRepository,
+    firebaseTokenRepository,
     notificationDeliveryQueue,
     fcmService,
   });
