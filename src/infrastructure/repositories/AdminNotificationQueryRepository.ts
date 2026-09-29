@@ -1,26 +1,21 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type {
-  AdminNotificationSnapshot,
-  NotificationAudienceSnapshot,
-  NotificationScheduleSnapshot,
-  NotificationUserSnapshot,
+  AdminNotificationQueryAudienceItem,
+  AdminNotificationQueryResult,
+  AdminNotificationQuerySchedule,
+  AdminNotificationQueryUserReference,
 } from '../../domain/entities/AdminNotificationQuery';
-import type { IAdminNotificationQueryRepository } from '../../domain/interfaces/repositories/IAdminNotificationQueryRepository';
-import type {
-  NotificationAudienceType,
-  NotificationImportance,
-  NotificationScheduleStatus,
-  NotificationSourceType,
-  NotificationStopReason,
-} from '../../domain/entities/Notification';
-
 import {
-  NOTIFICATION_AUDIENCE_TYPES,
   NOTIFICATION_IMPORTANCE_LEVELS,
   NOTIFICATION_SCHEDULE_STATUSES,
   NOTIFICATION_SOURCE_TYPES,
   NOTIFICATION_STOP_REASONS,
+  type NotificationImportance,
+  type NotificationScheduleStatus,
+  type NotificationSourceType,
+  type NotificationStopReason,
 } from '../../domain/entities/Notification';
+import type { IAdminNotificationQueryRepository } from '../../domain/interfaces/repositories/IAdminNotificationQueryRepository';
 
 interface NotificationRow {
   notification_id: number;
@@ -51,19 +46,13 @@ interface ScheduleRow {
   scheduled_by_user_name: string | null;
   created_at: string;
   recipients_resolved_at: string | null;
-  recipient_count?: number;
-  success_count?: number;
-  failed_count?: number;
-  no_push_target_count?: number;
 }
 
 interface AudienceRow {
   notification_schedule_id: number;
-  notification_audience_id: number;
   audience_type: string;
   target_id: number | null;
   label: string | null;
-  resolved_at: string | null;
 }
 
 interface RecipientSummaryRow {
@@ -105,7 +94,6 @@ const scheduleSelection = `
 
 const audienceSelection = `
   na.notification_schedule_id,
-  na.notification_audience_id,
   na.audience_type,
   na.target_id,
   CASE na.audience_type
@@ -114,8 +102,7 @@ const audienceSelection = `
     WHEN 'event' THEN e.event_name
     WHEN 'user' THEN audience_user.user_name
     ELSE NULL
-  END AS label,
-  na.resolved_at`;
+  END AS label`;
 
 export function createAdminNotificationQueryRepository(
   db: D1Database
@@ -131,7 +118,6 @@ export function createAdminNotificationQueryRepository(
           AND datetime(scoped_schedule.send_at) >= datetime(?)
           AND datetime(scoped_schedule.send_at) <= datetime(?)
       `;
-      // 通知の対象判定と返却Scheduleを同じ期間条件で絞り、期間外Scheduleを混在させない。
       const notificationScope = `n.notification_type = 'notification_general' AND EXISTS (
         SELECT 1
         FROM notification_schedules scoped_schedule
@@ -139,9 +125,13 @@ export function createAdminNotificationQueryRepository(
           AND datetime(scoped_schedule.send_at) >= datetime(?)
           AND datetime(scoped_schedule.send_at) <= datetime(?)
       )`;
-      const scheduleScope = `ns.notification_schedule_id IN (${scopedScheduleIds})`;
-      const audienceScope = `na.notification_schedule_id IN (${scopedScheduleIds})`;
-      const bindings = [options.from, options.to];
+      const scheduleScope = `ns.notification_schedule_id IN (
+        ${scopedScheduleIds}
+      )`;
+      const audienceScope = `na.notification_schedule_id IN (
+        ${scopedScheduleIds}
+      )`;
+      const notificationBindings = [options.from, options.to];
 
       const [
         notificationResult,
@@ -163,7 +153,7 @@ export function createAdminNotificationQueryRepository(
                WHERE ${notificationScope}
                ORDER BY datetime(n.created_at) DESC, n.notification_id DESC`
           )
-          .bind(...bindings),
+          .bind(...notificationBindings),
         db
           .prepare(
             `SELECT ${scheduleSelection}
@@ -175,7 +165,7 @@ export function createAdminNotificationQueryRepository(
                WHERE ${scheduleScope}
                ORDER BY ns.notification_id, datetime(ns.send_at), ns.notification_schedule_id`
           )
-          .bind(...bindings),
+          .bind(...notificationBindings),
         db
           .prepare(
             `SELECT ${audienceSelection}
@@ -197,7 +187,7 @@ export function createAdminNotificationQueryRepository(
                WHERE ${audienceScope}
                ORDER BY na.notification_schedule_id, na.notification_audience_id`
           )
-          .bind(...bindings),
+          .bind(...notificationBindings),
         db
           .prepare(
             `SELECT nr.notification_schedule_id,
@@ -225,33 +215,35 @@ export function createAdminNotificationQueryRepository(
                )
                GROUP BY nr.notification_schedule_id`
           )
-          .bind(...bindings),
+          .bind(...notificationBindings),
       ]);
 
-      return assembleSnapshots(
+      return assembleResults(
         notificationResult.results as unknown as NotificationRow[],
         scheduleResult.results as unknown as ScheduleRow[],
         audienceResult.results as unknown as AudienceRow[],
         summaryResult.results as unknown as RecipientSummaryRow[]
       );
     },
+
     async findById(notificationId) {
-      const root = await db
+      const notification = await db
         .prepare(
           `SELECT ${notificationSelection}
            FROM notifications n
-           LEFT JOIN users creator ON creator.user_id = n.created_by_user_id
+           LEFT JOIN users creator
+             ON creator.user_id = n.created_by_user_id
            LEFT JOIN gatherings source_gathering
              ON n.source_type = 'gathering'
             AND source_gathering.gathering_id = n.source_id
            LEFT JOIN gathering_spots source_spot
              ON source_spot.gathering_spot_id = source_gathering.gathering_spot_id
-           WHERE n.notification_id = ?
-             AND n.notification_type = 'notification_general'`
+           WHERE n.notification_type = 'notification_general'
+             AND n.notification_id = ?`
         )
         .bind(notificationId)
         .first<NotificationRow>();
-      if (!root) return null;
+      if (!notification) return null;
 
       const [scheduleResult, audienceResult, summaryResult] = await db.batch([
         db
@@ -321,8 +313,8 @@ export function createAdminNotificationQueryRepository(
       ]);
 
       return (
-        assembleSnapshots(
-          [root],
+        assembleResults(
+          [notification],
           scheduleResult.results as unknown as ScheduleRow[],
           audienceResult.results as unknown as AudienceRow[],
           summaryResult.results as unknown as RecipientSummaryRow[]
@@ -332,29 +324,21 @@ export function createAdminNotificationQueryRepository(
   };
 }
 
-function toUserSnapshot(
-  userId: number | null,
-  userName: string | null
-): NotificationUserSnapshot | null {
-  if (userId === null || userName === null) return null;
-  return { user_id: userId, user_name: userName };
-}
-
-function assembleSnapshots(
+function assembleResults(
   notificationRows: NotificationRow[],
   scheduleRows: ScheduleRow[],
   audienceRows: AudienceRow[],
-  summaryRows: RecipientSummaryRow[]
-): AdminNotificationSnapshot[] {
+  recipientSummaryRows: RecipientSummaryRow[]
+): AdminNotificationQueryResult[] {
   const audiencesBySchedule = groupBy(
     audienceRows.map(row => ({
       notification_schedule_id: row.notification_schedule_id,
-      audience: toAudienceSnapshot(row),
+      item: toAudienceItem(row),
     })),
     row => row.notification_schedule_id
   );
   const summariesBySchedule = new Map(
-    summaryRows.map(row => [row.notification_schedule_id, row])
+    recipientSummaryRows.map(row => [row.notification_schedule_id, row])
   );
   const schedulesByNotification = groupBy(
     scheduleRows,
@@ -368,83 +352,129 @@ function assembleSnapshots(
     detail_title: row.detail_title,
     detail_body: row.detail_body,
     importance: toImportance(row.importance),
-    source_type: toSourceType(row.source_type),
-    source_id: row.source_id,
-    source_label: row.source_label,
-    created_by: toUserSnapshot(row.created_by_user_id, row.creator_name),
+    creation: toCreation(row),
     created_at: row.created_at,
     updated_at: row.updated_at,
     schedules: (schedulesByNotification.get(row.notification_id) ?? []).map(
       schedule =>
-        toScheduleSnapshot(
+        toSchedule(
           schedule,
           (
             audiencesBySchedule.get(schedule.notification_schedule_id) ?? []
-          ).map(item => item.audience),
+          ).map(audience => audience.item),
           summariesBySchedule.get(schedule.notification_schedule_id)
         )
     ),
   }));
 }
 
-function toScheduleSnapshot(
+function toCreation(row: NotificationRow) {
+  if (row.source_type === null) {
+    return {
+      method: 'manual' as const,
+      user:
+        row.created_by_user_id === null || row.creator_name === null
+          ? null
+          : {
+              user_id: row.created_by_user_id,
+              user_name: row.creator_name,
+            },
+      source: null,
+    };
+  }
+
+  if (
+    !NOTIFICATION_SOURCE_TYPES.includes(
+      row.source_type as NotificationSourceType
+    ) ||
+    row.source_id === null
+  ) {
+    throw new Error('通知Sourceが不正です');
+  }
+
+  return {
+    method: 'automatic' as const,
+    user: null,
+    source: {
+      type: row.source_type as NotificationSourceType,
+      id: row.source_id,
+      label: row.source_label,
+    },
+  };
+}
+
+function toSchedule(
   row: ScheduleRow,
-  audiences: NotificationAudienceSnapshot[],
+  audienceItems: AdminNotificationQueryAudienceItem[],
   summary: RecipientSummaryRow | undefined
-): NotificationScheduleSnapshot {
+): AdminNotificationQuerySchedule {
   const status = toScheduleStatus(row.send_status);
+  const stop =
+    status === 'stopped' &&
+    row.stopped_at !== null &&
+    row.reason !== null &&
+    NOTIFICATION_STOP_REASONS.includes(row.reason as NotificationStopReason)
+      ? {
+          reason: row.reason as NotificationStopReason,
+          stopped_at: row.stopped_at,
+          stopped_by: toUserReference(
+            row.stopped_by_user_id,
+            row.stopped_by_user_name
+          ),
+        }
+      : null;
+  const totalCount = summary?.total_count ?? 0;
+
   return {
     notification_schedule_id: row.notification_schedule_id,
     send_at: row.send_at,
     status,
-    stop_reason: status === 'stopped' ? toStopReason(row.reason) : null,
-    stopped_at: row.stopped_at,
-    stopped_by: toUserSnapshot(
-      row.stopped_by_user_id,
-      row.stopped_by_user_name
-    ),
-    scheduled_by: toUserSnapshot(
+    stop,
+    scheduled_by: toUserReference(
       row.scheduled_by_user_id,
       row.scheduled_by_user_name
     ),
     created_at: row.created_at,
-    recipients_resolved_at: row.recipients_resolved_at,
-    audiences,
-    recipient_count: summary?.total_count ?? row.recipient_count ?? 0,
-    success_count: summary?.success_count ?? row.success_count ?? 0,
-    failed_count: summary?.failed_count ?? row.failed_count ?? 0,
-    no_push_target_count:
-      summary?.no_push_target_count ?? row.no_push_target_count ?? 0,
+    audience: {
+      items: audienceItems,
+      recipient_resolution: {
+        status: row.recipients_resolved_at === null ? 'pending' : 'resolved',
+        resolved_count: totalCount,
+      },
+    },
+    recipient_push_summary: {
+      total_count: totalCount,
+      success_count: summary?.success_count ?? 0,
+      failed_count: summary?.failed_count ?? 0,
+      no_push_target_count: summary?.no_push_target_count ?? 0,
+    },
   };
 }
 
-function toAudienceSnapshot(row: AudienceRow): NotificationAudienceSnapshot {
-  const type = toAudienceType(row.audience_type);
-  if (type !== 'all' && row.target_id === null) {
-    throw new Error('通知Audienceの対象IDがありません');
+function toAudienceItem(row: AudienceRow): AdminNotificationQueryAudienceItem {
+  if (row.audience_type === 'all') return { type: 'all' };
+  switch (row.audience_type) {
+    case 'class_room':
+    case 'gathering':
+    case 'event':
+    case 'user':
+      if (row.target_id === null)
+        throw new Error('通知Audienceの対象IDがありません');
+      return {
+        type: row.audience_type,
+        target_id: row.target_id,
+        label: row.label,
+      };
+    default:
+      throw new Error(`通知Audienceが不正です: ${row.audience_type}`);
   }
-  return {
-    type,
-    target_id: row.target_id,
-    label: row.label,
-    resolved_at: row.resolved_at,
-  };
-}
-
-function toAudienceType(value: string): NotificationAudienceType {
-  if (
-    !NOTIFICATION_AUDIENCE_TYPES.includes(value as NotificationAudienceType)
-  ) {
-    throw new Error(`通知Audienceの種別が不正です: ${value}`);
-  }
-  return value as NotificationAudienceType;
 }
 
 function toImportance(value: string): NotificationImportance {
   if (
     !NOTIFICATION_IMPORTANCE_LEVELS.includes(value as NotificationImportance)
   ) {
-    throw new Error(`通知Importanceの種別が不正です: ${value}`);
+    throw new Error(`通知重要度が不正です: ${value}`);
   }
   return value as NotificationImportance;
 }
@@ -455,24 +485,18 @@ function toScheduleStatus(value: string): NotificationScheduleStatus {
       value as NotificationScheduleStatus
     )
   ) {
-    throw new Error(`通知Schedule statusの種別が不正です: ${value}`);
+    throw new Error(`通知Schedule statusが不正です: ${value}`);
   }
   return value as NotificationScheduleStatus;
 }
 
-function toSourceType(value: string | null): NotificationSourceType | null {
-  if (value === null) return null;
-  if (!NOTIFICATION_SOURCE_TYPES.includes(value as NotificationSourceType)) {
-    throw new Error(`通知Sourceの種別が不正です: ${value}`);
-  }
-  return value as NotificationSourceType;
-}
-
-function toStopReason(value: string | null): NotificationStopReason | null {
-  return value !== null &&
-    NOTIFICATION_STOP_REASONS.includes(value as NotificationStopReason)
-    ? (value as NotificationStopReason)
-    : null;
+function toUserReference(
+  userId: number | null,
+  userName: string | null
+): AdminNotificationQueryUserReference | null {
+  return userId === null || userName === null
+    ? null
+    : { user_id: userId, user_name: userName };
 }
 
 function groupBy<T, K extends string | number>(

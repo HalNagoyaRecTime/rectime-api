@@ -1,11 +1,13 @@
 import type {
   AdminNotificationQueryOptions,
-  AdminNotificationSnapshot,
+  AdminNotificationQueryResult,
 } from '../../entities/AdminNotificationQuery';
 
 export interface IAdminNotificationQueryRepository {
   findAll(
     options: AdminNotificationQueryOptions
-  ): Promise<AdminNotificationSnapshot[]>;
-  findById(notificationId: number): Promise<AdminNotificationSnapshot | null>;
+  ): Promise<AdminNotificationQueryResult[]>;
+  findById(
+    notificationId: number
+  ): Promise<AdminNotificationQueryResult | null>;
 }

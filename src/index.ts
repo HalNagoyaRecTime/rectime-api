@@ -89,8 +89,8 @@ import {
 import { legacyAdminNotificationUpdateRoute } from './presentation/openapi/notification/legacy/admin';
 import {
   adminNotificationCreateRoute,
-  adminNotificationDetailRoute,
   adminNotificationDeleteRoute,
+  adminNotificationDetailRoute,
   adminNotificationListRoute,
   adminNotificationPatchRoute,
 } from './presentation/openapi/notification/admin';

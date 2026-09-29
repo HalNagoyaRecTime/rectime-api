@@ -16,8 +16,8 @@ const detail: AdminNotificationDetailDTO = {
   },
   importance: 'normal',
   creation: { method: 'manual', user: null, source: null },
-  createdAt: '2026-07-23T01:00:00.000Z',
-  updatedAt: '2026-07-23T01:00:00.000Z',
+  createdAt: '2026-09-24T09:00:00.000Z',
+  updatedAt: '2026-09-24T09:00:00.000Z',
   schedules: [],
 };
 
@@ -25,7 +25,6 @@ function setup() {
   const service: IAdminNotificationQueryService = {
     getAdminNotifications: vi.fn().mockResolvedValue({ items: [] }),
     getAdminNotificationById: vi.fn().mockResolvedValue(detail),
-    getNotificationDetail: vi.fn().mockResolvedValue(detail),
   };
   const controller = createAdminNotificationQueryController(service);
   const app = new Hono<{
@@ -45,21 +44,22 @@ describe('AdminNotificationQueryController', () => {
     const { service, request } = setup();
 
     const response = await request(
-      '/admin/notifications?from=2026-07-23T00%3A00%3A00Z&to=2026-07-23T23%3A59%3A59Z'
+      '/admin/notifications?from=2026-09-24T00%3A00%3A00Z&to=2026-09-24T23%3A59%3A59Z'
     );
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ items: [] });
     expect(service.getAdminNotifications).toHaveBeenCalledWith({
-      from: '2026-07-23T00:00:00Z',
-      to: '2026-07-23T23:59:59Z',
+      from: '2026-09-24T00:00:00Z',
+      to: '2026-09-24T23:59:59Z',
     });
   });
 
   it.each([
-    ['/admin/notifications?from=2026-07-23T00%3A00%3A00Z', 'fromだけ'],
+    ['/admin/notifications?from=2026-09-24T00%3A00%3A00Z', 'fromだけ'],
+    ['/admin/notifications?to=2026-09-24T23%3A59%3A59Z', 'toだけ'],
     [
-      '/admin/notifications?from=2026-07-24T00%3A00%3A00Z&to=2026-07-23T00%3A00%3A00Z',
+      '/admin/notifications?from=2026-09-25T00%3A00%3A00Z&to=2026-09-24T23%3A59%3A59Z',
       'fromがtoより後',
     ],
   ])('%s は400 VALIDATION_ERROR (%s)', async path => {

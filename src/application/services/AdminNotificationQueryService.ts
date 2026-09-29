@@ -1,14 +1,17 @@
 import type {
   AdminNotificationDetailDTO,
   AdminNotificationListItemDTO,
+  NotificationAudienceDTO,
   NotificationCreationDTO,
   NotificationDateRangeQueryDTO,
   NotificationUserReferenceDTO,
 } from '../dto/AdminNotificationDTO';
 import type {
-  AdminNotificationSnapshot,
-  NotificationScheduleSnapshot,
-  NotificationUserSnapshot,
+  AdminNotificationQueryAudienceItem,
+  AdminNotificationQueryCreation,
+  AdminNotificationQueryResult,
+  AdminNotificationQuerySchedule,
+  AdminNotificationQueryUserReference,
 } from '../../domain/entities/AdminNotificationQuery';
 import type { IAdminNotificationQueryRepository } from '../../domain/interfaces/repositories/IAdminNotificationQueryRepository';
 import type { IAdminNotificationQueryService } from './IAdminNotificationQueryService';
@@ -19,25 +22,20 @@ export function createAdminNotificationQueryService(
   repository: IAdminNotificationQueryRepository,
   now: () => Date = () => new Date()
 ): IAdminNotificationQueryService {
-  const getAdminNotificationById = async (
-    notificationId: number
-  ): Promise<AdminNotificationDetailDTO | null> => {
-    const snapshot = await repository.findById(notificationId);
-    return snapshot ? toDetailDTO(snapshot) : null;
-  };
-
   return {
     async getAdminNotifications(query) {
       const dateRange =
-        query.from !== undefined && query.to !== undefined
+        query.from && query.to
           ? { from: query.from, to: query.to }
           : getDefaultDateRange(now());
-      const snapshots = await repository.findAll(dateRange);
-      return { items: snapshots.map(toListItemDTO) };
+      const notifications = await repository.findAll(dateRange);
+      return { items: notifications.map(toListItem) };
     },
-    getAdminNotificationById,
-    // CommandのPATCH Responseが利用する既存の詳細取得契約を同じ実装へ接続する。
-    getNotificationDetail: getAdminNotificationById,
+
+    async getAdminNotificationById(notificationId) {
+      const notification = await repository.findById(notificationId);
+      return notification ? toDetail(notification) : null;
+    },
   };
 }
 
@@ -53,121 +51,121 @@ function getDefaultDateRange(
   };
 }
 
-function toListItemDTO(
-  snapshot: AdminNotificationSnapshot
+function toListItem(
+  notification: AdminNotificationQueryResult
 ): AdminNotificationListItemDTO {
   return {
-    notificationId: snapshot.notification_id,
+    notificationId: notification.notification_id,
     content: {
-      push: { title: snapshot.push_title, body: snapshot.push_body },
+      push: {
+        title: notification.push_title,
+        body: notification.push_body,
+      },
     },
-    importance: snapshot.importance,
-    creation: toCreationDTO(snapshot),
-    createdAt: snapshot.created_at,
-    schedules: snapshot.schedules.map(toScheduleListItemDTO),
+    importance: notification.importance,
+    creation: toCreation(notification.creation),
+    createdAt: notification.created_at,
+    schedules: notification.schedules.map(toScheduleListItem),
   };
 }
 
-function toDetailDTO(
-  snapshot: AdminNotificationSnapshot
+function toDetail(
+  notification: AdminNotificationQueryResult
 ): AdminNotificationDetailDTO {
   return {
-    notificationId: snapshot.notification_id,
+    notificationId: notification.notification_id,
     content: {
-      push: { title: snapshot.push_title, body: snapshot.push_body },
-      detail: { title: snapshot.detail_title, body: snapshot.detail_body },
+      push: {
+        title: notification.push_title,
+        body: notification.push_body,
+      },
+      detail: {
+        title: notification.detail_title,
+        body: notification.detail_body,
+      },
     },
-    importance: snapshot.importance,
-    creation: toCreationDTO(snapshot),
-    createdAt: snapshot.created_at,
-    updatedAt: snapshot.updated_at,
-    schedules: snapshot.schedules.map(schedule => ({
-      ...toScheduleListItemDTO(schedule),
-      stop: toStopDTO(schedule),
-    })),
+    importance: notification.importance,
+    creation: toCreation(notification.creation),
+    createdAt: notification.created_at,
+    updatedAt: notification.updated_at,
+    schedules: notification.schedules.map(toScheduleSummary),
   };
 }
 
-function toCreationDTO(
-  snapshot: AdminNotificationSnapshot
+function toCreation(
+  creation: AdminNotificationQueryCreation
 ): NotificationCreationDTO {
-  if (snapshot.source_type === null) {
-    return {
-      method: 'manual',
-      user: toUserReference(snapshot.created_by),
-      source: null,
-    };
-  }
+  return creation.method === 'manual'
+    ? {
+        method: 'manual',
+        user: toUserReference(creation.user),
+        source: null,
+      }
+    : {
+        method: 'automatic',
+        user: null,
+        source: {
+          type: creation.source.type,
+          id: creation.source.id,
+          label: creation.source.label,
+        },
+      };
+}
 
-  if (snapshot.source_id === null) {
-    throw new Error('自動通知のSource IDがありません');
-  }
+function toAudienceItem(
+  item: AdminNotificationQueryAudienceItem
+): NotificationAudienceDTO['items'][number] {
+  return item.type === 'all'
+    ? { type: 'all' }
+    : { type: item.type, targetId: item.target_id, label: item.label };
+}
 
+function toAudience(schedule: AdminNotificationQuerySchedule) {
   return {
-    method: 'automatic',
-    user: null,
-    source: {
-      type: snapshot.source_type,
-      id: snapshot.source_id,
-      label: snapshot.source_label,
+    items: schedule.audience.items.map(toAudienceItem),
+    recipientResolution: {
+      status: schedule.audience.recipient_resolution.status,
+      resolvedCount: schedule.audience.recipient_resolution.resolved_count,
     },
   };
 }
 
-function toScheduleListItemDTO(schedule: NotificationScheduleSnapshot) {
+function toScheduleListItem(schedule: AdminNotificationQuerySchedule) {
   return {
     notificationScheduleId: schedule.notification_schedule_id,
     sendAt: schedule.send_at,
     status: schedule.status,
     scheduledBy: toUserReference(schedule.scheduled_by),
     createdAt: schedule.created_at,
-    audience: {
-      items: schedule.audiences.map(audience => {
-        if (audience.type === 'all') return { type: 'all' as const };
-        if (audience.target_id === null) {
-          throw new Error('通知Audienceの対象IDがありません');
-        }
-        return {
-          type: audience.type,
-          targetId: audience.target_id,
-          label: audience.label,
-        };
-      }),
-      recipientResolution: {
-        status:
-          schedule.recipients_resolved_at === null
-            ? ('pending' as const)
-            : ('resolved' as const),
-        resolvedCount: schedule.recipient_count,
-      },
-    },
-    recipientPushSummary: {
-      totalCount: schedule.recipient_count,
-      successCount: schedule.success_count,
-      failedCount: schedule.failed_count,
-      noPushTargetCount: schedule.no_push_target_count,
-    },
+    audience: toAudience(schedule),
+    recipientPushSummary: toRecipientPushSummary(schedule),
   };
 }
 
-function toStopDTO(schedule: NotificationScheduleSnapshot) {
-  if (
-    schedule.status !== 'stopped' ||
-    schedule.stopped_at === null ||
-    schedule.stop_reason === null
-  ) {
-    return null;
-  }
-
+function toScheduleSummary(schedule: AdminNotificationQuerySchedule) {
   return {
-    reason: schedule.stop_reason,
-    stoppedAt: schedule.stopped_at,
-    stoppedBy: toUserReference(schedule.stopped_by),
+    ...toScheduleListItem(schedule),
+    stop: schedule.stop
+      ? {
+          reason: schedule.stop.reason,
+          stoppedAt: schedule.stop.stopped_at,
+          stoppedBy: toUserReference(schedule.stop.stopped_by),
+        }
+      : null,
+  };
+}
+
+function toRecipientPushSummary(schedule: AdminNotificationQuerySchedule) {
+  return {
+    totalCount: schedule.recipient_push_summary.total_count,
+    successCount: schedule.recipient_push_summary.success_count,
+    failedCount: schedule.recipient_push_summary.failed_count,
+    noPushTargetCount: schedule.recipient_push_summary.no_push_target_count,
   };
 }
 
 function toUserReference(
-  user: NotificationUserSnapshot | null
+  user: AdminNotificationQueryUserReference | null
 ): NotificationUserReferenceDTO | null {
   return user ? { userId: user.user_id, userName: user.user_name } : null;
 }
