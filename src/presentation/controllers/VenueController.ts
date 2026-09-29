@@ -1,42 +1,35 @@
-import { Context } from 'hono';
-import { z } from 'zod';
+import type { Context } from 'hono';
+import {
+  venueIdParams,
+  venueListQuery,
+  venueWriteSchema,
+} from '../openapi/venues';
+import { positivePathParamToNumber } from '../openapi/schemas';
 import type { UpdateVenueRequestDTO } from '../../application/dto/UpdateVenueRequestDTO';
 import { IVenueService } from '../../application/services/IVenueService';
 import { errorResponse } from '../errors/errorResponse';
 import { EventErrors } from '../errors/eventErrors';
 
-const venueWriteSchema = z.object({
-  venueName: z.string().trim().min(1),
-});
-const venueIdSchema = z.coerce.number().int().positive();
-const venueListQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  offset: z.coerce.number().int().min(0).default(0),
-  name: z.string().trim().max(100).optional(),
-  sortBy: z.enum(['id', 'name', 'createdAt', 'updatedAt']).optional(),
-  sortOrder: z.enum(['asc', 'desc']).optional(),
-});
-
 export function createVenueController(venueService: IVenueService) {
   const getAllVenues = async (c: Context) => {
-    const hasQuery = ['limit', 'offset', 'name', 'sortBy', 'sortOrder'].some(
-      key => c.req.query(key) !== undefined
-    );
+    const query = {
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+      name: c.req.query('name'),
+      sortBy: c.req.query('sortBy'),
+      sortOrder: c.req.query('sortOrder'),
+    };
+    const hasQuery = Object.values(query).some(value => value !== undefined);
+    const parsedQuery = venueListQuery.safeParse(query);
+    if (!parsedQuery.success) {
+      return errorResponse(
+        c,
+        EventErrors.INVALID_VENUE_LIST_QUERY,
+        parsedQuery.error.flatten()
+      );
+    }
+
     if (hasQuery) {
-      const parsedQuery = venueListQuerySchema.safeParse({
-        limit: c.req.query('limit'),
-        offset: c.req.query('offset'),
-        name: c.req.query('name'),
-        sortBy: c.req.query('sortBy'),
-        sortOrder: c.req.query('sortOrder'),
-      });
-      if (!parsedQuery.success) {
-        return errorResponse(
-          c,
-          EventErrors.INVALID_VENUE_LIST_QUERY,
-          parsedQuery.error.flatten()
-        );
-      }
       try {
         return c.json(await venueService.getVenuePage(parsedQuery.data), 200);
       } catch {
@@ -49,7 +42,6 @@ export function createVenueController(venueService: IVenueService) {
       return errorResponse(c, EventErrors.VENUE_LIST_FAILED);
     }
   };
-
   const createVenue = async (c: Context) => {
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = venueWriteSchema.safeParse(body);
@@ -76,8 +68,13 @@ export function createVenueController(venueService: IVenueService) {
   };
 
   const updateVenue = async (c: Context) => {
-    const parsedId = venueIdSchema.safeParse(c.req.param('venueId'));
-    if (!parsedId.success) {
+    const parsedParams = venueIdParams.safeParse({
+      venueId: c.req.param('venueId'),
+    });
+    const venueId = parsedParams.success
+      ? positivePathParamToNumber(parsedParams.data.venueId)
+      : undefined;
+    if (venueId === undefined) {
       return errorResponse(c, EventErrors.INVALID_VENUE_ID);
     }
 
@@ -93,7 +90,7 @@ export function createVenueController(venueService: IVenueService) {
 
     const request: UpdateVenueRequestDTO = parsedBody.data;
     try {
-      const venue = await venueService.updateVenue(parsedId.data, {
+      const venue = await venueService.updateVenue(venueId, {
         venue_name: request.venueName,
       });
       return c.json(venue, 200);
@@ -112,12 +109,17 @@ export function createVenueController(venueService: IVenueService) {
   };
 
   const deleteVenue = async (c: Context) => {
-    const parsedId = venueIdSchema.safeParse(c.req.param('venueId'));
-    if (!parsedId.success) {
+    const parsedParams = venueIdParams.safeParse({
+      venueId: c.req.param('venueId'),
+    });
+    const venueId = parsedParams.success
+      ? positivePathParamToNumber(parsedParams.data.venueId)
+      : undefined;
+    if (venueId === undefined) {
       return errorResponse(c, EventErrors.INVALID_VENUE_ID);
     }
     try {
-      await venueService.deleteVenue(parsedId.data);
+      await venueService.deleteVenue(venueId);
       return c.body(null, 204);
     } catch (error) {
       if (error instanceof Error && error.message === 'Venue not found') {
