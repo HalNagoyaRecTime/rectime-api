@@ -274,6 +274,62 @@ describe('AdminNotificationQueryRepository', () => {
     }
   });
 
+  it('一覧期間filterは上限のミリ秒境界を正しく判定する', async () => {
+    const fixture = await createFixture();
+    const createAt = async (sendAt: string) => {
+      const created = await commandRepository.create(
+        buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+      );
+      await env.DB.prepare(
+        'UPDATE notification_schedules SET send_at = ? WHERE notification_schedule_id = ?'
+      )
+        .bind(sendAt, created.notification_schedule_id)
+        .run();
+      return created;
+    };
+
+    const included = await createAt('2026-09-24T10:00:00.100Z');
+    await createAt('2026-09-24T10:00:00.101Z');
+    await createAt('2026-09-24T10:00:00.900Z');
+
+    const listed = await repository.findAll({
+      from: '2026-09-24T09:00:00.000Z',
+      to: '2026-09-24T10:00:00.100Z',
+    });
+
+    expect(listed.map(notification => notification.notification_id)).toEqual([
+      included.notification_id,
+    ]);
+  });
+
+  it('一覧期間filterは下限のミリ秒境界を正しく判定する', async () => {
+    const fixture = await createFixture();
+    const createAt = async (sendAt: string) => {
+      const created = await commandRepository.create(
+        buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+      );
+      await env.DB.prepare(
+        'UPDATE notification_schedules SET send_at = ? WHERE notification_schedule_id = ?'
+      )
+        .bind(sendAt, created.notification_schedule_id)
+        .run();
+      return created;
+    };
+
+    await createAt('2026-09-24T10:00:00.100Z');
+    await createAt('2026-09-24T10:00:00.899Z');
+    const included = await createAt('2026-09-24T10:00:00.900Z');
+
+    const listed = await repository.findAll({
+      from: '2026-09-24T10:00:00.900Z',
+      to: '2026-09-24T11:00:00.000Z',
+    });
+
+    expect(listed.map(notification => notification.notification_id)).toEqual([
+      included.notification_id,
+    ]);
+  });
+
   it('作成者とSchedule担当Userの削除後もnullで取得する', async () => {
     const fixture = await createFixture();
     const created = await commandRepository.create(

@@ -115,15 +115,15 @@ export function createAdminNotificationQueryRepository(
         INNER JOIN notifications scoped_notification
           ON scoped_notification.notification_id = scoped_schedule.notification_id
         WHERE scoped_notification.notification_type = 'notification_general'
-          AND datetime(scoped_schedule.send_at) >= datetime(?)
-          AND datetime(scoped_schedule.send_at) <= datetime(?)
+          AND julianday(scoped_schedule.send_at) >= julianday(?)
+          AND julianday(scoped_schedule.send_at) <= julianday(?)
       `;
       const notificationScope = `n.notification_type = 'notification_general' AND EXISTS (
         SELECT 1
         FROM notification_schedules scoped_schedule
         WHERE scoped_schedule.notification_id = n.notification_id
-          AND datetime(scoped_schedule.send_at) >= datetime(?)
-          AND datetime(scoped_schedule.send_at) <= datetime(?)
+          AND julianday(scoped_schedule.send_at) >= julianday(?)
+          AND julianday(scoped_schedule.send_at) <= julianday(?)
       )`;
       const scheduleScope = `ns.notification_schedule_id IN (
         ${scopedScheduleIds}

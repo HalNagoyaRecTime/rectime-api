@@ -353,4 +353,50 @@ describe('管理通知Command  API', () => {
       });
     }
   });
+
+  it('Notification IDのsafe integer境界をGET・PATCH・DELETEで統一する', async () => {
+    const token = await createStaffToken();
+    const methods = ['GET', 'PATCH', 'DELETE'] as const;
+    const patchBody = JSON.stringify({
+      content: { detail: { title: '更新Detail' } },
+    });
+
+    for (const method of methods) {
+      const response = await app.fetch(
+        new Request(
+          `http://example.com/api/v1/admin/notifications/${Number.MAX_SAFE_INTEGER}`,
+          {
+            method,
+            headers: requestHeaders(token),
+            ...(method === 'PATCH' ? { body: patchBody } : {}),
+          }
+        ),
+        testEnv
+      );
+      expect(response.status).toBe(404);
+    }
+
+    for (const notificationId of [
+      String(Number.MAX_SAFE_INTEGER + 1),
+      '9'.repeat(100),
+    ]) {
+      for (const method of methods) {
+        const response = await app.fetch(
+          new Request(
+            `http://example.com/api/v1/admin/notifications/${notificationId}`,
+            {
+              method,
+              headers: requestHeaders(token),
+              ...(method === 'PATCH' ? { body: patchBody } : {}),
+            }
+          ),
+          testEnv
+        );
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          error: { code: 'VALIDATION_ERROR' },
+        });
+      }
+    }
+  });
 });

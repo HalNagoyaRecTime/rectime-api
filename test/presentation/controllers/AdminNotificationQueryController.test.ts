@@ -88,4 +88,29 @@ describe('AdminNotificationQueryController', () => {
       error: { code: 'ADMIN_NOTIFICATION_NOT_FOUND' },
     });
   });
+
+  it('詳細のNotification IDはsafe integer範囲を超えると400にし、Serviceを呼ばない', async () => {
+    const { service, request } = setup();
+
+    const safeResponse = await request(
+      `/admin/notifications/${Number.MAX_SAFE_INTEGER}`
+    );
+    expect(safeResponse.status).toBe(200);
+    expect(service.getAdminNotificationById).toHaveBeenCalledWith(
+      Number.MAX_SAFE_INTEGER
+    );
+
+    for (const notificationId of [
+      String(Number.MAX_SAFE_INTEGER + 1),
+      '9'.repeat(100),
+    ]) {
+      const response = await request(`/admin/notifications/${notificationId}`);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+    }
+
+    expect(service.getAdminNotificationById).toHaveBeenCalledTimes(1);
+  });
 });

@@ -11,6 +11,7 @@ import {
   adminNotificationIdParams,
   notificationDateRangeQuery,
 } from '../openapi/notification';
+import { positivePathParamToNumber } from '../openapi/schemas';
 
 type AdminNotificationQueryContext = Context<{
   Bindings: Env;
@@ -63,11 +64,16 @@ export function createAdminNotificationQueryController(
         parsedParams.error.flatten()
       );
     }
+    const notificationId = positivePathParamToNumber(
+      parsedParams.data.notificationId
+    );
+    if (notificationId === undefined) {
+      return errorResponse(c, CommonErrors.VALIDATION_ERROR);
+    }
 
     try {
-      const notification = await service.getAdminNotificationById(
-        Number(parsedParams.data.notificationId)
-      );
+      const notification =
+        await service.getAdminNotificationById(notificationId);
       if (!notification) {
         return errorResponse(
           c,
