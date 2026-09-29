@@ -80,12 +80,15 @@ import {
   venueUpdateRoute,
 } from './presentation/openapi/venues';
 import {
-  legacyAdminNotificationCreateRoute,
-  legacyAdminNotificationDeleteRoute,
   legacyAdminNotificationDetailRoute,
   legacyAdminNotificationListRoute,
   legacyAdminNotificationUpdateRoute,
 } from './presentation/openapi/notification/legacy/admin';
+import {
+  adminNotificationCreateRoute,
+  adminNotificationDeleteRoute,
+  adminNotificationPatchRoute,
+} from './presentation/openapi/notification/admin';
 import { firebaseTokenCreateRoute } from './presentation/openapi/notification/legacy/firebaseTokens';
 import {
   myNotificationDetailRoute,
@@ -365,10 +368,13 @@ apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
 });
 
 // Notification routes
-apiV1.openapi(staffOnly(legacyAdminNotificationCreateRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
   return c
     .get('container')
-    .adminNotificationController.createManualNotification(c);
+    .adminNotificationCommandController.createNotification(
+      c,
+      c.req.valid('json')
+    );
 });
 apiV1.openapi(staffOnly(legacyAdminNotificationListRoute), c => {
   return c
@@ -385,12 +391,23 @@ apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
     .get('container')
     .adminNotificationManagementController.updateAdminNotification(c);
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationDeleteRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationPatchRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.deleteAdminNotification(c);
+    .adminNotificationCommandController.patchNotification(
+      c,
+      Number(c.req.valid('param').notificationId),
+      c.req.valid('json')
+    );
 });
-
+apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
+  return c
+    .get('container')
+    .adminNotificationCommandController.deleteNotification(
+      c,
+      Number(c.req.valid('param').notificationId)
+    );
+});
 apiV1.openapi(authed(myNotificationListRoute), c => {
   return c.get('container').mobileNotificationController.getNotifications(c);
 });
@@ -462,6 +479,44 @@ export default {
       return;
     }
 
+    const scheduledAt = new Date(event.scheduledTime);
+    const container = createDIContainer(env);
+    ctx.waitUntil(
+      container.notificationAudienceResolverService
+        .resolveDueSchedules(scheduledAt)
+        .then(async result => {
+          if (result.retryable_schedule_ids.length > 0) {
+            console.error('[CRON] Notification Audience解決を再試行します', {
+              scheduleIds: result.retryable_schedule_ids,
+            });
+          }
+          if (result.failed_schedule_ids.length > 0) {
+            console.error('[CRON] Notification Audience解決に失敗しました', {
+              scheduleIds: result.failed_schedule_ids,
+            });
+          }
+          try {
+            const deliveryResult =
+              await container.notificationDeliveryService.enqueueReadySchedules(
+                scheduledAt
+              );
+            if (deliveryResult.failed_schedule_ids.length > 0) {
+              console.error('[CRON] Notification Delivery準備に失敗しました', {
+                scheduleIds: deliveryResult.failed_schedule_ids,
+              });
+            }
+          } catch (error) {
+            console.error(
+              '[CRON] Notification Delivery preparation error',
+              error
+            );
+          }
+        })
+        .catch(error => {
+          console.error('[CRON] Notification Audience Resolver error', error);
+        })
+    );
+
     if (!isValidEventDate(env.EVENT_DATE)) {
       if (!eventDateWarnLogged) {
         console.error(
@@ -471,11 +526,8 @@ export default {
       }
       return;
     }
-
-    const scheduledAt = new Date(event.scheduledTime);
     if (!isEventDate(env.EVENT_DATE, scheduledAt)) return;
 
-    const container = createDIContainer(env);
     ctx.waitUntil(
       container.scheduledNotificationService.enqueueDueNotifications(
         scheduledAt
@@ -489,7 +541,8 @@ export default {
     const container = createDIContainer(env);
     await consumeNotificationDeliveryQueue(
       batch,
-      container.scheduledNotificationService
+      container.scheduledNotificationService,
+      container.notificationDeliveryService
     );
   },
 };
