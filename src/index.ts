@@ -97,6 +97,8 @@ import {
   adminNotificationPatchRoute,
 } from './presentation/openapi/notification/admin';
 import { firebaseTokenRegistrationRoute } from './presentation/openapi/notification/firebaseTokens';
+import { notificationScheduleResultsRoute } from './presentation/openapi/notification/schedules';
+import { notificationPushDeliveryDetailRoute } from './presentation/openapi/notification/pushDeliveries';
 import {
   myNotificationDetailRoute,
   myNotificationListRoute,
@@ -487,6 +489,16 @@ apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
   return c
     .get('container')
     .adminNotificationCommandController.deleteNotification(c, notificationId);
+});
+apiV1.openapi(staffOnly(notificationScheduleResultsRoute), c => {
+  return c
+    .get('container')
+    .notificationResultQueryController.getScheduleResults(c);
+});
+apiV1.openapi(staffOnly(notificationPushDeliveryDetailRoute), c => {
+  return c
+    .get('container')
+    .notificationResultQueryController.getPushDeliveryDetail(c);
 });
 apiV1.openapi(authed(myNotificationListRoute), c => {
   return c.get('container').mobileNotificationController.getNotifications(c);
