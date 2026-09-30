@@ -31,7 +31,6 @@ import { createFcmService } from '../infrastructure/services/FcmService';
 import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
 import { createNotificationAudienceResolverService } from '../application/services/NotificationAudienceResolverService';
 import { createNotificationDeliveryService } from '../application/services/NotificationDeliveryService';
-import { createAdminNotificationService } from '../application/services/AdminNotificationService';
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createAdminNotificationCommandService } from '../application/services/AdminNotificationCommandService';
 import { createAdminNotificationQueryService } from '../application/services/AdminNotificationQueryService';
@@ -48,9 +47,9 @@ import { createEventController } from '../presentation/controllers/EventControll
 import { createClassRoomController } from '../presentation/controllers/ClassRoomController';
 import { createMasterImportController } from '../presentation/controllers/MasterImportController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
-import { createAdminNotificationController } from '../presentation/controllers/AdminNotificationController';
 import { createAdminNotificationManagementController } from '../presentation/controllers/AdminNotificationManagementController';
 import { createAdminNotificationCommandController } from '../presentation/controllers/AdminNotificationCommandController';
+import { createAdminNotificationQueryController } from '../presentation/controllers/AdminNotificationQueryController';
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
 import { createVenueController } from '../presentation/controllers/VenueController';
@@ -190,9 +189,6 @@ export function createDIContainer(env: Env) {
     notificationDeliveryQueue,
     fcmService,
   });
-  const adminNotificationService = createAdminNotificationService(
-    adminNotificationRepository
-  );
   const adminNotificationManagementService =
     createAdminNotificationManagementService(
       adminNotificationManagementRepository,
@@ -233,15 +229,14 @@ export function createDIContainer(env: Env) {
     createMasterImportController(masterImportService);
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
-  const adminNotificationController = createAdminNotificationController(
-    adminNotificationService
-  );
   const adminNotificationManagementController =
     createAdminNotificationManagementController(
       adminNotificationManagementService
     );
   const adminNotificationCommandController =
     createAdminNotificationCommandController(adminNotificationCommandService);
+  const adminNotificationQueryController =
+    createAdminNotificationQueryController(adminNotificationQueryService);
   const mobileNotificationController = createMobileNotificationController(
     mobileNotificationService
   );
@@ -271,10 +266,10 @@ export function createDIContainer(env: Env) {
     classRoomController,
     masterImportController,
     firebaseTokenController,
-    adminNotificationController,
     adminNotificationManagementController,
     adminNotificationQueryService,
     adminNotificationCommandController,
+    adminNotificationQueryController,
     mobileNotificationController,
     scheduledNotificationService,
     notificationAudienceResolverService,

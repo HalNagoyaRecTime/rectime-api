@@ -28,7 +28,9 @@ import {
 import {
   validationDefaultHook,
   type ErrorResponseDTO,
+  positivePathParamToNumber,
 } from './presentation/openapi/schemas';
+import { errorResponse } from './presentation/errors/errorResponse';
 import { toValidationErrorDetails } from './presentation/errors/validationErrorDetails';
 import type { ZodError } from 'zod';
 import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
@@ -86,14 +88,12 @@ import {
   venueListRoute,
   venueUpdateRoute,
 } from './presentation/openapi/venues';
-import {
-  legacyAdminNotificationDetailRoute,
-  legacyAdminNotificationListRoute,
-  legacyAdminNotificationUpdateRoute,
-} from './presentation/openapi/notification/legacy/admin';
+import { legacyAdminNotificationUpdateRoute } from './presentation/openapi/notification/legacy/admin';
 import {
   adminNotificationCreateRoute,
   adminNotificationDeleteRoute,
+  adminNotificationDetailRoute,
+  adminNotificationListRoute,
   adminNotificationPatchRoute,
 } from './presentation/openapi/notification/admin';
 import { firebaseTokenRegistrationRoute } from './presentation/openapi/notification/firebaseTokens';
@@ -447,15 +447,15 @@ apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
       c.req.valid('json')
     );
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationListRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationListRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotifications(c);
+    .adminNotificationQueryController.getAdminNotifications(c);
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationDetailRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationDetailRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotificationById(c);
+    .adminNotificationQueryController.getAdminNotificationById(c);
 });
 apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
   return c
@@ -463,21 +463,30 @@ apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
     .adminNotificationManagementController.updateAdminNotification(c);
 });
 apiV1.openapi(staffOnly(adminNotificationPatchRoute), c => {
+  const notificationId = positivePathParamToNumber(
+    c.req.valid('param').notificationId
+  );
+  if (notificationId === undefined) {
+    return errorResponse(c, CommonErrors.VALIDATION_ERROR);
+  }
   return c
     .get('container')
     .adminNotificationCommandController.patchNotification(
       c,
-      Number(c.req.valid('param').notificationId),
+      notificationId,
       c.req.valid('json')
     );
 });
 apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
+  const notificationId = positivePathParamToNumber(
+    c.req.valid('param').notificationId
+  );
+  if (notificationId === undefined) {
+    return errorResponse(c, CommonErrors.VALIDATION_ERROR);
+  }
   return c
     .get('container')
-    .adminNotificationCommandController.deleteNotification(
-      c,
-      Number(c.req.valid('param').notificationId)
-    );
+    .adminNotificationCommandController.deleteNotification(c, notificationId);
 });
 apiV1.openapi(authed(myNotificationListRoute), c => {
   return c.get('container').mobileNotificationController.getNotifications(c);

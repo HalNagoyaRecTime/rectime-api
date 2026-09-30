@@ -133,7 +133,7 @@ export const notificationAudienceItemSchema = z
 
 export const notificationAudienceSchema = z
   .object({
-    items: z.array(notificationAudienceItemSchema).min(1),
+    items: z.array(notificationAudienceItemSchema),
   })
   .strict()
   .openapi('NotificationAudience');

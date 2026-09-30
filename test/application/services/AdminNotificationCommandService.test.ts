@@ -47,7 +47,8 @@ function buildQueryService(
   overrides: Partial<IAdminNotificationQueryService> = {}
 ): IAdminNotificationQueryService {
   return {
-    getNotificationDetail: vi.fn().mockResolvedValue(notificationDetail),
+    getAdminNotifications: vi.fn().mockResolvedValue({ items: [] }),
+    getAdminNotificationById: vi.fn().mockResolvedValue(notificationDetail),
     ...overrides,
   };
 }
@@ -147,7 +148,7 @@ describe('AdminNotificationCommandService', () => {
       }),
     });
     const queryService = buildQueryService({
-      getNotificationDetail: vi.fn().mockImplementation(async () => {
+      getAdminNotificationById: vi.fn().mockImplementation(async () => {
         callOrder.push('detail');
         return notificationDetail;
       }),
@@ -163,7 +164,7 @@ describe('AdminNotificationCommandService', () => {
       })
     ).resolves.toEqual(notificationDetail);
     expect(callOrder).toEqual(['update', 'detail']);
-    expect(queryService.getNotificationDetail).toHaveBeenCalledWith(10);
+    expect(queryService.getAdminNotificationById).toHaveBeenCalledWith(10);
     expect(repository.update).toHaveBeenCalledWith(
       expect.objectContaining({
         notification_id: 10,
