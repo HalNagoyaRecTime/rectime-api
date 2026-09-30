@@ -163,7 +163,7 @@ export function createAdminNotificationQueryRepository(
                LEFT JOIN users stopped_by
                  ON stopped_by.user_id = ns.stopped_by_user_id
                WHERE ${scheduleScope}
-               ORDER BY ns.notification_id, datetime(ns.send_at), ns.notification_schedule_id`
+               ORDER BY ns.notification_id, julianday(ns.send_at), ns.notification_schedule_id`
           )
           .bind(...notificationBindings),
         db
@@ -255,7 +255,7 @@ export function createAdminNotificationQueryRepository(
              LEFT JOIN users stopped_by
                ON stopped_by.user_id = ns.stopped_by_user_id
              WHERE ns.notification_id = ?
-             ORDER BY datetime(ns.send_at), ns.notification_schedule_id`
+             ORDER BY julianday(ns.send_at), ns.notification_schedule_id`
           )
           .bind(notificationId),
         db

@@ -330,6 +330,50 @@ describe('AdminNotificationQueryRepository', () => {
     ]);
   });
 
+  it('Scheduleは同一秒内でもsend_atの小数秒順で返す', async () => {
+    const fixture = await createFixture();
+    const created = await commandRepository.create(
+      buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+    );
+    await env.DB.prepare(
+      'UPDATE notification_schedules SET send_at = ? WHERE notification_schedule_id = ?'
+    )
+      .bind('2026-09-24T10:00:00.900Z', created.notification_schedule_id)
+      .run();
+
+    const earlierSchedule = await env.DB.prepare(
+      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, notification_id, importance, send_status, send_at, created_at, updated_at) VALUES (?, ?, ?, 1, 'scheduled', ?, ?, ?) RETURNING notification_schedule_id"
+    )
+      .bind(
+        fixture.actorUserId,
+        fixture.actorUserId,
+        created.notification_id,
+        '2026-09-24T10:00:00.100Z',
+        '2026-09-24T09:00:00.000Z',
+        '2026-09-24T09:00:00.000Z'
+      )
+      .first<{ notification_schedule_id: number }>();
+    if (!earlierSchedule) throw new Error('追加Scheduleを作成できませんでした');
+
+    const expectedScheduleIds = [
+      earlierSchedule.notification_schedule_id,
+      created.notification_schedule_id,
+    ];
+
+    const detail = await repository.findById(created.notification_id);
+    expect(
+      detail?.schedules.map(schedule => schedule.notification_schedule_id)
+    ).toEqual(expectedScheduleIds);
+
+    const listed = await repository.findAll({
+      from: '2026-09-24T10:00:00.000Z',
+      to: '2026-09-24T10:00:00.999Z',
+    });
+    expect(
+      listed[0]?.schedules.map(schedule => schedule.notification_schedule_id)
+    ).toEqual(expectedScheduleIds);
+  });
+
   it('作成者とSchedule担当Userの削除後もnullで取得する', async () => {
     const fixture = await createFixture();
     const created = await commandRepository.create(
