@@ -94,9 +94,9 @@ describe('通知契約のRequest schema', () => {
     expect(
       notificationAudienceSchema.safeParse({ items: [{ type: 'all' }] }).success
     ).toBe(true);
-    expect(notificationAudienceInputSchema.safeParse({ items: [] }).success).toBe(
-      false
-    );
+    expect(
+      notificationAudienceInputSchema.safeParse({ items: [] }).success
+    ).toBe(false);
     expect(notificationAudienceSchema.safeParse({ items: [] }).success).toBe(
       true
     );
