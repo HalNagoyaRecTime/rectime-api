@@ -29,6 +29,24 @@ async function createStaffToken(): Promise<string> {
   );
 }
 
+async function createUserToken(): Promise<string> {
+  const user = await workerEnv.DB.prepare(
+    "INSERT INTO users (user_name, is_live_active) VALUES ('Notification Query API user', 1) RETURNING user_id"
+  ).first<{ user_id: number }>();
+  if (!user) throw new Error('API test userを作成できませんでした');
+  return signAccessToken(
+    {
+      sub: String(user.user_id),
+      oid: `notification-query-${user.user_id}`,
+      email: 'notification-query@example.com',
+      display_name: 'Notification Query API user',
+      client_type: 'web',
+    },
+    JWT_SECRET,
+    3600
+  );
+}
+
 function requestHeaders(token: string): HeadersInit {
   return {
     Authorization: `Bearer ${token}`,
@@ -115,7 +133,62 @@ describe('管理通知Command  API', () => {
       send_status: 'scheduled',
       firebase_token_id: null,
     });
-    expect(Date.parse(String(stored?.send_at))).toBeGreaterThan(0);
+    const sendAt = String(stored?.send_at);
+    expect(Date.parse(sendAt)).toBeGreaterThan(0);
+
+    const detailResponse = await app.fetch(
+      new Request(
+        `http://example.com/api/v1/admin/notifications/${created.notificationId}`,
+        { headers: requestHeaders(token) }
+      ),
+      testEnv
+    );
+    expect(detailResponse.status).toBe(200);
+    expect(await detailResponse.json()).toMatchObject({
+      notificationId: created.notificationId,
+      content: {
+        push: { title: 'Push title', body: 'Push body' },
+        detail: { title: 'Detail title', body: 'Detail body' },
+      },
+      importance: 'normal',
+      creation: {
+        method: 'manual',
+        user: {
+          userId: expect.any(Number),
+          userName: 'Notification Command API staff',
+        },
+        source: null,
+      },
+      schedules: [
+        {
+          notificationScheduleId: created.notificationScheduleId,
+          audience: { items: [{ type: 'all' }] },
+        },
+      ],
+    });
+
+    const from = new Date(Date.parse(sendAt) - 1000).toISOString();
+    const to = new Date(Date.parse(sendAt) + 1000).toISOString();
+    const listResponse = await app.fetch(
+      new Request(
+        `http://example.com/api/v1/admin/notifications?${new URLSearchParams({ from, to })}`,
+        { headers: requestHeaders(token) }
+      ),
+      testEnv
+    );
+    expect(listResponse.status).toBe(200);
+    expect(await listResponse.json()).toMatchObject({
+      items: [
+        {
+          notificationId: created.notificationId,
+          content: { push: { title: 'Push title', body: 'Push body' } },
+          importance: 'normal',
+          schedules: [
+            { notificationScheduleId: created.notificationScheduleId },
+          ],
+        },
+      ],
+    });
 
     await workerEnv.DB.prepare(
       `UPDATE notification_schedules SET started_at = CURRENT_TIMESTAMP
@@ -259,5 +332,71 @@ describe('管理通知Command  API', () => {
       .first();
     expect(root).toBeNull();
     expect(schedule).toBeNull();
+  });
+
+  it('一般UserはAdmin Notificationの一覧・詳細を403で拒否される', async () => {
+    const token = await createUserToken();
+
+    for (const path of [
+      '/api/v1/admin/notifications',
+      '/api/v1/admin/notifications/1',
+    ]) {
+      const response = await app.fetch(
+        new Request(`http://example.com${path}`, {
+          headers: requestHeaders(token),
+        }),
+        testEnv
+      );
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'STAFF_REQUIRED' },
+      });
+    }
+  });
+
+  it('Notification IDのsafe integer境界をGET・PATCH・DELETEで統一する', async () => {
+    const token = await createStaffToken();
+    const methods = ['GET', 'PATCH', 'DELETE'] as const;
+    const patchBody = JSON.stringify({
+      content: { detail: { title: '更新Detail' } },
+    });
+
+    for (const method of methods) {
+      const response = await app.fetch(
+        new Request(
+          `http://example.com/api/v1/admin/notifications/${Number.MAX_SAFE_INTEGER}`,
+          {
+            method,
+            headers: requestHeaders(token),
+            ...(method === 'PATCH' ? { body: patchBody } : {}),
+          }
+        ),
+        testEnv
+      );
+      expect(response.status).toBe(404);
+    }
+
+    for (const notificationId of [
+      String(Number.MAX_SAFE_INTEGER + 1),
+      '9'.repeat(100),
+    ]) {
+      for (const method of methods) {
+        const response = await app.fetch(
+          new Request(
+            `http://example.com/api/v1/admin/notifications/${notificationId}`,
+            {
+              method,
+              headers: requestHeaders(token),
+              ...(method === 'PATCH' ? { body: patchBody } : {}),
+            }
+          ),
+          testEnv
+        );
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          error: { code: 'VALIDATION_ERROR' },
+        });
+      }
+    }
   });
 });

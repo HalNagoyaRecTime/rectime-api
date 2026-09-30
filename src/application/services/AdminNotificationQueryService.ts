@@ -1,102 +1,171 @@
-import type { AdminNotificationDetailDTO } from '../dto/AdminNotificationDTO';
-import type { AdminNotificationSnapshot } from '../../domain/entities/AdminNotificationQuery';
+import type {
+  AdminNotificationDetailDTO,
+  AdminNotificationListItemDTO,
+  NotificationAudienceDTO,
+  NotificationCreationDTO,
+  NotificationDateRangeQueryDTO,
+  NotificationUserReferenceDTO,
+} from '../dto/AdminNotificationDTO';
+import type {
+  AdminNotificationQueryAudienceItem,
+  AdminNotificationQueryCreation,
+  AdminNotificationQueryResult,
+  AdminNotificationQuerySchedule,
+  AdminNotificationQueryUserReference,
+} from '../../domain/entities/AdminNotificationQuery';
 import type { IAdminNotificationQueryRepository } from '../../domain/interfaces/repositories/IAdminNotificationQueryRepository';
 import type { IAdminNotificationQueryService } from './IAdminNotificationQueryService';
 
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
 export function createAdminNotificationQueryService(
-  repository: IAdminNotificationQueryRepository
+  repository: IAdminNotificationQueryRepository,
+  now: () => Date = () => new Date()
 ): IAdminNotificationQueryService {
   return {
-    async getNotificationDetail(notificationId) {
-      const snapshot = await repository.findDetail(notificationId);
-      return snapshot ? toDetailDTO(snapshot) : null;
+    async getAdminNotifications(query) {
+      const dateRange =
+        query.from && query.to
+          ? { from: query.from, to: query.to }
+          : getDefaultDateRange(now());
+      const notifications = await repository.findAll(dateRange);
+      return { items: notifications.map(toListItem) };
+    },
+
+    async getAdminNotificationById(notificationId) {
+      const notification = await repository.findById(notificationId);
+      return notification ? toDetail(notification) : null;
     },
   };
 }
 
-function toDetailDTO(
-  snapshot: AdminNotificationSnapshot
-): AdminNotificationDetailDTO {
-  if (snapshot.source_type !== null && snapshot.source_id === null) {
-    throw new Error('自動通知のSource IDがありません');
-  }
-  const creation: AdminNotificationDetailDTO['creation'] =
-    snapshot.source_type === null
-      ? {
-          method: 'manual',
-          user: snapshot.created_by
-            ? {
-                userId: snapshot.created_by.user_id,
-                userName: snapshot.created_by.user_name,
-              }
-            : null,
-          source: null,
-        }
-      : {
-          method: 'automatic',
-          user: null,
-          source: {
-            type: snapshot.source_type,
-            id: snapshot.source_id!,
-            label: snapshot.source_label,
-          },
-        };
-
+function getDefaultDateRange(
+  now: Date
+): Required<NotificationDateRangeQueryDTO> {
+  const date = new Date(now.getTime() + JST_OFFSET_MS)
+    .toISOString()
+    .slice(0, 10);
   return {
-    notificationId: snapshot.notification_id,
-    content: {
-      push: { title: snapshot.push_title, body: snapshot.push_body },
-      detail: { title: snapshot.detail_title, body: snapshot.detail_body },
-    },
-    importance: snapshot.importance,
-    creation,
-    createdAt: snapshot.created_at,
-    updatedAt: snapshot.updated_at,
-    schedules: snapshot.schedules.map(schedule => ({
-      notificationScheduleId: schedule.notification_schedule_id,
-      sendAt: schedule.send_at,
-      status: schedule.status,
-      stop:
-        schedule.stopped_at !== null && schedule.stop_reason !== null
-          ? {
-              reason: schedule.stop_reason,
-              stoppedAt: schedule.stopped_at,
-              stoppedBy: schedule.stopped_by
-                ? {
-                    userId: schedule.stopped_by.user_id,
-                    userName: schedule.stopped_by.user_name,
-                  }
-                : null,
-            }
-          : null,
-      scheduledBy: schedule.scheduled_by
-        ? {
-            userId: schedule.scheduled_by.user_id,
-            userName: schedule.scheduled_by.user_name,
-          }
-        : null,
-      createdAt: schedule.created_at,
-      audience: {
-        items: schedule.audiences.map(audience =>
-          audience.type === 'all'
-            ? { type: 'all' as const }
-            : {
-                type: audience.type,
-                targetId: audience.target_id ?? 0,
-                label: audience.label,
-              }
-        ),
-        recipientResolution: {
-          status: schedule.recipients_resolved_at ? 'resolved' : 'pending',
-          resolvedCount: schedule.recipient_count,
-        },
-      },
-      recipientPushSummary: {
-        totalCount: schedule.recipient_count,
-        successCount: schedule.success_count,
-        failedCount: schedule.failed_count,
-        noPushTargetCount: schedule.no_push_target_count,
-      },
-    })),
+    from: `${date}T00:00:00.000+09:00`,
+    to: `${date}T23:59:59.999+09:00`,
   };
+}
+
+function toListItem(
+  notification: AdminNotificationQueryResult
+): AdminNotificationListItemDTO {
+  return {
+    notificationId: notification.notification_id,
+    content: {
+      push: {
+        title: notification.push_title,
+        body: notification.push_body,
+      },
+    },
+    importance: notification.importance,
+    creation: toCreation(notification.creation),
+    createdAt: notification.created_at,
+    schedules: notification.schedules.map(toScheduleListItem),
+  };
+}
+
+function toDetail(
+  notification: AdminNotificationQueryResult
+): AdminNotificationDetailDTO {
+  return {
+    notificationId: notification.notification_id,
+    content: {
+      push: {
+        title: notification.push_title,
+        body: notification.push_body,
+      },
+      detail: {
+        title: notification.detail_title,
+        body: notification.detail_body,
+      },
+    },
+    importance: notification.importance,
+    creation: toCreation(notification.creation),
+    createdAt: notification.created_at,
+    updatedAt: notification.updated_at,
+    schedules: notification.schedules.map(toScheduleSummary),
+  };
+}
+
+function toCreation(
+  creation: AdminNotificationQueryCreation
+): NotificationCreationDTO {
+  return creation.method === 'manual'
+    ? {
+        method: 'manual',
+        user: toUserReference(creation.user),
+        source: null,
+      }
+    : {
+        method: 'automatic',
+        user: null,
+        source: {
+          type: creation.source.type,
+          id: creation.source.id,
+          label: creation.source.label,
+        },
+      };
+}
+
+function toAudienceItem(
+  item: AdminNotificationQueryAudienceItem
+): NotificationAudienceDTO['items'][number] {
+  return item.type === 'all'
+    ? { type: 'all' }
+    : { type: item.type, targetId: item.target_id, label: item.label };
+}
+
+function toAudience(schedule: AdminNotificationQuerySchedule) {
+  return {
+    items: schedule.audience.items.map(toAudienceItem),
+    recipientResolution: {
+      status: schedule.audience.recipient_resolution.status,
+      resolvedCount: schedule.audience.recipient_resolution.resolved_count,
+    },
+  };
+}
+
+function toScheduleListItem(schedule: AdminNotificationQuerySchedule) {
+  return {
+    notificationScheduleId: schedule.notification_schedule_id,
+    sendAt: schedule.send_at,
+    status: schedule.status,
+    scheduledBy: toUserReference(schedule.scheduled_by),
+    createdAt: schedule.created_at,
+    audience: toAudience(schedule),
+    recipientPushSummary: toRecipientPushSummary(schedule),
+  };
+}
+
+function toScheduleSummary(schedule: AdminNotificationQuerySchedule) {
+  return {
+    ...toScheduleListItem(schedule),
+    stop: schedule.stop
+      ? {
+          reason: schedule.stop.reason,
+          stoppedAt: schedule.stop.stopped_at,
+          stoppedBy: toUserReference(schedule.stop.stopped_by),
+        }
+      : null,
+  };
+}
+
+function toRecipientPushSummary(schedule: AdminNotificationQuerySchedule) {
+  return {
+    totalCount: schedule.recipient_push_summary.total_count,
+    successCount: schedule.recipient_push_summary.success_count,
+    failedCount: schedule.recipient_push_summary.failed_count,
+    noPushTargetCount: schedule.recipient_push_summary.no_push_target_count,
+  };
+}
+
+function toUserReference(
+  user: AdminNotificationQueryUserReference | null
+): NotificationUserReferenceDTO | null {
+  return user ? { userId: user.user_id, userName: user.user_name } : null;
 }

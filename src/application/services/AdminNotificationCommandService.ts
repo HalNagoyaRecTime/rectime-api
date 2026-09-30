@@ -164,7 +164,7 @@ export function createAdminNotificationCommandService(
       throw new AdminNotificationCommandError('NOTIFICATION_EDIT_NOT_ALLOWED');
     }
 
-    const updated = await queryService.getNotificationDetail(notificationId);
+    const updated = await queryService.getAdminNotificationById(notificationId);
     if (!updated) {
       throw new AdminNotificationCommandError('ADMIN_NOTIFICATION_NOT_FOUND');
     }

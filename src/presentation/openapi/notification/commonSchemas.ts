@@ -133,7 +133,7 @@ export const notificationAudienceItemSchema = z
 
 export const notificationAudienceSchema = z
   .object({
-    items: z.array(notificationAudienceItemSchema).min(1),
+    items: z.array(notificationAudienceItemSchema),
   })
   .strict()
   .openapi('NotificationAudience');
@@ -380,7 +380,7 @@ export const notificationDateRangeQuery = z
 
 export const notificationResultsQuery = z
   .object({
-    page: digitsOnlyInteger(1, undefined, 1),
+    page: digitsOnlyInteger(1, Number.MAX_SAFE_INTEGER, 1),
     limit: digitsOnlyInteger(1, 100, 50),
   })
   .strict()
