@@ -161,6 +161,45 @@ describe('TeamController', () => {
       expect(teamService.createTeam).not.toHaveBeenCalled();
     });
 
+    it('class_codesが空配列の場合は400を返す', async () => {
+      const { app, teamService } = setup();
+
+      const response = await app.request('/teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ team_name: 'テストチーム', class_codes: [] }),
+      });
+
+      expect(response.status).toBe(400);
+      expect((await response.json()) as { error: { code: string } }).toEqual(
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'INVALID_TEAM_REQUEST' }),
+        })
+      );
+      expect(teamService.createTeam).not.toHaveBeenCalled();
+    });
+
+    it('class_codesに重複がある場合は400を返す', async () => {
+      const { app, teamService } = setup();
+
+      const response = await app.request('/teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team_name: 'テストチーム',
+          class_codes: ['1A', '1A'],
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect((await response.json()) as { error: { code: string } }).toEqual(
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'INVALID_TEAM_REQUEST' }),
+        })
+      );
+      expect(teamService.createTeam).not.toHaveBeenCalled();
+    });
+
     it('存在しないclass_codeを含む場合は404を返す', async () => {
       const { app, teamService } = setup();
       (teamService.createTeam as ReturnType<typeof vi.fn>).mockRejectedValue(
@@ -188,7 +227,7 @@ describe('TeamController', () => {
       const response = await app.request('/teams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_name: '既存チーム', class_codes: [] }),
+        body: JSON.stringify({ team_name: '既存チーム', class_codes: ['1A'] }),
       });
 
       expect(response.status).toBe(409);
@@ -220,6 +259,45 @@ describe('TeamController', () => {
       expect(await response.json()).toEqual(team);
     });
 
+    it('class_codesが空配列の場合は400を返す', async () => {
+      const { app, teamService } = setup();
+
+      const response = await app.request('/teams/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ team_name: '更新後チーム', class_codes: [] }),
+      });
+
+      expect(response.status).toBe(400);
+      expect((await response.json()) as { error: { code: string } }).toEqual(
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'INVALID_TEAM_REQUEST' }),
+        })
+      );
+      expect(teamService.updateTeam).not.toHaveBeenCalled();
+    });
+
+    it('class_codesに重複がある場合は400を返す', async () => {
+      const { app, teamService } = setup();
+
+      const response = await app.request('/teams/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team_name: '更新後チーム',
+          class_codes: ['1A', '1A'],
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect((await response.json()) as { error: { code: string } }).toEqual(
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'INVALID_TEAM_REQUEST' }),
+        })
+      );
+      expect(teamService.updateTeam).not.toHaveBeenCalled();
+    });
+
     it('存在しないチームの場合は404を返す', async () => {
       const { app, teamService } = setup();
       (teamService.updateTeam as ReturnType<typeof vi.fn>).mockRejectedValue(
@@ -229,7 +307,10 @@ describe('TeamController', () => {
       const response = await app.request('/teams/999', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_name: '更新後チーム', class_codes: [] }),
+        body: JSON.stringify({
+          team_name: '更新後チーム',
+          class_codes: ['1A'],
+        }),
       });
 
       expect(response.status).toBe(404);
