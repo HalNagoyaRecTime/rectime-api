@@ -16,11 +16,11 @@ export function createNotificationConfigRepository(
     async countAudienceUsers(targets) {
       if (targets.length === 0) return 0;
       const selects = targets.map(buildAudienceUserSelect);
-      // Audience内・Audience間の同一Userを重複排除する。
+      // Audience内・Audience間の同一UserをCOUNT(DISTINCT)で一度だけ重複排除する。
       const row = await db
         .prepare(
           'SELECT COUNT(DISTINCT user_id) AS recipient_count FROM (' +
-            selects.map(select => select.sql).join(' UNION ') +
+            selects.map(select => select.sql).join(' UNION ALL ') +
             ')'
         )
         .bind(...selects.flatMap(select => select.params))
