@@ -61,10 +61,10 @@ describe('OpenAPI documentation', () => {
     expect(Object.keys(document.paths).sort()).toEqual([
       '/',
       '/api/v1/admin/notifications',
-      '/api/v1/admin/notifications/push-deliveries/{notificationPushDeliveryId}',
-      '/api/v1/admin/notifications/schedules/{notificationScheduleId}/results',
       '/api/v1/admin/notifications/audience-count',
       '/api/v1/admin/notifications/config',
+      '/api/v1/admin/notifications/push-deliveries/{notificationPushDeliveryId}',
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}/results',
       '/api/v1/admin/notifications/{notificationId}',
       '/api/v1/admin/users/{userId}',
       '/api/v1/admin/users/{userId}/staff',
@@ -209,7 +209,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(52);
+    expect(documentedOperations).toHaveLength(54);
     expect(
       document.paths['/api/v1/admin/notifications/{notificationId}']
     ).toHaveProperty('patch');
