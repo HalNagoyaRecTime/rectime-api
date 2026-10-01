@@ -65,6 +65,7 @@ const HEADER_ALIASES: Record<string, string> = {
   学籍番号: 'student_id_number',
   '氏名（姓）': 'last_name',
   '氏名（名）': 'first_name',
+  メールアドレス: 'email',
 };
 
 function normalizeHeader(header: string): string {

@@ -55,28 +55,6 @@ export function createGatheringSpotController(
     }
   };
 
-  const getGatheringSpotById = async (c: Context) => {
-    const parsedId = gatheringSpotIdSchema.safeParse(
-      c.req.param('gatheringSpotId')
-    );
-    if (!parsedId.success) {
-      return errorResponse(c, EventErrors.INVALID_GATHERING_SPOT_ID);
-    }
-    try {
-      return c.json(
-        await gatheringSpotService.getGatheringSpotById(parsedId.data)
-      );
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === 'Gathering spot not found'
-      ) {
-        return errorResponse(c, EventErrors.GATHERING_SPOT_NOT_FOUND);
-      }
-      return errorResponse(c, EventErrors.GATHERING_SPOT_FETCH_FAILED);
-    }
-  };
-
   const createGatheringSpot = async (c: Context) => {
     const body = await c.req.json().catch(() => undefined);
     const parsedBody = createGatheringSpotSchema.safeParse(body);
@@ -163,7 +141,6 @@ export function createGatheringSpotController(
 
   return {
     getAllGatheringSpots,
-    getGatheringSpotById,
     createGatheringSpot,
     updateGatheringSpot,
     deleteGatheringSpot,

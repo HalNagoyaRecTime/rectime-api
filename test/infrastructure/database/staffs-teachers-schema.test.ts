@@ -69,9 +69,9 @@ describe('staffs/teachers テーブルの制約', () => {
       const userId = await createTestUser('スキーマテスト教員');
 
       const teacher = await env.DB.prepare(
-        'INSERT INTO teachers (user_id) VALUES (?) RETURNING teacher_id, user_id'
+        'INSERT INTO teachers (user_id, email) VALUES (?, ?) RETURNING teacher_id, user_id'
       )
-        .bind(userId)
+        .bind(userId, `teacher-${userId}@example.test`)
         .first<{ teacher_id: number; user_id: number }>();
 
       expect(teacher).toMatchObject({ user_id: userId });
@@ -79,21 +79,24 @@ describe('staffs/teachers テーブルの制約', () => {
 
     it('同じ user_id で2行目を作ろうとすると UNIQUE 制約で失敗する', async () => {
       const userId = await createTestUser('スキーマテスト教員2');
-      await env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
-        .bind(userId)
+      await env.DB.prepare(
+        'INSERT INTO teachers (user_id, email) VALUES (?, ?)'
+      )
+        .bind(userId, `teacher-${userId}@example.test`)
         .run();
 
+      // emailは別の値にして、user_id側のUNIQUEが働いていることを確かめる。
       await expect(
-        env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
-          .bind(userId)
+        env.DB.prepare('INSERT INTO teachers (user_id, email) VALUES (?, ?)')
+          .bind(userId, `teacher-${userId}-2@example.test`)
           .run()
-      ).rejects.toThrow('UNIQUE constraint failed');
+      ).rejects.toThrow('UNIQUE constraint failed: teachers.user_id');
     });
 
     it('存在しない user_id では FOREIGN KEY 制約で失敗する', async () => {
       await expect(
-        env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
-          .bind(999999)
+        env.DB.prepare('INSERT INTO teachers (user_id, email) VALUES (?, ?)')
+          .bind(999999, 'teacher-999999@example.test')
           .run()
       ).rejects.toThrow('FOREIGN KEY constraint failed');
     });
@@ -105,8 +108,8 @@ describe('staffs/teachers テーブルの制約', () => {
     await env.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
       .bind(userId)
       .run();
-    await env.DB.prepare('INSERT INTO teachers (user_id) VALUES (?)')
-      .bind(userId)
+    await env.DB.prepare('INSERT INTO teachers (user_id, email) VALUES (?, ?)')
+      .bind(userId, `teacher-${userId}@example.test`)
       .run();
 
     const staff = await env.DB.prepare(

@@ -1,5 +1,5 @@
 import { env as workerEnv } from 'cloudflare:workers';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import {
   afterEach,
   beforeAll,
@@ -90,6 +90,9 @@ beforeEach(async () => {
   await workerEnv.DB.prepare('DELETE FROM events').run();
   await workerEnv.DB.prepare('DELETE FROM microsoft_account_links').run();
   await workerEnv.DB.prepare('DELETE FROM staffs').run();
+  await workerEnv.DB.prepare(
+    'UPDATE class_rooms SET teacher_id = NULL WHERE teacher_id IS NOT NULL'
+  ).run();
   await workerEnv.DB.prepare('DELETE FROM teachers').run();
   await workerEnv.DB.prepare('DELETE FROM students').run();
   await workerEnv.DB.prepare('DELETE FROM users').run();
@@ -199,6 +202,73 @@ function stubMicrosoftFetch(idToken: string) {
   return fetchMock;
 }
 
+interface LoginRequestInput {
+  attemptId: string;
+  oid: string;
+  sub: string;
+  name: string;
+  email: string;
+}
+
+async function requestMicrosoftLogin(
+  env: Env,
+  input: LoginRequestInput,
+  clientType: 'web' | 'mobile'
+) {
+  const nonce = `nonce-${input.attemptId}`;
+  const state = `state-${input.attemptId}`;
+  const codeVerifier = generateRandom(32);
+  const now = Math.floor(Date.now() / 1000);
+  const idToken = await signIdToken({
+    sub: input.sub,
+    oid: input.oid,
+    tid: 'tid-1',
+    name: input.name,
+    preferred_username: input.email,
+    nonce,
+    iss: 'https://login.microsoftonline.com/tid-1/v2.0',
+    aud: CLIENT_ID,
+    exp: now + 3600,
+    iat: now - 10,
+  });
+  await env.AUTH_KV.put(
+    `pkce:${state}`,
+    JSON.stringify({
+      ...(clientType === 'web' ? { code_verifier: codeVerifier } : {}),
+      nonce,
+      client_type: clientType,
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    } satisfies PkceEntry)
+  );
+  stubMicrosoftFetch(idToken);
+
+  return buildApp().request(
+    '/token',
+    {
+      method: 'POST',
+      headers: {
+        'X-Client-Type': clientType,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        code: `auth-code-${input.attemptId}`,
+        state,
+        ...(clientType === 'mobile' ? { code_verifier: codeVerifier } : {}),
+      }),
+    },
+    env
+  );
+}
+
+function requestWebLogin(env: Env, input: LoginRequestInput) {
+  return requestMicrosoftLogin(env, input, 'web');
+}
+
+function requestMobileLogin(env: Env, input: LoginRequestInput) {
+  return requestMicrosoftLogin(env, input, 'mobile');
+}
+
 describe('GET /auth/microsoft/login', () => {
   it('不正なclient_typeの場合は400を返す', async () => {
     const app = buildApp();
@@ -299,8 +369,75 @@ describe('GET /auth/microsoft/login', () => {
   });
 });
 
+describe('GET /auth/microsoft/login origin', () => {
+  it('webは許可済みRefererのoriginをPKCE stateに保存する', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const app = buildApp();
+
+    const res = await app.request(
+      '/login',
+      {
+        headers: {
+          Referer: 'https://pr-296.recwatch.pages.dev/login',
+        },
+      },
+      env
+    );
+
+    expect(res.status).toBe(302);
+    const state = new URL(res.headers.get('Location') ?? '').searchParams.get(
+      'state'
+    ) as string;
+    const stored = JSON.parse(
+      (await env.AUTH_KV.get(`pkce:${state}`)) as string
+    ) as PkceEntry;
+    expect(stored.frontend_origin).toBe('https://pr-296.recwatch.pages.dev');
+  });
+
+  it('webは未許可RefererのoriginをPKCE stateに保存しない', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const app = buildApp();
+
+    const res = await app.request(
+      '/login',
+      {
+        headers: {
+          Referer: 'https://evil.example/login',
+        },
+      },
+      env
+    );
+
+    expect(res.status).toBe(302);
+    const state = new URL(res.headers.get('Location') ?? '').searchParams.get(
+      'state'
+    ) as string;
+    const stored = JSON.parse(
+      (await env.AUTH_KV.get(`pkce:${state}`)) as string
+    ) as PkceEntry;
+    expect(stored.frontend_origin).toBeUndefined();
+  });
+});
+
 describe('GET /auth/microsoft/callback', () => {
-  it('errorクエリがある場合はログイン画面へリダイレクトする', async () => {
+  it('state付きのerrorクエリはフロントエンドのcallbackへ中継する', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      '/callback?error=access_denied&state=state%2B123',
+      {},
+      buildEnv()
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      'https://app.example.com/auth/callback?error=access_denied&state=state%2B123'
+    );
+  });
+
+  it('stateが無いerrorクエリはログイン画面へリダイレクトする', async () => {
     const app = buildApp();
     const res = await app.request(
       '/callback?error=access_denied',
@@ -332,6 +469,85 @@ describe('GET /auth/microsoft/callback', () => {
     expect(res.status).toBe(302);
     expect(res.headers.get('Location')).toBe(
       'https://app.example.com/auth/callback?code=abc%2B123&state=xyz789'
+    );
+  });
+  it('有効なstateのoriginを成功時に復元し、callbackでstateを消費しない', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const state = 'state-preview';
+    await env.AUTH_KV.put(
+      `pkce:${state}`,
+      JSON.stringify({
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'login',
+        frontend_origin: 'https://pr-296.recwatch.pages.dev',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(`/callback?code=abc&state=${state}`, {}, env);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      `https://pr-296.recwatch.pages.dev/auth/callback?code=abc&state=${state}`
+    );
+    expect(await env.AUTH_KV.get(`pkce:${state}`)).toBeTruthy();
+  });
+
+  it('Microsoftのerror時も有効なstateのoriginを復元してcallbackへ中継する', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const state = 'state-preview-error';
+    await env.AUTH_KV.put(
+      `pkce:${state}`,
+      JSON.stringify({
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'login',
+        frontend_origin: 'https://pr-296.recwatch.pages.dev',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      `/callback?error=access_denied&state=${state}`,
+      {},
+      env
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      `https://pr-296.recwatch.pages.dev/auth/callback?error=access_denied&state=${state}`
+    );
+  });
+
+  it('stateの未許可originはFRONTEND_URLへフォールバックする', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const state = 'state-untrusted-origin';
+    await env.AUTH_KV.put(
+      `pkce:${state}`,
+      JSON.stringify({
+        nonce: 'nonce-1',
+        client_type: 'web',
+        purpose: 'login',
+        frontend_origin: 'https://evil.example',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    const app = buildApp();
+
+    const res = await app.request(`/callback?code=abc&state=${state}`, {}, env);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      `https://app.example.com/auth/callback?code=abc&state=${state}`
     );
   });
 });
@@ -457,6 +673,22 @@ describe('POST /auth/microsoft/token', () => {
 
   it('webは成功時、ボディにcode_verifierが無くてもサーバー保存済みのものを使って交換しaccess_token/refresh_token_idを返す', async () => {
     const env = buildEnv();
+
+    // web token exchangeはstaff権限が無いと403になるため、既に
+    // Microsoftアカウントと紐付いた既存staffユーザーとしてログインし直す
+    // (2回目ログイン = updateUserの経路)ケースで検証する。
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-1', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+
     const now = Math.floor(Date.now() / 1000);
     const idToken = await signIdToken({
       sub: 'sub-1',
@@ -544,7 +776,24 @@ describe('POST /auth/microsoft/token', () => {
     // purposeフィールドが存在しない(JSON.stringifyでpurposeキー自体が
     // 無い状態)。この場合を新コードのpurposeチェックがINVALID_STATE_
     // PURPOSEとして拒否してしまうと、正当な通常ログインができなくなる。
+    //
+    // Web経由のログインはstaff権限が必須(#288)なため、既にstaff登録
+    // 済みの既存ユーザーの2回目ログインとして再現する(検証したいのは
+    // purposeフィールドの有無による挙動であり、初回/再ログインの違いは
+    // 本質ではない)。
     const env = buildEnv();
+    const existingUser = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(existingUser!.user_id)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-legacy-1', 'tid-1')"
+    )
+      .bind(existingUser!.user_id)
+      .run();
+
     const now = Math.floor(Date.now() / 1000);
     const idToken = await signIdToken({
       sub: 'sub-legacy-1',
@@ -621,7 +870,7 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.error?.code).toBe('INVALID_STATE_PURPOSE');
   });
 
-  it('mobileは成功時、ボディのcode_verifierを使って交換しaccess_token/refresh_token_idを返す', async () => {
+  it('mobileは成功時、ボディのcode_verifierを使って交換しaccess_token/refresh_token_idを返す(staff権限は不要)', async () => {
     const env = buildEnv();
     const now = Math.floor(Date.now() / 1000);
     const idToken = await signIdToken({
@@ -843,7 +1092,7 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.error?.code).toBe('ACCOUNT_DELETION_PENDING');
   });
 
-  it('学生ユーザーが初回ログイン時、学籍番号から紐付いてstudent_id_number/class_room_nameを返す', async () => {
+  it('student + staffユーザーが初回ログイン時、既存Studentのuser_idでstaff判定されstudent_id_number/class_room_nameを返す', async () => {
     const env = buildEnv();
 
     const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
@@ -857,6 +1106,9 @@ describe('POST /auth/microsoft/token', () => {
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 2, '60001')"
     )
       .bind(user!.user_id, classRoom.classRoomId)
+      .run();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
       .run();
 
     const now = Math.floor(Date.now() / 1000);
@@ -918,6 +1170,18 @@ describe('POST /auth/microsoft/token', () => {
   it('生徒情報取得に失敗した場合、mobile_refresh系のKVエントリを書き込まずエラーにする', async () => {
     const env = buildEnv();
 
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('教師三郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-student-lookup-failure', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+
     const now = Math.floor(Date.now() / 1000);
     const idToken = await signIdToken({
       sub: 'sub-student-lookup-failure',
@@ -965,7 +1229,295 @@ describe('POST /auth/microsoft/token', () => {
     ).toBe(false);
   });
 
-  it('学生でないユーザーがログインした場合、エラーにならずstudent_id_number/class_room_nameがnullで返る', async () => {
+  it('事前登録済み教員はmobile初回ログインとwebログインで同じuser_id・担当クラスを維持する', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('教師三郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const teacher = await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'sensei@example.com') RETURNING teacher_id"
+    )
+      .bind(user!.user_id)
+      .first<{ teacher_id: number }>();
+    // Webログインのstaff必須化(#288)の導入後もこの回帰テストが
+    // 本来の「教員のuser_id紐付け」を検証し続けられるよう、同じuserを
+    // teacher + staffとして事前登録する。
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'TEACHER-LINK',
+      className: '教員紐付け確認',
+      teacherId: teacher!.teacher_id,
+    });
+
+    const firstResponse = await requestMobileLogin(env, {
+      attemptId: 'teacher-link-1',
+      oid: 'oid-teacher-link',
+      sub: 'sub-teacher-link',
+      name: 'NH-STAFF Microsoft表示名',
+      email: 'sensei@example.com',
+    });
+
+    expect(firstResponse.status).toBe(200);
+    const firstBody = (await firstResponse.json()) as {
+      user: { id: string; is_staff: boolean; is_teacher: boolean };
+    };
+    expect(firstBody.user.id).toBe(String(user!.user_id));
+    expect(firstBody.user.is_staff).toBe(true);
+    expect(firstBody.user.is_teacher).toBe(true);
+
+    const usersAfterFirstLogin = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM users'
+    ).first<{ count: number }>();
+    expect(usersAfterFirstLogin?.count).toBe(1);
+
+    const link = await workerEnv.DB.prepare(
+      'SELECT user_id, oid, tid FROM microsoft_account_links WHERE user_id = ?'
+    )
+      .bind(user!.user_id)
+      .first<{ user_id: number; oid: string; tid: string }>();
+    expect(link).toEqual({
+      user_id: user!.user_id,
+      oid: 'oid-teacher-link',
+      tid: 'tid-1',
+    });
+
+    const assignedClassRoom = await workerEnv.DB.prepare(
+      'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+    )
+      .bind(classRoom.classRoomId)
+      .first<{ teacher_id: number | null }>();
+    expect(assignedClassRoom?.teacher_id).toBe(teacher!.teacher_id);
+
+    const secondResponse = await requestWebLogin(env, {
+      attemptId: 'teacher-link-2',
+      oid: 'oid-teacher-link',
+      sub: 'sub-teacher-link',
+      name: 'NH-STAFF Microsoft表示名',
+      email: 'sensei@example.com',
+    });
+
+    expect(secondResponse.status).toBe(200);
+    const secondBody = (await secondResponse.json()) as {
+      user: { id: string; is_staff: boolean; is_teacher: boolean };
+    };
+    expect(secondBody.user.id).toBe(String(user!.user_id));
+    expect(secondBody.user.is_staff).toBe(true);
+    expect(secondBody.user.is_teacher).toBe(true);
+
+    const usersAfterSecondLogin = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM users'
+    ).first<{ count: number }>();
+    expect(usersAfterSecondLogin?.count).toBe(1);
+
+    const linksAfterSecondLogin = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM microsoft_account_links'
+    ).first<{ count: number }>();
+    expect(linksAfterSecondLogin?.count).toBe(1);
+
+    const classRoomAfterSecondLogin = await workerEnv.DB.prepare(
+      'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
+    )
+      .bind(classRoom.classRoomId)
+      .first<{ teacher_id: number | null }>();
+    expect(classRoomAfterSecondLogin?.teacher_id).toBe(teacher!.teacher_id);
+  });
+
+  it('同名の教員が複数いてもメールが一致する教員だけへ紐付ける', async () => {
+    const env = buildEnv();
+
+    const firstUser = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('同名先生') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const secondUser = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('同名先生') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'first.teacher@example.com')"
+    )
+      .bind(firstUser!.user_id)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'second.teacher@example.com')"
+    )
+      .bind(secondUser!.user_id)
+      .run();
+    // Webログインのstaff必須化(#288)の導入後もこの回帰テストが
+    // 本来の「メール一致による教員紐付け」を検証し続けられるよう、
+    // 一致させたい側のuserをteacher + staffとして事前登録する。
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(secondUser!.user_id)
+      .run();
+
+    const response = await requestWebLogin(env, {
+      attemptId: 'teacher-same-name',
+      oid: 'oid-teacher-same-name',
+      sub: 'sub-teacher-same-name',
+      name: 'NH-STAFF 同名先生',
+      email: 'second.teacher@example.com',
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { user: { id: string } };
+    expect(body.user.id).toBe(String(secondUser!.user_id));
+
+    const userCount = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM users'
+    ).first<{ count: number }>();
+    const links = await workerEnv.DB.prepare(
+      'SELECT user_id, oid FROM microsoft_account_links'
+    ).all<{ user_id: number; oid: string }>();
+    expect(userCount?.count).toBe(2);
+    expect(links.results).toEqual([
+      {
+        user_id: secondUser!.user_id,
+        oid: 'oid-teacher-same-name',
+      },
+    ]);
+  });
+
+  it('同名の事前登録済み教員が別のMicrosoftアカウントと連携済みの場合は409 TEACHER_ALREADY_LINKEDを返す', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('連携済み先生') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'linked@example.com')"
+    )
+      .bind(user!.user_id)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-existing-teacher', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+
+    const response = await requestWebLogin(env, {
+      attemptId: 'teacher-already-linked',
+      oid: 'oid-new-teacher',
+      sub: 'sub-new-teacher',
+      name: '連携済み先生',
+      email: 'linked@example.com',
+    });
+
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('TEACHER_ALREADY_LINKED');
+
+    const userCount = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM users'
+    ).first<{ count: number }>();
+    const links = await workerEnv.DB.prepare(
+      'SELECT user_id, oid, tid FROM microsoft_account_links'
+    ).all<{ user_id: number; oid: string; tid: string }>();
+    expect(userCount?.count).toBe(1);
+    expect(links.results).toEqual([
+      {
+        user_id: user!.user_id,
+        oid: 'oid-existing-teacher',
+        tid: 'tid-1',
+      },
+    ]);
+  });
+
+  it('無効化された事前登録済み教員は401 USER_DEACTIVATEDとなり、新規ユーザーもリンクも作らない', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, is_live_active) VALUES ('無効化教員', 0) RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'deactivated@example.com')"
+    )
+      .bind(user!.user_id)
+      .run();
+
+    const response = await requestWebLogin(env, {
+      attemptId: 'teacher-deactivated',
+      oid: 'oid-teacher-deactivated',
+      sub: 'sub-teacher-deactivated',
+      name: '無効化教員',
+      email: 'deactivated@example.com',
+    });
+
+    expect(response.status).toBe(401);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('USER_DEACTIVATED');
+
+    const userCount = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM users'
+    ).first<{ count: number }>();
+    const linkCount = await workerEnv.DB.prepare(
+      'SELECT COUNT(*) AS count FROM microsoft_account_links'
+    ).first<{ count: number }>();
+    expect(userCount?.count).toBe(1);
+    expect(linkCount?.count).toBe(0);
+  });
+
+  it('studentのみ(staffではない)ユーザーはWebログインできない', async () => {
+    const env = buildEnv();
+
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3E',
+      className: '3年E組',
+    });
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('学生三郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 3, '60002')"
+    )
+      .bind(user!.user_id, classRoom.classRoomId)
+      .run();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-student-2',
+      oid: 'oid-student-2',
+      tid: 'tid-1',
+      name: '学生三郎',
+      preferred_username: 'nhs60002@nhs.hal.ac.jp',
+      nonce: 'nonce-student-2',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-student-2',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-student-2',
+        client_type: 'web',
+        purpose: 'login',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-student-2',
+          state: 'state-student-2',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('STAFF_REQUIRED');
+  });
+
+  it('staffではない新規ユーザーはWebログインできない', async () => {
     const env = buildEnv();
 
     const now = Math.floor(Date.now() / 1000);
@@ -1007,22 +1559,140 @@ describe('POST /auth/microsoft/token', () => {
       env
     );
 
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      user: {
-        student_id_number: string | null;
-        class_room_name: string | null;
-        class_room_id: number | null;
-        team_id: number | null;
-      };
-    };
-    expect(body.user.student_id_number).toBeNull();
-    expect(body.user.class_room_name).toBeNull();
-    expect(body.user.class_room_id).toBeNull();
-    expect(body.user.team_id).toBeNull();
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('STAFF_REQUIRED');
+  });
+
+  it('teacherのみ(staffではない)ユーザーはWebログインできない', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('教員花子') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'hanako@example.com')"
+    )
+      .bind(user!.user_id)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-teacher-2', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-teacher-2',
+      oid: 'oid-teacher-2',
+      tid: 'tid-1',
+      name: '教員花子',
+      preferred_username: 'hanako@example.com',
+      nonce: 'nonce-teacher-2',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-teacher-2',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-teacher-2',
+        client_type: 'web',
+        purpose: 'login',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildApp();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-teacher-2',
+          state: 'state-teacher-2',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('STAFF_REQUIRED');
+  });
+
+  it('staff判定でエラーが発生した場合は500 INTERNAL_SERVER_ERRORを返す', async () => {
+    const env = buildEnv();
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-staff-error-1',
+      oid: 'oid-staff-error-1',
+      tid: 'tid-1',
+      name: 'エラー太郎',
+      preferred_username: 'error@example.com',
+      nonce: 'nonce-staff-error-1',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-staff-error-1',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-staff-error-1',
+        client_type: 'web',
+        purpose: 'login',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+
+    // buildApp()はroute登録が先に固まってしまい、後から追加した
+    // モック用ミドルウェアがハンドラより後に評価されて効かないため、
+    // ここではdiContainerMiddleware→モック→routeの順で自前に組み立てる。
+    const app = new Hono<{ Bindings: Env }>();
+    app.use('*', diContainerMiddleware);
+    app.use(
+      '*',
+      async (
+        c: Context<{ Bindings: Env; Variables: ContainerVariables }>,
+        next
+      ) => {
+        c.get('container').authorizationService.isStaff = vi
+          .fn()
+          .mockRejectedValue(new Error('D1 error'));
+        await next();
+      }
+    );
+    app.route('/', microsoft);
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-staff-error-1',
+          state: 'state-staff-error-1',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INTERNAL_SERVER_ERROR');
   });
 
   it('markAsDeleted実行後に同じ学籍番号メールでログインすると、古い削除済みユーザーへ紐付けず新規アカウントとして登録される', async () => {
+    // ここで検証したい再登録の挙動(削除済みuser_idへ紐付けず新規発行
+    // される)はclient_typeに依存しない。Webは新規ユーザーにstaff権限が
+    // 必須(#288)で新規登録の検証に使えないため、mobileで検証する。
     const env = buildEnv();
 
     const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
@@ -1066,9 +1736,8 @@ describe('POST /auth/microsoft/token', () => {
     await env.AUTH_KV.put(
       'pkce:state-deleted-student-1',
       JSON.stringify({
-        code_verifier: generateRandom(32),
         nonce: 'nonce-deleted-student-1',
-        client_type: 'web',
+        client_type: 'mobile',
         purpose: 'login',
         created_at: new Date().toISOString(),
       } satisfies PkceEntry)
@@ -1080,10 +1749,14 @@ describe('POST /auth/microsoft/token', () => {
       '/token',
       {
         method: 'POST',
-        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        headers: {
+          'X-Client-Type': 'mobile',
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           code: 'auth-code-deleted-student-1',
           state: 'state-deleted-student-1',
+          code_verifier: generateRandom(32),
         }),
       },
       env
@@ -1194,6 +1867,31 @@ describe('GET /auth/microsoft/delete-login', () => {
     expect(stored.code_verifier).toBeTruthy();
   });
 
+  it('delete-loginは許可済みRefererのoriginをPKCE stateに保存する', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const app = buildApp();
+
+    const res = await app.request(
+      '/delete-login',
+      {
+        headers: {
+          Referer: 'https://pr-296.recwatch.pages.dev/delete-account',
+        },
+      },
+      env
+    );
+
+    expect(res.status).toBe(302);
+    const state = new URL(res.headers.get('Location') ?? '').searchParams.get(
+      'state'
+    ) as string;
+    const stored = JSON.parse(
+      (await env.AUTH_KV.get(`pkce:${state}`)) as string
+    ) as PkceEntry;
+    expect(stored.frontend_origin).toBe('https://pr-296.recwatch.pages.dev');
+  });
   it('mobileは有効なパラメータでauth_urlを返しKVにpurpose: account_deletionで保存し、prompt=loginを含むauth_urlを返す', async () => {
     const env = buildEnv();
     const state = generateRandom(32);

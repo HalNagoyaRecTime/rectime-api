@@ -41,11 +41,13 @@
       "FIREBASE_PROJECT_ID",
       "FIREBASE_CLIENT_EMAIL",
       "FIREBASE_PRIVATE_KEY",
-      "TEST_FCM_TOKEN",
     ],
   },
   "triggers": {
-    "crons": ["* * * * *"],
+    // "* * * * *": 通知配信(EVENT_DATE当日のみ実際に動く)。
+    // "0 18 * * *" (UTC 18:00 = JST 3:00): アカウント削除の後片付け
+    // 再実行(#345)。event.cronの値でindex.tsのscheduledハンドラが分岐する。
+    "crons": ["* * * * *", "0 18 * * *"],
   },
   "queues": {
     "producers": [
@@ -148,7 +150,7 @@
       // 10秒タイムアウトし、テストスイートが不安定になることを確認したため。
       // ただし実デプロイ先としても使う以上、以下は実際には必須(`wrangler secret put <NAME> --env development`
       // で登録すること): MICROSOFT_CLIENT_PRIVATE_KEY / MICROSOFT_CERT_THUMBPRINT / JWT_SECRET /
-      // FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY / TEST_FCM_TOKEN
+      // FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY
       // (secrets.requiredを宣言しない代償として、デプロイ時の事前検証は効かない)。
       "kv_namespaces": [
         {
@@ -235,7 +237,6 @@
           "FIREBASE_PROJECT_ID",
           "FIREBASE_CLIENT_EMAIL",
           "FIREBASE_PRIVATE_KEY",
-          "TEST_FCM_TOKEN",
         ],
       },
       // 本番相当のcronを検証したくなった時点で有効化を検討する。まずは無効で始める。

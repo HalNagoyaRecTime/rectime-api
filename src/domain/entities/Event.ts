@@ -1,8 +1,12 @@
+export interface EventVenueEntity {
+  venue_id: number;
+  venue_name: string;
+}
+
 export interface EventEntity {
   event_id: number;
   event_name: string;
   rule_text: string | null;
-  venue: string;
   start_time: string; // JSTのHHMM形式（例: "0930"）
   end_time: string; // JSTのHHMM形式（例: "1745"）
   created_at: string;
@@ -16,7 +20,7 @@ export interface EventEntity {
 export interface EventWriteInput {
   name: string;
   ruleText: string | null;
-  venue: string;
+  venueIds: number[];
   startTime: string;
   endTime: string;
 }
@@ -26,4 +30,18 @@ export interface EventListOptions {
   startTime?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface GatheringSummaryEntity {
+  gathering_count: number;
+  configured_gathering_count: number;
+  first_gathering_time: string | null;
+}
+
+export interface EventWithVenuesEntity extends EventEntity {
+  venues: EventVenueEntity[];
+}
+
+export interface EventWithGatheringSummaryEntity extends EventWithVenuesEntity {
+  gathering_summary: GatheringSummaryEntity;
 }

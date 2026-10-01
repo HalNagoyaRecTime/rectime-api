@@ -186,6 +186,32 @@ VITE_BACKEND_BASE_URL=https://rectime-api.rectime-project.workers.dev
 `npm install` の `prepare` スクリプトで Husky を初期化する。
 
 - `pre-commit`: `lint-staged` による変更ファイルの ESLint/Prettier
-- `pre-push`: format・lint・型チェック（リモートブランチ削除だけの push はスキップ）
+- `pre-push`: 全体Typecheckと、`origin/develop` の差分に影響するVitestのみ実行する
+  - `package.json`、`package-lock.json`、`tsconfig*.json`、Vitest/Vite設定、`wrangler.jsonc`、`migrations/**`変更時は、pre-pushがGitの差分を判定して全テストを実行する
+  - `origin/develop` が見つからない場合は全テストへフォールバックする
+  - Stacked PRでも`origin/develop`を基準にするため、実際のPR差分より検査範囲が広がる、または親PRの変更を打ち消すケースでは差分を正確に検出できない場合がある
+  - 関連テストは現在チェックアウト中のHEADを基準に選択するため、別ref指定や複数refのpushでは実際のpush対象と完全一致しない場合がある
+  - 別ref指定や複数refのpushを検出した場合は、pushを止めずにコンソールへ警告を表示する
+- リモートブランチ削除だけの push では `pre-push` の検査をスキップする
+- Prettier/ESLintの全体確認と全テストはCIで実行し、CIを最終的な品質保証とする
 
 hook を手動で再設定する場合は `npm run prepare` を実行する。
+
+## 依存関係の定期更新
+
+Dependabotの通常のversion update PRは停止し、毎月1日09:30（JST）に
+`.github/workflows/dependency-update-prepare.yml`で更新候補を作成する。
+
+- 1.0以上のnpm依存関係とGitHub Actionsは、現在のmajor version内だけを更新する。
+- 0.xの依存関係はminor更新を破壊的変更として扱い、現在のminor version内だけを更新する。
+- 公開から7日未満のversionは候補に含めない。
+- `wrangler`、`@cloudflare/workers-types`、`@cloudflare/vitest-pool-workers`は、peer dependencyを安全に一括更新できるまで動作確認済みversionへ完全固定し、月次対象から除外する。
+- 更新処理に使う`npm-check-updates`自体もversionを固定し、月次対象から除外する。
+- 候補branchでは`npm ci`、format、lint、type check、test、Wrangler dry runを実行する。
+- CIがすべて成功し、検証中に`develop`が変わっていない場合だけPRを作成する。
+- 更新失敗、CI失敗、既存の更新PRがある場合は新しいPRを作成しない。
+
+GitHub Actionsは可動tagを直接参照せず、正確なversionをコメントに残したfull commit SHAで固定する。
+自動検証できない`actions/add-to-project`は月次更新から除外する。
+major更新はこの月次workflowの対象外とし、別途事前検証してから実施する。
+2026年12月1日の定期実行は、同日のmajor更新と重複しないよう自動的にskipする。

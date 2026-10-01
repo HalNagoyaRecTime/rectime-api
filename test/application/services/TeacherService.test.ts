@@ -1,15 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTeacherService } from '../../../src/application/services/TeacherService';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
+import type { IClassRoomRepository } from '../../../src/domain/interfaces/repositories/IClassRoomRepository';
 import type { TeacherEntity } from '../../../src/domain/entities/Teacher';
 
 function buildTeacher(overrides: Partial<TeacherEntity> = {}): TeacherEntity {
   return {
-    teacher_id: 1,
-    user_id: 10,
-    user_name: '山田先生',
-    is_live_active: true,
-    class_rooms: [],
+    teacherId: 1,
+    userId: 10,
+    userName: '山田先生',
+    email: 'yamada@example.ac.jp',
+    isLiveActive: true,
+    isStaff: false,
+    classRooms: [],
     ...overrides,
   };
 }
@@ -20,11 +23,36 @@ function buildRepository(
   return {
     findById: vi.fn(),
     findAll: vi.fn(),
+    existsById: vi.fn(),
+    findExistingEmails: vi.fn().mockResolvedValue(new Set<string>()),
+    findMicrosoftLinkCandidateByEmail: vi.fn(),
     existsClassRooms: vi.fn(),
     create: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),
-    deactivate: vi.fn(),
+    deleteByUserId: vi.fn(),
+    ...overrides,
+  };
+}
+
+function buildClassRoomRepository(
+  overrides: Partial<IClassRoomRepository> = {}
+): IClassRoomRepository {
+  return {
+    findAll: vi.fn(),
+    findById: vi.fn(),
+    findByCode: vi.fn(),
+    findExistingClassRoomIds: vi.fn().mockResolvedValue(new Set([1])),
+    findExistingClassCodes: vi.fn(),
+    create: vi.fn(),
+    createMany: vi.fn(),
+    update: vi.fn(),
+    updateAndCleanupTeam: vi.fn(),
+    delete: vi.fn(),
+    deleteAndCleanupTeam: vi.fn(),
+    teacherExists: vi.fn(),
+    existsWithTeamId: vi.fn(),
+    hasStudents: vi.fn(),
     ...overrides,
   };
 }
@@ -36,27 +64,41 @@ describe('TeacherService', () => {
       const repository = buildRepository({
         create: vi.fn().mockResolvedValue(teacher),
       });
-      const service = createTeacherService(repository);
+      const classRoomRepository = buildClassRoomRepository();
+      const service = createTeacherService(repository, classRoomRepository);
 
       await expect(
-        service.createTeacher({ userName: '山田先生', classRoomIds: [] })
+        service.createTeacher({
+          userName: '山田先生',
+          email: 'yamada@example.ac.jp',
+          classRoomIds: [],
+        })
       ).resolves.toEqual({
         teacher_id: 1,
         user_id: 10,
         display_name: '山田先生',
+        email: 'yamada@example.ac.jp',
         is_live_active: true,
+        is_staff: false,
         class_rooms: [],
       });
-      expect(repository.existsClassRooms).not.toHaveBeenCalled();
+      expect(
+        classRoomRepository.findExistingClassRoomIds
+      ).not.toHaveBeenCalled();
     });
 
     it('存在しないクラスを400相当のエラーとして拒否する', async () => {
-      const repository = buildRepository({
-        existsClassRooms: vi.fn().mockResolvedValue(false),
+      const repository = buildRepository();
+      const classRoomRepository = buildClassRoomRepository({
+        findExistingClassRoomIds: vi.fn().mockResolvedValue(new Set()),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(repository, classRoomRepository);
       await expect(
-        service.createTeacher({ userName: '山田先生', classRoomIds: [999] })
+        service.createTeacher({
+          userName: '山田先生',
+          email: 'yamada@example.ac.jp',
+          classRoomIds: [999],
+        })
       ).rejects.toThrow('Class room not found');
       expect(repository.create).not.toHaveBeenCalled();
     });
@@ -67,16 +109,25 @@ describe('TeacherService', () => {
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(teacher),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       const dto = await service.getTeacherById(1);
 
       expect(dto).toEqual({
-        teacher_id: teacher.teacher_id,
-        user_id: teacher.user_id,
-        display_name: teacher.user_name,
-        is_live_active: teacher.is_live_active,
-        class_rooms: teacher.class_rooms,
+        teacher_id: teacher.teacherId,
+        user_id: teacher.userId,
+        display_name: teacher.userName,
+        email: teacher.email,
+        is_live_active: teacher.isLiveActive,
+        is_staff: false,
+        class_rooms: teacher.classRooms.map(classRoom => ({
+          class_room_id: classRoom.classRoomId,
+          class_code: classRoom.classCode,
+          class_name: classRoom.className,
+        })),
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
     });
@@ -85,32 +136,39 @@ describe('TeacherService', () => {
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(null),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       await expect(service.getTeacherById(999)).rejects.toThrow(
         'Teacher not found'
       );
     });
 
-    it('論理削除済みの場合はエラーを投げる', async () => {
+    it('無効な教員も取得できる', async () => {
       const repository = buildRepository({
         findById: vi
           .fn()
-          .mockResolvedValue(buildTeacher({ is_live_active: false })),
+          .mockResolvedValue(buildTeacher({ isLiveActive: false })),
       });
-      const service = createTeacherService(repository);
-
-      await expect(service.getTeacherById(1)).rejects.toThrow(
-        'Teacher not found'
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
       );
+
+      await expect(service.getTeacherById(1)).resolves.toMatchObject({
+        teacher_id: 1,
+        is_live_active: false,
+      });
     });
   });
 
   describe('getAllTeachers', () => {
     it('全件を TeacherDTO の配列にマッピングし、ページ情報を添えて返す', async () => {
       const teachers = [
-        buildTeacher({ teacher_id: 1 }),
-        buildTeacher({ teacher_id: 2, user_name: '中村先生' }),
+        buildTeacher({ teacherId: 1 }),
+        buildTeacher({ teacherId: 2, userName: '中村先生' }),
       ];
       const repository = buildRepository({
         findAll: vi.fn().mockResolvedValue({
@@ -120,7 +178,10 @@ describe('TeacherService', () => {
           offset: 0,
         }),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       const result = await service.getAllTeachers();
 
@@ -140,11 +201,30 @@ describe('TeacherService', () => {
           .fn()
           .mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
-      await service.getAllTeachers({ userName: '山田' });
+      await service.getAllTeachers({
+        search: '山田',
+        isStaff: false,
+        isLiveActive: true,
+        sortBy: 'classCode',
+        sortOrder: 'desc',
+        limit: 20,
+        offset: 0,
+      });
 
-      expect(repository.findAll).toHaveBeenCalledWith({ userName: '山田' });
+      expect(repository.findAll).toHaveBeenCalledWith({
+        search: '山田',
+        isStaff: false,
+        isLiveActive: true,
+        sortBy: 'classCode',
+        sortOrder: 'desc',
+        limit: 20,
+        offset: 0,
+      });
     });
 
     it('リポジトリが空件数を返す場合は空配列を返す', async () => {
@@ -153,7 +233,10 @@ describe('TeacherService', () => {
           .fn()
           .mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       const result = await service.getAllTeachers();
       expect(result.items).toEqual([]);
@@ -163,25 +246,29 @@ describe('TeacherService', () => {
   describe('updateTeacher', () => {
     it('担当クラスが存在すれば更新して TeacherDTO を返す', async () => {
       const updated = buildTeacher({
-        user_name: '更新済み先生',
-        is_live_active: false,
-        class_rooms: [{ class_room_id: 1, class_code: 'A', class_name: 'A組' }],
+        userName: '更新済み先生',
+        isLiveActive: false,
+        classRooms: [{ classRoomId: 1, classCode: 'A', className: 'A組' }],
       });
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(buildTeacher()),
-        existsClassRooms: vi.fn().mockResolvedValue(true),
         update: vi.fn().mockResolvedValue(updated),
       });
-      const service = createTeacherService(repository);
+      const classRoomRepository = buildClassRoomRepository();
+      const service = createTeacherService(repository, classRoomRepository);
 
       const dto = await service.updateTeacher(1, {
         userName: '更新済み先生',
+        email: 'svc-1@example.ac.jp',
         classRoomIds: [1],
       });
 
-      expect(repository.existsClassRooms).toHaveBeenCalledWith([1]);
+      expect(classRoomRepository.findExistingClassRoomIds).toHaveBeenCalledWith(
+        [1]
+      );
       expect(repository.update).toHaveBeenCalledWith(1, {
         userName: '更新済み先生',
+        email: 'svc-1@example.ac.jp',
         classRoomIds: [1],
       });
       expect(dto.display_name).toBe('更新済み先生');
@@ -190,13 +277,16 @@ describe('TeacherService', () => {
     it('存在しないクラスIDが含まれる場合はエラーを投げる', async () => {
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(buildTeacher()),
-        existsClassRooms: vi.fn().mockResolvedValue(false),
       });
-      const service = createTeacherService(repository);
+      const classRoomRepository = buildClassRoomRepository({
+        findExistingClassRoomIds: vi.fn().mockResolvedValue(new Set()),
+      });
+      const service = createTeacherService(repository, classRoomRepository);
 
       await expect(
         service.updateTeacher(1, {
           userName: 'x',
+          email: 'svc-3@example.ac.jp',
           classRoomIds: [999],
         })
       ).rejects.toThrow('Class room not found');
@@ -207,95 +297,153 @@ describe('TeacherService', () => {
       const updated = buildTeacher();
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(buildTeacher()),
-        existsClassRooms: vi.fn(),
         update: vi.fn().mockResolvedValue(updated),
       });
-      const service = createTeacherService(repository);
+      const classRoomRepository = buildClassRoomRepository();
+      const service = createTeacherService(repository, classRoomRepository);
 
       await service.updateTeacher(1, {
         userName: 'x',
+        email: 'svc-4@example.ac.jp',
         classRoomIds: [],
       });
 
-      expect(repository.existsClassRooms).not.toHaveBeenCalled();
+      expect(
+        classRoomRepository.findExistingClassRoomIds
+      ).not.toHaveBeenCalled();
     });
 
     it('教員が存在しない場合はエラーを投げる', async () => {
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(null),
-        existsClassRooms: vi.fn().mockResolvedValue(true),
         update: vi.fn().mockResolvedValue(null),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       await expect(
         service.updateTeacher(999, {
           userName: 'x',
+          email: 'svc-5@example.ac.jp',
           classRoomIds: [1],
         })
       ).rejects.toThrow('Teacher not found');
     });
 
-    it('論理削除済み教員は更新できない', async () => {
+    it('無効な教員も更新できる', async () => {
       const repository = buildRepository({
         findById: vi
           .fn()
-          .mockResolvedValue(buildTeacher({ is_live_active: false })),
-        existsClassRooms: vi.fn().mockResolvedValue(true),
-        update: vi.fn().mockResolvedValue(null),
+          .mockResolvedValue(buildTeacher({ isLiveActive: false })),
+        update: vi
+          .fn()
+          .mockResolvedValue(buildTeacher({ isLiveActive: false })),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       await expect(
-        service.updateTeacher(1, { userName: 'x', classRoomIds: [1] })
-      ).rejects.toThrow('Teacher not found');
+        service.updateTeacher(1, {
+          userName: 'x',
+          email: 'svc-6@example.ac.jp',
+          classRoomIds: [1],
+        })
+      ).resolves.toMatchObject({ is_live_active: false });
     });
   });
 
-  describe('deleteTeacher', () => {
-    it('論理削除を実行する', async () => {
+  describe('メールアドレスの重複', () => {
+    const uniqueError = new Error(
+      'D1_ERROR: UNIQUE constraint failed: teachers.email: SQLITE_CONSTRAINT'
+    );
+
+    it('createTeacherは重複を専用のエラーへ変換する', async () => {
       const repository = buildRepository({
-        deactivate: vi.fn().mockResolvedValue(true),
+        existsClassRooms: vi.fn().mockResolvedValue(true),
+        create: vi.fn().mockRejectedValue(uniqueError),
       });
-      const service = createTeacherService(repository);
-
-      await service.deleteTeacher(1);
-
-      expect(repository.deactivate).toHaveBeenCalledWith(1);
-    });
-
-    it('教員が存在しない場合はエラーを投げる', async () => {
-      const repository = buildRepository({
-        findById: vi.fn().mockResolvedValue(null),
-      });
-      const service = createTeacherService(repository);
-
-      await expect(service.deleteTeacher(999)).rejects.toThrow(
-        'Teacher not found'
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
       );
+
+      await expect(
+        service.createTeacher({
+          userName: '山田先生',
+          email: 'dup@example.ac.jp',
+          classRoomIds: [],
+        })
+      ).rejects.toThrow('Teacher email already exists');
     });
 
-    it('担当クラスの有無にかかわらず論理削除する', async () => {
+    it('updateTeacherは重複を専用のエラーへ変換する', async () => {
       const repository = buildRepository({
-        deactivate: vi.fn().mockResolvedValue(true),
+        findById: vi.fn().mockResolvedValue(buildTeacher()),
+        existsClassRooms: vi.fn().mockResolvedValue(true),
+        update: vi.fn().mockRejectedValue(uniqueError),
       });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
-      await expect(service.deleteTeacher(1)).resolves.toBeUndefined();
-      expect(repository.deactivate).toHaveBeenCalledWith(1);
+      await expect(
+        service.updateTeacher(1, {
+          userName: '山田先生',
+          email: 'dup@example.ac.jp',
+          classRoomIds: [],
+        })
+      ).rejects.toThrow('Teacher email already exists');
+    });
+
+    it('email以外のUNIQUE違反はそのまま伝播する', async () => {
+      const otherError = new Error(
+        'D1_ERROR: UNIQUE constraint failed: teachers.user_id: SQLITE_CONSTRAINT'
+      );
+      const repository = buildRepository({
+        existsClassRooms: vi.fn().mockResolvedValue(true),
+        create: vi.fn().mockRejectedValue(otherError),
+      });
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
+
+      await expect(
+        service.createTeacher({
+          userName: '山田先生',
+          email: 'ok@example.ac.jp',
+          classRoomIds: [],
+        })
+      ).rejects.toThrow('teachers.user_id');
     });
   });
 
   describe('validateTeacherImport', () => {
-    it('重複チェックを行わず、常にerrorsが空の結果を返す(DBへの書き込みは行わない)', async () => {
+    it('重複が無ければ全行を成功として返す(DBへの書き込みは行わない)', async () => {
       const createMany = vi.fn();
       const repository = buildRepository({ createMany });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       const result = await service.validateTeacherImport({
         rows: [
-          { last_name: '田中', first_name: '太郎' },
-          { last_name: '佐藤', first_name: '花子' },
+          {
+            last_name: '田中',
+            first_name: '太郎',
+            email: 'tanaka@example.ac.jp',
+          },
+          {
+            last_name: '佐藤',
+            first_name: '花子',
+            email: 'sato@example.ac.jp',
+          },
         ],
       });
 
@@ -307,18 +455,88 @@ describe('TeacherService', () => {
       });
       expect(createMany).not.toHaveBeenCalled();
     });
+
+    it('ファイル内でメールアドレスが重複した行をエラーにする', async () => {
+      const service = createTeacherService(
+        buildRepository(),
+        buildClassRoomRepository()
+      );
+
+      const result = await service.validateTeacherImport({
+        rows: [
+          { last_name: '田中', first_name: '太郎', email: 'dup@example.ac.jp' },
+          { last_name: '佐藤', first_name: '花子', email: 'dup@example.ac.jp' },
+        ],
+      });
+
+      expect(result.success_count).toBe(1);
+      expect(result.errors).toEqual([
+        {
+          row_index: 2,
+          last_name: '佐藤',
+          first_name: '花子',
+          email: 'dup@example.ac.jp',
+          reason: 'email_duplicate_in_file',
+        },
+      ]);
+    });
+
+    it('既にDBに存在するメールアドレスの行をエラーにする', async () => {
+      const repository = buildRepository({
+        findExistingEmails: vi
+          .fn()
+          .mockResolvedValue(new Set(['exists@example.ac.jp'])),
+      });
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
+
+      const result = await service.validateTeacherImport({
+        rows: [
+          { last_name: '田中', first_name: '太郎', email: 'new@example.ac.jp' },
+          {
+            last_name: '佐藤',
+            first_name: '花子',
+            email: 'exists@example.ac.jp',
+          },
+        ],
+      });
+
+      expect(result.success_count).toBe(1);
+      expect(result.errors).toEqual([
+        {
+          row_index: 2,
+          last_name: '佐藤',
+          first_name: '花子',
+          email: 'exists@example.ac.jp',
+          reason: 'email_duplicate_in_db',
+        },
+      ]);
+    });
   });
 
   describe('commitTeacherImport', () => {
     it('全行分をまとめてcreateManyに渡す', async () => {
       const createMany = vi.fn();
       const repository = buildRepository({ createMany });
-      const service = createTeacherService(repository);
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
 
       const result = await service.commitTeacherImport({
         rows: [
-          { last_name: '田中', first_name: '太郎' },
-          { last_name: '佐藤', first_name: '花子' },
+          {
+            last_name: '田中',
+            first_name: '太郎',
+            email: 'tanaka@example.ac.jp',
+          },
+          {
+            last_name: '佐藤',
+            first_name: '花子',
+            email: 'sato@example.ac.jp',
+          },
         ],
       });
 
@@ -330,9 +548,38 @@ describe('TeacherService', () => {
       });
       expect(createMany).toHaveBeenCalledTimes(1);
       expect(createMany).toHaveBeenCalledWith([
-        { displayName: '田中太郎' },
-        { displayName: '佐藤花子' },
+        { displayName: '田中太郎', email: 'tanaka@example.ac.jp' },
+        { displayName: '佐藤花子', email: 'sato@example.ac.jp' },
       ]);
+    });
+
+    it('エラー行がある場合は1件も取り込まず、createManyを呼ばない', async () => {
+      const createMany = vi.fn();
+      const repository = buildRepository({
+        createMany,
+        findExistingEmails: vi
+          .fn()
+          .mockResolvedValue(new Set(['exists@example.ac.jp'])),
+      });
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
+
+      const result = await service.commitTeacherImport({
+        rows: [
+          { last_name: '田中', first_name: '太郎', email: 'new@example.ac.jp' },
+          {
+            last_name: '佐藤',
+            first_name: '花子',
+            email: 'exists@example.ac.jp',
+          },
+        ],
+      });
+
+      expect(result.imported).toBe(0);
+      expect(result.error_count).toBe(1);
+      expect(createMany).not.toHaveBeenCalled();
     });
   });
 });
