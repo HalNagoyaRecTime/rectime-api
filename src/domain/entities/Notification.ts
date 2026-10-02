@@ -49,6 +49,14 @@ export const NOTIFICATION_IMPORTANCE_LEVELS = [
 export type NotificationImportance =
   (typeof NOTIFICATION_IMPORTANCE_LEVELS)[number];
 
+/** 現在のUserが選択できるimportanceか判定する */
+export function isNotificationImportanceAllowed(
+  importance: NotificationImportance
+): boolean {
+  // highを許可する上位権限は現在のUser契約に存在しない。
+  return importance !== 'high';
+}
+
 export const NOTIFICATION_TYPES = ['notification_general'] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

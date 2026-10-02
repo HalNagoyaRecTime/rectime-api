@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { app } from '../../../src/index';
+import { positivePathParamToNumber } from '../../../src/presentation/openapi/schemas';
 
 // 生成されたOpenAPIドキュメントを検証する。ルート定義そのものをimportして
 // 確かめると定義の写経になるため、実際に登録された結果を読む。
@@ -95,5 +96,18 @@ describe('Event詳細取得APIのOpenAPI定義', () => {
 
   it('一覧・作成・更新のレスポンスにはroundsを含めない', () => {
     expect(schemas.Event?.properties).not.toHaveProperty('rounds');
+  });
+});
+
+describe('path IDの数値変換', () => {
+  it('safe integer境界を超える値をServiceへ渡さない', () => {
+    expect(positivePathParamToNumber('1')).toBe(1);
+    expect(positivePathParamToNumber(String(Number.MAX_SAFE_INTEGER))).toBe(
+      Number.MAX_SAFE_INTEGER
+    );
+    expect(
+      positivePathParamToNumber(String(Number.MAX_SAFE_INTEGER + 1))
+    ).toBeUndefined();
+    expect(positivePathParamToNumber('9007199254740993')).toBeUndefined();
   });
 });

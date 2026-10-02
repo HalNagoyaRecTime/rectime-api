@@ -4,6 +4,8 @@ import { swaggerUI } from '@hono/swagger-ui';
 import { OpenAPIHono, type RouteConfig } from '@hono/zod-openapi';
 import { authRouter } from './presentation/auth/router';
 import { createDIContainer } from './di/container';
+import { CommonErrors } from './presentation/errors/commonErrors';
+import { EventErrors } from './presentation/errors/eventErrors';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
 import { isDocsEnabled, type Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
@@ -23,7 +25,14 @@ import {
   bearerAuthenticationMiddleware,
   type AuthenticationVariables,
 } from './presentation/middleware/bearerAuthentication';
-import { validationDefaultHook } from './presentation/openapi/schemas';
+import {
+  validationDefaultHook,
+  type ErrorResponseDTO,
+  positivePathParamToNumber,
+} from './presentation/openapi/schemas';
+import { errorResponse } from './presentation/errors/errorResponse';
+import { toValidationErrorDetails } from './presentation/errors/validationErrorDetails';
+import type { ZodError } from 'zod';
 import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
 import {
   studentCreateRoute,
@@ -79,23 +88,27 @@ import {
   venueListRoute,
   venueUpdateRoute,
 } from './presentation/openapi/venues';
+import { legacyAdminNotificationUpdateRoute } from './presentation/openapi/notification/legacy/admin';
 import {
-  legacyAdminNotificationCreateRoute,
-  legacyAdminNotificationDeleteRoute,
-  legacyAdminNotificationDetailRoute,
-  legacyAdminNotificationListRoute,
-  legacyAdminNotificationUpdateRoute,
-} from './presentation/openapi/notification/legacy/admin';
-import { firebaseTokenCreateRoute } from './presentation/openapi/notification/legacy/firebaseTokens';
+  adminNotificationCreateRoute,
+  adminNotificationDeleteRoute,
+  adminNotificationDetailRoute,
+  adminNotificationListRoute,
+  adminNotificationPatchRoute,
+  notificationAudienceCountRoute,
+  notificationConfigRoute,
+} from './presentation/openapi/notification/admin';
+import { firebaseTokenRegistrationRoute } from './presentation/openapi/notification/firebaseTokens';
+import { notificationScheduleResultsRoute } from './presentation/openapi/notification/schedules';
 import {
-  notificationScheduleDetailRoute,
   notificationScheduleListRoute,
+  notificationScheduleDetailRoute,
 } from './presentation/openapi/notification/schedules';
+import { notificationPushDeliveryDetailRoute } from './presentation/openapi/notification/pushDeliveries';
 import {
   myNotificationDetailRoute,
   myNotificationListRoute,
 } from './presentation/openapi/notification/mobileNotifications';
-import { testNotificationRoute } from './presentation/openapi/notification/testNotification';
 import { adminUserStatusUpdateRoute } from './presentation/openapi/adminUsers';
 const app = new OpenAPIHono<{ Bindings: Env }>({
   defaultHook: validationDefaultHook,
@@ -168,7 +181,6 @@ app.openapi(apiOverviewRoute, c => {
         firebaseTokens: '/api/v1/firebase-tokens',
         adminNotifications: '/api/v1/admin/notifications',
         myNotifications: '/api/v1/me/notifications',
-        testNotification: '/api/v1/notifications/test',
         myEvents: '/api/v1/me/events',
       },
       // 非公開の環境で存在しないエンドポイントを案内しないよう、
@@ -207,6 +219,17 @@ const authed = <R extends RouteConfig>(route: R) => ({
 const staffOnly = <R extends RouteConfig>(route: R) => ({
   ...route,
   middleware: [requireAuth, requireStaff],
+});
+
+const validationErrorBody = (
+  definition: { code: string; message: string },
+  error: ZodError
+): ErrorResponseDTO => ({
+  error: {
+    code: definition.code,
+    message: definition.message,
+    details: toValidationErrorDetails(error),
+  },
 });
 
 // Admin user routes
@@ -276,12 +299,48 @@ apiV1.openapi(staffOnly(eventGatheringSettingsUpdateRoute), c => {
     .get('container')
     .eventGatheringSettingsController.saveEventGatheringSettings(c);
 });
-apiV1.openapi(staffOnly(eventCreateRoute), c => {
-  return c.get('container').eventController.createEvent(c);
-});
-apiV1.openapi(staffOnly(eventUpdateRoute), c => {
-  return c.get('container').eventController.updateEvent(c);
-});
+apiV1.openapi(
+  staffOnly(eventCreateRoute),
+  c => c.get('container').eventController.createEvent(c),
+  (result, c) => {
+    if (result.success) return;
+    if (
+      result.error.issues.some(
+        issue => issue.message === 'end_time must be after start_time'
+      )
+    ) {
+      return c.json(
+        validationErrorBody(EventErrors.INVALID_EVENT_REQUEST, result.error),
+        400
+      );
+    }
+    return c.json(
+      validationErrorBody(CommonErrors.VALIDATION_ERROR, result.error),
+      400
+    );
+  }
+);
+apiV1.openapi(
+  staffOnly(eventUpdateRoute),
+  c => c.get('container').eventController.updateEvent(c),
+  (result, c) => {
+    if (result.success) return;
+    if (
+      result.error.issues.some(
+        issue => issue.message === 'end_time must be after start_time'
+      )
+    ) {
+      return c.json(
+        validationErrorBody(EventErrors.INVALID_EVENT_REQUEST, result.error),
+        400
+      );
+    }
+    return c.json(
+      validationErrorBody(CommonErrors.VALIDATION_ERROR, result.error),
+      400
+    );
+  }
+);
 apiV1.openapi(staffOnly(eventDeleteRoute), c => {
   return c.get('container').eventController.deleteEvent(c);
 });
@@ -315,9 +374,20 @@ apiV1.openapi(staffOnly(masterImportCommitRoute), c => {
 });
 
 // Gathering spot routes
-apiV1.openapi(staffOnly(gatheringSpotListRoute), c => {
-  return c.get('container').gatheringSpotController.getAllGatheringSpots(c);
-});
+apiV1.openapi(
+  staffOnly(gatheringSpotListRoute),
+  c => c.get('container').gatheringSpotController.getAllGatheringSpots(c),
+  (result, c) => {
+    if (result.success) return;
+    return c.json(
+      validationErrorBody(
+        EventErrors.INVALID_GATHERING_SPOT_LIST_QUERY,
+        result.error
+      ),
+      400
+    );
+  }
+);
 apiV1.openapi(staffOnly(gatheringSpotCreateRoute), c => {
   return c.get('container').gatheringSpotController.createGatheringSpot(c);
 });
@@ -329,9 +399,17 @@ apiV1.openapi(staffOnly(gatheringSpotDeleteRoute), c => {
 });
 
 // Venue routes
-apiV1.openapi(staffOnly(venueListRoute), c => {
-  return c.get('container').venueController.getAllVenues(c);
-});
+apiV1.openapi(
+  staffOnly(venueListRoute),
+  c => c.get('container').venueController.getAllVenues(c),
+  (result, c) => {
+    if (result.success) return;
+    return c.json(
+      validationErrorBody(EventErrors.INVALID_VENUE_LIST_QUERY, result.error),
+      400
+    );
+  }
+);
 apiV1.openapi(staffOnly(venueCreateRoute), c => {
   return c.get('container').venueController.createVenue(c);
 });
@@ -364,12 +442,11 @@ apiV1.openapi(staffOnly(gatheringListRoute), c => {
 });
 
 // Firebase token routes
-apiV1.openapi(authed(firebaseTokenCreateRoute), c => {
+apiV1.openapi(authed(firebaseTokenRegistrationRoute), c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
 });
 
 // Notification routes
-// 通知IDの動的経路と競合する固定経路を先に登録する。
 apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
   return c
     .get('container')
@@ -380,42 +457,79 @@ apiV1.openapi(staffOnly(notificationScheduleDetailRoute), c => {
     .get('container')
     .notificationScheduleQueryController.getNotificationScheduleById(c);
 });
-
-apiV1.openapi(staffOnly(legacyAdminNotificationCreateRoute), c => {
-  return c
-    .get('container')
-    .adminNotificationController.createManualNotification(c);
+// /{notificationId} より先に登録し、固定パスを優先する。
+apiV1.openapi(staffOnly(notificationConfigRoute), c => {
+  return c.get('container').notificationConfigController.getConfig(c);
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationListRoute), c => {
+apiV1.openapi(staffOnly(notificationAudienceCountRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotifications(c);
+    .notificationConfigController.countAudience(c, c.req.valid('json'));
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationDetailRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotificationById(c);
+    .adminNotificationCommandController.createNotification(
+      c,
+      c.req.valid('json')
+    );
+});
+apiV1.openapi(staffOnly(adminNotificationListRoute), c => {
+  return c
+    .get('container')
+    .adminNotificationQueryController.getAdminNotifications(c);
+});
+apiV1.openapi(staffOnly(adminNotificationDetailRoute), c => {
+  return c
+    .get('container')
+    .adminNotificationQueryController.getAdminNotificationById(c);
 });
 apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
   return c
     .get('container')
     .adminNotificationManagementController.updateAdminNotification(c);
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationDeleteRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationPatchRoute), c => {
+  const notificationId = positivePathParamToNumber(
+    c.req.valid('param').notificationId
+  );
+  if (notificationId === undefined) {
+    return errorResponse(c, CommonErrors.VALIDATION_ERROR);
+  }
   return c
     .get('container')
-    .adminNotificationManagementController.deleteAdminNotification(c);
+    .adminNotificationCommandController.patchNotification(
+      c,
+      notificationId,
+      c.req.valid('json')
+    );
 });
-
+apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
+  const notificationId = positivePathParamToNumber(
+    c.req.valid('param').notificationId
+  );
+  if (notificationId === undefined) {
+    return errorResponse(c, CommonErrors.VALIDATION_ERROR);
+  }
+  return c
+    .get('container')
+    .adminNotificationCommandController.deleteNotification(c, notificationId);
+});
+apiV1.openapi(staffOnly(notificationScheduleResultsRoute), c => {
+  return c
+    .get('container')
+    .notificationResultQueryController.getScheduleResults(c);
+});
+apiV1.openapi(staffOnly(notificationPushDeliveryDetailRoute), c => {
+  return c
+    .get('container')
+    .notificationResultQueryController.getPushDeliveryDetail(c);
+});
 apiV1.openapi(authed(myNotificationListRoute), c => {
   return c.get('container').mobileNotificationController.getNotifications(c);
 });
 apiV1.openapi(authed(myNotificationDetailRoute), c => {
   return c.get('container').mobileNotificationController.getNotificationById(c);
-});
-
-apiV1.openapi(staffOnly(testNotificationRoute), c => {
-  return c.get('container').notificationController.sendTestNotification(c);
 });
 
 // Auth routes
@@ -478,6 +592,44 @@ export default {
       return;
     }
 
+    const scheduledAt = new Date(event.scheduledTime);
+    const container = createDIContainer(env);
+    ctx.waitUntil(
+      container.notificationAudienceResolverService
+        .resolveDueSchedules(scheduledAt)
+        .then(async result => {
+          if (result.retryable_schedule_ids.length > 0) {
+            console.error('[CRON] Notification Audience解決を再試行します', {
+              scheduleIds: result.retryable_schedule_ids,
+            });
+          }
+          if (result.failed_schedule_ids.length > 0) {
+            console.error('[CRON] Notification Audience解決に失敗しました', {
+              scheduleIds: result.failed_schedule_ids,
+            });
+          }
+          try {
+            const deliveryResult =
+              await container.notificationDeliveryService.enqueueReadySchedules(
+                scheduledAt
+              );
+            if (deliveryResult.failed_schedule_ids.length > 0) {
+              console.error('[CRON] Notification Delivery準備に失敗しました', {
+                scheduleIds: deliveryResult.failed_schedule_ids,
+              });
+            }
+          } catch (error) {
+            console.error(
+              '[CRON] Notification Delivery preparation error',
+              error
+            );
+          }
+        })
+        .catch(error => {
+          console.error('[CRON] Notification Audience Resolver error', error);
+        })
+    );
+
     if (!isValidEventDate(env.EVENT_DATE)) {
       if (!eventDateWarnLogged) {
         console.error(
@@ -487,11 +639,8 @@ export default {
       }
       return;
     }
-
-    const scheduledAt = new Date(event.scheduledTime);
     if (!isEventDate(env.EVENT_DATE, scheduledAt)) return;
 
-    const container = createDIContainer(env);
     ctx.waitUntil(
       container.scheduledNotificationService.enqueueDueNotifications(
         scheduledAt
@@ -505,7 +654,8 @@ export default {
     const container = createDIContainer(env);
     await consumeNotificationDeliveryQueue(
       batch,
-      container.scheduledNotificationService
+      container.scheduledNotificationService,
+      container.notificationDeliveryService
     );
   },
 };

@@ -1,7 +1,6 @@
 import {
   IFcmService,
   FcmNotificationInput,
-  FcmTestNotificationInput,
   FcmNotificationResult,
   FcmRequestError,
 } from '../../application/services/IFcmService';
@@ -16,7 +15,6 @@ type FirebaseConfig = {
   projectId: string;
   clientEmail: string;
   privateKey: string;
-  testFcmToken?: string;
 };
 
 type CachedAccessToken = {
@@ -76,9 +74,7 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
               title: input.title,
               body: input.body,
             },
-            data: input.data ?? {
-              type: 'test',
-            },
+            ...(input.data ? { data: input.data } : {}),
             ...buildPlatformConfig(input.platform, input.importance),
           },
         }),
@@ -112,25 +108,7 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
     };
   };
 
-  const sendTestNotification = async (
-    input: FcmTestNotificationInput
-  ): Promise<FcmNotificationResult> => {
-    if (!config.testFcmToken) {
-      throw new Error('Missing Cloudflare Secrets: TEST_FCM_TOKEN');
-    }
-
-    return sendNotificationToToken({
-      token: config.testFcmToken,
-      title: input.title,
-      body: input.body,
-      data: {
-        type: 'test',
-      },
-    });
-  };
-
   return {
-    sendTestNotification,
     sendNotificationToToken,
   };
 }
