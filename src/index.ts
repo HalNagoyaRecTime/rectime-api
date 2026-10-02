@@ -100,6 +100,10 @@ import {
 } from './presentation/openapi/notification/admin';
 import { firebaseTokenRegistrationRoute } from './presentation/openapi/notification/firebaseTokens';
 import { notificationScheduleResultsRoute } from './presentation/openapi/notification/schedules';
+import {
+  notificationScheduleListRoute,
+  notificationScheduleDetailRoute,
+} from './presentation/openapi/notification/schedules';
 import { notificationPushDeliveryDetailRoute } from './presentation/openapi/notification/pushDeliveries';
 import {
   myNotificationDetailRoute,
@@ -443,6 +447,16 @@ apiV1.openapi(authed(firebaseTokenRegistrationRoute), c => {
 });
 
 // Notification routes
+apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleQueryController.getNotificationSchedules(c);
+});
+apiV1.openapi(staffOnly(notificationScheduleDetailRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleQueryController.getNotificationScheduleById(c);
+});
 // /{notificationId} より先に登録し、固定パスを優先する。
 apiV1.openapi(staffOnly(notificationConfigRoute), c => {
   return c.get('container').notificationConfigController.getConfig(c);

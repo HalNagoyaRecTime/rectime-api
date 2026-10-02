@@ -64,6 +64,8 @@ describe('OpenAPI documentation', () => {
       '/api/v1/admin/notifications/audience-count',
       '/api/v1/admin/notifications/config',
       '/api/v1/admin/notifications/push-deliveries/{notificationPushDeliveryId}',
+      '/api/v1/admin/notifications/schedules',
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}',
       '/api/v1/admin/notifications/schedules/{notificationScheduleId}/results',
       '/api/v1/admin/notifications/{notificationId}',
       '/api/v1/admin/users/{userId}',
@@ -209,7 +211,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(54);
+    expect(documentedOperations).toHaveLength(56);
     expect(
       document.paths['/api/v1/admin/notifications/{notificationId}']
     ).toHaveProperty('patch');
