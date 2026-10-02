@@ -3,11 +3,12 @@ import {
   NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT,
   type NotificationDeliveryProcessingResult,
 } from '../../domain/entities/NotificationDelivery';
-import { firebasePlatformToName } from '../../domain/entities/FirebaseToken';
+import { createNotificationRetryService } from './NotificationRetryService';
+import type { INotificationRetryService } from './INotificationRetryService';
 import type { INotificationDeliveryRepository } from '../../domain/interfaces/repositories/INotificationDeliveryRepository';
 import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 import type { INotificationDeliveryQueue } from '../../domain/interfaces/queues/INotificationDeliveryQueue';
-import { isPermanentFcmTokenError, type IFcmService } from './IFcmService';
+import type { IFcmService } from './IFcmService';
 import type { INotificationDeliveryService } from './INotificationDeliveryService';
 
 const MAX_CONCURRENT_FCM_REQUESTS = 5;
@@ -15,17 +16,15 @@ const TOKEN_REMOVED_BEFORE_DELIVERY_REASON =
   'Firebase token was removed before delivery';
 
 export function createNotificationDeliveryService(deps: {
+  notificationRetryService?: INotificationRetryService;
   notificationDeliveryRepository: INotificationDeliveryRepository;
   firebaseTokenRepository: Pick<IFirebaseTokenRepository, 'deleteById'>;
   notificationDeliveryQueue: INotificationDeliveryQueue;
   fcmService: IFcmService;
 }): INotificationDeliveryService {
-  const {
-    notificationDeliveryRepository,
-    firebaseTokenRepository,
-    notificationDeliveryQueue,
-    fcmService,
-  } = deps;
+  const { notificationDeliveryRepository, notificationDeliveryQueue } = deps;
+  const retryService =
+    deps.notificationRetryService ?? createNotificationRetryService(deps);
   const failPendingDeliveriesWithoutToken = (scheduleId: number, now: string) =>
     notificationDeliveryRepository.markPendingDeliveriesWithoutTokenFailed(
       scheduleId,
@@ -141,41 +140,9 @@ export function createNotificationDeliveryService(deps: {
         deliveries,
         MAX_CONCURRENT_FCM_REQUESTS,
         async delivery => {
-          let result;
-          try {
-            result = await fcmService.sendNotificationToToken({
-              token: delivery.fcm_token,
-              platform: firebasePlatformToName(delivery.platform),
-              title: delivery.push_title,
-              body: delivery.push_body,
-              importance: importanceToNumber(delivery.importance),
-              data: {
-                type: 'manual',
-                notificationId: String(delivery.notification_id),
-              },
-            });
-          } catch (error) {
-            const reason =
-              error instanceof Error ? error.message : String(error);
-            if (isPermanentFcmTokenError(error)) {
-              await firebaseTokenRepository.deleteById(
-                delivery.firebase_token_id
-              );
-            }
-            await notificationDeliveryRepository.markFailed(
-              delivery.notification_push_delivery_id,
-              reason,
-              nowIso
-            );
-            failed += 1;
-            return;
-          }
-          await notificationDeliveryRepository.markSent(
-            delivery.notification_push_delivery_id,
-            result.messageId,
-            nowIso
-          );
-          sent += 1;
+          const outcome = await retryService.sendClaimedDelivery(delivery, now);
+          if (outcome === 'sent') sent += 1;
+          if (outcome === 'failed') failed += 1;
         }
       );
 
@@ -190,17 +157,6 @@ export function createNotificationDeliveryService(deps: {
       return { claimed: deliveries.length, sent, failed };
     },
   };
-}
-
-function importanceToNumber(importance: 'low' | 'normal' | 'high'): number {
-  switch (importance) {
-    case 'low':
-      return 1;
-    case 'normal':
-      return 2;
-    case 'high':
-      return 3;
-  }
 }
 
 function chunk<T>(values: T[], size: number): T[][] {

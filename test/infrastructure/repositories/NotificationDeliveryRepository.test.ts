@@ -509,7 +509,11 @@ describe('NotificationDeliveryRepository and Service', () => {
     await resolve(fixture.scheduleId);
     const sendNotificationToToken = vi.fn(async (input: { token: string }) => {
       if (input.token === 'delivery-failed-token') {
-        throw new Error('FCM token rejected');
+        throw new FcmRequestError(
+          400,
+          'INVALID_ARGUMENT',
+          'FCM token rejected'
+        );
       }
       return {
         success: true as const,
