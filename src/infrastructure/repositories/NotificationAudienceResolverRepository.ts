@@ -7,12 +7,16 @@ import {
   type NotificationAudienceType,
 } from '../../domain/entities/Notification';
 import {
+  NOTIFICATION_AUDIENCE_TARGET_MISSING_REASON,
   UnresolvableNotificationAudienceError,
   type UnresolvedNotificationAudience,
 } from '../../domain/entities/NotificationAudienceResolver';
 import type { NotificationAudienceTarget } from '../../domain/entities/AdminNotificationCommand';
 import type { INotificationAudienceResolverRepository } from '../../domain/interfaces/repositories/INotificationAudienceResolverRepository';
-import { buildAudienceUserSelect } from './NotificationAudienceUserQuery';
+import {
+  areAudienceTargetsAvailable,
+  buildAudienceUserSelect,
+} from './NotificationAudienceUserQuery';
 
 interface CandidateRow {
   notification_schedule_id: number;
@@ -102,6 +106,15 @@ export function createNotificationAudienceResolverRepository(
     },
 
     async resolveAudience(scheduleId, audience, now) {
+      // 対象消失は空Audienceとして確定せず、ServiceでScheduleをfailedにする。
+      if (
+        !(await areAudienceTargetsAvailable(db, [toAudienceTarget(audience)]))
+      ) {
+        throw new UnresolvableNotificationAudienceError(
+          audience.notification_audience_id,
+          `${NOTIFICATION_AUDIENCE_TARGET_MISSING_REASON} (Audience ${audience.notification_audience_id}, ${audience.audience_type}: ${audience.target_id})`
+        );
+      }
       const insert = buildRecipientInsert(db, scheduleId, audience, now);
       const markResolved = db
         .prepare(
