@@ -36,43 +36,6 @@ export const manualNotificationAudienceRequestSchema = z
   ])
   .openapi('ManualNotificationAudienceRequest');
 
-export const manualNotificationAudienceResponseSchema = z
-  .discriminatedUnion('type', [
-    z.object({ type: z.literal('all') }),
-    z.object({
-      type: z.literal('class_room'),
-      class_room_id: z.number().int(),
-    }),
-    z.object({
-      type: z.literal('gathering'),
-      gathering_id: z.number().int(),
-    }),
-    z.object({
-      type: z.literal('event_participants'),
-      event_id: z.number().int(),
-    }),
-  ])
-  .openapi('ManualNotificationAudience');
-
-export const adminNotificationCreationResponseSchema = z
-  .object({
-    notification_id: z.number().int(),
-    notification_type: z.literal('manual'),
-    title: z.string(),
-    body: z.string(),
-    audience: manualNotificationAudienceResponseSchema,
-    scheduled_at: isoDateTimeSchema,
-    schedule_count: z.number().int(),
-    send_status: z.literal('draft'),
-    importance: z.literal(2),
-    created_user_id: z.number().int(),
-  })
-  .openapi('AdminNotificationCreationResult');
-
-export type AdminNotificationCreationResponseDTO = z.infer<
-  typeof adminNotificationCreationResponseSchema
->;
-
 export const notificationStatusSummarySchema = z
   .object({
     total: z.number().int(),
@@ -135,15 +98,6 @@ export const legacyAdminNotificationIdParams = z.object({
   notificationId: positivePathParam('notificationId', '通知ID'),
 });
 
-export const createManualNotificationSchema = z
-  .object({
-    title: z.string().trim().min(1),
-    body: z.string().trim().min(1),
-    audience: manualNotificationAudienceRequestSchema,
-    scheduledAt: isoDateTimeSchema,
-  })
-  .openapi('CreateManualNotificationRequest');
-
 export const updateManualNotificationSchema = z
   .object({
     title: z.string().trim().min(1).optional(),
@@ -161,31 +115,6 @@ export const legacyAdminNotificationListQuery = z
     to: isoDateTimeSchema.optional(),
   })
   .merge(paginationQuery(100, 50));
-
-export const legacyAdminNotificationCreateRoute = createRoute({
-  method: 'post',
-  path: '/admin/notifications',
-  tags: ['Admin notifications'],
-  summary: '手動通知を作成する',
-  security: bearerAuth,
-  request: {
-    body: {
-      content: {
-        'application/json': { schema: createManualNotificationSchema },
-      },
-      required: true,
-    },
-  },
-  responses: {
-    201: jsonResponse(adminNotificationCreationResponseSchema, '作成した通知'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
-    404: notFoundResponse,
-    409: conflictResponse,
-    500: internalServerErrorResponse,
-  },
-});
 
 export const legacyAdminNotificationListRoute = createRoute({
   method: 'get',
