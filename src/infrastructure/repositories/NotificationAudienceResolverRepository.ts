@@ -10,7 +10,9 @@ import {
   UnresolvableNotificationAudienceError,
   type UnresolvedNotificationAudience,
 } from '../../domain/entities/NotificationAudienceResolver';
+import type { NotificationAudienceTarget } from '../../domain/entities/AdminNotificationCommand';
 import type { INotificationAudienceResolverRepository } from '../../domain/interfaces/repositories/INotificationAudienceResolverRepository';
+import { buildAudienceUserSelect } from './NotificationAudienceUserQuery';
 
 interface CandidateRow {
   notification_schedule_id: number;
@@ -197,122 +199,54 @@ function buildRecipientInsert(
   audience: UnresolvedNotificationAudience,
   now: string
 ): D1PreparedStatement {
-  const activeUserCondition =
-    "u.is_live_active = 1 AND u.deletion_status = 'active'";
-  const selectColumns = `SELECT ?, u.user_id, ? FROM users u WHERE ${activeUserCondition}`;
-  const fromUserJoin =
-    'SELECT ?, u.user_id, ? FROM students student ' +
-    'JOIN users u ON u.user_id = student.user_id ' +
-    `WHERE ${activeUserCondition}`;
-  const audienceGuard = `
-    AND EXISTS (
-      SELECT 1
-      FROM notification_audiences a
-      JOIN notification_schedules s
-        ON s.notification_schedule_id = a.notification_schedule_id
-      WHERE a.notification_audience_id = ?
-        AND a.notification_schedule_id = ?
-        AND a.audience_type = ?
-        AND a.target_id IS ?
-        AND a.resolved_at IS NULL
-        AND s.send_status = 'resolving'
-        AND s.recipients_resolved_at IS NULL
-    )`;
-  const insertPrefix = `INSERT INTO notification_recipients (
-       notification_schedule_id, user_id, created_at
-     ) `;
-  const insertSuffix =
-    ' ON CONFLICT(notification_schedule_id, user_id) DO NOTHING';
+  const users = buildAudienceUserSelect(toAudienceTarget(audience));
+  return db
+    .prepare(
+      `INSERT INTO notification_recipients (
+         notification_schedule_id, user_id, created_at
+       )
+       SELECT ?, audience_users.user_id, ?
+       FROM (${users.sql}) AS audience_users
+       WHERE EXISTS (
+         SELECT 1
+         FROM notification_audiences a
+         JOIN notification_schedules s
+           ON s.notification_schedule_id = a.notification_schedule_id
+         WHERE a.notification_audience_id = ?
+           AND a.notification_schedule_id = ?
+           AND a.audience_type = ?
+           AND a.target_id IS ?
+           AND a.resolved_at IS NULL
+           AND s.send_status = 'resolving'
+           AND s.recipients_resolved_at IS NULL
+       )
+       ON CONFLICT(notification_schedule_id, user_id) DO NOTHING`
+    )
+    .bind(
+      scheduleId,
+      now,
+      ...users.params,
+      audience.notification_audience_id,
+      scheduleId,
+      audience.audience_type,
+      audience.target_id
+    );
+}
 
+function toAudienceTarget(
+  audience: UnresolvedNotificationAudience
+): NotificationAudienceTarget {
   switch (audience.audience_type) {
     case 'all':
-      return db
-        .prepare(insertPrefix + selectColumns + audienceGuard + insertSuffix)
-        .bind(
-          scheduleId,
-          now,
-          audience.notification_audience_id,
-          scheduleId,
-          audience.audience_type,
-          audience.target_id
-        );
-    case 'class_room': {
-      const targetId = requireTargetId(audience);
-      return db
-        .prepare(
-          insertPrefix +
-            fromUserJoin +
-            ' AND student.class_room_id = ?' +
-            audienceGuard +
-            insertSuffix
-        )
-        .bind(
-          scheduleId,
-          now,
-          targetId,
-          audience.notification_audience_id,
-          scheduleId,
-          audience.audience_type,
-          audience.target_id
-        );
-    }
-    case 'gathering': {
-      const targetId = requireTargetId(audience);
-      const select =
-        'SELECT ?, u.user_id, ? FROM gathering_group_members member ' +
-        'JOIN users u ON u.user_id = member.user_id ' +
-        `WHERE ${activeUserCondition} AND member.gathering_id = ?`;
-      return db
-        .prepare(insertPrefix + select + audienceGuard + insertSuffix)
-        .bind(
-          scheduleId,
-          now,
-          targetId,
-          audience.notification_audience_id,
-          scheduleId,
-          audience.audience_type,
-          audience.target_id
-        );
-    }
-    case 'event': {
-      const targetId = requireTargetId(audience);
-      const select =
-        'SELECT DISTINCT ?, u.user_id, ? FROM gatherings g ' +
-        'JOIN gathering_group_members member ON member.gathering_id = g.gathering_id ' +
-        'JOIN users u ON u.user_id = member.user_id ' +
-        `WHERE ${activeUserCondition} AND g.event_id = ?`;
-      return db
-        .prepare(insertPrefix + select + audienceGuard + insertSuffix)
-        .bind(
-          scheduleId,
-          now,
-          targetId,
-          audience.notification_audience_id,
-          scheduleId,
-          audience.audience_type,
-          audience.target_id
-        );
-    }
-    case 'user': {
-      const targetId = requireTargetId(audience);
-      return db
-        .prepare(
-          insertPrefix +
-            selectColumns +
-            ' AND u.user_id = ?' +
-            audienceGuard +
-            insertSuffix
-        )
-        .bind(
-          scheduleId,
-          now,
-          targetId,
-          audience.notification_audience_id,
-          scheduleId,
-          audience.audience_type,
-          audience.target_id
-        );
-    }
+      return { type: 'all', target_id: null };
+    case 'class_room':
+    case 'gathering':
+    case 'event':
+    case 'user':
+      return {
+        type: audience.audience_type,
+        target_id: requireTargetId(audience),
+      };
     default:
       throw new UnresolvableNotificationAudienceError(
         audience.notification_audience_id,
