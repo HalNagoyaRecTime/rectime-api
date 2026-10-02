@@ -2,11 +2,94 @@ import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createMobileNotificationRepository } from '../../../src/infrastructure/repositories/MobileNotificationRepository';
 
-describe('MobileNotificationRepository', () => {
-  const repository = createMobileNotificationRepository(env.DB);
+const repository = createMobileNotificationRepository(env.DB);
+const oldTime = '2026-07-23T00:00:00.000Z';
+const newTime = '2026-07-23T01:00:00.000Z';
 
+async function createUser(name = '本人') {
+  const row = await env.DB.prepare(
+    'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
+  )
+    .bind(name)
+    .first<{ user_id: number }>();
+  return row!.user_id;
+}
+
+async function createToken(userId: number, token = 'mobile-test-token') {
+  const row = await env.DB.prepare(
+    'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, ?) RETURNING firebase_token_id'
+  )
+    .bind(userId, token)
+    .first<{ firebase_token_id: number }>();
+  return row!.firebase_token_id;
+}
+
+async function createNotification(title = '通知') {
+  const row = await env.DB.prepare(
+    "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('notification_general', 'Pushタイトル', 'Push本文', ?, ?) RETURNING notification_id"
+  )
+    .bind(title, `${title}本文`)
+    .first<{ notification_id: number }>();
+  return row!.notification_id;
+}
+
+async function createSchedule(
+  notificationId: number,
+  input: {
+    sendAt?: string;
+    status?: string;
+    eventId?: number;
+    tokenId?: number;
+  } = {}
+) {
+  const row = await env.DB.prepare(
+    `INSERT INTO notification_schedules
+      (notification_id, send_at, send_status, event_id, firebase_token_id)
+     VALUES (?, ?, ?, ?, ?) RETURNING notification_schedule_id`
+  )
+    .bind(
+      notificationId,
+      input.sendAt ?? oldTime,
+      input.status ?? 'completed',
+      input.eventId ?? null,
+      input.tokenId ?? null
+    )
+    .first<{ notification_schedule_id: number }>();
+  return row!.notification_schedule_id;
+}
+
+async function createRecipient(scheduleId: number, userId: number | null) {
+  const row = await env.DB.prepare(
+    'INSERT INTO notification_recipients (notification_schedule_id, user_id) VALUES (?, ?) RETURNING notification_recipient_id'
+  )
+    .bind(scheduleId, userId)
+    .first<{ notification_recipient_id: number }>();
+  return row!.notification_recipient_id;
+}
+
+async function createDelivery(
+  recipientId: number,
+  tokenId: number | null,
+  status: string,
+  attempts = 1
+) {
+  await env.DB.prepare(
+    `INSERT INTO notification_push_deliveries
+      (notification_recipient_id, firebase_token_id, platform, status, attempt_count)
+     VALUES (?, ?, 2, ?, ?)`
+  )
+    .bind(recipientId, tokenId, status, attempts)
+    .run();
+}
+
+const listForUser = (userId: number, limit = 10, offset = 0) =>
+  repository.findAllForUser({ userId, limit, offset });
+
+describe('MobileNotificationRepository', () => {
   beforeEach(async () => {
     await env.DB.batch([
+      env.DB.prepare('DELETE FROM notification_push_deliveries'),
+      env.DB.prepare('DELETE FROM notification_recipients'),
       env.DB.prepare('DELETE FROM notification_schedules'),
       env.DB.prepare('DELETE FROM notifications'),
       env.DB.prepare('DELETE FROM gathering_group_members'),
@@ -23,99 +106,166 @@ describe('MobileNotificationRepository', () => {
     ]);
   });
 
-  async function createUserWithToken(name: string, token: string) {
-    const user = await env.DB.prepare(
-      'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
-    )
-      .bind(name)
-      .first<{ user_id: number }>();
-    const firebaseToken = await env.DB.prepare(
-      'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, ?) RETURNING firebase_token_id'
-    )
-      .bind(user!.user_id, token)
-      .first<{ firebase_token_id: number }>();
-    return {
-      userId: user!.user_id,
-      firebaseTokenId: firebaseToken!.firebase_token_id,
-    };
-  }
+  it.each([
+    { label: 'Tokenあり', tokens: 1, statuses: [] as string[], attempts: 0 },
+    { label: 'Token 0件', tokens: 0, statuses: [] as string[], attempts: 0 },
+    { label: 'Push失敗', tokens: 1, statuses: ['failed'], attempts: 1 },
+    { label: 'Retry最終失敗', tokens: 1, statuses: ['failed'], attempts: 5 },
+    {
+      label: '一部端末成功',
+      tokens: 2,
+      statuses: ['sent', 'failed'],
+      attempts: 1,
+    },
+    {
+      label: '複数Token成功',
+      tokens: 2,
+      statuses: ['sent', 'sent'],
+      attempts: 1,
+    },
+  ])(
+    '$labelでも本人Recipientがあれば一覧と詳細に1件返す',
+    async ({ tokens, statuses, attempts }) => {
+      const userId = await createUser();
+      const notificationId = await createNotification();
+      const scheduleId = await createSchedule(notificationId, {
+        status: 'resolving',
+      });
+      const recipientId = await createRecipient(scheduleId, userId);
+      for (let i = 0; i < tokens; i++) {
+        const tokenId = await createToken(userId, `mobile-token-${i}`);
+        if (statuses[i])
+          await createDelivery(recipientId, tokenId, statuses[i], attempts);
+      }
 
-  async function createNotificationSchedule(input: {
-    firebaseTokenId: number;
-    title: string;
-    sendAt: string;
-    sendStatus: 'draft' | 'sending' | 'sent' | 'failed';
-    eventId?: number;
-  }) {
-    const notification = await env.DB.prepare(
-      "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('manual', ?, ?, ?, ?) RETURNING notification_id"
-    )
-      .bind(
-        input.title,
-        `${input.title}本文`,
-        input.title,
-        `${input.title}本文`
-      )
-      .first<{ notification_id: number }>();
+      const list = await listForUser(userId);
+      expect(list.total).toBe(1);
+      expect(list.notifications).toHaveLength(1);
+      expect(list.notifications[0]).toEqual({
+        id: notificationId,
+        type: 'notification_general',
+        title: '通知',
+        body: '通知本文',
+        scheduledAt: oldTime,
+        relatedEvent: null,
+      });
+      expect(await repository.findByIdForUser(notificationId, userId)).toEqual(
+        list.notifications[0]
+      );
+    }
+  );
+
+  it('Token削除後も配送実績と本人通知履歴を保持する', async () => {
+    const userId = await createUser();
+    const tokenId = await createToken(userId);
+    const notificationId = await createNotification();
+    const recipientId = await createRecipient(
+      await createSchedule(notificationId),
+      userId
+    );
+    await createDelivery(recipientId, tokenId, 'failed');
     await env.DB.prepare(
-      `INSERT INTO notification_schedules
-        (notification_id, firebase_token_id, event_id, send_status, send_at)
-       VALUES (?, ?, ?, ?, ?)`
+      'DELETE FROM firebase_tokens WHERE firebase_token_id = ?'
     )
-      .bind(
-        notification!.notification_id,
-        input.firebaseTokenId,
-        input.eventId ?? null,
-        input.sendStatus,
-        input.sendAt
-      )
+      .bind(tokenId)
       .run();
-    return notification!.notification_id;
-  }
 
-  it('本人へ送信済みの通知だけを新しい順で返す', async () => {
-    const mine = await createUserWithToken('本人', 'token-mine');
-    const other = await createUserWithToken('他人', 'token-other');
-    await createNotificationSchedule({
-      firebaseTokenId: mine.firebaseTokenId,
-      title: '古い通知',
-      sendAt: '2026-07-23T09:00:00+09:00',
-      sendStatus: 'sent',
-    });
-    await createNotificationSchedule({
-      firebaseTokenId: mine.firebaseTokenId,
-      title: '新しい通知',
-      sendAt: '2026-07-23T10:00:00+09:00',
-      sendStatus: 'sent',
-    });
-    await createNotificationSchedule({
-      firebaseTokenId: mine.firebaseTokenId,
-      title: '未送信通知',
-      sendAt: '2026-07-23T11:00:00+09:00',
-      sendStatus: 'draft',
-    });
-    await createNotificationSchedule({
-      firebaseTokenId: other.firebaseTokenId,
-      title: '他人の通知',
-      sendAt: '2026-07-23T12:00:00+09:00',
-      sendStatus: 'sent',
-    });
-
-    const result = await repository.findAllForUser({
-      userId: mine.userId,
-      limit: 10,
-      offset: 0,
-    });
-
-    expect(result.total).toBe(2);
-    expect(result.notifications.map(item => item.title)).toEqual([
-      '新しい通知',
-      '古い通知',
-    ]);
+    expect((await listForUser(userId)).total).toBe(1);
+    expect(
+      await repository.findByIdForUser(notificationId, userId)
+    ).not.toBeNull();
+    expect(
+      await env.DB.prepare(
+        'SELECT firebase_token_id FROM notification_push_deliveries WHERE notification_recipient_id = ?'
+      )
+        .bind(recipientId)
+        .first()
+    ).toEqual({ firebase_token_id: null });
   });
 
-  it('関連競技を一覧と詳細へ含める', async () => {
-    const mine = await createUserWithToken('本人', 'token-mine');
+  it('本人RecipientがなければToken所有や送信成功だけでは本人履歴へ出さない', async () => {
+    const userId = await createUser();
+    const otherId = await createUser('他人');
+    const tokenId = await createToken(userId);
+    const notificationId = await createNotification();
+    const scheduleId = await createSchedule(notificationId, {
+      tokenId,
+      status: 'sent',
+    });
+    const recipientId = await createRecipient(scheduleId, otherId);
+    await createDelivery(recipientId, tokenId, 'sent');
+    const unresolvedId = await createNotification('Recipient未確定');
+    await createSchedule(unresolvedId, { tokenId, status: 'scheduled' });
+
+    expect(await listForUser(userId)).toEqual({ notifications: [], total: 0 });
+    expect(await repository.findByIdForUser(notificationId, userId)).toBeNull();
+    expect(await repository.findByIdForUser(unresolvedId, userId)).toBeNull();
+    expect(await repository.findByIdForUser(999999, userId)).toBeNull();
+  });
+
+  it('複数ScheduleをNotification単位にまとめ、本人の最新send_atを一覧と詳細で使う', async () => {
+    const userId = await createUser();
+    const otherId = await createUser('他人');
+    const notificationId = await createNotification();
+    const latestSchedule = await createSchedule(notificationId, {
+      sendAt: newTime,
+    });
+    await createRecipient(latestSchedule, userId);
+    // IDが大きくてもsend_atが古いScheduleは表示情報に使わない。
+    await createRecipient(await createSchedule(notificationId), userId);
+    await createRecipient(
+      await createSchedule(notificationId, {
+        sendAt: '2026-07-23T02:00:00.000Z',
+      }),
+      otherId
+    );
+    await createSchedule(notificationId, {
+      sendAt: '2026-07-23T03:00:00.000Z',
+      status: 'scheduled',
+    });
+
+    const list = await listForUser(userId);
+    expect(list.total).toBe(1);
+    expect(list.notifications).toHaveLength(1);
+    expect(list.notifications[0].scheduledAt).toBe(newTime);
+    expect(await repository.findByIdForUser(notificationId, userId)).toEqual(
+      list.notifications[0]
+    );
+  });
+
+  it('新しい順・同時刻はSchedule ID降順で並べ、重複排除後にページングする', async () => {
+    const userId = await createUser();
+    const oldestId = await createNotification('古い通知');
+    await createRecipient(await createSchedule(oldestId), userId);
+    const firstId = await createNotification('同時刻1');
+    await createRecipient(
+      await createSchedule(firstId, { sendAt: newTime }),
+      userId
+    );
+    const secondId = await createNotification('同時刻2');
+    await createRecipient(
+      await createSchedule(secondId, { sendAt: newTime }),
+      userId
+    );
+    await createRecipient(
+      await createSchedule(firstId, { sendAt: newTime }),
+      userId
+    );
+
+    expect(
+      (await listForUser(userId)).notifications.map(item => item.id)
+    ).toEqual([firstId, secondId, oldestId]);
+    const page = await listForUser(userId, 1, 1);
+    expect(page.total).toBe(3);
+    expect(page.notifications.map(item => item.id)).toEqual([secondId]);
+    expect(await listForUser(userId, 1, 3)).toEqual({
+      notifications: [],
+      total: 3,
+    });
+  });
+
+  it('関連競技と会場順を維持し、同時刻なら最新Scheduleの情報を一覧・詳細で使う', async () => {
+    const userId = await createUser();
     const event = await env.DB.prepare(
       "INSERT INTO events (event_name, start_time, end_time) VALUES ('綱引き', '1030', '1100') RETURNING event_id"
     ).first<{ event_id: number }>();
@@ -125,7 +275,6 @@ describe('MobileNotificationRepository', () => {
     const secondVenue = await env.DB.prepare(
       "INSERT INTO venues (venue_name) VALUES ('第1体育館') RETURNING venue_id"
     ).first<{ venue_id: number }>();
-    // venue_id の昇順で返ることを確かめるため、登録は昇順と逆に行う。
     await env.DB.batch([
       env.DB.prepare(
         'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)'
@@ -134,24 +283,14 @@ describe('MobileNotificationRepository', () => {
         'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)'
       ).bind(event!.event_id, firstVenue!.venue_id),
     ]);
-    const notificationId = await createNotificationSchedule({
-      firebaseTokenId: mine.firebaseTokenId,
-      title: '競技通知',
-      sendAt: '2026-07-23T10:15:00+09:00',
-      sendStatus: 'sent',
-      eventId: event!.event_id,
-    });
-
-    const list = await repository.findAllForUser({
-      userId: mine.userId,
-      limit: 10,
-      offset: 0,
-    });
-    const detail = await repository.findByIdForUser(
-      notificationId,
-      mine.userId
+    const notificationId = await createNotification('競技通知');
+    await createRecipient(await createSchedule(notificationId), userId);
+    await createRecipient(
+      await createSchedule(notificationId, { eventId: event!.event_id }),
+      userId
     );
 
+    const list = await listForUser(userId);
     expect(list.notifications[0].relatedEvent).toEqual({
       id: event!.event_id,
       name: '綱引き',
@@ -162,69 +301,78 @@ describe('MobileNotificationRepository', () => {
       startTime: '1030',
       endTime: '1100',
     });
-    expect(detail).toEqual(list.notifications[0]);
+    expect(await repository.findByIdForUser(notificationId, userId)).toEqual(
+      list.notifications[0]
+    );
   });
 
-  it('イベントなしの手動通知ではrelated_eventをnullにする', async () => {
-    const mine = await createUserWithToken('本人', 'token-mine');
-    const notificationId = await createNotificationSchedule({
-      firebaseTokenId: mine.firebaseTokenId,
-      title: '全体通知',
-      sendAt: '2026-07-23T09:00:00+09:00',
-      sendStatus: 'sent',
-    });
+  it('将来のnullable user_idでも匿名Recipientを本人履歴から除外しDeliveryを保持する', async () => {
+    // #499のDB契約だけをテストDBで再現し、本番schema・migrationは変更しない。
+    const definitions = await env.DB.prepare(
+      "SELECT type, sql FROM sqlite_master WHERE tbl_name IN ('notification_recipients', 'notification_push_deliveries') AND sql IS NOT NULL ORDER BY type DESC"
+    ).all<{ type: string; sql: string }>();
+    const original = definitions.results;
+    await env.DB.batch([
+      env.DB.prepare('DROP TABLE notification_push_deliveries'),
+      env.DB.prepare('DROP TABLE notification_recipients'),
+      ...original.map(item =>
+        env.DB.prepare(
+          item.sql.replace(
+            'user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE',
+            'user_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL'
+          )
+        )
+      ),
+    ]);
+    try {
+      const userId = await createUser();
+      const otherId = await createUser('匿名化対象');
+      const hiddenId = await createNotification('匿名Recipientだけの通知');
+      const hiddenSchedule = await createSchedule(hiddenId);
+      const anonymousId = await createRecipient(hiddenSchedule, null);
+      await createRecipient(hiddenSchedule, null);
+      await createDelivery(anonymousId, null, 'failed');
+      const visibleId = await createNotification('本人と匿名Recipientの通知');
+      const visibleSchedule = await createSchedule(visibleId);
+      await createRecipient(visibleSchedule, userId);
+      const deletedRecipientId = await createRecipient(
+        visibleSchedule,
+        otherId
+      );
+      await createDelivery(deletedRecipientId, null, 'sent');
+      await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+        .bind(otherId)
+        .run();
 
-    await expect(
-      repository.findByIdForUser(notificationId, mine.userId)
-    ).resolves.toMatchObject({ relatedEvent: null });
-  });
-
-  it('他人宛てまたは未送信の通知詳細を返さない', async () => {
-    const mine = await createUserWithToken('本人', 'token-mine');
-    const other = await createUserWithToken('他人', 'token-other');
-    const otherNotificationId = await createNotificationSchedule({
-      firebaseTokenId: other.firebaseTokenId,
-      title: '他人の通知',
-      sendAt: '2026-07-23T09:00:00+09:00',
-      sendStatus: 'sent',
-    });
-    const draftNotificationId = await createNotificationSchedule({
-      firebaseTokenId: mine.firebaseTokenId,
-      title: '未送信通知',
-      sendAt: '2026-07-23T10:00:00+09:00',
-      sendStatus: 'draft',
-    });
-
-    await expect(
-      repository.findByIdForUser(otherNotificationId, mine.userId)
-    ).resolves.toBeNull();
-    await expect(
-      repository.findByIdForUser(draftNotificationId, mine.userId)
-    ).resolves.toBeNull();
-  });
-
-  it('limitとoffsetを一覧へ反映する', async () => {
-    const mine = await createUserWithToken('本人', 'token-mine');
-    for (const [title, sendAt] of [
-      ['通知1', '2026-07-23T09:00:00+09:00'],
-      ['通知2', '2026-07-23T10:00:00+09:00'],
-      ['通知3', '2026-07-23T11:00:00+09:00'],
-    ]) {
-      await createNotificationSchedule({
-        firebaseTokenId: mine.firebaseTokenId,
-        title,
-        sendAt,
-        sendStatus: 'sent',
+      const list = await listForUser(userId);
+      expect(list.total).toBe(1);
+      expect(list.notifications.map(item => item.id)).toEqual([visibleId]);
+      expect(await repository.findByIdForUser(hiddenId, userId)).toBeNull();
+      expect(await repository.findByIdForUser(visibleId, userId)).toEqual(
+        list.notifications[0]
+      );
+      expect(await listForUser(otherId)).toEqual({
+        notifications: [],
+        total: 0,
       });
+      expect(
+        await env.DB.prepare(
+          'SELECT user_id FROM notification_recipients WHERE notification_recipient_id = ?'
+        )
+          .bind(deletedRecipientId)
+          .first()
+      ).toEqual({ user_id: null });
+      expect(
+        await env.DB.prepare(
+          'SELECT COUNT(*) AS total FROM notification_push_deliveries'
+        ).first()
+      ).toEqual({ total: 2 });
+    } finally {
+      await env.DB.batch([
+        env.DB.prepare('DROP TABLE notification_push_deliveries'),
+        env.DB.prepare('DROP TABLE notification_recipients'),
+        ...original.map(item => env.DB.prepare(item.sql)),
+      ]);
     }
-
-    const result = await repository.findAllForUser({
-      userId: mine.userId,
-      limit: 1,
-      offset: 1,
-    });
-
-    expect(result.total).toBe(3);
-    expect(result.notifications.map(item => item.title)).toEqual(['通知2']);
   });
 });

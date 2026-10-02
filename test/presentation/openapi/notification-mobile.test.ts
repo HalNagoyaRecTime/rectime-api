@@ -23,7 +23,7 @@ describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', ()
     expect(
       mobileNotificationResponseSchema.safeParse({
         notification_id: 108,
-        notification_type: 'notification_general',
+        notification_type: 'manual',
         title: '集合時間変更',
         body: '集合時間が変更になりました。',
         scheduled_at: '2026-11-07T15:35:00+09:00',
@@ -33,7 +33,7 @@ describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', ()
     expect(
       mobileNotificationResponseSchema.safeParse({
         notificationId: 108,
-        notification_type: 'notification_general',
+        notification_type: 'manual',
         title: '集合時間変更',
         body: '集合時間が変更になりました。',
         scheduled_at: '2026-11-07T15:35:00+09:00',

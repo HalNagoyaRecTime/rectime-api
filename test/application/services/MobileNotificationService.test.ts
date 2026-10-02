@@ -32,7 +32,7 @@ describe('MobileNotificationService', () => {
     const { repository, service } = setup();
     const entity = {
       id: 5,
-      type: 'manual',
+      type: 'notification_general',
       title: 'お知らせ',
       body: '本文',
       scheduledAt: '2026-07-23T09:00:00+09:00',
@@ -119,4 +119,31 @@ describe('MobileNotificationService', () => {
       'Notification not found'
     );
   });
+
+  it.each(['notification_general', 'manual', 'event_reminder'])(
+    '一覧と詳細の%sをMobile互換値へ変換しDomain値を保持する',
+    async type => {
+      const { repository, service } = setup();
+      const entity = {
+        id: 5,
+        type,
+        title: '通知',
+        body: '本文',
+        scheduledAt: '2026-07-23T00:00:00.000Z',
+        relatedEvent: null,
+      };
+      vi.mocked(repository.findAllForUser).mockResolvedValue({
+        notifications: [entity],
+        total: 1,
+      });
+      vi.mocked(repository.findByIdForUser).mockResolvedValue(entity);
+
+      const expectedType = type === 'notification_general' ? 'manual' : type;
+      const list = await service.getNotifications(12, {});
+      const detail = await service.getNotificationById(5, 12);
+      expect(list.notifications[0]).toEqual(detail);
+      expect(detail.notification_type).toBe(expectedType);
+      expect(entity.type).toBe(type);
+    }
+  );
 });

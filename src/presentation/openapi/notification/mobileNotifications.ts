@@ -27,10 +27,16 @@ export const mobileNotificationEventSchema = z
 export const mobileNotificationResponseSchema = z
   .object({
     notification_id: z.number().int(),
-    notification_type: z.string(),
+    notification_type: z.string().openapi({
+      description:
+        'Mobile互換の通知種別。notification_generalはmanualとして返す。',
+    }),
     title: z.string(),
     body: z.string(),
-    scheduled_at: isoDateTimeSchema,
+    scheduled_at: isoDateTimeSchema.openapi({
+      description:
+        '本人Recipientがある最新Scheduleのsend_at。同時刻はSchedule ID降順で選ぶ。',
+    }),
     related_event: mobileNotificationEventSchema.nullable(),
   })
   .openapi('MobileNotification');
@@ -51,6 +57,8 @@ export const myNotificationListRoute = createRoute({
   path: '/me/notifications',
   tags: ['My notifications'],
   summary: '自分宛の通知一覧を取得する',
+  description:
+    '本人Recipientがある通知をNotification単位で返す。Token有無やPush配送状態に依存せず、scheduled_at降順、同時刻は選択Schedule ID降順。',
   security: bearerAuth,
   request: { query: paginationQuery(100, 50) },
   responses: {

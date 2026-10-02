@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, exists } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type {
   MobileNotificationEntity,
@@ -11,7 +11,7 @@ import type { EventVenueEntity } from '../../domain/entities/Event';
 import * as schema from '../database/schema';
 import {
   events,
-  firebase_tokens,
+  notification_recipients,
   notification_schedules,
   notifications,
 } from '../database/schema';
@@ -69,36 +69,53 @@ export function createMobileNotificationRepository(
 ): IMobileNotificationRepository {
   const orm = drizzle(db, { schema });
 
-  const baseConditions = (userId: number) =>
-    and(
-      eq(firebase_tokens.userId, userId),
-      eq(notification_schedules.sendStatus, 'sent')
-    );
+  // user_idの一致だけで本人判定し、匿名化Recipientや配送状態には依存しない。
+  const recipientSchedules = (userId: number) =>
+    orm
+      .select({ id: notification_schedules.id })
+      .from(notification_recipients)
+      .innerJoin(
+        notification_schedules,
+        eq(
+          notification_recipients.notificationScheduleId,
+          notification_schedules.id
+        )
+      )
+      .where(
+        and(
+          eq(notification_recipients.userId, userId),
+          eq(
+            notification_schedules.notificationId,
+            notifications.notificationId
+          )
+        )
+      );
+
+  // 本人Recipientがある最新Scheduleを選び、一覧・詳細をNotification単位で揃える。
+  const historyQuery = (userId: number) =>
+    orm
+      .select(selection)
+      .from(notifications)
+      .innerJoin(
+        notification_schedules,
+        eq(
+          notification_schedules.id,
+          recipientSchedules(userId)
+            .orderBy(
+              desc(notification_schedules.sendAt),
+              desc(notification_schedules.id)
+            )
+            .limit(1)
+        )
+      )
+      .leftJoin(events, eq(notification_schedules.eventId, events.id));
 
   return {
     async findAllForUser(
       options: MobileNotificationListOptions
     ): Promise<MobileNotificationListResult> {
       const [rows, totalResult] = await Promise.all([
-        orm
-          .select(selection)
-          .from(notification_schedules)
-          .innerJoin(
-            firebase_tokens,
-            eq(
-              notification_schedules.firebaseTokenId,
-              firebase_tokens.firebaseTokenId
-            )
-          )
-          .innerJoin(
-            notifications,
-            eq(
-              notification_schedules.notificationId,
-              notifications.notificationId
-            )
-          )
-          .leftJoin(events, eq(notification_schedules.eventId, events.id))
-          .where(baseConditions(options.userId))
+        historyQuery(options.userId)
           .orderBy(
             desc(notification_schedules.sendAt),
             desc(notification_schedules.id)
@@ -108,15 +125,8 @@ export function createMobileNotificationRepository(
           .all(),
         orm
           .select({ total: count() })
-          .from(notification_schedules)
-          .innerJoin(
-            firebase_tokens,
-            eq(
-              notification_schedules.firebaseTokenId,
-              firebase_tokens.firebaseTokenId
-            )
-          )
-          .where(baseConditions(options.userId))
+          .from(notifications)
+          .where(exists(recipientSchedules(options.userId)))
           .get(),
       ]);
 
@@ -137,31 +147,8 @@ export function createMobileNotificationRepository(
     },
 
     async findByIdForUser(notificationId, userId) {
-      const row = await orm
-        .select(selection)
-        .from(notification_schedules)
-        .innerJoin(
-          firebase_tokens,
-          eq(
-            notification_schedules.firebaseTokenId,
-            firebase_tokens.firebaseTokenId
-          )
-        )
-        .innerJoin(
-          notifications,
-          eq(
-            notification_schedules.notificationId,
-            notifications.notificationId
-          )
-        )
-        .leftJoin(events, eq(notification_schedules.eventId, events.id))
-        .where(
-          and(
-            baseConditions(userId),
-            eq(notification_schedules.notificationId, notificationId)
-          )
-        )
-        .orderBy(desc(notification_schedules.id))
+      const row = await historyQuery(userId)
+        .where(eq(notifications.notificationId, notificationId))
         .get();
 
       if (!row) return null;

@@ -6,7 +6,10 @@ import type { IMobileNotificationService } from './IMobileNotificationService';
 function toDTO(notification: MobileNotificationEntity): MobileNotificationDTO {
   return {
     notification_id: notification.id,
-    notification_type: notification.type,
+    notification_type:
+      notification.type === 'notification_general'
+        ? 'manual'
+        : notification.type,
     title: notification.title,
     body: notification.body,
     scheduled_at: notification.scheduledAt,
