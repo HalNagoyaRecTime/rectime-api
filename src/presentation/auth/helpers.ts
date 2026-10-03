@@ -78,7 +78,9 @@ export function userResponse(
     avatar_url?: string | null;
     avatar_updated_at?: string | null;
     student_id_number: string | null;
+    class_code: string | null;
     class_room_name: string | null;
+    attendance_number: number | null;
   },
   categories: UserCategories
 ) {
@@ -89,7 +91,9 @@ export function userResponse(
     avatar_url: user.avatar_url ?? ACCOUNT_PHOTO_PATH,
     avatar_updated_at: user.avatar_updated_at ?? null,
     student_id_number: user.student_id_number,
+    class_code: user.class_code,
     class_room_name: user.class_room_name,
+    attendance_number: user.attendance_number,
     is_student: categories.is_student,
     is_staff: categories.is_staff,
     is_teacher: categories.is_teacher,

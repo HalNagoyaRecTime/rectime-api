@@ -1134,12 +1134,16 @@ describe('POST /auth/microsoft/token', () => {
       user: {
         id: string;
         student_id_number: string | null;
+        class_code: string | null;
         class_room_name: string | null;
+        attendance_number: number | null;
       };
     };
     expect(body.user.id).toBe(String(user!.user_id));
     expect(body.user.student_id_number).toBe('60001');
+    expect(body.user.class_code).toBe('3B');
     expect(body.user.class_room_name).toBe('3年B組');
+    expect(body.user.attendance_number).toBe(2);
   });
 
   it('事前登録済み教員はmobile初回ログインとwebログインで同じuser_id・担当クラスを維持する', async () => {
