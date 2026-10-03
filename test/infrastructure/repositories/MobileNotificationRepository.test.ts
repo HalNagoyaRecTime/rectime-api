@@ -58,7 +58,7 @@ async function createSchedule(
   return row!.notification_schedule_id;
 }
 
-async function createRecipient(scheduleId: number, userId: number | null) {
+async function createRecipient(scheduleId: number, userId: number) {
   const row = await env.DB.prepare(
     'INSERT INTO notification_recipients (notification_schedule_id, user_id) VALUES (?, ?) RETURNING notification_recipient_id'
   )
@@ -306,73 +306,40 @@ describe('MobileNotificationRepository', () => {
     );
   });
 
-  it('将来のnullable user_idでも匿名Recipientを本人履歴から除外しDeliveryを保持する', async () => {
-    // #499のDB契約だけをテストDBで再現し、本番schema・migrationは変更しない。
-    const definitions = await env.DB.prepare(
-      "SELECT type, sql FROM sqlite_master WHERE tbl_name IN ('notification_recipients', 'notification_push_deliveries') AND sql IS NOT NULL ORDER BY type DESC"
-    ).all<{ type: string; sql: string }>();
-    const original = definitions.results;
-    await env.DB.batch([
-      env.DB.prepare('DROP TABLE notification_push_deliveries'),
-      env.DB.prepare('DROP TABLE notification_recipients'),
-      ...original.map(item =>
-        env.DB.prepare(
-          item.sql.replace(
-            'user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE',
-            'user_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL'
-          )
-        )
-      ),
-    ]);
-    try {
-      const userId = await createUser();
-      const otherId = await createUser('匿名化対象');
-      const hiddenId = await createNotification('匿名Recipientだけの通知');
-      const hiddenSchedule = await createSchedule(hiddenId);
-      const anonymousId = await createRecipient(hiddenSchedule, null);
-      await createRecipient(hiddenSchedule, null);
-      await createDelivery(anonymousId, null, 'failed');
-      const visibleId = await createNotification('本人と匿名Recipientの通知');
-      const visibleSchedule = await createSchedule(visibleId);
-      await createRecipient(visibleSchedule, userId);
-      const deletedRecipientId = await createRecipient(
-        visibleSchedule,
-        otherId
-      );
-      await createDelivery(deletedRecipientId, null, 'sent');
-      await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
-        .bind(otherId)
-        .run();
+  it('User削除でRecipientとDeliveryがCASCADEされ本人通知履歴から消える', async () => {
+    const userId = await createUser();
+    const notificationId = await createNotification('削除後に残らない通知');
+    const scheduleId = await createSchedule(notificationId);
+    const recipientId = await createRecipient(scheduleId, userId);
+    await createDelivery(recipientId, null, 'sent');
 
-      const list = await listForUser(userId);
-      expect(list.total).toBe(1);
-      expect(list.notifications.map(item => item.id)).toEqual([visibleId]);
-      expect(await repository.findByIdForUser(hiddenId, userId)).toBeNull();
-      expect(await repository.findByIdForUser(visibleId, userId)).toEqual(
-        list.notifications[0]
-      );
-      expect(await listForUser(otherId)).toEqual({
-        notifications: [],
-        total: 0,
-      });
-      expect(
-        await env.DB.prepare(
-          'SELECT user_id FROM notification_recipients WHERE notification_recipient_id = ?'
-        )
-          .bind(deletedRecipientId)
-          .first()
-      ).toEqual({ user_id: null });
-      expect(
-        await env.DB.prepare(
-          'SELECT COUNT(*) AS total FROM notification_push_deliveries'
-        ).first()
-      ).toEqual({ total: 2 });
-    } finally {
-      await env.DB.batch([
-        env.DB.prepare('DROP TABLE notification_push_deliveries'),
-        env.DB.prepare('DROP TABLE notification_recipients'),
-        ...original.map(item => env.DB.prepare(item.sql)),
-      ]);
-    }
+    expect((await listForUser(userId)).notifications).toHaveLength(1);
+    expect(
+      await repository.findByIdForUser(notificationId, userId)
+    ).not.toBeNull();
+
+    await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+      .bind(userId)
+      .run();
+
+    expect(
+      await env.DB.prepare(
+        'SELECT COUNT(*) AS total FROM notification_recipients WHERE notification_recipient_id = ?'
+      )
+        .bind(recipientId)
+        .first()
+    ).toEqual({ total: 0 });
+    expect(
+      await env.DB.prepare(
+        'SELECT COUNT(*) AS total FROM notification_push_deliveries WHERE notification_recipient_id = ?'
+      )
+        .bind(recipientId)
+        .first()
+    ).toEqual({ total: 0 });
+    expect(await listForUser(userId)).toEqual({
+      notifications: [],
+      total: 0,
+    });
+    expect(await repository.findByIdForUser(notificationId, userId)).toBeNull();
   });
 });

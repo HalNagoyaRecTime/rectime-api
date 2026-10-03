@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMobileNotificationService } from '../../../src/application/services/MobileNotificationService';
+import { MOBILE_NOTIFICATION_TYPES } from '../../../src/application/dto/MobileNotificationDTO';
 import type { IMobileNotificationRepository } from '../../../src/domain/interfaces/repositories/IMobileNotificationRepository';
 
 describe('MobileNotificationService', () => {
@@ -53,7 +54,7 @@ describe('MobileNotificationService', () => {
     expect(repository.findByIdForUser).toHaveBeenCalledWith(5, 12);
   });
 
-  it('一覧のEntityをDTOへ変換しデフォルトページネーションを返す', async () => {
+  it('確定済みページネーションを維持して一覧EntityをDTOへ変換する', async () => {
     const { repository, service } = setup();
     (repository.findAllForUser as ReturnType<typeof vi.fn>).mockResolvedValue({
       notifications: [
@@ -78,7 +79,9 @@ describe('MobileNotificationService', () => {
       total: 1,
     });
 
-    await expect(service.getNotifications(12, {})).resolves.toEqual({
+    await expect(
+      service.getNotifications(12, { limit: 50, offset: 0 })
+    ).resolves.toEqual({
       notifications: [
         {
           notification_id: 5,
@@ -120,7 +123,7 @@ describe('MobileNotificationService', () => {
     );
   });
 
-  it.each(['notification_general', 'manual', 'event_reminder'])(
+  it.each(['notification_general', ...MOBILE_NOTIFICATION_TYPES])(
     '一覧と詳細の%sをMobile互換値へ変換しDomain値を保持する',
     async type => {
       const { repository, service } = setup();
@@ -139,11 +142,27 @@ describe('MobileNotificationService', () => {
       vi.mocked(repository.findByIdForUser).mockResolvedValue(entity);
 
       const expectedType = type === 'notification_general' ? 'manual' : type;
-      const list = await service.getNotifications(12, {});
+      const list = await service.getNotifications(12, { limit: 50, offset: 0 });
       const detail = await service.getNotificationById(5, 12);
       expect(list.notifications[0]).toEqual(detail);
       expect(detail.notification_type).toBe(expectedType);
       expect(entity.type).toBe(type);
     }
   );
+
+  it('Mobile互換範囲外のDomain値をResponseへ返さない', async () => {
+    const { repository, service } = setup();
+    (repository.findByIdForUser as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 5,
+      type: 'unknown_value',
+      title: '通知',
+      body: '本文',
+      scheduledAt: '2026-07-23T00:00:00.000Z',
+      relatedEvent: null,
+    });
+
+    await expect(service.getNotificationById(5, 12)).rejects.toThrow(
+      '未対応のMobile通知種別です: unknown_value'
+    );
+  });
 });

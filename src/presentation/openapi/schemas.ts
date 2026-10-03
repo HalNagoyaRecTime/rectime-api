@@ -198,8 +198,8 @@ export const paginationQuery = (limitMax: number, limitDefault: number) =>
       .int()
       .min(1)
       .max(limitMax)
-      .default(limitDefault)
       .optional()
+      .default(limitDefault)
       .openapi({
         param: { name: 'limit', in: 'query' },
         example: limitDefault,
@@ -208,8 +208,8 @@ export const paginationQuery = (limitMax: number, limitDefault: number) =>
       .number()
       .int()
       .min(0)
-      .default(0)
       .optional()
+      .default(0)
       .openapi({ param: { name: 'offset', in: 'query' }, example: 0 }),
   });
 
