@@ -15,6 +15,7 @@ export interface NotificationDeliveryScheduleCandidate {
 }
 
 export interface ClaimedNotificationPushDelivery {
+  attempt_count: number;
   notification_push_delivery_id: number;
   notification_schedule_id: number;
   notification_id: number;
