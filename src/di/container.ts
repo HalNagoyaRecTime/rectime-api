@@ -1,4 +1,7 @@
 import { getDb } from '../lib/db';
+import { createNotificationScheduleActionRepository } from '../infrastructure/repositories/NotificationScheduleActionRepository';
+import { createNotificationScheduleActionService } from '../application/services/NotificationScheduleActionService';
+import { createNotificationScheduleActionController } from '../presentation/controllers/NotificationScheduleActionController';
 import { createNotificationStopRepository } from '../infrastructure/repositories/NotificationStopRepository';
 import { createNotificationStopService } from '../application/services/NotificationStopService';
 import { createNotificationStopController } from '../presentation/controllers/NotificationStopController';
@@ -83,6 +86,14 @@ import type { Env } from '../lib/env';
 
 export function createDIContainer(env: Env) {
   const db = getDb(env);
+  const notificationScheduleActionService =
+    createNotificationScheduleActionService(
+      createNotificationScheduleActionRepository(db)
+    );
+  const notificationScheduleActionController =
+    createNotificationScheduleActionController(
+      notificationScheduleActionService
+    );
   const notificationStopService = createNotificationStopService(
     createNotificationStopRepository(db)
   );
@@ -296,6 +307,8 @@ export function createDIContainer(env: Env) {
     createEventGatheringSettingsController(eventGatheringSettingsService);
 
   return {
+    notificationScheduleActionService,
+    notificationScheduleActionController,
     notificationStopService,
     notificationStopController,
     notificationScheduleQueryController,
