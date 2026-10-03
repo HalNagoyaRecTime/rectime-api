@@ -101,7 +101,9 @@ describe('MobileNotificationController', () => {
   it.each([
     '/me/notifications?limit=0',
     '/me/notifications?limit=101',
+    '/me/notifications?limit=1.5',
     '/me/notifications?offset=-1',
+    '/me/notifications?offset=invalid',
   ])('不正な一覧条件%sは400を返す', async path => {
     const { service, authorizedRequest } = setup();
 
@@ -124,6 +126,23 @@ describe('MobileNotificationController', () => {
     expect(service.getNotificationById).toHaveBeenCalledWith(5, 12);
   });
 
+  it('Number.MAX_SAFE_INTEGERの通知IDを正確にServiceへ渡す', async () => {
+    const { service, authorizedRequest } = setup();
+    (service.getNotificationById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      notification
+    );
+
+    const response = await authorizedRequest(
+      `/me/notifications/${Number.MAX_SAFE_INTEGER}`
+    );
+
+    expect(response.status).toBe(200);
+    expect(service.getNotificationById).toHaveBeenCalledWith(
+      Number.MAX_SAFE_INTEGER,
+      12
+    );
+  });
+
   it('本人宛てではない通知は404を返す', async () => {
     const { service, authorizedRequest } = setup();
     (service.getNotificationById as ReturnType<typeof vi.fn>).mockRejectedValue(
@@ -141,10 +160,17 @@ describe('MobileNotificationController', () => {
     });
   });
 
-  it('不正な通知IDは400を返す', async () => {
+  it.each([
+    { id: '0', label: '0' },
+    { id: '-1', label: '負数' },
+    { id: 'not-a-number', label: '非数値' },
+    { id: '9007199254740992', label: 'safe integerの上限超過' },
+    { id: '9007199254740993', label: '丸めが発生する境界超過' },
+    { id: '9'.repeat(100), label: '100桁の巨大値' },
+  ])('$labelの通知IDは400でServiceを呼ばない', async ({ id }) => {
     const { service, authorizedRequest } = setup();
 
-    const response = await authorizedRequest('/me/notifications/invalid');
+    const response = await authorizedRequest(`/me/notifications/${id}`);
 
     expect(response.status).toBe(400);
     expect(service.getNotificationById).not.toHaveBeenCalled();
@@ -178,5 +204,17 @@ describe('MobileNotificationController', () => {
         message: '通知一覧の取得に失敗しました',
       },
     });
+  });
+
+  it('詳細取得の想定外エラーは500を返す', async () => {
+    const { service, authorizedRequest } = setup();
+    (service.getNotificationById as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('database error')
+    );
+
+    const response = await authorizedRequest('/me/notifications/5');
+
+    expect(response.status).toBe(500);
+    expect(service.getNotificationById).toHaveBeenCalledWith(5, 12);
   });
 });

@@ -1,5 +1,4 @@
 import type { Context } from 'hono';
-import { z } from 'zod';
 import type { IMobileNotificationService } from '../../application/services/IMobileNotificationService';
 import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
@@ -8,17 +7,16 @@ import type { AuthVariables } from '../middleware/requireAuth';
 import { CommonErrors } from '../errors/commonErrors';
 import { errorResponse } from '../errors/errorResponse';
 import { NotificationErrors } from '../errors/notificationErrors';
+import {
+  mobileNotificationIdParams,
+  mobileNotificationListQuery,
+} from '../openapi/notification/mobileNotifications';
+import { positivePathParamToNumber } from '../openapi/schemas';
 
 type MobileNotificationContext = Context<{
   Bindings: Env;
   Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
 }>;
-
-const notificationIdSchema = z.coerce.number().int().positive();
-const notificationListQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-});
 
 export function createMobileNotificationController(
   mobileNotificationService: IMobileNotificationService
@@ -32,14 +30,14 @@ export function createMobileNotificationController(
     const userId = getAuthenticatedUserId(c);
     if (typeof userId !== 'number') return userId;
 
-    const parsedQuery = notificationListQuerySchema.safeParse({
+    const parsedQuery = mobileNotificationListQuery.safeParse({
       limit: c.req.query('limit'),
       offset: c.req.query('offset'),
     });
     if (!parsedQuery.success) {
       return errorResponse(
         c,
-        NotificationErrors.INVALID_NOTIFICATION_LIST_QUERY,
+        CommonErrors.VALIDATION_ERROR,
         parsedQuery.error.flatten()
       );
     }
@@ -59,17 +57,27 @@ export function createMobileNotificationController(
     const userId = getAuthenticatedUserId(c);
     if (typeof userId !== 'number') return userId;
 
-    const parsedId = notificationIdSchema.safeParse(
-      c.req.param('notificationId')
+    const parsedParams = mobileNotificationIdParams.safeParse({
+      notificationId: c.req.param('notificationId'),
+    });
+    if (!parsedParams.success) {
+      return errorResponse(
+        c,
+        CommonErrors.VALIDATION_ERROR,
+        parsedParams.error.flatten()
+      );
+    }
+    const notificationId = positivePathParamToNumber(
+      parsedParams.data.notificationId
     );
-    if (!parsedId.success) {
-      return errorResponse(c, NotificationErrors.INVALID_NOTIFICATION_ID);
+    if (notificationId === undefined) {
+      return errorResponse(c, CommonErrors.VALIDATION_ERROR);
     }
 
     try {
       return c.json(
         await mobileNotificationService.getNotificationById(
-          parsedId.data,
+          notificationId,
           userId
         ),
         200
