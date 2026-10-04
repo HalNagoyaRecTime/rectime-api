@@ -6,6 +6,7 @@ import { CommonErrors } from '../errors/commonErrors';
 import {
   classIdParams,
   classRoomListQuery,
+  classRoomUpdateSchema,
   classRoomWriteSchema,
 } from '../openapi/classrooms';
 
@@ -53,6 +54,11 @@ export function createClassRoomController(classService: IClassRoomService) {
     return classRoomWriteSchema.safeParse(body);
   };
 
+  const parseUpdateBody = async (c: Context) => {
+    const body = await c.req.json().catch(() => undefined);
+    return classRoomUpdateSchema.safeParse(body);
+  };
+
   const createClassRoom = async (c: Context) => {
     const body = await parseBody(c);
     if (!body.success) {
@@ -72,7 +78,7 @@ export function createClassRoomController(classService: IClassRoomService) {
   const updateClassRoom = async (c: Context) => {
     const id = parseClassRoomId(c);
     if (id === null) return errorResponse(c, UserErrors.INVALID_CLASS_ID);
-    const body = await parseBody(c);
+    const body = await parseUpdateBody(c);
     if (!body.success) {
       return errorResponse(
         c,
@@ -136,6 +142,9 @@ function handleWriteError(
   }
   if (error instanceof Error && error.message === 'Class code already exists') {
     return errorResponse(c, UserErrors.CLASS_ROOM_CODE_ALREADY_EXISTS);
+  }
+  if (error instanceof Error && error.message === 'Class update conflict') {
+    return errorResponse(c, UserErrors.CLASS_ROOM_UPDATE_CONFLICT);
   }
   return errorResponse(c, fallbackError);
 }

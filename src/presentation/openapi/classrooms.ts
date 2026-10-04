@@ -94,6 +94,15 @@ export const classRoomWriteSchema = z
   .strict()
   .openapi('ClassRoomWriteRequest');
 
+export const classRoomUpdateSchema = classRoomWriteSchema
+  .extend({
+    updatedAt: z.string().min(1).optional().openapi({
+      description:
+        '取得時点の `updated_at`。指定すると、取得後に変更されていた場合は409を返す。',
+    }),
+  })
+  .openapi('ClassRoomUpdateRequest');
+
 export const classRoomListRoute = createRoute({
   method: 'get',
   path: '/classrooms',
@@ -161,12 +170,13 @@ export const classRoomUpdateRoute = createRoute({
     '`null` が「外す指定」なのか「担任なしをそのまま送り返しただけ」なのかを',
     '区別できないため、割り当てを据え置く。',
     '無効化された教員を担任から外すには、先にその教員を有効化する。',
+    '`updatedAt` を指定すると、取得後に教室が変更されていた場合は409を返す。',
   ].join('\n'),
   security: bearerAuth,
   request: {
     params: classIdParams,
     body: {
-      content: { 'application/json': { schema: classRoomWriteSchema } },
+      content: { 'application/json': { schema: classRoomUpdateSchema } },
       required: true,
     },
   },

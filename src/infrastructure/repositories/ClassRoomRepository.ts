@@ -287,11 +287,13 @@ export function createClassRoomRepository(
       // teacherId = null を「担任を外す」と解釈すると、表示から隠しただけの
       // 割り当てまで消えてしまう。担任が停止中のときの null は据え置きとして扱う。
       //
-      // 既知の制約: この判定はUPDATE実行時点のDBの状態を見ている。教室の編集は
-      // GETとPUTの2リクエストにまたがるため、その間に別操作で担任が再有効化されると、
-      // GET時点でnullだった値がそのまま送られて割り当てを消してしまう。塞ぐには
-      // GET時点の状態を持ち回る仕組み（更新時刻を条件に含める楽観ロックなど）が要るが、
-      // 全項目置換のPUTすべてに関わる設計変更になるため、ここでは扱わない。
+      // 更新時刻(expectedUpdatedAt)が指定された場合は、取得時点から教室が変更
+      // されていないこともWHEREで確認する。GETとPUTの間に別操作が挟まっていれば
+      // 0件更新になり、呼び出し側がnullとして受け取る。
+      //
+      // 更新時刻を指定しない呼び出しでは、この確認は行われない。据え置きの判定は
+      // UPDATE実行時点のDBの状態を見るため、GETとPUTの間に担任が再有効化されると、
+      // GET時点でnullだった値がそのまま送られて割り当てを消してしまう。
       let row;
       try {
         row = await db
@@ -309,7 +311,9 @@ export function createClassRoomRepository(
                      ELSE ?
                    END,
                    updated_at = CURRENT_TIMESTAMP
-             WHERE class_room_id = ? RETURNING class_room_id`
+             WHERE class_room_id = ?
+               AND (? IS NULL OR updated_at = ?)
+             RETURNING class_room_id`
           )
           .bind(
             input.classCode,
@@ -317,7 +321,10 @@ export function createClassRoomRepository(
             // D1は番号付きプレースホルダを使えないため、CASEのWHENとELSEへ同じ値を2回渡す
             input.teacherId,
             input.teacherId,
-            id
+            id,
+            // 更新時刻の条件も同じ理由で2回渡す
+            input.expectedUpdatedAt ?? null,
+            input.expectedUpdatedAt ?? null
           )
           .first<{ class_room_id: number }>();
       } catch (error) {

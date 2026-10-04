@@ -26,6 +26,10 @@ export interface ClassRoomRequestDTO {
   teacherId: number | null;
 }
 
+export interface ClassRoomUpdateRequestDTO extends ClassRoomRequestDTO {
+  updatedAt?: string;
+}
+
 export interface ClassRoomImportRow {
   class_code: string;
   class_name: string;

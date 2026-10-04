@@ -388,6 +388,65 @@ describe('ClassRoomRepository', () => {
     });
   });
 
+  describe('更新時刻による楽観ロック', () => {
+    async function createWithUpdatedAt(classCode: string, updatedAt: string) {
+      const created = await repo.create({
+        classCode,
+        className: '更新時刻テスト',
+        teacherId: null,
+      });
+      await env.DB.prepare(
+        'UPDATE class_rooms SET updated_at = ? WHERE class_room_id = ?'
+      )
+        .bind(updatedAt, created.classRoomId)
+        .run();
+      return created.classRoomId;
+    }
+
+    it('expectedUpdatedAt が現在の値と一致すれば更新し、updatedAt を進める', async () => {
+      const id = await createWithUpdatedAt('LOCK-1', '2000-01-01 00:00:00');
+
+      const updated = await repo.update(id, {
+        classCode: 'LOCK-1',
+        className: '更新後',
+        teacherId: null,
+        expectedUpdatedAt: '2000-01-01 00:00:00',
+      });
+
+      expect(updated).toMatchObject({ className: '更新後' });
+      expect(updated?.updatedAt).not.toBe('2000-01-01 00:00:00');
+    });
+
+    it('expectedUpdatedAt が現在の値と異なれば null を返し、何も変更しない', async () => {
+      const id = await createWithUpdatedAt('LOCK-2', '2000-01-01 00:00:00');
+
+      const updated = await repo.update(id, {
+        classCode: 'LOCK-2',
+        className: '上書きされてはいけない',
+        teacherId: null,
+        expectedUpdatedAt: '1999-12-31 23:59:59',
+      });
+
+      expect(updated).toBeNull();
+      await expect(repo.findById(id)).resolves.toMatchObject({
+        className: '更新時刻テスト',
+        updatedAt: '2000-01-01 00:00:00',
+      });
+    });
+
+    it('expectedUpdatedAt を指定しない更新は更新時刻を確認しない', async () => {
+      const id = await createWithUpdatedAt('LOCK-3', '2000-01-01 00:00:00');
+
+      const updated = await repo.update(id, {
+        classCode: 'LOCK-3',
+        className: '更新後',
+        teacherId: null,
+      });
+
+      expect(updated).toMatchObject({ className: '更新後' });
+    });
+  });
+
   describe('担任の稼働状態', () => {
     it('無効化された教員は担任として返さないが、割り当ては残り再有効化で戻る', async () => {
       const target = (await repo.findAll({ limit: 100, offset: 0 })).items.find(

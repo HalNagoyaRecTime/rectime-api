@@ -156,6 +156,12 @@ export const UserErrors = {
     code: 'CLASS_ROOM_REFERENCED_BY_STUDENTS',
     message: '学生が所属しているクラスは削除できません',
   },
+  CLASS_ROOM_UPDATE_CONFLICT: {
+    status: 409,
+    code: 'CLASS_ROOM_UPDATE_CONFLICT',
+    message:
+      'クラス情報が他の操作で更新されています。最新の内容を取得してやり直してください',
+  },
   CLASS_ROOM_LIST_FAILED: {
     status: 500,
     code: 'CLASS_ROOM_LIST_FAILED',

@@ -6,6 +6,7 @@ import {
   classIdParams,
   classRoomListQuery,
   classRoomListRoute,
+  classRoomUpdateSchema,
   classRoomWriteSchema,
 } from '../../../src/presentation/openapi/classrooms';
 import { UserErrors } from '../../../src/presentation/errors/userErrors';
@@ -316,6 +317,115 @@ describe('ClassRoomController', () => {
     });
 
     expect(response.status).toBe(409);
+  });
+
+  it('更新時刻付きの更新リクエストをそのままサービスへ渡す', async () => {
+    const { app, service } = setup();
+    (service.updateClassRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      class_room_id: 1,
+      class_code: 'IA14B',
+      class_name: '高度情報学科AI開発先行コースB',
+      student_count: 0,
+      teacher: null,
+      updated_at: '2026-01-02 00:00:00',
+    });
+
+    const response = await app.request('/classrooms/1', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        classCode: 'IA14B',
+        className: '高度情報学科AI開発先行コースB',
+        teacherId: null,
+        updatedAt: '2026-01-01 00:00:00',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(service.updateClassRoom).toHaveBeenCalledWith(1, {
+      classCode: 'IA14B',
+      className: '高度情報学科AI開発先行コースB',
+      teacherId: null,
+      updatedAt: '2026-01-01 00:00:00',
+    });
+    expect(await response.json()).toMatchObject({
+      updated_at: '2026-01-02 00:00:00',
+    });
+  });
+
+  it('更新時の更新時刻の不一致は409を返す', async () => {
+    const { app, service } = setup();
+    (service.updateClassRoom as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Class update conflict')
+    );
+
+    const response = await app.request('/classrooms/1', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+        teacherId: null,
+        updatedAt: '2026-01-01 00:00:00',
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'CLASS_ROOM_UPDATE_CONFLICT',
+        message: UserErrors.CLASS_ROOM_UPDATE_CONFLICT.message,
+      },
+    });
+  });
+
+  it('updatedAt が空文字の更新は400を返す', async () => {
+    const { app, service } = setup();
+
+    const response = await app.request('/classrooms/1', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+        teacherId: null,
+        updatedAt: '',
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(service.updateClassRoom).not.toHaveBeenCalled();
+  });
+
+  it('登録リクエストは updatedAt を受け付けない', async () => {
+    const { app, service } = setup();
+
+    const response = await app.request('/classrooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        classCode: 'IA14A',
+        className: '高度情報学科AI開発先行コース',
+        teacherId: null,
+        updatedAt: '2026-01-01 00:00:00',
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(service.createClassRoom).not.toHaveBeenCalled();
+  });
+
+  it('更新リクエストのスキーマは updatedAt を任意で受け、未知のキーは拒否する', () => {
+    const base = { classCode: 'A01', className: 'Class A', teacherId: 1 };
+
+    expect(classRoomUpdateSchema.safeParse(base).success).toBe(true);
+    expect(
+      classRoomUpdateSchema.safeParse({ ...base, updatedAt: '2026-01-01' })
+        .success
+    ).toBe(true);
+    expect(
+      classRoomUpdateSchema.safeParse({ ...base, legacyField: true }).success
+    ).toBe(false);
   });
 
   it('クラスを削除すると204を返す', async () => {
