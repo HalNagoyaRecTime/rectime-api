@@ -93,16 +93,15 @@ describe('Retryとtimeout回収のD1統合', () => {
       )
     ).toBe(true);
   });
-  it('同じDeliveryへoffset全5段階・attempt・時刻を保存し、6回目の失敗で終了する', async () => {
+  it('first_attempt_at基準の全マイルストーンへ再送し、6回目の失敗で終了する', async () => {
     const { delivery, scheduleId } = await createDeliveryFixture();
-    const { service } = harness(
-      new FcmRequestError(503, 'UNAVAILABLE', '一時失敗')
-    );
+    const h = harness(new FcmRequestError(503, 'UNAVAILABLE', '一時失敗'));
+    const { service } = h;
     let target = delivery;
     let now = NOW;
     for (const offset of FCM_RETRY_OFFSETS_SECONDS) {
       expect(await service.sendClaimedDelivery(target, now)).toBe('retry_wait');
-      const next = new Date(now.getTime() + offset * 1000);
+      const next = new Date(NOW.getTime() + offset * 1000);
       expect(
         await getDelivery(delivery.notification_push_delivery_id)
       ).toMatchObject({
@@ -133,11 +132,55 @@ describe('Retryとtimeout回収のD1統合', () => {
       );
       now = next;
     }
+    expect(h.sendNotificationToToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          type: 'notification_general',
+          notificationId: String(delivery.notification_id),
+        },
+      })
+    );
     expect(target.attempt_count).toBe(6);
     expect(await service.sendClaimedDelivery(target, now)).toBe('failed');
     expect(
       await repository.completeScheduleIfDone(scheduleId, now.toISOString())
     ).toBe(true);
+  });
+  it('10分復旧時はcatch-upを1回だけ行い、失敗後は15分マイルストーンを使う', async () => {
+    const { delivery } = await createDeliveryFixture();
+    const h = harness(new FcmRequestError(503, 'UNAVAILABLE', '一時失敗'));
+    expect(await h.service.sendClaimedDelivery(delivery, NOW)).toBe(
+      'retry_wait'
+    );
+    h.sendNotificationToToken.mockClear();
+    const recoveredAt = new Date(NOW.getTime() + 600_000);
+    expect((await h.service.retryDueDeliveries(recoveredAt)).claimed).toBe(1);
+    expect(h.sendNotificationToToken).toHaveBeenCalledTimes(1);
+    expect(
+      await getDelivery(delivery.notification_push_delivery_id)
+    ).toMatchObject({
+      status: 'retry_wait',
+      attempt_count: 2,
+      first_attempt_at: NOW.toISOString(),
+      last_attempt_at: recoveredAt.toISOString(),
+      next_retry_at: new Date(NOW.getTime() + 900_000).toISOString(),
+    });
+  });
+  it('15分期限後はFCMを呼ばずDeliveryを終端する', async () => {
+    const { delivery } = await createDeliveryFixture();
+    await harness(
+      new FcmRequestError(503, 'UNAVAILABLE', '一時失敗')
+    ).service.sendClaimedDelivery(delivery, NOW);
+    const h = harness(new FcmRequestError(503, 'UNAVAILABLE', '一時失敗'));
+    await h.service.retryDueDeliveries(new Date(NOW.getTime() + 900_001));
+    expect(h.sendNotificationToToken).not.toHaveBeenCalled();
+    expect(
+      await getDelivery(delivery.notification_push_delivery_id)
+    ).toMatchObject({
+      status: 'failed',
+      attempt_count: 1,
+      next_retry_at: null,
+    });
   });
   it.each([
     [null, 70],
@@ -157,6 +200,20 @@ describe('Retryとtimeout回収のD1統合', () => {
       });
     }
   );
+  it('Retry-Afterで15分期限を超える429は再送せず失敗にする', async () => {
+    const { delivery } = await createDeliveryFixture();
+    expect(
+      await harness(
+        new FcmRequestError(429, 'QUOTA_EXCEEDED', '制限', 901)
+      ).service.sendClaimedDelivery(delivery, NOW)
+    ).toBe('failed');
+    expect(
+      await getDelivery(delivery.notification_push_delivery_id)
+    ).toMatchObject({
+      status: 'failed',
+      next_retry_at: null,
+    });
+  });
   it.each([
     ['UNREGISTERED', 404, true],
     ['INVALID_ARGUMENT', 400, false],
