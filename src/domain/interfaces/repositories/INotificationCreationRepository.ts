@@ -1,4 +1,5 @@
 import type {
+  AutomaticNotificationCreationCommand,
   NotificationCreationCommand,
   NotificationCreationOutcome,
 } from '../../entities/NotificationCreation';
@@ -6,5 +7,8 @@ import type {
 export interface INotificationCreationRepository {
   create(
     command: NotificationCreationCommand
+  ): Promise<NotificationCreationOutcome>;
+  createOrUpdateAutomatic(
+    command: AutomaticNotificationCreationCommand
   ): Promise<NotificationCreationOutcome>;
 }

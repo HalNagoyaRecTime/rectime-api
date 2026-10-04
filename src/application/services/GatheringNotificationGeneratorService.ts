@@ -2,16 +2,18 @@ import type { NotificationAudienceTarget } from '../../domain/entities/Notificat
 import { DEFAULT_NOTIFICATION_IMPORTANCE } from '../../domain/entities/Notification';
 import type { INotificationCreationRepository } from '../../domain/interfaces/repositories/INotificationCreationRepository';
 import type { IGatheringNotificationGeneratorRepository } from '../../domain/interfaces/repositories/IGatheringNotificationGeneratorRepository';
+import { buildEventNotificationSendAt } from '../../lib/eventDate';
 
 export interface IGatheringNotificationGeneratorService {
   generate(
     gatheringId: number
-  ): Promise<'created' | 'already_exists' | 'not_found'>;
+  ): Promise<'created' | 'updated' | 'already_exists' | 'not_found'>;
 }
 
 export function createGatheringNotificationGeneratorService(
   gatheringRepository: IGatheringNotificationGeneratorRepository,
   notificationCreationRepository: INotificationCreationRepository,
+  eventDate: string | undefined = undefined,
   now: () => string = () => new Date().toISOString()
 ): IGatheringNotificationGeneratorService {
   return {
@@ -20,30 +22,36 @@ export function createGatheringNotificationGeneratorService(
         await gatheringRepository.findGatheringTime(gatheringId);
       if (gatheringTime === null) return 'not_found';
 
+      if (!eventDate) {
+        throw new Error(
+          'EVENT_DATE must be configured for gathering reminders'
+        );
+      }
       const sourceHash = await createGatheringTimeSourceHash(gatheringTime);
       const audiences: NotificationAudienceTarget[] = [
         { type: 'gathering', target_id: gatheringId },
       ];
       const timestamp = now();
-      const outcome = await notificationCreationRepository.create({
-        created_by_user_id: null,
-        scheduled_by_user_id: null,
-        push_title: '集合時間のお知らせ',
-        push_body: `集合時間は${gatheringTime}です。`,
-        detail_title: '集合時間のお知らせ',
-        detail_body: `集合時間は${gatheringTime}です。`,
-        importance: DEFAULT_NOTIFICATION_IMPORTANCE,
-        send_at: timestamp,
-        audiences,
-        source: {
-          type: 'gathering',
-          id: gatheringId,
-          hash: sourceHash,
-        },
-        now: timestamp,
-        legacy_schedule: null,
-      });
-      return outcome.status === 'created' ? 'created' : 'already_exists';
+      const outcome =
+        await notificationCreationRepository.createOrUpdateAutomatic({
+          created_by_user_id: null,
+          scheduled_by_user_id: null,
+          push_title: '集合時間のお知らせ',
+          push_body: `集合時間は${gatheringTime}です。`,
+          detail_title: '集合時間のお知らせ',
+          detail_body: `集合時間は${gatheringTime}です。`,
+          importance: DEFAULT_NOTIFICATION_IMPORTANCE,
+          send_at: buildEventNotificationSendAt(eventDate, gatheringTime),
+          audiences,
+          source: {
+            type: 'gathering',
+            id: gatheringId,
+            hash: sourceHash,
+          },
+          now: timestamp,
+          legacy_schedule: null,
+        });
+      return outcome.status;
     },
   };
 }

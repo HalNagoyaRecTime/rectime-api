@@ -235,7 +235,8 @@ export function createDIContainer(env: Env) {
   const gatheringNotificationGeneratorService =
     createGatheringNotificationGeneratorService(
       gatheringNotificationGeneratorRepository,
-      notificationCreationRepository
+      notificationCreationRepository,
+      env.EVENT_DATE
     );
   const notificationConfigService = createNotificationConfigService(
     notificationConfigRepository

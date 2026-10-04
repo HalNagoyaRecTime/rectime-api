@@ -5,6 +5,7 @@ import {
 } from '../../../src/application/services/GatheringNotificationGeneratorService';
 import type { INotificationCreationRepository } from '../../../src/domain/interfaces/repositories/INotificationCreationRepository';
 import type { IGatheringNotificationGeneratorRepository } from '../../../src/domain/interfaces/repositories/IGatheringNotificationGeneratorRepository';
+import { buildEventNotificationSendAt } from '../../../src/lib/eventDate';
 
 describe('GatheringNotificationGeneratorService', () => {
   it('同じ集合時間は同じHashになり、正規化後の時刻変更でHashが変わる', async () => {
@@ -22,12 +23,22 @@ describe('GatheringNotificationGeneratorService', () => {
     );
   });
 
+  it('集合日時からJSTの15分前を計算し、日付境界をまたぐ', () => {
+    expect(buildEventNotificationSendAt('2026-11-07', '10:45')).toBe(
+      '2026-11-07T01:30:00.000Z'
+    );
+    expect(buildEventNotificationSendAt('2026-11-07', '0010')).toBe(
+      '2026-11-06T14:55:00.000Z'
+    );
+  });
+
   it('現在の集合時間からAudience付きのautomatic通知を作る', async () => {
     const gatheringRepository: IGatheringNotificationGeneratorRepository = {
       findGatheringTime: vi.fn().mockResolvedValue('10:45'),
     };
     const notificationCreationRepository: INotificationCreationRepository = {
-      create: vi.fn().mockResolvedValue({
+      create: vi.fn(),
+      createOrUpdateAutomatic: vi.fn().mockResolvedValue({
         status: 'created',
         result: { notification_id: 12, notification_schedule_id: 34 },
       }),
@@ -35,11 +46,14 @@ describe('GatheringNotificationGeneratorService', () => {
     const service = createGatheringNotificationGeneratorService(
       gatheringRepository,
       notificationCreationRepository,
-      () => '2026-10-04T01:00:00.000Z'
+      '2026-11-07',
+      () => '2026-11-08T01:00:00.000Z'
     );
 
     await expect(service.generate(51)).resolves.toBe('created');
-    expect(notificationCreationRepository.create).toHaveBeenCalledWith({
+    expect(
+      notificationCreationRepository.createOrUpdateAutomatic
+    ).toHaveBeenCalledWith({
       created_by_user_id: null,
       scheduled_by_user_id: null,
       push_title: '集合時間のお知らせ',
@@ -47,14 +61,14 @@ describe('GatheringNotificationGeneratorService', () => {
       detail_title: '集合時間のお知らせ',
       detail_body: '集合時間は10:45です。',
       importance: 'normal',
-      send_at: '2026-10-04T01:00:00.000Z',
+      send_at: '2026-11-07T01:30:00.000Z',
       audiences: [{ type: 'gathering', target_id: 51 }],
       source: {
         type: 'gathering',
         id: 51,
         hash: await createGatheringTimeSourceHash('10:45'),
       },
-      now: '2026-10-04T01:00:00.000Z',
+      now: '2026-11-08T01:00:00.000Z',
       legacy_schedule: null,
     });
   });
@@ -64,11 +78,15 @@ describe('GatheringNotificationGeneratorService', () => {
       findGatheringTime: vi.fn().mockResolvedValue('10:45'),
     };
     const notificationCreationRepository: INotificationCreationRepository = {
-      create: vi.fn().mockResolvedValue({ status: 'already_exists' }),
+      create: vi.fn(),
+      createOrUpdateAutomatic: vi
+        .fn()
+        .mockResolvedValue({ status: 'already_exists' }),
     };
     const service = createGatheringNotificationGeneratorService(
       gatheringRepository,
-      notificationCreationRepository
+      notificationCreationRepository,
+      '2026-11-07'
     );
 
     await expect(service.generate(51)).resolves.toBe('already_exists');
@@ -81,7 +99,8 @@ describe('GatheringNotificationGeneratorService', () => {
     };
     const sourceHashes = new Set<string>();
     const notificationCreationRepository: INotificationCreationRepository = {
-      create: vi.fn(async command => {
+      create: vi.fn(),
+      createOrUpdateAutomatic: vi.fn(async command => {
         if (sourceHashes.has(command.source!.hash)) {
           return { status: 'already_exists' } as const;
         }
@@ -95,6 +114,7 @@ describe('GatheringNotificationGeneratorService', () => {
     const service = createGatheringNotificationGeneratorService(
       gatheringRepository,
       notificationCreationRepository,
+      '2026-11-07',
       () => '2026-10-04T01:00:00.000Z'
     );
 
@@ -103,8 +123,9 @@ describe('GatheringNotificationGeneratorService', () => {
     gatheringTime = '10:46';
     await expect(service.generate(51)).resolves.toBe('created');
 
-    const commands = vi.mocked(notificationCreationRepository.create).mock
-      .calls;
+    const commands = vi.mocked(
+      notificationCreationRepository.createOrUpdateAutomatic
+    ).mock.calls;
     expect(commands.map(([command]) => command.source?.id)).toEqual([
       51, 51, 51,
     ]);
@@ -121,6 +142,7 @@ describe('GatheringNotificationGeneratorService', () => {
     };
     const notificationCreationRepository: INotificationCreationRepository = {
       create: vi.fn(),
+      createOrUpdateAutomatic: vi.fn(),
     };
     const service = createGatheringNotificationGeneratorService(
       gatheringRepository,
@@ -129,5 +151,34 @@ describe('GatheringNotificationGeneratorService', () => {
 
     await expect(service.generate(51)).resolves.toBe('not_found');
     expect(notificationCreationRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('EVENT_DATEが未設定または不正なら通知を作らない', async () => {
+    const gatheringRepository: IGatheringNotificationGeneratorRepository = {
+      findGatheringTime: vi.fn().mockResolvedValue('10:45'),
+    };
+    const notificationCreationRepository: INotificationCreationRepository = {
+      create: vi.fn(),
+      createOrUpdateAutomatic: vi.fn(),
+    };
+    const missingDateService = createGatheringNotificationGeneratorService(
+      gatheringRepository,
+      notificationCreationRepository
+    );
+    const invalidDateService = createGatheringNotificationGeneratorService(
+      gatheringRepository,
+      notificationCreationRepository,
+      '2026-02-30'
+    );
+
+    await expect(missingDateService.generate(51)).rejects.toThrow(
+      'EVENT_DATE must be configured'
+    );
+    await expect(invalidDateService.generate(51)).rejects.toThrow(
+      'Invalid event date or start time'
+    );
+    expect(
+      notificationCreationRepository.createOrUpdateAutomatic
+    ).not.toHaveBeenCalled();
   });
 });

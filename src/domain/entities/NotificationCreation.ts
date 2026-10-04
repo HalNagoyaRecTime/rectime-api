@@ -33,6 +33,16 @@ export interface NotificationCreationCommand {
   } | null;
 }
 
+export type AutomaticNotificationCreationCommand = Omit<
+  NotificationCreationCommand,
+  'created_by_user_id' | 'scheduled_by_user_id' | 'source' | 'legacy_schedule'
+> & {
+  created_by_user_id: null;
+  scheduled_by_user_id: null;
+  source: NonNullable<NotificationCreationCommand['source']>;
+  legacy_schedule: null;
+};
+
 export interface NotificationCreationResult {
   notification_id: number;
   notification_schedule_id: number;
@@ -40,4 +50,5 @@ export interface NotificationCreationResult {
 
 export type NotificationCreationOutcome =
   | { status: 'created'; result: NotificationCreationResult }
+  | { status: 'updated'; result: NotificationCreationResult }
   | { status: 'already_exists' };
