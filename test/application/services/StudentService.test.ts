@@ -297,6 +297,138 @@ describe('StudentService', () => {
         studentIdNumber: '10000',
       });
     });
+
+    describe('更新時刻による楽観ロック', () => {
+      const input = {
+        display_name: '更新後学生',
+        class_room_id: 100,
+        attendance_number: 5,
+        student_id_number: '10000',
+      };
+
+      it('updated_at が取得時点と異なれば、他の確認より先に409用エラーにする', async () => {
+        const repository = createRepository({
+          findById: vi
+            .fn()
+            .mockResolvedValue(
+              buildStudent({ updatedAt: '2026-01-02 00:00:00' })
+            ),
+          findByStudentNum: vi.fn(),
+          update: vi.fn(),
+        });
+        const service = createStudentService(
+          repository,
+          createClassRoomRepository()
+        );
+
+        await expect(
+          service.updateStudent(1, {
+            ...input,
+            updated_at: '2026-01-01 00:00:00',
+          })
+        ).rejects.toThrow('Student update conflict');
+        expect(repository.findByStudentNum).not.toHaveBeenCalled();
+        expect(repository.update).not.toHaveBeenCalled();
+      });
+
+      it('updated_at が一致すれば、expectedUpdatedAt を付けて update を呼ぶ', async () => {
+        const repository = createRepository({
+          findById: vi
+            .fn()
+            .mockResolvedValue(
+              buildStudent({ updatedAt: '2026-01-01 00:00:00' })
+            ),
+          findByStudentNum: vi.fn().mockResolvedValue(null),
+          update: vi
+            .fn()
+            .mockResolvedValue(
+              buildStudent({ updatedAt: '2026-01-03 00:00:00' })
+            ),
+        });
+        const service = createStudentService(
+          repository,
+          createClassRoomRepository()
+        );
+
+        const result = await service.updateStudent(1, {
+          ...input,
+          updated_at: '2026-01-01 00:00:00',
+        });
+
+        expect(repository.update).toHaveBeenCalledWith(1, {
+          displayName: '更新後学生',
+          classRoomId: 100,
+          attendanceNumber: 5,
+          studentIdNumber: '10000',
+          expectedUpdatedAt: '2026-01-01 00:00:00',
+        });
+        expect(result.updated_at).toBe('2026-01-03 00:00:00');
+      });
+
+      it('確認後に更新された競合（update が null）は、学生が残っていれば409用エラーにする', async () => {
+        const repository = createRepository({
+          findById: vi
+            .fn()
+            .mockResolvedValue(
+              buildStudent({ updatedAt: '2026-01-01 00:00:00' })
+            ),
+          findByStudentNum: vi.fn().mockResolvedValue(null),
+          update: vi.fn().mockResolvedValue(null),
+        });
+        const service = createStudentService(
+          repository,
+          createClassRoomRepository()
+        );
+
+        await expect(
+          service.updateStudent(1, {
+            ...input,
+            updated_at: '2026-01-01 00:00:00',
+          })
+        ).rejects.toThrow('Student update conflict');
+      });
+
+      it('確認後に削除された競合（update が null）は、404用エラーにする', async () => {
+        const repository = createRepository({
+          findById: vi
+            .fn()
+            .mockResolvedValueOnce(
+              buildStudent({ updatedAt: '2026-01-01 00:00:00' })
+            )
+            .mockResolvedValueOnce(null),
+          findByStudentNum: vi.fn().mockResolvedValue(null),
+          update: vi.fn().mockResolvedValue(null),
+        });
+        const service = createStudentService(
+          repository,
+          createClassRoomRepository()
+        );
+
+        await expect(
+          service.updateStudent(1, {
+            ...input,
+            updated_at: '2026-01-01 00:00:00',
+          })
+        ).rejects.toThrow('Student not found');
+      });
+
+      it('updated_at を指定せず update が null なら、再確認せず404用エラーにする', async () => {
+        const repository = createRepository({
+          findById: vi.fn().mockResolvedValue(buildStudent()),
+          findByStudentNum: vi.fn().mockResolvedValue(null),
+          update: vi.fn().mockResolvedValue(null),
+        });
+        const service = createStudentService(
+          repository,
+          createClassRoomRepository()
+        );
+
+        await expect(service.updateStudent(1, input)).rejects.toThrow(
+          'Student not found'
+        );
+        expect(repository.findById).toHaveBeenCalledTimes(1);
+      });
+    });
   });
 
   describe('validateStudentImport', () => {

@@ -122,6 +122,15 @@ export const studentDetailRoute = createRoute({
   },
 });
 
+export const studentUpdateSchema = studentWriteSchema
+  .extend({
+    updated_at: z.string().min(1).optional().openapi({
+      description:
+        '取得時点の `updated_at`。指定すると、取得後に変更されていた場合は409を返す。',
+    }),
+  })
+  .openapi('StudentUpdateRequest');
+
 export const studentCreateRoute = createRoute({
   method: 'post',
   path: '/students',
@@ -154,7 +163,7 @@ export const studentUpdateRoute = createRoute({
   request: {
     params: studentIdParams,
     body: {
-      content: { 'application/json': { schema: studentWriteSchema } },
+      content: { 'application/json': { schema: studentUpdateSchema } },
       required: true,
     },
   },

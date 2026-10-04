@@ -76,6 +76,12 @@ export const UserErrors = {
     code: 'STUDENT_NUMBER_ALREADY_EXISTS',
     message: '同じ学籍番号の学生が既に存在します',
   },
+  STUDENT_UPDATE_CONFLICT: {
+    status: 409,
+    code: 'STUDENT_UPDATE_CONFLICT',
+    message:
+      '学生情報が他の操作で更新されています。最新の内容を取得してやり直してください',
+  },
   STUDENT_CREATE_FAILED: {
     status: 500,
     code: 'STUDENT_CREATE_FAILED',

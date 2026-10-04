@@ -17,6 +17,7 @@ import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import type {
   StudentEntity,
   StudentPage,
+  StudentUpdateInput,
   StudentWriteInput,
 } from '../../domain/entities/Student';
 import {
@@ -269,8 +270,13 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
 
     async update(
       id: number,
-      student: StudentWriteInput
+      student: StudentUpdateInput
     ): Promise<StudentEntity | null> {
+      // 更新時刻(expectedUpdatedAt)が指定された場合は、2文とも「取得時点から
+      // studentsの行が変更されていない」ことを条件にする。batch() は文ごとに
+      // 実行されるため、片方だけに条件を付けると、不一致のときに users だけ
+      // 書き換わってしまう。users の更新は students の更新より先に置く
+      // （後に置くと、先に進んだ students.updated_at と一致しなくなる）。
       const [userResult, studentResult] = await db.batch<
         ReturnedUserRow | ReturnedStudentRow
       >([
@@ -281,14 +287,28 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
              WHERE user_id = (
                SELECT user_id FROM students WHERE student_id = ?
              )
+               AND (
+                 ? IS NULL OR EXISTS (
+                   SELECT 1 FROM students
+                   WHERE student_id = ? AND updated_at = ?
+                 )
+               )
              RETURNING user_id, user_name, is_live_active`
           )
-          .bind(student.displayName, id),
+          .bind(
+            student.displayName,
+            id,
+            // D1は番号付きプレースホルダを使えないため、更新時刻の条件は値を繰り返し渡す
+            student.expectedUpdatedAt ?? null,
+            id,
+            student.expectedUpdatedAt ?? null
+          ),
         db
           .prepare(
             `UPDATE students
              SET class_room_id = ?, attendance_number = ?, student_id_number = ?, updated_at = CURRENT_TIMESTAMP
              WHERE student_id = ?
+               AND (? IS NULL OR updated_at = ?)
              RETURNING
                student_id,
                user_id,
@@ -306,6 +326,8 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
             student.attendanceNumber,
             student.studentIdNumber,
             id,
+            student.expectedUpdatedAt ?? null,
+            student.expectedUpdatedAt ?? null,
             student.classRoomId
           ),
       ]);

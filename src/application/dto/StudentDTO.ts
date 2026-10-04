@@ -33,6 +33,10 @@ export interface StudentWriteDTO {
   student_id_number: string;
 }
 
+export interface StudentUpdateDTO extends StudentWriteDTO {
+  updated_at?: string;
+}
+
 export interface StudentPageDTO {
   items: StudentManagementDTO[];
   total: number;
