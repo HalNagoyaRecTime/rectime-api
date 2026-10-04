@@ -28,6 +28,7 @@ export function createNotificationStopRepository(
             `UPDATE notification_push_deliveries
           SET status = 'stopped', next_retry_at = NULL, updated_at = ?
           WHERE status IN ('pending','retry_wait')
+            -- D1 batchはstatementを順次実行するため、直前のSchedule UPDATE件数で今回のStopを限定する。
             AND changes() = 1
             AND notification_recipient_id IN (
               SELECT r.notification_recipient_id FROM notification_recipients r

@@ -48,6 +48,56 @@ describe('Stopの条件付きUPDATEとFCM競合', () => {
       await getDelivery(f.delivery.notification_push_delivery_id)
     ).toMatchObject({ status: 'stopped', next_retry_at: null });
   });
+  it('Stop後のtimeout回収は新しいFCM requestを開始しない', async () => {
+    const f = await createDeliveryFixture();
+    const sendNotificationToToken = vi.fn(async () => ({
+      success: true as const,
+      messageId: 'projects/test/messages/unused',
+    }));
+    const retry = createNotificationRetryService({
+      notificationDeliveryRepository: repository,
+      firebaseTokenRepository: tokens,
+      fcmService: { sendNotificationToToken },
+    });
+    await stop.stopSchedule(
+      {
+        scheduleId: f.scheduleId,
+        reason: 'manual',
+        stoppedByUserId: f.userId,
+      },
+      NOW
+    );
+    await retry.retryDueDeliveries(new Date(NOW.getTime() + 121_000));
+    expect(sendNotificationToToken).not.toHaveBeenCalled();
+    expect(
+      await getDelivery(f.delivery.notification_push_delivery_id)
+    ).toMatchObject({ status: 'stopped', next_retry_at: null });
+  });
+  it('Stop後の429 retry_waitは期限到来後も再送しない', async () => {
+    const f = await createDeliveryFixture();
+    const sendNotificationToToken = vi.fn(async () => {
+      throw new FcmRequestError(429, 'QUOTA_EXCEEDED', 'レート制限');
+    });
+    const retry = createNotificationRetryService({
+      notificationDeliveryRepository: repository,
+      firebaseTokenRepository: tokens,
+      fcmService: { sendNotificationToToken },
+    });
+    await retry.sendClaimedDelivery(f.delivery, NOW);
+    await stop.stopSchedule(
+      {
+        scheduleId: f.scheduleId,
+        reason: 'manual',
+        stoppedByUserId: f.userId,
+      },
+      new Date(NOW.getTime() + 1000)
+    );
+    await retry.retryDueDeliveries(new Date(NOW.getTime() + 70_000));
+    expect(sendNotificationToToken).toHaveBeenCalledTimes(1);
+    expect(
+      await getDelivery(f.delivery.notification_push_delivery_id)
+    ).toMatchObject({ status: 'stopped', next_retry_at: null });
+  });
   it.each(['scheduled', 'completed', 'failed', 'stopped'])(
     'source_deletedは%sを巻き戻さない',
     async status => {
@@ -114,6 +164,12 @@ describe('Stopの条件付きUPDATEとFCM競合', () => {
     expect(
       await repository.completeScheduleIfDone(f.scheduleId, NOW.toISOString())
     ).toBe(false);
+    await env.DB.prepare(
+      `INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status, attempt_count, updated_at)
+       SELECT notification_recipient_id, NULL, 1, 'pending', 0, '2026-10-02T00:00:00.000Z' FROM notification_recipients WHERE notification_schedule_id = ?`
+    )
+      .bind(f.scheduleId)
+      .run();
     await expect(
       stop.stopSchedule(
         {
@@ -124,6 +180,18 @@ describe('Stopの条件付きUPDATEとFCM競合', () => {
         new Date(NOW.getTime() + 1000)
       )
     ).rejects.toMatchObject({ code: 'NOTIFICATION_SCHEDULE_STOP_NOT_ALLOWED' });
+    const lateDelivery = await env.DB.prepare(
+      `SELECT d.status, d.updated_at FROM notification_push_deliveries d
+       JOIN notification_recipients r USING (notification_recipient_id)
+       WHERE r.notification_schedule_id = ? AND d.firebase_token_id IS NULL
+       ORDER BY d.notification_push_delivery_id DESC LIMIT 1`
+    )
+      .bind(f.scheduleId)
+      .first();
+    expect(lateDelivery).toMatchObject({
+      status: 'pending',
+      updated_at: '2026-10-02T00:00:00.000Z',
+    });
   });
   it.each(['scheduled', 'resolving', 'completed', 'failed', 'stopped'])(
     'public Stopは%sを拒否する',

@@ -44,6 +44,17 @@ describe('通知停止APIの認可・実DI・D1統合', () => {
       .run();
     expect((await request(f.userId, '不正')).status).toBe(400);
     expect((await request(f.userId, '999999')).status).toBe(404);
+    await env.DB.prepare(
+      "UPDATE notification_schedules SET send_status = 'resolving' WHERE notification_schedule_id = ?"
+    )
+      .bind(f.scheduleId)
+      .run();
+    expect((await request(f.userId, String(f.scheduleId))).status).toBe(409);
+    await env.DB.prepare(
+      "UPDATE notification_schedules SET send_status = 'sending' WHERE notification_schedule_id = ?"
+    )
+      .bind(f.scheduleId)
+      .run();
     const success = await request(f.userId, String(f.scheduleId));
     expect(success.status).toBe(200);
     expect(await success.json()).toEqual({
