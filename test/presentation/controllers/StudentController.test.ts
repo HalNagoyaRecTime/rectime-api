@@ -420,6 +420,46 @@ describe('StudentController', () => {
       expect(res.status).toBe(400);
       expect(studentService.createStudent).not.toHaveBeenCalled();
     });
+
+    it('class_room_idとattendance_numberが両方nullなら受け付ける', async () => {
+      const { app, studentService } = setup();
+      const body = {
+        ...input,
+        class_room_id: null,
+        attendance_number: null,
+      };
+      (
+        studentService.createStudent as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(
+        buildStudent({ attendance_number: null, class_room: null })
+      );
+
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      expect(res.status).toBe(201);
+      expect(studentService.createStudent).toHaveBeenCalledWith(body);
+    });
+
+    it.each([
+      { class_room_id: null, attendance_number: 10 },
+      { class_room_id: 1, attendance_number: null },
+    ])('所属情報の片方だけがnullの場合は400を返す', async assignment => {
+      const { app, studentService } = setup();
+      const body = { ...input, ...assignment };
+
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.createStudent).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateStudent', () => {
