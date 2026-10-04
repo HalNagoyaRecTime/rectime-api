@@ -108,7 +108,11 @@ export function createNotificationAudienceResolverRepository(
     async resolveAudience(scheduleId, audience, now) {
       // 対象消失は空Audienceとして確定せず、ServiceでScheduleをfailedにする。
       if (
-        !(await areAudienceTargetsAvailable(db, [toAudienceTarget(audience)]))
+        !(await areAudienceTargetsAvailable(
+          db,
+          [toAudienceTarget(audience)],
+          'resolver'
+        ))
       ) {
         throw new UnresolvableNotificationAudienceError(
           audience.notification_audience_id,

@@ -398,6 +398,126 @@ describe('NotificationAudienceResolverRepository', () => {
     );
   });
 
+  describe.each(['deletion_pending', 'deleted'] as const)(
+    'User Audienceの退会状態が%s',
+    deletionStatus => {
+      it('target rowが残っていてもScheduleをfailedにし、確定済みRecipientとDeliveryを保持する', async () => {
+        const fixture = await createFixture();
+        const targetUserId = await insertUser(
+          `direct-audience-${deletionStatus}`
+        );
+        const { scheduleId } = await createSchedule(fixture.actorUserId, [
+          { type: 'user', target_id: fixture.actorUserId },
+          { type: 'user', target_id: targetUserId },
+        ]);
+        await repository.claimScheduled(scheduleId, NOW);
+        const audiences = await repository.findUnresolvedAudiences(scheduleId);
+        await repository.resolveAudience(scheduleId, audiences[0], NOW);
+        await env.DB.prepare(
+          `INSERT INTO notification_push_deliveries (notification_recipient_id, platform, status, sent_at)
+           SELECT notification_recipient_id, 1, 'sent', ? FROM notification_recipients
+           WHERE notification_schedule_id = ? AND user_id = ?`
+        )
+          .bind(NOW, scheduleId, fixture.actorUserId)
+          .run();
+        await env.DB.prepare(
+          'UPDATE users SET deletion_status = ? WHERE user_id = ?'
+        )
+          .bind(deletionStatus, targetUserId)
+          .run();
+
+        expect(await service.resolveDueSchedules(new Date(NOW))).toEqual({
+          completed_schedules: [],
+          retryable_schedule_ids: [],
+          failed_schedule_ids: [scheduleId],
+        });
+        const state = await scheduleSnapshot(scheduleId);
+        expect(state.schedule).toMatchObject({
+          send_status: 'failed',
+          recipients_resolved_at: null,
+        });
+        expect(state.schedule?.reason).toBe(
+          `${NOTIFICATION_AUDIENCE_TARGET_MISSING_REASON} (Audience ${state.audiences[1]?.notification_audience_id}, user: ${targetUserId})`
+        );
+        expect(state.audiences.map(row => row.resolved_at)).toEqual([
+          NOW,
+          null,
+        ]);
+        expect(await recipientIds(scheduleId)).toEqual([fixture.actorUserId]);
+        expect(state.deliveries).toHaveLength(1);
+
+        expect(
+          await service.resolveDueSchedules(
+            new Date('2026-09-24T12:01:00.000Z')
+          )
+        ).toEqual({
+          completed_schedules: [],
+          retryable_schedule_ids: [],
+          failed_schedule_ids: [],
+        });
+        expect(await scheduleSnapshot(scheduleId)).toEqual(state);
+      });
+    }
+  );
+
+  it('deletion_status=activeでis_live_active=0のUserはvalid targetとして0 Recipientで解決する', async () => {
+    const fixture = await createFixture();
+    const inactiveUserId = await insertUser('direct-audience-inactive', 0);
+    const { scheduleId } = await createSchedule(fixture.actorUserId, [
+      { type: 'user', target_id: inactiveUserId },
+    ]);
+
+    expect(await service.resolveDueSchedules(new Date(NOW))).toEqual({
+      completed_schedules: [
+        { notification_schedule_id: scheduleId, recipient_count: 0 },
+      ],
+      retryable_schedule_ids: [],
+      failed_schedule_ids: [],
+    });
+    const state = await scheduleSnapshot(scheduleId);
+    expect(state.schedule).toMatchObject({
+      send_status: 'resolving',
+      recipients_resolved_at: NOW,
+    });
+    expect(state.audiences[0]?.resolved_at).toBe(NOW);
+    expect(state.recipients).toEqual([]);
+  });
+
+  it('Recipient確定後のlogical deletionではSchedule・Audience・Recipient・Deliveryを変更しない', async () => {
+    const fixture = await createFixture();
+    const { scheduleId } = await createSchedule(fixture.actorUserId, [
+      { type: 'user', target_id: fixture.activeStudentId },
+    ]);
+    expect(await service.resolveDueSchedules(new Date(NOW))).toMatchObject({
+      completed_schedules: [
+        { notification_schedule_id: scheduleId, recipient_count: 1 },
+      ],
+      failed_schedule_ids: [],
+    });
+    await env.DB.prepare(
+      `INSERT INTO notification_push_deliveries (notification_recipient_id, platform, status, sent_at)
+       SELECT notification_recipient_id, 1, 'sent', ? FROM notification_recipients
+       WHERE notification_schedule_id = ? AND user_id = ?`
+    )
+      .bind(NOW, scheduleId, fixture.activeStudentId)
+      .run();
+    await env.DB.prepare(
+      "UPDATE users SET deletion_status = 'deleted' WHERE user_id = ?"
+    )
+      .bind(fixture.activeStudentId)
+      .run();
+    const state = await scheduleSnapshot(scheduleId);
+
+    expect(
+      await service.resolveDueSchedules(new Date('2026-09-24T12:01:00.000Z'))
+    ).toEqual({
+      completed_schedules: [],
+      retryable_schedule_ids: [],
+      failed_schedule_ids: [],
+    });
+    expect(await scheduleSnapshot(scheduleId)).toEqual(state);
+  });
+
   it('Gathering source消失はAudience対象消失として処理しない（#449）', async () => {
     const fixture = await createFixture();
     const { target, remove } = await createDeletableTarget(
@@ -455,12 +575,6 @@ describe('NotificationAudienceResolverRepository', () => {
         { type: 'gathering', target_id: fixture.firstGatheringId },
         { type: 'event', target_id: fixture.eventId },
       ]),
-      await createSchedule(fixture.actorUserId, [
-        { type: 'user', target_id: fixture.deletionPendingStudentId },
-      ]),
-      await createSchedule(fixture.actorUserId, [
-        { type: 'user', target_id: fixture.deletedStudentId },
-      ]),
     ];
 
     const result = await service.resolveDueSchedules(new Date(NOW));
@@ -496,8 +610,6 @@ describe('NotificationAudienceResolverRepository', () => {
       fixture.activeEventMemberId,
     ]);
     expect(await recipientIds(schedules[5].scheduleId)).toEqual([]);
-    expect(await recipientIds(schedules[7].scheduleId)).toEqual([]);
-    expect(await recipientIds(schedules[8].scheduleId)).toEqual([]);
 
     const excludedUserIds = [
       fixture.inactiveStudentId,
