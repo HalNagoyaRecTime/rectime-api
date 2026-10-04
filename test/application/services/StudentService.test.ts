@@ -86,6 +86,27 @@ describe('StudentService', () => {
       expect(repository.findById).toHaveBeenCalledWith(1);
     });
 
+    it('未所属Studentはclass_roomとattendance_numberをnullで返す', async () => {
+      const student = buildStudent({
+        classRoomId: null,
+        classRoomCode: null,
+        classRoomName: null,
+        attendanceNumber: null,
+      });
+      const repository = createRepository({
+        findById: vi.fn().mockResolvedValue(student),
+      });
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
+
+      await expect(service.getStudentById(1)).resolves.toMatchObject({
+        attendance_number: null,
+        class_room: null,
+      });
+    });
+
     it('存在しない場合はエラーを投げる', async () => {
       const repository = createRepository({
         findById: vi.fn().mockResolvedValue(null),
@@ -224,6 +245,36 @@ describe('StudentService', () => {
         attendanceNumber: input.attendance_number,
         studentIdNumber: input.student_id_number,
       });
+    });
+
+    it('未所属Studentはクラス存在確認をせず作成する', async () => {
+      const student = buildStudent({
+        classRoomId: null,
+        classRoomCode: null,
+        classRoomName: null,
+        attendanceNumber: null,
+      });
+      const repository = createRepository({
+        findByStudentNum: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue(student),
+      });
+      const classRoomRepository = createClassRoomRepository();
+      const service = createStudentService(repository, classRoomRepository);
+
+      await service.createStudent({
+        display_name: student.userName,
+        class_room_id: null,
+        attendance_number: null,
+        student_id_number: student.studentIdNumber,
+      });
+
+      expect(classRoomRepository.findById).not.toHaveBeenCalled();
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classRoomId: null,
+          attendanceNumber: null,
+        })
+      );
     });
 
     it('クラスの存在確認はClassRoomRepositoryへ委譲する', async () => {
