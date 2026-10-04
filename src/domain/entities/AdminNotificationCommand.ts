@@ -1,15 +1,9 @@
 import type {
-  NotificationAudienceType,
   NotificationImportance,
   NotificationSourceType,
 } from './Notification';
-
-export type NotificationAudienceTarget =
-  | { type: 'all'; target_id: null }
-  | {
-      type: Exclude<NotificationAudienceType, 'all'>;
-      target_id: number;
-    };
+import type { NotificationAudienceTarget } from './NotificationCreation';
+export type { NotificationAudienceTarget } from './NotificationCreation';
 
 export interface CreateNotificationCommand {
   actor_user_id: number;

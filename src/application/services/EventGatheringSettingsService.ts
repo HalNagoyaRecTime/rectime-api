@@ -7,6 +7,7 @@ import type {
 import type { IEventGatheringSettingsRepository } from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 import type { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
+import type { IGatheringNotificationGeneratorService } from './GatheringNotificationGeneratorService';
 import type {
   EventGatheringSettingsDTO,
   RoundSettingInputDTO,
@@ -49,7 +50,8 @@ function isUnchanged(
 export function createEventGatheringSettingsService(
   eventRepository: IEventRepository,
   gatheringSpotRepository: IGatheringSpotRepository,
-  eventGatheringSettingsRepository: IEventGatheringSettingsRepository
+  eventGatheringSettingsRepository: IEventGatheringSettingsRepository,
+  gatheringNotificationGeneratorService: IGatheringNotificationGeneratorService
 ): IEventGatheringSettingsService {
   const ensureGatheringSpotsExist = async (gatheringSpotIds: number[]) => {
     const existing =
@@ -136,10 +138,17 @@ export function createEventGatheringSettingsService(
         throw new Error('Gathering in use');
       }
 
-      return buildEventGatheringSettings(
-        command.event_id,
-        await eventGatheringSettingsRepository.findByEventId(command.event_id)
-      );
+      const savedGatherings =
+        await eventGatheringSettingsRepository.findByEventId(command.event_id);
+      // GeneratorへIDだけを渡し、保存済み状態の取得・Hash・通知条件は委譲する。
+      // 保存後に失敗して同じ設定保存が再実行された場合も、現在状態の再確認で回復できる。
+      for (const gathering of savedGatherings) {
+        await gatheringNotificationGeneratorService.generate(
+          gathering.gathering_id
+        );
+      }
+
+      return buildEventGatheringSettings(command.event_id, savedGatherings);
     },
   };
 }

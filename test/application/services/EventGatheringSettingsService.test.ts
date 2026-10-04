@@ -4,6 +4,7 @@ import type { EventGatheringEntity } from '../../../src/domain/entities/EventGat
 import type { IEventGatheringSettingsRepository } from '../../../src/domain/interfaces/repositories/IEventGatheringSettingsRepository';
 import type { IEventRepository } from '../../../src/domain/interfaces/repositories/IEventRepository';
 import type { IGatheringSpotRepository } from '../../../src/domain/interfaces/repositories/IGatheringSpotRepository';
+import type { IGatheringNotificationGeneratorService } from '../../../src/application/services/GatheringNotificationGeneratorService';
 
 const EVENT_ID = 12;
 
@@ -65,12 +66,23 @@ function setup(
       ? vi.fn().mockRejectedValue(options.applyError)
       : vi.fn().mockResolvedValue(undefined),
   };
+  const gatheringNotificationGeneratorService: IGatheringNotificationGeneratorService =
+    {
+      generate: vi.fn().mockResolvedValue('created'),
+    };
   const service = createEventGatheringSettingsService(
     eventRepository,
     gatheringSpotRepository,
-    repository
+    repository,
+    gatheringNotificationGeneratorService
   );
-  return { service, eventRepository, gatheringSpotRepository, repository };
+  return {
+    service,
+    eventRepository,
+    gatheringSpotRepository,
+    repository,
+    gatheringNotificationGeneratorService,
+  };
 }
 
 describe('EventGatheringSettingsService', () => {
@@ -453,6 +465,121 @@ describe('EventGatheringSettingsService', () => {
         ],
       });
       expect(repository.findByEventId).toHaveBeenCalledTimes(2);
+    });
+
+    it('保存後に現在のGathering IDだけをGeneratorへ渡し、メンバー数に関係なく処理する', async () => {
+      const { service, gatheringNotificationGeneratorService } = setup({
+        current: [existing[1]],
+      });
+
+      await service.saveEventGatheringSettings({
+        event_id: EVENT_ID,
+        rounds: [
+          {
+            round: 1,
+            gatherings: [
+              {
+                gathering_id: 102,
+                gathering_time: '10:55',
+                gathering_spot_id: 2,
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(
+        gatheringNotificationGeneratorService.generate
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        gatheringNotificationGeneratorService.generate
+      ).toHaveBeenCalledWith(102);
+    });
+
+    it('新規作成したGathering IDを保存後にGeneratorへ渡す', async () => {
+      const created: EventGatheringEntity = {
+        gathering_id: 103,
+        round: 1,
+        gathering_time: '11:00',
+        gathering_spot_id: 3,
+        gathering_spot_name: '出入口③',
+        member_count: 0,
+      };
+      const { service, repository, gatheringNotificationGeneratorService } =
+        setup({ current: [] });
+      vi.mocked(repository.findByEventId)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([created]);
+
+      await service.saveEventGatheringSettings({
+        event_id: EVENT_ID,
+        rounds: [
+          {
+            round: 1,
+            gatherings: [{ gathering_time: '11:00', gathering_spot_id: 3 }],
+          },
+        ],
+      });
+
+      expect(
+        gatheringNotificationGeneratorService.generate
+      ).toHaveBeenCalledWith(103);
+    });
+
+    it('通知生成失敗後に同じ設定保存を再実行するとGeneratorを再試行する', async () => {
+      const { service, repository, gatheringNotificationGeneratorService } =
+        setup();
+      const updated = existing.map(gathering =>
+        gathering.gathering_id === 101
+          ? { ...gathering, gathering_time: '10:46' }
+          : gathering
+      );
+      vi.mocked(repository.findByEventId)
+        .mockResolvedValueOnce(existing)
+        .mockResolvedValueOnce(updated)
+        .mockResolvedValueOnce(updated)
+        .mockResolvedValueOnce(updated);
+      vi.mocked(gatheringNotificationGeneratorService.generate)
+        .mockRejectedValueOnce(new Error('通知生成に失敗しました'))
+        .mockResolvedValue('already_exists');
+      const command = {
+        event_id: EVENT_ID,
+        rounds: [
+          {
+            round: 1,
+            gatherings: [
+              {
+                gathering_id: 101,
+                gathering_time: '10:46',
+                gathering_spot_id: 1,
+              },
+              {
+                gathering_id: 102,
+                gathering_time: '10:55',
+                gathering_spot_id: 2,
+              },
+            ],
+          },
+        ],
+      };
+
+      await expect(service.saveEventGatheringSettings(command)).rejects.toThrow(
+        '通知生成に失敗しました'
+      );
+      await expect(
+        service.saveEventGatheringSettings(command)
+      ).resolves.toBeDefined();
+
+      expect(repository.apply).toHaveBeenCalledTimes(2);
+      expect(repository.apply).toHaveBeenLastCalledWith({
+        event_id: EVENT_ID,
+        creates: [],
+        updates: [],
+        delete_ids: [],
+      });
+      expect(
+        gatheringNotificationGeneratorService.generate
+      ).toHaveBeenCalledTimes(3);
     });
   });
 });

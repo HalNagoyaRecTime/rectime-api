@@ -1,4 +1,5 @@
 import {
+  DEFAULT_NOTIFICATION_IMPORTANCE,
   NOTIFICATION_IMPORTANCE_LEVELS,
   isNotificationImportanceAllowed,
 } from '../../domain/entities/Notification';
@@ -33,7 +34,7 @@ export function createNotificationConfigService(
     getConfig() {
       return {
         importance: {
-          default: 'normal',
+          default: DEFAULT_NOTIFICATION_IMPORTANCE,
           options: NOTIFICATION_IMPORTANCE_LEVELS.filter(
             isNotificationImportanceAllowed
           ),

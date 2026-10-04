@@ -1,6 +1,8 @@
-import type { D1Database, D1Result } from '@cloudflare/workers-types';
+import type { D1Database } from '@cloudflare/workers-types';
 import type { NotificationDeleteResult } from '../../domain/entities/AdminNotificationCommand';
 import type { IAdminNotificationCommandRepository } from '../../domain/interfaces/repositories/IAdminNotificationCommandRepository';
+import type { INotificationCreationRepository } from '../../domain/interfaces/repositories/INotificationCreationRepository';
+import { createNotificationCreationRepository } from './NotificationCreationRepository';
 import { areAudienceTargetsAvailable } from './NotificationAudienceUserQuery';
 import type {
   NotificationImportance,
@@ -18,7 +20,10 @@ interface MutationScheduleRow {
 }
 
 export function createAdminNotificationCommandRepository(
-  db: D1Database
+  db: D1Database,
+  notificationCreationRepository: INotificationCreationRepository = createNotificationCreationRepository(
+    db
+  )
 ): IAdminNotificationCommandRepository {
   return {
     async areAudienceTargetsAvailable(targets) {
@@ -26,87 +31,27 @@ export function createAdminNotificationCommandRepository(
     },
 
     async create(command) {
-      if (command.audiences.length === 0) {
-        throw new Error('Audienceは1件以上必要です');
+      const outcome = await notificationCreationRepository.create({
+        created_by_user_id: command.actor_user_id,
+        scheduled_by_user_id: command.actor_user_id,
+        push_title: command.push_title,
+        push_body: command.push_body,
+        detail_title: command.detail_title,
+        detail_body: command.detail_body,
+        importance: command.importance,
+        send_at: command.send_at,
+        audiences: command.audiences,
+        source: null,
+        now: command.now,
+        legacy_schedule: {
+          created_user_id: command.actor_user_id,
+          importance: importanceToSchedule(command.importance),
+        },
+      });
+      if (outcome.status === 'already_exists') {
+        throw new Error('手動通知の作成で予期しない重複が発生しました');
       }
-
-      const audiencesJson = JSON.stringify(
-        command.audiences.map(target => ({
-          type: target.type,
-          target_id: target.target_id,
-        }))
-      );
-      const results = await db.batch([
-        db
-          .prepare(
-            `INSERT INTO notifications (
-               created_by_user_id, push_title, push_body, notification_type,
-               title, body, importance, source_type, source_id, source_hash,
-               created_at, updated_at
-             ) VALUES (?, ?, ?, 'notification_general', ?, ?, ?, NULL, NULL, NULL, ?, ?)
-             RETURNING notification_id`
-          )
-          .bind(
-            command.actor_user_id,
-            command.push_title,
-            command.push_body,
-            command.detail_title,
-            command.detail_body,
-            command.importance,
-            command.now,
-            command.now
-          ),
-        db
-          .prepare(
-            `INSERT INTO notification_schedules (
-               created_user_id, scheduled_by_user_id, event_id, notification_id,
-               importance, send_status, send_at, created_at, updated_at
-             ) VALUES (?, ?, NULL, last_insert_rowid(), ?, 'scheduled', ?, ?, ?)
-             RETURNING notification_schedule_id`
-          )
-          .bind(
-            command.actor_user_id,
-            command.actor_user_id,
-            importanceToSchedule(command.importance),
-            command.send_at,
-            command.now,
-            command.now
-          ),
-        db
-          .prepare(
-            `WITH target_schedule AS MATERIALIZED (
-               SELECT last_insert_rowid() AS notification_schedule_id
-             ),
-             requested_audiences AS (
-               SELECT
-                 json_extract(value, '$.type') AS audience_type,
-                 json_extract(value, '$.target_id') AS target_id
-               FROM json_each(?)
-             )
-             INSERT INTO notification_audiences (
-               notification_schedule_id, audience_type, target_id, created_at, updated_at
-             )
-             SELECT
-               target_schedule.notification_schedule_id,
-               requested_audiences.audience_type,
-               requested_audiences.target_id,
-               ?,
-               ?
-             FROM target_schedule CROSS JOIN requested_audiences`
-          )
-          .bind(audiencesJson, command.now, command.now),
-      ]);
-
-      const notificationId = getReturnedId(results[0], 'notification_id');
-      const scheduleId = getReturnedId(results[1], 'notification_schedule_id');
-      if (notificationId === null || scheduleId === null) {
-        throw new Error('通知の作成結果が不完全です');
-      }
-
-      return {
-        notification_id: notificationId,
-        notification_schedule_id: scheduleId,
-      };
+      return outcome.result;
     },
 
     async findMutationSnapshot(notificationId) {
@@ -384,15 +329,4 @@ function addAssignment(
   if (value === undefined) return;
   assignments.push(column + ' = ?');
   bindings.push(value);
-}
-
-function getReturnedId(
-  result: D1Result | undefined,
-  key: string
-): number | null {
-  const row = result?.results[0] as Record<string, unknown> | undefined;
-  const returned = row?.[key];
-  if (typeof returned === 'number' && returned > 0) return returned;
-  const lastRowId = result?.meta.last_row_id;
-  return typeof lastRowId === 'number' && lastRowId > 0 ? lastRowId : null;
 }
