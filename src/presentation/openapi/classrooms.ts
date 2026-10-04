@@ -94,13 +94,18 @@ export const classRoomWriteSchema = z
   .strict()
   .openapi('ClassRoomWriteRequest');
 
-export const classRoomUpdateSchema = classRoomWriteSchema
-  .extend({
+// 登録済みのスキーマを extend() すると、OpenAPI では allOf で合成され、基底側の
+// additionalProperties: false が updatedAt を拒否する仕様になってしまう。
+// そのため項目だけを引き継ぎ、新しいオブジェクトとして定義する。
+export const classRoomUpdateSchema = z
+  .object({
+    ...classRoomWriteSchema.shape,
     updatedAt: z.string().min(1).optional().openapi({
       description:
         '取得時点の `updated_at`。指定すると、取得後に変更されていた場合は409を返す。',
     }),
   })
+  .strict()
   .openapi('ClassRoomUpdateRequest');
 
 export const classRoomListRoute = createRoute({
