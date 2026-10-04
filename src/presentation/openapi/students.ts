@@ -20,15 +20,17 @@ export const studentResponseSchema = z
     student_id: z.number().int(),
     user_id: z.number().int(),
     display_name: z.string(),
-    attendance_number: z.number().int(),
+    attendance_number: z.number().int().nullable(),
     student_id_number: z.string(),
     is_live_active: z.boolean(),
     is_staff: z.boolean(),
-    class_room: z.object({
-      class_room_id: z.number().int(),
-      class_code: z.string(),
-      class_name: z.string(),
-    }),
+    class_room: z
+      .object({
+        class_room_id: z.number().int(),
+        class_code: z.string(),
+        class_name: z.string(),
+      })
+      .nullable(),
   })
   .openapi('Student');
 
@@ -81,11 +83,19 @@ export const studentListQuery = z
 export const studentWriteSchema = z
   .object({
     display_name: z.string().trim().min(1).max(100),
-    class_room_id: z.number().int().positive(),
-    attendance_number: z.number().int().positive(),
+    class_room_id: z.number().int().positive().nullable(),
+    attendance_number: z.number().int().positive().nullable(),
     student_id_number: z.string().trim().min(1).max(100),
   })
   .strict()
+  .refine(
+    value =>
+      (value.class_room_id === null) === (value.attendance_number === null),
+    {
+      message:
+        'class_room_id and attendance_number must both be null or both have values',
+    }
+  )
   .openapi('StudentWriteRequest');
 
 export const studentListRoute = createRoute({
