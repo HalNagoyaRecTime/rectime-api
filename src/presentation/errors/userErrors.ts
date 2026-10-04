@@ -127,6 +127,12 @@ export const UserErrors = {
     code: 'TEACHER_EMAIL_ALREADY_EXISTS',
     message: 'このメールアドレスは既に別の教員に登録されています',
   },
+  TEACHER_UPDATE_CONFLICT: {
+    status: 409,
+    code: 'TEACHER_UPDATE_CONFLICT',
+    message:
+      '教員情報が他の操作で更新されています。最新の内容を取得してやり直してください',
+  },
   TEACHER_CREATE_FAILED: {
     status: 500,
     code: 'TEACHER_CREATE_FAILED',

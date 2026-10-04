@@ -131,6 +131,10 @@ export const teacherUpdateSchema = z
     userName: z.string().trim().min(1),
     email: teacherEmailSchema,
     classRoomIds: classRoomIdsSchema,
+    updatedAt: z.string().min(1).optional().openapi({
+      description:
+        '取得時点の `updated_at`。指定すると、取得後に変更されていた場合は409を返す。',
+    }),
   })
   .strict()
   .openapi('TeacherUpdateRequest');

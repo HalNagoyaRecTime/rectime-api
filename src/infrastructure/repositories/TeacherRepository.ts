@@ -501,18 +501,41 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
 
       const now = new Date().toISOString();
 
+      // 更新時刻(expectedUpdatedAt)が指定された場合は、取得時点から teachers の
+      // 行が変更されていないことを、batch() 内のすべての文の条件にする。
+      // batch() は文ごとに実行されるため、一部の文だけに条件を付けると、不一致の
+      // ときに users の更新や担当クラスの解除だけが書き込まれてしまう。
+      // teachers の更新は updated_at を進めるため、条件を参照する他の文より後に置く。
+      const expectedUpdatedAt = input.expectedUpdatedAt;
+      const versionCondition =
+        expectedUpdatedAt === undefined
+          ? undefined
+          : sql`EXISTS (
+              SELECT 1 FROM ${teachers}
+              WHERE ${teachers.id} = ${id}
+                AND ${teachers.updatedAt} = ${expectedUpdatedAt}
+            )`;
+
       const updateUserStatement = orm
         .update(users)
         .set({
           userName: input.userName,
           updatedAt: now,
         })
-        .where(eq(users.id, existing.users.id));
+        .where(and(eq(users.id, existing.users.id), versionCondition));
 
       const updateTeacherStatement = orm
         .update(teachers)
         .set({ email: input.email, updatedAt: now })
-        .where(eq(teachers.id, id));
+        .where(
+          and(
+            eq(teachers.id, id),
+            expectedUpdatedAt === undefined
+              ? undefined
+              : eq(teachers.updatedAt, expectedUpdatedAt)
+          )
+        )
+        .returning({ id: teachers.id });
 
       // 1クラスの担当教員は最大1人のため、担当クラスの入れ替えは
       // class_rooms.teacher_id の付け替えで表現する。
@@ -524,8 +547,9 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       const clearAssignmentsStatement = orm
         .update(class_rooms)
         .set({ teacherId: null, updatedAt: now })
-        .where(eq(class_rooms.teacherId, id));
+        .where(and(eq(class_rooms.teacherId, id), versionCondition));
 
+      let updatedTeacherRows: { id: number }[];
       if (input.classRoomIds.length > 0) {
         // class_rooms.teacher_id への UPDATE は、存在しないIDを条件に含めても
         // 単に0件更新で成功してしまいFK制約による検知が働かない。
@@ -543,19 +567,25 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         const setAssignmentsStatement = orm
           .update(class_rooms)
           .set({ teacherId: id, updatedAt: now })
-          .where(inArray(class_rooms.id, input.classRoomIds));
-        await orm.batch([
+          .where(
+            and(inArray(class_rooms.id, input.classRoomIds), versionCondition)
+          );
+        [, , , updatedTeacherRows] = await orm.batch([
           updateUserStatement,
-          updateTeacherStatement,
           clearAssignmentsStatement,
           setAssignmentsStatement,
+          updateTeacherStatement,
         ]);
       } else {
-        await orm.batch([
+        [, , updatedTeacherRows] = await orm.batch([
           updateUserStatement,
-          updateTeacherStatement,
           clearAssignmentsStatement,
+          updateTeacherStatement,
         ]);
+      }
+      // 更新時刻の条件に合う行が無かった場合は、何も書き込まれていない。
+      if (expectedUpdatedAt !== undefined && updatedTeacherRows.length === 0) {
+        return null;
       }
 
       const classRoomsByTeacher = await loadClassRoomsByTeacherIds(orm, [id]);
