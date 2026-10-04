@@ -36,6 +36,7 @@ function buildDeps() {
     findExistingStudentNumbers: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateClassRoom: vi.fn(),
     createMany: vi.fn(),
     anonymizeByUserId: vi.fn().mockResolvedValue(true),
   };
