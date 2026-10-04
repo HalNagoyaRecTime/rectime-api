@@ -1,5 +1,6 @@
 import {
   StudentDTO,
+  StudentClassRoomAssignmentDTO,
   StudentManagementDTO,
   StudentImportCommitResult,
   StudentImportErrorReason,
@@ -175,6 +176,25 @@ export function createStudentService(
       }
 
       const updated = await studentRepository.update(id, input);
+      if (!updated) {
+        throw new Error('Student not found');
+      }
+      return toManagementDTO(updated);
+    },
+
+    async updateStudentClassRoom(
+      id: number,
+      assignment: StudentClassRoomAssignmentDTO
+    ): Promise<StudentManagementDTO> {
+      if (!(await studentRepository.findById(id))) {
+        throw new Error('Student not found');
+      }
+      await ensureClassRoomExists(assignment.class_room_id);
+
+      const updated = await studentRepository.updateClassRoom(id, {
+        classRoomId: assignment.class_room_id,
+        attendanceNumber: assignment.attendance_number,
+      });
       if (!updated) {
         throw new Error('Student not found');
       }

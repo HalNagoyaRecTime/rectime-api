@@ -32,6 +32,11 @@ export interface StudentWriteDTO {
   student_id_number: string;
 }
 
+export interface StudentClassRoomAssignmentDTO {
+  class_room_id: number | null;
+  attendance_number: number | null;
+}
+
 export interface StudentPageDTO {
   items: StudentManagementDTO[];
   total: number;

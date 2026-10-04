@@ -16,6 +16,7 @@ import { class_rooms, staffs, students, users } from '../database/schema';
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import type {
   StudentEntity,
+  StudentClassRoomAssignment,
   StudentPage,
   StudentWriteInput,
 } from '../../domain/entities/Student';
@@ -313,6 +314,34 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       const updated = studentResult.results[0] as
         ReturnedStudentRow | undefined;
       if (!user || !updated) return null;
+      const result = await orm
+        .select()
+        .from(students)
+        .innerJoin(users, eq(students.userId, users.id))
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
+        .where(eq(students.id, id))
+        .get();
+      return result ? toDomain(result) : null;
+    },
+
+    async updateClassRoom(
+      id: number,
+      assignment: StudentClassRoomAssignment
+    ): Promise<StudentEntity | null> {
+      const updateResult = await orm
+        .update(students)
+        .set({
+          classRoomId: assignment.classRoomId,
+          attendanceNumber: assignment.attendanceNumber,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(students.id, id))
+        .run();
+      if (updateResult.meta.changes === 0) {
+        return null;
+      }
+
       const result = await orm
         .select()
         .from(students)
