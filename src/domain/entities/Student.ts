@@ -2,10 +2,10 @@ export interface StudentEntity {
   studentId: number;
   userId: number;
   userName: string;
-  classRoomId: number;
-  classRoomCode: string;
-  classRoomName: string;
-  attendanceNumber: number;
+  classRoomId: number | null;
+  classRoomCode: string | null;
+  classRoomName: string | null;
+  attendanceNumber: number | null;
   studentIdNumber: string;
   isLiveActive: boolean;
   isStaff: boolean;
@@ -20,8 +20,8 @@ export interface StudentPage {
 
 export interface StudentWriteInput {
   displayName: string;
-  classRoomId: number;
-  attendanceNumber: number;
+  classRoomId: number | null;
+  attendanceNumber: number | null;
   studentIdNumber: string;
 }
 
