@@ -2,10 +2,10 @@ export interface StudentDTO {
   student_id: number;
   user_id: number;
   display_name: string;
-  class_room_id: number;
-  class_code: string;
-  class_room_name: string;
-  attendance_number: number;
+  class_room_id: number | null;
+  class_code: string | null;
+  class_room_name: string | null;
+  attendance_number: number | null;
   student_id_number: string;
   is_live_active: boolean;
 }
@@ -15,20 +15,20 @@ export interface StudentManagementDTO {
   user_id: number;
   display_name: string;
   student_id_number: string;
-  attendance_number: number;
+  attendance_number: number | null;
   is_live_active: boolean;
   is_staff: boolean;
   class_room: {
     class_room_id: number;
     class_code: string;
     class_name: string;
-  };
+  } | null;
 }
 
 export interface StudentWriteDTO {
   display_name: string;
-  class_room_id: number;
-  attendance_number: number;
+  class_room_id: number | null;
+  attendance_number: number | null;
   student_id_number: string;
 }
 
