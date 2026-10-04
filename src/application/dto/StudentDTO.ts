@@ -39,6 +39,11 @@ export interface StudentUpdateDTO extends StudentWriteDTO {
   lock_version?: number;
 }
 
+export interface StudentClassRoomAssignmentDTO {
+  class_room_id: number | null;
+  attendance_number: number | null;
+}
+
 export interface StudentPageDTO {
   items: StudentManagementDTO[];
   total: number;

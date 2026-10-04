@@ -1,5 +1,6 @@
 import type {
   StudentEntity,
+  StudentClassRoomAssignment,
   StudentPage,
   StudentSearchFilter,
   StudentUpdateInput,
@@ -30,6 +31,10 @@ export interface IStudentRepository {
   update: (
     id: number,
     student: StudentUpdateInput
+  ) => Promise<StudentEntity | null>;
+  updateClassRoom: (
+    id: number,
+    assignment: StudentClassRoomAssignment
   ) => Promise<StudentEntity | null>;
   createMany: (input: BulkCreateStudentsInput) => Promise<void>;
   // アカウント削除(#265 PR4)専用。student_id_numberはUNIQUE制約付きで、
