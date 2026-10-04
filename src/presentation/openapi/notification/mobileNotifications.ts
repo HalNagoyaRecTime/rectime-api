@@ -1,6 +1,5 @@
 import { createRoute } from '@hono/zod-openapi';
-import { MOBILE_NOTIFICATION_TYPES } from '../../../application/dto/MobileNotificationDTO';
-import { eventVenueListResponseSchema } from '../eventVenues';
+import { notificationTypeSchema } from './commonSchemas';
 import {
   badRequestResponse,
   bearerAuth,
@@ -15,30 +14,16 @@ import {
   z,
 } from '../schemas';
 
-export const mobileNotificationEventSchema = z
-  .object({
-    event_id: z.number().int(),
-    event_name: z.string(),
-    venues: eventVenueListResponseSchema,
-    start_time: z.string(),
-    end_time: z.string(),
-  })
-  .openapi('MobileNotificationEvent');
-
 export const mobileNotificationResponseSchema = z
   .object({
     notification_id: z.number().int(),
-    notification_type: z.enum(MOBILE_NOTIFICATION_TYPES).openapi({
-      description:
-        'Mobile互換の通知種別。notification_generalはmanualとして返す。',
-    }),
+    notification_type: notificationTypeSchema,
     title: z.string(),
     body: z.string(),
     scheduled_at: isoDateTimeSchema.openapi({
       description:
-        '本人Recipientがある最新Scheduleのsend_at。同時刻はSchedule ID降順で選ぶ。',
+        '認証UserがRecipientになったScheduleだけを対象にsend_at降順、同時刻はnotification_schedule_id降順で選んだ1件のsend_at。',
     }),
-    related_event: mobileNotificationEventSchema.nullable(),
   })
   .openapi('MobileNotification');
 
@@ -53,7 +38,16 @@ export const mobileNotificationIdParams = z.object({
   notificationId: positivePathParam('notificationId', '通知ID'),
 });
 
-export const mobileNotificationListQuery = paginationQuery(100, 50);
+export const mobileNotificationListQuery = paginationQuery(100, 50).extend({
+  offset: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .optional()
+    .default(0)
+    .openapi({ param: { name: 'offset', in: 'query' }, example: 0 }),
+});
 
 export const myNotificationListRoute = createRoute({
   method: 'get',
@@ -61,7 +55,7 @@ export const myNotificationListRoute = createRoute({
   tags: ['My notifications'],
   summary: '自分宛の通知一覧を取得する',
   description:
-    '本人Recipientがある通知をNotification単位で返す。Token有無やPush配送状態に依存せず、scheduled_at降順、同時刻は選択Schedule ID降順。',
+    '本人Recipientがあるnotification_general通知をNotification単位で返す。Token有無やPush配送状態に依存せず、本人RecipientがあるScheduleのうちsend_at降順、同時刻はnotification_schedule_id降順で選んだsend_atをscheduled_atとして返す。',
   security: bearerAuth,
   request: { query: mobileNotificationListQuery },
   responses: {

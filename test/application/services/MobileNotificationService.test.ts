@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMobileNotificationService } from '../../../src/application/services/MobileNotificationService';
-import { MOBILE_NOTIFICATION_TYPES } from '../../../src/application/dto/MobileNotificationDTO';
 import type { IMobileNotificationRepository } from '../../../src/domain/interfaces/repositories/IMobileNotificationRepository';
 
 describe('MobileNotificationService', () => {
@@ -37,7 +36,6 @@ describe('MobileNotificationService', () => {
       title: 'お知らせ',
       body: '本文',
       scheduledAt: '2026-07-23T09:00:00+09:00',
-      relatedEvent: null,
     };
     (repository.findByIdForUser as ReturnType<typeof vi.fn>).mockResolvedValue(
       entity
@@ -45,11 +43,10 @@ describe('MobileNotificationService', () => {
 
     await expect(service.getNotificationById(5, 12)).resolves.toEqual({
       notification_id: 5,
-      notification_type: 'manual',
+      notification_type: 'notification_general',
       title: 'お知らせ',
       body: '本文',
       scheduled_at: '2026-07-23T09:00:00+09:00',
-      related_event: null,
     });
     expect(repository.findByIdForUser).toHaveBeenCalledWith(5, 12);
   });
@@ -60,20 +57,10 @@ describe('MobileNotificationService', () => {
       notifications: [
         {
           id: 5,
-          type: 'event_reminder',
+          type: 'notification_general',
           title: '競技通知',
           body: '本文',
           scheduledAt: '2026-07-23T10:15:00+09:00',
-          relatedEvent: {
-            id: 3,
-            name: '綱引き',
-            venues: [
-              { venue_id: 2, venue_name: 'グラウンド' },
-              { venue_id: 7, venue_name: '第1体育館' },
-            ],
-            startTime: '1030',
-            endTime: '1100',
-          },
         },
       ],
       total: 1,
@@ -85,20 +72,10 @@ describe('MobileNotificationService', () => {
       notifications: [
         {
           notification_id: 5,
-          notification_type: 'event_reminder',
+          notification_type: 'notification_general',
           title: '競技通知',
           body: '本文',
           scheduled_at: '2026-07-23T10:15:00+09:00',
-          related_event: {
-            event_id: 3,
-            event_name: '綱引き',
-            venues: [
-              { venue_id: 2, venue_name: 'グラウンド' },
-              { venue_id: 7, venue_name: '第1体育館' },
-            ],
-            start_time: '1030',
-            end_time: '1100',
-          },
         },
       ],
       total: 1,
@@ -120,49 +97,6 @@ describe('MobileNotificationService', () => {
 
     await expect(service.getNotificationById(5, 12)).rejects.toThrow(
       'Notification not found'
-    );
-  });
-
-  it.each(['notification_general', ...MOBILE_NOTIFICATION_TYPES])(
-    '一覧と詳細の%sをMobile互換値へ変換しDomain値を保持する',
-    async type => {
-      const { repository, service } = setup();
-      const entity = {
-        id: 5,
-        type,
-        title: '通知',
-        body: '本文',
-        scheduledAt: '2026-07-23T00:00:00.000Z',
-        relatedEvent: null,
-      };
-      vi.mocked(repository.findAllForUser).mockResolvedValue({
-        notifications: [entity],
-        total: 1,
-      });
-      vi.mocked(repository.findByIdForUser).mockResolvedValue(entity);
-
-      const expectedType = type === 'notification_general' ? 'manual' : type;
-      const list = await service.getNotifications(12, { limit: 50, offset: 0 });
-      const detail = await service.getNotificationById(5, 12);
-      expect(list.notifications[0]).toEqual(detail);
-      expect(detail.notification_type).toBe(expectedType);
-      expect(entity.type).toBe(type);
-    }
-  );
-
-  it('Mobile互換範囲外のDomain値をResponseへ返さない', async () => {
-    const { repository, service } = setup();
-    (repository.findByIdForUser as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: 5,
-      type: 'unknown_value',
-      title: '通知',
-      body: '本文',
-      scheduledAt: '2026-07-23T00:00:00.000Z',
-      relatedEvent: null,
-    });
-
-    await expect(service.getNotificationById(5, 12)).rejects.toThrow(
-      '未対応のMobile通知種別です: unknown_value'
     );
   });
 });

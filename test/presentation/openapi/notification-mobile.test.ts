@@ -1,10 +1,9 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
-  MobileNotificationType,
   MobileNotificationDTO,
   MobileNotificationListResponseDTO,
 } from '../../../src/application/dto/MobileNotificationDTO';
-import { MOBILE_NOTIFICATION_TYPES } from '../../../src/application/dto/MobileNotificationDTO';
+import { NOTIFICATION_TYPES } from '../../../src/domain/entities/Notification';
 import { z } from '../../../src/presentation/openapi/schemas';
 import {
   mobileNotificationListResponseSchema,
@@ -13,25 +12,32 @@ import {
 } from '../../../src/presentation/openapi/notification/mobileNotifications';
 
 describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', () => {
-  it('Response DTOをPresentation側で再定義せず一致させる', () => {
-    expectTypeOf<
-      z.infer<typeof mobileNotificationResponseSchema>
-    >().toEqualTypeOf<MobileNotificationDTO>();
-    expectTypeOf<
-      z.infer<typeof mobileNotificationListResponseSchema>
-    >().toEqualTypeOf<MobileNotificationListResponseDTO>();
-    expectTypeOf<
-      MobileNotificationDTO['notification_type']
-    >().toEqualTypeOf<MobileNotificationType>();
-    expectTypeOf<
-      z.infer<typeof mobileNotificationResponseSchema>['notification_type']
-    >().toEqualTypeOf<MobileNotificationType>();
-    expectTypeOf<MobileNotificationType>().toEqualTypeOf<
-      'manual' | 'event_reminder' | 'schedule_reminder' | 'schedule_update'
+  it('Application DTOとOpenAPI response型が相互代入可能', () => {
+    type SchemaDTO = z.infer<typeof mobileNotificationResponseSchema>;
+    type SchemaListDTO = z.infer<typeof mobileNotificationListResponseSchema>;
+
+    expectTypeOf<MobileNotificationDTO>().toEqualTypeOf<SchemaDTO>();
+    expectTypeOf<SchemaDTO>().toEqualTypeOf<MobileNotificationDTO>();
+    expectTypeOf<MobileNotificationListResponseDTO>().toEqualTypeOf<SchemaListDTO>();
+    expectTypeOf<SchemaListDTO>().toEqualTypeOf<MobileNotificationListResponseDTO>();
+    expectTypeOf<MobileNotificationDTO['notification_type']>().toEqualTypeOf<
+      (typeof NOTIFICATION_TYPES)[number]
     >();
   });
 
-  it('既存Mobile契約のsnake_caseとpaginationを維持する', () => {
+  it('notification_generalを正本とし、related_eventをResponseに含めない', () => {
+    expect(mobileNotificationResponseSchema.shape).not.toHaveProperty(
+      'related_event'
+    );
+    expect(
+      mobileNotificationResponseSchema.safeParse({
+        notification_id: 108,
+        notification_type: 'notification_general',
+        title: '集合時間変更',
+        body: '集合時間が変更になりました。',
+        scheduled_at: '2026-11-07T15:35:00+09:00',
+      }).success
+    ).toBe(true);
     expect(
       mobileNotificationResponseSchema.safeParse({
         notification_id: 108,
@@ -39,17 +45,6 @@ describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', ()
         title: '集合時間変更',
         body: '集合時間が変更になりました。',
         scheduled_at: '2026-11-07T15:35:00+09:00',
-        related_event: null,
-      }).success
-    ).toBe(true);
-    expect(
-      mobileNotificationResponseSchema.safeParse({
-        notificationId: 108,
-        notification_type: 'manual',
-        title: '集合時間変更',
-        body: '集合時間が変更になりました。',
-        scheduled_at: '2026-11-07T15:35:00+09:00',
-        related_event: null,
       }).success
     ).toBe(false);
     expect(
@@ -62,35 +57,7 @@ describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', ()
     ).toBe(true);
   });
 
-  it('Mobile互換typeだけをResponseで許可する', () => {
-    for (const notificationType of MOBILE_NOTIFICATION_TYPES) {
-      expect(
-        mobileNotificationResponseSchema.safeParse({
-          notification_id: 108,
-          notification_type: notificationType,
-          title: '集合時間変更',
-          body: '集合時間が変更になりました。',
-          scheduled_at: '2026-11-07T15:35:00+09:00',
-          related_event: null,
-        }).success
-      ).toBe(true);
-    }
-
-    for (const notificationType of ['notification_general', 'unknown_value']) {
-      expect(
-        mobileNotificationResponseSchema.safeParse({
-          notification_id: 108,
-          notification_type: notificationType,
-          title: '集合時間変更',
-          body: '集合時間が変更になりました。',
-          scheduled_at: '2026-11-07T15:35:00+09:00',
-          related_event: null,
-        }).success
-      ).toBe(false);
-    }
-  });
-
-  it('共通pagination schemaをsafeParseするとMobileのdefaultが確定する', () => {
+  it('空queryでdefaultを適用し、safe integer外のoffsetを拒否する', () => {
     expect(mobileNotificationListQuery.safeParse({})).toMatchObject({
       success: true,
       data: { limit: 50, offset: 0 },
@@ -101,5 +68,10 @@ describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', ()
       success: true,
       data: { limit: 1, offset: 0 },
     });
+    expect(
+      mobileNotificationListQuery.safeParse({
+        offset: String(Number.MAX_SAFE_INTEGER + 1),
+      }).success
+    ).toBe(false);
   });
 });

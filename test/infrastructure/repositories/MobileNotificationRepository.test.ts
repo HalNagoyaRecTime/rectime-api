@@ -24,11 +24,14 @@ async function createToken(userId: number, token = 'mobile-test-token') {
   return row!.firebase_token_id;
 }
 
-async function createNotification(title = '通知') {
+async function createNotification(
+  title = '通知',
+  type = 'notification_general'
+) {
   const row = await env.DB.prepare(
-    "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('notification_general', 'Pushタイトル', 'Push本文', ?, ?) RETURNING notification_id"
+    "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES (?, 'Pushタイトル', 'Push本文', ?, ?) RETURNING notification_id"
   )
-    .bind(title, `${title}本文`)
+    .bind(type, title, `${title}本文`)
     .first<{ notification_id: number }>();
   return row!.notification_id;
 }
@@ -38,22 +41,14 @@ async function createSchedule(
   input: {
     sendAt?: string;
     status?: string;
-    eventId?: number;
-    tokenId?: number;
   } = {}
 ) {
   const row = await env.DB.prepare(
     `INSERT INTO notification_schedules
-      (notification_id, send_at, send_status, event_id, firebase_token_id)
-     VALUES (?, ?, ?, ?, ?) RETURNING notification_schedule_id`
+      (notification_id, send_at, send_status)
+     VALUES (?, ?, ?) RETURNING notification_schedule_id`
   )
-    .bind(
-      notificationId,
-      input.sendAt ?? oldTime,
-      input.status ?? 'completed',
-      input.eventId ?? null,
-      input.tokenId ?? null
-    )
+    .bind(notificationId, input.sendAt ?? oldTime, input.status ?? 'completed')
     .first<{ notification_schedule_id: number }>();
   return row!.notification_schedule_id;
 }
@@ -147,7 +142,6 @@ describe('MobileNotificationRepository', () => {
         title: '通知',
         body: '通知本文',
         scheduledAt: oldTime,
-        relatedEvent: null,
       });
       expect(await repository.findByIdForUser(notificationId, userId)).toEqual(
         list.notifications[0]
@@ -188,19 +182,35 @@ describe('MobileNotificationRepository', () => {
     const otherId = await createUser('他人');
     const tokenId = await createToken(userId);
     const notificationId = await createNotification();
-    const scheduleId = await createSchedule(notificationId, {
-      tokenId,
-      status: 'sent',
-    });
+    const scheduleId = await createSchedule(notificationId, { status: 'sent' });
     const recipientId = await createRecipient(scheduleId, otherId);
     await createDelivery(recipientId, tokenId, 'sent');
     const unresolvedId = await createNotification('Recipient未確定');
-    await createSchedule(unresolvedId, { tokenId, status: 'scheduled' });
+    await createSchedule(unresolvedId, { status: 'scheduled' });
 
     expect(await listForUser(userId)).toEqual({ notifications: [], total: 0 });
     expect(await repository.findByIdForUser(notificationId, userId)).toBeNull();
     expect(await repository.findByIdForUser(unresolvedId, userId)).toBeNull();
     expect(await repository.findByIdForUser(999999, userId)).toBeNull();
+  });
+
+  it('Recipientが誤って存在してもLegacy種別はv2履歴とtotalへ含めない', async () => {
+    const userId = await createUser();
+    const v2NotificationId = await createNotification('v2通知');
+    await createRecipient(await createSchedule(v2NotificationId), userId);
+    const legacyNotificationId = await createNotification(
+      'Legacy通知',
+      'event_reminder'
+    );
+    await createRecipient(await createSchedule(legacyNotificationId), userId);
+
+    expect(await listForUser(userId)).toMatchObject({ total: 1 });
+    expect(
+      (await listForUser(userId)).notifications.map(item => item.id)
+    ).toEqual([v2NotificationId]);
+    expect(
+      await repository.findByIdForUser(legacyNotificationId, userId)
+    ).toBeNull();
   });
 
   it('複数ScheduleをNotification単位にまとめ、本人の最新send_atを一覧と詳細で使う', async () => {
@@ -262,48 +272,6 @@ describe('MobileNotificationRepository', () => {
       notifications: [],
       total: 3,
     });
-  });
-
-  it('関連競技と会場順を維持し、同時刻なら最新Scheduleの情報を一覧・詳細で使う', async () => {
-    const userId = await createUser();
-    const event = await env.DB.prepare(
-      "INSERT INTO events (event_name, start_time, end_time) VALUES ('綱引き', '1030', '1100') RETURNING event_id"
-    ).first<{ event_id: number }>();
-    const firstVenue = await env.DB.prepare(
-      "INSERT INTO venues (venue_name) VALUES ('グラウンド') RETURNING venue_id"
-    ).first<{ venue_id: number }>();
-    const secondVenue = await env.DB.prepare(
-      "INSERT INTO venues (venue_name) VALUES ('第1体育館') RETURNING venue_id"
-    ).first<{ venue_id: number }>();
-    await env.DB.batch([
-      env.DB.prepare(
-        'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)'
-      ).bind(event!.event_id, secondVenue!.venue_id),
-      env.DB.prepare(
-        'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)'
-      ).bind(event!.event_id, firstVenue!.venue_id),
-    ]);
-    const notificationId = await createNotification('競技通知');
-    await createRecipient(await createSchedule(notificationId), userId);
-    await createRecipient(
-      await createSchedule(notificationId, { eventId: event!.event_id }),
-      userId
-    );
-
-    const list = await listForUser(userId);
-    expect(list.notifications[0].relatedEvent).toEqual({
-      id: event!.event_id,
-      name: '綱引き',
-      venues: [
-        { venue_id: firstVenue!.venue_id, venue_name: 'グラウンド' },
-        { venue_id: secondVenue!.venue_id, venue_name: '第1体育館' },
-      ],
-      startTime: '1030',
-      endTime: '1100',
-    });
-    expect(await repository.findByIdForUser(notificationId, userId)).toEqual(
-      list.notifications[0]
-    );
   });
 
   it('User削除でRecipientとDeliveryがCASCADEされ本人通知履歴から消える', async () => {

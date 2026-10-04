@@ -88,7 +88,7 @@ async function requestAs(userId: number, path: string) {
 }
 
 describe('Mobile通知履歴APIのRecipient基準回帰', () => {
-  it('実Route・認証・DIを通してTokenなし履歴、重複排除、pagination、互換Responseと本人限定詳細を返す', async () => {
+  it('実Route・認証・DIを通してToken非依存のv2履歴、重複排除、pagination、本人限定詳細を返す', async () => {
     const userId = await createUser('Mobile本人');
     const otherId = await createUser('Mobile他人');
     const firstId = await createNotification(
@@ -106,11 +106,10 @@ describe('Mobile通知履歴APIのRecipient基準回帰', () => {
     );
     const expected = {
       notification_id: secondId,
-      notification_type: 'manual',
+      notification_type: 'notification_general',
       title: '履歴タイトル',
       body: '履歴本文',
       scheduled_at: '2026-07-23T02:00:00.000Z',
-      related_event: null,
     };
 
     const list = await requestAs(userId, '/api/v1/me/notifications');
@@ -180,5 +179,56 @@ describe('Mobile通知履歴APIのRecipient基準回帰', () => {
         .bind(secondId)
         .first()
     ).toEqual({ notification_type: 'notification_general' });
+  });
+
+  it('実RouteでNotification IDのsafe integer境界を検証する', async () => {
+    const userId = await createUser('ID境界テスト');
+
+    const maximum = await requestAs(
+      userId,
+      `/api/v1/me/notifications/${Number.MAX_SAFE_INTEGER}`
+    );
+    expect(maximum.status).toBe(404);
+
+    for (const id of [
+      String(Number.MAX_SAFE_INTEGER + 1),
+      '9'.repeat(100),
+      '0',
+      '-1',
+      'not-a-number',
+    ]) {
+      const response = await requestAs(
+        userId,
+        `/api/v1/me/notifications/${id}`
+      );
+      expect(response.status, id).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+    }
+  });
+
+  it('実Routeでpagination境界と空queryのdefaultを検証する', async () => {
+    const userId = await createUser('pagination境界テスト');
+
+    const defaults = await requestAs(userId, '/api/v1/me/notifications');
+    expect(defaults.status).toBe(200);
+    expect(await defaults.json()).toMatchObject({ limit: 50, offset: 0 });
+
+    for (const query of [
+      'limit=0',
+      'limit=101',
+      'offset=-1',
+      `offset=${Number.MAX_SAFE_INTEGER + 1}`,
+    ]) {
+      const response = await requestAs(
+        userId,
+        `/api/v1/me/notifications?${query}`
+      );
+      expect(response.status, query).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+    }
   });
 });

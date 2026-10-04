@@ -526,10 +526,14 @@ apiV1.openapi(staffOnly(notificationPushDeliveryDetailRoute), c => {
     .notificationResultQueryController.getPushDeliveryDetail(c);
 });
 apiV1.openapi(authed(myNotificationListRoute), c => {
-  return c.get('container').mobileNotificationController.getNotifications(c);
+  return c
+    .get('container')
+    .mobileNotificationController.getNotifications(c, c.req.valid('query'));
 });
 apiV1.openapi(authed(myNotificationDetailRoute), c => {
-  return c.get('container').mobileNotificationController.getNotificationById(c);
+  return c
+    .get('container')
+    .mobileNotificationController.getNotificationById(c, c.req.valid('param'));
 });
 
 // Auth routes

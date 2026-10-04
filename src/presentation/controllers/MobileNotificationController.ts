@@ -8,10 +8,10 @@ import { CommonErrors } from '../errors/commonErrors';
 import { errorResponse } from '../errors/errorResponse';
 import { NotificationErrors } from '../errors/notificationErrors';
 import {
-  mobileNotificationIdParams,
   mobileNotificationListQuery,
+  mobileNotificationIdParams,
 } from '../openapi/notification/mobileNotifications';
-import { positivePathParamToNumber } from '../openapi/schemas';
+import { positivePathParamToNumber, type z } from '../openapi/schemas';
 
 type MobileNotificationContext = Context<{
   Bindings: Env;
@@ -21,31 +21,24 @@ type MobileNotificationContext = Context<{
 export function createMobileNotificationController(
   mobileNotificationService: IMobileNotificationService
 ) {
+  type ListQuery = z.infer<typeof mobileNotificationListQuery>;
+  type DetailParams = z.infer<typeof mobileNotificationIdParams>;
   const getAuthenticatedUserId = (c: MobileNotificationContext) => {
     const userId = c.get('authenticatedUserId');
     return userId ?? errorResponse(c, CommonErrors.UNAUTHORIZED);
   };
 
-  const getNotifications = async (c: MobileNotificationContext) => {
+  const getNotifications = async (
+    c: MobileNotificationContext,
+    query: ListQuery
+  ) => {
     const userId = getAuthenticatedUserId(c);
     if (typeof userId !== 'number') return userId;
-
-    const parsedQuery = mobileNotificationListQuery.safeParse({
-      limit: c.req.query('limit'),
-      offset: c.req.query('offset'),
-    });
-    if (!parsedQuery.success) {
-      return errorResponse(
-        c,
-        CommonErrors.VALIDATION_ERROR,
-        parsedQuery.error.flatten()
-      );
-    }
 
     try {
       const result = await mobileNotificationService.getNotifications(
         userId,
-        parsedQuery.data
+        query
       );
       return c.json(result, 200);
     } catch {
@@ -53,23 +46,14 @@ export function createMobileNotificationController(
     }
   };
 
-  const getNotificationById = async (c: MobileNotificationContext) => {
+  const getNotificationById = async (
+    c: MobileNotificationContext,
+    params: DetailParams
+  ) => {
     const userId = getAuthenticatedUserId(c);
     if (typeof userId !== 'number') return userId;
 
-    const parsedParams = mobileNotificationIdParams.safeParse({
-      notificationId: c.req.param('notificationId'),
-    });
-    if (!parsedParams.success) {
-      return errorResponse(
-        c,
-        CommonErrors.VALIDATION_ERROR,
-        parsedParams.error.flatten()
-      );
-    }
-    const notificationId = positivePathParamToNumber(
-      parsedParams.data.notificationId
-    );
+    const notificationId = positivePathParamToNumber(params.notificationId);
     if (notificationId === undefined) {
       return errorResponse(c, CommonErrors.VALIDATION_ERROR);
     }
