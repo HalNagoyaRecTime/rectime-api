@@ -13,7 +13,8 @@ export const FCM_RETRY_OFFSETS_SECONDS = [10, 30, 120, 300, 900] as const;
 export const FCM_PROCESSING_TIMEOUT_SECONDS = 120;
 export const FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS = 70;
 
-// HTTP v1の分類はFirebase公式仕様に基づく。INVALID_ARGUMENTでTokenは削除しない。
+// HTTP v1の一時系Retryは公式表の429 / 500 / 503と対応error statusに限定する。
+// INVALID_ARGUMENTでTokenは削除しない（payload不正でも返り得る）。
 // https://firebase.google.com/docs/cloud-messaging/error-codes
 export function classifyFcmError(
   error: unknown
@@ -29,7 +30,7 @@ export function classifyFcmError(
   )
     return 'permanent';
   if (
-    [408, 429, 500, 502, 503, 504].includes(error.httpStatus) ||
+    [429, 500, 503].includes(error.httpStatus) ||
     ['QUOTA_EXCEEDED', 'INTERNAL', 'UNAVAILABLE'].includes(
       error.fcmErrorCode ?? ''
     )
@@ -58,7 +59,7 @@ export function createNotificationRetryService(deps: {
         body: delivery.push_body,
         importance: { low: 1, normal: 2, high: 3 }[delivery.importance],
         data: {
-          type: 'manual',
+          type: delivery.notification_type,
           notificationId: String(delivery.notification_id),
         },
       });
@@ -70,8 +71,13 @@ export function createNotificationRetryService(deps: {
         await deps.firebaseTokenRepository.deleteById(
           delivery.firebase_token_id
         );
-      const offset = FCM_RETRY_OFFSETS_SECONDS[delivery.attempt_count - 1];
-      if (classification !== 'temporary' || offset === undefined) {
+      const nextMilestone = FCM_RETRY_OFFSETS_SECONDS.map(
+        offset => Date.parse(delivery.first_attempt_at) + offset * 1000
+      ).find(milestone => milestone > now.getTime());
+      const retryWindowEndsAt =
+        Date.parse(delivery.first_attempt_at) +
+        FCM_RETRY_OFFSETS_SECONDS[FCM_RETRY_OFFSETS_SECONDS.length - 1] * 1000;
+      if (classification !== 'temporary' || nextMilestone === undefined) {
         return (await repository.markFailed(
           delivery.notification_push_delivery_id,
           reason,
@@ -86,16 +92,29 @@ export function createNotificationRetryService(deps: {
       const rateLimited =
         error instanceof FcmRequestError &&
         (error.httpStatus === 429 || error.fcmErrorCode === 'QUOTA_EXCEEDED');
-      const delay = Math.max(
-        offset,
-        retryAfter,
-        rateLimited ? FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS : 0
-      );
+      const rateLimitNotBefore =
+        now.getTime() +
+        Math.max(
+          retryAfter,
+          rateLimited ? FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS : 0
+        ) *
+          1000;
+      const nextRetryAt = Math.max(nextMilestone, rateLimitNotBefore);
+      if (nextRetryAt > retryWindowEndsAt) {
+        return (await repository.markFailed(
+          delivery.notification_push_delivery_id,
+          reason,
+          nowIso,
+          delivery.attempt_count
+        ))
+          ? 'failed'
+          : 'superseded';
+      }
       return repository.saveRetry(
         delivery.notification_push_delivery_id,
         delivery.attempt_count,
         reason,
-        new Date(now.getTime() + delay * 1000).toISOString(),
+        new Date(nextRetryAt).toISOString(),
         nowIso
       );
     }

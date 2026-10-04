@@ -13,6 +13,7 @@ interface DeliveryIdRow {
 
 interface ClaimedDeliveryRow extends DeliveryIdRow {
   attempt_count: number;
+  first_attempt_at: string;
   notification_schedule_id: number;
   notification_id: number;
   firebase_token_id: number;
@@ -85,7 +86,6 @@ export function createNotificationDeliveryRepository(
              FROM notification_recipients r
              JOIN firebase_tokens t
                ON t.user_id = r.user_id
-              AND t.is_firebase_active = 1
              WHERE r.notification_schedule_id = ?
                AND EXISTS (
                  SELECT 1 FROM notification_schedules s
@@ -190,11 +190,12 @@ export function createNotificationDeliveryRepository(
           AND (firebase_token_id IS NULL OR attempt_count >= ? OR EXISTS (
             SELECT 1 FROM notification_recipients r JOIN notification_schedules s USING (notification_schedule_id)
             WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND s.send_status = 'stopped'
-          ))
+          ) OR (status IN ('retry_wait', 'sending') AND first_attempt_at IS NOT NULL
+            AND julianday(first_attempt_at, '+900 seconds') < julianday(?)))
         RETURNING (SELECT notification_schedule_id FROM notification_recipients r
           WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id) AS notification_schedule_id`
         )
-        .bind(now, staleBefore, maxAttempts)
+        .bind(now, staleBefore, maxAttempts, now)
         .all<{ notification_schedule_id: number }>();
       return [
         ...new Set(retired.results.map(row => row.notification_schedule_id)),
@@ -296,7 +297,7 @@ export function createNotificationDeliveryRepository(
       const result = await db
         .prepare(
           `UPDATE notification_schedules
-           SET send_status = 'failed', failed_reason = ?, updated_at = ?
+           SET send_status = 'failed', reason = ?, updated_at = ?
            WHERE notification_schedule_id = ?
              AND send_status = 'resolving'
              AND recipients_resolved_at IS NOT NULL
@@ -325,9 +326,9 @@ async function claimDeliveries(
   const eligible =
     staleBefore === undefined
       ? "status = 'pending'"
-      : "attempt_count < 6 AND ((status = 'retry_wait' AND julianday(next_retry_at) <= julianday(?)) OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))";
+      : "attempt_count < 6 AND first_attempt_at IS NOT NULL AND julianday(first_attempt_at, '+900 seconds') >= julianday(?) AND ((status = 'retry_wait' AND julianday(next_retry_at) <= julianday(?)) OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))";
   const eligibilityBindings =
-    staleBefore === undefined ? [] : [now, staleBefore];
+    staleBefore === undefined ? [] : [now, now, staleBefore];
   const qualifiedEligible = eligible.replace(
     /\b(status|attempt_count|next_retry_at|last_attempt_at)\b/g,
     'd.$1'
@@ -400,6 +401,7 @@ async function claimDeliveries(
     .prepare(
       `SELECT
              d.notification_push_delivery_id, d.attempt_count,
+             d.first_attempt_at,
              r.notification_schedule_id,
              s.notification_id,
              d.firebase_token_id,
@@ -432,7 +434,8 @@ async function claimDeliveries(
       notification_push_delivery_id: row.notification_push_delivery_id,
       notification_schedule_id: row.notification_schedule_id,
       notification_id: row.notification_id,
-      notification_type: 'notification_general' as const,
+      first_attempt_at: row.first_attempt_at,
+      notification_type: 'notification_general',
       firebase_token_id: row.firebase_token_id,
       fcm_token: row.fcm_token,
       platform: row.platform,
