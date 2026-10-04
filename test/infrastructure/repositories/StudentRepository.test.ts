@@ -178,6 +178,8 @@ describe('StudentRepository', () => {
         if (leftValue === rightValue) {
           return left.studentId - right.studentId;
         }
+        if (leftValue === null) return -1 * direction;
+        if (rightValue === null) return 1 * direction;
         return (leftValue < rightValue ? -1 : 1) * direction;
       };
 
@@ -212,6 +214,45 @@ describe('StudentRepository', () => {
       expect(second.items[0].studentId).toBe(all.items[1].studentId);
       expect(first.total).toBe(all.total);
       expect(second.total).toBe(all.total);
+    });
+
+    it('クラス未所属の学生も一覧と検索結果に含める', async () => {
+      const user = await env.DB.prepare(
+        'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
+      )
+        .bind('未所属検索対象')
+        .first<{ user_id: number }>();
+      const student = await env.DB.prepare(
+        `INSERT INTO students (
+          user_id,
+          class_room_id,
+          attendance_number,
+          student_id_number
+        ) VALUES (?, NULL, NULL, ?) RETURNING student_id`
+      )
+        .bind(user!.user_id, 'UNASSIGNED-SEARCH')
+        .first<{ student_id: number }>();
+
+      try {
+        const result = await repo.findAll({ search: '未所属検索対象' });
+
+        expect(result.items).toEqual([
+          expect.objectContaining({
+            studentId: student!.student_id,
+            classRoomId: null,
+            classRoomCode: null,
+            classRoomName: null,
+            attendanceNumber: null,
+          }),
+        ]);
+      } finally {
+        await env.DB.prepare('DELETE FROM students WHERE student_id = ?')
+          .bind(student!.student_id)
+          .run();
+        await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+          .bind(user!.user_id)
+          .run();
+      }
     });
   });
 
@@ -320,6 +361,27 @@ describe('StudentRepository', () => {
           studentIdNumber: '19999',
         })
       ).resolves.toBeNull();
+    });
+
+    it('クラス未所属の学生を作成し、所属情報なしで取得できる', async () => {
+      const created = await repo.create({
+        displayName: '未所属学生',
+        classRoomId: null,
+        attendanceNumber: null,
+        studentIdNumber: 'UNASSIGNED-CREATE',
+      });
+
+      expect(created).toMatchObject({
+        classRoomId: null,
+        classRoomCode: null,
+        classRoomName: null,
+        attendanceNumber: null,
+      });
+      await expect(repo.findById(created.studentId)).resolves.toMatchObject({
+        studentId: created.studentId,
+        classRoomId: null,
+        attendanceNumber: null,
+      });
     });
   });
 
