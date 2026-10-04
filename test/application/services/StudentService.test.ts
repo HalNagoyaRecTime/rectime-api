@@ -117,6 +117,7 @@ describe('StudentService', () => {
         user_id: student.userId,
         display_name: student.userName,
         class_room_id: student.classRoomId,
+        class_code: student.classRoomCode,
         class_room_name: student.classRoomName,
         attendance_number: student.attendanceNumber,
         student_id_number: student.studentIdNumber,

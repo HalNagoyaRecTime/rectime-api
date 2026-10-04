@@ -310,12 +310,16 @@ describe('GET /auth/me', () => {
     const body = (await res.json()) as {
       user?: {
         student_id_number: string | null;
+        class_code: string | null;
         class_room_name: string | null;
+        attendance_number: number | null;
       };
     };
     expect(body.user).toMatchObject({
       student_id_number: '50001',
+      class_code: '3A',
       class_room_name: '3年A組',
+      attendance_number: 1,
     });
   });
 
@@ -353,12 +357,16 @@ describe('GET /auth/me', () => {
     const body = (await res.json()) as {
       user?: {
         student_id_number: string | null;
+        class_code: string | null;
         class_room_name: string | null;
+        attendance_number: number | null;
       };
     };
     expect(body.user).toMatchObject({
       student_id_number: null,
+      class_code: null,
       class_room_name: null,
+      attendance_number: null,
     });
   });
 

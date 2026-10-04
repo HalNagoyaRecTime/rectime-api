@@ -122,7 +122,9 @@ account.get('/me', async c => {
         avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
         avatar_updated_at: claims.avatar_updated_at ?? null,
         student_id_number: student?.student_id_number ?? null,
+        class_code: student?.class_code ?? null,
         class_room_name: student?.class_room_name ?? null,
+        attendance_number: student?.attendance_number ?? null,
       },
       categories
     ),
