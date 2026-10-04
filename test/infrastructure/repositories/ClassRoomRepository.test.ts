@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createClassRoomRepository } from '../../../src/infrastructure/repositories/ClassRoomRepository';
+import { createUserStatusRepository } from '../../../src/infrastructure/repositories/UserStatusRepository';
 import type { IClassRoomRepository } from '../../../src/domain/interfaces/repositories/IClassRoomRepository';
 import * as schema from '../../../src/infrastructure/database/schema';
 import {
@@ -505,6 +506,40 @@ describe('ClassRoomRepository', () => {
 
       await expect(repo.findById(target!.classRoomId)).resolves.toMatchObject({
         className: '2年Bクラス（改称）',
+        teacher: { displayName: '担任教員' },
+      });
+    });
+
+    it('取得後に停止中の担任が再有効化されていた場合、更新時刻付きの更新は0件更新になり担任の割り当ては残る', async () => {
+      const target = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
+        c => c.classCode === '12B'
+      );
+      await env.DB.prepare(
+        "UPDATE users SET is_live_active = 0 WHERE user_name = '担任教員'"
+      ).run();
+      // 管理画面が取得した時点の教室。担任は停止中のため null で返る
+      const fetched = await repo.findById(target!.classRoomId);
+      expect(fetched?.teacher).toBeNull();
+      const teacherUser = await env.DB.prepare(
+        "SELECT user_id FROM users WHERE user_name = '担任教員'"
+      ).first<{ user_id: number }>();
+
+      // 取得後に、別の操作で担任が再有効化される
+      await createUserStatusRepository(env.DB).updateLiveActive(
+        teacherUser!.user_id,
+        true
+      );
+
+      const updated = await repo.update(target!.classRoomId, {
+        classCode: '12B',
+        className: '上書きされてはいけない',
+        teacherId: null,
+        expectedUpdatedAt: fetched!.updatedAt,
+      });
+
+      expect(updated).toBeNull();
+      await expect(repo.findById(target!.classRoomId)).resolves.toMatchObject({
+        className: fetched!.className,
         teacher: { displayName: '担任教員' },
       });
     });

@@ -291,6 +291,10 @@ export function createClassRoomRepository(
       // されていないこともWHEREで確認する。GETとPUTの間に別操作が挟まっていれば
       // 0件更新になり、呼び出し側がnullとして受け取る。
       //
+      // 担任の稼働状態が変わったときは、担任クラスの updated_at も進む
+      // （UserStatusRepository.updateLiveActive）。そのため、更新時刻を指定していれば、
+      // 取得後に再有効化された担任を、null が送られてきたまま消すことはない。
+      //
       // 更新時刻を指定しない呼び出しでは、この確認は行われない。据え置きの判定は
       // UPDATE実行時点のDBの状態を見るため、GETとPUTの間に担任が再有効化されると、
       // GET時点でnullだった値がそのまま送られて割り当てを消してしまう。
