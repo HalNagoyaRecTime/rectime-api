@@ -89,6 +89,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/staffs/{staffId}',
       '/api/v1/students',
       '/api/v1/students/{studentId}',
+      '/api/v1/students/{studentId}/classroom',
       '/api/v1/teachers',
       '/api/v1/teachers/{teacherId}',
       '/api/v1/venues',
@@ -211,7 +212,10 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(56);
+    expect(documentedOperations).toHaveLength(57);
+    expect(
+      document.paths['/api/v1/students/{studentId}/classroom']
+    ).toHaveProperty('patch');
     expect(
       document.paths['/api/v1/admin/notifications/{notificationId}']
     ).toHaveProperty('patch');
@@ -256,6 +260,9 @@ describe('OpenAPI documentation', () => {
     expect(document.paths['/api/v1/students'].get?.security).toEqual([
       { Bearer: [] },
     ]);
+    expect(
+      document.paths['/api/v1/students/{studentId}/classroom'].patch?.security
+    ).toEqual([{ Bearer: [] }]);
     expect(
       document.paths['/api/v1/admin/users/{userId}'].patch?.security
     ).toEqual([{ Bearer: [] }]);

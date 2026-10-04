@@ -385,6 +385,47 @@ describe('StudentRepository', () => {
     });
   });
 
+  describe('updateClassRoom', () => {
+    it('所属変更と未所属化ができる', async () => {
+      const target = seeded.students[0];
+      try {
+        const moved = await repo.updateClassRoom(target.studentId, {
+          classRoomId: seeded.secondClassRoomId,
+          attendanceNumber: 20,
+        });
+        expect(moved).toMatchObject({
+          classRoomId: seeded.secondClassRoomId,
+          attendanceNumber: 20,
+        });
+
+        const unassigned = await repo.updateClassRoom(target.studentId, {
+          classRoomId: null,
+          attendanceNumber: null,
+        });
+        expect(unassigned).toMatchObject({
+          classRoomId: null,
+          classRoomCode: null,
+          classRoomName: null,
+          attendanceNumber: null,
+        });
+      } finally {
+        await repo.updateClassRoom(target.studentId, {
+          classRoomId: target.classRoomId,
+          attendanceNumber: target.attendanceNumber,
+        });
+      }
+    });
+
+    it('存在しないStudentはnullを返す', async () => {
+      await expect(
+        repo.updateClassRoom(999999, {
+          classRoomId: null,
+          attendanceNumber: null,
+        })
+      ).resolves.toBeNull();
+    });
+  });
+
   describe('findExistingStudentNumbers', () => {
     it('2,000件の候補から、DBに実在する学籍番号だけをチャンク境界をまたいでもまとめて返す', async () => {
       const candidates = Array.from(
