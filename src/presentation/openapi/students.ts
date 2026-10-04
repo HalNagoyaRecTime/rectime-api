@@ -98,6 +98,22 @@ export const studentWriteSchema = z
   )
   .openapi('StudentWriteRequest');
 
+export const studentClassRoomAssignmentSchema = z
+  .object({
+    class_room_id: z.number().int().positive().nullable(),
+    attendance_number: z.number().int().positive().nullable(),
+  })
+  .strict()
+  .refine(
+    value =>
+      (value.class_room_id === null) === (value.attendance_number === null),
+    {
+      message:
+        'class_room_id and attendance_number must both be null or both have values',
+    }
+  )
+  .openapi('StudentClassRoomAssignmentRequest');
+
 export const studentListRoute = createRoute({
   method: 'get',
   path: '/students',
@@ -174,6 +190,31 @@ export const studentUpdateRoute = createRoute({
     403: forbiddenResponse,
     404: notFoundResponse,
     409: conflictResponse,
+    500: internalServerErrorResponse,
+  },
+});
+
+export const studentClassRoomUpdateRoute = createRoute({
+  method: 'patch',
+  path: '/students/{studentId}/classroom',
+  tags: ['Students'],
+  summary: '学生のクラス所属を変更する',
+  security: bearerAuth,
+  request: {
+    params: studentIdParams,
+    body: {
+      content: {
+        'application/json': { schema: studentClassRoomAssignmentSchema },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: jsonResponse(studentResponseSchema, '所属変更後の学生'),
+    400: badRequestResponse,
+    401: unauthorizedResponse,
+    403: forbiddenResponse,
+    404: notFoundResponse,
     500: internalServerErrorResponse,
   },
 });

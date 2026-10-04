@@ -40,6 +40,7 @@ import {
 } from './presentation/openapi/system';
 import {
   studentCreateRoute,
+  studentClassRoomUpdateRoute,
   studentDetailRoute,
   studentListRoute,
   studentUpdateRoute,
@@ -269,6 +270,9 @@ apiV1.openapi(staffOnly(studentCreateRoute), c => {
 });
 apiV1.openapi(staffOnly(studentUpdateRoute), c => {
   return c.get('container').studentController.updateStudent(c);
+});
+apiV1.openapi(staffOnly(studentClassRoomUpdateRoute), c => {
+  return c.get('container').studentController.updateStudentClassRoom(c);
 });
 
 // Staff routes
