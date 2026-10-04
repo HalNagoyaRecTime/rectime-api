@@ -1,5 +1,6 @@
 import {
   StudentDTO,
+  StudentClassRoomAssignmentDTO,
   StudentManagementDTO,
   StudentImportCommitResult,
   StudentImportInput,
@@ -17,6 +18,10 @@ export interface IStudentService {
   updateStudent: (
     id: number,
     student: StudentWriteDTO
+  ) => Promise<StudentManagementDTO>;
+  updateStudentClassRoom: (
+    id: number,
+    assignment: StudentClassRoomAssignmentDTO
   ) => Promise<StudentManagementDTO>;
   validateStudentImport: (
     input: StudentImportInput

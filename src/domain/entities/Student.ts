@@ -25,6 +25,11 @@ export interface StudentWriteInput {
   studentIdNumber: string;
 }
 
+export interface StudentClassRoomAssignment {
+  classRoomId: number | null;
+  attendanceNumber: number | null;
+}
+
 export interface StudentSearchFilter {
   search?: string;
   classRoomId?: number;
