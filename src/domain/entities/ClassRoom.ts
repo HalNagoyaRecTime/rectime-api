@@ -10,6 +10,7 @@ export interface ClassRoomEntity {
   className: string;
   studentCount: number;
   teacher: ClassRoomTeacher | null;
+  updatedAt: string;
 }
 
 export interface ClassRoomPage {

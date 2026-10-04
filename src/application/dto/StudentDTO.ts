@@ -23,6 +23,7 @@ export interface StudentManagementDTO {
     class_code: string;
     class_name: string;
   };
+  updated_at: string;
 }
 
 export interface StudentWriteDTO {

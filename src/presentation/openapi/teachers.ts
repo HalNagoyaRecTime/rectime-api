@@ -34,6 +34,7 @@ export const teacherResponseSchema = z
     is_live_active: z.boolean(),
     is_staff: z.boolean(),
     class_rooms: z.array(teacherClassRoomSchema),
+    updated_at: z.string(),
   })
   .openapi('Teacher');
 

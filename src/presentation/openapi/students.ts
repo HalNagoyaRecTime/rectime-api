@@ -29,6 +29,7 @@ export const studentResponseSchema = z
       class_code: z.string(),
       class_name: z.string(),
     }),
+    updated_at: z.string(),
   })
   .openapi('Student');
 

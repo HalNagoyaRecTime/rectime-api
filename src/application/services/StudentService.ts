@@ -47,6 +47,7 @@ function toManagementDTO(student: StudentEntity): StudentManagementDTO {
       class_code: student.classRoomCode,
       class_name: student.classRoomName,
     },
+    updated_at: student.updatedAt,
   };
 }
 

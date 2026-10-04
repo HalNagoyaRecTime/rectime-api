@@ -13,6 +13,7 @@ function buildTeacher(overrides: Partial<TeacherEntity> = {}): TeacherEntity {
     isLiveActive: true,
     isStaff: false,
     classRooms: [],
+    updatedAt: '2026-01-01 00:00:00',
     ...overrides,
   };
 }
@@ -77,6 +78,7 @@ describe('TeacherService', () => {
         is_live_active: true,
         is_staff: false,
         class_rooms: [],
+        updated_at: '2026-01-01 00:00:00',
       });
       expect(
         classRoomRepository.findExistingClassRoomIds
@@ -124,6 +126,7 @@ describe('TeacherService', () => {
           class_code: classRoom.classCode,
           class_name: classRoom.className,
         })),
+        updated_at: teacher.updatedAt,
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
     });

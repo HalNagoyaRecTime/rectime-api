@@ -17,6 +17,7 @@ function buildTeacher(overrides: Partial<TeacherDTO> = {}): TeacherDTO {
     is_live_active: true,
     is_staff: false,
     class_rooms: [],
+    updated_at: '2026-01-01 00:00:00',
     ...overrides,
   };
 }

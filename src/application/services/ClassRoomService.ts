@@ -100,6 +100,7 @@ export function createClassRoomService(
           display_name: classroom.teacher.displayName,
         }
       : null,
+    updated_at: classroom.updatedAt,
   });
 
   const ensureTeacherExists = async (teacherId: number | null) => {

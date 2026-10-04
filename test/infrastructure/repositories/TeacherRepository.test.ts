@@ -339,6 +339,23 @@ describe('TeacherRepository', () => {
     it('存在しない id の場合は null を返す', async () => {
       expect(await repo.findById(999999)).toBeNull();
     });
+
+    it('teachers.updated_at を updatedAt として一覧・詳細の両方で返す', async () => {
+      const target = seeded.teachers[0];
+      const row = await env.DB.prepare(
+        'SELECT updated_at FROM teachers WHERE teacher_id = ?'
+      )
+        .bind(target.teacherId)
+        .first<{ updated_at: string }>();
+
+      expect((await repo.findById(target.teacherId))?.updatedAt).toBe(
+        row?.updated_at
+      );
+      const listed = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
+        item => item.teacherId === target.teacherId
+      );
+      expect(listed?.updatedAt).toBe(row?.updated_at);
+    });
   });
 
   describe('findMicrosoftLinkCandidateByEmail', () => {

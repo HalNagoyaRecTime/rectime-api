@@ -188,6 +188,20 @@ describe('ClassRoomRepository', () => {
     await expect(repo.findById(999999)).resolves.toBeNull();
   });
 
+  it('class_rooms.updated_at を updatedAt として一覧・詳細の両方で返す', async () => {
+    const classroom = (await repo.findAll({ limit: 1, offset: 0 })).items[0];
+    const row = await env.DB.prepare(
+      'SELECT updated_at FROM class_rooms WHERE class_room_id = ?'
+    )
+      .bind(classroom.classRoomId)
+      .first<{ updated_at: string }>();
+
+    expect(classroom.updatedAt).toBe(row?.updated_at);
+    await expect(repo.findById(classroom.classRoomId)).resolves.toMatchObject({
+      updatedAt: row?.updated_at,
+    });
+  });
+
   it('担任未設定のクラスを作成・更新・削除できる', async () => {
     const created = await repo.create({
       classCode: '13A',

@@ -9,6 +9,7 @@ export interface StudentEntity {
   studentIdNumber: string;
   isLiveActive: boolean;
   isStaff: boolean;
+  updatedAt: string;
 }
 
 export interface StudentPage {

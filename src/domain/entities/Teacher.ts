@@ -12,6 +12,7 @@ export interface TeacherEntity {
   isLiveActive: boolean;
   isStaff: boolean;
   classRooms: TeacherClassRoomEntity[];
+  updatedAt: string;
 }
 
 export interface TeacherSearchFilter {

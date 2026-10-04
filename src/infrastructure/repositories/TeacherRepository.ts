@@ -105,6 +105,7 @@ function toEntity(
     isLiveActive: Boolean(row.users.isLiveActive),
     isStaff: Boolean(row.staffs),
     classRooms,
+    updatedAt: row.teachers.updatedAt,
   };
 }
 

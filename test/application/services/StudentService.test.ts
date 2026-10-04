@@ -16,6 +16,7 @@ function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
     studentIdNumber: '10000',
     isLiveActive: true,
     isStaff: false,
+    updatedAt: '2026-01-01 00:00:00',
     ...overrides,
   };
 }
@@ -82,6 +83,7 @@ describe('StudentService', () => {
           class_code: '1A',
           class_name: student.classRoomName,
         },
+        updated_at: student.updatedAt,
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
     });

@@ -10,6 +10,7 @@ export interface ClassRoomDTO {
   class_name: string;
   student_count: number;
   teacher: ClassRoomTeacherDTO | null;
+  updated_at: string;
 }
 
 export interface ClassRoomPageDTO {
