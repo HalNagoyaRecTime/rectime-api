@@ -396,10 +396,14 @@ async function claimDeliveries(
   );
   if (claimedIds.length === 0) return [];
 
-  const claimedPlaceholders = claimedIds.map(() => '?').join(', ');
-  const details = await db
-    .prepare(
-      `SELECT
+  const rows: ClaimedDeliveryRow[] = [];
+  // D1のbind上限100個のうち、取得時刻に1個を使用する。
+  for (let offset = 0; offset < claimedIds.length; offset += 99) {
+    const detailIds = claimedIds.slice(offset, offset + 99);
+    const claimedPlaceholders = detailIds.map(() => '?').join(', ');
+    const details = await db
+      .prepare(
+        `SELECT
              d.notification_push_delivery_id, d.attempt_count,
              d.first_attempt_at,
              r.notification_schedule_id,
@@ -421,11 +425,14 @@ async function claimDeliveries(
              AND d.status = 'sending' AND d.last_attempt_at = ?
              AND n.notification_type = 'notification_general'
            ORDER BY d.notification_push_delivery_id`
-    )
-    .bind(...claimedIds, now)
-    .all<ClaimedDeliveryRow>();
+      )
+      .bind(...detailIds, now)
+      .all<ClaimedDeliveryRow>();
 
-  return details.results.map(row => {
+    rows.push(...details.results);
+  }
+
+  return rows.map(row => {
     if (row.platform !== 1 && row.platform !== 2) {
       throw new Error(`不正なFirebase platformです: ${row.platform}`);
     }

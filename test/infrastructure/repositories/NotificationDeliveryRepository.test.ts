@@ -1,3 +1,4 @@
+import { createNotificationRetryService } from '../../../src/application/services/NotificationRetryService';
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NotificationDeliveryMessage } from '../../../src/domain/entities/NotificationDelivery';
@@ -152,6 +153,63 @@ describe('NotificationDeliveryRepository and Service', () => {
       env.DB.prepare('DELETE FROM users'),
     ]);
   });
+
+  it.each(['初回', '再送', 'timeout回収'] as const)(
+    '100件の%s配信でD1のbind上限を超えず全件送信する',
+    async mode => {
+      const fixture = await createSchedule();
+      for (let index = 0; index < 100; index++) {
+        await insertToken(
+          fixture.recipientUserId,
+          `配信上限テスト-${index}`,
+          1
+        );
+      }
+      await resolve(fixture.scheduleId);
+      const h = createHarness();
+      await h.service.enqueueReadySchedules(new Date(NOW));
+      let result;
+      if (mode === '初回') {
+        result = await h.service.sendQueuedNotifications(
+          [fixture.scheduleId],
+          new Date(NOW)
+        );
+      } else {
+        const claimed = await deliveryRepository.claimPendingDeliveries(
+          [fixture.scheduleId],
+          NOW,
+          100
+        );
+        expect(claimed).toHaveLength(100);
+        if (mode === '再送') {
+          await env.DB.prepare(
+            "UPDATE notification_push_deliveries SET status = 'retry_wait', next_retry_at = ?"
+          )
+            .bind(NOW)
+            .run();
+        }
+        const retryService = createNotificationRetryService({
+          notificationDeliveryRepository: deliveryRepository,
+          firebaseTokenRepository,
+          fcmService: h.fcm,
+        });
+        result = await retryService.retryDueDeliveries(
+          new Date(Date.parse(NOW) + 121_000)
+        );
+      }
+      expect(result).toEqual({ claimed: 100, sent: 100, failed: 0 });
+      expect(h.fcm.sendNotificationToToken).toHaveBeenCalledTimes(100);
+      expect(await deliveryRows(fixture.scheduleId)).toHaveLength(100);
+      expect(
+        (await deliveryRows(fixture.scheduleId)).every(
+          row => row.status === 'sent'
+        )
+      ).toBe(true);
+      expect(await scheduleStatus(fixture.scheduleId)).toMatchObject({
+        send_status: 'completed',
+      });
+    }
+  );
 
   it('Tokenが存在しない場合はDeliveryを作らずScheduleを完了する', async () => {
     const fixture = await createSchedule();
@@ -518,7 +576,7 @@ describe('NotificationDeliveryRepository and Service', () => {
     });
   });
 
-  it('FCM success/failureを保存し、Domain通知typeのpayloadで部分失敗でもScheduleを完了する', async () => {
+  it('FCM success/failureを保存し、既存モバイル互換のpayloadで部分失敗でもScheduleを完了する', async () => {
     const fixture = await createSchedule('low');
     await insertToken(fixture.recipientUserId, 'delivery-success-token', 1);
     await insertToken(fixture.recipientUserId, 'delivery-failed-token', 2);
@@ -555,7 +613,7 @@ describe('NotificationDeliveryRepository and Service', () => {
         body: 'Delivery push body',
         importance: 1,
         data: {
-          type: 'notification_general',
+          type: 'manual',
           notificationId: String(fixture.notificationId),
         },
       })

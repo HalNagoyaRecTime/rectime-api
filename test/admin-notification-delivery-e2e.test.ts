@@ -228,7 +228,7 @@ describe('Admin notification POST to FCM', () => {
         body: 'E2E push body',
         importance: 2,
         data: {
-          type: 'notification_general',
+          type: 'manual',
           notificationId: String(created.notificationId),
         },
       })

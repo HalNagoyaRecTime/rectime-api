@@ -59,7 +59,11 @@ export function createNotificationRetryService(deps: {
         body: delivery.push_body,
         importance: { low: 1, normal: 2, high: 3 }[delivery.importance],
         data: {
-          type: delivery.notification_type,
+          // モバイルの通知詳細遷移で使用する既存のpayload契約を維持する。
+          type:
+            delivery.notification_type === 'notification_general'
+              ? 'manual'
+              : delivery.notification_type,
           notificationId: String(delivery.notification_id),
         },
       });
