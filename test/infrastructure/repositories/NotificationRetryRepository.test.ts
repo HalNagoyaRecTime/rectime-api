@@ -135,7 +135,7 @@ describe('Retryとtimeout回収のD1統合', () => {
     expect(h.sendNotificationToToken).toHaveBeenCalledWith(
       expect.objectContaining({
         data: {
-          type: 'notification_general',
+          type: 'manual',
           notificationId: String(delivery.notification_id),
         },
       })

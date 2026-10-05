@@ -102,6 +102,10 @@ import { firebaseTokenRegistrationRoute } from './presentation/openapi/notificat
 import { notificationScheduleResultsRoute } from './presentation/openapi/notification/schedules';
 import { notificationScheduleStopRoute } from './presentation/openapi/notification/schedules';
 import {
+  notificationScheduleResendRoute,
+  notificationScheduleDeleteRoute,
+} from './presentation/openapi/notification/schedules';
+import {
   notificationScheduleListRoute,
   notificationScheduleDetailRoute,
 } from './presentation/openapi/notification/schedules';
@@ -456,6 +460,23 @@ apiV1.openapi(staffOnly(notificationScheduleStopRoute), c => {
       Number(c.req.valid('param').notificationScheduleId)
     );
 });
+apiV1.openapi(staffOnly(notificationScheduleResendRoute), c =>
+  c
+    .get('container')
+    .notificationScheduleActionController.resendSchedule(
+      c,
+      Number(c.req.valid('param').notificationScheduleId),
+      c.req.valid('json')
+    )
+);
+apiV1.openapi(staffOnly(notificationScheduleDeleteRoute), c =>
+  c
+    .get('container')
+    .notificationScheduleActionController.cancelSchedule(
+      c,
+      Number(c.req.valid('param').notificationScheduleId)
+    )
+);
 apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
   return c
     .get('container')
@@ -535,10 +556,14 @@ apiV1.openapi(staffOnly(notificationPushDeliveryDetailRoute), c => {
     .notificationResultQueryController.getPushDeliveryDetail(c);
 });
 apiV1.openapi(authed(myNotificationListRoute), c => {
-  return c.get('container').mobileNotificationController.getNotifications(c);
+  return c
+    .get('container')
+    .mobileNotificationController.getNotifications(c, c.req.valid('query'));
 });
 apiV1.openapi(authed(myNotificationDetailRoute), c => {
-  return c.get('container').mobileNotificationController.getNotificationById(c);
+  return c
+    .get('container')
+    .mobileNotificationController.getNotificationById(c, c.req.valid('param'));
 });
 
 // Auth routes
