@@ -110,6 +110,71 @@ describe('NotificationCreationRepository', () => {
     expect(count?.count).toBe(1);
   });
 
+  it('異なる状態の並行初回生成も1 Notificationと1 Scheduleへ収束する', async () => {
+    const fixture = await createFixture();
+
+    const outcomes = await Promise.all([
+      repository.createOrUpdateAutomatic(
+        buildAutomaticCommand(
+          fixture.gatheringId,
+          'hash-a',
+          '10:45',
+          '2026-11-07T01:30:00.000Z'
+        )
+      ),
+      repository.createOrUpdateAutomatic(
+        buildAutomaticCommand(
+          fixture.gatheringId,
+          'hash-b',
+          '11:00',
+          '2026-11-07T01:45:00.000Z'
+        )
+      ),
+    ]);
+
+    expect(outcomes.map(outcome => outcome.status).sort()).toEqual([
+      'created',
+      'updated',
+    ]);
+
+    const counts = await env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM notifications
+          WHERE source_type = 'gathering' AND source_id = ?) AS notifications,
+         (SELECT COUNT(*) FROM notification_schedules s
+          JOIN notifications n USING (notification_id)
+          WHERE n.source_type = 'gathering' AND n.source_id = ?) AS schedules`
+    )
+      .bind(fixture.gatheringId, fixture.gatheringId)
+      .first<{ notifications: number; schedules: number }>();
+    expect(counts).toEqual({ notifications: 1, schedules: 1 });
+
+    const current = await env.DB.prepare(
+      `SELECT n.source_hash, n.push_body, s.send_at
+       FROM notifications n
+       JOIN notification_schedules s USING (notification_id)
+       WHERE n.source_type = 'gathering' AND n.source_id = ?`
+    )
+      .bind(fixture.gatheringId)
+      .first<{
+        source_hash: string;
+        push_body: string;
+        send_at: string;
+      }>();
+    expect([
+      {
+        source_hash: 'hash-a',
+        push_body: '集合時間は10:45です。',
+        send_at: '2026-11-07T01:30:00.000Z',
+      },
+      {
+        source_hash: 'hash-b',
+        push_body: '集合時間は11:00です。',
+        send_at: '2026-11-07T01:45:00.000Z',
+      },
+    ]).toContainEqual(current);
+  });
+
   it('同じautomatic commandの再実行を既生成として返す', async () => {
     const fixture = await createFixture();
     const command = buildAutomaticCommand(fixture.gatheringId, 'same-hash');
