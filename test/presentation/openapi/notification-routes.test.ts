@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  legacyAdminNotificationCreateRoute,
   legacyAdminNotificationDeleteRoute,
   legacyAdminNotificationDetailRoute,
   legacyAdminNotificationListRoute,
@@ -11,7 +10,6 @@ import {
   adminNotificationDetailRoute,
   adminNotificationListRoute,
   adminNotificationPatchRoute,
-  firebaseTokenDeleteRoute,
   firebaseTokenRegistrationRoute,
   notificationAudienceCountRoute,
   notificationAudienceNotFoundErrorResponseSchema,
@@ -25,7 +23,6 @@ import {
 
 describe('通知endpointの契約', () => {
   it('legacy管理通知ルートを明示名で分離する', () => {
-    expect(legacyAdminNotificationCreateRoute.method).toBe('post');
     expect(legacyAdminNotificationListRoute.method).toBe('get');
     expect(legacyAdminNotificationDetailRoute.method).toBe('get');
     expect(legacyAdminNotificationUpdateRoute.method).toBe('put');
@@ -48,7 +45,6 @@ describe('通知endpointの契約', () => {
       'push-deliveries'
     );
     expect(firebaseTokenRegistrationRoute.method).toBe('post');
-    expect(firebaseTokenDeleteRoute.method).toBe('delete');
   });
 
   it('Audience Countは対象不存在の404と固有Error schemaを定義する', () => {

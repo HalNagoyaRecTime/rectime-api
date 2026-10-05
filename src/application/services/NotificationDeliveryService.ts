@@ -5,8 +5,9 @@ import {
 } from '../../domain/entities/NotificationDelivery';
 import { firebasePlatformToName } from '../../domain/entities/FirebaseToken';
 import type { INotificationDeliveryRepository } from '../../domain/interfaces/repositories/INotificationDeliveryRepository';
+import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 import type { INotificationDeliveryQueue } from '../../domain/interfaces/queues/INotificationDeliveryQueue';
-import type { IFcmService } from './IFcmService';
+import { isPermanentFcmTokenError, type IFcmService } from './IFcmService';
 import type { INotificationDeliveryService } from './INotificationDeliveryService';
 
 const MAX_CONCURRENT_FCM_REQUESTS = 5;
@@ -15,11 +16,13 @@ const TOKEN_REMOVED_BEFORE_DELIVERY_REASON =
 
 export function createNotificationDeliveryService(deps: {
   notificationDeliveryRepository: INotificationDeliveryRepository;
+  firebaseTokenRepository: Pick<IFirebaseTokenRepository, 'deleteById'>;
   notificationDeliveryQueue: INotificationDeliveryQueue;
   fcmService: IFcmService;
 }): INotificationDeliveryService {
   const {
     notificationDeliveryRepository,
+    firebaseTokenRepository,
     notificationDeliveryQueue,
     fcmService,
   } = deps;
@@ -154,6 +157,11 @@ export function createNotificationDeliveryService(deps: {
           } catch (error) {
             const reason =
               error instanceof Error ? error.message : String(error);
+            if (isPermanentFcmTokenError(error)) {
+              await firebaseTokenRepository.deleteById(
+                delivery.firebase_token_id
+              );
+            }
             await notificationDeliveryRepository.markFailed(
               delivery.notification_push_delivery_id,
               reason,

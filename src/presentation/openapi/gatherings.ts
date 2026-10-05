@@ -1,4 +1,6 @@
 import { createRoute } from '@hono/zod-openapi';
+import type { UpdateGatheringSpotRequestDTO } from '../../application/dto/UpdateGatheringSpotRequestDTO';
+import type { GatheringSpotListOptions } from '../../domain/entities/GatheringSpot';
 import {
   badRequestResponse,
   bearerAuth,
@@ -107,7 +109,39 @@ export const gatheringSpotWriteSchema = z
   .object({
     gatheringSpotName: z.string().trim().min(1),
   })
-  .openapi('GatheringSpotWriteRequest');
+  .openapi(
+    'GatheringSpotWriteRequest'
+  ) satisfies z.ZodType<UpdateGatheringSpotRequestDTO>;
+
+export const gatheringSpotListQuery = z.object({
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(20)
+    .openapi({ param: { name: 'limit', in: 'query' }, example: 20 }),
+  offset: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .default(0)
+    .openapi({ param: { name: 'offset', in: 'query' }, example: 0 }),
+  name: z
+    .string()
+    .trim()
+    .max(100)
+    .optional()
+    .openapi({ param: { name: 'name', in: 'query' } }),
+  sortBy: z
+    .enum(['id', 'name', 'createdAt', 'updatedAt'])
+    .optional()
+    .openapi({ param: { name: 'sortBy', in: 'query' } }),
+  sortOrder: z
+    .enum(['asc', 'desc'])
+    .optional()
+    .openapi({ param: { name: 'sortOrder', in: 'query' } }),
+}) satisfies z.ZodType<GatheringSpotListOptions, z.ZodTypeDef, unknown>;
 
 export const replaceGatheringMembersSchema = z
   .object({
@@ -131,6 +165,7 @@ export const gatheringSpotListRoute = createRoute({
   tags: ['Gathering spots'],
   summary: '集合場所一覧を取得する',
   security: bearerAuth,
+  request: { query: gatheringSpotListQuery },
   responses: {
     200: jsonResponse(gatheringSpotListResultSchema, '集合場所一覧'),
     400: badRequestResponse,

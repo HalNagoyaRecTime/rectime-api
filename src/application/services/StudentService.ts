@@ -25,6 +25,7 @@ function toDTO(student: StudentEntity): StudentDTO {
     user_id: student.userId,
     display_name: student.userName,
     class_room_id: student.classRoomId,
+    class_code: student.classRoomCode,
     class_room_name: student.classRoomName,
     team_id: student.teamId,
     attendance_number: student.attendanceNumber,

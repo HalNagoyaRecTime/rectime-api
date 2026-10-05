@@ -6,9 +6,10 @@ import type {
 } from '../dto/AdminNotificationDTO';
 import type {
   CreateNotificationCommand,
-  NotificationAudienceTarget,
   UpdateNotificationCommand,
 } from '../../domain/entities/AdminNotificationCommand';
+import { isNotificationImportanceAllowed } from '../../domain/entities/Notification';
+import { toAudienceTargets } from './NotificationAudienceTargets';
 import type { IAdminNotificationCommandRepository } from '../../domain/interfaces/repositories/IAdminNotificationCommandRepository';
 import type { IAdminNotificationQueryService } from './IAdminNotificationQueryService';
 
@@ -73,7 +74,7 @@ export function createAdminNotificationCommandService(
 
     if (
       request.importance !== undefined &&
-      !isImportanceAllowed(request.importance)
+      !isNotificationImportanceAllowed(request.importance)
     ) {
       throw new AdminNotificationCommandError(
         'NOTIFICATION_IMPORTANCE_FORBIDDEN'
@@ -163,7 +164,7 @@ export function createAdminNotificationCommandService(
       throw new AdminNotificationCommandError('NOTIFICATION_EDIT_NOT_ALLOWED');
     }
 
-    const updated = await queryService.getNotificationDetail(notificationId);
+    const updated = await queryService.getAdminNotificationById(notificationId);
     if (!updated) {
       throw new AdminNotificationCommandError('ADMIN_NOTIFICATION_NOT_FOUND');
     }
@@ -205,33 +206,11 @@ export function createAdminNotificationCommandService(
 function assertImportanceAllowed(
   importance: NotificationCreateRequestDTO['importance']
 ): void {
-  if (!isImportanceAllowed(importance)) {
+  if (!isNotificationImportanceAllowed(importance)) {
     throw new AdminNotificationCommandError(
       'NOTIFICATION_IMPORTANCE_FORBIDDEN'
     );
   }
-}
-
-function isImportanceAllowed(
-  importance: NotificationCreateRequestDTO['importance']
-): boolean {
-  // highを許可する上位権限は現在のUser契約に存在しない。
-  return importance !== 'high';
-}
-
-function toAudienceTargets(
-  items: NotificationCreateRequestDTO['audience']['items']
-): NotificationAudienceTarget[] {
-  const targets = items.map(item =>
-    item.type === 'all'
-      ? { type: 'all' as const, target_id: null }
-      : { type: item.type, target_id: item.targetId }
-  );
-  const unique = new Map<string, NotificationAudienceTarget>();
-  for (const target of targets) {
-    unique.set(target.type + ':' + String(target.target_id), target);
-  }
-  return Array.from(unique.values());
 }
 
 function resolveSendAt(

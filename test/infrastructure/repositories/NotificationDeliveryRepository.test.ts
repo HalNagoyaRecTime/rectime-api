@@ -1,12 +1,16 @@
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NotificationDeliveryMessage } from '../../../src/domain/entities/NotificationDelivery';
-import type { IFcmService } from '../../../src/application/services/IFcmService';
+import {
+  FcmRequestError,
+  type IFcmService,
+} from '../../../src/application/services/IFcmService';
 import { createNotificationDeliveryService } from '../../../src/application/services/NotificationDeliveryService';
 import { createNotificationAudienceResolverService } from '../../../src/application/services/NotificationAudienceResolverService';
 import { createAdminNotificationCommandRepository } from '../../../src/infrastructure/repositories/AdminNotificationCommandRepository';
 import { createNotificationAudienceResolverRepository } from '../../../src/infrastructure/repositories/NotificationAudienceResolverRepository';
 import { createNotificationDeliveryRepository } from '../../../src/infrastructure/repositories/NotificationDeliveryRepository';
+import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
 
 const NOW = '2026-09-24T12:00:00.000Z';
 const commandRepository = createAdminNotificationCommandRepository(env.DB);
@@ -14,6 +18,7 @@ const resolverService = createNotificationAudienceResolverService(
   createNotificationAudienceResolverRepository(env.DB)
 );
 const deliveryRepository = createNotificationDeliveryRepository(env.DB);
+const firebaseTokenRepository = createFirebaseTokenRepository(env.DB);
 
 interface ScheduleFixture {
   actorUserId: number;
@@ -90,7 +95,6 @@ function createHarness(fcmService?: IFcmService) {
   const fcm =
     fcmService ??
     ({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken: vi.fn(async () => ({
         success: true as const,
         messageId: 'projects/test/messages/default',
@@ -98,6 +102,7 @@ function createHarness(fcmService?: IFcmService) {
     } satisfies IFcmService);
   const service = createNotificationDeliveryService({
     notificationDeliveryRepository: deliveryRepository,
+    firebaseTokenRepository,
     notificationDeliveryQueue,
     fcmService: fcm,
   });
@@ -208,7 +213,6 @@ describe('NotificationDeliveryRepository and Service', () => {
       messageId: 'projects/test/messages/unused',
     }));
     const { service, messages } = createHarness({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken,
     });
     const result = await service.enqueueReadySchedules(new Date(NOW));
@@ -257,7 +261,6 @@ describe('NotificationDeliveryRepository and Service', () => {
       messageId: `projects/test/messages/${input.token}`,
     }));
     const { service, messages } = createHarness({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken,
     });
     const prepared = await service.enqueueReadySchedules(new Date(NOW));
@@ -331,7 +334,6 @@ describe('NotificationDeliveryRepository and Service', () => {
       messageId: 'projects/test/messages/unused',
     }));
     const { service } = createHarness({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken,
     });
     const result = await service.sendQueuedNotifications(
@@ -362,7 +364,6 @@ describe('NotificationDeliveryRepository and Service', () => {
       messageId: 'projects/test/messages/unused',
     }));
     const { service, messages } = createHarness({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken,
     });
     const prepared = await service.enqueueReadySchedules(new Date(NOW));
@@ -516,7 +517,6 @@ describe('NotificationDeliveryRepository and Service', () => {
       };
     });
     const { service, messages } = createHarness({
-      sendTestNotification: vi.fn(),
       sendNotificationToToken,
     });
 
@@ -557,10 +557,85 @@ describe('NotificationDeliveryRepository and Service', () => {
         }),
       ])
     );
+    const failedToken = await env.DB.prepare(
+      'SELECT firebase_token_id FROM firebase_tokens WHERE fcm_token = ?'
+    )
+      .bind('delivery-failed-token')
+      .first<{ firebase_token_id: number }>();
+    expect(failedToken).not.toBeNull();
     expect(await scheduleStatus(fixture.scheduleId)).toMatchObject({
       send_status: 'completed',
     });
     expect(messages).toHaveLength(1);
+  });
+
+  it('UNREGISTERED時は該当Tokenだけを物理削除し、Deliveryをfailedで保持する', async () => {
+    const fixture = await createSchedule();
+    const invalidTokenId = await insertToken(
+      fixture.recipientUserId,
+      'delivery-unregistered-token',
+      1
+    );
+    const activeTokenId = await insertToken(
+      fixture.recipientUserId,
+      'delivery-active-after-unregistered-token',
+      2
+    );
+    await resolve(fixture.scheduleId);
+    const sendNotificationToToken = vi.fn(async (input: { token: string }) => {
+      if (input.token === 'delivery-unregistered-token') {
+        throw new FcmRequestError(
+          404,
+          'UNREGISTERED',
+          'FCM request failed: HTTP 404 UNREGISTERED'
+        );
+      }
+      return {
+        success: true as const,
+        messageId: 'projects/test/messages/active',
+      };
+    });
+    const { service } = createHarness({
+      sendNotificationToToken,
+    });
+
+    await service.enqueueReadySchedules(new Date(NOW));
+    const result = await service.sendQueuedNotifications(
+      [fixture.scheduleId],
+      new Date(NOW)
+    );
+
+    expect(result).toEqual({ claimed: 2, sent: 1, failed: 1 });
+    const remainingTokens = await env.DB.prepare(
+      'SELECT firebase_token_id, fcm_token FROM firebase_tokens ORDER BY firebase_token_id'
+    ).all<{ firebase_token_id: number; fcm_token: string }>();
+    expect(remainingTokens.results).toEqual([
+      {
+        firebase_token_id: activeTokenId,
+        fcm_token: 'delivery-active-after-unregistered-token',
+      },
+    ]);
+    const rows = await deliveryRows(fixture.scheduleId);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          firebase_token_id: null,
+          status: 'failed',
+          failed_reason: 'FCM request failed: HTTP 404 UNREGISTERED',
+        }),
+        expect.objectContaining({
+          firebase_token_id: activeTokenId,
+          status: 'sent',
+        }),
+      ])
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows.some(row => row.firebase_token_id === invalidTokenId)).toBe(
+      false
+    );
+    expect(await scheduleStatus(fixture.scheduleId)).toMatchObject({
+      send_status: 'completed',
+    });
   });
 
   it('Delivery生成が継続不能ならScheduleだけfailedにする', async () => {

@@ -49,7 +49,10 @@ describe('OpenAPI documentation', () => {
     expect(res.status).toBe(200);
     const document = (await res.json()) as {
       components: {
-        schemas: Record<string, { properties?: Record<string, unknown> }>;
+        schemas: Record<
+          string,
+          { description?: string; properties?: Record<string, unknown> }
+        >;
         securitySchemes?: Record<string, unknown>;
       };
       paths: Record<string, Record<string, unknown>>;
@@ -58,6 +61,13 @@ describe('OpenAPI documentation', () => {
     expect(Object.keys(document.paths).sort()).toEqual([
       '/',
       '/api/v1/admin/notifications',
+      '/api/v1/admin/notifications/audience-count',
+      '/api/v1/admin/notifications/config',
+      '/api/v1/admin/notifications/push-deliveries/{notificationPushDeliveryId}',
+      '/api/v1/admin/notifications/schedules',
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}',
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}/resend',
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}/results',
       '/api/v1/admin/notifications/{notificationId}',
       '/api/v1/admin/users/{userId}',
       '/api/v1/admin/users/{userId}/staff',
@@ -76,7 +86,6 @@ describe('OpenAPI documentation', () => {
       '/api/v1/master-imports/{validatedFileId}/commit',
       '/api/v1/me/notifications',
       '/api/v1/me/notifications/{notificationId}',
-      '/api/v1/notifications/test',
       '/api/v1/ranking',
       '/api/v1/staffs',
       '/api/v1/staffs/{staffId}',
@@ -95,6 +104,48 @@ describe('OpenAPI documentation', () => {
       type: 'string',
       nullable: true,
     });
+    expect(document.components.schemas.EventWriteRequest.description).toContain(
+      'start_timeはend_timeより前の時刻を指定する'
+    );
+    expect(
+      document.components.schemas.EventUpdateRequest.description
+    ).toContain('start_timeはend_timeより前の時刻を指定する');
+    const venueListParameters = (
+      document.paths['/api/v1/venues'].get as {
+        parameters?: Array<{
+          name: string;
+          in: string;
+          schema?: { minimum?: number; maximum?: number; default?: unknown };
+        }>;
+      }
+    ).parameters;
+    expect(venueListParameters?.map(param => param.name)).toEqual([
+      'limit',
+      'offset',
+      'name',
+      'sortBy',
+      'sortOrder',
+    ]);
+    expect(
+      venueListParameters?.find(param => param.name === 'limit')?.schema
+    ).toMatchObject({
+      minimum: 1,
+      maximum: 100,
+      default: 20,
+    });
+
+    const gatheringSpotListParameters = (
+      document.paths['/api/v1/gathering-spots'].get as {
+        parameters?: Array<{ name: string; in: string }>;
+      }
+    ).parameters;
+    expect(gatheringSpotListParameters?.map(param => param.name)).toEqual([
+      'limit',
+      'offset',
+      'name',
+      'sortBy',
+      'sortOrder',
+    ]);
 
     const teacherListParameters = (
       document.paths['/api/v1/teachers'].get as {
@@ -165,7 +216,36 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(58);
+    expect(documentedOperations).toHaveLength(65);
+    const schedulePath =
+      document.paths[
+        '/api/v1/admin/notifications/schedules/{notificationScheduleId}'
+      ];
+    expect(schedulePath).toHaveProperty('delete');
+    const scheduleDelete = schedulePath.delete as {
+      responses: Record<string, unknown>;
+    };
+    expect(Object.keys(scheduleDelete.responses).sort()).toEqual([
+      '204',
+      '400',
+      '401',
+      '403',
+      '404',
+      '409',
+      '500',
+    ]);
+    const scheduleResend = document.paths[
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}/resend'
+    ].post as { responses: Record<string, unknown> };
+    expect(Object.keys(scheduleResend.responses).sort()).toEqual([
+      '201',
+      '400',
+      '401',
+      '403',
+      '404',
+      '409',
+      '500',
+    ]);
     expect(
       document.paths['/api/v1/admin/notifications/{notificationId}']
     ).toHaveProperty('patch');

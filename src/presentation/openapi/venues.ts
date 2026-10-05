@@ -1,4 +1,6 @@
 import { createRoute } from '@hono/zod-openapi';
+import type { UpdateVenueRequestDTO } from '../../application/dto/UpdateVenueRequestDTO';
+import type { VenueListOptions } from '../../domain/entities/Venue';
 import {
   badRequestResponse,
   bearerAuth,
@@ -49,7 +51,37 @@ export const venueWriteSchema = z
   .object({
     venueName: z.string().trim().min(1),
   })
-  .openapi('VenueWriteRequest');
+  .openapi('VenueWriteRequest') satisfies z.ZodType<UpdateVenueRequestDTO>;
+
+export const venueListQuery = z.object({
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(20)
+    .openapi({ param: { name: 'limit', in: 'query' }, example: 20 }),
+  offset: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .default(0)
+    .openapi({ param: { name: 'offset', in: 'query' }, example: 0 }),
+  name: z
+    .string()
+    .trim()
+    .max(100)
+    .optional()
+    .openapi({ param: { name: 'name', in: 'query' } }),
+  sortBy: z
+    .enum(['id', 'name', 'createdAt', 'updatedAt'])
+    .optional()
+    .openapi({ param: { name: 'sortBy', in: 'query' } }),
+  sortOrder: z
+    .enum(['asc', 'desc'])
+    .optional()
+    .openapi({ param: { name: 'sortOrder', in: 'query' } }),
+}) satisfies z.ZodType<VenueListOptions, z.ZodTypeDef, unknown>;
 
 export const venueListRoute = createRoute({
   method: 'get',
@@ -57,6 +89,7 @@ export const venueListRoute = createRoute({
   tags: ['Venues'],
   summary: '実施場所一覧を取得する',
   security: bearerAuth,
+  request: { query: venueListQuery },
   responses: {
     200: jsonResponse(venueListResultSchema, '実施場所一覧'),
     400: badRequestResponse,

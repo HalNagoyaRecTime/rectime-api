@@ -5,8 +5,7 @@ import type { IStudentRepository } from '../../../src/domain/interfaces/reposito
 import type { IStaffRepository } from '../../../src/domain/interfaces/repositories/IStaffRepository';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
 import type { IGatheringGroupMemberRepository } from '../../../src/domain/interfaces/repositories/IGatheringGroupMemberRepository';
-import type { INotificationScheduleRepository } from '../../../src/domain/interfaces/repositories/INotificationScheduleRepository';
-import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
+import type { INotificationAccountDeletionService } from '../../../src/application/services/INotificationAccountDeletionService';
 
 function buildDeps() {
   const userRepository: IUserRepository = {
@@ -68,23 +67,12 @@ function buildDeps() {
     applyMemberDiff: vi.fn(),
     deleteByUserId: vi.fn(),
   };
-  const notificationScheduleRepository: INotificationScheduleRepository = {
-    findDraftsByEvent: vi.fn(),
-    findDeliveryCandidateIds: vi.fn(),
-    claimForDelivery: vi.fn(),
-    markSent: vi.fn(),
-    markFailed: vi.fn(),
-    anonymizeCreatedUserId: vi.fn(),
-    deleteByFirebaseTokenId: vi.fn(),
-  };
-  const firebaseTokenRepository: IFirebaseTokenRepository = {
-    register: vi.fn(),
-    findActiveTokens: vi.fn(),
-    deactivate: vi.fn(),
-    deactivateByUserId: vi.fn(),
-    findByUserId: vi.fn().mockResolvedValue(null),
-    deleteByUserId: vi.fn(),
-  };
+  const notificationAccountDeletionService: INotificationAccountDeletionService =
+    {
+      purgeUserNotificationData: vi
+        .fn()
+        .mockResolvedValue({ firebaseTokensDeleted: false }),
+    };
 
   return {
     userRepository,
@@ -92,8 +80,7 @@ function buildDeps() {
     staffRepository,
     teacherRepository,
     gatheringGroupMemberRepository,
-    notificationScheduleRepository,
-    firebaseTokenRepository,
+    notificationAccountDeletionService,
   };
 }
 
@@ -112,7 +99,9 @@ describe('createAccountDeletionService', () => {
       await expect(service.deleteRelatedData('10')).rejects.toThrow(
         'ACCOUNT_DELETION_NOT_STARTED'
       );
-      expect(deps.firebaseTokenRepository.findByUserId).not.toHaveBeenCalled();
+      expect(
+        deps.notificationAccountDeletionService.purgeUserNotificationData
+      ).not.toHaveBeenCalled();
       expect(deps.staffRepository.deleteByUserId).not.toHaveBeenCalled();
       expect(deps.userRepository.markAsPurged).not.toHaveBeenCalled();
     });
@@ -144,72 +133,14 @@ describe('createAccountDeletionService', () => {
       expect(deps.userRepository.anonymizeUser).not.toHaveBeenCalled();
     });
 
-    it('firebase_tokensが無い場合は通知履歴の削除・Token削除をスキップする', async () => {
-      const deps = buildDeps();
-      const service = createAccountDeletionService(deps);
-
-      await service.deleteRelatedData('10');
-
-      expect(deps.firebaseTokenRepository.findByUserId).toHaveBeenCalledWith(
-        10
-      );
-      expect(
-        deps.notificationScheduleRepository.deleteByFirebaseTokenId
-      ).not.toHaveBeenCalled();
-      expect(
-        deps.firebaseTokenRepository.deleteByUserId
-      ).not.toHaveBeenCalled();
-    });
-
-    it('firebase_tokensが存在する場合、通知履歴を先に削除してからToken本体を削除する', async () => {
-      const deps = buildDeps();
-      (
-        deps.firebaseTokenRepository.findByUserId as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        firebase_token_id: 5,
-        user_id: 10,
-        platform: 2,
-        fcm_token: 'token-x',
-        is_firebase_active: 0,
-        last_seen_at: '2026-01-01 00:00:00',
-        created_at: '2026-01-01 00:00:00',
-        updated_at: '2026-01-01 00:00:00',
-      });
-      const callOrder: string[] = [];
-      (
-        deps.notificationScheduleRepository
-          .deleteByFirebaseTokenId as ReturnType<typeof vi.fn>
-      ).mockImplementation(async () => {
-        callOrder.push('deleteByFirebaseTokenId');
-      });
-      (
-        deps.firebaseTokenRepository.deleteByUserId as ReturnType<typeof vi.fn>
-      ).mockImplementation(async () => {
-        callOrder.push('deleteByUserId');
-      });
-      const service = createAccountDeletionService(deps);
-
-      await service.deleteRelatedData('10');
-
-      expect(
-        deps.notificationScheduleRepository.deleteByFirebaseTokenId
-      ).toHaveBeenCalledWith(5);
-      expect(deps.firebaseTokenRepository.deleteByUserId).toHaveBeenCalledWith(
-        10
-      );
-      // notification_schedulesの削除がfirebase_tokens削除より先に実行される
-      // (firebase_token_idはNOT NULL外部キーのため)。
-      expect(callOrder).toEqual(['deleteByFirebaseTokenId', 'deleteByUserId']);
-    });
-
-    it('通知の作成者情報をNULL化する', async () => {
+    it('通知cleanupを通知Application Serviceへ委譲し、Token削除結果を受け取る', async () => {
       const deps = buildDeps();
       const service = createAccountDeletionService(deps);
 
       await service.deleteRelatedData('10');
 
       expect(
-        deps.notificationScheduleRepository.anonymizeCreatedUserId
+        deps.notificationAccountDeletionService.purgeUserNotificationData
       ).toHaveBeenCalledWith(10);
     });
 
@@ -299,17 +230,9 @@ describe('createAccountDeletionService', () => {
         deps.studentRepository.anonymizeByUserId as ReturnType<typeof vi.fn>
       ).mockResolvedValue(false);
       (
-        deps.firebaseTokenRepository.findByUserId as ReturnType<typeof vi.fn>
-      ).mockResolvedValue({
-        firebase_token_id: 5,
-        user_id: 10,
-        platform: 2,
-        fcm_token: 'token-x',
-        is_firebase_active: 0,
-        last_seen_at: '2026-01-01 00:00:00',
-        created_at: '2026-01-01 00:00:00',
-        updated_at: '2026-01-01 00:00:00',
-      });
+        deps.notificationAccountDeletionService
+          .purgeUserNotificationData as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ firebaseTokensDeleted: true });
       const consoleLogSpy = vi
         .spyOn(console, 'log')
         .mockImplementation(() => {});

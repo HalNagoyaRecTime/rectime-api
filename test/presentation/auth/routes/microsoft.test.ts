@@ -108,7 +108,6 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
     FIREBASE_PROJECT_ID: 'project',
     FIREBASE_CLIENT_EMAIL: 'sa@example.iam.gserviceaccount.com',
     FIREBASE_PRIVATE_KEY: 'dummy-key',
-    TEST_FCM_TOKEN: 'test-token',
     MICROSOFT_CLIENT_ID: CLIENT_ID,
     MICROSOFT_CLIENT_PRIVATE_KEY: clientPrivateKeyPem,
     MICROSOFT_CERT_THUMBPRINT: 'thumbprint',
@@ -1155,16 +1154,20 @@ describe('POST /auth/microsoft/token', () => {
       user: {
         id: string;
         student_id_number: string | null;
+        class_code: string | null;
         class_room_name: string | null;
         class_room_id: number | null;
         team_id: number | null;
+        attendance_number: number | null;
       };
     };
     expect(body.user.id).toBe(String(user!.user_id));
     expect(body.user.student_id_number).toBe('60001');
+    expect(body.user.class_code).toBe('3B');
     expect(body.user.class_room_name).toBe('3年B組');
     expect(body.user.class_room_id).toBe(classRoom.classRoomId);
     expect(body.user.team_id).toBe(classRoom.teamId);
+    expect(body.user.attendance_number).toBe(2);
   });
 
   it('生徒情報取得に失敗した場合、mobile_refresh系のKVエントリを書き込まずエラーにする', async () => {
