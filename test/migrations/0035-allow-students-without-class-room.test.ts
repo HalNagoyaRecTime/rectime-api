@@ -1,6 +1,22 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 
+const migrationQueries = (() => {
+  const migration = env.TEST_MIGRATIONS.find(
+    item => item.name === '0035_allow_students_without_class_room.sql'
+  );
+  if (!migration) {
+    throw new Error(
+      '0035_allow_students_without_class_room.sql is not registered'
+    );
+  }
+  return migration.queries;
+})();
+
+async function runMigration(): Promise<void> {
+  await env.DB.batch(migrationQueries.map(query => env.DB.prepare(query)));
+}
+
 async function insertUser(userName: string): Promise<number> {
   const user = await env.DB.prepare(
     'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
@@ -90,5 +106,69 @@ describe('0035_allow_students_without_class_room.sql', () => {
         }),
       ])
     );
+  });
+
+  it('テーブル再作成後もAUTOINCREMENTの履歴を維持する', async () => {
+    const classRoom = await env.DB.prepare(
+      'SELECT class_room_id FROM class_rooms ORDER BY class_room_id LIMIT 1'
+    ).first<{ class_room_id: number }>();
+    expect(classRoom).not.toBeNull();
+
+    const maxStudent = await env.DB.prepare(
+      'SELECT COALESCE(MAX(student_id), 0) AS max_id FROM students'
+    ).first<{ max_id: number }>();
+    const deletedStudentId = (maxStudent?.max_id ?? 0) + 1000;
+    const deletedUserId = await insertUser('0035削除済みStudent');
+
+    await env.DB.prepare(
+      `INSERT INTO students (
+        student_id,
+        user_id,
+        class_room_id,
+        attendance_number,
+        student_id_number
+      ) VALUES (?, ?, ?, 1, ?)`
+    )
+      .bind(
+        deletedStudentId,
+        deletedUserId,
+        classRoom!.class_room_id,
+        '0035-DELETED-SEQUENCE'
+      )
+      .run();
+    await env.DB.prepare('DELETE FROM students WHERE student_id = ?')
+      .bind(deletedStudentId)
+      .run();
+
+    const nextUserId = await insertUser('0035次回Student');
+
+    try {
+      await runMigration();
+
+      const inserted = await env.DB.prepare(
+        `INSERT INTO students (
+          user_id,
+          class_room_id,
+          attendance_number,
+          student_id_number
+        ) VALUES (?, ?, 2, ?)
+        RETURNING student_id`
+      )
+        .bind(
+          nextUserId,
+          classRoom!.class_room_id,
+          '0035-NEXT-SEQUENCE'
+        )
+        .first<{ student_id: number }>();
+
+      expect(inserted?.student_id).toBe(deletedStudentId + 1);
+    } finally {
+      await env.DB.prepare('DELETE FROM students WHERE user_id = ?')
+        .bind(nextUserId)
+        .run();
+      await env.DB.prepare('DELETE FROM users WHERE user_id IN (?, ?)')
+        .bind(deletedUserId, nextUserId)
+        .run();
+    }
   });
 });
