@@ -32,6 +32,7 @@ import {
 import type { ContainerVariables } from '../../middleware/diContainer';
 import { createUserRepository } from '../../../infrastructure/repositories/UserRepository';
 import { AuthErrors } from '../../errors/authErrors';
+import { microsoftTokenError } from '../../errors/microsoftTokenError';
 import { CommonErrors } from '../../errors/commonErrors';
 import { errorResponse } from '../../errors/errorResponse';
 
@@ -314,7 +315,7 @@ microsoft.post('/token', async c => {
     return errorResponse(c, AuthErrors.CODE_VERIFIER_MISSING);
   }
 
-  const tokens = await exchangeMicrosoftToken(
+  const result = await exchangeMicrosoftToken(
     c,
     {
       grant_type: 'authorization_code',
@@ -328,8 +329,19 @@ microsoft.post('/token', async c => {
     { includeClientAssertion: clientType === 'web' }
   );
 
-  if (!tokens?.id_token || !tokens.refresh_token) {
-    return errorResponse(c, AuthErrors.TOKEN_EXCHANGE_FAILED);
+  if (!result.ok) {
+    return errorResponse(
+      c,
+      microsoftTokenError(
+        result,
+        AuthErrors.TOKEN_EXCHANGE_FAILED,
+        AuthErrors.AUTH_PROVIDER_UNAVAILABLE
+      )
+    );
+  }
+  const tokens = result.tokens;
+  if (!tokens.id_token || !tokens.refresh_token) {
+    return errorResponse(c, AuthErrors.AUTH_PROVIDER_UNAVAILABLE);
   }
 
   let claims;
@@ -521,7 +533,7 @@ microsoft.post('/delete-token', async c => {
     return errorResponse(c, AuthErrors.CODE_VERIFIER_MISSING);
   }
 
-  const tokens = await exchangeMicrosoftToken(
+  const result = await exchangeMicrosoftToken(
     c,
     {
       grant_type: 'authorization_code',
@@ -535,8 +547,19 @@ microsoft.post('/delete-token', async c => {
     { includeClientAssertion: clientType === 'web' }
   );
 
-  if (!tokens?.id_token) {
-    return errorResponse(c, AuthErrors.TOKEN_EXCHANGE_FAILED);
+  if (!result.ok) {
+    return errorResponse(
+      c,
+      microsoftTokenError(
+        result,
+        AuthErrors.TOKEN_EXCHANGE_FAILED,
+        AuthErrors.AUTH_PROVIDER_UNAVAILABLE
+      )
+    );
+  }
+  const tokens = result.tokens;
+  if (!tokens.id_token) {
+    return errorResponse(c, AuthErrors.AUTH_PROVIDER_UNAVAILABLE);
   }
 
   let claims;
