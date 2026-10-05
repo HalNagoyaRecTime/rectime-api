@@ -25,7 +25,7 @@ async function prepareBeforeMigration() {
   await env.DB.batch([
     env.DB.prepare('DROP TABLE IF EXISTS event_venues'),
     env.DB.prepare('DROP TABLE IF EXISTS venues'),
-    env.DB.prepare("DELETE FROM events WHERE event_name LIKE '0035移行確認%'"),
+    env.DB.prepare("DELETE FROM events WHERE event_name LIKE '0034移行確認%'"),
   ]);
 }
 
@@ -59,46 +59,46 @@ describe('0034_drop_events_venue.sql のデータ移行', () => {
   beforeEach(prepareBeforeMigration);
 
   it('重複する実施場所名は1件のマスタへまとまる', async () => {
-    const firstEventId = await insertEvent('0035移行確認競技A', '0035移行確認体育館');
-    const secondEventId = await insertEvent('0035移行確認競技B', '0035移行確認体育館');
-    const thirdEventId = await insertEvent('0035移行確認競技C', '0035移行確認グラウンド');
+    const firstEventId = await insertEvent('0034移行確認競技A', '0034移行確認体育館');
+    const secondEventId = await insertEvent('0034移行確認競技B', '0034移行確認体育館');
+    const thirdEventId = await insertEvent('0034移行確認競技C', '0034移行確認グラウンド');
 
     await runMigration();
 
     const row = await env.DB.prepare(
       'SELECT COUNT(*) AS count FROM venues WHERE venue_name = ?'
     )
-      .bind('0035移行確認体育館')
+      .bind('0034移行確認体育館')
       .first<{ count: number }>();
     expect(row?.count).toBe(1);
 
-    expect(await venueNamesOf(firstEventId)).toEqual(['0035移行確認体育館']);
-    expect(await venueNamesOf(secondEventId)).toEqual(['0035移行確認体育館']);
-    expect(await venueNamesOf(thirdEventId)).toEqual(['0035移行確認グラウンド']);
+    expect(await venueNamesOf(firstEventId)).toEqual(['0034移行確認体育館']);
+    expect(await venueNamesOf(secondEventId)).toEqual(['0034移行確認体育館']);
+    expect(await venueNamesOf(thirdEventId)).toEqual(['0034移行確認グラウンド']);
   });
 
   it('実施場所を持つ既存の競技すべてに紐づけが作られる', async () => {
     const firstEventId = await insertEvent(
-      '0035移行確認競技D',
-      '0035移行確認体育館'
+      '0034移行確認競技D',
+      '0034移行確認体育館'
     );
     const secondEventId = await insertEvent(
-      '0035移行確認競技E',
-      '0035移行確認プール'
+      '0034移行確認競技E',
+      '0034移行確認プール'
     );
 
     await runMigration();
 
-    expect(await venueNamesOf(firstEventId)).toEqual(['0035移行確認体育館']);
-    expect(await venueNamesOf(secondEventId)).toEqual(['0035移行確認プール']);
+    expect(await venueNamesOf(firstEventId)).toEqual(['0034移行確認体育館']);
+    expect(await venueNamesOf(secondEventId)).toEqual(['0034移行確認プール']);
   });
 
   it('前後に半角・全角の空白を含む実施場所名も同じマスタへまとまる', async () => {
-    const eventId = await insertEvent('0035移行確認競技F', '  0035移行確認武道場  ');
-    await insertEvent('0035移行確認競技G', '0035移行確認武道場');
+    const eventId = await insertEvent('0034移行確認競技F', '  0034移行確認武道場  ');
+    await insertEvent('0034移行確認競技G', '0034移行確認武道場');
     const fullWidthEventId = await insertEvent(
-      '0035移行確認競技I',
-      '\u30000035移行確認武道場\u3000'
+      '0034移行確認競技I',
+      '\u30000034移行確認武道場\u3000'
     );
 
     await runMigration();
@@ -106,30 +106,30 @@ describe('0034_drop_events_venue.sql のデータ移行', () => {
     const row = await env.DB.prepare(
       'SELECT COUNT(*) AS count FROM venues WHERE venue_name = ?'
     )
-      .bind('0035移行確認武道場')
+      .bind('0034移行確認武道場')
       .first<{ count: number }>();
     expect(row?.count).toBe(1);
-    expect(await venueNamesOf(eventId)).toEqual(['0035移行確認武道場']);
+    expect(await venueNamesOf(eventId)).toEqual(['0034移行確認武道場']);
     expect(await venueNamesOf(fullWidthEventId)).toEqual([
-      '0035移行確認武道場',
+      '0034移行確認武道場',
     ]);
   });
 
   it('実施場所名の途中にある全角空白は残す', async () => {
     const eventId = await insertEvent(
-      '0035移行確認競技J',
-      '0035移行確認第1\u3000体育館'
+      '0034移行確認競技J',
+      '0034移行確認第1\u3000体育館'
     );
 
     await runMigration();
 
     expect(await venueNamesOf(eventId)).toEqual([
-      '0035移行確認第1\u3000体育館',
+      '0034移行確認第1\u3000体育館',
     ]);
   });
 
   it('実施場所の列は移行後に削除される', async () => {
-    await insertEvent('0035移行確認競技K', '0035移行確認体育館');
+    await insertEvent('0034移行確認競技K', '0034移行確認体育館');
 
     await runMigration();
 
@@ -140,10 +140,10 @@ describe('0034_drop_events_venue.sql のデータ移行', () => {
   });
 
   it('旧名の0033だけ適用済みで、マスタが既にあっても通る', async () => {
-    await insertEvent('0035移行確認競技L', '0035移行確認体育館');
+    await insertEvent('0034移行確認競技L', '0034移行確認体育館');
     await runMigration();
     await env.DB.prepare(
-      "ALTER TABLE events ADD COLUMN venue TEXT NOT NULL DEFAULT '0035移行確認体育館'"
+      "ALTER TABLE events ADD COLUMN venue TEXT NOT NULL DEFAULT '0034移行確認体育館'"
     ).run();
 
     await runMigration();
@@ -151,13 +151,13 @@ describe('0034_drop_events_venue.sql のデータ移行', () => {
     const row = await env.DB.prepare(
       'SELECT COUNT(*) AS count FROM venues WHERE venue_name = ?'
     )
-      .bind('0035移行確認体育館')
+      .bind('0034移行確認体育館')
       .first<{ count: number }>();
     expect(row?.count).toBe(1);
   });
 
   it('実施場所が空文字の競技はマスタを作らない', async () => {
-    const eventId = await insertEvent('0035移行確認競技H', '');
+    const eventId = await insertEvent('0034移行確認競技H', '');
 
     await runMigration();
 

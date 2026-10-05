@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
@@ -13,11 +13,29 @@ const migrationQueries = (() => {
   return migration.queries;
 })();
 
+const testVenueName = '0035再実行確認体育館';
+
+async function venueSchema() {
+  const { results } = await env.DB.prepare(
+    `SELECT type, name, sql FROM sqlite_master
+     WHERE tbl_name IN ('venues', 'event_venues')
+     ORDER BY type, name`
+  ).all();
+  return results;
+}
+
 describe('0035_create_venues_and_event_venues.sql', () => {
-  it('マスタが既にある環境で実行しても、データを変えずに通る', async () => {
-    await env.DB.prepare(
-      "INSERT OR IGNORE INTO venues (venue_name) VALUES ('0035再実行確認体育館')"
-    ).run();
+  afterEach(async () => {
+    await env.DB.prepare('DELETE FROM venues WHERE venue_name = ?')
+      .bind(testVenueName)
+      .run();
+  });
+
+  it('マスタが既にある環境で実行しても、データも定義も変えずに通る', async () => {
+    await env.DB.prepare('INSERT OR IGNORE INTO venues (venue_name) VALUES (?)')
+      .bind(testVenueName)
+      .run();
+    const schemaBefore = await venueSchema();
     const before = await env.DB.prepare(
       'SELECT COUNT(*) AS count FROM venues'
     ).first<{ count: number }>();
@@ -28,9 +46,6 @@ describe('0035_create_venues_and_event_venues.sql', () => {
       'SELECT COUNT(*) AS count FROM venues'
     ).first<{ count: number }>();
     expect(after?.count).toBe(before?.count);
-
-    await env.DB.prepare(
-      "DELETE FROM venues WHERE venue_name = '0035再実行確認体育館'"
-    ).run();
+    expect(await venueSchema()).toEqual(schemaBefore);
   });
 });

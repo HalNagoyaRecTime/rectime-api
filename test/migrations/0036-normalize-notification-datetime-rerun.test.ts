@@ -153,5 +153,6 @@ describe('0036_normalize_notification_datetime.sql の再実行', () => {
     const afterSecond = await snapshot();
 
     expect(afterSecond).toEqual(afterFirst);
-  });
+    // 6テーブルの作り直しを2回行うため、既定の5秒では負荷時に足りない。
+  }, 30_000);
 });
