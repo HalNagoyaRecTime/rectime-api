@@ -1,11 +1,11 @@
+import { NOTIFICATION_AUDIENCE_USER_DELETED_REASON } from '../../domain/entities/NotificationAudienceResolver';
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { INotificationAccountDeletionRepository } from '../../domain/interfaces/repositories/INotificationAccountDeletionRepository';
 import { notificationUtcNow } from '../database/notificationDateTime';
 import * as schema from '../database/schema';
 import {
-  notification_audiences,
   notification_recipients,
   notification_schedules,
   notifications,
@@ -18,15 +18,33 @@ export function createNotificationAccountDeletionRepository(
 
   return {
     async deleteDirectUserAudiencesByUserId(userId) {
-      await orm
-        .delete(notification_audiences)
-        .where(
-          and(
-            eq(notification_audiences.audienceType, 'user'),
-            eq(notification_audiences.targetId, userId)
+      const now = notificationUtcNow();
+      // 対象消失の記録とAudience削除を同じトランザクションで行う。
+      await db.batch([
+        db
+          .prepare(
+            `UPDATE notification_schedules
+           SET send_status = 'failed', reason = ?, updated_at = ?
+           WHERE send_status IN ('scheduled', 'resolving')
+             AND recipients_resolved_at IS NULL
+             AND EXISTS (
+               SELECT 1 FROM notifications n
+               WHERE n.notification_id = notification_schedules.notification_id
+                 AND n.notification_type = 'notification_general'
+             )
+             AND EXISTS (
+               SELECT 1 FROM notification_audiences a
+               WHERE a.notification_schedule_id = notification_schedules.notification_schedule_id
+                 AND a.audience_type = 'user' AND a.target_id = ?
+             )`
           )
-        )
-        .run();
+          .bind(NOTIFICATION_AUDIENCE_USER_DELETED_REASON, now, userId),
+        db
+          .prepare(
+            "DELETE FROM notification_audiences WHERE audience_type = 'user' AND target_id = ?"
+          )
+          .bind(userId),
+      ]);
     },
 
     async deleteRecipientsByUserId(userId) {

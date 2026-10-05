@@ -22,6 +22,22 @@ import {
 } from './notification.fixtures';
 
 describe('通知スケジュールのResponse schema', () => {
+  it('失敗理由を一覧・詳細schemaに保持する', () => {
+    const failed = {
+      ...scheduleListItem,
+      status: 'failed',
+      failureReason: 'Audienceの対象ユーザーが削除されました',
+    };
+    expect(
+      notificationScheduleListResponseSchema.parse({ items: [failed] }).items[0]
+        .failureReason
+    ).toBe(failed.failureReason);
+    expect(
+      notificationScheduleDetailSchema.parse({ ...scheduleDetail, ...failed })
+        .failureReason
+    ).toBe(failed.failureReason);
+  });
+
   it('スケジュール一覧は軽量なitemsを返す', () => {
     expect(
       notificationScheduleListResponseSchema.safeParse({

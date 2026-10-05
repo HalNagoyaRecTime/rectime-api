@@ -56,6 +56,7 @@ export interface NotificationScheduleListItemDTO {
   importance: NotificationImportance;
   sendAt: string;
   status: NotificationScheduleStatus;
+  failureReason: string | null;
   stop: NotificationScheduleStopDTO | null;
   creation: NotificationCreationDTO;
 }
@@ -87,6 +88,7 @@ export interface NotificationScheduleDetailDTO {
   importance: NotificationImportance;
   sendAt: string;
   status: NotificationScheduleStatus;
+  failureReason: string | null;
   stop: NotificationScheduleStopDTO | null;
   creation: NotificationCreationDTO;
   audienceProgress: NotificationAudienceProgressDTO;
