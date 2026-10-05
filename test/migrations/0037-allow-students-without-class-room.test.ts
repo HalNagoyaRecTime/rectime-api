@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0035_allow_students_without_class_room.sql'
+    item => item.name === '0037_allow_students_without_class_room.sql'
   );
   if (!migration) {
     throw new Error(
-      '0035_allow_students_without_class_room.sql is not registered'
+      '0037_allow_students_without_class_room.sql is not registered'
     );
   }
   return migration.queries;
@@ -26,7 +26,7 @@ async function insertUser(userName: string): Promise<number> {
   return user!.user_id;
 }
 
-describe('0035_allow_students_without_class_room.sql', () => {
+describe('0037_allow_students_without_class_room.sql', () => {
   it('studentsの所属情報をNULL許容にする', async () => {
     const columns = await env.DB.prepare('PRAGMA table_info(students)').all<{
       name: string;
@@ -42,7 +42,7 @@ describe('0035_allow_students_without_class_room.sql', () => {
   });
 
   it('クラス未所属のStudentを登録できる', async () => {
-    const userId = await insertUser('0035未所属Student');
+    const userId = await insertUser('0037未所属Student');
 
     await expect(
       env.DB.prepare(
@@ -53,7 +53,7 @@ describe('0035_allow_students_without_class_room.sql', () => {
           student_id_number
         ) VALUES (?, NULL, NULL, ?)`
       )
-        .bind(userId, '0035-UNASSIGNED')
+        .bind(userId, '0037-UNASSIGNED')
         .run()
     ).resolves.toBeDefined();
   });
@@ -62,7 +62,7 @@ describe('0035_allow_students_without_class_room.sql', () => {
     ['class_room_idだけNULL', null, 1],
     ['attendance_numberだけNULL', 1, null],
   ])('%sのStudentは登録できない', async (_, classRoomId, attendanceNumber) => {
-    const userId = await insertUser(`0035不整合-${String(classRoomId)}`);
+    const userId = await insertUser(`0037不整合-${String(classRoomId)}`);
 
     await expect(
       env.DB.prepare(
@@ -77,7 +77,7 @@ describe('0035_allow_students_without_class_room.sql', () => {
           userId,
           classRoomId,
           attendanceNumber,
-          `0035-INCONSISTENT-${String(classRoomId)}`
+          `0037-INCONSISTENT-${String(classRoomId)}`
         )
         .run()
     ).rejects.toThrow(/CHECK/);
@@ -118,7 +118,7 @@ describe('0035_allow_students_without_class_room.sql', () => {
       'SELECT COALESCE(MAX(student_id), 0) AS max_id FROM students'
     ).first<{ max_id: number }>();
     const deletedStudentId = (maxStudent?.max_id ?? 0) + 1000;
-    const deletedUserId = await insertUser('0035削除済みStudent');
+    const deletedUserId = await insertUser('0037削除済みStudent');
 
     await env.DB.prepare(
       `INSERT INTO students (
@@ -133,14 +133,14 @@ describe('0035_allow_students_without_class_room.sql', () => {
         deletedStudentId,
         deletedUserId,
         classRoom!.class_room_id,
-        '0035-DELETED-SEQUENCE'
+        '0037-DELETED-SEQUENCE'
       )
       .run();
     await env.DB.prepare('DELETE FROM students WHERE student_id = ?')
       .bind(deletedStudentId)
       .run();
 
-    const nextUserId = await insertUser('0035次回Student');
+    const nextUserId = await insertUser('0037次回Student');
 
     try {
       await runMigration();
@@ -157,7 +157,7 @@ describe('0035_allow_students_without_class_room.sql', () => {
         .bind(
           nextUserId,
           classRoom!.class_room_id,
-          '0035-NEXT-SEQUENCE'
+          '0037-NEXT-SEQUENCE'
         )
         .first<{ student_id: number }>();
 
