@@ -977,6 +977,12 @@ describe('POST /auth/refresh', () => {
     '%sの障害後も同じ更新IDを維持する',
     clientType => {
       it.each([
+        [
+          400,
+          { error: 'temporarily_unavailable' },
+          503,
+          'AUTH_REFRESH_UNAVAILABLE',
+        ],
         [429, { error: 'invalid_grant' }, 503, 'AUTH_REFRESH_UNAVAILABLE'],
         [500, { error: 'invalid_grant' }, 503, 'AUTH_REFRESH_UNAVAILABLE'],
         [

@@ -217,6 +217,7 @@ describe('Microsoftトークン交換の障害分類', () => {
 
   it.each([
     [400, 'interaction_required', 'reauthentication_required'],
+    [400, 'temporarily_unavailable', 'unavailable'],
     [400, 'invalid_client', 'provider_error'],
     [400, 'invalid_scope', 'provider_error'],
     [400, 'unknown_error', 'provider_error'],

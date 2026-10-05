@@ -130,6 +130,13 @@ async function requestMicrosoftToken(
       if (
         response.status === 400 &&
         isRecord(payload) &&
+        payload.error === 'temporarily_unavailable'
+      ) {
+        return { ok: false, reason: 'unavailable' };
+      }
+      if (
+        response.status === 400 &&
+        isRecord(payload) &&
         (payload.error === 'invalid_grant' ||
           payload.error === 'interaction_required')
       ) {
