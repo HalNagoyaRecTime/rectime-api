@@ -13,12 +13,16 @@ interface SourceRow {
 interface AutomaticReminderRow {
   notification_id: number;
   source_hash: string;
-  notification_schedule_id: number;
-  send_status: string;
+  push_title: string;
+  push_body: string;
+  detail_title: string;
+  detail_body: string;
+  notification_schedule_id: number | null;
+  send_at: string | null;
+  send_status: string | null;
   scheduled_by_user_id: number | null;
   started_at: string | null;
   recipients_resolved_at: string | null;
-  schedule_count: number;
 }
 
 export function createNotificationCreationRepository(
@@ -36,37 +40,40 @@ export function createNotificationCreationRepository(
       if (command.audiences.length === 0) {
         throw new Error('Audienceは1件以上必要です');
       }
-      const exact = await findSourceHash(db, command.source);
-      if (exact) return { status: 'already_exists' };
 
-      const previous = await db
-        .prepare(
-          `SELECT n.notification_id, n.source_hash,
-                  s.notification_schedule_id, s.send_status,
-                  s.scheduled_by_user_id, s.started_at,
-                  s.recipients_resolved_at,
-                  (SELECT COUNT(*) FROM notification_schedules all_schedules
-                   WHERE all_schedules.notification_id = n.notification_id) AS schedule_count
-           FROM notifications n
-           INNER JOIN notification_schedules s
-             ON s.notification_id = n.notification_id
-           WHERE n.source_type = ? AND n.source_id = ?
-             AND n.notification_type = 'notification_general'
-           ORDER BY n.created_at DESC, n.notification_id DESC
-           LIMIT 1`
-        )
-        .bind(command.source.type, command.source.id)
-        .first<AutomaticReminderRow>();
+      if (await hasStartedSourceSchedule(db, command.source)) {
+        return { status: 'already_exists' };
+      }
+
+      const previous = await findAutomaticReminder(db, command.source);
+      if (!previous) {
+        return createNotification(db, command);
+      }
 
       if (
-        previous &&
-        previous.schedule_count === 1 &&
-        previous.send_status === 'scheduled' &&
-        previous.scheduled_by_user_id === null &&
-        previous.started_at === null &&
-        previous.recipients_resolved_at === null
+        previous.notification_schedule_id === null ||
+        previous.send_status !== 'scheduled' ||
+        previous.scheduled_by_user_id !== null ||
+        previous.started_at !== null ||
+        previous.recipients_resolved_at !== null
       ) {
-        const results = await db.batch([
+        return { status: 'already_exists' };
+      }
+
+      if (
+        previous.source_hash === command.source.hash &&
+        previous.push_title === command.push_title &&
+        previous.push_body === command.push_body &&
+        previous.detail_title === command.detail_title &&
+        previous.detail_body === command.detail_body &&
+        previous.send_at === command.send_at
+      ) {
+        return { status: 'already_exists' };
+      }
+
+      let results: D1Result[];
+      try {
+        results = await db.batch([
           db
             .prepare(
               `UPDATE notifications
@@ -74,19 +81,19 @@ export function createNotificationCreationRepository(
                    source_hash = ?, updated_at = ?
                WHERE notification_id = ? AND source_type = ? AND source_id = ?
                  AND notification_type = 'notification_general' AND source_hash = ?
+                 AND NOT EXISTS (
+                   SELECT 1 FROM notification_schedules started
+                   WHERE started.notification_id = notifications.notification_id
+                     AND started.started_at IS NOT NULL
+                 )
                  AND EXISTS (
-                   SELECT 1 FROM notification_schedules s
-                   WHERE s.notification_schedule_id = ?
-                     AND s.notification_id = notifications.notification_id
-                     AND s.send_status = 'scheduled'
-                     AND s.scheduled_by_user_id IS NULL
-                     AND s.started_at IS NULL
-                     AND s.recipients_resolved_at IS NULL
-                     AND NOT EXISTS (
-                       SELECT 1 FROM notification_schedules other
-                       WHERE other.notification_id = s.notification_id
-                         AND other.notification_schedule_id <> s.notification_schedule_id
-                     )
+                   SELECT 1 FROM notification_schedules automatic
+                   WHERE automatic.notification_schedule_id = ?
+                     AND automatic.notification_id = notifications.notification_id
+                     AND automatic.send_status = 'scheduled'
+                     AND automatic.scheduled_by_user_id IS NULL
+                     AND automatic.started_at IS NULL
+                     AND automatic.recipients_resolved_at IS NULL
                  )`
             )
             .bind(
@@ -109,15 +116,17 @@ export function createNotificationCreationRepository(
                WHERE notification_schedule_id = ? AND notification_id = ?
                  AND send_status = 'scheduled' AND scheduled_by_user_id IS NULL
                  AND started_at IS NULL AND recipients_resolved_at IS NULL
+                 AND NOT EXISTS (
+                   SELECT 1 FROM notification_schedules started
+                   WHERE started.notification_id = notification_schedules.notification_id
+                     AND started.started_at IS NOT NULL
+                 )
                  AND EXISTS (
                    SELECT 1 FROM notifications n
                    WHERE n.notification_id = notification_schedules.notification_id
+                     AND n.source_type = ? AND n.source_id = ?
+                     AND n.notification_type = 'notification_general'
                      AND n.source_hash = ?
-                 )
-                 AND NOT EXISTS (
-                   SELECT 1 FROM notification_schedules other
-                   WHERE other.notification_id = notification_schedules.notification_id
-                     AND other.notification_schedule_id <> notification_schedules.notification_schedule_id
                  )`
             )
             .bind(
@@ -125,24 +134,29 @@ export function createNotificationCreationRepository(
               command.now,
               previous.notification_schedule_id,
               previous.notification_id,
+              command.source.type,
+              command.source.id,
               command.source.hash
             ),
         ]);
-        if (results[0]?.meta.changes === 1 && results[1]?.meta.changes === 1) {
-          return {
-            status: 'updated',
-            result: {
-              notification_id: previous.notification_id,
-              notification_schedule_id: previous.notification_schedule_id,
-            },
-          };
-        }
-        if (await findSourceHash(db, command.source)) {
+      } catch (error) {
+        if (isNotificationSourceConflict(error)) {
           return { status: 'already_exists' };
         }
+        throw error;
       }
 
-      return createNotification(db, command);
+      if (results[0]?.meta.changes === 1 && results[1]?.meta.changes === 1) {
+        return {
+          status: 'updated',
+          result: {
+            notification_id: previous.notification_id,
+            notification_schedule_id: previous.notification_schedule_id,
+          },
+        };
+      }
+
+      return { status: 'already_exists' };
     },
   };
 }
@@ -260,6 +274,51 @@ async function createNotification(
       notification_schedule_id: scheduleId,
     },
   };
+}
+
+async function hasStartedSourceSchedule(
+  db: D1Database,
+  source: NonNullable<AutomaticNotificationCreationCommand['source']>
+): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT 1 AS started
+       FROM notifications n
+       INNER JOIN notification_schedules s
+         ON s.notification_id = n.notification_id
+       WHERE n.source_type = ? AND n.source_id = ?
+         AND n.notification_type = 'notification_general'
+         AND s.started_at IS NOT NULL
+       LIMIT 1`
+    )
+    .bind(source.type, source.id)
+    .first<{ started: number }>();
+  return row !== null;
+}
+
+async function findAutomaticReminder(
+  db: D1Database,
+  source: NonNullable<AutomaticNotificationCreationCommand['source']>
+): Promise<AutomaticReminderRow | null> {
+  return db
+    .prepare(
+      `SELECT n.notification_id, n.source_hash,
+              n.push_title, n.push_body,
+              n.title AS detail_title, n.body AS detail_body,
+              s.notification_schedule_id, s.send_at, s.send_status,
+              s.scheduled_by_user_id, s.started_at, s.recipients_resolved_at
+       FROM notifications n
+       LEFT JOIN notification_schedules s
+         ON s.notification_id = n.notification_id
+        AND s.scheduled_by_user_id IS NULL
+       WHERE n.source_type = ? AND n.source_id = ?
+         AND n.notification_type = 'notification_general'
+       ORDER BY n.created_at DESC, n.notification_id DESC,
+                s.notification_schedule_id ASC
+       LIMIT 1`
+    )
+    .bind(source.type, source.id)
+    .first<AutomaticReminderRow>();
 }
 
 async function findSourceHash(

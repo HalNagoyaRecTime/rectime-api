@@ -119,13 +119,7 @@ describe('NotificationCreationRepository', () => {
     ).resolves.toMatchObject({
       status: 'created',
     });
-    await expect(
-      repository.createOrUpdateAutomatic({
-        ...command,
-        push_body: '異なる文面',
-        send_at: '2026-11-07T01:30:00.000Z',
-      })
-    ).resolves.toEqual({
+    await expect(repository.createOrUpdateAutomatic(command)).resolves.toEqual({
       status: 'already_exists',
     });
   });
@@ -178,7 +172,111 @@ describe('NotificationCreationRepository', () => {
     expect(audienceCount?.count).toBe(1);
   });
 
-  it('開始済みまたは再送Scheduleがある通知の履歴を保持して新規通知を作る', async () => {
+  it('同じHashでもsend_atが変われば未開始Scheduleを更新する', async () => {
+    const fixture = await createFixture();
+    const first = await repository.createOrUpdateAutomatic(
+      buildAutomaticCommand(
+        fixture.gatheringId,
+        'hash-10-45',
+        '10:45',
+        '2026-11-07T01:30:00.000Z'
+      )
+    );
+    if (first.status !== 'created')
+      throw new Error('初回通知が作成されませんでした');
+
+    const updated = await repository.createOrUpdateAutomatic(
+      buildAutomaticCommand(
+        fixture.gatheringId,
+        'hash-10-45',
+        '10:45',
+        '2026-11-08T01:30:00.000Z'
+      )
+    );
+
+    expect(updated).toEqual({
+      status: 'updated',
+      result: first.result,
+    });
+    const schedule = await env.DB.prepare(
+      `SELECT send_at FROM notification_schedules
+       WHERE notification_schedule_id = ?`
+    )
+      .bind(first.result.notification_schedule_id)
+      .first<{ send_at: string }>();
+    expect(schedule?.send_at).toBe('2026-11-08T01:30:00.000Z');
+  });
+
+  it('未開始のA→B→Aは同じNotificationとScheduleを現在値へ戻す', async () => {
+    const fixture = await createFixture();
+    const first = await repository.createOrUpdateAutomatic(
+      buildAutomaticCommand(
+        fixture.gatheringId,
+        'hash-a',
+        '10:45',
+        '2026-11-07T01:30:00.000Z'
+      )
+    );
+    if (first.status !== 'created')
+      throw new Error('初回通知が作成されませんでした');
+
+    await expect(
+      repository.createOrUpdateAutomatic(
+        buildAutomaticCommand(
+          fixture.gatheringId,
+          'hash-b',
+          '11:00',
+          '2026-11-07T01:45:00.000Z'
+        )
+      )
+    ).resolves.toEqual({
+      status: 'updated',
+      result: first.result,
+    });
+
+    await expect(
+      repository.createOrUpdateAutomatic(
+        buildAutomaticCommand(
+          fixture.gatheringId,
+          'hash-a',
+          '10:45',
+          '2026-11-07T01:30:00.000Z'
+        )
+      )
+    ).resolves.toEqual({
+      status: 'updated',
+      result: first.result,
+    });
+
+    const state = await env.DB.prepare(
+      `SELECT n.push_body, n.source_hash, s.notification_schedule_id, s.send_at
+       FROM notifications n
+       INNER JOIN notification_schedules s
+         ON s.notification_id = n.notification_id
+       WHERE n.notification_id = ?`
+    )
+      .bind(first.result.notification_id)
+      .first<Record<string, unknown>>();
+    expect(state).toEqual({
+      push_body: '集合時間は10:45です。',
+      source_hash: 'hash-a',
+      notification_schedule_id: first.result.notification_schedule_id,
+      send_at: '2026-11-07T01:30:00.000Z',
+    });
+
+    const counts = await env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM notifications
+          WHERE source_type = 'gathering' AND source_id = ?) AS notifications,
+         (SELECT COUNT(*) FROM notification_schedules
+          WHERE notification_id = ?) AS schedules`
+    )
+      .bind(fixture.gatheringId, first.result.notification_id)
+      .first<{ notifications: number; schedules: number }>();
+    expect(counts).toEqual({ notifications: 1, schedules: 1 });
+  });
+
+  it('Schedule開始後はGathering変更へ追従せず新規通知も作らない', async () => {
     const fixture = await createFixture();
     const first = await repository.createOrUpdateAutomatic(
       buildAutomaticCommand(fixture.gatheringId, 'hash-10-45')
@@ -187,38 +285,58 @@ describe('NotificationCreationRepository', () => {
       throw new Error('初回通知が作成されませんでした');
 
     await env.DB.prepare(
-      `UPDATE notification_schedules SET started_at = ? WHERE notification_schedule_id = ?`
+      `UPDATE notification_schedules
+       SET send_status = 'resolving', started_at = ?
+       WHERE notification_schedule_id = ?`
     )
       .bind('2026-11-07T01:30:00.000Z', first.result.notification_schedule_id)
       .run();
-    const next = await repository.createOrUpdateAutomatic(
-      buildAutomaticCommand(
-        fixture.gatheringId,
-        'hash-11-00',
-        '11:00',
-        '2026-11-07T01:45:00.000Z'
-      )
-    );
-    expect(next.status).toBe('created');
 
-    const oldSchedule = await env.DB.prepare(
-      `SELECT started_at, send_at FROM notification_schedules WHERE notification_schedule_id = ?`
+    await expect(
+      repository.createOrUpdateAutomatic(
+        buildAutomaticCommand(
+          fixture.gatheringId,
+          'hash-11-00',
+          '11:00',
+          '2026-11-07T01:45:00.000Z'
+        )
+      )
+    ).resolves.toEqual({ status: 'already_exists' });
+
+    const state = await env.DB.prepare(
+      `SELECT n.push_body, n.source_hash, s.send_status, s.started_at, s.send_at
+       FROM notifications n
+       INNER JOIN notification_schedules s
+         ON s.notification_id = n.notification_id
+       WHERE n.notification_id = ?`
     )
-      .bind(first.result.notification_schedule_id)
+      .bind(first.result.notification_id)
       .first<Record<string, unknown>>();
-    expect(oldSchedule).toEqual({
+    expect(state).toEqual({
+      push_body: '集合時間は10:45です。',
+      source_hash: 'hash-10-45',
+      send_status: 'resolving',
       started_at: '2026-11-07T01:30:00.000Z',
       send_at: '2026-10-04T01:00:00.000Z',
     });
+
+    const count = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM notifications
+       WHERE source_type = 'gathering' AND source_id = ?`
+    )
+      .bind(fixture.gatheringId)
+      .first<{ count: number }>();
+    expect(count?.count).toBe(1);
   });
 
-  it('手動再送ScheduleがあるNotificationは更新せず、新しいautomatic通知を作る', async () => {
+  it('未開始の手動再送があってもautomatic Scheduleだけ送信時刻を追従する', async () => {
     const fixture = await createFixture();
     const first = await repository.createOrUpdateAutomatic(
       buildAutomaticCommand(fixture.gatheringId, 'hash-10-45')
     );
     if (first.status !== 'created')
       throw new Error('初回通知が作成されませんでした');
+
     await env.DB.prepare(
       `INSERT INTO notification_schedules (
          scheduled_by_user_id, notification_id, send_status, send_at, created_at, updated_at
@@ -227,46 +345,100 @@ describe('NotificationCreationRepository', () => {
       .bind(
         fixture.actorUserId,
         first.result.notification_id,
-        '2026-11-07T01:30:00.000Z',
+        '2026-11-07T02:00:00.000Z',
         '2026-10-04T01:00:00.000Z',
         '2026-10-04T01:00:00.000Z'
       )
       .run();
 
-    const next = await repository.createOrUpdateAutomatic(
-      buildAutomaticCommand(
-        fixture.gatheringId,
-        'hash-11-00',
-        '11:00',
-        '2026-11-07T01:45:00.000Z'
+    await expect(
+      repository.createOrUpdateAutomatic(
+        buildAutomaticCommand(
+          fixture.gatheringId,
+          'hash-11-00',
+          '11:00',
+          '2026-11-07T01:45:00.000Z'
+        )
       )
-    );
-    expect(next.status).toBe('created');
-    const original = await env.DB.prepare(
-      `SELECT push_body, source_hash FROM notifications WHERE notification_id = ?`
+    ).resolves.toEqual({
+      status: 'updated',
+      result: first.result,
+    });
+
+    const content = await env.DB.prepare(
+      `SELECT push_body, source_hash FROM notifications
+       WHERE notification_id = ?`
     )
       .bind(first.result.notification_id)
       .first<Record<string, unknown>>();
-    expect(original).toEqual({
-      push_body: '集合時間は10:45です。',
-      source_hash: 'hash-10-45',
+    expect(content).toEqual({
+      push_body: '集合時間は11:00です。',
+      source_hash: 'hash-11-00',
     });
-    const originalSchedules = await env.DB.prepare(
+
+    const schedules = await env.DB.prepare(
       `SELECT notification_schedule_id, send_at, scheduled_by_user_id
        FROM notification_schedules WHERE notification_id = ?
        ORDER BY notification_schedule_id`
     )
       .bind(first.result.notification_id)
       .all<Record<string, unknown>>();
-    expect(originalSchedules.results).toHaveLength(2);
-    expect(originalSchedules.results[0]).toMatchObject({
+    expect(schedules.results).toHaveLength(2);
+    expect(schedules.results[0]).toMatchObject({
       notification_schedule_id: first.result.notification_schedule_id,
-      send_at: '2026-10-04T01:00:00.000Z',
+      send_at: '2026-11-07T01:45:00.000Z',
       scheduled_by_user_id: null,
     });
-    expect(originalSchedules.results[1]).toMatchObject({
-      send_at: '2026-11-07T01:30:00.000Z',
+    expect(schedules.results[1]).toMatchObject({
+      send_at: '2026-11-07T02:00:00.000Z',
       scheduled_by_user_id: fixture.actorUserId,
+    });
+  });
+
+  it('手動再送Scheduleが開始済みならautomatic追従を止める', async () => {
+    const fixture = await createFixture();
+    const first = await repository.createOrUpdateAutomatic(
+      buildAutomaticCommand(fixture.gatheringId, 'hash-10-45')
+    );
+    if (first.status !== 'created')
+      throw new Error('初回通知が作成されませんでした');
+
+    await env.DB.prepare(
+      `INSERT INTO notification_schedules (
+         scheduled_by_user_id, notification_id, send_status, send_at,
+         started_at, created_at, updated_at
+       ) VALUES (?, ?, 'resolving', ?, ?, ?, ?)`
+    )
+      .bind(
+        fixture.actorUserId,
+        first.result.notification_id,
+        '2026-11-07T02:00:00.000Z',
+        '2026-11-07T02:00:00.000Z',
+        '2026-10-04T01:00:00.000Z',
+        '2026-10-04T01:00:00.000Z'
+      )
+      .run();
+
+    await expect(
+      repository.createOrUpdateAutomatic(
+        buildAutomaticCommand(
+          fixture.gatheringId,
+          'hash-11-00',
+          '11:00',
+          '2026-11-07T01:45:00.000Z'
+        )
+      )
+    ).resolves.toEqual({ status: 'already_exists' });
+
+    const state = await env.DB.prepare(
+      `SELECT push_body, source_hash FROM notifications
+       WHERE notification_id = ?`
+    )
+      .bind(first.result.notification_id)
+      .first<Record<string, unknown>>();
+    expect(state).toEqual({
+      push_body: '集合時間は10:45です。',
+      source_hash: 'hash-10-45',
     });
   });
 });

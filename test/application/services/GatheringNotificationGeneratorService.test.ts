@@ -97,16 +97,17 @@ describe('GatheringNotificationGeneratorService', () => {
     const gatheringRepository: IGatheringNotificationGeneratorRepository = {
       findGatheringTime: vi.fn(async () => gatheringTime),
     };
-    const sourceHashes = new Set<string>();
+    let currentHash: string | null = null;
     const notificationCreationRepository: INotificationCreationRepository = {
       create: vi.fn(),
       createOrUpdateAutomatic: vi.fn(async command => {
-        if (sourceHashes.has(command.source!.hash)) {
+        if (currentHash === command.source!.hash) {
           return { status: 'already_exists' } as const;
         }
-        sourceHashes.add(command.source!.hash);
+        const status = currentHash === null ? 'created' : 'updated';
+        currentHash = command.source!.hash;
         return {
-          status: 'created',
+          status,
           result: { notification_id: 12, notification_schedule_id: 34 },
         } as const;
       }),
@@ -121,7 +122,7 @@ describe('GatheringNotificationGeneratorService', () => {
     await expect(service.generate(51)).resolves.toBe('created');
     await expect(service.generate(51)).resolves.toBe('already_exists');
     gatheringTime = '10:46';
-    await expect(service.generate(51)).resolves.toBe('created');
+    await expect(service.generate(51)).resolves.toBe('updated');
 
     const commands = vi.mocked(
       notificationCreationRepository.createOrUpdateAutomatic
