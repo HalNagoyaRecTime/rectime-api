@@ -1,10 +1,10 @@
 -- Studentがクラス未所属になれるよう、所属情報をNULL許容にする。
 -- class_room_idとattendance_numberは、両方NULLまたは両方値ありだけを許可する。
-CREATE TABLE __migration_0035_student_sequence (
+CREATE TABLE __migration_0037_student_sequence (
     seq INTEGER NOT NULL
 );
 
-INSERT INTO __migration_0035_student_sequence (seq)
+INSERT INTO __migration_0037_student_sequence (seq)
 SELECT COALESCE(
     (SELECT seq FROM sqlite_sequence WHERE name = 'students'),
     0
@@ -12,7 +12,7 @@ SELECT COALESCE(
 
 DROP INDEX IF EXISTS idx_students_class_room_id_user_id;
 
-ALTER TABLE students RENAME TO __migration_0035_students;
+ALTER TABLE students RENAME TO __migration_0037_students;
 
 CREATE TABLE students (
     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,9 +49,9 @@ SELECT
     student_id_number,
     created_at,
     updated_at
-FROM __migration_0035_students;
+FROM __migration_0037_students;
 
-DROP TABLE __migration_0035_students;
+DROP TABLE __migration_0037_students;
 
 DELETE FROM sqlite_sequence WHERE name = 'students';
 
@@ -62,9 +62,9 @@ SELECT
         seq,
         COALESCE((SELECT MAX(student_id) FROM students), 0)
     )
-FROM __migration_0035_student_sequence;
+FROM __migration_0037_student_sequence;
 
-DROP TABLE __migration_0035_student_sequence;
+DROP TABLE __migration_0037_student_sequence;
 
 CREATE INDEX idx_students_class_room_id_user_id
     ON students(class_room_id, user_id);
