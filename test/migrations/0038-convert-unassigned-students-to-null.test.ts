@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0036_convert_unassigned_students_to_null.sql'
+    item => item.name === '0038_convert_unassigned_students_to_null.sql'
   );
   if (!migration) {
     throw new Error(
-      '0036_convert_unassigned_students_to_null.sql is not registered'
+      '0038_convert_unassigned_students_to_null.sql is not registered'
     );
   }
   return migration.queries;
@@ -26,7 +26,7 @@ async function insertUser(userName: string): Promise<number> {
   return user!.user_id;
 }
 
-describe('0036_convert_unassigned_students_to_null.sql', () => {
+describe('0038_convert_unassigned_students_to_null.sql', () => {
   it('__UNASSIGNED__所属のStudentだけを未所属へ移行する', async () => {
     let unassignedClassRoom = await env.DB.prepare(
       `SELECT class_room_id
@@ -55,8 +55,8 @@ describe('0036_convert_unassigned_students_to_null.sql', () => {
       .first<{ class_room_id: number }>();
     expect(assignedClassRoom).not.toBeNull();
 
-    const unassignedUserId = await insertUser('0036旧未所属Student');
-    const assignedUserId = await insertUser('0036所属Student');
+    const unassignedUserId = await insertUser('0038旧未所属Student');
+    const assignedUserId = await insertUser('0038所属Student');
 
     await env.DB.batch([
       env.DB.prepare(
@@ -69,7 +69,7 @@ describe('0036_convert_unassigned_students_to_null.sql', () => {
       ).bind(
         unassignedUserId,
         unassignedClassRoom!.class_room_id,
-        '0036-UNASSIGNED'
+        '0038-UNASSIGNED'
       ),
       env.DB.prepare(
         `INSERT INTO students (
@@ -81,7 +81,7 @@ describe('0036_convert_unassigned_students_to_null.sql', () => {
       ).bind(
         assignedUserId,
         assignedClassRoom!.class_room_id,
-        '0036-ASSIGNED'
+        '0038-ASSIGNED'
       ),
     ]);
 
