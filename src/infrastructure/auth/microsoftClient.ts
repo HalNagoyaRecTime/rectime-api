@@ -71,7 +71,7 @@ export async function exchangeMicrosoftToken(
       timeout,
     ]);
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 

@@ -549,7 +549,9 @@ describe('GET /auth/me/photo', () => {
         const res = await session.request();
         expect(res.status).toBe(200);
         expect(res.headers.get('Content-Type')).toBe('image/png');
-        expect(await res.text()).toBe('image-data');
+        expect(new Uint8Array(await res.arrayBuffer())).toEqual(
+          new TextEncoder().encode('image-data')
+        );
         expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe(
           'Bearer graph-access'
         );
