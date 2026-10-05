@@ -118,6 +118,21 @@ export const AuthErrors = {
     code: 'USER_ACTIVATION_CHECK_FAILED',
     message: 'アカウント状態の確認に失敗しました',
   },
+  AUTH_REFRESH_UNAVAILABLE: {
+    status: 503,
+    code: 'AUTH_REFRESH_UNAVAILABLE',
+    message: '認証の更新を一時的に確認できません',
+  },
+  AUTH_PROVIDER_UNAVAILABLE: {
+    status: 503,
+    code: 'AUTH_PROVIDER_UNAVAILABLE',
+    message: 'Microsoftの認証を一時的に確認できません',
+  },
+  AUTH_PROVIDER_ERROR: {
+    status: 500,
+    code: 'AUTH_PROVIDER_ERROR',
+    message: 'Microsoftとの認証処理に失敗しました',
+  },
   REFRESH_TOKEN_EXPIRED: {
     status: 401,
     code: 'REFRESH_TOKEN_EXPIRED',

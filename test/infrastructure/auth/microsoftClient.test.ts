@@ -3,6 +3,7 @@ import {
   buildMicrosoftAuthorizeUrl,
   exchangeMicrosoftToken,
   refreshMicrosoftAccessToken,
+  MICROSOFT_TOKEN_TIMEOUT_MS,
 } from '../../../src/infrastructure/auth/microsoftClient';
 import { MICROSOFT_SCOPES } from '../../../src/domain/auth/types';
 
@@ -37,6 +38,8 @@ beforeAll(async () => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe('buildMicrosoftAuthorizeUrl', () => {
@@ -88,7 +91,10 @@ describe('exchangeMicrosoftToken', () => {
       { grant_type: 'authorization_code', code: 'code-1' }
     );
 
-    expect(result).toEqual({ access_token: 'access-1', id_token: 'id-1' });
+    expect(result).toEqual({
+      ok: true,
+      tokens: { access_token: 'access-1', id_token: 'id-1' },
+    });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
@@ -130,7 +136,7 @@ describe('exchangeMicrosoftToken', () => {
     expect(body.has('client_assertion_type')).toBe(false);
   });
 
-  it('レスポンスが not ok の場合は null を返す', async () => {
+  it('HTTP 400のinvalid_grantは再認証が必要と返す', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -149,10 +155,10 @@ describe('exchangeMicrosoftToken', () => {
       { grant_type: 'authorization_code', code: 'code-1' }
     );
 
-    expect(result).toBeNull();
+    expect(result).toEqual({ ok: false, reason: 'reauthentication_required' });
   });
 
-  it('レスポンスボディがJSONとしてパースできない場合も null を返す', async () => {
+  it('JSON不正は失効と区別する', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response('not json', { status: 200 }));
@@ -166,7 +172,7 @@ describe('exchangeMicrosoftToken', () => {
       { grant_type: 'authorization_code', code: 'code-1' }
     );
 
-    expect(result).toBeNull();
+    expect(result).toEqual({ ok: false, reason: 'unavailable' });
   });
 });
 
@@ -187,12 +193,133 @@ describe('refreshMicrosoftAccessToken', () => {
       'refresh-token-1'
     );
 
-    expect(result).toEqual({ access_token: 'access-1' });
+    expect(result).toEqual({ ok: true, tokens: { access_token: 'access-1' } });
 
     const [, init] = fetchMock.mock.calls[0];
     const body = new URLSearchParams(init.body as string);
     expect(body.get('grant_type')).toBe('refresh_token');
     expect(body.get('refresh_token')).toBe('refresh-token-1');
     expect(body.get('scope')).toBe(MICROSOFT_SCOPES);
+  });
+});
+
+describe('Microsoftトークン交換の障害分類', () => {
+  function exchange() {
+    return refreshMicrosoftAccessToken(
+      'client',
+      'tenant',
+      '',
+      '',
+      'secret-refresh',
+      { includeClientAssertion: false }
+    );
+  }
+
+  it.each([
+    [400, 'interaction_required', 'reauthentication_required'],
+    [400, 'invalid_client', 'provider_error'],
+    [400, 'invalid_scope', 'provider_error'],
+    [400, 'unknown_error', 'provider_error'],
+    [400, 'INVALID_GRANT', 'provider_error'],
+    [401, 'invalid_grant', 'provider_error'],
+    [429, 'invalid_grant', 'unavailable'],
+    [500, 'invalid_grant', 'unavailable'],
+    [503, 'interaction_required', 'unavailable'],
+  ])('HTTP %s / %sは%sに分類する', async (status, error, reason) => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({ error }), { status }))
+    );
+    expect(await exchange()).toEqual({ ok: false, reason });
+  });
+
+  it.each([
+    null,
+    [],
+    {},
+    { access_token: 12 },
+    { access_token: '' },
+    { access_token: ' ' },
+    { access_token: 'access', refresh_token: null },
+    { access_token: 'access', id_token: false },
+    { access_token: 'access', error: 'invalid_grant' },
+  ])('不正な成功レスポンス%sも失効にしない', async payload => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(payload)))
+    );
+    expect(await exchange()).toEqual({ ok: false, reason: 'unavailable' });
+  });
+
+  it('通信例外の本文をログに出さず一時障害にする', async () => {
+    const warn = vi.spyOn(console, 'warn');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new Error('secret-refresh'))
+    );
+    expect(await exchange()).toEqual({ ok: false, reason: 'unavailable' });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('上流のエラー説明・トークンをログに出さない', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: 'invalid_client',
+            error_description: 'secret-refresh',
+            access_token: 'secret-access',
+          }),
+          { status: 400 }
+        )
+      )
+    );
+    await exchange();
+    expect(warn).toHaveBeenCalledWith(expect.any(String), { status: 400 });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('secret-');
+  });
+
+  it.each(['接続', '本文'])(
+    '%sの待機は10秒で終了し、通信を中断する',
+    async phase => {
+      vi.useFakeTimers();
+      let signal: AbortSignal | undefined;
+      const fetchMock = vi.fn((_url, init: RequestInit) => {
+        signal = init.signal as AbortSignal;
+        if (phase === '接続') return new Promise<Response>(() => {});
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => new Promise(() => {}),
+        });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const pending = exchange();
+      await vi.advanceTimersByTimeAsync(MICROSOFT_TOKEN_TIMEOUT_MS - 1);
+      expect(signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await pending).toEqual({ ok: false, reason: 'unavailable' });
+      expect(signal?.aborted).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    }
+  );
+
+  it('成功後はタイムアウトを残さない', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ access_token: 'access' }))
+        )
+    );
+    expect((await exchange()).ok).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

@@ -11,7 +11,10 @@ import {
 } from 'vitest';
 import type { KVNamespace } from '@cloudflare/workers-types';
 import { account } from '../../../../src/presentation/auth/routes/account';
-import { signAccessToken } from '../../../../src/infrastructure/auth/jwt';
+import {
+  signAccessToken,
+  verifyAccessToken,
+} from '../../../../src/infrastructure/auth/jwt';
 import type {
   MobileRefreshEntry,
   DeletionConfirmationEntry,
@@ -52,6 +55,8 @@ beforeAll(async () => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 beforeEach(async () => {
@@ -492,6 +497,119 @@ describe('GET /auth/me/photo (削除状態)', () => {
 });
 
 describe('GET /auth/me/photo', () => {
+  describe.each(['web', 'mobile'] as const)('%sの写真取得', clientType => {
+    async function preparePhoto() {
+      const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+      const userId = await insertUser();
+      const entry = { ...refreshEntry(userId), client_type: clientType };
+      const stored = JSON.stringify(entry);
+      const key = 'mobile_refresh:photo-refresh';
+      await env.AUTH_KV.put(key, stored);
+      await env.AUTH_KV.put(
+        `mobile_refresh_by_user:${userId}`,
+        'photo-refresh'
+      );
+      const token = await buildLogoutToken(userId, clientType);
+      const put = vi.spyOn(env.AUTH_KV, 'put');
+      const remove = vi.spyOn(env.AUTH_KV, 'delete');
+      const request = () =>
+        buildApp().request(
+          '/me/photo',
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'X-Client-Type': clientType,
+            },
+          },
+          env
+        );
+      return { env, key, stored, put, remove, request };
+    }
+
+    it.each([true, false])(
+      'Microsoftが更新トークンを返す=%sの場合も写真を取得できる',
+      async rotates => {
+        const session = await preparePhoto();
+        const fetchMock = vi
+          .fn()
+          .mockResolvedValueOnce(
+            new Response(
+              JSON.stringify({
+                access_token: 'graph-access',
+                ...(rotates ? { refresh_token: 'new-refresh' } : {}),
+              })
+            )
+          )
+          .mockResolvedValueOnce(
+            new Response('image-data', {
+              headers: { 'Content-Type': 'image/png' },
+            })
+          );
+        vi.stubGlobal('fetch', fetchMock);
+        const res = await session.request();
+        expect(res.status).toBe(200);
+        expect(res.headers.get('Content-Type')).toBe('image/png');
+        expect(await res.text()).toBe('image-data');
+        expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe(
+          'Bearer graph-access'
+        );
+        const entry = JSON.parse((await session.env.AUTH_KV.get(session.key))!);
+        expect(entry.ms_refresh_token).toBe(
+          rotates ? 'new-refresh' : 'ms-refresh-logout'
+        );
+        expect(session.remove).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each([
+      [503, { error: 'invalid_grant' }, 503, 'AUTH_REFRESH_UNAVAILABLE'],
+      [400, { error: 'invalid_client' }, 500, 'AUTH_PROVIDER_ERROR'],
+      [400, { error: 'invalid_grant' }, 401, 'GRAPH_TOKEN_EXCHANGE_FAILED'],
+      [
+        200,
+        { refresh_token: 'refresh-without-access' },
+        503,
+        'AUTH_REFRESH_UNAVAILABLE',
+      ],
+    ])(
+      '上流%s / %jは%sを返し保存済み認証を変更しない',
+      async (status, payload, expectedStatus, code) => {
+        const session = await preparePhoto();
+        const fetchMock = vi
+          .fn()
+          .mockResolvedValue(new Response(JSON.stringify(payload), { status }));
+        vi.stubGlobal('fetch', fetchMock);
+        const res = await session.request();
+        expect(res.status).toBe(expectedStatus);
+        expect(await res.json()).toEqual({
+          error: { code, message: expect.any(String) },
+        });
+        expect(await session.env.AUTH_KV.get(session.key)).toBe(session.stored);
+        expect(session.put).not.toHaveBeenCalled();
+        expect(session.remove).not.toHaveBeenCalled();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it('Graphの404は従来の写真なしを返す', async () => {
+      const session = await preparePhoto();
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValueOnce(
+            new Response(JSON.stringify({ access_token: 'graph-access' }))
+          )
+          .mockResolvedValueOnce(new Response('', { status: 404 }))
+      );
+      const res = await session.request();
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({
+        error: { code: 'PHOTO_NOT_FOUND', message: expect.any(String) },
+      });
+    });
+  });
+
   it('無効化されたユーザーの場合は401を返し、Microsoftへ問い合わせない (#255)', async () => {
     const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
     const userId = await insertUser(0);
@@ -812,6 +930,228 @@ describe('POST /auth/logout', () => {
 });
 
 describe('POST /auth/refresh', () => {
+  async function prepareRefresh(
+    clientType: 'web' | 'mobile',
+    overrides: Partial<Env> = {}
+  ) {
+    const env = buildEnv({
+      MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem,
+      ...overrides,
+    });
+    const userId = await insertUser();
+    const stored = JSON.stringify({
+      ...refreshEntry(userId),
+      client_type: clientType,
+    });
+    const key = 'mobile_refresh:refresh-failure';
+    const userKey = `mobile_refresh_by_user:${userId}`;
+    await env.AUTH_KV.put(key, stored);
+    await env.AUTH_KV.put(userKey, 'refresh-failure');
+    const put = vi.spyOn(env.AUTH_KV, 'put');
+    const remove = vi.spyOn(env.AUTH_KV, 'delete');
+    const request = () =>
+      buildApp().request(
+        '/refresh',
+        {
+          method: 'POST',
+          headers: {
+            'X-Client-Type': clientType,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ refresh_token_id: 'refresh-failure' }),
+        },
+        env
+      );
+    const expectUnchanged = async () => {
+      expect(await env.AUTH_KV.get(key)).toBe(stored);
+      expect(await env.AUTH_KV.get(userKey)).toBe('refresh-failure');
+      expect(put).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+    };
+    return { env, key, userKey, put, remove, request, expectUnchanged };
+  }
+
+  describe.each(['web', 'mobile'] as const)(
+    '%sの障害後も同じ更新IDを維持する',
+    clientType => {
+      it.each([
+        [429, { error: 'invalid_grant' }, 503, 'AUTH_REFRESH_UNAVAILABLE'],
+        [500, { error: 'invalid_grant' }, 503, 'AUTH_REFRESH_UNAVAILABLE'],
+        [
+          503,
+          { error: 'interaction_required' },
+          503,
+          'AUTH_REFRESH_UNAVAILABLE',
+        ],
+        [400, { error: 'invalid_client' }, 500, 'AUTH_PROVIDER_ERROR'],
+        [400, { error: 'invalid_scope' }, 500, 'AUTH_PROVIDER_ERROR'],
+        [400, { error: 'unknown' }, 500, 'AUTH_PROVIDER_ERROR'],
+        [400, { error: 'INVALID_GRANT' }, 500, 'AUTH_PROVIDER_ERROR'],
+        [401, { error: 'invalid_grant' }, 500, 'AUTH_PROVIDER_ERROR'],
+        [400, { error: 'invalid_grant' }, 401, 'REFRESH_TOKEN_EXPIRED'],
+        [400, { error: 'interaction_required' }, 401, 'REFRESH_TOKEN_EXPIRED'],
+        [200, { refresh_token: 'new' }, 503, 'AUTH_REFRESH_UNAVAILABLE'],
+        [200, { access_token: 'access' }, 503, 'AUTH_REFRESH_UNAVAILABLE'],
+        [
+          200,
+          { access_token: 'access', refresh_token: 123 },
+          503,
+          'AUTH_REFRESH_UNAVAILABLE',
+        ],
+        [
+          200,
+          { access_token: 'access', refresh_token: '' },
+          503,
+          'AUTH_REFRESH_UNAVAILABLE',
+        ],
+        [200, null, 503, 'AUTH_REFRESH_UNAVAILABLE'],
+        [200, [], 503, 'AUTH_REFRESH_UNAVAILABLE'],
+      ])(
+        'HTTP %s / %jは%s / %sを返しKVを書き換えない',
+        async (status, payload, expectedStatus, code) => {
+          const session = await prepareRefresh(clientType);
+          const fetchMock = vi
+            .fn()
+            .mockResolvedValue(
+              new Response(JSON.stringify(payload), { status })
+            );
+          vi.stubGlobal('fetch', fetchMock);
+          const res = await session.request();
+          expect(res.status).toBe(expectedStatus);
+          expect(await res.json()).toEqual({
+            error: { code, message: expect.any(String) },
+          });
+          await session.expectUnchanged();
+          expect(fetchMock).toHaveBeenCalledTimes(1);
+        }
+      );
+
+      it.each([200, 400])(
+        'HTTP %sのJSON解析失敗でも認証失効にしない',
+        async status => {
+          const session = await prepareRefresh(clientType);
+          vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue(new Response('invalid-json', { status }))
+          );
+          expect((await session.request()).status).toBe(503);
+          await session.expectUnchanged();
+        }
+      );
+
+      it('通信例外では503を返し更新情報を残す', async () => {
+        const session = await prepareRefresh(clientType);
+        vi.stubGlobal(
+          'fetch',
+          vi.fn().mockRejectedValue(new Error('接続失敗'))
+        );
+        const res = await session.request();
+        expect(res.status).toBe(503);
+        expect(await res.json()).toEqual({
+          error: {
+            code: 'AUTH_REFRESH_UNAVAILABLE',
+            message: '認証の更新を一時的に確認できません',
+          },
+        });
+        await session.expectUnchanged();
+      });
+
+      it('一時障害の後に同じIDで成功し、成功時だけTTLを付け直してローテーションする', async () => {
+        const session = await prepareRefresh(clientType, {
+          MOBILE_REFRESH_EXPIRES_SEC: undefined,
+        });
+        const fetchMock = vi
+          .fn()
+          .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+          .mockResolvedValueOnce(
+            new Response(
+              JSON.stringify({
+                access_token: 'new-access',
+                refresh_token: 'new-refresh',
+              })
+            )
+          );
+        vi.stubGlobal('fetch', fetchMock);
+        expect((await session.request()).status).toBe(503);
+        await session.expectUnchanged();
+        const res = await session.request();
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          access_token: string;
+          refresh_token_id: string;
+          token_type: string;
+          expires_in: number;
+        };
+        expect(body).toEqual({
+          access_token: expect.any(String),
+          refresh_token_id: expect.any(String),
+          token_type: 'Bearer',
+          expires_in: 3600,
+        });
+        expect(body.refresh_token_id).not.toBe('refresh-failure');
+        expect(await session.env.AUTH_KV.get(session.key)).toBeNull();
+        expect(await session.env.AUTH_KV.get(session.userKey)).toBe(
+          body.refresh_token_id
+        );
+        const saved = JSON.parse(
+          (await session.env.AUTH_KV.get(
+            `mobile_refresh:${body.refresh_token_id}`
+          ))!
+        );
+        expect(saved.ms_refresh_token).toBe('new-refresh');
+        expect(saved.client_type).toBe(clientType);
+        expect(session.put).toHaveBeenCalledTimes(2);
+        expect(
+          session.put.mock.calls.every(
+            call => call[2]?.expirationTtl === 7776000
+          )
+        ).toBe(true);
+        const claims = await verifyAccessToken(
+          body.access_token,
+          JWT_SECRET,
+          clientType
+        );
+        expect(claims?.client_type).toBe(clientType);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      });
+    }
+  );
+
+  it('証明書設定の不備は500を返し更新情報を残す', async () => {
+    const session = await prepareRefresh('web', {
+      MICROSOFT_CLIENT_PRIVATE_KEY: 'invalid-key',
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    expect((await session.request()).status).toBe(500);
+    await session.expectUnchanged();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('接続タイムアウトでも503で終了し、旧ID・TTLを維持する', async () => {
+    const session = await prepareRefresh('mobile');
+    vi.useFakeTimers();
+    let started!: () => void;
+    const fetchStarted = new Promise<void>(resolve => {
+      started = resolve;
+    });
+    let signal: AbortSignal | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url, init: RequestInit) => {
+        signal = init.signal as AbortSignal;
+        started();
+        return new Promise<Response>(() => {});
+      })
+    );
+    const pending = session.request();
+    await fetchStarted;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect((await pending).status).toBe(503);
+    expect(signal?.aborted).toBe(true);
+    await session.expectUnchanged();
+  });
+
   it('refresh_token_idが無い場合は400を返す', async () => {
     const app = buildApp();
 
