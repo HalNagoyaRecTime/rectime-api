@@ -68,6 +68,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/admin/notifications/schedules/{notificationScheduleId}',
       '/api/v1/admin/notifications/schedules/{notificationScheduleId}/resend',
       '/api/v1/admin/notifications/schedules/{notificationScheduleId}/results',
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}/stop',
       '/api/v1/admin/notifications/{notificationId}',
       '/api/v1/admin/users/{userId}',
       '/api/v1/admin/users/{userId}/staff',
@@ -212,7 +213,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(58);
+    expect(documentedOperations).toHaveLength(59);
     const schedulePath =
       document.paths[
         '/api/v1/admin/notifications/schedules/{notificationScheduleId}'
