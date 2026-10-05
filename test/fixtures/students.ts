@@ -1,8 +1,10 @@
 import { drizzle } from 'drizzle-orm/d1';
+import { eq } from 'drizzle-orm';
 import type { D1Database } from '@cloudflare/workers-types';
 import * as schema from '../../src/infrastructure/database/schema';
 import {
   class_rooms,
+  staffs as staffsTable,
   students as studentsTable,
   users,
 } from '../../src/infrastructure/database/schema';
@@ -44,6 +46,7 @@ export type SeededStudent = {
 export type SeededData = {
   classRoomId: number;
   teamId: number;
+  secondClassRoomId: number;
   students: SeededStudent[];
   // students を持たないユーザー（findAll で除外されることの検証用）
   teacher: { userId: number; displayName: string };
@@ -58,6 +61,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
   await db.prepare('DELETE FROM gatherings').run();
   await db.prepare('DELETE FROM events').run();
   await orm.delete(studentsTable);
+  await orm.delete(staffsTable);
   await orm.delete(users);
   await orm.delete(class_rooms);
   await db.prepare('DELETE FROM team_scores').run();
@@ -68,9 +72,15 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
     classCode: 'TEST-1',
     className: 'テスト教室',
   });
+  const { classRoomId: secondClassRoomId } = await insertClassRoomWithTeam(db, {
+    classCode: 'TEST-2',
+    className: '別テスト教室',
+  });
 
   const seededStudents: SeededStudent[] = [];
-  for (const s of STUDENTS) {
+  for (const [index, s] of STUDENTS.entries()) {
+    const studentClassRoomId =
+      index === STUDENTS.length - 1 ? secondClassRoomId : classRoomId;
     const [user] = await orm
       .insert(users)
       .values({
@@ -84,7 +94,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
       .insert(studentsTable)
       .values({
         userId: user.id,
-        classRoomId,
+        classRoomId: studentClassRoomId,
         attendanceNumber: s.attendanceNumber,
         studentIdNumber: s.studentIdNumber,
         createdAt: now,
@@ -95,12 +105,26 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
     seededStudents.push({
       studentId: student.id,
       userId: user.id,
-      classRoomId,
+      classRoomId: studentClassRoomId,
       displayName: s.displayName,
       attendanceNumber: s.attendanceNumber,
       studentIdNumber: s.studentIdNumber,
     });
   }
+
+  await orm
+    .update(users)
+    .set({ isLiveActive: 0, updatedAt: now })
+    .where(eq(users.id, seededStudents[1].userId))
+    .run();
+  await orm
+    .insert(staffsTable)
+    .values({
+      userId: seededStudents[2].userId,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
 
   // students を持たないユーザーを1名追加（findAll の inner join で除外される）
   const [teacher] = await orm
@@ -115,6 +139,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
   return {
     classRoomId,
     teamId,
+    secondClassRoomId,
     students: seededStudents,
     teacher: { userId: teacher.id, displayName: teacher.userName },
   };

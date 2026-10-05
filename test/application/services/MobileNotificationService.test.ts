@@ -32,11 +32,10 @@ describe('MobileNotificationService', () => {
     const { repository, service } = setup();
     const entity = {
       id: 5,
-      type: 'manual',
+      type: 'notification_general',
       title: 'お知らせ',
       body: '本文',
       scheduledAt: '2026-07-23T09:00:00+09:00',
-      relatedEvent: null,
     };
     (repository.findByIdForUser as ReturnType<typeof vi.fn>).mockResolvedValue(
       entity
@@ -44,52 +43,39 @@ describe('MobileNotificationService', () => {
 
     await expect(service.getNotificationById(5, 12)).resolves.toEqual({
       notification_id: 5,
-      notification_type: 'manual',
+      notification_type: 'notification_general',
       title: 'お知らせ',
       body: '本文',
       scheduled_at: '2026-07-23T09:00:00+09:00',
-      related_event: null,
     });
     expect(repository.findByIdForUser).toHaveBeenCalledWith(5, 12);
   });
 
-  it('一覧のEntityをDTOへ変換しデフォルトページネーションを返す', async () => {
+  it('確定済みページネーションを維持して一覧EntityをDTOへ変換する', async () => {
     const { repository, service } = setup();
     (repository.findAllForUser as ReturnType<typeof vi.fn>).mockResolvedValue({
       notifications: [
         {
           id: 5,
-          type: 'event_reminder',
+          type: 'notification_general',
           title: '競技通知',
           body: '本文',
           scheduledAt: '2026-07-23T10:15:00+09:00',
-          relatedEvent: {
-            id: 3,
-            name: '綱引き',
-            venue: 'グラウンド',
-            startTime: '1030',
-            endTime: '1100',
-          },
         },
       ],
       total: 1,
     });
 
-    await expect(service.getNotifications(12, {})).resolves.toEqual({
+    await expect(
+      service.getNotifications(12, { limit: 50, offset: 0 })
+    ).resolves.toEqual({
       notifications: [
         {
           notification_id: 5,
-          notification_type: 'event_reminder',
+          notification_type: 'notification_general',
           title: '競技通知',
           body: '本文',
           scheduled_at: '2026-07-23T10:15:00+09:00',
-          related_event: {
-            event_id: 3,
-            event_name: '綱引き',
-            venue: 'グラウンド',
-            start_time: '1030',
-            end_time: '1100',
-          },
         },
       ],
       total: 1,

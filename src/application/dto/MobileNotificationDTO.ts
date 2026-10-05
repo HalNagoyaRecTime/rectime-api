@@ -1,23 +1,16 @@
-export interface MobileNotificationEventDTO {
-  event_id: number;
-  event_name: string;
-  venue: string;
-  start_time: string;
-  end_time: string;
-}
+import type { NotificationType } from '../../domain/entities/Notification';
 
 export interface MobileNotificationDTO {
   notification_id: number;
-  notification_type: string;
+  notification_type: NotificationType;
   title: string;
   body: string;
   scheduled_at: string;
-  related_event: MobileNotificationEventDTO | null;
 }
 
 export interface GetMobileNotificationsRequestDTO {
-  limit?: number;
-  offset?: number;
+  limit: number;
+  offset: number;
 }
 
 export interface MobileNotificationListResponseDTO {

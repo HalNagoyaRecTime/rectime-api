@@ -15,6 +15,7 @@ import {
 } from '../../infrastructure/auth/microsoftClient';
 import { createUserRepository } from '../../infrastructure/repositories/UserRepository';
 import { createStudentRepository } from '../../infrastructure/repositories/StudentRepository';
+import { createTeacherRepository } from '../../infrastructure/repositories/TeacherRepository';
 import { createFirebaseTokenRepository } from '../../infrastructure/repositories/FirebaseTokenRepository';
 import { createAuthService } from '../../application/services/authService';
 import type { IStudentService } from '../../application/services/IStudentService';
@@ -77,9 +78,11 @@ export function userResponse(
     avatar_url?: string | null;
     avatar_updated_at?: string | null;
     student_id_number: string | null;
+    class_code: string | null;
     class_room_name: string | null;
     class_room_id: number | null;
     team_id: number | null;
+    attendance_number: number | null;
   },
   categories: UserCategories
 ) {
@@ -90,9 +93,11 @@ export function userResponse(
     avatar_url: user.avatar_url ?? ACCOUNT_PHOTO_PATH,
     avatar_updated_at: user.avatar_updated_at ?? null,
     student_id_number: user.student_id_number,
+    class_code: user.class_code,
     class_room_name: user.class_room_name,
     class_room_id: user.class_room_id,
     team_id: user.team_id,
+    attendance_number: user.attendance_number,
     is_student: categories.is_student,
     is_staff: categories.is_staff,
     is_teacher: categories.is_teacher,
@@ -164,10 +169,12 @@ export async function upsertUser(
 ): Promise<AppUser> {
   const userRepository = createUserRepository(c.env.DB);
   const studentRepository = createStudentRepository(c.env.DB);
+  const teacherRepository = createTeacherRepository(c.env.DB);
   const firebaseTokenRepository = createFirebaseTokenRepository(c.env.DB);
   const authService = createAuthService(
     userRepository,
     studentRepository,
+    teacherRepository,
     c.env.STUDENT_EMAIL_DOMAIN,
     c.env.AUTH_KV,
     firebaseTokenRepository

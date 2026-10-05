@@ -1,16 +1,16 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, exists } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type {
   MobileNotificationEntity,
   MobileNotificationListOptions,
   MobileNotificationListResult,
 } from '../../domain/entities/MobileNotification';
+import type { NotificationType } from '../../domain/entities/Notification';
 import type { IMobileNotificationRepository } from '../../domain/interfaces/repositories/IMobileNotificationRepository';
 import * as schema from '../database/schema';
 import {
-  events,
-  firebase_tokens,
+  notification_recipients,
   notification_schedules,
   notifications,
 } from '../database/schema';
@@ -21,24 +21,14 @@ const selection = {
   title: notifications.title,
   body: notifications.body,
   scheduled_at: notification_schedules.sendAt,
-  event_id: events.id,
-  event_name: events.name,
-  venue: events.venue,
-  start_time: events.startTime,
-  end_time: events.endTime,
 };
 
 type MobileNotificationRow = {
   notification_id: number;
-  notification_type: string;
+  notification_type: NotificationType;
   title: string;
   body: string;
   scheduled_at: string;
-  event_id: number | null;
-  event_name: string | null;
-  venue: string | null;
-  start_time: string | null;
-  end_time: string | null;
 };
 
 function toEntity(row: MobileNotificationRow): MobileNotificationEntity {
@@ -48,16 +38,6 @@ function toEntity(row: MobileNotificationRow): MobileNotificationEntity {
     title: row.title,
     body: row.body,
     scheduledAt: row.scheduled_at,
-    relatedEvent:
-      row.event_id === null
-        ? null
-        : {
-            id: row.event_id,
-            name: row.event_name!,
-            venue: row.venue!,
-            startTime: row.start_time!,
-            endTime: row.end_time!,
-          },
   };
 }
 
@@ -66,36 +46,58 @@ export function createMobileNotificationRepository(
 ): IMobileNotificationRepository {
   const orm = drizzle(db, { schema });
 
-  const baseConditions = (userId: number) =>
-    and(
-      eq(firebase_tokens.userId, userId),
-      eq(notification_schedules.sendStatus, 'sent')
-    );
+  // user_idの一致だけで本人判定し、匿名化Recipientや配送状態には依存しない。
+  const recipientSchedules = (userId: number) =>
+    orm
+      .select({ id: notification_schedules.id })
+      .from(notification_recipients)
+      .innerJoin(
+        notification_schedules,
+        eq(
+          notification_recipients.notificationScheduleId,
+          notification_schedules.id
+        )
+      )
+      .where(
+        and(
+          eq(notification_recipients.userId, userId),
+          eq(
+            notification_schedules.notificationId,
+            notifications.notificationId
+          )
+        )
+      );
+
+  // 本人Recipientがある最新Scheduleを選び、一覧・詳細をNotification単位で揃える。
+  const historyQuery = (userId: number) =>
+    orm
+      .select(selection)
+      .from(notifications)
+      .innerJoin(
+        notification_schedules,
+        eq(
+          notification_schedules.id,
+          recipientSchedules(userId)
+            .orderBy(
+              desc(notification_schedules.sendAt),
+              desc(notification_schedules.id)
+            )
+            .limit(1)
+        )
+      );
+
+  const v2HistoryOnly = eq(
+    notifications.notificationType,
+    'notification_general'
+  );
 
   return {
     async findAllForUser(
       options: MobileNotificationListOptions
     ): Promise<MobileNotificationListResult> {
       const [rows, totalResult] = await Promise.all([
-        orm
-          .select(selection)
-          .from(notification_schedules)
-          .innerJoin(
-            firebase_tokens,
-            eq(
-              notification_schedules.firebaseTokenId,
-              firebase_tokens.firebaseTokenId
-            )
-          )
-          .innerJoin(
-            notifications,
-            eq(
-              notification_schedules.notificationId,
-              notifications.notificationId
-            )
-          )
-          .leftJoin(events, eq(notification_schedules.eventId, events.id))
-          .where(baseConditions(options.userId))
+        historyQuery(options.userId)
+          .where(v2HistoryOnly)
           .orderBy(
             desc(notification_schedules.sendAt),
             desc(notification_schedules.id)
@@ -105,15 +107,8 @@ export function createMobileNotificationRepository(
           .all(),
         orm
           .select({ total: count() })
-          .from(notification_schedules)
-          .innerJoin(
-            firebase_tokens,
-            eq(
-              notification_schedules.firebaseTokenId,
-              firebase_tokens.firebaseTokenId
-            )
-          )
-          .where(baseConditions(options.userId))
+          .from(notifications)
+          .where(and(v2HistoryOnly, exists(recipientSchedules(options.userId))))
           .get(),
       ]);
 
@@ -124,31 +119,10 @@ export function createMobileNotificationRepository(
     },
 
     async findByIdForUser(notificationId, userId) {
-      const row = await orm
-        .select(selection)
-        .from(notification_schedules)
-        .innerJoin(
-          firebase_tokens,
-          eq(
-            notification_schedules.firebaseTokenId,
-            firebase_tokens.firebaseTokenId
-          )
-        )
-        .innerJoin(
-          notifications,
-          eq(
-            notification_schedules.notificationId,
-            notifications.notificationId
-          )
-        )
-        .leftJoin(events, eq(notification_schedules.eventId, events.id))
+      const row = await historyQuery(userId)
         .where(
-          and(
-            baseConditions(userId),
-            eq(notification_schedules.notificationId, notificationId)
-          )
+          and(eq(notifications.notificationId, notificationId), v2HistoryOnly)
         )
-        .orderBy(desc(notification_schedules.id))
         .get();
 
       return row ? toEntity(row as MobileNotificationRow) : null;

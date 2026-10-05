@@ -10,9 +10,6 @@ export interface IGatheringSpotService {
   getGatheringSpotPage: (
     options: GatheringSpotListOptions
   ) => Promise<GatheringSpotPage>;
-  getGatheringSpotById: (
-    gatheringSpotId: number
-  ) => Promise<GatheringSpotEntity>;
   createGatheringSpot: (
     gatheringSpotName: string
   ) => Promise<GatheringSpotEntity>;

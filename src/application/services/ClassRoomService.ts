@@ -12,8 +12,10 @@ import type {
 import type {
   ClassRoomEntity,
   ClassRoomInput,
+  ClassRoomSearchFilter,
 } from '../../domain/entities/ClassRoom';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
+import type { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
 import type { ITeamRepository } from '../../domain/interfaces/repositories/ITeamRepository';
 import type { IClassRoomService } from './IClassRoomService';
 
@@ -67,16 +69,28 @@ async function findImportErrors(
 
 export function createClassRoomService(
   classRoomRepository: IClassRoomRepository,
+  teacherRepository: ITeacherRepository,
   teamRepository: ITeamRepository
 ): IClassRoomService {
   const toDTO = (classroom: ClassRoomEntity): ClassRoomDTO => ({
-    ...classroom,
+    class_room_id: classroom.classRoomId,
+    class_code: classroom.classCode,
+    class_name: classroom.className,
+    student_count: classroom.studentCount,
+    team_id: classroom.teamId,
+    teacher: classroom.teacher
+      ? {
+          teacher_id: classroom.teacher.teacherId,
+          user_id: classroom.teacher.userId,
+          display_name: classroom.teacher.displayName,
+        }
+      : null,
   });
 
   const ensureTeacherExists = async (teacherId: number | null) => {
     if (
       teacherId !== null &&
-      !(await classRoomRepository.teacherExists(teacherId))
+      !(await teacherRepository.existsById(teacherId))
     ) {
       throw new Error('Teacher not found');
     }
@@ -89,10 +103,10 @@ export function createClassRoomService(
   };
 
   const toClassRoomInput = (input: ClassRoomRequestDTO): ClassRoomInput => ({
-    class_code: input.class_code,
-    class_name: input.class_name,
-    teacher_id: input.teacher_id,
-    team_id: input.team_id ?? null,
+    classCode: input.classCode,
+    className: input.className,
+    teacherId: input.teacherId,
+    teamId: input.teamId ?? null,
   });
 
   const mapWriteError = (error: unknown): never => {
@@ -108,28 +122,27 @@ export function createClassRoomService(
   };
 
   return {
-    async getAllClassrooms(
-      limit: number,
-      offset: number
+    async getAllClassRooms(
+      filter: ClassRoomSearchFilter = {}
     ): Promise<ClassRoomPageDTO> {
-      const result = await classRoomRepository.findAll(limit, offset);
+      const result = await classRoomRepository.findAll(filter);
       return {
-        classrooms: result.classrooms.map(toDTO),
+        items: result.items.map(toDTO),
         total: result.total,
         limit: result.limit,
         offset: result.offset,
       };
     },
 
-    async getClassroomById(id: number): Promise<ClassRoomDTO> {
+    async getClassRoomById(id: number): Promise<ClassRoomDTO> {
       const classroom = await classRoomRepository.findById(id);
       if (!classroom) throw new Error('Class not found');
       return toDTO(classroom);
     },
 
-    async createClassroom(input: ClassRoomRequestDTO): Promise<ClassRoomDTO> {
-      await ensureTeacherExists(input.teacher_id);
-      await ensureTeamExists(input.team_id ?? null);
+    async createClassRoom(input: ClassRoomRequestDTO): Promise<ClassRoomDTO> {
+      await ensureTeacherExists(input.teacherId);
+      await ensureTeamExists(input.teamId ?? null);
       try {
         return toDTO(await classRoomRepository.create(toClassRoomInput(input)));
       } catch (error) {
@@ -137,24 +150,26 @@ export function createClassRoomService(
       }
     },
 
-    async updateClassroom(
+    async updateClassRoom(
       id: number,
       input: ClassRoomRequestDTO
     ): Promise<ClassRoomDTO> {
-      await ensureTeacherExists(input.teacher_id);
-      await ensureTeamExists(input.team_id ?? null);
+      const existing = await classRoomRepository.findById(id);
+      if (!existing) throw new Error('Class not found');
+      await ensureTeacherExists(input.teacherId);
+      await ensureTeamExists(input.teamId ?? null);
       try {
         const previous = await classRoomRepository.findById(id);
         const teamChanged =
           previous != null &&
-          input.team_id != null &&
-          previous.team_id !== input.team_id;
+          input.teamId != null &&
+          previous.teamId !== input.teamId;
 
         const classroom = teamChanged
           ? await classRoomRepository.updateAndCleanupTeam(
               id,
               toClassRoomInput(input),
-              previous.team_id
+              previous.teamId
             )
           : await classRoomRepository.update(id, toClassRoomInput(input));
         if (!classroom) throw new Error('Class not found');
@@ -165,7 +180,7 @@ export function createClassRoomService(
       }
     },
 
-    async deleteClassroom(id: number): Promise<void> {
+    async deleteClassRoom(id: number): Promise<void> {
       if (await classRoomRepository.hasStudents(id)) {
         throw new Error('Class is referenced by students');
       }
@@ -173,7 +188,7 @@ export function createClassRoomService(
       if (!classroom) throw new Error('Class not found');
 
       if (
-        !(await classRoomRepository.deleteAndCleanupTeam(id, classroom.team_id))
+        !(await classRoomRepository.deleteAndCleanupTeam(id, classroom.teamId))
       ) {
         throw new Error('Class not found');
       }
@@ -206,9 +221,9 @@ export function createClassRoomService(
 
       await classRoomRepository.createMany(
         input.rows.map(row => ({
-          class_code: row.class_code,
-          class_name: row.class_name,
-          teacher_id: null,
+          classCode: row.class_code,
+          className: row.class_name,
+          teacherId: null,
         }))
       );
 

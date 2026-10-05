@@ -54,8 +54,7 @@ export const errorResponseSchema = z
 export type ErrorResponseDTO = z.infer<typeof errorResponseSchema>;
 
 type ValidationHookResult =
-  | { success: true }
-  | { success: false; error: ZodError };
+  { success: true } | { success: false; error: ZodError };
 
 /**
  * OpenAPI側のZodスキーマがリクエストを弾いたときの400応答。
@@ -123,6 +122,12 @@ export const isoDateTimeSchema = z
   .datetime({ offset: true })
   .openapi({ example: '2026-07-16T09:00:00.000Z' });
 
+/** UTCのISO 8601形式（Z・ミリ秒3桁）。 */
+export const utcDateTimeSchema = z
+  .string()
+  .datetime({ offset: false, precision: 3 })
+  .openapi('UtcDateTime');
+
 /** JSTのHHMM形式。 */
 export const hhmmSchema = z
   .string()
@@ -139,6 +144,52 @@ export const positivePathParam = (name: string, description: string) =>
     .regex(/^[1-9]\d*$/)
     .openapi({ param: { name, in: 'path' }, description, example: '1' });
 
+/**
+ * positivePathParamで検証した文字列IDをService用の数値へ変換する。
+ * Numberのsafe integer範囲を超える値は、境界で拒否する。
+ */
+export const positivePathParamToNumber = (
+  value: string
+): number | undefined => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+/**
+ * QueryはHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
+ * OpenAPI routeが検証と変換を行い、Controllerは検証済みの値を受け取る。
+ */
+const digitsOnlyNumber = (minimum: number, maximum?: number) => {
+  const numberSchema = z.number().int().min(minimum);
+  const boundedSchema =
+    maximum === undefined ? numberSchema : numberSchema.max(maximum);
+
+  return z.preprocess(
+    value =>
+      typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value,
+    boundedSchema
+  );
+};
+
+/** 最小値だけを持つdigits-onlyクエリ。 */
+export const digitsOnlyQuery = (minimum: number) => digitsOnlyNumber(minimum);
+
+/** 最小値・最大値を持つdigits-onlyクエリ。上限エラーの文言を維持する。 */
+export const limitedDigitsOnlyQuery = (minimum: number, maximum: number) =>
+  digitsOnlyQuery(minimum).refine(value => value <= maximum, {
+    message: `値は${minimum}から${maximum}の範囲で指定してください`,
+  });
+
+/** default付きのdigits-only整数。ClassRoomの既存エラー契約を維持する。 */
+export const digitsOnlyInteger = (
+  minimum: number,
+  maximum: number | undefined,
+  defaultValue: number
+) => digitsOnlyNumber(minimum, maximum).default(defaultValue);
+
+/** digits-only整数クエリ。既存の共通名と互換性のある別名。 */
+export const digitsOnlyIntegerQuery = (minimum: number, maximum?: number) =>
+  digitsOnlyNumber(minimum, maximum);
 /** 件数指定のクエリ。上限と既定値はエンドポイントごとに異なる。 */
 export const paginationQuery = (limitMax: number, limitDefault: number) =>
   z.object({
@@ -147,8 +198,8 @@ export const paginationQuery = (limitMax: number, limitDefault: number) =>
       .int()
       .min(1)
       .max(limitMax)
-      .default(limitDefault)
       .optional()
+      .default(limitDefault)
       .openapi({
         param: { name: 'limit', in: 'query' },
         example: limitDefault,
@@ -157,8 +208,8 @@ export const paginationQuery = (limitMax: number, limitDefault: number) =>
       .number()
       .int()
       .min(0)
-      .default(0)
       .optional()
+      .default(0)
       .openapi({ param: { name: 'offset', in: 'query' }, example: 0 }),
   });
 

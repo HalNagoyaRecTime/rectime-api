@@ -74,11 +74,11 @@ function buildClassRoomService(
   overrides: Partial<IClassRoomService> = {}
 ): IClassRoomService {
   return {
-    getAllClassrooms: vi.fn(),
-    getClassroomById: vi.fn(),
-    createClassroom: vi.fn(),
-    updateClassroom: vi.fn(),
-    deleteClassroom: vi.fn(),
+    getAllClassRooms: vi.fn(),
+    getClassRoomById: vi.fn(),
+    createClassRoom: vi.fn(),
+    updateClassRoom: vi.fn(),
+    deleteClassRoom: vi.fn(),
     validateClassRoomImport: vi.fn(),
     commitClassRoomImport: vi.fn(),
     ...overrides,
@@ -93,7 +93,6 @@ function buildTeacherService(
     getTeacherById: vi.fn(),
     getAllTeachers: vi.fn(),
     updateTeacher: vi.fn(),
-    deleteTeacher: vi.fn(),
     validateTeacherImport: vi.fn(),
     commitTeacherImport: vi.fn(),
     ...overrides,
@@ -438,7 +437,6 @@ describe('MasterImportService', () => {
         buildClassRoomService(),
         teacherService
       );
-
       // わざとバリデーション後にエラーが発生したセッションを模倣するため、
       // 検査結果自体にエラーがあるパターンをテストする
       validateTeacherImport.mockResolvedValueOnce({
@@ -448,7 +446,10 @@ describe('MasterImportService', () => {
         errors: [{ row_index: 0, reason: 'dummy' }],
       });
 
-      const file = csvFile('last_name,first_name\n田中,太郎\n', 't.csv');
+      const file = csvFile(
+        'last_name,first_name,email\n田中,太郎,tanaka@example.ac.jp\n',
+        't.csv'
+      );
       const created = await service.createImport({
         createUserId: OWNER_USER_ID,
         type: 'teachers',

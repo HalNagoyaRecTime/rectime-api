@@ -2,15 +2,10 @@ import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createGatheringGroupMemberRepository } from '../../../src/infrastructure/repositories/GatheringGroupMemberRepository';
 import { createGatheringSpotRepository } from '../../../src/infrastructure/repositories/GatheringSpotRepository';
-import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 
 describe('Gathering master repositories', () => {
   const gatheringSpotRepository = createGatheringSpotRepository(env.DB);
-  const userRepository = createUserRepository(env.DB);
-  const memberRepository = createGatheringGroupMemberRepository(
-    env.DB,
-    userRepository
-  );
+  const memberRepository = createGatheringGroupMemberRepository(env.DB);
   let gatheringIds: number[] = [];
   let gatheringSpotIds: number[] = [];
   let eventIds: number[] = [];
@@ -18,9 +13,9 @@ describe('Gathering master repositories', () => {
 
   async function createGathering(suffix: string): Promise<number> {
     const event = await env.DB.prepare(
-      'INSERT INTO events (event_name, venue, start_time, end_time) VALUES (?, ?, ?, ?) RETURNING event_id'
+      'INSERT INTO events (event_name, start_time, end_time) VALUES (?, ?, ?) RETURNING event_id'
     )
-      .bind(`所属テスト競技-${suffix}`, '体育館', '0900', '1000')
+      .bind(`所属テスト競技-${suffix}`, '0900', '1000')
       .first<{ event_id: number }>();
     eventIds.push(event!.event_id);
     const spot = await env.DB.prepare(
@@ -263,10 +258,14 @@ describe('Gathering master repositories', () => {
     });
   });
 
-  it('集合対象者を追加・一覧取得・解除でき、重複追加を防止する', async () => {
+  it('集合対象者の差分を反映して一覧取得できる', async () => {
     const gatheringId = await createGathering('基本');
     const userId = await createUser('集合対象者1');
-    const member = await memberRepository.create(gatheringId, userId);
+    const [member] = await memberRepository.applyMemberDiff(
+      gatheringId,
+      [userId],
+      []
+    );
 
     await expect(
       memberRepository.findByGatheringId(gatheringId)
@@ -277,13 +276,7 @@ describe('Gathering master repositories', () => {
         user_id: userId,
       }),
     ]);
-    await expect(memberRepository.create(gatheringId, userId)).rejects.toThrow(
-      'Gathering member already exists'
-    );
-
-    await expect(memberRepository.remove(gatheringId, userId)).resolves.toBe(
-      true
-    );
+    await memberRepository.applyMemberDiff(gatheringId, [], [userId]);
     await expect(
       memberRepository.findByGatheringId(gatheringId)
     ).resolves.toEqual([]);
@@ -295,9 +288,16 @@ describe('Gathering master repositories', () => {
     const firstUserId = await createUser('集合対象者2');
     const secondUserId = await createUser('集合対象者3');
 
-    await memberRepository.create(firstGatheringId, firstUserId);
-    await memberRepository.create(firstGatheringId, secondUserId);
-    await memberRepository.create(secondGatheringId, firstUserId);
+    await memberRepository.applyMemberDiff(
+      firstGatheringId,
+      [firstUserId, secondUserId],
+      []
+    );
+    await memberRepository.applyMemberDiff(
+      secondGatheringId,
+      [firstUserId],
+      []
+    );
 
     await expect(
       memberRepository.findByGatheringId(firstGatheringId)
@@ -307,20 +307,22 @@ describe('Gathering master repositories', () => {
     ).resolves.toHaveLength(1);
   });
 
-  it('存在しない集合または利用者への追加を拒否する', async () => {
+  it('存在しない集合への追加を拒否し、存在しない利用者は追加しない', async () => {
     const gatheringId = await createGathering('外部キー');
     const userId = await createUser('集合対象者4');
 
-    await expect(memberRepository.create(999999, userId)).rejects.toThrow();
     await expect(
-      memberRepository.create(gatheringId, 999999)
+      memberRepository.applyMemberDiff(999999, [userId], [])
     ).rejects.toThrow();
+    await expect(
+      memberRepository.applyMemberDiff(gatheringId, [999999], [])
+    ).resolves.toEqual([]);
     await expect(
       memberRepository.findByGatheringId(gatheringId)
     ).resolves.toEqual([]);
   });
 
-  it('集合と利用者の存在を確認できる', async () => {
+  it('集合の存在と不足している利用者を確認できる', async () => {
     const gatheringId = await createGathering('存在確認');
     const userId = await createUser('集合対象者5');
 
@@ -328,16 +330,38 @@ describe('Gathering master repositories', () => {
       true
     );
     await expect(memberRepository.existsGathering(999999)).resolves.toBe(false);
-    await expect(memberRepository.existsUser(userId)).resolves.toBe(true);
-    await expect(memberRepository.existsUser(999999)).resolves.toBe(false);
+    await expect(
+      memberRepository.findMissingUserIds([userId, 999999])
+    ).resolves.toEqual([999999]);
   });
 
-  it('存在しない集合対象者の解除はfalseを返す', async () => {
-    const gatheringId = await createGathering('解除');
-    const userId = await createUser('集合対象者6');
-
-    await expect(memberRepository.remove(gatheringId, userId)).resolves.toBe(
-      false
+  it('deleteByUserIdは指定ユーザーが所属する全gatheringのメンバー行を削除する', async () => {
+    const gatheringIdA = await createGathering('一括削除A');
+    const gatheringIdB = await createGathering('一括削除B');
+    const userId = await createUser('集合対象者7');
+    const otherUserId = await createUser('集合対象者8');
+    await memberRepository.applyMemberDiff(
+      gatheringIdA,
+      [userId, otherUserId],
+      []
     );
+    await memberRepository.applyMemberDiff(gatheringIdB, [userId], []);
+
+    await memberRepository.deleteByUserId(userId);
+
+    await expect(
+      memberRepository.findByGatheringId(gatheringIdA)
+    ).resolves.toEqual([expect.objectContaining({ user_id: otherUserId })]);
+    await expect(
+      memberRepository.findByGatheringId(gatheringIdB)
+    ).resolves.toEqual([]);
+  });
+
+  it('deleteByUserIdは対象が存在しなくてもエラーにならない(冪等)', async () => {
+    const userId = await createUser('所属なし利用者');
+
+    await expect(
+      memberRepository.deleteByUserId(userId)
+    ).resolves.toBeUndefined();
   });
 });

@@ -1,18 +1,11 @@
-export interface MobileNotificationEvent {
-  id: number;
-  name: string;
-  venue: string;
-  startTime: string;
-  endTime: string;
-}
+import type { NotificationType } from './Notification';
 
 export interface MobileNotificationEntity {
   id: number;
-  type: string;
+  type: NotificationType;
   title: string;
   body: string;
   scheduledAt: string;
-  relatedEvent: MobileNotificationEvent | null;
 }
 
 export interface MobileNotificationListOptions {

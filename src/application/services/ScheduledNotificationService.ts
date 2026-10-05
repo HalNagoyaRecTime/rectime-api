@@ -76,6 +76,13 @@ export function createScheduledNotificationService(deps: {
             );
             return 'failed' as const;
           }
+          if (schedule.is_user_live_active !== 1) {
+            await notificationScheduleRepository.markFailed(
+              schedule.notification_schedule_id,
+              'User is inactive'
+            );
+            return 'failed' as const;
+          }
 
           let result;
           try {
@@ -96,8 +103,8 @@ export function createScheduledNotificationService(deps: {
               },
             });
           } catch (error) {
-            if (shouldDeactivateToken(error)) {
-              await firebaseTokenRepository.deactivate(
+            if (shouldDeleteToken(error)) {
+              await firebaseTokenRepository.deleteById(
                 schedule.firebase_token_id
               );
             }
@@ -164,6 +171,6 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-function shouldDeactivateToken(error: unknown): boolean {
+function shouldDeleteToken(error: unknown): boolean {
   return isPermanentFcmTokenError(error);
 }

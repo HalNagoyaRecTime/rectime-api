@@ -1,30 +1,80 @@
-export interface NotificationEntity {
-  notification_id: number;
-  notification_type: string;
-  title: string;
-  body: string;
-  created_at: string;
-  updated_at: string;
+export const NOTIFICATION_SCHEDULE_STATUSES = [
+  'scheduled',
+  'resolving',
+  'sending',
+  'completed',
+  'failed',
+  'stopped',
+] as const;
+
+export type NotificationScheduleStatus =
+  (typeof NOTIFICATION_SCHEDULE_STATUSES)[number];
+
+export const NOTIFICATION_PUSH_DELIVERY_STATUSES = [
+  'pending',
+  'sending',
+  'retry_wait',
+  'sent',
+  'failed',
+  'stopped',
+] as const;
+
+export type NotificationPushDeliveryStatus =
+  (typeof NOTIFICATION_PUSH_DELIVERY_STATUSES)[number];
+
+export const NOTIFICATION_AUDIENCE_TYPES = [
+  'all',
+  'class_room',
+  'gathering',
+  'event',
+  'user',
+] as const;
+
+export type NotificationAudienceType =
+  (typeof NOTIFICATION_AUDIENCE_TYPES)[number];
+
+export const NOTIFICATION_TARGET_AUDIENCE_TYPES = [
+  'class_room',
+  'gathering',
+  'event',
+  'user',
+] as const;
+
+export const NOTIFICATION_IMPORTANCE_LEVELS = [
+  'low',
+  'normal',
+  'high',
+] as const;
+
+export type NotificationImportance =
+  (typeof NOTIFICATION_IMPORTANCE_LEVELS)[number];
+
+/** 現在のUserが選択できるimportanceか判定する */
+export function isNotificationImportanceAllowed(
+  importance: NotificationImportance
+): boolean {
+  // highを許可する上位権限は現在のUser契約に存在しない。
+  return importance !== 'high';
 }
 
-export interface CreateNotificationInput {
-  notification_type: string;
-  title: string;
-  body: string;
-}
+export const NOTIFICATION_TYPES = ['notification_general'] as const;
 
-export interface UpdateNotificationInput {
-  title?: string;
-  body?: string;
-}
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
-export interface NotificationListOptions {
-  notification_type?: string;
-  limit: number;
-  offset: number;
-}
+export const NOTIFICATION_SOURCE_TYPES = ['gathering'] as const;
 
-export interface NotificationListResult {
-  notifications: NotificationEntity[];
-  total: number;
-}
+export type NotificationSourceType = (typeof NOTIFICATION_SOURCE_TYPES)[number];
+
+export const NOTIFICATION_DELIVERY_TYPES = ['immediate', 'scheduled'] as const;
+
+export type NotificationDeliveryType =
+  (typeof NOTIFICATION_DELIVERY_TYPES)[number];
+
+export const NOTIFICATION_CREATION_METHODS = ['manual', 'automatic'] as const;
+
+export type NotificationCreationMethod =
+  (typeof NOTIFICATION_CREATION_METHODS)[number];
+
+export const NOTIFICATION_STOP_REASONS = ['manual', 'source_deleted'] as const;
+
+export type NotificationStopReason = (typeof NOTIFICATION_STOP_REASONS)[number];

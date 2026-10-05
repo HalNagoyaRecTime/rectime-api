@@ -14,15 +14,6 @@ export function createGatheringSpotService(
       return gatheringSpotRepository.findPage(options);
     },
 
-    async getGatheringSpotById(
-      gatheringSpotId: number
-    ): Promise<GatheringSpotEntity> {
-      const gatheringSpot =
-        await gatheringSpotRepository.findById(gatheringSpotId);
-      if (!gatheringSpot) throw new Error('Gathering spot not found');
-      return gatheringSpot;
-    },
-
     createGatheringSpot(
       gatheringSpotName: string
     ): Promise<GatheringSpotEntity> {

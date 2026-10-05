@@ -10,15 +10,6 @@ function toDTO(notification: MobileNotificationEntity): MobileNotificationDTO {
     title: notification.title,
     body: notification.body,
     scheduled_at: notification.scheduledAt,
-    related_event: notification.relatedEvent
-      ? {
-          event_id: notification.relatedEvent.id,
-          event_name: notification.relatedEvent.name,
-          venue: notification.relatedEvent.venue,
-          start_time: notification.relatedEvent.startTime,
-          end_time: notification.relatedEvent.endTime,
-        }
-      : null,
   };
 }
 
@@ -27,18 +18,16 @@ export function createMobileNotificationService(
 ): IMobileNotificationService {
   return {
     async getNotifications(userId, options) {
-      const limit = options.limit ?? 50;
-      const offset = options.offset ?? 0;
       const result = await mobileNotificationRepository.findAllForUser({
         userId,
-        limit,
-        offset,
+        limit: options.limit,
+        offset: options.offset,
       });
       return {
         notifications: result.notifications.map(toDTO),
         total: result.total,
-        limit,
-        offset,
+        limit: options.limit,
+        offset: options.offset,
       };
     },
 

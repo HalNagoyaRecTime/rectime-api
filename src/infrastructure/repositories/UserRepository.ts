@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import * as schema from '../database/schema';
@@ -139,30 +139,63 @@ export function createUserRepository(db: D1Database): IUserRepository {
       };
     },
     //すでに学生登録時にusersにuser_idが存在している場合、microsoft_account_linksをそのuser_idに合わせてinsertする
-    async linkMicrosoftAccount({ userId, oid, tid }) {
+    async linkMicrosoftAccount({
+      userId,
+      oid,
+      tid,
+      requireLiveActive = false,
+      requiredTeacherEmail,
+    }) {
       const now = new Date().toISOString();
+      const teacherEmail = requiredTeacherEmail ?? '';
 
       try {
-        // INSERT ... SELECT ... WHERE で「対象userIdがdeletion_status =
-        // 'active'であること」をINSERT自体の条件に含める。呼び出し元が
-        // 事前にgetDeletionStatusで確認していても、確認からこのINSERTまでの
-        // 間にmarkAsDeletedが割り込むと、確認時点ではactiveでも実行時には
-        // 既にdeleted/deletion_pendingになっている可能性がある(TOCTOU)。
-        // その場合はWHERE句が偽になり0行挿入となるため、
-        // ACCOUNT_DELETION_PENDINGとして呼び出し元へ区別して伝える。
+        // 状態・教員メールの確認とINSERTを同じSQL条件にし、確認直後の
+        // 削除・無効化・メール変更でもMicrosoftリンクが作られないようにする。
         const result = await orm.run(sql`
           INSERT INTO microsoft_account_links (user_id, oid, tid, created_at, updated_at)
           SELECT ${Number(userId)}, ${oid}, ${tid}, ${now}, ${now}
           FROM users
           WHERE user_id = ${Number(userId)} AND deletion_status = 'active'
+            AND (${requireLiveActive ? 1 : 0} = 0 OR is_live_active = 1)
+            AND (${requiredTeacherEmail === undefined ? 1 : 0} = 1 OR EXISTS (
+              SELECT 1 FROM teachers
+              WHERE teachers.user_id = users.user_id
+                AND teachers.email = ${teacherEmail}
+            ))
         `);
         if (result.meta.changes === 0) {
+          if (requireLiveActive || requiredTeacherEmail !== undefined) {
+            const state = await orm
+              .select({
+                deletionStatus: users.deletionStatus,
+                isLiveActive: users.isLiveActive,
+                teacherEmail: teachers.email,
+              })
+              .from(users)
+              .leftJoin(teachers, eq(teachers.userId, users.id))
+              .where(eq(users.id, Number(userId)))
+              .get();
+            if (state?.deletionStatus === 'active') {
+              if (requireLiveActive && !state.isLiveActive) {
+                throw new Error('USER_DEACTIVATED');
+              }
+              if (
+                requiredTeacherEmail !== undefined &&
+                state.teacherEmail !== requiredTeacherEmail
+              ) {
+                throw new Error('TEACHER_LINK_CHANGED');
+              }
+            }
+          }
           throw new Error('ACCOUNT_DELETION_PENDING');
         }
       } catch (err) {
         if (
           err instanceof Error &&
-          err.message === 'ACCOUNT_DELETION_PENDING'
+          (err.message === 'ACCOUNT_DELETION_PENDING' ||
+            err.message === 'USER_DEACTIVATED' ||
+            err.message === 'TEACHER_LINK_CHANGED')
         ) {
           throw err;
         }
@@ -214,6 +247,10 @@ export function createUserRepository(db: D1Database): IUserRepository {
       // updateが失敗する部分失敗は起こり得るが、その場合は
       // deletionStatusがまだ'active'のまま(＝本人にも削除未完了と見える)
       // なので、同じuserIdでmarkAsDeletedを再実行すれば解消できる。
+      //
+      // purged_atはここでは変更しない(NULLのまま)。関連データの削除・
+      // 匿名化(後片付け)はAccountDeletionService.deleteRelatedDataが
+      // これ以降に行い、全ステップ完了後にmarkAsPurgedがセットする。
       await orm
         .delete(microsoft_account_links)
         .where(eq(microsoft_account_links.userId, Number(userId)))
@@ -230,6 +267,63 @@ export function createUserRepository(db: D1Database): IUserRepository {
         .run();
 
       return true;
+    },
+
+    async markAsPurged(userId) {
+      const now = new Date().toISOString();
+      // deletion_status = 'deleted' を条件に含める。isPurgedと同じ2軸
+      // (状態 + 完了時刻)で判定・更新を揃えるため
+      // (IUserRepository.isPurgedのコメント参照)。これにより、万一
+      // deletion_statusが'deleted'以外に戻った利用者に対して誤って
+      // purged_atだけが立った状態を作らない。
+      const result = await orm
+        .update(users)
+        .set({ purgedAt: now, updatedAt: now })
+        .where(
+          and(eq(users.id, Number(userId)), eq(users.deletionStatus, 'deleted'))
+        )
+        .run();
+      return result.meta.changes > 0;
+    },
+
+    async isPurged(userId) {
+      // deletion_status = 'deleted' かつ purged_at IS NOT NULL の両方を
+      // 見る。抽出条件(`WHERE deletion_status = 'deleted' AND purged_at
+      // IS NULL`で未完了利用者を機械的に抽出する、
+      // AccountDeletionService.deleteRelatedData参照)と同じ2軸で揃えて
+      // おかないと、将来「削除の取り消し」でdeletion_statusを戻す機能が
+      // 入った際、purged_atだけが残り判定が完了扱いを返し続けてしまう。
+      const row = await orm
+        .select({ purgedAt: users.purgedAt })
+        .from(users)
+        .where(
+          and(eq(users.id, Number(userId)), eq(users.deletionStatus, 'deleted'))
+        )
+        .get();
+      return Boolean(row?.purgedAt);
+    },
+
+    async anonymizeUser(userId) {
+      const result = await orm
+        .update(users)
+        .set({
+          userName: '削除済みユーザー',
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(users.id, Number(userId)))
+        .run();
+      return result.meta.changes > 0;
+    },
+
+    async findPendingPurgeUserIds(limit) {
+      const rows = await orm
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.deletionStatus, 'deleted'), isNull(users.purgedAt)))
+        .orderBy(asc(users.deletedAt))
+        .limit(limit)
+        .all();
+      return rows.map(row => String(row.id));
     },
   };
 }
