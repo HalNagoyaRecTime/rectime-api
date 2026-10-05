@@ -1,3 +1,4 @@
+import { createNotificationRetryService } from '../../../src/application/services/NotificationRetryService';
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NotificationDeliveryMessage } from '../../../src/domain/entities/NotificationDelivery';
@@ -153,9 +154,65 @@ describe('NotificationDeliveryRepository and Service', () => {
     ]);
   });
 
-  it('有効なTokenが0件ならDeliveryを作らずScheduleを完了する', async () => {
+  it.each(['初回', '再送', 'timeout回収'] as const)(
+    '100件の%s配信でD1のbind上限を超えず全件送信する',
+    async mode => {
+      const fixture = await createSchedule();
+      for (let index = 0; index < 100; index++) {
+        await insertToken(
+          fixture.recipientUserId,
+          `配信上限テスト-${index}`,
+          1
+        );
+      }
+      await resolve(fixture.scheduleId);
+      const h = createHarness();
+      await h.service.enqueueReadySchedules(new Date(NOW));
+      let result;
+      if (mode === '初回') {
+        result = await h.service.sendQueuedNotifications(
+          [fixture.scheduleId],
+          new Date(NOW)
+        );
+      } else {
+        const claimed = await deliveryRepository.claimPendingDeliveries(
+          [fixture.scheduleId],
+          NOW,
+          100
+        );
+        expect(claimed).toHaveLength(100);
+        if (mode === '再送') {
+          await env.DB.prepare(
+            "UPDATE notification_push_deliveries SET status = 'retry_wait', next_retry_at = ?"
+          )
+            .bind(NOW)
+            .run();
+        }
+        const retryService = createNotificationRetryService({
+          notificationDeliveryRepository: deliveryRepository,
+          firebaseTokenRepository,
+          fcmService: h.fcm,
+        });
+        result = await retryService.retryDueDeliveries(
+          new Date(Date.parse(NOW) + 121_000)
+        );
+      }
+      expect(result).toEqual({ claimed: 100, sent: 100, failed: 0 });
+      expect(h.fcm.sendNotificationToToken).toHaveBeenCalledTimes(100);
+      expect(await deliveryRows(fixture.scheduleId)).toHaveLength(100);
+      expect(
+        (await deliveryRows(fixture.scheduleId)).every(
+          row => row.status === 'sent'
+        )
+      ).toBe(true);
+      expect(await scheduleStatus(fixture.scheduleId)).toMatchObject({
+        send_status: 'completed',
+      });
+    }
+  );
+
+  it('Tokenが存在しない場合はDeliveryを作らずScheduleを完了する', async () => {
     const fixture = await createSchedule();
-    await insertToken(fixture.recipientUserId, 'delivery-inactive-token', 1, 0);
     await resolve(fixture.scheduleId);
     const { service, messages } = createHarness();
 
@@ -396,7 +453,7 @@ describe('NotificationDeliveryRepository and Service', () => {
     });
   });
 
-  it('有効Tokenごとにplatformを固定し、再実行と後から追加したTokenを重複登録しない', async () => {
+  it('全Tokenをplatform snapshotし、再実行と後から追加したTokenを重複登録しない', async () => {
     const fixture = await createSchedule('low');
     const iosTokenId = await insertToken(
       fixture.recipientUserId,
@@ -408,7 +465,12 @@ describe('NotificationDeliveryRepository and Service', () => {
       'delivery-android-token',
       2
     );
-    await insertToken(fixture.recipientUserId, 'delivery-inactive-token', 1, 0);
+    const inactiveTokenId = await insertToken(
+      fixture.recipientUserId,
+      'delivery-inactive-token',
+      1,
+      0
+    );
     await resolve(fixture.scheduleId);
     const { service, messages } = createHarness();
 
@@ -439,6 +501,18 @@ describe('NotificationDeliveryRepository and Service', () => {
         fcm_message_id: null,
         sent_at: null,
       },
+      {
+        firebase_token_id: inactiveTokenId,
+        platform: 1,
+        status: 'pending',
+        attempt_count: 0,
+        first_attempt_at: null,
+        last_attempt_at: null,
+        next_retry_at: null,
+        failed_reason: null,
+        fcm_message_id: null,
+        sent_at: null,
+      },
     ]);
 
     await insertToken(fixture.recipientUserId, 'delivery-late-token', 2);
@@ -446,7 +520,7 @@ describe('NotificationDeliveryRepository and Service', () => {
     expect(second.queued_schedule_ids).toEqual([fixture.scheduleId]);
     expect(
       (await deliveryRows(fixture.scheduleId)).map(row => row.firebase_token_id)
-    ).toEqual([iosTokenId, androidTokenId]);
+    ).toEqual([iosTokenId, androidTokenId, inactiveTokenId]);
     expect(messages).toHaveLength(2);
   });
 
@@ -502,14 +576,18 @@ describe('NotificationDeliveryRepository and Service', () => {
     });
   });
 
-  it('FCM success/failureを保存し、manual payloadで部分失敗でもScheduleを完了する', async () => {
+  it('FCM success/failureを保存し、既存モバイル互換のpayloadで部分失敗でもScheduleを完了する', async () => {
     const fixture = await createSchedule('low');
     await insertToken(fixture.recipientUserId, 'delivery-success-token', 1);
     await insertToken(fixture.recipientUserId, 'delivery-failed-token', 2);
     await resolve(fixture.scheduleId);
     const sendNotificationToToken = vi.fn(async (input: { token: string }) => {
       if (input.token === 'delivery-failed-token') {
-        throw new Error('FCM token rejected');
+        throw new FcmRequestError(
+          400,
+          'INVALID_ARGUMENT',
+          'FCM token rejected'
+        );
       }
       return {
         success: true as const,
@@ -660,13 +738,12 @@ describe('NotificationDeliveryRepository and Service', () => {
         send_status: 'failed',
       });
       const failedReason = await env.DB.prepare(
-        'SELECT failed_reason FROM notification_schedules WHERE notification_schedule_id = ?'
+        'SELECT reason, failed_reason FROM notification_schedules WHERE notification_schedule_id = ?'
       )
         .bind(fixture.scheduleId)
-        .first<{ failed_reason: string | null }>();
-      expect(failedReason?.failed_reason).toContain(
-        'delivery generation blocked'
-      );
+        .first<{ reason: string | null; failed_reason: string | null }>();
+      expect(failedReason?.reason).toContain('delivery generation blocked');
+      expect(failedReason?.failed_reason).toBeNull();
       expect(await deliveryRows(fixture.scheduleId)).toEqual([]);
     } finally {
       await env.DB.prepare(
@@ -695,5 +772,20 @@ describe('NotificationDeliveryRepository and Service', () => {
     await expect(
       deliveryRepository.claimPendingDeliveries([fixture.scheduleId], NOW, 100)
     ).resolves.toEqual([]);
+  });
+
+  it('is_firebase_activeが0のTokenもv2 Deliveryへ含める', async () => {
+    const fixture = await createSchedule();
+    const tokenId = await insertToken(
+      fixture.recipientUserId,
+      'inactive-legacy-token',
+      1,
+      0
+    );
+    await resolve(fixture.scheduleId);
+    await deliveryRepository.prepareResolvedSchedule(fixture.scheduleId, NOW);
+    const rows = await deliveryRows(fixture.scheduleId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ firebase_token_id: tokenId });
   });
 });

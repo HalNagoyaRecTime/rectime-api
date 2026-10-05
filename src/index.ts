@@ -620,6 +620,13 @@ export default {
     const scheduledAt = new Date(event.scheduledTime);
     const container = createDIContainer(env);
     ctx.waitUntil(
+      container.notificationRetryService
+        .retryDueDeliveries(scheduledAt)
+        .catch(error => {
+          console.error('[CRON] 通知のRetry・timeout回収に失敗しました', error);
+        })
+    );
+    ctx.waitUntil(
       container.notificationAudienceResolverService
         .resolveDueSchedules(scheduledAt)
         .then(async result => {

@@ -90,7 +90,8 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
         fcmErrorCode,
         `FCM request failed: HTTP ${response.status}${
           fcmErrorCode ? ` ${fcmErrorCode}` : ''
-        }`
+        }`,
+        parseRetryAfter(response.headers.get('Retry-After'))
       );
     }
 
@@ -111,6 +112,17 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
   return {
     sendNotificationToToken,
   };
+}
+
+export function parseRetryAfter(
+  value: string | null,
+  now = Date.now()
+): number | null {
+  if (value === null) return null;
+  const seconds = /^\d+$/.test(value.trim())
+    ? Number(value)
+    : (Date.parse(value) - now) / 1000;
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds) : null;
 }
 
 function buildPlatformConfig(
