@@ -1,5 +1,8 @@
 import { getDb } from '../lib/db';
 import { createNotificationRetryService } from '../application/services/NotificationRetryService';
+import { createNotificationScheduleActionRepository } from '../infrastructure/repositories/NotificationScheduleActionRepository';
+import { createNotificationScheduleActionService } from '../application/services/NotificationScheduleActionService';
+import { createNotificationScheduleActionController } from '../presentation/controllers/NotificationScheduleActionController';
 import { createNotificationScheduleQueryRepository } from '../infrastructure/repositories/NotificationScheduleQueryRepository';
 import { createNotificationScheduleQueryService } from '../application/services/NotificationScheduleQueryService';
 import { createNotificationScheduleQueryController } from '../presentation/controllers/NotificationScheduleQueryController';
@@ -80,6 +83,12 @@ import type { Env } from '../lib/env';
 
 export function createDIContainer(env: Env) {
   const db = getDb(env);
+  const notificationScheduleActionController =
+    createNotificationScheduleActionController(
+      createNotificationScheduleActionService(
+        createNotificationScheduleActionRepository(db)
+      )
+    );
   const notificationScheduleQueryController =
     createNotificationScheduleQueryController(
       createNotificationScheduleQueryService(
@@ -287,6 +296,7 @@ export function createDIContainer(env: Env) {
     createEventGatheringSettingsController(eventGatheringSettingsService);
 
   return {
+    notificationScheduleActionController,
     notificationScheduleQueryController,
     // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
     userStatusRepository,

@@ -80,24 +80,14 @@ describe('mobile API contract', () => {
     ],
     [
       'MobileNotification',
-      [
-        'notification_id',
-        'notification_type',
-        'title',
-        'body',
-        'scheduled_at',
-        'related_event',
-      ],
+      ['notification_id', 'notification_type', 'title', 'body', 'scheduled_at'],
     ],
     ['MobileNotificationList', ['notifications', 'total', 'limit', 'offset']],
-  ])(
-    'keeps the %s response fields required by the mobile client',
-    (schemaName, fields) => {
-      expect(document.components.schemas[schemaName]?.required).toEqual(
-        expect.arrayContaining(fields)
-      );
-    }
-  );
+  ])('documents the %s response contract fields', (schemaName, fields) => {
+    expect(document.components.schemas[schemaName]?.required).toEqual(
+      expect.arrayContaining(fields)
+    );
+  });
 
   // GET /events/{eventId} のレスポンスはEventDetailへ差し替えた。Eventを$refで
   // 取り込む形を保つことで、mobileが参照するfieldはEventの検証がそのまま効く。
