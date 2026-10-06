@@ -86,6 +86,11 @@ export const UserErrors = {
     code: 'STUDENT_UPDATE_FAILED',
     message: '学生の更新に失敗しました',
   },
+  STUDENT_CLASS_ROOM_UPDATE_FAILED: {
+    status: 500,
+    code: 'STUDENT_CLASS_ROOM_UPDATE_FAILED',
+    message: '学生のクラス所属変更に失敗しました',
+  },
   INVALID_TEACHER_ID: {
     status: 400,
     code: 'INVALID_TEACHER_ID',

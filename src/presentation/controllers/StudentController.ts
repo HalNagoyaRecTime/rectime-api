@@ -4,6 +4,7 @@ import { errorResponse } from '../errors/errorResponse';
 import { CommonErrors } from '../errors/commonErrors';
 import { UserErrors } from '../errors/userErrors';
 import {
+  studentClassRoomAssignmentSchema,
   studentIdParams,
   studentListQuery,
   studentWriteSchema,
@@ -100,11 +101,43 @@ export function createStudentController(studentService: IStudentService) {
     }
   };
 
+  const updateStudentClassRoom = async (c: Context) => {
+    const studentId = parseStudentId(c.req.param('studentId'));
+    if (studentId === null) {
+      return errorResponse(c, UserErrors.INVALID_STUDENT_ID);
+    }
+    const body = await c.req.json().catch(() => undefined);
+    const parsedBody = studentClassRoomAssignmentSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return errorResponse(
+        c,
+        UserErrors.INVALID_STUDENT_REQUEST,
+        parsedBody.error.flatten()
+      );
+    }
+
+    try {
+      return c.json(
+        await studentService.updateStudentClassRoom(studentId, parsedBody.data),
+        200
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Student not found') {
+        return errorResponse(c, UserErrors.STUDENT_NOT_FOUND);
+      }
+      if (error instanceof Error && error.message === 'Class room not found') {
+        return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
+      }
+      return errorResponse(c, UserErrors.STUDENT_CLASS_ROOM_UPDATE_FAILED);
+    }
+  };
+
   return {
     getStudentById,
     getAllStudent,
     createStudent,
     updateStudent,
+    updateStudentClassRoom,
   };
 }
 
