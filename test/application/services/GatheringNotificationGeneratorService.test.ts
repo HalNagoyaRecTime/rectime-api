@@ -137,6 +137,51 @@ describe('GatheringNotificationGeneratorService', () => {
     ]);
   });
 
+  it('処理中に集合時間が変わった場合は最新値へ再同期する', async () => {
+    const gatheringRepository: IGatheringNotificationGeneratorRepository = {
+      findGatheringTime: vi
+        .fn()
+        .mockResolvedValueOnce('10:45')
+        .mockResolvedValueOnce('11:00')
+        .mockResolvedValueOnce('11:00')
+        .mockResolvedValueOnce('11:00'),
+    };
+    const notificationCreationRepository: INotificationCreationRepository = {
+      create: vi.fn(),
+      createOrUpdateAutomatic: vi
+        .fn()
+        .mockResolvedValueOnce({
+          status: 'created',
+          result: { notification_id: 12, notification_schedule_id: 34 },
+        })
+        .mockResolvedValueOnce({
+          status: 'updated',
+          result: { notification_id: 12, notification_schedule_id: 34 },
+        }),
+    };
+    const service = createGatheringNotificationGeneratorService(
+      gatheringRepository,
+      notificationCreationRepository,
+      '2026-11-07',
+      () => '2026-10-04T01:00:00.000Z'
+    );
+
+    await expect(service.generate(51)).resolves.toBe('updated');
+
+    const commands = vi.mocked(
+      notificationCreationRepository.createOrUpdateAutomatic
+    ).mock.calls;
+    expect(commands).toHaveLength(2);
+    expect(commands[0][0]).toMatchObject({
+      push_body: '集合時間は10:45です。',
+      send_at: '2026-11-07T01:30:00.000Z',
+    });
+    expect(commands[1][0]).toMatchObject({
+      push_body: '集合時間は11:00です。',
+      send_at: '2026-11-07T01:45:00.000Z',
+    });
+  });
+
   it('Gatheringが見つからない場合は通知を作らない', async () => {
     const gatheringRepository: IGatheringNotificationGeneratorRepository = {
       findGatheringTime: vi.fn().mockResolvedValue(null),

@@ -91,6 +91,7 @@ export function createNotificationCreationRepository(
                      SELECT 1 FROM notification_schedules automatic
                      WHERE automatic.notification_schedule_id = ?
                        AND automatic.notification_id = notifications.notification_id
+                       AND automatic.created_at = notifications.created_at
                        AND automatic.send_status = 'scheduled'
                        AND automatic.scheduled_by_user_id IS NULL
                        AND automatic.started_at IS NULL
@@ -128,6 +129,7 @@ export function createNotificationCreationRepository(
                        AND n.source_type = ? AND n.source_id = ?
                        AND n.notification_type = 'notification_general'
                        AND n.source_hash = ?
+                       AND notification_schedules.created_at = n.created_at
                    )`
               )
               .bind(
@@ -455,6 +457,7 @@ async function findAutomaticReminder(
        LEFT JOIN notification_schedules s
          ON s.notification_id = n.notification_id
         AND s.scheduled_by_user_id IS NULL
+        AND s.created_at = n.created_at
        WHERE n.source_type = ? AND n.source_id = ?
          AND n.notification_type = 'notification_general'
        ORDER BY n.created_at DESC, n.notification_id DESC,

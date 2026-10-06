@@ -460,6 +460,119 @@ describe('NotificationCreationRepository', () => {
     });
   });
 
+  it('actor匿名化済みの手動再送をautomatic Scheduleと誤認しない', async () => {
+    const fixture = await createFixture();
+    const first = await repository.createOrUpdateAutomatic(
+      buildAutomaticCommand(fixture.gatheringId, 'hash-10-45')
+    );
+    if (first.status !== 'created')
+      throw new Error('初回通知が作成されませんでした');
+
+    const manual = await env.DB.prepare(
+      `INSERT INTO notification_schedules (
+         scheduled_by_user_id, notification_id, send_status, send_at,
+         created_at, updated_at
+       ) VALUES (?, ?, 'scheduled', ?, ?, ?)
+       RETURNING notification_schedule_id`
+    )
+      .bind(
+        fixture.actorUserId,
+        first.result.notification_id,
+        '2026-11-07T02:00:00.000Z',
+        '2026-10-04T02:00:00.000Z',
+        '2026-10-04T02:00:00.000Z'
+      )
+      .first<{ notification_schedule_id: number }>();
+    if (!manual) throw new Error('手動再送Scheduleが作成されませんでした');
+
+    await env.DB.prepare(
+      `UPDATE notification_schedules
+       SET scheduled_by_user_id = NULL
+       WHERE notification_schedule_id = ?`
+    )
+      .bind(manual.notification_schedule_id)
+      .run();
+
+    await expect(
+      repository.createOrUpdateAutomatic(
+        buildAutomaticCommand(
+          fixture.gatheringId,
+          'hash-11-00',
+          '11:00',
+          '2026-11-07T01:45:00.000Z'
+        )
+      )
+    ).resolves.toEqual({
+      status: 'updated',
+      result: first.result,
+    });
+
+    const schedules = await env.DB.prepare(
+      `SELECT notification_schedule_id, send_at
+       FROM notification_schedules
+       WHERE notification_id = ?
+       ORDER BY notification_schedule_id`
+    )
+      .bind(first.result.notification_id)
+      .all<{ notification_schedule_id: number; send_at: string }>();
+
+    expect(schedules.results).toEqual([
+      {
+        notification_schedule_id: first.result.notification_schedule_id,
+        send_at: '2026-11-07T01:45:00.000Z',
+      },
+      {
+        notification_schedule_id: manual.notification_schedule_id,
+        send_at: '2026-11-07T02:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('元automatic Scheduleを明示取消した後は自動生成を復活させない', async () => {
+    const fixture = await createFixture();
+    const first = await repository.createOrUpdateAutomatic(
+      buildAutomaticCommand(fixture.gatheringId, 'hash-10-45')
+    );
+    if (first.status !== 'created')
+      throw new Error('初回通知が作成されませんでした');
+
+    await env.DB.prepare(
+      'DELETE FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(first.result.notification_schedule_id)
+      .run();
+
+    await expect(
+      repository.createOrUpdateAutomatic(
+        buildAutomaticCommand(
+          fixture.gatheringId,
+          'hash-11-00',
+          '11:00',
+          '2026-11-07T01:45:00.000Z'
+        )
+      )
+    ).resolves.toEqual({ status: 'already_exists' });
+
+    const notification = await env.DB.prepare(
+      `SELECT push_body, source_hash FROM notifications
+       WHERE notification_id = ?`
+    )
+      .bind(first.result.notification_id)
+      .first<Record<string, unknown>>();
+    expect(notification).toEqual({
+      push_body: '集合時間は10:45です。',
+      source_hash: 'hash-10-45',
+    });
+
+    const scheduleCount = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM notification_schedules
+       WHERE notification_id = ?`
+    )
+      .bind(first.result.notification_id)
+      .first<{ count: number }>();
+    expect(scheduleCount?.count).toBe(0);
+  });
+
   it('手動再送Scheduleが開始済みならautomatic追従を止める', async () => {
     const fixture = await createFixture();
     const first = await repository.createOrUpdateAutomatic(
