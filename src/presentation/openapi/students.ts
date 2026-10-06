@@ -99,20 +99,24 @@ export const studentWriteSchema = z
   .openapi('StudentWriteRequest');
 
 export const studentClassRoomAssignmentSchema = z
-  .object({
-    class_room_id: z.number().int().positive().nullable(),
-    attendance_number: z.number().int().positive().nullable(),
-  })
-  .strict()
-  .refine(
-    value =>
-      (value.class_room_id === null) === (value.attendance_number === null),
-    {
-      message:
-        'class_room_id and attendance_number must both be null or both have values',
-    }
-  )
-  .openapi('StudentClassRoomAssignmentRequest');
+  .union([
+    z
+      .object({
+        class_room_id: z.number().int().positive(),
+        attendance_number: z.number().int().positive(),
+      })
+      .strict(),
+    z
+      .object({
+        class_room_id: z.null(),
+        attendance_number: z.null(),
+      })
+      .strict(),
+  ])
+  .openapi('StudentClassRoomAssignmentRequest', {
+    description:
+      'class_room_idとattendance_numberは両方に値を指定するか、両方をnullにする。',
+  });
 
 export const studentListRoute = createRoute({
   method: 'get',
