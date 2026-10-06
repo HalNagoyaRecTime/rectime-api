@@ -81,10 +81,8 @@ export const students = sqliteTable(
       .notNull()
       .references(() => users.id)
       .unique(),
-    classRoomId: integer('class_room_id')
-      .notNull()
-      .references(() => class_rooms.id),
-    attendanceNumber: integer('attendance_number').notNull(),
+    classRoomId: integer('class_room_id').references(() => class_rooms.id),
+    attendanceNumber: integer('attendance_number'),
     studentIdNumber: text('student_id_number').notNull().unique(),
     createdAt: text('created_at')
       .notNull()
@@ -97,6 +95,11 @@ export const students = sqliteTable(
     index('idx_students_class_room_id_user_id').on(
       table.classRoomId,
       table.userId
+    ),
+    check(
+      'ck_students_class_room_attendance_pair',
+      sql`(${table.classRoomId} IS NULL AND ${table.attendanceNumber} IS NULL)
+        OR (${table.classRoomId} IS NOT NULL AND ${table.attendanceNumber} IS NOT NULL)`
     ),
   ]
 );
