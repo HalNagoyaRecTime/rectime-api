@@ -9,3 +9,6 @@ WHERE class_room_id = (
     FROM class_rooms
     WHERE class_code = '__UNASSIGNED__'
 );
+
+DELETE FROM class_rooms
+WHERE class_code = '__UNASSIGNED__';

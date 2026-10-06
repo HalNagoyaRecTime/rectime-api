@@ -33,15 +33,12 @@ describe('0038_convert_unassigned_students_to_null.sql', () => {
        FROM class_rooms
        WHERE class_code = '__UNASSIGNED__'`
     ).first<{ class_room_id: number }>();
-    let createdUnassignedClassRoom = false;
-
     if (!unassignedClassRoom) {
       unassignedClassRoom = await env.DB.prepare(
         `INSERT INTO class_rooms (class_code, class_name)
          VALUES ('__UNASSIGNED__', '未割当')
          RETURNING class_room_id`
       ).first<{ class_room_id: number }>();
-      createdUnassignedClassRoom = true;
     }
 
     const assignedClassRoom = await env.DB.prepare(
@@ -113,6 +110,13 @@ describe('0038_convert_unassigned_students_to_null.sql', () => {
           attendance_number: 2,
         },
       ]);
+
+      const remainingUnassignedClassRoom = await env.DB.prepare(
+        `SELECT class_room_id
+         FROM class_rooms
+         WHERE class_code = '__UNASSIGNED__'`
+      ).first();
+      expect(remainingUnassignedClassRoom).toBeNull();
     } finally {
       await env.DB.prepare('DELETE FROM students WHERE user_id IN (?, ?)')
         .bind(unassignedUserId, assignedUserId)
@@ -120,11 +124,6 @@ describe('0038_convert_unassigned_students_to_null.sql', () => {
       await env.DB.prepare('DELETE FROM users WHERE user_id IN (?, ?)')
         .bind(unassignedUserId, assignedUserId)
         .run();
-      if (createdUnassignedClassRoom) {
-        await env.DB.prepare('DELETE FROM class_rooms WHERE class_room_id = ?')
-          .bind(unassignedClassRoom!.class_room_id)
-          .run();
-      }
     }
   });
 });
