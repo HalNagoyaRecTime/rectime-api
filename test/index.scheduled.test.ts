@@ -51,7 +51,7 @@ describe('scheduled handler', () => {
     createDIContainerSpy.mockRestore();
   });
 
-  it('通知cronは自動通知再同期が失敗した場合にAudience Resolverへ進まない', async () => {
+  it('自動通知再同期自体のrejectはログし、manual v2用のAudience Resolverは継続する', async () => {
     const container = await import('../src/di/container');
     const reconcileAll = vi
       .fn()
@@ -89,8 +89,12 @@ describe('scheduled handler', () => {
     await Promise.all(waitUntilPromises);
 
     expect(reconcileAll).toHaveBeenCalledTimes(1);
-    expect(resolveDueSchedules).not.toHaveBeenCalled();
-    expect(enqueueReadySchedules).not.toHaveBeenCalled();
+    expect(resolveDueSchedules).toHaveBeenCalledWith(
+      new Date(event.scheduledTime)
+    );
+    expect(enqueueReadySchedules).toHaveBeenCalledWith(
+      new Date(event.scheduledTime)
+    );
     expect(enqueueDueNotifications).not.toHaveBeenCalled();
     createDIContainerSpy.mockRestore();
   });
