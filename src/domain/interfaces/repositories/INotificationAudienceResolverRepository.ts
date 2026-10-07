@@ -6,7 +6,8 @@ import type {
 export interface INotificationAudienceResolverRepository {
   findDueCandidates(
     now: string,
-    limit: number
+    limit: number,
+    manualOnly?: boolean
   ): Promise<NotificationAudienceResolverCandidate[]>;
   claimScheduled(scheduleId: number, now: string): Promise<boolean>;
   findUnresolvedAudiences(
