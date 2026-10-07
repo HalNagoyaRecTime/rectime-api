@@ -144,9 +144,7 @@ export function createEventGatheringSettingsService(
       // 全Gatheringへの即時同期を試したうえでCronの定期reconciliationに回復を委ねる。
       await Promise.allSettled(
         savedGatherings.map(gathering =>
-          gatheringNotificationGeneratorService.generate(
-            gathering.gathering_id
-          )
+          gatheringNotificationGeneratorService.generate(gathering.gathering_id)
         )
       );
 
