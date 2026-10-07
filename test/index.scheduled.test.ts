@@ -172,9 +172,9 @@ describe('scheduled handler', () => {
     await expect(Promise.all(waitUntilPromises)).resolves.toBeDefined();
 
     expect(reconcileAll).toHaveBeenCalledTimes(1);
-    expect(
-      vi.mocked(reconcileAll).mock.invocationCallOrder[0]
-    ).toBeLessThan(vi.mocked(resolveDueSchedules).mock.invocationCallOrder[0]);
+    expect(vi.mocked(reconcileAll).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(resolveDueSchedules).mock.invocationCallOrder[0]
+    );
     expect(resolveDueSchedules).toHaveBeenCalledWith(
       new Date(event.scheduledTime)
     );
