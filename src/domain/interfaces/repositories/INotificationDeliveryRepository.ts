@@ -6,7 +6,8 @@ import type {
 export interface INotificationDeliveryRepository {
   findReadySchedules(
     now: string,
-    limit: number
+    limit: number,
+    manualOnly?: boolean
   ): Promise<NotificationDeliveryScheduleCandidate[]>;
   prepareResolvedSchedule(scheduleId: number, now: string): Promise<boolean>;
   countPendingDeliveries(scheduleId: number): Promise<number>;
@@ -20,6 +21,7 @@ export interface INotificationDeliveryRepository {
     now: string,
     limit: number
   ): Promise<ClaimedNotificationPushDelivery[]>;
+  findManualScheduleIds(scheduleIds: number[]): Promise<number[]>;
   markSent(deliveryId: number, messageId: string, now: string): Promise<void>;
   markFailed(deliveryId: number, reason: string, now: string): Promise<void>;
   completeScheduleIfDone(scheduleId: number, now: string): Promise<boolean>;
