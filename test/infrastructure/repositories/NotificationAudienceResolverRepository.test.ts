@@ -309,6 +309,60 @@ describe('NotificationAudienceResolverRepository', () => {
     expect(fixture.inactiveStudentId).not.toBe(fixture.activeStudentId);
   });
 
+  it('manualOnlyではsource付きautomatic ScheduleをResolver対象から除外する', async () => {
+    const fixture = await createFixture();
+    const manual = await createSchedule(fixture.actorUserId, [
+      { type: 'all', target_id: null },
+    ]);
+    const automaticNotification = await env.DB.prepare(
+      `INSERT INTO notifications (
+         push_title, push_body, notification_type, title, body, importance,
+         source_type, source_id, source_hash, created_at, updated_at
+       ) VALUES (?, ?, 'notification_general', ?, ?, 'normal',
+                 'gathering', ?, ?, ?, ?)
+       RETURNING notification_id`
+    )
+      .bind(
+        'Automatic push',
+        'Automatic body',
+        'Automatic detail',
+        'Automatic detail body',
+        fixture.firstGatheringId,
+        'automatic-hash',
+        '2026-09-23T11:00:00.000Z',
+        '2026-09-23T11:00:00.000Z'
+      )
+      .first<{ notification_id: number }>();
+    if (!automaticNotification) {
+      throw new Error('automatic Notificationを作成できませんでした');
+    }
+    const automaticSchedule = await env.DB.prepare(
+      `INSERT INTO notification_schedules (
+         notification_id, send_status, send_at, created_at, updated_at
+       ) VALUES (?, 'scheduled', ?, ?, ?)
+       RETURNING notification_schedule_id`
+    )
+      .bind(
+        automaticNotification.notification_id,
+        '2026-09-23T12:00:00.000Z',
+        '2026-09-23T11:00:00.000Z',
+        '2026-09-23T11:00:00.000Z'
+      )
+      .first<{ notification_schedule_id: number }>();
+    if (!automaticSchedule) {
+      throw new Error('automatic Scheduleを作成できませんでした');
+    }
+
+    const candidates = await repository.findDueCandidates(NOW, 100, true);
+
+    expect(candidates.map(row => row.notification_schedule_id)).toContain(
+      manual.scheduleId
+    );
+    expect(candidates.map(row => row.notification_schedule_id)).not.toContain(
+      automaticSchedule.notification_schedule_id
+    );
+  });
+
   it('resolving scheduleの同時再実行でもRecipientと確定状態を壊さない', async () => {
     const fixture = await createFixture();
     const schedule = await createSchedule(fixture.actorUserId, [
