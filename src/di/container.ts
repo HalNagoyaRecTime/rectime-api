@@ -321,6 +321,7 @@ export function createDIContainer(env: Env) {
     notificationConfigController,
     mobileNotificationController,
     scheduledNotificationService,
+    gatheringNotificationGeneratorService,
     notificationAudienceResolverService,
     notificationDeliveryService,
     gatheringSpotController,
