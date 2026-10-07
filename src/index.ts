@@ -593,31 +593,34 @@ export default {
     }
 
     const scheduledAt = new Date(event.scheduledTime);
+    const eventDateValid = isValidEventDate(env.EVENT_DATE);
     const container = createDIContainer(env);
     ctx.waitUntil(
       (async () => {
-        try {
-          const reconciliation =
-            await container.gatheringNotificationGeneratorService.reconcileAll();
-          if (reconciliation.failed_gathering_ids.length > 0) {
-            console.error('[CRON] Gathering自動通知の再同期に失敗しました', {
-              gatheringIds: reconciliation.failed_gathering_ids,
-            });
+        if (eventDateValid) {
+          try {
+            const reconciliation =
+              await container.gatheringNotificationGeneratorService.reconcileAll();
+            if (reconciliation.failed_gathering_ids.length > 0) {
+              console.error('[CRON] Gathering自動通知の再同期に失敗しました', {
+                gatheringIds: reconciliation.failed_gathering_ids,
+              });
+              return;
+            }
+          } catch (error) {
+            console.error(
+              '[CRON] Gathering自動通知の再同期に失敗しました',
+              error
+            );
             return;
           }
-        } catch (error) {
-          // EVENT_DATE未設定/不正などでautomatic再同期自体を開始できない場合も、
-          // EVENT_DATEに依存しないmanual v2通知のResolverは止めない。
-          console.error(
-            '[CRON] Gathering自動通知の再同期に失敗しました',
-            error
-          );
         }
 
         try {
           const result =
             await container.notificationAudienceResolverService.resolveDueSchedules(
-              scheduledAt
+              scheduledAt,
+              eventDateValid ? undefined : { manualOnly: true }
             );
           if (result.retryable_schedule_ids.length > 0) {
             console.error('[CRON] Notification Audience解決を再試行します', {
