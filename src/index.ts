@@ -617,11 +617,14 @@ export default {
         }
 
         try {
-          const result =
-            await container.notificationAudienceResolverService.resolveDueSchedules(
-              scheduledAt,
-              eventDateValid ? undefined : { manualOnly: true }
-            );
+          const result = eventDateValid
+            ? await container.notificationAudienceResolverService.resolveDueSchedules(
+                scheduledAt
+              )
+            : await container.notificationAudienceResolverService.resolveDueSchedules(
+                scheduledAt,
+                { manualOnly: true }
+              );
           if (result.retryable_schedule_ids.length > 0) {
             console.error('[CRON] Notification Audience解決を再試行します', {
               scheduleIds: result.retryable_schedule_ids,
