@@ -74,7 +74,6 @@ import {
   masterImportDetailRoute,
 } from './presentation/openapi/masterImports';
 import {
-  gatheringListRoute,
   gatheringMemberListRoute,
   gatheringMemberReplaceRoute,
   gatheringSpotCreateRoute,
@@ -180,7 +179,6 @@ app.openapi(apiOverviewRoute, c => {
         events: '/api/v1/events',
         classRooms: '/api/v1/classrooms',
         gatheringSpots: '/api/v1/gathering-spots',
-        gatherings: '/api/v1/gatherings',
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
         firebaseTokens: '/api/v1/firebase-tokens',
         adminNotifications: '/api/v1/admin/notifications',
@@ -438,11 +436,6 @@ apiV1.openapi(staffOnly(gatheringMemberReplaceRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.replaceGatheringMembers(c);
-});
-
-// Gathering routes
-apiV1.openapi(staffOnly(gatheringListRoute), c => {
-  return c.get('container').gatheringController.getAllGatherings(c);
 });
 
 // Firebase token routes

@@ -1,9 +1,10 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+
 import { app } from '../src/index';
 import { signAccessToken } from '../src/infrastructure/auth/jwt';
-import { errorResponseSchema } from '../src/presentation/openapi/schemas';
 import { eventListResponseSchema } from '../src/presentation/openapi/events';
+import { errorResponseSchema } from '../src/presentation/openapi/schemas';
 
 const corsTestEnv = {
   ...env,
@@ -28,12 +29,14 @@ async function bearerHeaders(): Promise<Record<string, string>> {
     JWT_SECRET,
     3600
   );
+
   return { Authorization: `Bearer ${token}` };
 }
 
 describe('GET /health', () => {
   it('200 と { status: "ok" } を返す', async () => {
     const res = await app.fetch(new Request('http://example.com/health'), env);
+
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'ok' });
   });
@@ -47,6 +50,7 @@ describe('OpenAPI documentation', () => {
     );
 
     expect(res.status).toBe(200);
+
     const document = (await res.json()) as {
       components: {
         schemas: Record<
@@ -79,7 +83,6 @@ describe('OpenAPI documentation', () => {
       '/api/v1/firebase-tokens',
       '/api/v1/gathering-spots',
       '/api/v1/gathering-spots/{gatheringSpotId}',
-      '/api/v1/gatherings',
       '/api/v1/gatherings/{gatheringId}/members',
       '/api/v1/master-imports',
       '/api/v1/master-imports/{validatedFileId}',
@@ -96,6 +99,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/venues/{venueId}',
       '/health',
     ]);
+
     expect(document.components.schemas.Event.properties?.rule_text).toEqual({
       type: 'string',
       nullable: true,
@@ -151,13 +155,22 @@ describe('OpenAPI documentation', () => {
         }>;
       }
     ).parameters;
+
     expect(
       teacherListParameters?.find(param => param.name === 'isStaff')?.schema
-    ).toMatchObject({ default: 'all', enum: ['true', 'false', 'all'] });
+    ).toMatchObject({
+      default: 'all',
+      enum: ['true', 'false', 'all'],
+    });
+
     expect(
       teacherListParameters?.find(param => param.name === 'isLiveActive')
         ?.schema
-    ).toMatchObject({ default: 'true', enum: ['true', 'false', 'all'] });
+    ).toMatchObject({
+      default: 'true',
+      enum: ['true', 'false', 'all'],
+    });
+
     expect(
       teacherListParameters?.find(param => param.name === 'sortBy')?.schema
     ).toMatchObject({
@@ -184,13 +197,22 @@ describe('OpenAPI documentation', () => {
         }>;
       }
     ).parameters;
+
     expect(
       studentListParameters?.find(param => param.name === 'isStaff')?.schema
-    ).toMatchObject({ default: 'all', enum: ['true', 'false', 'all'] });
+    ).toMatchObject({
+      default: 'all',
+      enum: ['true', 'false', 'all'],
+    });
+
     expect(
       studentListParameters?.find(param => param.name === 'isLiveActive')
         ?.schema
-    ).toMatchObject({ default: 'true', enum: ['true', 'false', 'all'] });
+    ).toMatchObject({
+      default: 'true',
+      enum: ['true', 'false', 'all'],
+    });
+
     expect(
       studentListParameters?.find(param => param.name === 'sortBy')?.schema
     ).toMatchObject({
@@ -212,7 +234,8 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(58);
+    expect(documentedOperations).toHaveLength(57);
+    expect(document.paths['/api/v1/gatherings']).toBeUndefined();
     const schedulePath =
       document.paths[
         '/api/v1/admin/notifications/schedules/{notificationScheduleId}'
@@ -251,7 +274,6 @@ describe('OpenAPI documentation', () => {
     expect(document.components.schemas).not.toHaveProperty(
       'AdminUserSearchResponse'
     );
-    expect(document.paths['/api/v1/gatherings']).not.toHaveProperty('post');
     expect(
       Object.keys(document.paths['/api/v1/gatherings/{gatheringId}/members'])
     ).toEqual(['get', 'put']);
@@ -275,14 +297,20 @@ describe('OpenAPI documentation', () => {
       new Request('http://example.com/openapi.json'),
       env
     );
+
     const document = (await res.json()) as {
       components: { securitySchemes?: Record<string, unknown> };
       paths: Record<string, Record<string, { security?: unknown }>>;
     };
 
     expect(document.components.securitySchemes).toEqual({
-      Bearer: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      Bearer: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      },
     });
+
     expect(document.paths['/api/v1/students'].get?.security).toEqual([
       { Bearer: [] },
     ]);
@@ -317,6 +345,7 @@ describe('OpenAPI documentation', () => {
       ...env,
       DOCS_ENABLED: undefined,
     });
+
     const body = (await res.json()) as Record<string, unknown>;
 
     expect(res.status).toBe(200);
@@ -344,10 +373,13 @@ describe('OpenAPIスキーマと実レスポンスの一致', () => {
     );
 
     expect(res.status).toBe(400);
+
     const body = await res.json();
+
     // 組み込みフックの `{ success: false, error: <ZodError> }` ではなく、
     // 各ルートが400として文書化しているスキーマに一致すること。
     expect(errorResponseSchema.safeParse(body).success).toBe(true);
+
     expect(body).toMatchObject({
       error: {
         message: 'リクエスト内容が正しくありません',
@@ -365,7 +397,9 @@ describe('OpenAPIスキーマと実レスポンスの一致', () => {
     );
 
     expect(res.status).toBe(200);
+
     const parsed = eventListResponseSchema.safeParse(await res.json());
+
     expect(parsed.error?.issues ?? []).toEqual([]);
     expect(parsed.success).toBe(true);
   });
@@ -468,6 +502,7 @@ describe('通知予定管理APIの廃止', () => {
       new Request(`http://example.com${path}`, { method }),
       env
     );
+
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({
       error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
@@ -510,10 +545,24 @@ describe('旧Event操作APIの廃止', () => {
 });
 
 describe('集合APIの実ルーティング', () => {
+  it('削除した旧Gathering一覧APIのGETは404を返す', async () => {
+    for (const headers of [{}, await bearerHeaders()]) {
+      const res = await app.fetch(
+        new Request('http://example.com/api/v1/gatherings', {
+          method: 'GET',
+          headers,
+        }),
+        authEnv
+      );
+
+      expect(res.status).toBe(404);
+    }
+  });
+
   it.each([
     ['POST', '/api/v1/gatherings'],
     ['DELETE', '/api/v1/gatherings/1'],
-  ])('旧Gathering Write APIを公開しない（%s %s）', async (method, path) => {
+  ])('旧Gathering APIを公開しない（%s %s）', async (method, path) => {
     for (const headers of [{}, await bearerHeaders()]) {
       const res = await app.fetch(
         new Request(`http://example.com${path}`, {
@@ -608,8 +657,12 @@ describe('集合APIの実ルーティング', () => {
     );
 
     expect(res.status).toBe(401);
+
     expect(await res.json()).toEqual({
-      error: { code: 'UNAUTHORIZED', message: '認証が必要です' },
+      error: {
+        code: 'UNAUTHORIZED',
+        message: '認証が必要です',
+      },
     });
   });
 });
@@ -618,10 +671,13 @@ describe('CORS middleware', () => {
   it('ALLOWED_ORIGINS に含まれるオリジンには Access-Control-Allow-Origin を付与する', async () => {
     const res = await app.fetch(
       new Request('http://example.com/health', {
-        headers: { Origin: 'http://localhost:5173' },
+        headers: {
+          Origin: 'http://localhost:5173',
+        },
       }),
       corsTestEnv
     );
+
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(
       'http://localhost:5173'
     );
@@ -630,10 +686,13 @@ describe('CORS middleware', () => {
   it('Cloudflare Pages の本番オリジンを許可する', async () => {
     const res = await app.fetch(
       new Request('http://example.com/health', {
-        headers: { Origin: 'https://recwatch.pages.dev' },
+        headers: {
+          Origin: 'https://recwatch.pages.dev',
+        },
       }),
       corsTestEnv
     );
+
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(
       'https://recwatch.pages.dev'
     );
@@ -642,10 +701,13 @@ describe('CORS middleware', () => {
   it('Cloudflare Pages の preview オリジンを許可する', async () => {
     const res = await app.fetch(
       new Request('http://example.com/health', {
-        headers: { Origin: 'https://feature-branch.recwatch.pages.dev' },
+        headers: {
+          Origin: 'https://feature-branch.recwatch.pages.dev',
+        },
       }),
       corsTestEnv
     );
+
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(
       'https://feature-branch.recwatch.pages.dev'
     );
@@ -654,20 +716,26 @@ describe('CORS middleware', () => {
   it('ALLOWED_ORIGINS に含まれないオリジンには Access-Control-Allow-Origin を付与しない', async () => {
     const res = await app.fetch(
       new Request('http://example.com/health', {
-        headers: { Origin: 'https://evil.example.com' },
+        headers: {
+          Origin: 'https://evil.example.com',
+        },
       }),
       corsTestEnv
     );
+
     expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
   });
 
   it('Cloudflare Pages に似た不正なオリジンは許可しない', async () => {
     const res = await app.fetch(
       new Request('http://example.com/health', {
-        headers: { Origin: 'https://recwatch.pages.dev.evil.example.com' },
+        headers: {
+          Origin: 'https://recwatch.pages.dev.evil.example.com',
+        },
       }),
       corsTestEnv
     );
+
     expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
   });
 
@@ -683,20 +751,26 @@ describe('CORS middleware', () => {
       }),
       corsTestEnv
     );
+
     expect(res.status).toBe(204);
+
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(
       'http://localhost:5173'
     );
+
     expect(res.headers.get('Access-Control-Allow-Credentials')).toBe('true');
   });
 
   it('credentials: true のため Access-Control-Allow-Credentials が付与される', async () => {
     const res = await app.fetch(
       new Request('http://example.com/health', {
-        headers: { Origin: 'http://localhost:5173' },
+        headers: {
+          Origin: 'http://localhost:5173',
+        },
       }),
       corsTestEnv
     );
+
     expect(res.headers.get('Access-Control-Allow-Credentials')).toBe('true');
   });
 });
