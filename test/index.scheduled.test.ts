@@ -51,13 +51,9 @@ describe('scheduled handler', () => {
     createDIContainerSpy.mockRestore();
   });
 
-  it('自動通知再同期自体のrejectはログし、manual v2用のAudience Resolverは継続する', async () => {
+  it('EVENT_DATE未設定ではautomatic再同期をせずmanual v2だけResolverする', async () => {
     const container = await import('../src/di/container');
-    const reconcileAll = vi
-      .fn()
-      .mockRejectedValue(
-        new Error('EVENT_DATE must be configured for gathering reminders')
-      );
+    const reconcileAll = vi.fn();
     const resolveDueSchedules = vi.fn().mockResolvedValue({
       completed_schedules: [],
       retryable_schedule_ids: [],
@@ -88,9 +84,10 @@ describe('scheduled handler', () => {
     await worker.scheduled(event, { ...workerEnv, EVENT_DATE: '' }, ctx);
     await Promise.all(waitUntilPromises);
 
-    expect(reconcileAll).toHaveBeenCalledTimes(1);
+    expect(reconcileAll).not.toHaveBeenCalled();
     expect(resolveDueSchedules).toHaveBeenCalledWith(
-      new Date(event.scheduledTime)
+      new Date(event.scheduledTime),
+      { manualOnly: true }
     );
     expect(enqueueReadySchedules).toHaveBeenCalledWith(
       new Date(event.scheduledTime)
@@ -172,7 +169,11 @@ describe('scheduled handler', () => {
       noRetry: () => {},
     } as unknown as ScheduledEvent;
 
-    await worker.scheduled(event, { ...workerEnv, EVENT_DATE: '' }, ctx);
+    await worker.scheduled(
+      event,
+      { ...workerEnv, EVENT_DATE: '2026-11-08' },
+      ctx
+    );
     await expect(Promise.all(waitUntilPromises)).resolves.toBeDefined();
 
     expect(reconcileAll).toHaveBeenCalledTimes(1);
@@ -224,7 +225,11 @@ describe('scheduled handler', () => {
       noRetry: () => {},
     } as unknown as ScheduledEvent;
 
-    await worker.scheduled(event, { ...workerEnv, EVENT_DATE: '' }, ctx);
+    await worker.scheduled(
+      event,
+      { ...workerEnv, EVENT_DATE: '2026-11-08' },
+      ctx
+    );
     await expect(Promise.all(waitUntilPromises)).resolves.toBeDefined();
 
     expect(resolveDueSchedules).toHaveBeenCalledWith(
