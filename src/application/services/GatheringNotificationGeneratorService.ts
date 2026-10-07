@@ -2,7 +2,10 @@ import type { NotificationAudienceTarget } from '../../domain/entities/Notificat
 import { DEFAULT_NOTIFICATION_IMPORTANCE } from '../../domain/entities/Notification';
 import type { INotificationCreationRepository } from '../../domain/interfaces/repositories/INotificationCreationRepository';
 import type { IGatheringNotificationGeneratorRepository } from '../../domain/interfaces/repositories/IGatheringNotificationGeneratorRepository';
-import { buildEventNotificationSendAt } from '../../lib/eventDate';
+import {
+  buildEventNotificationSendAt,
+  isValidEventDate,
+} from '../../lib/eventDate';
 
 export interface GatheringNotificationReconciliationResult {
   processed_count: number;
@@ -82,7 +85,7 @@ export function createGatheringNotificationGeneratorService(
     generate,
 
     async reconcileAll() {
-      if (!eventDate) {
+      if (!isValidEventDate(eventDate)) {
         throw new Error(
           'EVENT_DATE must be configured for gathering reminders'
         );
