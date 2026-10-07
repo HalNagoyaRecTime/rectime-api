@@ -606,11 +606,12 @@ export default {
             return;
           }
         } catch (error) {
+          // EVENT_DATE未設定/不正などでautomatic再同期自体を開始できない場合も、
+          // EVENT_DATEに依存しないmanual v2通知のResolverは止めない。
           console.error(
             '[CRON] Gathering自動通知の再同期に失敗しました',
             error
           );
-          return;
         }
 
         try {
