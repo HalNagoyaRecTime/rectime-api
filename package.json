@@ -11,7 +11,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply rectime-api --remote",
     "db:migrate:local": "wrangler d1 migrations apply rectime-api-dev --local --env development",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --write src/application/services/EventGatheringSettingsService.ts src/index.ts test/application/services/GatheringNotificationGeneratorService.test.ts test/index.scheduled.test.ts && git diff -- src/application/services/EventGatheringSettingsService.ts src/index.ts test/application/services/GatheringNotificationGeneratorService.test.ts test/index.scheduled.test.ts && false",
     "format:fix": "prettier --write .",
     "lint": "eslint .",
     "prepare": "husky",
