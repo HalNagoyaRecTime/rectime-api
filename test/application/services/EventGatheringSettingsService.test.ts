@@ -69,6 +69,10 @@ function setup(
   const gatheringNotificationGeneratorService: IGatheringNotificationGeneratorService =
     {
       generate: vi.fn().mockResolvedValue('created'),
+      reconcileAll: vi.fn().mockResolvedValue({
+        processed_count: 0,
+        failed_gathering_ids: [],
+      }),
     };
   const service = createEventGatheringSettingsService(
     eventRepository,
@@ -526,7 +530,7 @@ describe('EventGatheringSettingsService', () => {
       ).toHaveBeenCalledWith(103);
     });
 
-    it('通知生成失敗後に同じ設定保存を再実行するとGeneratorを再試行する', async () => {
+    it('一部の通知生成が失敗しても集合設定保存は成功し、残りのGeneratorも実行する', async () => {
       const { service, repository, gatheringNotificationGeneratorService } =
         setup();
       const updated = existing.map(gathering =>
@@ -536,13 +540,33 @@ describe('EventGatheringSettingsService', () => {
       );
       vi.mocked(repository.findByEventId)
         .mockResolvedValueOnce(existing)
-        .mockResolvedValueOnce(updated)
-        .mockResolvedValueOnce(updated)
         .mockResolvedValueOnce(updated);
       vi.mocked(gatheringNotificationGeneratorService.generate)
         .mockRejectedValueOnce(new Error('通知生成に失敗しました'))
-        .mockResolvedValue('already_exists');
-      const command = {
+        .mockResolvedValueOnce('already_exists');
+
+      await expect(
+        service.saveEventGatheringSettings({
+          event_id: EVENT_ID,
+          rounds: [
+            {
+              round: 1,
+              gatherings: [
+                {
+                  gathering_id: 101,
+                  gathering_time: '10:46',
+                  gathering_spot_id: 1,
+                },
+                {
+                  gathering_id: 102,
+                  gathering_time: '10:55',
+                  gathering_spot_id: 2,
+                },
+              ],
+            },
+          ],
+        })
+      ).resolves.toEqual({
         event_id: EVENT_ID,
         rounds: [
           {
@@ -551,35 +575,36 @@ describe('EventGatheringSettingsService', () => {
               {
                 gathering_id: 101,
                 gathering_time: '10:46',
-                gathering_spot_id: 1,
+                gathering_spot: {
+                  gathering_spot_id: 1,
+                  gathering_spot_name: '出入口①',
+                },
+                member_count: 16,
               },
               {
                 gathering_id: 102,
                 gathering_time: '10:55',
-                gathering_spot_id: 2,
+                gathering_spot: {
+                  gathering_spot_id: 2,
+                  gathering_spot_name: '出入口②',
+                },
+                member_count: 0,
               },
             ],
           },
         ],
-      };
-
-      await expect(service.saveEventGatheringSettings(command)).rejects.toThrow(
-        '通知生成に失敗しました'
-      );
-      await expect(
-        service.saveEventGatheringSettings(command)
-      ).resolves.toBeDefined();
-
-      expect(repository.apply).toHaveBeenCalledTimes(2);
-      expect(repository.apply).toHaveBeenLastCalledWith({
-        event_id: EVENT_ID,
-        creates: [],
-        updates: [],
-        delete_ids: [],
       });
+
+      expect(repository.apply).toHaveBeenCalledTimes(1);
       expect(
         gatheringNotificationGeneratorService.generate
-      ).toHaveBeenCalledTimes(3);
+      ).toHaveBeenCalledTimes(2);
+      expect(
+        gatheringNotificationGeneratorService.generate
+      ).toHaveBeenNthCalledWith(1, 101);
+      expect(
+        gatheringNotificationGeneratorService.generate
+      ).toHaveBeenNthCalledWith(2, 102);
     });
   });
 });
