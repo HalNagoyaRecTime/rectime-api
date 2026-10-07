@@ -2,6 +2,8 @@ import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { AutomaticNotificationCreationCommand } from '../../../src/domain/entities/NotificationCreation';
 import { createNotificationCreationRepository } from '../../../src/infrastructure/repositories/NotificationCreationRepository';
+import { createGatheringNotificationGeneratorRepository } from '../../../src/infrastructure/repositories/GatheringNotificationGeneratorRepository';
+import { createGatheringNotificationGeneratorService } from '../../../src/application/services/GatheringNotificationGeneratorService';
 import { createFixture } from './adminNotificationRepositoryFixtures';
 
 const repository = createNotificationCreationRepository(env.DB);
@@ -263,6 +265,47 @@ describe('NotificationCreationRepository', () => {
       status: 'updated',
       result: first.result,
     });
+    const schedule = await env.DB.prepare(
+      `SELECT send_at FROM notification_schedules
+       WHERE notification_schedule_id = ?`
+    )
+      .bind(first.result.notification_schedule_id)
+      .first<{ send_at: string }>();
+    expect(schedule?.send_at).toBe('2026-11-08T01:30:00.000Z');
+  });
+
+  it('定期再同期でEVENT_DATE変更を既存automatic Scheduleへ反映する', async () => {
+    const fixture = await createFixture();
+    await env.DB.prepare(
+      'UPDATE gatherings SET gathering_time = ? WHERE gathering_id = ?'
+    )
+      .bind('10:45', fixture.gatheringId)
+      .run();
+
+    const first = await repository.createOrUpdateAutomatic(
+      buildAutomaticCommand(
+        fixture.gatheringId,
+        'same-hash',
+        '10:45',
+        '2026-11-07T01:30:00.000Z'
+      )
+    );
+    if (first.status !== 'created') {
+      throw new Error('初回通知が作成されませんでした');
+    }
+
+    const service = createGatheringNotificationGeneratorService(
+      createGatheringNotificationGeneratorRepository(env.DB),
+      repository,
+      '2026-11-08',
+      () => '2026-10-04T01:00:00.000Z'
+    );
+
+    await expect(service.reconcileAll()).resolves.toEqual({
+      processed_count: 1,
+      failed_gathering_ids: [],
+    });
+
     const schedule = await env.DB.prepare(
       `SELECT send_at FROM notification_schedules
        WHERE notification_schedule_id = ?`
