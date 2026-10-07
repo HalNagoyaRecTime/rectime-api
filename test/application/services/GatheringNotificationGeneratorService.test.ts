@@ -224,17 +224,17 @@ describe('GatheringNotificationGeneratorService', () => {
       failed_gathering_ids: [],
     });
 
-    const commands = vi.mocked(
-      notificationCreationRepository.createOrUpdateAutomatic
-    ).mock.calls.map(([command]) => command);
+    const commands = vi
+      .mocked(notificationCreationRepository.createOrUpdateAutomatic)
+      .mock.calls.map(([command]) => command);
     expect(commands.some(command => command.source?.id === 51)).toBe(true);
     expect(commands.some(command => command.source?.id === 52)).toBe(true);
-    expect(
-      commands.find(command => command.source?.id === 51)?.send_at
-    ).toBe('2026-11-08T01:30:00.000Z');
-    expect(
-      commands.find(command => command.source?.id === 52)?.send_at
-    ).toBe('2026-11-08T01:45:00.000Z');
+    expect(commands.find(command => command.source?.id === 51)?.send_at).toBe(
+      '2026-11-08T01:30:00.000Z'
+    );
+    expect(commands.find(command => command.source?.id === 52)?.send_at).toBe(
+      '2026-11-08T01:45:00.000Z'
+    );
   });
 
   it('Gatheringが見つからない場合は通知を作らない', async () => {
