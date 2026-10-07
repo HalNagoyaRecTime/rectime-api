@@ -534,6 +534,64 @@ describe('GET /auth/microsoft/callback', () => {
 });
 
 describe('POST /auth/microsoft/token', () => {
+  describe.each(['token', 'delete-token'] as const)(
+    '%sの上流障害',
+    endpoint => {
+      it.each([
+        [503, { error: 'invalid_grant' }, 503, 'AUTH_PROVIDER_UNAVAILABLE'],
+        [429, { error: 'invalid_grant' }, 503, 'AUTH_PROVIDER_UNAVAILABLE'],
+        [400, { error: 'invalid_client' }, 500, 'AUTH_PROVIDER_ERROR'],
+        [400, { error: 'invalid_grant' }, 401, 'TOKEN_EXCHANGE_FAILED'],
+        [
+          200,
+          { access_token: 'access-without-id' },
+          503,
+          'AUTH_PROVIDER_UNAVAILABLE',
+        ],
+      ])(
+        'HTTP %s / %jは%sを返しセッションを発行しない',
+        async (status, payload, expectedStatus, code) => {
+          const env = buildEnv();
+          await env.AUTH_KV.put(
+            'pkce:provider-error',
+            JSON.stringify({
+              code_verifier: generateRandom(32),
+              nonce: 'nonce',
+              client_type: 'web',
+              purpose: endpoint === 'token' ? 'login' : 'account_deletion',
+              created_at: new Date().toISOString(),
+            } satisfies PkceEntry)
+          );
+          vi.mocked(env.AUTH_KV.put).mockClear();
+          const fetchMock = vi
+            .fn()
+            .mockResolvedValue(
+              new Response(JSON.stringify(payload), { status })
+            );
+          vi.stubGlobal('fetch', fetchMock);
+          const res = await buildApp().request(
+            `/${endpoint}`,
+            {
+              method: 'POST',
+              headers: {
+                'X-Client-Type': 'web',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ code: 'code', state: 'provider-error' }),
+            },
+            env
+          );
+          expect(res.status).toBe(expectedStatus);
+          expect(await res.json()).toEqual({
+            error: { code, message: expect.any(String) },
+          });
+          expect(env.AUTH_KV.put).not.toHaveBeenCalled();
+          expect(fetchMock).toHaveBeenCalledTimes(1);
+        }
+      );
+    }
+  );
+
   it('不正なclient_typeの場合は400を返す', async () => {
     const app = buildApp();
     const res = await app.request(
@@ -1134,12 +1192,16 @@ describe('POST /auth/microsoft/token', () => {
       user: {
         id: string;
         student_id_number: string | null;
+        class_code: string | null;
         class_room_name: string | null;
+        attendance_number: number | null;
       };
     };
     expect(body.user.id).toBe(String(user!.user_id));
     expect(body.user.student_id_number).toBe('60001');
+    expect(body.user.class_code).toBe('3B');
     expect(body.user.class_room_name).toBe('3年B組');
+    expect(body.user.attendance_number).toBe(2);
   });
 
   it('事前登録済み教員はmobile初回ログインとwebログインで同じuser_id・担当クラスを維持する', async () => {

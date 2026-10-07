@@ -65,6 +65,13 @@ describe('OpenAPI documentation', () => {
     expect(Object.keys(document.paths).sort()).toEqual([
       '/',
       '/api/v1/admin/notifications',
+      '/api/v1/admin/notifications/audience-count',
+      '/api/v1/admin/notifications/config',
+      '/api/v1/admin/notifications/push-deliveries/{notificationPushDeliveryId}',
+      '/api/v1/admin/notifications/schedules',
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}',
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}/resend',
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}/results',
       '/api/v1/admin/notifications/{notificationId}',
       '/api/v1/admin/users/{userId}',
       '/api/v1/admin/users/{userId}/staff',
@@ -227,8 +234,37 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(49);
+    expect(documentedOperations).toHaveLength(57);
     expect(document.paths['/api/v1/gatherings']).toBeUndefined();
+    const schedulePath =
+      document.paths[
+        '/api/v1/admin/notifications/schedules/{notificationScheduleId}'
+      ];
+    expect(schedulePath).toHaveProperty('delete');
+    const scheduleDelete = schedulePath.delete as {
+      responses: Record<string, unknown>;
+    };
+    expect(Object.keys(scheduleDelete.responses).sort()).toEqual([
+      '204',
+      '400',
+      '401',
+      '403',
+      '404',
+      '409',
+      '500',
+    ]);
+    const scheduleResend = document.paths[
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}/resend'
+    ].post as { responses: Record<string, unknown> };
+    expect(Object.keys(scheduleResend.responses).sort()).toEqual([
+      '201',
+      '400',
+      '401',
+      '403',
+      '404',
+      '409',
+      '500',
+    ]);
     expect(
       document.paths['/api/v1/admin/notifications/{notificationId}']
     ).toHaveProperty('patch');

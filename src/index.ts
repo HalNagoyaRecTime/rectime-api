@@ -28,7 +28,9 @@ import {
 import {
   validationDefaultHook,
   type ErrorResponseDTO,
+  positivePathParamToNumber,
 } from './presentation/openapi/schemas';
+import { errorResponse } from './presentation/errors/errorResponse';
 import { toValidationErrorDetails } from './presentation/errors/validationErrorDetails';
 import type { ZodError } from 'zod';
 import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
@@ -85,17 +87,27 @@ import {
   venueListRoute,
   venueUpdateRoute,
 } from './presentation/openapi/venues';
-import {
-  legacyAdminNotificationDetailRoute,
-  legacyAdminNotificationListRoute,
-  legacyAdminNotificationUpdateRoute,
-} from './presentation/openapi/notification/legacy/admin';
+import { legacyAdminNotificationUpdateRoute } from './presentation/openapi/notification/legacy/admin';
 import {
   adminNotificationCreateRoute,
   adminNotificationDeleteRoute,
+  adminNotificationDetailRoute,
+  adminNotificationListRoute,
   adminNotificationPatchRoute,
+  notificationAudienceCountRoute,
+  notificationConfigRoute,
 } from './presentation/openapi/notification/admin';
 import { firebaseTokenRegistrationRoute } from './presentation/openapi/notification/firebaseTokens';
+import { notificationScheduleResultsRoute } from './presentation/openapi/notification/schedules';
+import {
+  notificationScheduleResendRoute,
+  notificationScheduleDeleteRoute,
+} from './presentation/openapi/notification/schedules';
+import {
+  notificationScheduleListRoute,
+  notificationScheduleDetailRoute,
+} from './presentation/openapi/notification/schedules';
+import { notificationPushDeliveryDetailRoute } from './presentation/openapi/notification/pushDeliveries';
 import {
   myNotificationDetailRoute,
   myNotificationListRoute,
@@ -432,6 +444,42 @@ apiV1.openapi(authed(firebaseTokenRegistrationRoute), c => {
 });
 
 // Notification routes
+apiV1.openapi(staffOnly(notificationScheduleResendRoute), c =>
+  c
+    .get('container')
+    .notificationScheduleActionController.resendSchedule(
+      c,
+      Number(c.req.valid('param').notificationScheduleId),
+      c.req.valid('json')
+    )
+);
+apiV1.openapi(staffOnly(notificationScheduleDeleteRoute), c =>
+  c
+    .get('container')
+    .notificationScheduleActionController.cancelSchedule(
+      c,
+      Number(c.req.valid('param').notificationScheduleId)
+    )
+);
+apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleQueryController.getNotificationSchedules(c);
+});
+apiV1.openapi(staffOnly(notificationScheduleDetailRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleQueryController.getNotificationScheduleById(c);
+});
+// /{notificationId} より先に登録し、固定パスを優先する。
+apiV1.openapi(staffOnly(notificationConfigRoute), c => {
+  return c.get('container').notificationConfigController.getConfig(c);
+});
+apiV1.openapi(staffOnly(notificationAudienceCountRoute), c => {
+  return c
+    .get('container')
+    .notificationConfigController.countAudience(c, c.req.valid('json'));
+});
 apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
   return c
     .get('container')
@@ -440,15 +488,15 @@ apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
       c.req.valid('json')
     );
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationListRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationListRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotifications(c);
+    .adminNotificationQueryController.getAdminNotifications(c);
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationDetailRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationDetailRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotificationById(c);
+    .adminNotificationQueryController.getAdminNotificationById(c);
 });
 apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
   return c
@@ -456,27 +504,50 @@ apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
     .adminNotificationManagementController.updateAdminNotification(c);
 });
 apiV1.openapi(staffOnly(adminNotificationPatchRoute), c => {
+  const notificationId = positivePathParamToNumber(
+    c.req.valid('param').notificationId
+  );
+  if (notificationId === undefined) {
+    return errorResponse(c, CommonErrors.VALIDATION_ERROR);
+  }
   return c
     .get('container')
     .adminNotificationCommandController.patchNotification(
       c,
-      Number(c.req.valid('param').notificationId),
+      notificationId,
       c.req.valid('json')
     );
 });
 apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
+  const notificationId = positivePathParamToNumber(
+    c.req.valid('param').notificationId
+  );
+  if (notificationId === undefined) {
+    return errorResponse(c, CommonErrors.VALIDATION_ERROR);
+  }
   return c
     .get('container')
-    .adminNotificationCommandController.deleteNotification(
-      c,
-      Number(c.req.valid('param').notificationId)
-    );
+    .adminNotificationCommandController.deleteNotification(c, notificationId);
+});
+apiV1.openapi(staffOnly(notificationScheduleResultsRoute), c => {
+  return c
+    .get('container')
+    .notificationResultQueryController.getScheduleResults(c);
+});
+apiV1.openapi(staffOnly(notificationPushDeliveryDetailRoute), c => {
+  return c
+    .get('container')
+    .notificationResultQueryController.getPushDeliveryDetail(c);
 });
 apiV1.openapi(authed(myNotificationListRoute), c => {
-  return c.get('container').mobileNotificationController.getNotifications(c);
+  return c
+    .get('container')
+    .mobileNotificationController.getNotifications(c, c.req.valid('query'));
 });
 apiV1.openapi(authed(myNotificationDetailRoute), c => {
-  return c.get('container').mobileNotificationController.getNotificationById(c);
+  return c
+    .get('container')
+    .mobileNotificationController.getNotificationById(c, c.req.valid('param'));
 });
 
 // Auth routes

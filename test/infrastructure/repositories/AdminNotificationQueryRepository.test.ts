@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAdminNotificationCommandRepository } from '../../../src/infrastructure/repositories/AdminNotificationCommandRepository';
 import { createAdminNotificationQueryRepository } from '../../../src/infrastructure/repositories/AdminNotificationQueryRepository';
 import {
@@ -38,24 +38,33 @@ describe('AdminNotificationQueryRepository', () => {
     );
 
     await expect(
-      repository.findDetail(created.notification_id)
+      repository.findById(created.notification_id)
     ).resolves.toMatchObject({
       notification_id: created.notification_id,
-      source_type: null,
-      source_id: null,
-      source_label: null,
-      created_by: {
-        user_id: fixture.actorUserId,
-        user_name: '通知Command管理者',
+      creation: {
+        method: 'manual',
+        user: {
+          user_id: fixture.actorUserId,
+          user_name: '通知Command管理者',
+        },
+        source: null,
       },
       schedules: [
         {
           notification_schedule_id: created.notification_schedule_id,
-          audiences: [{ type: 'all', target_id: null }],
-          recipient_count: 0,
-          success_count: 0,
-          failed_count: 0,
-          no_push_target_count: 0,
+          audience: {
+            items: [{ type: 'all' }],
+            recipient_resolution: {
+              status: 'pending',
+              resolved_count: 0,
+            },
+          },
+          recipient_push_summary: {
+            total_count: 0,
+            success_count: 0,
+            failed_count: 0,
+            no_push_target_count: 0,
+          },
         },
       ],
     });
@@ -149,7 +158,7 @@ describe('AdminNotificationQueryRepository', () => {
       get(target, property, receiver) {
         if (property === 'prepare') {
           return (query: string) => {
-            if (query.includes('FROM notification_audiences a')) {
+            if (query.includes('FROM notification_audiences na')) {
               audienceQueryCount += 1;
             }
             return target.prepare(query);
@@ -161,25 +170,225 @@ describe('AdminNotificationQueryRepository', () => {
     });
     const detail = await createAdminNotificationQueryRepository(
       countedDb
-    ).findDetail(created.notification_id);
+    ).findById(created.notification_id);
     if (!detail) throw new Error('作成したNotification detailがありません');
 
     expect(detail.schedules).toHaveLength(2);
     expect(audienceQueryCount).toBe(1);
-    expect(detail.source_label).toBe('通知Command集合場所');
+    expect(detail.creation).toMatchObject({
+      method: 'automatic',
+      source: {
+        type: 'gathering',
+        id: fixture.gatheringId,
+        label: '通知Command集合場所',
+      },
+    });
     expect(detail.schedules[0]).toMatchObject({
-      recipient_count: 4,
-      success_count: 1,
-      failed_count: 2,
-      no_push_target_count: 1,
+      audience: {
+        items: [
+          {
+            type: 'gathering',
+            target_id: fixture.gatheringId,
+            label: '通知Command集合場所',
+          },
+        ],
+      },
+      recipient_push_summary: {
+        total_count: 4,
+        success_count: 1,
+        failed_count: 2,
+        no_push_target_count: 1,
+      },
     });
 
     await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
       .bind(fixture.gatheringId)
       .run();
-    const afterSourceDelete = await repository.findDetail(
+    const afterSourceDelete = await repository.findById(
       created.notification_id
     );
-    expect(afterSourceDelete?.source_label).toBeNull();
+    expect(afterSourceDelete?.creation).toMatchObject({
+      source: { label: null },
+    });
+    expect(afterSourceDelete?.schedules[0]?.audience.items[0]).toMatchObject({
+      label: null,
+    });
+  });
+
+  it('一覧はsend_atの両端を含め、期間内Scheduleだけを返す', async () => {
+    const fixture = await createFixture();
+    const startBoundary = await commandRepository.create(
+      buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+    );
+    await env.DB.prepare(
+      'UPDATE notification_schedules SET send_at = ? WHERE notification_schedule_id = ?'
+    )
+      .bind('2026-09-24T00:00:00+09:00', startBoundary.notification_schedule_id)
+      .run();
+
+    const mixed = await commandRepository.create(
+      buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+    );
+    await env.DB.prepare(
+      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, notification_id, importance, send_status, send_at, created_at, updated_at) VALUES (?, ?, ?, 1, 'scheduled', ?, ?, ?)"
+    )
+      .bind(
+        fixture.actorUserId,
+        fixture.actorUserId,
+        mixed.notification_id,
+        '2026-09-25T00:00:00+09:00',
+        '2026-09-24T09:00:00.000Z',
+        '2026-09-24T09:00:00.000Z'
+      )
+      .run();
+
+    const excluded = await commandRepository.create(
+      buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+    );
+    await env.DB.prepare(
+      'UPDATE notification_schedules SET send_at = ? WHERE notification_schedule_id = ?'
+    )
+      .bind('2026-09-25T00:00:00+09:00', excluded.notification_schedule_id)
+      .run();
+
+    const batchSpy = vi.spyOn(env.DB, 'batch');
+    try {
+      const listed = await repository.findAll({
+        from: '2026-09-24T00:00:00+09:00',
+        to: '2026-09-24T23:59:59+09:00',
+      });
+
+      expect(listed.map(notification => notification.notification_id)).toEqual([
+        mixed.notification_id,
+        startBoundary.notification_id,
+      ]);
+      expect(listed[0]?.schedules).toHaveLength(1);
+      expect(listed[0]?.schedules[0]?.send_at).toBe('2026-09-24T10:00:00.000Z');
+      expect(listed[1]?.schedules[0]?.send_at).toBe(
+        '2026-09-24T00:00:00+09:00'
+      );
+      expect(batchSpy).toHaveBeenCalledTimes(1);
+      expect(batchSpy.mock.calls[0]?.[0]).toHaveLength(4);
+    } finally {
+      batchSpy.mockRestore();
+    }
+  });
+
+  it('一覧期間filterは上限のミリ秒境界を正しく判定する', async () => {
+    const fixture = await createFixture();
+    const createAt = async (sendAt: string) => {
+      const created = await commandRepository.create(
+        buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+      );
+      await env.DB.prepare(
+        'UPDATE notification_schedules SET send_at = ? WHERE notification_schedule_id = ?'
+      )
+        .bind(sendAt, created.notification_schedule_id)
+        .run();
+      return created;
+    };
+
+    const included = await createAt('2026-09-24T10:00:00.100Z');
+    await createAt('2026-09-24T10:00:00.101Z');
+    await createAt('2026-09-24T10:00:00.900Z');
+
+    const listed = await repository.findAll({
+      from: '2026-09-24T09:00:00.000Z',
+      to: '2026-09-24T10:00:00.100Z',
+    });
+
+    expect(listed.map(notification => notification.notification_id)).toEqual([
+      included.notification_id,
+    ]);
+  });
+
+  it('一覧期間filterは下限のミリ秒境界を正しく判定する', async () => {
+    const fixture = await createFixture();
+    const createAt = async (sendAt: string) => {
+      const created = await commandRepository.create(
+        buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+      );
+      await env.DB.prepare(
+        'UPDATE notification_schedules SET send_at = ? WHERE notification_schedule_id = ?'
+      )
+        .bind(sendAt, created.notification_schedule_id)
+        .run();
+      return created;
+    };
+
+    await createAt('2026-09-24T10:00:00.100Z');
+    await createAt('2026-09-24T10:00:00.899Z');
+    const included = await createAt('2026-09-24T10:00:00.900Z');
+
+    const listed = await repository.findAll({
+      from: '2026-09-24T10:00:00.900Z',
+      to: '2026-09-24T11:00:00.000Z',
+    });
+
+    expect(listed.map(notification => notification.notification_id)).toEqual([
+      included.notification_id,
+    ]);
+  });
+
+  it('Scheduleは同一秒内でもsend_atの小数秒順で返す', async () => {
+    const fixture = await createFixture();
+    const created = await commandRepository.create(
+      buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+    );
+    await env.DB.prepare(
+      'UPDATE notification_schedules SET send_at = ? WHERE notification_schedule_id = ?'
+    )
+      .bind('2026-09-24T10:00:00.900Z', created.notification_schedule_id)
+      .run();
+
+    const earlierSchedule = await env.DB.prepare(
+      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, notification_id, importance, send_status, send_at, created_at, updated_at) VALUES (?, ?, ?, 1, 'scheduled', ?, ?, ?) RETURNING notification_schedule_id"
+    )
+      .bind(
+        fixture.actorUserId,
+        fixture.actorUserId,
+        created.notification_id,
+        '2026-09-24T10:00:00.100Z',
+        '2026-09-24T09:00:00.000Z',
+        '2026-09-24T09:00:00.000Z'
+      )
+      .first<{ notification_schedule_id: number }>();
+    if (!earlierSchedule) throw new Error('追加Scheduleを作成できませんでした');
+
+    const expectedScheduleIds = [
+      earlierSchedule.notification_schedule_id,
+      created.notification_schedule_id,
+    ];
+
+    const detail = await repository.findById(created.notification_id);
+    expect(
+      detail?.schedules.map(schedule => schedule.notification_schedule_id)
+    ).toEqual(expectedScheduleIds);
+
+    const listed = await repository.findAll({
+      from: '2026-09-24T10:00:00.000Z',
+      to: '2026-09-24T10:00:00.999Z',
+    });
+    expect(
+      listed[0]?.schedules.map(schedule => schedule.notification_schedule_id)
+    ).toEqual(expectedScheduleIds);
+  });
+
+  it('作成者とSchedule担当Userの削除後もnullで取得する', async () => {
+    const fixture = await createFixture();
+    const created = await commandRepository.create(
+      buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+    );
+
+    await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+      .bind(fixture.actorUserId)
+      .run();
+
+    await expect(
+      repository.findById(created.notification_id)
+    ).resolves.toMatchObject({
+      creation: { method: 'manual', user: null },
+      schedules: [{ scheduled_by: null }],
+    });
   });
 });
