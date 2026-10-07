@@ -140,13 +140,15 @@ export function createEventGatheringSettingsService(
 
       const savedGatherings =
         await eventGatheringSettingsRepository.findByEventId(command.event_id);
-      // GeneratorへIDだけを渡し、保存済み状態の取得・Hash・通知条件は委譲する。
-      // 保存後に失敗して同じ設定保存が再実行された場合も、現在状態の再確認で回復できる。
-      for (const gathering of savedGatherings) {
-        await gatheringNotificationGeneratorService.generate(
-          gathering.gathering_id
-        );
-      }
+      // Gathering保存はここで確定済み。通知生成の一時失敗で保存APIを500にせず、
+      // 全Gatheringへの即時同期を試したうえでCronの定期reconciliationに回復を委ねる。
+      await Promise.allSettled(
+        savedGatherings.map(gathering =>
+          gatheringNotificationGeneratorService.generate(
+            gathering.gathering_id
+          )
+        )
+      );
 
       return buildEventGatheringSettings(command.event_id, savedGatherings);
     },
