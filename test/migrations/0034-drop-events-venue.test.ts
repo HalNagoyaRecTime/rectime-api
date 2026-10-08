@@ -156,6 +156,47 @@ describe('0034_drop_events_venue.sql のデータ移行', () => {
     expect(row?.count).toBe(1);
   });
 
+  it('旧0033の移行後に実施場所が更新されていれば、更新後の実施場所だけを紐づける', async () => {
+    const eventId = await insertEvent(
+      '0034移行確認競技M',
+      '0034移行確認体育館'
+    );
+    await runMigration();
+    expect(await venueNamesOf(eventId)).toEqual(['0034移行確認体育館']);
+
+    // 旧0033だけ適用済みで、events.venue が残っている状態を再現する。
+    await env.DB.prepare(
+      "ALTER TABLE events ADD COLUMN venue TEXT NOT NULL DEFAULT ''"
+    ).run();
+    await env.DB.prepare('UPDATE events SET venue = ? WHERE event_id = ?')
+      .bind('0034移行確認グラウンド', eventId)
+      .run();
+
+    await runMigration();
+
+    expect(await venueNamesOf(eventId)).toEqual(['0034移行確認グラウンド']);
+  });
+
+  it('旧0033の移行後に実施場所が空文字へ更新されていれば、紐づけを残さない', async () => {
+    const eventId = await insertEvent(
+      '0034移行確認競技N',
+      '0034移行確認体育館'
+    );
+    await runMigration();
+    expect(await venueNamesOf(eventId)).toEqual(['0034移行確認体育館']);
+
+    await env.DB.prepare(
+      "ALTER TABLE events ADD COLUMN venue TEXT NOT NULL DEFAULT ''"
+    ).run();
+    await env.DB.prepare('UPDATE events SET venue = ? WHERE event_id = ?')
+      .bind('', eventId)
+      .run();
+
+    await runMigration();
+
+    expect(await venueNamesOf(eventId)).toEqual([]);
+  });
+
   it('実施場所が空文字の競技はマスタを作らない', async () => {
     const eventId = await insertEvent('0034移行確認競技H', '');
 

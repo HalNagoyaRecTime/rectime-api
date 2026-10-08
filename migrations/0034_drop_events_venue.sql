@@ -5,7 +5,12 @@
 -- 未適用の環境では、列を消す前にマスタ作成とデータ移行を済ませる必要があるため、
 -- 0035_create_venues_and_event_venues.sql の内容をここで先に行う。
 -- 旧0033_create_venues_and_event_venues.sql だけ適用済みの環境でも通るよう、
--- 作成は IF NOT EXISTS、データ移行は INSERT OR IGNORE にしている。
+-- 作成は IF NOT EXISTS にしている。
+--
+-- その環境では、旧0033の移行後に events.venue が更新されている場合がある。
+-- 実施場所を紐づけで編集するAPIは、この列を削除する変更と同時に入ったため、
+-- 列を削除する時点では events.venue が正しい値になる。既存の紐づけは
+-- events.venue から作り直し、更新前の実施場所や空文字化した実施場所を残さない。
 
 CREATE TABLE IF NOT EXISTS venues (
   venue_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +44,10 @@ SELECT DISTINCT TRIM(venue, ' ' || CHAR(9, 10, 13, 12288))
 FROM events
 WHERE TRIM(venue, ' ' || CHAR(9, 10, 13, 12288)) <> '';
 
-INSERT OR IGNORE INTO event_venues (event_id, venue_id)
+-- events.venue を正として紐づけを作り直す。更新前の実施場所の紐づけを残さない。
+DELETE FROM event_venues;
+
+INSERT INTO event_venues (event_id, venue_id)
 SELECT events.event_id, venues.venue_id
 FROM events
 INNER JOIN venues ON venues.venue_name = TRIM(events.venue, ' ' || CHAR(9, 10, 13, 12288));
