@@ -266,9 +266,12 @@ describe('EventService', () => {
   describe('getMyEvents', () => {
     it('指定したuserIdが参加するイベントをDTOへ変換して返す', async () => {
       const events = [
-        buildEventWithVenues({
-          venues: [{ venue_id: 3, venue_name: '第2体育館' }],
-        }),
+        {
+          ...buildEventWithVenues({
+            venues: [{ venue_id: 3, venue_name: '第2体育館' }],
+          }),
+          gathering_ids: [101, 102],
+        },
       ];
       const repository = createRepository({
         findByParticipantUserId: vi.fn().mockResolvedValue(events),

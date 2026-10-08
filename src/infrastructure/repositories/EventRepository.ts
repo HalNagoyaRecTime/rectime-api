@@ -11,6 +11,7 @@ import {
 import { D1Database } from '@cloudflare/workers-types';
 import type {
   EventEntity,
+  ParticipatingEventEntity,
   EventListOptions,
   EventWithGatheringSummaryEntity,
   EventWithVenuesEntity,
@@ -158,9 +159,10 @@ export function createEventRepository(db: D1Database): IEventRepository {
 
     async findByParticipantUserId(
       userId: number
-    ): Promise<EventWithVenuesEntity[]> {
+    ): Promise<ParticipatingEventEntity[]> {
       const rows = await orm
         .selectDistinct({
+          gatheringId: gatherings.id,
           id: events.id,
           name: events.name,
           ruleText: events.ruleText,
@@ -176,10 +178,22 @@ export function createEventRepository(db: D1Database): IEventRepository {
         )
         .innerJoin(events, eq(gatherings.eventId, events.id))
         .where(eq(gathering_group_members.userId, userId))
-        .orderBy(asc(events.startTime))
+        .orderBy(asc(events.startTime), asc(events.id), asc(gatherings.id))
         .all();
 
-      const eventEntities = rows.map(toEntity);
+      // 本人の集合だけを一括取得し、イベント・集合ごとの追加クエリを作らない。
+      const participating = new Map<number, ParticipatingEventEntity>();
+      for (const row of rows) {
+        const existing = participating.get(row.id);
+        if (existing) existing.gathering_ids.push(row.gatheringId);
+        else
+          participating.set(row.id, {
+            ...toEntity(row),
+            venues: [],
+            gathering_ids: [row.gatheringId],
+          });
+      }
+      const eventEntities = [...participating.values()];
       const venuesByEventId = await findVenuesByEventIds(
         orm,
         eventEntities.map(event => event.event_id)

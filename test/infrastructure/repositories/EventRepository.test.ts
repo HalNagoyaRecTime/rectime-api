@@ -400,6 +400,7 @@ describe('EventRepository', () => {
         expect(result).toHaveLength(1);
         expect(result[0].event_id).toBe(target.eventId);
         expect(result[0].venues).toEqual([]);
+        expect(result[0].gathering_ids).toEqual([gathering!.gathering_id]);
       } finally {
         await env.DB.prepare(
           'DELETE FROM gathering_group_members WHERE gathering_id = ?'
@@ -417,6 +418,75 @@ describe('EventRepository', () => {
         await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
           .bind(user!.user_id)
           .run();
+      }
+    });
+
+    it('複数ラウンドの本人集合だけを重複せずID順で返す', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('本人集合テスト') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const other = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('別ユーザー集合テスト') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const spot = await env.DB.prepare(
+        "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('本人集合テスト場所') RETURNING gathering_spot_id"
+      ).first<{ gathering_spot_id: number }>();
+      const ids: number[] = [];
+      const target = seeded.events[0];
+      try {
+        for (const round of [1, 2, 3]) {
+          const row = await env.DB.prepare(
+            'INSERT INTO gatherings (event_id, gathering_spot_id, round, gathering_time) VALUES (?, ?, ?, ?) RETURNING gathering_id'
+          )
+            .bind(target.eventId, spot!.gathering_spot_id, round, '10:00')
+            .first<{ gathering_id: number }>();
+          ids.push(row!.gathering_id);
+        }
+        for (const id of [ids[1], ids[0]]) {
+          await env.DB.prepare(
+            'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+          )
+            .bind(id, user!.user_id)
+            .run();
+        }
+        await env.DB.prepare(
+          'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+        )
+          .bind(ids[2], other!.user_id)
+          .run();
+        const result = await repo.findByParticipantUserId(user!.user_id);
+        expect(result).toHaveLength(1);
+        expect(result[0]).toMatchObject({
+          event_id: target.eventId,
+          event_name: target.name,
+          start_time: target.startTime,
+          end_time: target.endTime,
+          venues: [],
+          gathering_ids: [ids[0], ids[1]],
+        });
+        expect(
+          (await repo.findByParticipantUserId(other!.user_id))[0].gathering_ids
+        ).toEqual([ids[2]]);
+      } finally {
+        for (const id of ids) {
+          await env.DB.prepare(
+            'DELETE FROM gathering_group_members WHERE gathering_id = ?'
+          )
+            .bind(id)
+            .run();
+          await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
+            .bind(id)
+            .run();
+        }
+        await env.DB.prepare(
+          'DELETE FROM gathering_spots WHERE gathering_spot_id = ?'
+        )
+          .bind(spot!.gathering_spot_id)
+          .run();
+        for (const id of [user!.user_id, other!.user_id])
+          await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+            .bind(id)
+            .run();
       }
     });
 

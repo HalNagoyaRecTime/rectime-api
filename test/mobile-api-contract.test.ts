@@ -32,6 +32,7 @@ beforeAll(async () => {
 });
 
 const mobileGetPaths = [
+  '/api/v1/me/events',
   '/api/v1/events',
   '/api/v1/events/{eventId}',
   '/api/v1/events/{eventId}/gatherings',
@@ -40,6 +41,15 @@ const mobileGetPaths = [
 ] as const;
 
 describe('mobile API contract', () => {
+  it('本人参加イベントは既存Eventを維持し集合ID一覧を必須にする', () => {
+    expect(document.components.schemas.MyEvent?.allOf).toEqual(
+      expect.arrayContaining([
+        { $ref: '#/components/schemas/Event' },
+        expect.objectContaining({ required: ['gathering_ids'] }),
+      ])
+    );
+  });
+
   it.each(mobileGetPaths)(
     'documents Bearer authentication for GET %s',
     path => {
