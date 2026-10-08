@@ -8,6 +8,7 @@ import type {
   ClassRoomImportValidationResult,
   ClassRoomPageDTO,
   ClassRoomRequestDTO,
+  ClassRoomUpdateRequestDTO,
 } from '../dto/ClassRoomDTO';
 import type { ClassRoomEntity } from '../../domain/entities/ClassRoom';
 import type { ClassRoomSearchFilter } from '../../domain/entities/ClassRoom';
@@ -100,6 +101,7 @@ export function createClassRoomService(
           display_name: classroom.teacher.displayName,
         }
       : null,
+    updated_at: classroom.updatedAt,
   });
 
   const ensureTeacherExists = async (teacherId: number | null) => {
@@ -144,14 +146,36 @@ export function createClassRoomService(
 
     async updateClassRoom(
       id: number,
-      input: ClassRoomRequestDTO
+      input: ClassRoomUpdateRequestDTO
     ): Promise<ClassRoomDTO> {
       const existing = await classRoomRepository.findById(id);
       if (!existing) throw new Error('Class not found');
+      // 取得時点から変わっていれば、担任の存在確認などより先に409にする。
+      // 確認後に更新される競合は、update() 側のWHEREで0件更新になって検出する。
+      if (
+        input.updatedAt !== undefined &&
+        input.updatedAt !== existing.updatedAt
+      ) {
+        throw new Error('Class update conflict');
+      }
       await ensureTeacherExists(input.teacherId);
       try {
-        const classroom = await classRoomRepository.update(id, input);
-        if (!classroom) throw new Error('Class not found');
+        const classroom = await classRoomRepository.update(id, {
+          classCode: input.classCode,
+          className: input.className,
+          teacherId: input.teacherId,
+          expectedUpdatedAt: input.updatedAt,
+        });
+        if (!classroom) {
+          // 更新時刻を条件にしていた場合、0件更新は削除か更新時刻の不一致のどちらか。
+          if (
+            input.updatedAt !== undefined &&
+            (await classRoomRepository.findById(id))
+          ) {
+            throw new Error('Class update conflict');
+          }
+          throw new Error('Class not found');
+        }
         return toDTO(classroom);
       } catch (error) {
         if (isClassCodeUniqueError(error)) {

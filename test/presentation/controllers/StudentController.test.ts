@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createStudentController } from '../../../src/presentation/controllers/StudentController';
 import type { IStudentService } from '../../../src/application/services/IStudentService';
 import type { StudentManagementDTO } from '../../../src/application/dto/StudentDTO';
+import { UserErrors } from '../../../src/presentation/errors/userErrors';
 import {
   studentListQuery,
   studentListRoute,
@@ -25,6 +26,7 @@ function buildStudent(
       class_code: '1A',
       class_name: '1年A組',
     },
+    updated_at: '2026-01-01 00:00:00',
     ...overrides,
   };
 }
@@ -488,6 +490,77 @@ describe('StudentController', () => {
           message: '指定されたクラスが見つかりません',
         },
       });
+    });
+
+    it('更新時刻付きのリクエストをそのままサービスへ渡す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.updateStudent as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(
+        buildStudent({ ...input, updated_at: '2026-01-02 00:00:00' })
+      );
+
+      const res = await app.request('/students/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...input, updated_at: '2026-01-01 00:00:00' }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(studentService.updateStudent).toHaveBeenCalledWith(1, {
+        ...input,
+        updated_at: '2026-01-01 00:00:00',
+      });
+      expect(await res.json()).toMatchObject({
+        updated_at: '2026-01-02 00:00:00',
+      });
+    });
+
+    it('更新時刻の不一致は 409 を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.updateStudent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Student update conflict'));
+
+      const res = await app.request('/students/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...input, updated_at: '2026-01-01 00:00:00' }),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'STUDENT_UPDATE_CONFLICT',
+          message: UserErrors.STUDENT_UPDATE_CONFLICT.message,
+        },
+      });
+    });
+
+    it('updated_at が空文字の更新は 400 を返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...input, updated_at: '' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.updateStudent).not.toHaveBeenCalled();
+    });
+
+    it('登録リクエストは updated_at を受け付けない', async () => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...input, updated_at: '2026-01-01 00:00:00' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.createStudent).not.toHaveBeenCalled();
     });
   });
 });

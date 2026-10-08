@@ -12,6 +12,7 @@ export interface TeacherEntity {
   isLiveActive: boolean;
   isStaff: boolean;
   classRooms: TeacherClassRoomEntity[];
+  updatedAt: string;
 }
 
 export interface TeacherSearchFilter {
@@ -42,6 +43,8 @@ export interface TeacherUpdateInput {
   userName: string;
   email: string;
   classRoomIds: number[];
+  // 取得時点の updatedAt。指定された場合だけ、更新時点で値が変わっていないことを確認する。
+  expectedUpdatedAt?: string;
 }
 
 export interface TeacherCreateInput {

@@ -339,6 +339,98 @@ describe('TeacherRepository', () => {
     it('存在しない id の場合は null を返す', async () => {
       expect(await repo.findById(999999)).toBeNull();
     });
+
+    it('teachers.updated_at を updatedAt として一覧・詳細の両方で返す', async () => {
+      const target = seeded.teachers[0];
+      const row = await env.DB.prepare(
+        'SELECT updated_at FROM teachers WHERE teacher_id = ?'
+      )
+        .bind(target.teacherId)
+        .first<{ updated_at: string }>();
+
+      expect((await repo.findById(target.teacherId))?.updatedAt).toBe(
+        row?.updated_at
+      );
+      const listed = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
+        item => item.teacherId === target.teacherId
+      );
+      expect(listed?.updatedAt).toBe(row?.updated_at);
+    });
+  });
+
+  describe('update（更新時刻による楽観ロック）', () => {
+    async function setUpdatedAt(teacherId: number, updatedAt: string) {
+      await env.DB.prepare(
+        'UPDATE teachers SET updated_at = ? WHERE teacher_id = ?'
+      )
+        .bind(updatedAt, teacherId)
+        .run();
+    }
+
+    async function classRoomTeacherIds() {
+      const { results } = await env.DB.prepare(
+        'SELECT class_room_id, teacher_id FROM class_rooms ORDER BY class_room_id'
+      ).all<{ class_room_id: number; teacher_id: number | null }>();
+      return results;
+    }
+
+    it('expectedUpdatedAt が現在の値と一致すれば更新し、updatedAt を進める', async () => {
+      const target = seeded.teachers[0];
+      await setUpdatedAt(target.teacherId, '2000-01-01 00:00:00');
+
+      const updated = await repo.update(target.teacherId, {
+        userName: '更新済み先生',
+        email: 'lock-1@example.ac.jp',
+        classRoomIds: [seeded.classRooms[1].classRoomId],
+        expectedUpdatedAt: '2000-01-01 00:00:00',
+      });
+
+      expect(updated).toMatchObject({ userName: '更新済み先生' });
+      expect(updated?.updatedAt).not.toBe('2000-01-01 00:00:00');
+      expect(updated?.classRooms).toEqual([
+        {
+          classRoomId: seeded.classRooms[1].classRoomId,
+          classCode: seeded.classRooms[1].classCode,
+          className: seeded.classRooms[1].className,
+        },
+      ]);
+    });
+
+    it('expectedUpdatedAt が現在の値と異なれば null を返し、氏名・メール・担当クラスのどれも変更しない', async () => {
+      const target = seeded.teachers[0];
+      await setUpdatedAt(target.teacherId, '2000-01-01 00:00:00');
+      const before = await repo.findById(target.teacherId);
+      const assignmentsBefore = await classRoomTeacherIds();
+
+      const updated = await repo.update(target.teacherId, {
+        userName: '上書きされてはいけない',
+        email: 'lock-2@example.ac.jp',
+        classRoomIds: [seeded.classRooms[1].classRoomId],
+        expectedUpdatedAt: '1999-12-31 23:59:59',
+      });
+
+      expect(updated).toBeNull();
+      await expect(repo.findById(target.teacherId)).resolves.toEqual(before);
+      expect(await classRoomTeacherIds()).toEqual(assignmentsBefore);
+    });
+
+    it('担当クラスを空にする更新も、不一致なら現在の担当クラスを解除しない', async () => {
+      const target = seeded.teachers[0];
+      await setUpdatedAt(target.teacherId, '2000-01-01 00:00:00');
+      const before = await repo.findById(target.teacherId);
+
+      const updated = await repo.update(target.teacherId, {
+        userName: target.displayName,
+        email: 'lock-3@example.ac.jp',
+        classRoomIds: [],
+        expectedUpdatedAt: '1999-12-31 23:59:59',
+      });
+
+      expect(updated).toBeNull();
+      expect((await repo.findById(target.teacherId))?.classRooms).toEqual(
+        before?.classRooms
+      );
+    });
   });
 
   describe('findMicrosoftLinkCandidateByEmail', () => {

@@ -1,9 +1,9 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { IUserStatusRepository } from '../../domain/interfaces/repositories/IUserStatusRepository';
 import * as schema from '../database/schema';
-import { users } from '../database/schema';
+import { class_rooms, teachers, users } from '../database/schema';
 
 export function createUserStatusRepository(
   db: D1Database
@@ -49,14 +49,40 @@ export function createUserStatusRepository(
         )`);
       }
 
+      // 教室の取得結果は、担任が稼働中かどうかで担任の有無が変わる（停止中の教員は
+      // 担任として返さない）。稼働状態が変わったら、その教員が担任のクラスの更新時刻
+      // も進め、取得後に稼働状態が変わっていた教室の更新を検出できるようにする。
+      // 進めるのは users の更新が成功したときだけにしたいので、同じ batch の中で
+      // 直前の更新（updated_at = now）が反映されていることを条件にする。
+      //
       // is_live_active は DB では integer(0/1)、API境界では boolean として扱う。
       // 変換はこのRepository（システム境界）で閉じる。
-      const updated = await orm
-        .update(users)
-        .set({ isLiveActive: isLiveActive ? 1 : 0, updatedAt: now })
-        .where(and(...conditions))
-        .returning({ id: users.id, isLiveActive: users.isLiveActive })
-        .get();
+      const [updatedRows] = await orm.batch([
+        orm
+          .update(users)
+          .set({ isLiveActive: isLiveActive ? 1 : 0, updatedAt: now })
+          .where(and(...conditions))
+          .returning({ id: users.id, isLiveActive: users.isLiveActive }),
+        orm
+          .update(class_rooms)
+          .set({ updatedAt: now })
+          .where(
+            and(
+              inArray(
+                class_rooms.teacherId,
+                orm
+                  .select({ id: teachers.id })
+                  .from(teachers)
+                  .where(eq(teachers.userId, userId))
+              ),
+              sql`EXISTS (
+                SELECT 1 FROM ${users}
+                WHERE ${users.id} = ${userId} AND ${users.updatedAt} = ${now}
+              )`
+            )
+          ),
+      ]);
+      const updated = updatedRows[0];
 
       if (!updated) return null;
       return {

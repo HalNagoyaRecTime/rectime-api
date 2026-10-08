@@ -12,6 +12,7 @@ export interface TeacherDTO {
   is_live_active: boolean;
   is_staff: boolean;
   class_rooms: TeacherClassRoomDTO[];
+  updated_at: string;
 }
 
 export interface TeacherPageDTO {

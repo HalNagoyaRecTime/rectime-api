@@ -34,6 +34,7 @@ export const teacherResponseSchema = z
     is_live_active: z.boolean(),
     is_staff: z.boolean(),
     class_rooms: z.array(teacherClassRoomSchema),
+    updated_at: z.string(),
   })
   .openapi('Teacher');
 
@@ -130,6 +131,10 @@ export const teacherUpdateSchema = z
     userName: z.string().trim().min(1),
     email: teacherEmailSchema,
     classRoomIds: classRoomIdsSchema,
+    updatedAt: z.string().min(1).optional().openapi({
+      description:
+        '取得時点の `updated_at`。指定すると、取得後に変更されていた場合は409を返す。',
+    }),
   })
   .strict()
   .openapi('TeacherUpdateRequest');

@@ -5,6 +5,7 @@ import {
   StudentImportInput,
   StudentImportValidationResult,
   StudentPageDTO,
+  StudentUpdateDTO,
   StudentWriteDTO,
 } from '../dto/StudentDTO';
 import type { StudentSearchFilter } from '../../domain/entities/Student';
@@ -16,7 +17,7 @@ export interface IStudentService {
   createStudent: (student: StudentWriteDTO) => Promise<StudentManagementDTO>;
   updateStudent: (
     id: number,
-    student: StudentWriteDTO
+    student: StudentUpdateDTO
   ) => Promise<StudentManagementDTO>;
   validateStudentImport: (
     input: StudentImportInput

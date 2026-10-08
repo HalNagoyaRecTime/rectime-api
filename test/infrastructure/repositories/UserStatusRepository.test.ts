@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createUserStatusRepository } from '../../../src/infrastructure/repositories/UserStatusRepository';
 import type { IUserStatusRepository } from '../../../src/domain/interfaces/repositories/IUserStatusRepository';
 
@@ -190,6 +190,95 @@ describe('UserStatusRepository', () => {
 
       await expect(repo.updateLiveActive(target, false)).resolves.toBeNull();
       await expect(readIsLiveActive(target)).resolves.toBe(1);
+    });
+  });
+
+  describe('担任クラスの更新時刻', () => {
+    const OLD = '2000-01-01 00:00:00';
+
+    // teachers は users を参照するため、他のテストの beforeEach（users の削除）を
+    // 妨げないよう、このdescribeで作った teachers と class_rooms をここで片付ける
+    afterEach(async () => {
+      await env.DB.prepare('DELETE FROM class_rooms').run();
+      await env.DB.prepare('DELETE FROM teachers').run();
+    });
+
+    async function insertTeacherClass(userName: string, classCode: string) {
+      const userId = await insertUser(userName);
+      const teacher = await env.DB.prepare(
+        'INSERT INTO teachers (user_id, email) VALUES (?, ?) RETURNING teacher_id'
+      )
+        .bind(userId, `${classCode}@example.ac.jp`)
+        .first<{ teacher_id: number }>();
+      const classRoom = await insertClassRoom(classCode, teacher!.teacher_id);
+      return { userId, classRoomId: classRoom };
+    }
+
+    async function insertClassRoom(
+      classCode: string,
+      teacherId: number | null
+    ) {
+      const row = await env.DB.prepare(
+        'INSERT INTO class_rooms (class_code, class_name, teacher_id, updated_at) VALUES (?, ?, ?, ?) RETURNING class_room_id'
+      )
+        .bind(classCode, classCode, teacherId, OLD)
+        .first<{ class_room_id: number }>();
+      return row!.class_room_id;
+    }
+
+    async function readClassUpdatedAt(classRoomId: number) {
+      const row = await env.DB.prepare(
+        'SELECT updated_at FROM class_rooms WHERE class_room_id = ?'
+      )
+        .bind(classRoomId)
+        .first<{ updated_at: string }>();
+      return row?.updated_at;
+    }
+
+    it('担任の教員を無効化すると、その担任クラスの updated_at だけが進む', async () => {
+      await insertActiveStaff('残る管理者');
+      const target = await insertTeacherClass('担任教員', 'BUMP-1');
+      const otherClass = await insertClassRoom('BUMP-OTHER', null);
+
+      await repo.updateLiveActive(target.userId, false);
+
+      expect(await readClassUpdatedAt(target.classRoomId)).not.toBe(OLD);
+      expect(await readClassUpdatedAt(otherClass)).toBe(OLD);
+    });
+
+    it('再有効化でも、担任クラスの updated_at が進む', async () => {
+      await insertActiveStaff('残る管理者');
+      const target = await insertTeacherClass('担任教員', 'BUMP-2');
+      await repo.updateLiveActive(target.userId, false);
+      await env.DB.prepare(
+        'UPDATE class_rooms SET updated_at = ? WHERE class_room_id = ?'
+      )
+        .bind(OLD, target.classRoomId)
+        .run();
+
+      await repo.updateLiveActive(target.userId, true);
+
+      expect(await readClassUpdatedAt(target.classRoomId)).not.toBe(OLD);
+    });
+
+    it('無効化できなかった場合（他に稼働中のstaffがいない）は、updated_at を進めない', async () => {
+      const target = await insertTeacherClass('担任教員', 'BUMP-3');
+
+      await expect(
+        repo.updateLiveActive(target.userId, false)
+      ).resolves.toBeNull();
+
+      expect(await readClassUpdatedAt(target.classRoomId)).toBe(OLD);
+    });
+
+    it('担任ではないUserの更新は、どのクラスの updated_at も進めない', async () => {
+      await insertActiveStaff('残る管理者');
+      const someClass = await insertClassRoom('BUMP-4', null);
+      const nonTeacher = await insertUser('担任ではないUser');
+
+      await repo.updateLiveActive(nonTeacher, false);
+
+      expect(await readClassUpdatedAt(someClass)).toBe(OLD);
     });
   });
 

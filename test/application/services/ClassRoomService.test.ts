@@ -209,6 +209,128 @@ describe('ClassRoomService', () => {
     ).rejects.toThrow('Class code already exists');
   });
 
+  describe('更新時刻による楽観ロック', () => {
+    const existingClassRoom = (updatedAt: string) => ({
+      classRoomId: 1,
+      classCode: 'OLD',
+      className: '旧クラス',
+      studentCount: 0,
+      teacher: null,
+      updatedAt,
+    });
+    const input = {
+      classCode: 'IA14A',
+      className: '高度情報学科AI開発先行コース',
+      teacherId: null,
+    };
+
+    it('updatedAt が取得時点と異なれば、担任の確認より先に409用エラーにする', async () => {
+      const repo = repository();
+      (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        existingClassRoom('2026-01-02 00:00:00')
+      );
+      const teachers = teacherRepository();
+
+      await expect(
+        createClassRoomService(repo, teachers).updateClassRoom(1, {
+          ...input,
+          teacherId: 5,
+          updatedAt: '2026-01-01 00:00:00',
+        })
+      ).rejects.toThrow('Class update conflict');
+      expect(teachers.existsById).not.toHaveBeenCalled();
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('updatedAt が一致すれば、expectedUpdatedAt を付けて update を呼ぶ', async () => {
+      const repo = repository();
+      (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        existingClassRoom('2026-01-01 00:00:00')
+      );
+      (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...existingClassRoom('2026-01-03 00:00:00'),
+        classCode: 'IA14A',
+      });
+
+      const result = await createClassRoomService(
+        repo,
+        teacherRepository()
+      ).updateClassRoom(1, { ...input, updatedAt: '2026-01-01 00:00:00' });
+
+      expect(repo.update).toHaveBeenCalledWith(1, {
+        ...input,
+        expectedUpdatedAt: '2026-01-01 00:00:00',
+      });
+      expect(result.updated_at).toBe('2026-01-03 00:00:00');
+    });
+
+    it('updatedAt を指定しなければ、更新時刻を比較せず expectedUpdatedAt も渡さない', async () => {
+      const repo = repository();
+      (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        existingClassRoom('2026-01-01 00:00:00')
+      );
+      (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        existingClassRoom('2026-01-03 00:00:00')
+      );
+
+      await createClassRoomService(repo, teacherRepository()).updateClassRoom(
+        1,
+        input
+      );
+
+      expect(repo.update).toHaveBeenCalledWith(1, {
+        ...input,
+        expectedUpdatedAt: undefined,
+      });
+    });
+
+    it('確認後に更新された競合（update が null）は、教室が残っていれば409用エラーにする', async () => {
+      const repo = repository();
+      (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        existingClassRoom('2026-01-01 00:00:00')
+      );
+      (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+      await expect(
+        createClassRoomService(repo, teacherRepository()).updateClassRoom(1, {
+          ...input,
+          updatedAt: '2026-01-01 00:00:00',
+        })
+      ).rejects.toThrow('Class update conflict');
+    });
+
+    it('確認後に削除された競合（update が null）は、404用エラーにする', async () => {
+      const repo = repository();
+      (repo.findById as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(existingClassRoom('2026-01-01 00:00:00'))
+        .mockResolvedValueOnce(null);
+      (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+      await expect(
+        createClassRoomService(repo, teacherRepository()).updateClassRoom(1, {
+          ...input,
+          updatedAt: '2026-01-01 00:00:00',
+        })
+      ).rejects.toThrow('Class not found');
+    });
+
+    it('updatedAt を指定せず update が null なら、再確認せず404用エラーにする', async () => {
+      const repo = repository();
+      (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        existingClassRoom('2026-01-01 00:00:00')
+      );
+      (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+      await expect(
+        createClassRoomService(repo, teacherRepository()).updateClassRoom(
+          1,
+          input
+        )
+      ).rejects.toThrow('Class not found');
+      expect(repo.findById).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('学生が所属するクラスの削除を拒否する', async () => {
     const repo = repository();
     (repo.hasStudents as ReturnType<typeof vi.fn>).mockResolvedValue(true);

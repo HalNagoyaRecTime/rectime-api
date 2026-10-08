@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createClassRoomRepository } from '../../../src/infrastructure/repositories/ClassRoomRepository';
+import { createUserStatusRepository } from '../../../src/infrastructure/repositories/UserStatusRepository';
 import type { IClassRoomRepository } from '../../../src/domain/interfaces/repositories/IClassRoomRepository';
 import * as schema from '../../../src/infrastructure/database/schema';
 import {
@@ -186,6 +187,20 @@ describe('ClassRoomRepository', () => {
       studentCount: 1,
     });
     await expect(repo.findById(999999)).resolves.toBeNull();
+  });
+
+  it('class_rooms.updated_at を updatedAt として一覧・詳細の両方で返す', async () => {
+    const classroom = (await repo.findAll({ limit: 1, offset: 0 })).items[0];
+    const row = await env.DB.prepare(
+      'SELECT updated_at FROM class_rooms WHERE class_room_id = ?'
+    )
+      .bind(classroom.classRoomId)
+      .first<{ updated_at: string }>();
+
+    expect(classroom.updatedAt).toBe(row?.updated_at);
+    await expect(repo.findById(classroom.classRoomId)).resolves.toMatchObject({
+      updatedAt: row?.updated_at,
+    });
   });
 
   it('担任未設定のクラスを作成・更新・削除できる', async () => {
@@ -374,6 +389,65 @@ describe('ClassRoomRepository', () => {
     });
   });
 
+  describe('更新時刻による楽観ロック', () => {
+    async function createWithUpdatedAt(classCode: string, updatedAt: string) {
+      const created = await repo.create({
+        classCode,
+        className: '更新時刻テスト',
+        teacherId: null,
+      });
+      await env.DB.prepare(
+        'UPDATE class_rooms SET updated_at = ? WHERE class_room_id = ?'
+      )
+        .bind(updatedAt, created.classRoomId)
+        .run();
+      return created.classRoomId;
+    }
+
+    it('expectedUpdatedAt が現在の値と一致すれば更新し、updatedAt を進める', async () => {
+      const id = await createWithUpdatedAt('LOCK-1', '2000-01-01 00:00:00');
+
+      const updated = await repo.update(id, {
+        classCode: 'LOCK-1',
+        className: '更新後',
+        teacherId: null,
+        expectedUpdatedAt: '2000-01-01 00:00:00',
+      });
+
+      expect(updated).toMatchObject({ className: '更新後' });
+      expect(updated?.updatedAt).not.toBe('2000-01-01 00:00:00');
+    });
+
+    it('expectedUpdatedAt が現在の値と異なれば null を返し、何も変更しない', async () => {
+      const id = await createWithUpdatedAt('LOCK-2', '2000-01-01 00:00:00');
+
+      const updated = await repo.update(id, {
+        classCode: 'LOCK-2',
+        className: '上書きされてはいけない',
+        teacherId: null,
+        expectedUpdatedAt: '1999-12-31 23:59:59',
+      });
+
+      expect(updated).toBeNull();
+      await expect(repo.findById(id)).resolves.toMatchObject({
+        className: '更新時刻テスト',
+        updatedAt: '2000-01-01 00:00:00',
+      });
+    });
+
+    it('expectedUpdatedAt を指定しない更新は更新時刻を確認しない', async () => {
+      const id = await createWithUpdatedAt('LOCK-3', '2000-01-01 00:00:00');
+
+      const updated = await repo.update(id, {
+        classCode: 'LOCK-3',
+        className: '更新後',
+        teacherId: null,
+      });
+
+      expect(updated).toMatchObject({ className: '更新後' });
+    });
+  });
+
   describe('担任の稼働状態', () => {
     it('無効化された教員は担任として返さないが、割り当ては残り再有効化で戻る', async () => {
       const target = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
@@ -432,6 +506,40 @@ describe('ClassRoomRepository', () => {
 
       await expect(repo.findById(target!.classRoomId)).resolves.toMatchObject({
         className: '2年Bクラス（改称）',
+        teacher: { displayName: '担任教員' },
+      });
+    });
+
+    it('取得後に停止中の担任が再有効化されていた場合、更新時刻付きの更新は0件更新になり担任の割り当ては残る', async () => {
+      const target = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
+        c => c.classCode === '12B'
+      );
+      await env.DB.prepare(
+        "UPDATE users SET is_live_active = 0 WHERE user_name = '担任教員'"
+      ).run();
+      // 管理画面が取得した時点の教室。担任は停止中のため null で返る
+      const fetched = await repo.findById(target!.classRoomId);
+      expect(fetched?.teacher).toBeNull();
+      const teacherUser = await env.DB.prepare(
+        "SELECT user_id FROM users WHERE user_name = '担任教員'"
+      ).first<{ user_id: number }>();
+
+      // 取得後に、別の操作で担任が再有効化される
+      await createUserStatusRepository(env.DB).updateLiveActive(
+        teacherUser!.user_id,
+        true
+      );
+
+      const updated = await repo.update(target!.classRoomId, {
+        classCode: '12B',
+        className: '上書きされてはいけない',
+        teacherId: null,
+        expectedUpdatedAt: fetched!.updatedAt,
+      });
+
+      expect(updated).toBeNull();
+      await expect(repo.findById(target!.classRoomId)).resolves.toMatchObject({
+        className: fetched!.className,
         teacher: { displayName: '担任教員' },
       });
     });

@@ -17,6 +17,7 @@ export interface TeacherUpdateRequest {
   userName: string;
   email: string;
   classRoomIds: number[];
+  updatedAt?: string;
 }
 
 export interface ITeacherService {

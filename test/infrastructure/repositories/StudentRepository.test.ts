@@ -237,6 +237,23 @@ describe('StudentRepository', () => {
     it('存在しない id の場合は null を返す', async () => {
       expect(await repo.findById(999999)).toBeNull();
     });
+
+    it('students.updated_at を updatedAt として一覧・詳細の両方で返す', async () => {
+      const target = seeded.students[0];
+      const row = await env.DB.prepare(
+        'SELECT updated_at FROM students WHERE student_id = ?'
+      )
+        .bind(target.studentId)
+        .first<{ updated_at: string }>();
+
+      expect((await repo.findById(target.studentId))?.updatedAt).toBe(
+        row?.updated_at
+      );
+      const listed = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
+        item => item.studentId === target.studentId
+      );
+      expect(listed?.updatedAt).toBe(row?.updated_at);
+    });
   });
 
   describe('findByUserId', () => {
@@ -320,6 +337,61 @@ describe('StudentRepository', () => {
           studentIdNumber: '19999',
         })
       ).resolves.toBeNull();
+    });
+
+    describe('更新時刻による楽観ロック', () => {
+      async function createWithUpdatedAt(studentIdNumber: string) {
+        const created = await repo.create({
+          displayName: '更新時刻テスト',
+          classRoomId: seeded.classRoomId,
+          attendanceNumber: 20,
+          studentIdNumber,
+        });
+        await env.DB.prepare(
+          'UPDATE students SET updated_at = ? WHERE student_id = ?'
+        )
+          .bind('2000-01-01 00:00:00', created.studentId)
+          .run();
+        return created.studentId;
+      }
+
+      const input = (studentIdNumber: string) => ({
+        displayName: '更新後',
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 21,
+        studentIdNumber,
+      });
+
+      it('expectedUpdatedAt が現在の値と一致すれば更新し、updatedAt を進める', async () => {
+        const id = await createWithUpdatedAt('LOCK-S1');
+
+        const updated = await repo.update(id, {
+          ...input('LOCK-S1'),
+          expectedUpdatedAt: '2000-01-01 00:00:00',
+        });
+
+        expect(updated).toMatchObject({
+          userName: '更新後',
+          attendanceNumber: 21,
+        });
+        expect(updated?.updatedAt).not.toBe('2000-01-01 00:00:00');
+      });
+
+      it('expectedUpdatedAt が現在の値と異なれば null を返し、users も students も変更しない', async () => {
+        const id = await createWithUpdatedAt('LOCK-S2');
+
+        const updated = await repo.update(id, {
+          ...input('LOCK-S2'),
+          expectedUpdatedAt: '1999-12-31 23:59:59',
+        });
+
+        expect(updated).toBeNull();
+        await expect(repo.findById(id)).resolves.toMatchObject({
+          userName: '更新時刻テスト',
+          attendanceNumber: 20,
+          updatedAt: '2000-01-01 00:00:00',
+        });
+      });
     });
   });
 

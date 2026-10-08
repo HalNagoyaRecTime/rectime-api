@@ -13,6 +13,7 @@ function buildTeacher(overrides: Partial<TeacherEntity> = {}): TeacherEntity {
     isLiveActive: true,
     isStaff: false,
     classRooms: [],
+    updatedAt: '2026-01-01 00:00:00',
     ...overrides,
   };
 }
@@ -77,6 +78,7 @@ describe('TeacherService', () => {
         is_live_active: true,
         is_staff: false,
         class_rooms: [],
+        updated_at: '2026-01-01 00:00:00',
       });
       expect(
         classRoomRepository.findExistingClassRoomIds
@@ -124,6 +126,7 @@ describe('TeacherService', () => {
           class_code: classRoom.classCode,
           class_name: classRoom.className,
         })),
+        updated_at: teacher.updatedAt,
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
     });
@@ -416,6 +419,120 @@ describe('TeacherService', () => {
           classRoomIds: [],
         })
       ).rejects.toThrow('teachers.user_id');
+    });
+  });
+
+  describe('updateTeacher（更新時刻による楽観ロック）', () => {
+    const input = {
+      userName: '更新済み先生',
+      email: 'svc-lock@example.ac.jp',
+      classRoomIds: [1],
+    };
+
+    it('updatedAt が取得時点と異なれば、クラスの確認より先に409用エラーにする', async () => {
+      const repository = buildRepository({
+        findById: vi
+          .fn()
+          .mockResolvedValue(
+            buildTeacher({ updatedAt: '2026-01-02 00:00:00' })
+          ),
+        update: vi.fn(),
+      });
+      const classRoomRepository = buildClassRoomRepository();
+      const service = createTeacherService(repository, classRoomRepository);
+
+      await expect(
+        service.updateTeacher(1, { ...input, updatedAt: '2026-01-01 00:00:00' })
+      ).rejects.toThrow('Teacher update conflict');
+      expect(
+        classRoomRepository.findExistingClassRoomIds
+      ).not.toHaveBeenCalled();
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('updatedAt が一致すれば、expectedUpdatedAt を付けて update を呼ぶ', async () => {
+      const repository = buildRepository({
+        findById: vi
+          .fn()
+          .mockResolvedValue(
+            buildTeacher({ updatedAt: '2026-01-01 00:00:00' })
+          ),
+        update: vi
+          .fn()
+          .mockResolvedValue(
+            buildTeacher({ updatedAt: '2026-01-03 00:00:00' })
+          ),
+      });
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
+
+      const dto = await service.updateTeacher(1, {
+        ...input,
+        updatedAt: '2026-01-01 00:00:00',
+      });
+
+      expect(repository.update).toHaveBeenCalledWith(1, {
+        ...input,
+        expectedUpdatedAt: '2026-01-01 00:00:00',
+      });
+      expect(dto.updated_at).toBe('2026-01-03 00:00:00');
+    });
+
+    it('確認後に更新された競合（update が null）は、教員が残っていれば409用エラーにする', async () => {
+      const repository = buildRepository({
+        findById: vi
+          .fn()
+          .mockResolvedValue(
+            buildTeacher({ updatedAt: '2026-01-01 00:00:00' })
+          ),
+        update: vi.fn().mockResolvedValue(null),
+      });
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
+
+      await expect(
+        service.updateTeacher(1, { ...input, updatedAt: '2026-01-01 00:00:00' })
+      ).rejects.toThrow('Teacher update conflict');
+    });
+
+    it('確認後に削除された競合（update が null）は、404用エラーにする', async () => {
+      const repository = buildRepository({
+        findById: vi
+          .fn()
+          .mockResolvedValueOnce(
+            buildTeacher({ updatedAt: '2026-01-01 00:00:00' })
+          )
+          .mockResolvedValueOnce(null),
+        update: vi.fn().mockResolvedValue(null),
+      });
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
+
+      await expect(
+        service.updateTeacher(1, { ...input, updatedAt: '2026-01-01 00:00:00' })
+      ).rejects.toThrow('Teacher not found');
+    });
+
+    it('updatedAt を指定せず update が null なら、再確認せず404用エラーにする', async () => {
+      const repository = buildRepository({
+        findById: vi.fn().mockResolvedValue(buildTeacher()),
+        update: vi.fn().mockResolvedValue(null),
+      });
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
+
+      await expect(service.updateTeacher(1, input)).rejects.toThrow(
+        'Teacher not found'
+      );
+      expect(repository.findById).toHaveBeenCalledTimes(1);
     });
   });
 
