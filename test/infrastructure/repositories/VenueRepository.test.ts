@@ -132,4 +132,22 @@ describe('VenueRepository', () => {
 
     expect(await venueRepository.hasEvents(venue.venue_id)).toBe(true);
   });
+
+  it('画像キーを紐づけて取得でき、外すと null に戻る', async () => {
+    const venue = await venueRepository.create('実施場所テスト画像');
+
+    await venueRepository.updateImageKey(venue.venue_id, 'venues/1/a.png');
+    expect(await venueRepository.findImageKey(venue.venue_id)).toEqual({
+      imageKey: 'venues/1/a.png',
+    });
+
+    await venueRepository.updateImageKey(venue.venue_id, null);
+    expect(await venueRepository.findImageKey(venue.venue_id)).toEqual({
+      imageKey: null,
+    });
+  });
+
+  it('存在しない実施場所の画像キーは null を返す', async () => {
+    expect(await venueRepository.findImageKey(999999)).toBeNull();
+  });
 });

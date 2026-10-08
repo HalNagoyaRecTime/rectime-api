@@ -196,4 +196,19 @@ export const EventErrors = {
     code: 'VENUE_DELETE_FAILED',
     message: '実施場所の削除に失敗しました',
   },
+  INVALID_PLACE_IMAGE: {
+    status: 400,
+    code: 'INVALID_PLACE_IMAGE',
+    message: '画像はJPEG・PNG・WebP形式の5MB以下のファイルを指定してください',
+  },
+  PLACE_IMAGE_UPDATE_FAILED: {
+    status: 500,
+    code: 'PLACE_IMAGE_UPDATE_FAILED',
+    message: '画像の登録に失敗しました',
+  },
+  PLACE_IMAGE_DELETE_FAILED: {
+    status: 500,
+    code: 'PLACE_IMAGE_DELETE_FAILED',
+    message: '画像の削除に失敗しました',
+  },
 } as const satisfies Record<string, ApiErrorDefinition>;
