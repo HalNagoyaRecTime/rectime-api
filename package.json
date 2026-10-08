@@ -10,6 +10,7 @@
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate:remote": "wrangler d1 migrations apply rectime-api --remote",
     "db:migrate:local": "wrangler d1 migrations apply rectime-api-dev --local --env development",
+    "migrations:check": "node .github/scripts/check-migrations.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "format:fix": "prettier --write .",
