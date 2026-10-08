@@ -82,6 +82,12 @@
       "migrations_dir": "migrations",
     },
   ],
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "rectime-images",
+    },
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -170,6 +176,12 @@
           "migrations_dir": "migrations",
         },
       ],
+      "r2_buckets": [
+        {
+          "binding": "IMAGES",
+          "bucket_name": "rectime-images-dev",
+        },
+      ],
       "durable_objects": {
         "bindings": [
           {
@@ -255,6 +267,12 @@
           "database_name": "rectime-api-staging",
           "database_id": "f069ce58-7d88-4bd9-aab0-ab6c62eb2349",
           "migrations_dir": "migrations",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "IMAGES",
+          "bucket_name": "rectime-images-staging",
         },
       ],
       "durable_objects": {
