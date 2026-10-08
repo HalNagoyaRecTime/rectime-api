@@ -16,7 +16,11 @@ function setup(overrides: Partial<IVenueRepository> = {}) {
     updateImageKey: vi.fn(),
     ...overrides,
   };
-  const imageStorage: IImageStorage = { put: vi.fn(), delete: vi.fn() };
+  const imageStorage: IImageStorage = {
+    get: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+  };
   return {
     repository,
     imageStorage,

@@ -1,6 +1,7 @@
 export interface EventVenueEntity {
   venue_id: number;
   venue_name: string;
+  image_key: string | null;
 }
 
 export interface EventEntity {

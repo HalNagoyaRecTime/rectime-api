@@ -4,6 +4,7 @@ import type {
   GatheringSettingDTO,
   RoundSettingDTO,
 } from '../dto/EventGatheringSettingsDTO';
+import { gatheringSpotImageUrl } from './placeImageUrl';
 
 function toGatheringSettingDTO(
   gathering: EventGatheringEntity
@@ -14,6 +15,10 @@ function toGatheringSettingDTO(
     gathering_spot: {
       gathering_spot_id: gathering.gathering_spot_id,
       gathering_spot_name: gathering.gathering_spot_name,
+      image_url: gatheringSpotImageUrl(
+        gathering.gathering_spot_id,
+        gathering.gathering_spot_image_key
+      ),
     },
     member_count: gathering.member_count,
   };

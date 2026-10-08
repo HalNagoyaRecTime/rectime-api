@@ -118,6 +118,46 @@ describe('実施場所の画像API', () => {
     expect(await workerEnv.IMAGES.get(imageKey!)).toBeNull();
   });
 
+  it('ログインしていれば、スタッフ以外もレスポンスのURLから画像を取得できる', async () => {
+    const venueId = await insertVenue();
+    await request('PUT', `/venues/${venueId}/image`, await createToken(true));
+    const studentToken = await createToken(false);
+    const venues = await app.fetch(
+      new Request('http://example.com/api/v1/venues', {
+        headers: {
+          Authorization: `Bearer ${await createToken(true)}`,
+          'X-Client-Type': 'web',
+        },
+      }),
+      testEnv
+    );
+    const venue = (
+      (await venues.json()) as Array<{
+        venue_id: number;
+        image_url: string | null;
+      }>
+    ).find(item => item.venue_id === venueId);
+
+    const response = await app.fetch(
+      new Request(`http://example.com${venue!.image_url}`, {
+        headers: {
+          Authorization: `Bearer ${studentToken}`,
+          'X-Client-Type': 'web',
+        },
+      }),
+      testEnv
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('image/png');
+    expect(response.headers.get('Cache-Control')).toBe(
+      'private, max-age=31536000, immutable'
+    );
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+      new Uint8Array([1, 2, 3])
+    );
+  });
+
   it('スタッフ以外は登録できない', async () => {
     const token = await createToken(false);
     const venueId = await insertVenue();

@@ -3,6 +3,7 @@ import { asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { VenueEntity } from '../../domain/entities/Venue';
 import { IVenueRepository } from '../../domain/interfaces/repositories/IVenueRepository';
+import { venueImageUrl } from '../../application/services/placeImageUrl';
 import * as schema from '../database/schema';
 import { event_venues, venues } from '../database/schema';
 import { escapeLikePattern } from '../helpers/escapeLikePattern';
@@ -14,6 +15,7 @@ function toEntity(row: typeof venues.$inferSelect): VenueEntity {
   return {
     venue_id: row.id,
     venue_name: row.name,
+    image_url: venueImageUrl(row.id, row.imageKey),
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };

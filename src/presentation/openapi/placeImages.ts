@@ -33,6 +33,44 @@ const placeImageResponses = {
   500: internalServerErrorResponse,
 };
 
+const placeImageGetResponses = {
+  200: {
+    content: {
+      'image/jpeg': { schema: imageSchema },
+      'image/png': { schema: imageSchema },
+      'image/webp': { schema: imageSchema },
+    },
+    description:
+      '画像。URLは差し替えのたびに変わるため、長期間キャッシュしてよい',
+  },
+  400: badRequestResponse,
+  401: unauthorizedResponse,
+  404: notFoundResponse,
+  500: internalServerErrorResponse,
+};
+
+export const venueImageGetRoute = createRoute({
+  method: 'get',
+  path: '/venues/{venueId}/image',
+  tags: ['Venues'],
+  summary: '実施場所の画像を取得する',
+  description: '画像のURLは、取得系レスポンスの `image_url` を使う。',
+  security: bearerAuth,
+  request: { params: venueIdParams },
+  responses: placeImageGetResponses,
+});
+
+export const gatheringSpotImageGetRoute = createRoute({
+  method: 'get',
+  path: '/gathering-spots/{gatheringSpotId}/image',
+  tags: ['Gathering spots'],
+  summary: '集合場所の画像を取得する',
+  description: '画像のURLは、取得系レスポンスの `image_url` を使う。',
+  security: bearerAuth,
+  request: { params: gatheringSpotIdParams },
+  responses: placeImageGetResponses,
+});
+
 export const venueImagePutRoute = createRoute({
   method: 'put',
   path: '/venues/{venueId}/image',

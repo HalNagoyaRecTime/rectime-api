@@ -10,6 +10,7 @@ function gathering(
     gathering_time: '10:00',
     gathering_spot_id: 1,
     gathering_spot_name: '出入口①',
+    gathering_spot_image_key: null,
     member_count: 0,
     ...overrides,
   };
@@ -45,6 +46,7 @@ describe('buildEventGatheringSettings', () => {
         gathering_time: '10:45',
         gathering_spot_id: 7,
         gathering_spot_name: '体育館前',
+        gathering_spot_image_key: null,
         member_count: 16,
       }),
     ]);
@@ -52,7 +54,11 @@ describe('buildEventGatheringSettings', () => {
     expect(result.rounds[0].gatherings[0]).toEqual({
       gathering_id: 101,
       gathering_time: '10:45',
-      gathering_spot: { gathering_spot_id: 7, gathering_spot_name: '体育館前' },
+      gathering_spot: {
+        gathering_spot_id: 7,
+        gathering_spot_name: '体育館前',
+        image_url: null,
+      },
       member_count: 16,
     });
   });

@@ -14,6 +14,7 @@ import type {
   UpdateEventRequestDTO,
 } from '../dto/EventDTO';
 import { buildRoundSettings } from './eventGatheringRounds';
+import { venueImageUrl } from './placeImageUrl';
 import { ensureVenuesExist, saveWithVenues } from './eventVenueIds';
 import type { IVenueRepository } from '../../domain/interfaces/repositories/IVenueRepository';
 import type { IEventService } from './IEventService';
@@ -26,6 +27,7 @@ function toEventDTO(event: EventWithVenuesEntity): EventDTO {
     venues: event.venues.map(venue => ({
       venue_id: venue.venue_id,
       venue_name: venue.venue_name,
+      image_url: venueImageUrl(venue.venue_id, venue.image_key),
     })),
     start_time: event.start_time,
     end_time: event.end_time,

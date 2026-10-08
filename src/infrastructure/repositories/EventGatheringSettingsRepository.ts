@@ -30,6 +30,7 @@ export function createEventGatheringSettingsRepository(
           gathering_time: gatherings.gatheringTime,
           gathering_spot_id: gathering_spots.id,
           gathering_spot_name: gathering_spots.name,
+          gathering_spot_image_key: gathering_spots.imageKey,
           member_count: count(gathering_group_members.id),
         })
         .from(gatherings)

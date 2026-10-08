@@ -3,6 +3,11 @@ export interface PlaceImage {
   contentType: string;
 }
 
+export interface StoredImage {
+  body: ReadableStream;
+  contentType: string;
+}
+
 export interface PlaceImageKey {
   imageKey: string | null;
 }

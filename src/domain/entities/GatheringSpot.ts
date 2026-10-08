@@ -1,6 +1,7 @@
 export interface GatheringSpotEntity {
   gathering_spot_id: number;
   gathering_spot_name: string;
+  image_url: string | null;
   created_at: string;
   updated_at: string;
 }

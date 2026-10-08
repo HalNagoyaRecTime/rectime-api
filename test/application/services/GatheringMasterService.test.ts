@@ -5,7 +5,11 @@ import type { IGatheringGroupMemberRepository } from '../../../src/domain/interf
 import type { IGatheringSpotRepository } from '../../../src/domain/interfaces/repositories/IGatheringSpotRepository';
 import type { IImageStorage } from '../../../src/domain/interfaces/storages/IImageStorage';
 
-const imageStorage: IImageStorage = { put: vi.fn(), delete: vi.fn() };
+const imageStorage: IImageStorage = {
+  get: vi.fn(),
+  put: vi.fn(),
+  delete: vi.fn(),
+};
 
 describe('Gathering master services', () => {
   it('集合場所の作成・一覧取得結果をRepositoryから返す', async () => {
@@ -117,7 +121,11 @@ describe('Gathering master services', () => {
         .mockResolvedValue({ imageKey: 'gathering-spots/1/old.webp' }),
       updateImageKey: vi.fn(),
     };
-    const storage: IImageStorage = { put: vi.fn(), delete: vi.fn() };
+    const storage: IImageStorage = {
+      get: vi.fn(),
+      put: vi.fn(),
+      delete: vi.fn(),
+    };
     const service = createGatheringSpotService(repository, storage);
 
     await service.deleteGatheringSpot(1);

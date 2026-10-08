@@ -23,6 +23,7 @@ export async function findVenuesByEventIds(
           eventId: event_venues.eventId,
           venueId: venues.id,
           venueName: venues.name,
+          imageKey: venues.imageKey,
         })
         .from(event_venues)
         .innerJoin(venues, eq(event_venues.venueId, venues.id))
@@ -34,7 +35,11 @@ export async function findVenuesByEventIds(
 
   for (const row of chunkRows.flat()) {
     const list = venuesByEventId.get(row.eventId) ?? [];
-    list.push({ venue_id: row.venueId, venue_name: row.venueName });
+    list.push({
+      venue_id: row.venueId,
+      venue_name: row.venueName,
+      image_key: row.imageKey,
+    });
     venuesByEventId.set(row.eventId, list);
   }
   return venuesByEventId;
