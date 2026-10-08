@@ -65,6 +65,9 @@ import { createNotificationConfigController } from '../presentation/controllers/
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
 import { createVenueController } from '../presentation/controllers/VenueController';
+import { createPlaceImageController } from '../presentation/controllers/PlaceImageController';
+import { createPlaceImageService } from '../application/services/PlaceImageService';
+import { createR2ImageStorage } from '../infrastructure/storages/R2ImageStorage';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createGatheringController } from '../presentation/controllers/GatheringController';
 import { createEventGatheringSettingsController } from '../presentation/controllers/EventGatheringSettingsController';
@@ -237,10 +240,17 @@ export function createDIContainer(env: Env) {
   const mobileNotificationService = createMobileNotificationService(
     mobileNotificationRepository
   );
+  const imageStorage = createR2ImageStorage(env.IMAGES);
   const gatheringSpotService = createGatheringSpotService(
+    gatheringSpotRepository,
+    imageStorage
+  );
+  const venueService = createVenueService(venueRepository, imageStorage);
+  const placeImageService = createPlaceImageService(
+    imageStorage,
+    venueRepository,
     gatheringSpotRepository
   );
-  const venueService = createVenueService(venueRepository);
   const gatheringGroupMemberService = createGatheringGroupMemberService(
     gatheringGroupMemberRepository
   );
@@ -281,6 +291,7 @@ export function createDIContainer(env: Env) {
   const gatheringSpotController =
     createGatheringSpotController(gatheringSpotService);
   const venueController = createVenueController(venueService);
+  const placeImageController = createPlaceImageController(placeImageService);
   const gatheringGroupMemberController = createGatheringGroupMemberController(
     gatheringGroupMemberService
   );
@@ -318,6 +329,7 @@ export function createDIContainer(env: Env) {
     notificationDeliveryService,
     gatheringSpotController,
     venueController,
+    placeImageController,
     gatheringGroupMemberController,
     gatheringController,
     eventGatheringSettingsController,

@@ -4,6 +4,7 @@ import {
   GatheringSpotPage,
   UpdateGatheringSpotInput,
 } from '../../entities/GatheringSpot';
+import { PlaceImageKey } from '../../entities/PlaceImage';
 
 export interface IGatheringSpotRepository {
   exists: (gatheringSpotId: number) => Promise<boolean>;
@@ -19,4 +20,9 @@ export interface IGatheringSpotRepository {
   ) => Promise<GatheringSpotEntity | null>;
   delete: (gatheringSpotId: number) => Promise<boolean>;
   hasGatherings: (gatheringSpotId: number) => Promise<boolean>;
+  findImageKey: (gatheringSpotId: number) => Promise<PlaceImageKey | null>;
+  updateImageKey: (
+    gatheringSpotId: number,
+    imageKey: string | null
+  ) => Promise<void>;
 }

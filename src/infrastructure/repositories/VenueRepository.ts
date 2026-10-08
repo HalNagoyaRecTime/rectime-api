@@ -114,5 +114,22 @@ export function createVenueRepository(db: D1Database): IVenueRepository {
           .get()
       );
     },
+
+    async findImageKey(venueId) {
+      const row = await orm
+        .select({ imageKey: venues.imageKey })
+        .from(venues)
+        .where(eq(venues.id, venueId))
+        .get();
+      return row ?? null;
+    },
+
+    async updateImageKey(venueId, imageKey) {
+      await orm
+        .update(venues)
+        .set({ imageKey, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .where(eq(venues.id, venueId))
+        .run();
+    },
   };
 }

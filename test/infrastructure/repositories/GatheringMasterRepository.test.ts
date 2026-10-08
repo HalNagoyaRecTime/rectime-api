@@ -364,4 +364,19 @@ describe('Gathering master repositories', () => {
       memberRepository.deleteByUserId(userId)
     ).resolves.toBeUndefined();
   });
+
+  it('集合場所に画像キーを紐づけて取得できる', async () => {
+    const spot = await gatheringSpotRepository.create('所属テスト場所-画像');
+    gatheringSpotIds.push(spot.gathering_spot_id);
+
+    await gatheringSpotRepository.updateImageKey(
+      spot.gathering_spot_id,
+      'gathering-spots/1/a.png'
+    );
+
+    expect(
+      await gatheringSpotRepository.findImageKey(spot.gathering_spot_id)
+    ).toEqual({ imageKey: 'gathering-spots/1/a.png' });
+    expect(await gatheringSpotRepository.findImageKey(999999)).toBeNull();
+  });
 });

@@ -87,6 +87,12 @@ import {
   venueListRoute,
   venueUpdateRoute,
 } from './presentation/openapi/venues';
+import {
+  gatheringSpotImageDeleteRoute,
+  gatheringSpotImagePutRoute,
+  venueImageDeleteRoute,
+  venueImagePutRoute,
+} from './presentation/openapi/placeImages';
 import { legacyAdminNotificationUpdateRoute } from './presentation/openapi/notification/legacy/admin';
 import {
   adminNotificationCreateRoute,
@@ -420,6 +426,20 @@ apiV1.openapi(staffOnly(venueUpdateRoute), c => {
 });
 apiV1.openapi(staffOnly(venueDeleteRoute), c => {
   return c.get('container').venueController.deleteVenue(c);
+});
+
+// Place image routes
+apiV1.openapi(staffOnly(venueImagePutRoute), c => {
+  return c.get('container').placeImageController.putVenueImage(c);
+});
+apiV1.openapi(staffOnly(venueImageDeleteRoute), c => {
+  return c.get('container').placeImageController.deleteVenueImage(c);
+});
+apiV1.openapi(staffOnly(gatheringSpotImagePutRoute), c => {
+  return c.get('container').placeImageController.putGatheringSpotImage(c);
+});
+apiV1.openapi(staffOnly(gatheringSpotImageDeleteRoute), c => {
+  return c.get('container').placeImageController.deleteGatheringSpotImage(c);
 });
 
 // Gathering member routes
