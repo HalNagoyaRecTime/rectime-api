@@ -116,7 +116,7 @@ MIIEvQIBADA...（秘密鍵の内容）
 ### 6. ローカル D1 データベースのマイグレーション
 
 ```bash
-npm run "db:migrate --local"
+npm run db:migrate:local
 ```
 
 ### 7. ローカルの画像の初期データ
@@ -125,7 +125,7 @@ npm run "db:migrate --local"
 npm run images:seed:local
 ```
 
-画像が未登録の実施場所・集合場所すべてに、サンプル画像を紐づける。
+画像が未登録の実施場所・集合場所すべてに、サンプル画像を紐づける。集合場所を作成したあとや、画像が表示されなくなったときは再度実行する。
 
 ### 8. 起動
 
@@ -141,7 +141,7 @@ npm run dev
 
 ```bash
 # D1 マイグレーション（本番）
-npm run "db:migrate --remote"
+npm run db:migrate:remote
 
 # デプロイ
 npm run deploy
