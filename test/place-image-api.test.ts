@@ -158,6 +158,26 @@ describe('実施場所の画像API', () => {
     );
   });
 
+  it.each([
+    ['トークンが無い', undefined],
+    ['トークンが不正', 'invalid-token'],
+  ])('%s場合は画像を取得できない', async (_, token) => {
+    const venueId = await insertVenue();
+    await request('PUT', `/venues/${venueId}/image`, await createToken(true));
+
+    const response = await app.fetch(
+      new Request(`http://example.com/api/v1/venues/${venueId}/image`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'X-Client-Type': 'web',
+        },
+      }),
+      testEnv
+    );
+
+    expect(response.status).toBe(401);
+  });
+
   it('スタッフ以外は登録できない', async () => {
     const token = await createToken(false);
     const venueId = await insertVenue();

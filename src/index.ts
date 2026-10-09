@@ -431,10 +431,10 @@ apiV1.openapi(staffOnly(venueDeleteRoute), c => {
 });
 
 // Place image routes
-apiV1.openapi(venueImageGetRoute, c => {
+apiV1.openapi(authed(venueImageGetRoute), c => {
   return c.get('container').placeImageController.getVenueImage(c);
 });
-apiV1.openapi(gatheringSpotImageGetRoute, c => {
+apiV1.openapi(authed(gatheringSpotImageGetRoute), c => {
   return c.get('container').placeImageController.getGatheringSpotImage(c);
 });
 apiV1.openapi(staffOnly(venueImagePutRoute), c => {
