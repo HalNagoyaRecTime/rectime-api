@@ -60,6 +60,20 @@ describe('PlaceImageService', () => {
     expect(gatheringSpotRepository.updateImageKey).toHaveBeenCalledWith(2, key);
   });
 
+  it('前の画像を保存先から削除できなくても、差し替えは成功する', async () => {
+    const { venueRepository, imageStorage, service } = setup({
+      imageKey: 'venues/1/old.png',
+    });
+    vi.mocked(imageStorage.delete).mockRejectedValue(new Error('R2 error'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(service.setVenueImage(1, pngImage)).resolves.toBeUndefined();
+    expect(venueRepository.updateImageKey).toHaveBeenCalledWith(
+      1,
+      expect.stringMatching(/^venues\/1\//)
+    );
+  });
+
   it('差し替えると、前の画像を保存先から削除する', async () => {
     const { imageStorage, service } = setup({ imageKey: 'venues/1/old.png' });
 
