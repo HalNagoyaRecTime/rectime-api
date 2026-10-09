@@ -2,6 +2,7 @@ import { PlaceImage, PlaceImageKey } from '../../domain/entities/PlaceImage';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
 import { IVenueRepository } from '../../domain/interfaces/repositories/IVenueRepository';
 import { IImageStorage } from '../../domain/interfaces/storages/IImageStorage';
+import { deleteUnusedImage } from './deleteUnusedImage';
 import { IPlaceImageService } from './IPlaceImageService';
 
 export const MAX_PLACE_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -62,7 +63,7 @@ export function createPlaceImageService(
     const imageKey = `${target.keyPrefix}/${id}/${crypto.randomUUID()}.${extension}`;
     await imageStorage.put(imageKey, image.body, image.contentType);
     await target.updateImageKey(id, imageKey);
-    if (current.imageKey) await imageStorage.delete(current.imageKey);
+    await deleteUnusedImage(imageStorage, current.imageKey);
   };
 
   const deleteImage = async (target: PlaceImageTarget, id: number) => {
@@ -71,7 +72,7 @@ export function createPlaceImageService(
     if (!current.imageKey) return;
 
     await target.updateImageKey(id, null);
-    await imageStorage.delete(current.imageKey);
+    await deleteUnusedImage(imageStorage, current.imageKey);
   };
 
   return {

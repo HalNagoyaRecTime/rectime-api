@@ -113,6 +113,19 @@ describe('VenueService', () => {
     expect(imageStorage.delete).toHaveBeenCalledWith('venues/1/old.webp');
   });
 
+  it('画像を保存先から削除できなくても、実施場所の削除は成功する', async () => {
+    const { imageStorage, service } = setup({
+      delete: vi.fn().mockResolvedValue(true),
+      findImageKey: vi
+        .fn()
+        .mockResolvedValue({ imageKey: 'venues/1/old.webp' }),
+    });
+    vi.mocked(imageStorage.delete).mockRejectedValue(new Error('R2 error'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(service.deleteVenue(1)).resolves.toBeUndefined();
+  });
+
   it('削除できなかった実施場所の画像は保存先に残す', async () => {
     const { imageStorage, service } = setup({
       delete: vi.fn().mockResolvedValue(false),
