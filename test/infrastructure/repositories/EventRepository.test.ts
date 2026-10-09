@@ -399,7 +399,10 @@ describe('EventRepository', () => {
 
         expect(result).toHaveLength(1);
         expect(result[0].event_id).toBe(target.eventId);
-        expect(result[0].venues).toEqual([]);
+        expect(Object.keys(result[0]).sort()).toEqual([
+          'event_id',
+          'gathering_ids',
+        ]);
         expect(result[0].gathering_ids).toEqual([gathering!.gathering_id]);
       } finally {
         await env.DB.prepare(
@@ -456,12 +459,8 @@ describe('EventRepository', () => {
           .run();
         const result = await repo.findByParticipantUserId(user!.user_id);
         expect(result).toHaveLength(1);
-        expect(result[0]).toMatchObject({
+        expect(result[0]).toEqual({
           event_id: target.eventId,
-          event_name: target.name,
-          start_time: target.startTime,
-          end_time: target.endTime,
-          venues: [],
           gathering_ids: [ids[0], ids[1]],
         });
         expect(

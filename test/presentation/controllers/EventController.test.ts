@@ -243,7 +243,7 @@ describe('EventController', () => {
 
     it('認証済みユーザーIDでServiceを呼び出し、参加イベント一覧を返す', async () => {
       const { app, eventService } = setup();
-      const events = [{ ...buildEvent(), gathering_ids: [101, 102] }];
+      const events = [{ event_id: 1, gathering_ids: [101, 102] }];
       (eventService.getMyEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
         events
       );

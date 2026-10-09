@@ -99,7 +99,7 @@ export function createEventService(
     async getMyEvents(userId) {
       const events = await eventRepository.findByParticipantUserId(userId);
       return events.map(event => ({
-        ...toEventDTO(event),
+        event_id: event.event_id,
         gathering_ids: event.gathering_ids,
       }));
     },

@@ -164,12 +164,6 @@ export function createEventRepository(db: D1Database): IEventRepository {
         .selectDistinct({
           gatheringId: gatherings.id,
           id: events.id,
-          name: events.name,
-          ruleText: events.ruleText,
-          startTime: events.startTime,
-          endTime: events.endTime,
-          createdAt: events.createdAt,
-          updatedAt: events.updatedAt,
         })
         .from(gathering_group_members)
         .innerJoin(
@@ -188,20 +182,11 @@ export function createEventRepository(db: D1Database): IEventRepository {
         if (existing) existing.gathering_ids.push(row.gatheringId);
         else
           participating.set(row.id, {
-            ...toEntity(row),
-            venues: [],
+            event_id: row.id,
             gathering_ids: [row.gatheringId],
           });
       }
-      const eventEntities = [...participating.values()];
-      const venuesByEventId = await findVenuesByEventIds(
-        orm,
-        eventEntities.map(event => event.event_id)
-      );
-      return eventEntities.map(event => ({
-        ...event,
-        venues: venuesByEventId.get(event.event_id) ?? [],
-      }));
+      return [...participating.values()];
     },
 
     async create(event: EventWriteInput): Promise<EventWithVenuesEntity> {

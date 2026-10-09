@@ -10,6 +10,7 @@ type OpenApiOperation = {
 type OpenApiSchema = {
   required?: string[];
   allOf?: unknown[];
+  properties?: Record<string, unknown>;
 };
 
 type OpenApiDocument = {
@@ -41,13 +42,14 @@ const mobileGetPaths = [
 ] as const;
 
 describe('mobile API contract', () => {
-  it('本人参加イベントは既存Eventを維持し集合ID一覧を必須にする', () => {
-    expect(document.components.schemas.MyEvent?.allOf).toEqual(
-      expect.arrayContaining([
-        { $ref: '#/components/schemas/Event' },
-        expect.objectContaining({ required: ['gathering_ids'] }),
-      ])
-    );
+  it('本人参加イベントは参加IDだけを必須として返す', () => {
+    const schema = document.components.schemas.MyEvent;
+    expect(schema?.required).toEqual(['event_id', 'gathering_ids']);
+    expect(Object.keys(schema?.properties ?? {}).sort()).toEqual([
+      'event_id',
+      'gathering_ids',
+    ]);
+    expect(schema?.allOf).toBeUndefined();
   });
 
   it.each(mobileGetPaths)(

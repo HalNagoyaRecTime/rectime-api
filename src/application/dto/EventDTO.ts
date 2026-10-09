@@ -68,7 +68,8 @@ export interface EventListResponseDTO {
   offset: number;
 }
 
-/** GET /me/events。従来のイベント情報に本人の集合IDだけを追加する。 */
-export interface MyEventDTO extends EventDTO {
+/** GET /me/events。本人の参加イベント・集合だけを返す。 */
+export interface MyEventDTO {
+  event_id: number;
   gathering_ids: number[];
 }

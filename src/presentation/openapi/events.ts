@@ -243,9 +243,10 @@ export const eventDeleteRoute = createRoute({
   },
 });
 
-/** 旧モバイルの既存フィールドを維持した本人参加イベント。 */
-export const myEventResponseSchema = eventResponseSchema
-  .extend({
+/** 本人の参加情報。イベント本文・時刻・会場はイベントAPIから取得する。 */
+export const myEventResponseSchema = z
+  .object({
+    event_id: z.number().int().positive(),
     gathering_ids: z.array(z.number().int().positive()).openapi({
       description:
         '本人が所属する集合ID。重複なし、ID昇順。時刻・場所はイベント詳細のroundsと照合する。',
@@ -259,7 +260,7 @@ export const myEventsRoute = createRoute({
   tags: ['Events'],
   security: bearerAuth,
   description:
-    '本人が参加するイベントを開始時刻・イベントID順で返す。既存のイベント情報へ本人の集合ID一覧だけを追加する。未参加はeventsが空配列。',
+    '本人が参加するイベントIDと集合IDのみを開始時刻・イベントID順で返す。イベント情報はイベントAPIから取得する。未参加はeventsが空配列。',
   responses: {
     200: jsonResponse(
       z.object({ events: z.array(myEventResponseSchema) }),

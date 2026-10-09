@@ -264,7 +264,7 @@ describe('EventService', () => {
   });
 
   describe('getMyEvents', () => {
-    it('指定したuserIdが参加するイベントをDTOへ変換して返す', async () => {
+    it('本人の参加IDだけを返し、イベント本文は混ぜない', async () => {
       const events = [
         {
           ...buildEventWithVenues({
@@ -278,7 +278,9 @@ describe('EventService', () => {
       });
       const service = createService(repository);
 
-      await expect(service.getMyEvents(7)).resolves.toEqual(events);
+      await expect(service.getMyEvents(7)).resolves.toEqual([
+        { event_id: events[0].event_id, gathering_ids: [101, 102] },
+      ]);
       expect(repository.findByParticipantUserId).toHaveBeenCalledWith(7);
     });
   });
