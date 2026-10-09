@@ -3,7 +3,6 @@ import { asc, count, desc, eq, inArray, like, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringSpotEntity } from '../../domain/entities/GatheringSpot';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
-import { gatheringSpotImageUrl } from '../../application/services/placeImageUrl';
 import * as schema from '../database/schema';
 import { gathering_spots } from '../database/schema';
 
@@ -13,7 +12,7 @@ function toEntity(
   return {
     gathering_spot_id: row.id,
     gathering_spot_name: row.name,
-    image_url: gatheringSpotImageUrl(row.id, row.imageKey),
+    image_key: row.imageKey,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };

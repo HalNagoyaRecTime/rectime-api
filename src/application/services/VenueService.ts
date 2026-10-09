@@ -1,4 +1,6 @@
 import { VenueEntity } from '../../domain/entities/Venue';
+import { VenueDTO } from '../dto/VenueDTO';
+import { venueImageUrl } from './placeImageUrl';
 import { IVenueRepository } from '../../domain/interfaces/repositories/IVenueRepository';
 import { IImageStorage } from '../../domain/interfaces/storages/IImageStorage';
 import { deleteUnusedImage } from './deleteUnusedImage';
@@ -21,22 +23,33 @@ function isVenueNameUniqueError(error: unknown): boolean {
   return message.includes('UNIQUE') && message.includes('venues.venue_name');
 }
 
+function toVenueDTO(venue: VenueEntity): VenueDTO {
+  return {
+    venue_id: venue.venue_id,
+    venue_name: venue.venue_name,
+    image_url: venueImageUrl(venue.venue_id, venue.image_key),
+    created_at: venue.created_at,
+    updated_at: venue.updated_at,
+  };
+}
+
 export function createVenueService(
   venueRepository: IVenueRepository,
   imageStorage: IImageStorage
 ): IVenueService {
   return {
-    getAllVenues(): Promise<VenueEntity[]> {
-      return venueRepository.findAll();
+    async getAllVenues() {
+      return (await venueRepository.findAll()).map(toVenueDTO);
     },
 
-    getVenuePage(options) {
-      return venueRepository.findPage(options);
+    async getVenuePage(options) {
+      const page = await venueRepository.findPage(options);
+      return { ...page, venues: page.venues.map(toVenueDTO) };
     },
 
-    async createVenue(venueName: string): Promise<VenueEntity> {
+    async createVenue(venueName: string) {
       try {
-        return await venueRepository.create(venueName);
+        return toVenueDTO(await venueRepository.create(venueName));
       } catch (error) {
         if (isVenueNameUniqueError(error)) {
           throw new Error('Venue name already exists');
@@ -56,7 +69,7 @@ export function createVenueService(
         throw error;
       }
       if (!venue) throw new Error('Venue not found');
-      return venue;
+      return toVenueDTO(venue);
     },
 
     async deleteVenue(venueId: number): Promise<void> {
