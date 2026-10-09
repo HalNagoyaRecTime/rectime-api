@@ -65,10 +65,57 @@ describe('EventController', () => {
       });
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
+        event_date: null,
         events,
         total: 1,
         limit: 50,
         offset: 0,
+      });
+    });
+
+    it.each([
+      ['2026-10-09', '2026-10-09'],
+      ['2028-02-29', '2028-02-29'],
+      [undefined, null],
+      ['', null],
+      ['2026-02-29', null],
+      ['2026-13-01', null],
+      ['2026-10-09T00:00:00Z', null],
+    ])(
+      'EVENT_DATE=%sを一覧トップレベルの%sとして返す',
+      async (configured, expected) => {
+        const { app, eventService } = setup();
+        const page = { events: [], total: 0, limit: 50, offset: 0 };
+        (
+          eventService.getAllEvents as ReturnType<typeof vi.fn>
+        ).mockResolvedValue(page);
+        const response = await app.request(
+          '/events',
+          {},
+          { EVENT_DATE: configured ?? undefined }
+        );
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({
+          ...page,
+          event_date: expected,
+        });
+      }
+    );
+
+    it('ページングや時刻フィルターでも同じ開催日を返す', async () => {
+      const { app, eventService } = setup();
+      (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
+        { events: [], total: 0, limit: 1, offset: 2 }
+      );
+      const response = await app.request(
+        '/events?start_time=0930&limit=1&offset=2',
+        {},
+        { EVENT_DATE: '2026-10-09' }
+      );
+      expect(await response.json()).toMatchObject({
+        event_date: '2026-10-09',
+        limit: 1,
+        offset: 2,
       });
     });
 
@@ -90,6 +137,7 @@ describe('EventController', () => {
       });
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
+        event_date: null,
         events,
         total: 1,
         limit: 10,

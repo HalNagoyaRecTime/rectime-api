@@ -38,6 +38,11 @@ export interface EventListItemDTO extends EventDTO {
   gathering_summary: GatheringSummaryDTO;
 }
 
+/** 一覧全体の開催日。時刻は従来どおりJSTとして扱う。 */
+export interface EventListResponseDTO extends EventListPageDTO {
+  event_date: string | null;
+}
+
 /** GET /events のクエリとして受け取る値。 */
 export interface GetEventsRequestDTO {
   start_time?: string;
@@ -61,7 +66,7 @@ export interface CreateEventRequestDTO {
 export type UpdateEventRequestDTO = CreateEventRequestDTO;
 
 /** GET /events のレスポンス本文。 */
-export interface EventListResponseDTO {
+export interface EventListPageDTO {
   events: EventListItemDTO[];
   total: number;
   limit: number;
