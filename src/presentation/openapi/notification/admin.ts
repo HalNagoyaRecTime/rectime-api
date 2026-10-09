@@ -1,3 +1,4 @@
+import { markdownBodySchema } from '../markdown';
 import { createRoute } from '@hono/zod-openapi';
 import {
   bearerAuth,
@@ -79,20 +80,23 @@ export const notificationCreateResponseSchema = z
   .strict()
   .openapi('NotificationCreateResponse');
 
-const notificationContentPatchBlockSchema = z
-  .object({
-    title: z.string().trim().min(1).optional(),
-    body: z.string().trim().min(1).optional(),
-  })
-  .strict()
-  .refine(value => Object.keys(value).length > 0, {
-    message: '少なくともtitleまたはbodyを指定してください',
-  });
+const notificationContentPatchBlockSchema = (bodySchema: z.ZodType<string>) =>
+  z
+    .object({
+      title: z.string().trim().min(1).optional(),
+      body: bodySchema.optional(),
+    })
+    .strict()
+    .refine(value => Object.keys(value).length > 0, {
+      message: '少なくともtitleまたはbodyを指定してください',
+    });
 
 export const notificationContentPatchSchema = z
   .object({
-    push: notificationContentPatchBlockSchema.optional(),
-    detail: notificationContentPatchBlockSchema.optional(),
+    push: notificationContentPatchBlockSchema(
+      z.string().trim().min(1)
+    ).optional(),
+    detail: notificationContentPatchBlockSchema(markdownBodySchema).optional(),
   })
   .strict()
   .refine(value => Object.keys(value).length > 0, {

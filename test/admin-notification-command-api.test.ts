@@ -104,6 +104,45 @@ describe('管理通知Command  API', () => {
     ]);
   });
 
+  it('作成・更新・再取得でMarkdown本文の空白が残る', async () => {
+    const token = await createStaffToken();
+    const body = '\n    code\n本文  \n次の行  ';
+    const response = await postNotification(
+      token,
+      createBody({
+        content: {
+          push: { title: 'Push', body: 'Push' },
+          detail: { title: 'Detail', body },
+        },
+      })
+    );
+    expect(response.status).toBe(201);
+    const { notificationId } = (await response.json()) as {
+      notificationId: number;
+    };
+    const url = `http://example.com/api/v1/admin/notifications/${notificationId}`;
+    const load = async () => {
+      const result = await app.fetch(
+        new Request(url, { headers: requestHeaders(token) }),
+        testEnv
+      );
+      expect(result.status).toBe(200);
+      return (await result.json()) as { content: { detail: { body: string } } };
+    };
+    expect((await load()).content.detail.body).toBe(body);
+    const updated = '更新  \n次の行\n';
+    const patch = await app.fetch(
+      new Request(url, {
+        method: 'PATCH',
+        headers: requestHeaders(token),
+        body: JSON.stringify({ content: { detail: { body: updated } } }),
+      }),
+      testEnv
+    );
+    expect(patch.status).toBe(200);
+    expect((await load()).content.detail.body).toBe(updated);
+  });
+
   it('認証済みStaffから作成し、開始後はdetailだけ編集できる', async () => {
     const token = await createStaffToken();
     const postResponse = await postNotification(token, createBody());
