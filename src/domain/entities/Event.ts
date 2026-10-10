@@ -45,3 +45,9 @@ export interface EventWithVenuesEntity extends EventEntity {
 export interface EventWithGatheringSummaryEntity extends EventWithVenuesEntity {
   gathering_summary: GatheringSummaryEntity;
 }
+
+/** 本人が参加する集合を含むイベント。 */
+export interface ParticipatingEventEntity {
+  event_id: number;
+  gathering_ids: number[];
+}

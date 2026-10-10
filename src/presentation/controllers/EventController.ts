@@ -80,7 +80,7 @@ export function createEventController(eventService: IEventService) {
     }
     try {
       const events = await eventService.getMyEvents(userId);
-      return c.json({ events });
+      return c.json({ events }, 200);
     } catch {
       return errorResponse(c, EventErrors.MY_EVENT_LIST_FAILED);
     }

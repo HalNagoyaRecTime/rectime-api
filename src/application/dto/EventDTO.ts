@@ -67,3 +67,9 @@ export interface EventListResponseDTO {
   limit: number;
   offset: number;
 }
+
+/** GET /me/events。本人の参加イベント・集合だけを返す。 */
+export interface MyEventDTO {
+  event_id: number;
+  gathering_ids: number[];
+}

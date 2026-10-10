@@ -2,6 +2,7 @@ import { createRoute } from '@hono/zod-openapi';
 import type {
   CreateEventRequestDTO,
   EventDetailDTO,
+  MyEventDTO,
   GetEventsRequestDTO,
 } from '../../application/dto/EventDTO';
 import { eventVenueListResponseSchema, venueIdsSchema } from './eventVenues';
@@ -238,6 +239,34 @@ export const eventDeleteRoute = createRoute({
     403: forbiddenResponse,
     404: notFoundResponse,
     409: conflictResponse,
+    500: internalServerErrorResponse,
+  },
+});
+
+/** 本人の参加情報。イベント本文・時刻・会場はイベントAPIから取得する。 */
+export const myEventResponseSchema = z
+  .object({
+    event_id: z.number().int().positive(),
+    gathering_ids: z.array(z.number().int().positive()).openapi({
+      description:
+        '本人が所属する集合ID。重複なし、ID昇順。時刻・場所はイベント詳細のroundsと照合する。',
+    }),
+  })
+  .openapi('MyEvent') satisfies z.ZodType<MyEventDTO>;
+
+export const myEventsRoute = createRoute({
+  method: 'get',
+  path: '/me/events',
+  tags: ['Events'],
+  security: bearerAuth,
+  description:
+    '本人が参加するイベントIDと集合IDのみを開始時刻・イベントID順で返す。イベント情報はイベントAPIから取得する。未参加はeventsが空配列。',
+  responses: {
+    200: jsonResponse(
+      z.object({ events: z.array(myEventResponseSchema) }),
+      '本人の参加予定'
+    ),
+    401: unauthorizedResponse,
     500: internalServerErrorResponse,
   },
 });

@@ -98,7 +98,10 @@ export function createEventService(
     },
     async getMyEvents(userId) {
       const events = await eventRepository.findByParticipantUserId(userId);
-      return events.map(toEventDTO);
+      return events.map(event => ({
+        event_id: event.event_id,
+        gathering_ids: event.gathering_ids,
+      }));
     },
     async createEvent(event) {
       await ensureVenuesExist(venueRepository, event.venue_ids);
