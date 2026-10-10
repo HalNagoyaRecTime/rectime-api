@@ -236,7 +236,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(61);
+    expect(documentedOperations).toHaveLength(63);
     expect(document.paths['/api/v1/gatherings']).toBeUndefined();
     const schedulePath =
       document.paths[

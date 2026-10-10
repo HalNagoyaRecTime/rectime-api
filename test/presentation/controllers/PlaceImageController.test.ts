@@ -5,6 +5,8 @@ import { createPlaceImageController } from '../../../src/presentation/controller
 
 function setup() {
   const placeImageService: IPlaceImageService = {
+    getVenueImage: vi.fn(),
+    getGatheringSpotImage: vi.fn(),
     setVenueImage: vi.fn(),
     deleteVenueImage: vi.fn(),
     setGatheringSpotImage: vi.fn(),
@@ -12,6 +14,10 @@ function setup() {
   };
   const controller = createPlaceImageController(placeImageService);
   const app = new Hono();
+  app.get('/venues/:venueId/image', c => controller.getVenueImage(c));
+  app.get('/gathering-spots/:gatheringSpotId/image', c =>
+    controller.getGatheringSpotImage(c)
+  );
   app.put('/venues/:venueId/image', c => controller.putVenueImage(c));
   app.delete('/venues/:venueId/image', c => controller.deleteVenueImage(c));
   app.put('/gathering-spots/:gatheringSpotId/image', c =>
@@ -32,6 +38,37 @@ function putImage(app: Hono, path: string) {
 }
 
 describe('PlaceImageController', () => {
+  it('実施場所の画像を、種類と長期キャッシュの指定つきで返す', async () => {
+    const { app, placeImageService } = setup();
+    vi.mocked(placeImageService.getVenueImage).mockResolvedValue({
+      body: new Response(new Uint8Array([1, 2, 3])).body!,
+      contentType: 'image/png',
+    });
+
+    const response = await app.request('/venues/1/image?v=a.png');
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('image/png');
+    expect(response.headers.get('Cache-Control')).toBe(
+      'private, max-age=31536000, immutable'
+    );
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+      new Uint8Array([1, 2, 3])
+    );
+  });
+
+  it('画像が無い集合場所は404を返す', async () => {
+    const { app, placeImageService } = setup();
+    vi.mocked(placeImageService.getGatheringSpotImage).mockResolvedValue(null);
+
+    const response = await app.request('/gathering-spots/2/image');
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'PLACE_IMAGE_NOT_FOUND' },
+    });
+  });
+
   it('実施場所の画像を本文と Content-Type のまま渡し、204を返す', async () => {
     const { app, placeImageService } = setup();
 

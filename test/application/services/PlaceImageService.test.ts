@@ -16,7 +16,11 @@ function setup(found: { imageKey: string | null } | null = { imageKey: null }) {
     findImageKey: vi.fn().mockResolvedValue(found),
     updateImageKey: vi.fn(),
   } as unknown as IGatheringSpotRepository;
-  const imageStorage: IImageStorage = { put: vi.fn(), delete: vi.fn() };
+  const imageStorage: IImageStorage = {
+    get: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+  };
   return {
     venueRepository,
     gatheringSpotRepository,
@@ -32,6 +36,25 @@ function setup(found: { imageKey: string | null } | null = { imageKey: null }) {
 const pngImage = { body: new ArrayBuffer(3), contentType: 'image/png' };
 
 describe('PlaceImageService', () => {
+  it('紐づいている画像を保存先から取り出す', async () => {
+    const { imageStorage, service } = setup({ imageKey: 'venues/1/a.png' });
+    const stored = { body: new ReadableStream(), contentType: 'image/png' };
+    vi.mocked(imageStorage.get).mockResolvedValue(stored);
+
+    await expect(service.getVenueImage(1)).resolves.toBe(stored);
+    expect(imageStorage.get).toHaveBeenCalledWith('venues/1/a.png');
+  });
+
+  it.each([
+    ['画像が無い場所', { imageKey: null }],
+    ['存在しない場所', null],
+  ])('%sの画像は null を返す', async (_, found) => {
+    const { imageStorage, service } = setup(found);
+
+    await expect(service.getGatheringSpotImage(2)).resolves.toBeNull();
+    expect(imageStorage.get).not.toHaveBeenCalled();
+  });
+
   it('実施場所の画像を保存し、新しいキーを紐づける', async () => {
     const { venueRepository, imageStorage, service } = setup();
 

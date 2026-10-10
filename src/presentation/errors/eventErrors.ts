@@ -196,6 +196,16 @@ export const EventErrors = {
     code: 'VENUE_DELETE_FAILED',
     message: '実施場所の削除に失敗しました',
   },
+  PLACE_IMAGE_NOT_FOUND: {
+    status: 404,
+    code: 'PLACE_IMAGE_NOT_FOUND',
+    message: '画像が見つかりません',
+  },
+  PLACE_IMAGE_GET_FAILED: {
+    status: 500,
+    code: 'PLACE_IMAGE_GET_FAILED',
+    message: '画像の取得に失敗しました',
+  },
   INVALID_PLACE_IMAGE: {
     status: 400,
     code: 'INVALID_PLACE_IMAGE',

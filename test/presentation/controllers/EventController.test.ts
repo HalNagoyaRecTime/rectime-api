@@ -11,7 +11,7 @@ function buildEvent(
     event_id: 1,
     event_name: '徒競走',
     rule_text: null,
-    venues: [{ venue_id: 2, venue_name: 'トラック' }],
+    venues: [{ venue_id: 2, venue_name: 'トラック', image_key: null }],
     start_time: '0930',
     end_time: '0950',
     created_at: '2026-01-01',

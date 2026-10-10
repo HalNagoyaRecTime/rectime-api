@@ -126,8 +126,8 @@ describe('GET /api/v1/events/:eventId', () => {
       event_name: 'リレー',
       rule_text: 'バトンを使用します。',
       venues: [
-        { venue_id: mainCourt, venue_name: 'メインコート' },
-        { venue_id: subCourt, venue_name: 'サブコート' },
+        { venue_id: mainCourt, venue_name: 'メインコート', image_url: null },
+        { venue_id: subCourt, venue_name: 'サブコート', image_url: null },
       ],
       start_time: '1100',
       end_time: '1230',
@@ -141,6 +141,7 @@ describe('GET /api/v1/events/:eventId', () => {
               gathering_spot: {
                 gathering_spot_id: entrance1,
                 gathering_spot_name: '出入口①',
+                image_url: null,
               },
               member_count: 2,
             },
@@ -150,6 +151,7 @@ describe('GET /api/v1/events/:eventId', () => {
               gathering_spot: {
                 gathering_spot_id: entrance2,
                 gathering_spot_name: '出入口②',
+                image_url: null,
               },
               member_count: 0,
             },
@@ -164,6 +166,7 @@ describe('GET /api/v1/events/:eventId', () => {
               gathering_spot: {
                 gathering_spot_id: entrance1,
                 gathering_spot_name: '出入口①',
+                image_url: null,
               },
               member_count: 0,
             },

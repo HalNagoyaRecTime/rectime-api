@@ -21,6 +21,11 @@ export const venueResponseSchema = z
   .object({
     venue_id: z.number().int(),
     venue_name: z.string(),
+    image_url: z.string().nullable().openapi({
+      description:
+        '画像のURL（APIのオリジンからの相対パス）。画像が無ければnull。差し替えるとURLが変わる。',
+      example: '/api/v1/venues/1/image?v=3f9a.webp',
+    }),
     created_at: timestampSchema,
     updated_at: timestampSchema,
   })

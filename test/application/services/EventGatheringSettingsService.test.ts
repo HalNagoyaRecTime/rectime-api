@@ -14,6 +14,7 @@ const existing: EventGatheringEntity[] = [
     gathering_time: '10:45',
     gathering_spot_id: 1,
     gathering_spot_name: '出入口①',
+    gathering_spot_image_key: null,
     member_count: 16,
   },
   {
@@ -22,6 +23,7 @@ const existing: EventGatheringEntity[] = [
     gathering_time: '10:55',
     gathering_spot_id: 2,
     gathering_spot_name: '出入口②',
+    gathering_spot_image_key: null,
     member_count: 0,
   },
 ];
@@ -379,6 +381,7 @@ describe('EventGatheringSettingsService', () => {
           gathering_time: '11:00',
           gathering_spot_id: 3,
           gathering_spot_name: '出入口③',
+          gathering_spot_image_key: null,
           member_count: 0,
         },
       ];
@@ -424,6 +427,7 @@ describe('EventGatheringSettingsService', () => {
                 gathering_spot: {
                   gathering_spot_id: 1,
                   gathering_spot_name: '出入口①',
+                  image_url: null,
                 },
                 member_count: 16,
               },
@@ -433,6 +437,7 @@ describe('EventGatheringSettingsService', () => {
                 gathering_spot: {
                   gathering_spot_id: 2,
                   gathering_spot_name: '出入口②',
+                  image_url: null,
                 },
                 member_count: 0,
               },
@@ -447,6 +452,7 @@ describe('EventGatheringSettingsService', () => {
                 gathering_spot: {
                   gathering_spot_id: 3,
                   gathering_spot_name: '出入口③',
+                  image_url: null,
                 },
                 member_count: 0,
               },

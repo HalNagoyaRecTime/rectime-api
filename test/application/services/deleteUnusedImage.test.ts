@@ -3,7 +3,7 @@ import { deleteUnusedImage } from '../../../src/application/services/deleteUnuse
 import type { IImageStorage } from '../../../src/domain/interfaces/storages/IImageStorage';
 
 function createStorage(): IImageStorage {
-  return { put: vi.fn(), delete: vi.fn() };
+  return { get: vi.fn(), put: vi.fn(), delete: vi.fn() };
 }
 
 describe('deleteUnusedImage', () => {

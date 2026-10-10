@@ -7,6 +7,7 @@ export interface EventGatheringEntity {
   gathering_time: string;
   gathering_spot_id: number;
   gathering_spot_name: string;
+  gathering_spot_image_key: string | null;
   member_count: number;
 }
 

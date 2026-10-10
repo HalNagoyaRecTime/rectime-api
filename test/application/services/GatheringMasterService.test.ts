@@ -5,13 +5,25 @@ import type { IGatheringGroupMemberRepository } from '../../../src/domain/interf
 import type { IGatheringSpotRepository } from '../../../src/domain/interfaces/repositories/IGatheringSpotRepository';
 import type { IImageStorage } from '../../../src/domain/interfaces/storages/IImageStorage';
 
-const imageStorage: IImageStorage = { put: vi.fn(), delete: vi.fn() };
+const imageStorage: IImageStorage = {
+  get: vi.fn(),
+  put: vi.fn(),
+  delete: vi.fn(),
+};
 
 describe('Gathering master services', () => {
-  it('集合場所の作成・一覧取得結果をRepositoryから返す', async () => {
+  it('集合場所の作成・一覧取得結果を、画像のURLに変換して返す', async () => {
     const spot = {
       gathering_spot_id: 1,
       gathering_spot_name: '体育館前',
+      image_key: 'gathering-spots/1/a.png',
+      created_at: '2026-01-01 00:00:00',
+      updated_at: '2026-01-01 00:00:00',
+    };
+    const expected = {
+      gathering_spot_id: 1,
+      gathering_spot_name: '体育館前',
+      image_url: '/api/v1/gathering-spots/1/image?v=a.png',
       created_at: '2026-01-01 00:00:00',
       updated_at: '2026-01-01 00:00:00',
     };
@@ -29,14 +41,17 @@ describe('Gathering master services', () => {
     };
     const service = createGatheringSpotService(repository, imageStorage);
 
-    await expect(service.createGatheringSpot('体育館前')).resolves.toBe(spot);
-    await expect(service.getAllGatheringSpots()).resolves.toEqual([spot]);
+    await expect(service.createGatheringSpot('体育館前')).resolves.toEqual(
+      expected
+    );
+    await expect(service.getAllGatheringSpots()).resolves.toEqual([expected]);
   });
 
   it('集合場所の更新をIDと入力値ごとRepositoryへ委譲する', async () => {
     const updatedSpot = {
       gathering_spot_id: 1,
       gathering_spot_name: '正門前',
+      image_key: null,
       created_at: '2026-01-01 00:00:00',
       updated_at: '2026-01-02 00:00:00',
     };
@@ -55,9 +70,13 @@ describe('Gathering master services', () => {
     const service = createGatheringSpotService(repository, imageStorage);
     const input = { gathering_spot_name: '正門前' };
 
-    await expect(service.updateGatheringSpot(1, input)).resolves.toBe(
-      updatedSpot
-    );
+    await expect(service.updateGatheringSpot(1, input)).resolves.toEqual({
+      gathering_spot_id: 1,
+      gathering_spot_name: '正門前',
+      image_url: null,
+      created_at: '2026-01-01 00:00:00',
+      updated_at: '2026-01-02 00:00:00',
+    });
     expect(repository.update).toHaveBeenCalledWith(1, input);
   });
 
@@ -117,7 +136,11 @@ describe('Gathering master services', () => {
         .mockResolvedValue({ imageKey: 'gathering-spots/1/old.webp' }),
       updateImageKey: vi.fn(),
     };
-    const storage: IImageStorage = { put: vi.fn(), delete: vi.fn() };
+    const storage: IImageStorage = {
+      get: vi.fn(),
+      put: vi.fn(),
+      delete: vi.fn(),
+    };
     const service = createGatheringSpotService(repository, storage);
 
     await service.deleteGatheringSpot(1);

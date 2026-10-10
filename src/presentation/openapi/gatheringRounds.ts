@@ -7,6 +7,11 @@ export const gatheringSpotSummarySchema = z
   .object({
     gathering_spot_id: z.number().int(),
     gathering_spot_name: z.string(),
+    image_url: z.string().nullable().openapi({
+      description:
+        '画像のURL（APIのオリジンからの相対パス）。画像が無ければnull。差し替えるとURLが変わる。',
+      example: '/api/v1/gathering-spots/1/image?v=3f9a.webp',
+    }),
   })
   .openapi('GatheringSpotSummary');
 

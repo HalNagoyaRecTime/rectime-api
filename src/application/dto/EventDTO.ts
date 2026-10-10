@@ -16,6 +16,7 @@ export interface EventDTO {
 export interface EventVenueDTO {
   venue_id: number;
   venue_name: string;
+  image_url: string | null;
 }
 
 /**

@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import { IPlaceImageService } from '../../application/services/IPlaceImageService';
-import { PlaceImage } from '../../domain/entities/PlaceImage';
+import { PlaceImage, StoredImage } from '../../domain/entities/PlaceImage';
 import { ApiErrorDefinition, errorResponse } from '../errors/errorResponse';
 import { EventErrors } from '../errors/eventErrors';
 import { gatheringSpotIdParams } from '../openapi/gatherings';
@@ -12,6 +12,7 @@ type PlaceImageTarget = {
   invalidIdError: ApiErrorDefinition<400>;
   notFoundMessage: string;
   notFoundError: ApiErrorDefinition<404>;
+  getImage: (id: number) => Promise<StoredImage | null>;
   setImage: (id: number, image: PlaceImage) => Promise<void>;
   deleteImage: (id: number) => Promise<void>;
 };
@@ -40,6 +41,7 @@ export function createPlaceImageController(
     invalidIdError: EventErrors.INVALID_VENUE_ID,
     notFoundMessage: 'Venue not found',
     notFoundError: EventErrors.VENUE_NOT_FOUND,
+    getImage: placeImageService.getVenueImage,
     setImage: placeImageService.setVenueImage,
     deleteImage: placeImageService.deleteVenueImage,
   };
@@ -48,8 +50,25 @@ export function createPlaceImageController(
     invalidIdError: EventErrors.INVALID_GATHERING_SPOT_ID,
     notFoundMessage: 'Gathering spot not found',
     notFoundError: EventErrors.GATHERING_SPOT_NOT_FOUND,
+    getImage: placeImageService.getGatheringSpotImage,
     setImage: placeImageService.setGatheringSpotImage,
     deleteImage: placeImageService.deleteGatheringSpotImage,
+  };
+
+  const getImage = (target: PlaceImageTarget) => async (c: Context) => {
+    const id = target.parseId(c);
+    if (id === undefined) return errorResponse(c, target.invalidIdError);
+
+    try {
+      const image = await target.getImage(id);
+      if (!image) return errorResponse(c, EventErrors.PLACE_IMAGE_NOT_FOUND);
+      return c.body(image.body, 200, {
+        'Content-Type': image.contentType,
+        'Cache-Control': 'private, max-age=31536000, immutable',
+      });
+    } catch {
+      return errorResponse(c, EventErrors.PLACE_IMAGE_GET_FAILED);
+    }
   };
 
   const putImage = (target: PlaceImageTarget) => async (c: Context) => {
@@ -90,6 +109,8 @@ export function createPlaceImageController(
   };
 
   return {
+    getVenueImage: getImage(venues),
+    getGatheringSpotImage: getImage(gatheringSpots),
     putVenueImage: putImage(venues),
     deleteVenueImage: deleteImage(venues),
     putGatheringSpotImage: putImage(gatheringSpots),

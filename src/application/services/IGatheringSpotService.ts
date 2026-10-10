@@ -1,21 +1,21 @@
 import {
-  GatheringSpotEntity,
   GatheringSpotListOptions,
-  GatheringSpotPage,
   UpdateGatheringSpotInput,
 } from '../../domain/entities/GatheringSpot';
+import {
+  GatheringSpotDTO,
+  GatheringSpotPageDTO,
+} from '../dto/GatheringSpotDTO';
 
 export interface IGatheringSpotService {
-  getAllGatheringSpots: () => Promise<GatheringSpotEntity[]>;
+  getAllGatheringSpots: () => Promise<GatheringSpotDTO[]>;
   getGatheringSpotPage: (
     options: GatheringSpotListOptions
-  ) => Promise<GatheringSpotPage>;
-  createGatheringSpot: (
-    gatheringSpotName: string
-  ) => Promise<GatheringSpotEntity>;
+  ) => Promise<GatheringSpotPageDTO>;
+  createGatheringSpot: (gatheringSpotName: string) => Promise<GatheringSpotDTO>;
   updateGatheringSpot: (
     gatheringSpotId: number,
     input: UpdateGatheringSpotInput
-  ) => Promise<GatheringSpotEntity>;
+  ) => Promise<GatheringSpotDTO>;
   deleteGatheringSpot: (gatheringSpotId: number) => Promise<void>;
 }

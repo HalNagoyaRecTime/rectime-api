@@ -1,26 +1,47 @@
 import { GatheringSpotEntity } from '../../domain/entities/GatheringSpot';
+import { GatheringSpotDTO } from '../dto/GatheringSpotDTO';
+import { gatheringSpotImageUrl } from './placeImageUrl';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
 import { IImageStorage } from '../../domain/interfaces/storages/IImageStorage';
 import { deleteUnusedImage } from './deleteUnusedImage';
 import { IGatheringSpotService } from './IGatheringSpotService';
+
+function toGatheringSpotDTO(
+  gatheringSpot: GatheringSpotEntity
+): GatheringSpotDTO {
+  return {
+    gathering_spot_id: gatheringSpot.gathering_spot_id,
+    gathering_spot_name: gatheringSpot.gathering_spot_name,
+    image_url: gatheringSpotImageUrl(
+      gatheringSpot.gathering_spot_id,
+      gatheringSpot.image_key
+    ),
+    created_at: gatheringSpot.created_at,
+    updated_at: gatheringSpot.updated_at,
+  };
+}
 
 export function createGatheringSpotService(
   gatheringSpotRepository: IGatheringSpotRepository,
   imageStorage: IImageStorage
 ): IGatheringSpotService {
   return {
-    getAllGatheringSpots(): Promise<GatheringSpotEntity[]> {
-      return gatheringSpotRepository.findAll();
+    async getAllGatheringSpots() {
+      return (await gatheringSpotRepository.findAll()).map(toGatheringSpotDTO);
     },
 
-    getGatheringSpotPage(options) {
-      return gatheringSpotRepository.findPage(options);
+    async getGatheringSpotPage(options) {
+      const page = await gatheringSpotRepository.findPage(options);
+      return {
+        ...page,
+        gathering_spots: page.gathering_spots.map(toGatheringSpotDTO),
+      };
     },
 
-    createGatheringSpot(
-      gatheringSpotName: string
-    ): Promise<GatheringSpotEntity> {
-      return gatheringSpotRepository.create(gatheringSpotName);
+    async createGatheringSpot(gatheringSpotName: string) {
+      return toGatheringSpotDTO(
+        await gatheringSpotRepository.create(gatheringSpotName)
+      );
     },
 
     async updateGatheringSpot(gatheringSpotId, input) {
@@ -29,7 +50,7 @@ export function createGatheringSpotService(
         input
       );
       if (!gatheringSpot) throw new Error('Gathering spot not found');
-      return gatheringSpot;
+      return toGatheringSpotDTO(gatheringSpot);
     },
 
     async deleteGatheringSpot(gatheringSpotId: number): Promise<void> {

@@ -38,6 +38,12 @@ export function createPlaceImageService(
     updateImageKey: gatheringSpotRepository.updateImageKey,
   };
 
+  const getImage = async (target: PlaceImageTarget, id: number) => {
+    const current = await target.findImageKey(id);
+    if (!current?.imageKey) return null;
+    return imageStorage.get(current.imageKey);
+  };
+
   const setImage = async (
     target: PlaceImageTarget,
     id: number,
@@ -70,6 +76,9 @@ export function createPlaceImageService(
   };
 
   return {
+    getVenueImage: venueId => getImage(venues, venueId),
+    getGatheringSpotImage: gatheringSpotId =>
+      getImage(gatheringSpots, gatheringSpotId),
     setVenueImage: (venueId, image) => setImage(venues, venueId, image),
     deleteVenueImage: venueId => deleteImage(venues, venueId),
     setGatheringSpotImage: (gatheringSpotId, image) =>

@@ -12,6 +12,7 @@ function toEntity(
   return {
     gathering_spot_id: row.id,
     gathering_spot_name: row.name,
+    image_key: row.imageKey,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };

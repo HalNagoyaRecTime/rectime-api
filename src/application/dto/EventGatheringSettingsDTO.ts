@@ -20,6 +20,7 @@ export interface EventGatheringSettingsRequestDTO {
 export interface GatheringSpotSummaryDTO {
   gathering_spot_id: number;
   gathering_spot_name: string;
+  image_url: string | null;
 }
 
 export interface GatheringSettingDTO {
