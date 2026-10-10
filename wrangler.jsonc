@@ -14,6 +14,9 @@
     // /openapi.json と /docs は404になる(src/index.ts の requireDocsEnabled)。
     // API仕様・内部エラーコード・DB形状のヒントを無認証で公開しないため。
     "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
+    // /app/contact のリダイレクト先(Microsoft Forms「アプリお問い合わせ」)。
+    // 空・未設定・https以外のときはリダイレクトせず404を返す。
+    "CONTACT_FORM_URL": "https://forms.cloud.microsoft/r/LAsntFuQcF",
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
   // 公開されている(README.md参照)。カスタムドメイン/routesは未設定のため、
@@ -117,6 +120,9 @@
         "ALLOWED_ORIGINS": "http://localhost:5173,https://recwatch.pages.dev,https://*.recwatch.pages.dev",
         "DOCS_ENABLED": "true",
         "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
+        // /app/contact のリダイレクト先(Microsoft Forms「アプリお問い合わせ」)。
+        // 空・未設定・https以外のときはリダイレクトせず404を返す。
+        "CONTACT_FORM_URL": "https://forms.cloud.microsoft/r/LAsntFuQcF",
         // Entraアプリの「アプリケーション(クライアント)ID」。非公開の資格情報ではないためvarsで直接設定する。
         "MICROSOFT_CLIENT_ID": "be597fc9-7946-43a2-9ba8-6a96c96fd3b7",
         // Entraのマルチテナント共通エンドポイント値。環境によらず同一。
