@@ -6,13 +6,11 @@ import {
   getNumberEnv,
   hasMinimumDecodedBytes,
   isValidBase64Url,
-  userResponse,
   type AppContext,
 } from '../../../src/presentation/auth/helpers';
 import { errorResponse } from '../../../src/presentation/errors/errorResponse';
 import { CommonErrors } from '../../../src/presentation/errors/commonErrors';
 import { toBase64URL } from '../../../src/infrastructure/auth/base64url';
-import { ACCOUNT_PHOTO_PATH } from '../../../src/domain/auth/types';
 
 function buildApp(
   handler: (c: AppContext) => Response,
@@ -174,70 +172,6 @@ describe('presentation/auth/helpers', () => {
 
     it('デコードできない値の場合は false を返す', () => {
       expect(hasMinimumDecodedBytes('!!!invalid!!!', 1)).toBe(false);
-    });
-  });
-
-  describe('userResponse', () => {
-    it('avatar_url / avatar_updated_at が無い場合はデフォルト値を補完する', () => {
-      const result = userResponse(
-        {
-          id: 'user-1',
-          email: 'tanaka@example.com',
-          display_name: '田中太郎',
-          student_id_number: '10000',
-          class_code: 'IH11A111',
-          class_room_name: 'IH11A111',
-          attendance_number: 1,
-        },
-        { is_student: false, is_staff: false, is_teacher: false }
-      );
-
-      expect(result).toEqual({
-        id: 'user-1',
-        email: 'tanaka@example.com',
-        display_name: '田中太郎',
-        avatar_url: ACCOUNT_PHOTO_PATH,
-        avatar_updated_at: null,
-        student_id_number: '10000',
-        class_code: 'IH11A111',
-        class_room_name: 'IH11A111',
-        attendance_number: 1,
-        is_student: false,
-        is_staff: false,
-        is_teacher: false,
-      });
-    });
-
-    it('avatar_url / avatar_updated_at が指定されている場合はそのまま使う', () => {
-      const result = userResponse(
-        {
-          id: 'user-1',
-          email: 'tanaka@example.com',
-          display_name: '田中太郎',
-          avatar_url: 'https://example.com/avatar.png',
-          avatar_updated_at: '2026-01-01T00:00:00.000Z',
-          student_id_number: '10000',
-          class_code: 'IH11A111',
-          class_room_name: 'IH11A111',
-          attendance_number: 1,
-        },
-        { is_student: true, is_staff: false, is_teacher: false }
-      );
-
-      expect(result).toEqual({
-        id: 'user-1',
-        email: 'tanaka@example.com',
-        display_name: '田中太郎',
-        avatar_url: 'https://example.com/avatar.png',
-        avatar_updated_at: '2026-01-01T00:00:00.000Z',
-        student_id_number: '10000',
-        class_code: 'IH11A111',
-        class_room_name: 'IH11A111',
-        attendance_number: 1,
-        is_student: true,
-        is_staff: false,
-        is_teacher: false,
-      });
     });
   });
 });

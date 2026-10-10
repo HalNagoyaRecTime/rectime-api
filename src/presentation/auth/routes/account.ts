@@ -11,10 +11,6 @@ import {
   getNumberEnv,
   getBearerToken,
   refreshMicrosoftAccessToken,
-  userResponse,
-  getStudentInfoOrNull,
-  getUserCategories,
-  getTeacherInfoOrNull,
 } from '../helpers';
 import { rejectInactiveUser } from '../rejectInactiveUser';
 import {
@@ -91,7 +87,7 @@ async function authenticateActiveUser(
 
 // GET /auth/me
 account.get('/me', async c => {
-  const { studentService } = c.get('container');
+  const { authProfileService } = c.get('container');
   const clientType = getClientType(c);
   if (clientType !== 'web' && clientType !== 'mobile') {
     return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
@@ -109,30 +105,14 @@ account.get('/me', async c => {
   const rejected = await rejectInactiveUser(c, claims.sub);
   if (rejected) return rejected;
 
-  const student = await getStudentInfoOrNull(
-    studentService,
-    Number(claims.sub)
-  );
-
-  const categories = await getUserCategories(c, claims.sub);
-  const teacher = await getTeacherInfoOrNull(c, claims.sub, categories);
-  return c.json({
-    user: userResponse(
-      {
-        id: claims.sub,
-        email: claims.email,
-        display_name: claims.display_name,
-        avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
-        avatar_updated_at: claims.avatar_updated_at ?? null,
-        student_id_number: student?.student_id_number ?? null,
-        class_code: student?.class_code ?? null,
-        class_room_name: student?.class_room_name ?? null,
-        attendance_number: student?.attendance_number ?? null,
-      },
-      categories,
-      teacher
-    ),
+  const user = await authProfileService.getProfile({
+    id: claims.sub,
+    email: claims.email,
+    display_name: claims.display_name,
+    avatar_url: claims.avatar_url,
+    avatar_updated_at: claims.avatar_updated_at,
   });
+  return c.json({ user });
 });
 
 // GET /auth/me/photo

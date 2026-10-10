@@ -15,10 +15,6 @@ import {
   buildWebRedirectUri,
   exchangeMicrosoftToken,
   upsertUser,
-  userResponse,
-  getStudentInfoOrNull,
-  getUserCategories,
-  getTeacherInfoOrNull,
 } from '../helpers';
 import {
   getAllowedFrontendOrigin,
@@ -399,8 +395,8 @@ microsoft.post('/token', async c => {
     }
   }
 
-  const { studentService } = c.get('container');
-  const student = await getStudentInfoOrNull(studentService, Number(user.id));
+  const { authProfileService } = c.get('container');
+  const profile = await authProfileService.getProfile(user);
 
   const refreshTokenId = crypto.randomUUID();
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
@@ -444,25 +440,12 @@ microsoft.post('/token', async c => {
     jwtTtl
   );
 
-  const categories = await getUserCategories(c, user.id);
-  const teacher = await getTeacherInfoOrNull(c, user.id, categories);
-
   return c.json({
     access_token: accessToken,
     refresh_token_id: refreshTokenId,
     token_type: 'Bearer',
     expires_in: jwtTtl,
-    user: userResponse(
-      {
-        ...user,
-        student_id_number: student?.student_id_number ?? null,
-        class_code: student?.class_code ?? null,
-        class_room_name: student?.class_room_name ?? null,
-        attendance_number: student?.attendance_number ?? null,
-      },
-      categories,
-      teacher
-    ),
+    user: profile,
   });
 });
 
