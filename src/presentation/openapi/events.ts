@@ -6,7 +6,6 @@ import type {
 } from '../../application/dto/EventDTO';
 import { eventVenueListResponseSchema, venueIdsSchema } from './eventVenues';
 import { roundSettingResponseSchema } from './gatheringRounds';
-import { gatheringListResponseSchema } from './gatherings';
 import {
   badRequestResponse,
   bearerAuth,
@@ -146,32 +145,6 @@ export const eventDetailRoute = createRoute({
   request: { params: eventIdParams },
   responses: {
     200: jsonResponse(eventDetailResponseSchema, 'イベント'),
-    400: badRequestResponse,
-    401: unauthorizedResponse,
-    404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const eventGatheringListRoute = createRoute({
-  method: 'get',
-  path: '/events/{eventId}/gatherings',
-  tags: ['Events'],
-  summary: 'イベントに紐づく集合予定一覧を取得する',
-  description: [
-    '配布済みrectime-mobileが利用する旧Read APIを、mobile互換のため維持する（#395）。',
-    'recwatchが新Event詳細Read（#384）へ移行しても、レスポンス形式・認可を変更しない。',
-    'リポジトリ内の呼び出しが0件でも削除条件を満たさない。',
-    '削除は2027年度以降に#386で行い、以下の全条件を満たすまで削除しない。',
-    'rectime-mobile#244で新Event詳細Readへの移行が完了していること。',
-    '新バージョンがAndroid / iOSの両方でリリース済みであること。',
-    'サポート対象バージョンが本APIへ依存していないこと。',
-    'recwatchを含む他クライアントの呼び出しも0件であること。',
-  ].join('\n'),
-  security: bearerAuth,
-  request: { params: eventIdParams },
-  responses: {
-    200: jsonResponse(gatheringListResponseSchema, '集合予定一覧'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     404: notFoundResponse,

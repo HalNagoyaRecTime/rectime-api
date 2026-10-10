@@ -56,7 +56,6 @@ import {
   eventCreateRoute,
   eventDeleteRoute,
   eventDetailRoute,
-  eventGatheringListRoute,
   eventListRoute,
   eventUpdateRoute,
 } from './presentation/openapi/events';
@@ -291,11 +290,6 @@ apiV1.openapi(authed(eventDetailRoute), c => {
 apiV1.get('/me/events', requireAuth, c => {
   return c.get('container').eventController.getMyEvents(c);
 });
-// 配布済みmobileが利用中の互換APIのため削除禁止（#395）。レスポンス形式・認可を維持する。
-// リポジトリ内の呼び出しが0件でも削除不可。2027年度以降、OpenAPI記載の全条件を満たして#386で削除する。
-apiV1.openapi(authed(eventGatheringListRoute), c => {
-  return c.get('container').gatheringController.getGatheringsByEventId(c);
-});
 apiV1.openapi(staffOnly(eventGatheringSettingsUpdateRoute), c => {
   return c
     .get('container')
@@ -424,9 +418,7 @@ apiV1.openapi(staffOnly(venueDeleteRoute), c => {
 
 // Gathering member routes
 //
-// GETだけはstaff限定にしない: 学生アプリが本人の参加する集合を判定して
-// 「出場」表示を出すのにこの一覧取得を使っている(レビュー指摘)。
-// 追加・削除(POST/DELETE)は引き続きstaff限定とする。
+// 参加者一覧のGETは認証済みユーザー向け、参加者を変更するPUTはstaff限定とする。
 apiV1.openapi(authed(gatheringMemberListRoute), c => {
   return c
     .get('container')

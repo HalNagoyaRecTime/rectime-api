@@ -34,7 +34,6 @@ beforeAll(async () => {
 const mobileGetPaths = [
   '/api/v1/events',
   '/api/v1/events/{eventId}',
-  '/api/v1/events/{eventId}/gatherings',
   '/api/v1/me/notifications',
   '/api/v1/me/notifications/{notificationId}',
 ] as const;
@@ -60,20 +59,6 @@ describe('mobile API contract', () => {
         'venues',
         'start_time',
         'end_time',
-        'created_at',
-        'updated_at',
-      ],
-    ],
-    [
-      'Gathering',
-      [
-        'gathering_id',
-        'event_id',
-        'gathering_spot_id',
-        'gathering_time',
-        'round',
-        'event_name',
-        'gathering_spot_name',
         'created_at',
         'updated_at',
       ],

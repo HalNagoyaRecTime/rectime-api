@@ -71,29 +71,6 @@ export type GatheringMemberListResponseDTO = z.infer<
   typeof gatheringMemberListResponseSchema
 >;
 
-export const gatheringResponseSchema = z
-  .object({
-    gathering_id: z.number().int(),
-    event_id: z.number().int(),
-    gathering_spot_id: z.number().int(),
-    gathering_time: z.string().openapi({
-      description: 'HH:MM形式。99:59は集合時刻が未設定であることを表す。',
-      example: '08:45',
-    }),
-    round: z.number().int(),
-    created_at: timestampSchema,
-    updated_at: timestampSchema,
-    event_name: z.string(),
-    gathering_spot_name: z.string(),
-  })
-  .openapi('Gathering');
-
-export type GatheringResponseDTO = z.infer<typeof gatheringResponseSchema>;
-
-export const gatheringListResponseSchema = z
-  .array(gatheringResponseSchema)
-  .openapi('GatheringList');
-
 export const gatheringSpotIdParams = z.object({
   gatheringSpotId: positivePathParam('gatheringSpotId', '集合場所ID'),
 });
