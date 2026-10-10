@@ -62,6 +62,8 @@ export type UpdateEventRequestDTO = CreateEventRequestDTO;
 
 /** GET /events のレスポンス本文。 */
 export interface EventListResponseDTO {
+  /** 日本時間の開催日。設定がない・不正な場合はnull。 */
+  event_date: string | null;
   events: EventListItemDTO[];
   total: number;
   limit: number;
