@@ -3,23 +3,23 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0034_normalize_notification_datetime.sql'
+    item => item.name === '0036_normalize_notification_datetime.sql'
   );
   if (!migration) {
     throw new Error(
-      '0034_normalize_notification_datetime.sql is not registered'
+      '0036_normalize_notification_datetime.sql is not registered'
     );
   }
   return migration.queries;
 })();
 
-const testPrefix = '0034通知日時移行テスト';
+const testPrefix = '0036通知日時移行テスト';
 
 async function runMigration(): Promise<void> {
   await env.DB.batch(migrationQueries.map(query => env.DB.prepare(query)));
 }
 
-describe('0034_normalize_notification_datetime.sql', () => {
+describe('0036_normalize_notification_datetime.sql', () => {
   afterEach(async () => {
     await env.DB.prepare(
       `DELETE FROM notification_schedules
@@ -64,7 +64,7 @@ describe('0034_normalize_notification_datetime.sql', () => {
       `INSERT INTO firebase_tokens (
          user_id, platform, fcm_token, is_firebase_active,
          last_seen_at, created_at, updated_at
-       ) VALUES (?, 2, '0034-datetime-token', 1,
+       ) VALUES (?, 2, '0036-datetime-token', 1,
          '2026-09-24T10:02:03+09:00',
          '2026-09-24 02:04:05',
          '2026-09-24T11:06:07+09:00')
