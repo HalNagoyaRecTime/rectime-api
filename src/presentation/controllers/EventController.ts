@@ -2,7 +2,6 @@ import type { Context } from 'hono';
 import type { CreateEventRequestDTO } from '../../application/dto/EventDTO';
 import type { IEventService } from '../../application/services/IEventService';
 import type { Env } from '../../lib/env';
-import { isValidEventDate } from '../../lib/eventDate';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import {
@@ -46,15 +45,7 @@ export function createEventController(eventService: IEventService) {
     }
 
     try {
-      const result = await eventService.getAllEvents(parsedQuery.data);
-      const eventDate = c.env?.EVENT_DATE;
-      return c.json(
-        {
-          ...result,
-          event_date: isValidEventDate(eventDate) ? eventDate : null,
-        },
-        200
-      );
+      return c.json(await eventService.getAllEvents(parsedQuery.data), 200);
     } catch {
       return errorResponse(c, EventErrors.EVENT_LIST_FAILED);
     }
