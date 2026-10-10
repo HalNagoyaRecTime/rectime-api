@@ -7,7 +7,7 @@ import { createDIContainer } from './di/container';
 import { CommonErrors } from './presentation/errors/commonErrors';
 import { EventErrors } from './presentation/errors/eventErrors';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
-import { isDocsEnabled, type Env } from './lib/env';
+import { getContactFormUrl, isDocsEnabled, type Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
 import { getAllowedOriginRules, isAllowedOrigin } from './lib/allowedOrigins';
 import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
@@ -166,6 +166,14 @@ app.use('*', (c, next) => {
 });
 
 app.openapi(healthRoute, c => c.json({ status: 'ok' } as const, 200));
+
+// 認証不要。リダイレクト先は環境変数のみで決め、クエリ等は参照しない。
+app.get('/app/contact', c => {
+  const contactFormUrl = getContactFormUrl(c.env);
+  if (contactFormUrl === null) return c.notFound();
+  c.header('Cache-Control', 'no-store');
+  return c.redirect(contactFormUrl, 302);
+});
 
 app.openapi(apiOverviewRoute, c => {
   return c.json(
