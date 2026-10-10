@@ -28,6 +28,7 @@ function buildFirebaseTokenRepository(): IFirebaseTokenRepository {
 
 function buildTeacherRepository(): ITeacherRepository {
   return {
+    findByUserId: vi.fn().mockResolvedValue(null),
     findById: vi.fn(),
     findAll: vi.fn(),
     existsById: vi.fn(),

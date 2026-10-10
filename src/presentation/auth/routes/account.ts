@@ -14,6 +14,7 @@ import {
   userResponse,
   getStudentInfoOrNull,
   getUserCategories,
+  getTeacherInfoOrNull,
 } from '../helpers';
 import { rejectInactiveUser } from '../rejectInactiveUser';
 import {
@@ -114,6 +115,7 @@ account.get('/me', async c => {
   );
 
   const categories = await getUserCategories(c, claims.sub);
+  const teacher = await getTeacherInfoOrNull(c, claims.sub, categories);
   return c.json({
     user: userResponse(
       {
@@ -127,7 +129,8 @@ account.get('/me', async c => {
         class_room_name: student?.class_room_name ?? null,
         attendance_number: student?.attendance_number ?? null,
       },
-      categories
+      categories,
+      teacher
     ),
   });
 });

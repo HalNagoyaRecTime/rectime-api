@@ -18,6 +18,7 @@ import {
   userResponse,
   getStudentInfoOrNull,
   getUserCategories,
+  getTeacherInfoOrNull,
 } from '../helpers';
 import {
   getAllowedFrontendOrigin,
@@ -444,6 +445,7 @@ microsoft.post('/token', async c => {
   );
 
   const categories = await getUserCategories(c, user.id);
+  const teacher = await getTeacherInfoOrNull(c, user.id, categories);
 
   return c.json({
     access_token: accessToken,
@@ -458,7 +460,8 @@ microsoft.post('/token', async c => {
         class_room_name: student?.class_room_name ?? null,
         attendance_number: student?.attendance_number ?? null,
       },
-      categories
+      categories,
+      teacher
     ),
   });
 });

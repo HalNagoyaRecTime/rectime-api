@@ -19,6 +19,7 @@ import { createTeacherRepository } from '../../infrastructure/repositories/Teach
 import { createFirebaseTokenRepository } from '../../infrastructure/repositories/FirebaseTokenRepository';
 import { createAuthService } from '../../application/services/authService';
 import type { IStudentService } from '../../application/services/IStudentService';
+import type { AuthTeacherDTO } from '../../application/dto/AuthTeacherDTO';
 import type { StudentDTO } from '../../application/dto/StudentDTO';
 
 export type AppContext = Context<{
@@ -82,7 +83,8 @@ export function userResponse(
     class_room_name: string | null;
     attendance_number: number | null;
   },
-  categories: UserCategories
+  categories: UserCategories,
+  teacher: AuthTeacherDTO | null = null
 ) {
   return {
     id: user.id,
@@ -97,6 +99,7 @@ export function userResponse(
     is_student: categories.is_student,
     is_staff: categories.is_staff,
     is_teacher: categories.is_teacher,
+    ...(categories.is_teacher && teacher ? { teacher } : {}),
   };
 }
 
@@ -196,4 +199,30 @@ export async function getUserCategories(
 ): Promise<UserCategories> {
   const userRepository = createUserRepository(c.env.DB);
   return userRepository.getUserCategories(Number(userId));
+}
+
+export async function getTeacherInfoOrNull(
+  c: AppContext,
+  userId: string,
+  categories: UserCategories
+): Promise<AuthTeacherDTO | null> {
+  if (!categories.is_teacher) return null;
+  const teacher = await createTeacherRepository(c.env.DB).findByUserId(
+    Number(userId)
+  );
+  if (!teacher) return null;
+  return {
+    teacher_id: teacher.teacherId,
+    class_rooms: teacher.classRooms
+      .map(room => ({
+        class_room_id: room.classRoomId,
+        class_code: room.classCode,
+        class_room_name: room.className,
+      }))
+      .sort(
+        (a, b) =>
+          a.class_code.localeCompare(b.class_code) ||
+          a.class_room_id - b.class_room_id
+      ),
+  };
 }

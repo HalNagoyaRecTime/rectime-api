@@ -112,6 +112,20 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
   const orm = drizzle(db, { schema });
   const searchClassRooms = alias(class_rooms, 'search_class_rooms');
   return {
+    async findByUserId(userId: number): Promise<TeacherEntity | null> {
+      const result = await orm
+        .select()
+        .from(teachers)
+        .innerJoin(users, eq(teachers.userId, users.id))
+        .leftJoin(staffs, eq(staffs.userId, users.id))
+        .where(eq(teachers.userId, userId))
+        .get();
+      if (!result) return null;
+      const classRooms = await loadClassRoomsByTeacherIds(orm, [
+        result.teachers.id,
+      ]);
+      return toEntity(result, classRooms.get(result.teachers.id) ?? []);
+    },
     async findById(id: number): Promise<TeacherEntity | null> {
       const result = await orm
         .select()
