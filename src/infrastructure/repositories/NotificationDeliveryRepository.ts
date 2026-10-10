@@ -29,13 +29,15 @@ export function createNotificationDeliveryRepository(
   db: D1Database
 ): INotificationDeliveryRepository {
   return {
-    async findReadySchedules(now, limit) {
+    async findReadySchedules(now, limit, manualOnly = false) {
+      const sourceCondition = manualOnly ? 'AND n.source_type IS NULL' : '';
       const rows = await db
         .prepare(
           `SELECT s.notification_schedule_id, s.send_status
            FROM notification_schedules s
            JOIN notifications n ON n.notification_id = s.notification_id
            WHERE n.notification_type = 'notification_general'
+             ${sourceCondition}
              AND datetime(s.send_at) <= datetime(?)
              AND (
                (s.send_status = 'resolving'
@@ -273,6 +275,24 @@ export function createNotificationDeliveryRepository(
           importance: row.importance as 'low' | 'normal' | 'high',
         };
       });
+    },
+
+    async findManualScheduleIds(scheduleIds) {
+      if (scheduleIds.length === 0) return [];
+      const placeholders = scheduleIds.map(() => '?').join(', ');
+      const rows = await db
+        .prepare(
+          `SELECT s.notification_schedule_id
+           FROM notification_schedules s
+           JOIN notifications n ON n.notification_id = s.notification_id
+           WHERE s.notification_schedule_id IN (${placeholders})
+             AND n.notification_type = 'notification_general'
+             AND n.source_type IS NULL
+           ORDER BY s.notification_schedule_id`
+        )
+        .bind(...scheduleIds)
+        .all<{ notification_schedule_id: number }>();
+      return rows.results.map(row => row.notification_schedule_id);
     },
 
     async markSent(deliveryId, messageId, now) {

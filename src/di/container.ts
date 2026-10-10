@@ -16,6 +16,8 @@ import { createNotificationResultQueryRepository } from '../infrastructure/repos
 import { createNotificationAccountDeletionRepository } from '../infrastructure/repositories/NotificationAccountDeletionRepository';
 import { createAdminNotificationRepository } from '../infrastructure/repositories/AdminNotificationRepository';
 import { createAdminNotificationCommandRepository } from '../infrastructure/repositories/AdminNotificationCommandRepository';
+import { createNotificationCreationRepository } from '../infrastructure/repositories/NotificationCreationRepository';
+import { createGatheringNotificationGeneratorRepository } from '../infrastructure/repositories/GatheringNotificationGeneratorRepository';
 import { createNotificationConfigRepository } from '../infrastructure/repositories/NotificationConfigRepository';
 import { createAdminNotificationQueryRepository } from '../infrastructure/repositories/AdminNotificationQueryRepository';
 import { createNotificationAudienceResolverRepository } from '../infrastructure/repositories/NotificationAudienceResolverRepository';
@@ -42,6 +44,7 @@ import { createNotificationAudienceResolverService } from '../application/servic
 import { createNotificationDeliveryService } from '../application/services/NotificationDeliveryService';
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createAdminNotificationCommandService } from '../application/services/AdminNotificationCommandService';
+import { createGatheringNotificationGeneratorService } from '../application/services/GatheringNotificationGeneratorService';
 import { createNotificationConfigService } from '../application/services/NotificationConfigService';
 import { createAdminNotificationQueryService } from '../application/services/AdminNotificationQueryService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
@@ -113,8 +116,13 @@ export function createDIContainer(env: Env) {
   const adminNotificationRepository = createAdminNotificationRepository(db);
   const adminNotificationManagementRepository =
     createAdminNotificationManagementRepository(db);
+  const notificationCreationRepository =
+    createNotificationCreationRepository(db);
   const adminNotificationCommandRepository =
-    createAdminNotificationCommandRepository(db);
+    createAdminNotificationCommandRepository(
+      db,
+      notificationCreationRepository
+    );
   const notificationConfigRepository = createNotificationConfigRepository(db);
   const adminNotificationQueryRepository =
     createAdminNotificationQueryRepository(db);
@@ -128,6 +136,8 @@ export function createDIContainer(env: Env) {
   const gatheringGroupMemberRepository =
     createGatheringGroupMemberRepository(db);
   const gatheringRepository = createGatheringRepository(db, eventRepository);
+  const gatheringNotificationGeneratorRepository =
+    createGatheringNotificationGeneratorRepository(db);
   const eventGatheringSettingsRepository =
     createEventGatheringSettingsRepository(db);
   const notificationDeliveryQueue = createNotificationDeliveryQueue(
@@ -231,6 +241,12 @@ export function createDIContainer(env: Env) {
     adminNotificationCommandRepository,
     adminNotificationQueryService
   );
+  const gatheringNotificationGeneratorService =
+    createGatheringNotificationGeneratorService(
+      gatheringNotificationGeneratorRepository,
+      notificationCreationRepository,
+      env.EVENT_DATE
+    );
   const notificationConfigService = createNotificationConfigService(
     notificationConfigRepository
   );
@@ -248,7 +264,8 @@ export function createDIContainer(env: Env) {
   const eventGatheringSettingsService = createEventGatheringSettingsService(
     eventRepository,
     gatheringSpotRepository,
-    eventGatheringSettingsRepository
+    eventGatheringSettingsRepository,
+    gatheringNotificationGeneratorService
   );
 
   // Controllers
@@ -314,6 +331,7 @@ export function createDIContainer(env: Env) {
     notificationConfigController,
     mobileNotificationController,
     scheduledNotificationService,
+    gatheringNotificationGeneratorService,
     notificationAudienceResolverService,
     notificationDeliveryService,
     gatheringSpotController,

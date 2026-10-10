@@ -33,13 +33,15 @@ export function createNotificationAudienceResolverRepository(
   db: D1Database
 ): INotificationAudienceResolverRepository {
   return {
-    async findDueCandidates(now, limit) {
+    async findDueCandidates(now, limit, manualOnly = false) {
+      const sourceCondition = manualOnly ? 'AND n.source_type IS NULL' : '';
       const rows = await db
         .prepare(
           `SELECT s.notification_schedule_id, s.send_status
            FROM notification_schedules s
            JOIN notifications n ON n.notification_id = s.notification_id
            WHERE n.notification_type = 'notification_general'
+             ${sourceCondition}
              AND s.recipients_resolved_at IS NULL
              AND datetime(s.send_at) <= datetime(?)
              AND s.send_status IN ('scheduled', 'resolving')

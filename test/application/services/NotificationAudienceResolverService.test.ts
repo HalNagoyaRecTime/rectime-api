@@ -71,6 +71,20 @@ describe('NotificationAudienceResolverService', () => {
     );
   });
 
+  it('manualOnlyではRepositoryへmanual限定条件を渡す', async () => {
+    const repository = buildRepository();
+    const service = createNotificationAudienceResolverService(repository);
+    const now = new Date('2026-09-24T12:00:00.000Z');
+
+    await service.resolveDueSchedules(now, { manualOnly: true });
+
+    expect(repository.findDueCandidates).toHaveBeenCalledWith(
+      now.toISOString(),
+      100,
+      true
+    );
+  });
+
   it('resolving中のscheduleを再開し、初回claimを繰り返さない', async () => {
     const repository = buildRepository({
       findDueCandidates: vi.fn().mockResolvedValue([candidate(8, 'resolving')]),

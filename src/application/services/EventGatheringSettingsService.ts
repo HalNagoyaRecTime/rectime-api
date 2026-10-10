@@ -7,6 +7,7 @@ import type {
 import type { IEventGatheringSettingsRepository } from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 import type { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
+import type { IGatheringNotificationGeneratorService } from './GatheringNotificationGeneratorService';
 import type {
   EventGatheringSettingsDTO,
   RoundSettingInputDTO,
@@ -49,7 +50,8 @@ function isUnchanged(
 export function createEventGatheringSettingsService(
   eventRepository: IEventRepository,
   gatheringSpotRepository: IGatheringSpotRepository,
-  eventGatheringSettingsRepository: IEventGatheringSettingsRepository
+  eventGatheringSettingsRepository: IEventGatheringSettingsRepository,
+  gatheringNotificationGeneratorService: IGatheringNotificationGeneratorService
 ): IEventGatheringSettingsService {
   const ensureGatheringSpotsExist = async (gatheringSpotIds: number[]) => {
     const existing =
@@ -136,10 +138,21 @@ export function createEventGatheringSettingsService(
         throw new Error('Gathering in use');
       }
 
-      return buildEventGatheringSettings(
-        command.event_id,
-        await eventGatheringSettingsRepository.findByEventId(command.event_id)
-      );
+      const savedGatherings =
+        await eventGatheringSettingsRepository.findByEventId(command.event_id);
+      // Gathering保存はここで確定済み。通知生成の一時失敗で保存APIを500にせず、
+      // 全Gatheringへの即時同期を試したうえでCronの定期reconciliationに回復を委ねる。
+      for (const gathering of savedGatherings) {
+        try {
+          await gatheringNotificationGeneratorService.generate(
+            gathering.gathering_id
+          );
+        } catch {
+          // 定期reconciliationが次回Cronで再試行する。
+        }
+      }
+
+      return buildEventGatheringSettings(command.event_id, savedGatherings);
     },
   };
 }

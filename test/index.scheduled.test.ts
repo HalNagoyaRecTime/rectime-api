@@ -51,8 +51,9 @@ describe('scheduled handler', () => {
     createDIContainerSpy.mockRestore();
   });
 
-  it('通知cronはEVENT_DATE未設定でもAudience Resolverを起動する', async () => {
+  it('EVENT_DATE未設定ではautomatic再同期をせずmanual v2だけResolverする', async () => {
     const container = await import('../src/di/container');
+    const reconcileAll = vi.fn();
     const resolveDueSchedules = vi.fn().mockResolvedValue({
       completed_schedules: [],
       retryable_schedule_ids: [],
@@ -67,6 +68,7 @@ describe('scheduled handler', () => {
     const createDIContainerSpy = vi
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
+        gatheringNotificationGeneratorService: { reconcileAll },
         notificationAudienceResolverService: { resolveDueSchedules },
         notificationDeliveryService: { enqueueReadySchedules },
         scheduledNotificationService: { enqueueDueNotifications },
@@ -82,8 +84,10 @@ describe('scheduled handler', () => {
     await worker.scheduled(event, { ...workerEnv, EVENT_DATE: '' }, ctx);
     await Promise.all(waitUntilPromises);
 
+    expect(reconcileAll).not.toHaveBeenCalled();
     expect(resolveDueSchedules).toHaveBeenCalledWith(
-      new Date(event.scheduledTime)
+      new Date(event.scheduledTime),
+      { manualOnly: true }
     );
     expect(enqueueReadySchedules).toHaveBeenCalledWith(
       new Date(event.scheduledTime)
@@ -92,15 +96,19 @@ describe('scheduled handler', () => {
     createDIContainerSpy.mockRestore();
   });
 
-  it('Audience Resolver自体のrejectをログへ記録し、Cron Promiseをrejectさせない', async () => {
+  it('再同期に失敗したGatheringがあればその回のResolverを開始しない', async () => {
     const container = await import('../src/di/container');
-    const error = new Error('database unavailable');
-    const resolveDueSchedules = vi.fn().mockRejectedValue(error);
-    const enqueueDueNotifications = vi.fn();
+    const reconcileAll = vi.fn().mockResolvedValue({
+      processed_count: 1,
+      failed_gathering_ids: [52],
+    });
+    const resolveDueSchedules = vi.fn();
     const enqueueReadySchedules = vi.fn();
+    const enqueueDueNotifications = vi.fn();
     const createDIContainerSpy = vi
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
+        gatheringNotificationGeneratorService: { reconcileAll },
         notificationAudienceResolverService: { resolveDueSchedules },
         notificationDeliveryService: { enqueueReadySchedules },
         scheduledNotificationService: { enqueueDueNotifications },
@@ -116,9 +124,62 @@ describe('scheduled handler', () => {
       noRetry: () => {},
     } as unknown as ScheduledEvent;
 
-    await worker.scheduled(event, { ...workerEnv, EVENT_DATE: '' }, ctx);
+    await worker.scheduled(
+      event,
+      { ...workerEnv, EVENT_DATE: '2026-11-08' },
+      ctx
+    );
     await expect(Promise.all(waitUntilPromises)).resolves.toBeDefined();
 
+    expect(resolveDueSchedules).not.toHaveBeenCalled();
+    expect(enqueueReadySchedules).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[CRON] Gathering自動通知の再同期に失敗しました',
+      { gatheringIds: [52] }
+    );
+    createDIContainerSpy.mockRestore();
+  });
+
+  it('Audience Resolver自体のrejectをログへ記録し、Cron Promiseをrejectさせない', async () => {
+    const container = await import('../src/di/container');
+    const reconcileAll = vi.fn().mockResolvedValue({
+      processed_count: 2,
+      failed_gathering_ids: [],
+    });
+    const error = new Error('database unavailable');
+    const resolveDueSchedules = vi.fn().mockRejectedValue(error);
+    const enqueueDueNotifications = vi.fn();
+    const enqueueReadySchedules = vi.fn();
+    const createDIContainerSpy = vi
+      .spyOn(container, 'createDIContainer')
+      .mockReturnValue({
+        gatheringNotificationGeneratorService: { reconcileAll },
+        notificationAudienceResolverService: { resolveDueSchedules },
+        notificationDeliveryService: { enqueueReadySchedules },
+        scheduledNotificationService: { enqueueDueNotifications },
+      } as unknown as ReturnType<typeof container.createDIContainer>);
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+
+    const { ctx, waitUntilPromises } = buildExecutionContext();
+    const event = {
+      cron: '* * * * *',
+      scheduledTime: Date.now(),
+      noRetry: () => {},
+    } as unknown as ScheduledEvent;
+
+    await worker.scheduled(
+      event,
+      { ...workerEnv, EVENT_DATE: '2026-11-08' },
+      ctx
+    );
+    await expect(Promise.all(waitUntilPromises)).resolves.toBeDefined();
+
+    expect(reconcileAll).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(reconcileAll).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(resolveDueSchedules).mock.invocationCallOrder[0]
+    );
     expect(resolveDueSchedules).toHaveBeenCalledWith(
       new Date(event.scheduledTime)
     );
@@ -133,6 +194,10 @@ describe('scheduled handler', () => {
 
   it('Delivery準備のrejectはDelivery preparation errorとして記録する', async () => {
     const container = await import('../src/di/container');
+    const reconcileAll = vi.fn().mockResolvedValue({
+      processed_count: 2,
+      failed_gathering_ids: [],
+    });
     const error = new Error('database unavailable');
     const resolveDueSchedules = vi.fn().mockResolvedValue({
       completed_schedules: [],
@@ -144,6 +209,7 @@ describe('scheduled handler', () => {
     const createDIContainerSpy = vi
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
+        gatheringNotificationGeneratorService: { reconcileAll },
         notificationAudienceResolverService: { resolveDueSchedules },
         notificationDeliveryService: { enqueueReadySchedules },
         scheduledNotificationService: { enqueueDueNotifications },
@@ -159,7 +225,11 @@ describe('scheduled handler', () => {
       noRetry: () => {},
     } as unknown as ScheduledEvent;
 
-    await worker.scheduled(event, { ...workerEnv, EVENT_DATE: '' }, ctx);
+    await worker.scheduled(
+      event,
+      { ...workerEnv, EVENT_DATE: '2026-11-08' },
+      ctx
+    );
     await expect(Promise.all(waitUntilPromises)).resolves.toBeDefined();
 
     expect(resolveDueSchedules).toHaveBeenCalledWith(

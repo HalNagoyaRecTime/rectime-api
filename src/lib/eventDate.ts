@@ -29,7 +29,7 @@ export function buildEventNotificationSendAt(
 ): string {
   if (
     !isValidEventDate(eventDate) ||
-    !/^([01]\d|2[0-3])[0-5]\d$/.test(startTime)
+    !/^([01]\d|2[0-3]):?[0-5]\d$/.test(startTime)
   ) {
     throw new Error('Invalid event date or start time');
   }
@@ -37,8 +37,9 @@ export function buildEventNotificationSendAt(
   const year = Number(eventDate.slice(0, 4));
   const month = Number(eventDate.slice(5, 7));
   const day = Number(eventDate.slice(8, 10));
-  const hour = Number(startTime.slice(0, 2));
-  const minute = Number(startTime.slice(2, 4));
+  const normalizedTime = startTime.replace(':', '');
+  const hour = Number(normalizedTime.slice(0, 2));
+  const minute = Number(normalizedTime.slice(2, 4));
   const eventTimeUtc = Date.UTC(year, month - 1, day, hour - 9, minute);
   return new Date(eventTimeUtc - minutesBefore * 60 * 1000).toISOString();
 }
