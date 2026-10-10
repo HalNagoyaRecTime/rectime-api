@@ -2095,3 +2095,134 @@ describe('POST /auth/microsoft/delete-token', () => {
     expect(body.error?.code).toBe('STATE_MISMATCH');
   });
 });
+
+describe('Desktopのループバック認証', () => {
+  for (const endpoint of ['/login', '/delete-login']) {
+    it(`${endpoint}はDesktopの戻り先を検証してstateに保存する`, async () => {
+      const env = buildEnv();
+      const state = generateRandom(32);
+      const redirectUri = 'http://localhost:54321/auth/callback';
+      const response = await buildApp().request(
+        endpoint,
+        {
+          headers: {
+            'X-Client-Type': 'mobile',
+            'X-State': state,
+            'X-PKCE-Code-Challenge': generateRandom(32),
+            'X-Desktop-Redirect-Uri': redirectUri,
+          },
+        },
+        env
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { auth_url: string };
+      expect(new URL(body.auth_url).searchParams.get('redirect_uri')).toBe(
+        redirectUri
+      );
+      const stored = JSON.parse(
+        (await env.AUTH_KV.get(`pkce:${state}`)) as string
+      ) as PkceEntry;
+      expect(stored.desktop_redirect_uri).toBe(redirectUri);
+    });
+
+    it.each([
+      'https://localhost:54321/auth/callback',
+      'http://example.com:54321/auth/callback',
+      'http://localhost.example.com:54321/auth/callback',
+      'http://127.0.0.1:54321/auth/callback',
+      'http://localhost/auth/callback',
+      'http://localhost:80/auth/callback',
+      'http://localhost:54321/api/v1/auth/microsoft/callback',
+      'http://localhost:54321/auth/callback?extra=1',
+      'http://localhost:54321/auth/callback#fragment',
+      'http://user@localhost:54321/auth/callback',
+      'http://localhost:54321/auth/../auth/callback',
+    ])(`${endpoint}は不正な戻り先 %s を拒否する`, async redirectUri => {
+      const env = buildEnv();
+      const state = generateRandom(32);
+      const response = await buildApp().request(
+        endpoint,
+        {
+          headers: {
+            'X-Client-Type': 'mobile',
+            'X-State': state,
+            'X-PKCE-Code-Challenge': generateRandom(32),
+            'X-Desktop-Redirect-Uri': redirectUri,
+          },
+        },
+        env
+      );
+      expect(response.status).toBe(400);
+      expect(await env.AUTH_KV.get(`pkce:${state}`)).toBeNull();
+    });
+  }
+
+  it('WebではDesktopのヘッダーを拒否する', async () => {
+    const response = await buildApp().request(
+      '/login',
+      {
+        headers: {
+          'X-Client-Type': 'web',
+          'X-Desktop-Redirect-Uri': 'http://localhost:54321/auth/callback',
+        },
+      },
+      buildEnv()
+    );
+    expect(response.status).toBe(400);
+  });
+
+  for (const [start, exchange] of [
+    ['/login', '/token'],
+    ['/delete-login', '/delete-token'],
+  ]) {
+    it(`${exchange}は開始時の戻り先とPKCEを使い、交換時のヘッダーでは変更しない`, async () => {
+      const env = buildEnv();
+      const state = generateRandom(32);
+      const verifier = generateRandom(32);
+      const redirectUri = 'http://localhost:54321/auth/callback';
+      await buildApp().request(
+        start,
+        {
+          headers: {
+            'X-Client-Type': 'mobile',
+            'X-State': state,
+            'X-PKCE-Code-Challenge': generateRandom(32),
+            'X-Desktop-Redirect-Uri': redirectUri,
+          },
+        },
+        env
+      );
+      let sent: URLSearchParams | undefined;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url: string, init: RequestInit) => {
+          sent = new URLSearchParams(init.body as string);
+          return new Response(JSON.stringify({ error: 'invalid_grant' }), {
+            status: 400,
+          });
+        })
+      );
+      await buildApp().request(
+        exchange,
+        {
+          method: 'POST',
+          headers: {
+            'X-Client-Type': 'mobile',
+            'Content-Type': 'application/json',
+            'X-Desktop-Redirect-Uri': 'http://localhost:54322/auth/callback',
+          },
+          body: JSON.stringify({
+            code: 'test-code',
+            state,
+            code_verifier: verifier,
+          }),
+        },
+        env
+      );
+      expect(sent?.get('redirect_uri')).toBe(redirectUri);
+      expect(sent?.get('code_verifier')).toBe(verifier);
+      expect(sent?.has('client_assertion')).toBe(false);
+      expect(await env.AUTH_KV.get(`pkce:${state}`)).toBeNull();
+    });
+  }
+});
