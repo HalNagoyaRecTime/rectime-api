@@ -49,6 +49,7 @@ function buildDeps() {
     existsStaff: vi.fn(),
   };
   const teacherRepository: ITeacherRepository = {
+    findByUserId: vi.fn().mockResolvedValue(null),
     findById: vi.fn(),
     findAll: vi.fn(),
     existsById: vi.fn(),

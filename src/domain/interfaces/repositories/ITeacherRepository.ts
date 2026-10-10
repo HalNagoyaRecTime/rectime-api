@@ -18,6 +18,7 @@ export interface TeacherMicrosoftLinkCandidate {
 }
 
 export interface ITeacherRepository {
+  findByUserId: (userId: number) => Promise<TeacherEntity | null>;
   findById: (id: number) => Promise<TeacherEntity | null>;
   findAll: (filter?: TeacherSearchFilter) => Promise<TeacherPage>;
   existsById: (id: number) => Promise<boolean>;

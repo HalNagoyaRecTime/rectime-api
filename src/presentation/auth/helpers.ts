@@ -2,11 +2,8 @@ import type { Context } from 'hono';
 import type { Env as Bindings } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import { base64URLtoBytes } from '../../infrastructure/auth/base64url';
-import {
-  BASE64_URL_PATTERN,
-  ACCOUNT_PHOTO_PATH,
-} from '../../domain/auth/types';
-import type { AppUser, UserCategories } from '../../domain/auth/types';
+import { BASE64_URL_PATTERN } from '../../domain/auth/types';
+import type { AppUser } from '../../domain/auth/types';
 import type { IdTokenClaims } from '../../infrastructure/auth/verifyIdToken';
 import {
   buildMicrosoftAuthorizeUrl as infraBuildAuthorizeUrl,
@@ -18,8 +15,6 @@ import { createStudentRepository } from '../../infrastructure/repositories/Stude
 import { createTeacherRepository } from '../../infrastructure/repositories/TeacherRepository';
 import { createFirebaseTokenRepository } from '../../infrastructure/repositories/FirebaseTokenRepository';
 import { createAuthService } from '../../application/services/authService';
-import type { IStudentService } from '../../application/services/IStudentService';
-import type { StudentDTO } from '../../application/dto/StudentDTO';
 
 export type AppContext = Context<{
   Bindings: Bindings;
@@ -68,36 +63,6 @@ export function hasMinimumDecodedBytes(
   } catch {
     return false;
   }
-}
-
-export function userResponse(
-  user: {
-    id: string;
-    email: string;
-    display_name: string;
-    avatar_url?: string | null;
-    avatar_updated_at?: string | null;
-    student_id_number: string | null;
-    class_code: string | null;
-    class_room_name: string | null;
-    attendance_number: number | null;
-  },
-  categories: UserCategories
-) {
-  return {
-    id: user.id,
-    email: user.email,
-    display_name: user.display_name,
-    avatar_url: user.avatar_url ?? ACCOUNT_PHOTO_PATH,
-    avatar_updated_at: user.avatar_updated_at ?? null,
-    student_id_number: user.student_id_number,
-    class_code: user.class_code,
-    class_room_name: user.class_room_name,
-    attendance_number: user.attendance_number,
-    is_student: categories.is_student,
-    is_staff: categories.is_staff,
-    is_teacher: categories.is_teacher,
-  };
 }
 
 // web向けMicrosoft OAuthのredirect_uriを、環境ごとの固定secretではなく
@@ -176,24 +141,4 @@ export async function upsertUser(
     firebaseTokenRepository
   );
   return authService.upsertUser(claims);
-}
-
-export async function getStudentInfoOrNull(
-  studentService: IStudentService,
-  userId: number
-): Promise<StudentDTO | null> {
-  return studentService.getByUserId(userId).catch(err => {
-    if (err instanceof Error && err.message === 'Student not found') {
-      return null;
-    }
-    throw err;
-  });
-}
-
-export async function getUserCategories(
-  c: AppContext,
-  userId: string
-): Promise<UserCategories> {
-  const userRepository = createUserRepository(c.env.DB);
-  return userRepository.getUserCategories(Number(userId));
 }
