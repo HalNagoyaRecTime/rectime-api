@@ -251,6 +251,10 @@ export const notificationScheduleListItemSchema = z
     importance: notificationImportanceSchema,
     sendAt: utcDateTimeSchema,
     status: notificationStatusSchemas.schedule,
+    failureReason: z
+      .string()
+      .nullable()
+      .describe('Scheduleがfailedの場合の失敗理由'),
     stop: notificationStopSchema.nullable(),
     creation: notificationCreationSchema,
   })
@@ -294,6 +298,10 @@ export const notificationScheduleDetailSchema = z
     importance: notificationImportanceSchema,
     sendAt: utcDateTimeSchema,
     status: notificationStatusSchemas.schedule,
+    failureReason: z
+      .string()
+      .nullable()
+      .describe('Scheduleがfailedの場合の失敗理由'),
     stop: notificationStopSchema.nullable(),
     creation: notificationCreationSchema,
     audienceProgress: notificationAudienceProgressSchema,

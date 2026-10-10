@@ -1,3 +1,5 @@
+import { createAdminNotificationCommandRepository } from '../src/infrastructure/repositories/AdminNotificationCommandRepository';
+import { NOTIFICATION_AUDIENCE_USER_DELETED_REASON } from '../src/domain/entities/NotificationAudienceResolver';
 import { env as workerEnv } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
 import { app } from '../src/index';
@@ -57,6 +59,87 @@ async function requestAs(userId: number, path: string): Promise<Response> {
 }
 
 describe('管理用通知スケジュール照会APIの認可と入力検証', () => {
+  it.each(['failed', 'scheduled', 'stopped'] as const)(
+    '%sの失敗理由を一覧・詳細APIで返し、停止理由と区別する',
+    async status => {
+      const staffId = await insertUser('失敗理由を確認するスタッフ', true);
+      const created = await createAdminNotificationCommandRepository(
+        workerEnv.DB
+      ).create({
+        actor_user_id: staffId,
+        push_title: '対象消失テスト',
+        push_body: '本文',
+        detail_title: '詳細',
+        detail_body: '本文',
+        importance: 'normal',
+        audiences: [{ type: 'user', target_id: staffId }],
+        send_at: '2026-10-03T00:00:00.000Z',
+        now: '2026-10-03T00:00:00.000Z',
+      });
+      const id = created.notification_schedule_id;
+      try {
+        await workerEnv.DB.prepare(
+          'UPDATE notification_schedules SET send_status = ?, reason = ?, stopped_at = ? WHERE notification_schedule_id = ?'
+        )
+          .bind(
+            status,
+            status === 'stopped'
+              ? 'manual'
+              : NOTIFICATION_AUDIENCE_USER_DELETED_REASON,
+            status === 'stopped' ? '2026-10-03T00:00:00.000Z' : null,
+            id
+          )
+          .run();
+        const detail = await requestAs(
+          staffId,
+          `/api/v1/admin/notifications/schedules/${id}`
+        );
+        expect(detail.status).toBe(200);
+        expect(await detail.json()).toMatchObject({
+          status,
+          failureReason:
+            status === 'failed'
+              ? NOTIFICATION_AUDIENCE_USER_DELETED_REASON
+              : null,
+          stop: status === 'stopped' ? { reason: 'manual' } : null,
+        });
+        const list = await requestAs(
+          staffId,
+          '/api/v1/admin/notifications/schedules?from=2026-10-03T00%3A00%3A00Z&to=2026-10-03T23%3A59%3A59Z'
+        );
+        expect(list.status).toBe(200);
+        expect(await list.json()).toMatchObject({
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              notificationScheduleId: id,
+              status,
+              failureReason:
+                status === 'failed'
+                  ? NOTIFICATION_AUDIENCE_USER_DELETED_REASON
+                  : null,
+            }),
+          ]),
+        });
+      } finally {
+        await workerEnv.DB.prepare(
+          'DELETE FROM notification_audiences WHERE notification_schedule_id = ?'
+        )
+          .bind(id)
+          .run();
+        await workerEnv.DB.prepare(
+          'DELETE FROM notification_schedules WHERE notification_schedule_id = ?'
+        )
+          .bind(id)
+          .run();
+        await workerEnv.DB.prepare(
+          'DELETE FROM notifications WHERE notification_id = ?'
+        )
+          .bind(created.notification_id)
+          .run();
+      }
+    }
+  );
+
   it('未認証アクセスを401で拒否する', async () => {
     const response = await app.fetch(
       new Request('http://example.com/api/v1/admin/notifications/schedules'),

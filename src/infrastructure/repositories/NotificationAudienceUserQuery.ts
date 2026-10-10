@@ -7,6 +7,8 @@ export interface AudienceUserSelect {
   params: number[];
 }
 
+export type AudienceTargetAvailabilityMode = 'target-exists' | 'resolver';
+
 // Resolverとaudience-countで同じ対象User条件を使う。
 const ACTIVE_USER_CONDITION =
   "u.is_live_active = 1 AND u.deletion_status = 'active'";
@@ -67,14 +69,22 @@ export function buildAudienceUserSelect(
 /** Audienceの対象がすべて存在するか確認する */
 export async function areAudienceTargetsAvailable(
   db: D1Database,
-  targets: NotificationAudienceTarget[]
+  targets: NotificationAudienceTarget[],
+  mode: AudienceTargetAvailabilityMode = 'target-exists'
 ): Promise<boolean> {
   for (const target of targets) {
     if (target.type === 'all') continue;
     const { table, idColumn } = TARGET_TABLE_BY_TYPE[target.type];
+    const userMustBeActive =
+      mode === 'resolver' && target.type === 'user'
+        ? " AND deletion_status = 'active'"
+        : '';
     const row = await db
       .prepare(
-        `SELECT EXISTS (SELECT 1 FROM ${table} WHERE ${idColumn} = ?) AS target_exists`
+        `SELECT EXISTS (
+           SELECT 1 FROM ${table}
+           WHERE ${idColumn} = ?${userMustBeActive}
+         ) AS target_exists`
       )
       .bind(target.target_id)
       .first<{ target_exists: number }>();

@@ -1,6 +1,11 @@
 import type { NotificationAudienceType } from './Notification';
 
 export const NOTIFICATION_AUDIENCE_RESOLVER_SCHEDULE_LIMIT = 100;
+export const NOTIFICATION_AUDIENCE_USER_DELETED_REASON =
+  'Audienceの対象ユーザーが削除されました';
+
+export const NOTIFICATION_AUDIENCE_TARGET_MISSING_REASON =
+  'Audienceの対象が存在しません';
 
 export interface NotificationAudienceResolverCandidate {
   notification_schedule_id: number;

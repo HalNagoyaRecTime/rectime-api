@@ -187,6 +187,7 @@ function toListItem(row: ScheduleQueryRow): NotificationScheduleQueryListItem {
     importance: toImportance(row.importance),
     send_at: row.send_at,
     status: toScheduleStatus(row.send_status),
+    failure_reason: row.send_status === 'failed' ? row.reason : null,
     stop: toStop(row),
     creation: toCreation(row),
   };
