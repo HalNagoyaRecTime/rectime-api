@@ -1,5 +1,7 @@
 import { VenueEntity } from '../../domain/entities/Venue';
 import { IVenueRepository } from '../../domain/interfaces/repositories/IVenueRepository';
+import { IImageStorage } from '../../domain/interfaces/storages/IImageStorage';
+import { deleteUnusedImage } from './deleteUnusedImage';
 import { IVenueService } from './IVenueService';
 
 function errorChainMessage(error: unknown): string {
@@ -20,7 +22,8 @@ function isVenueNameUniqueError(error: unknown): boolean {
 }
 
 export function createVenueService(
-  venueRepository: IVenueRepository
+  venueRepository: IVenueRepository,
+  imageStorage: IImageStorage
 ): IVenueService {
   return {
     getAllVenues(): Promise<VenueEntity[]> {
@@ -60,6 +63,7 @@ export function createVenueService(
       if (await venueRepository.hasEvents(venueId)) {
         throw new Error('Venue is in use');
       }
+      const image = await venueRepository.findImageKey(venueId);
       try {
         if (!(await venueRepository.delete(venueId))) {
           throw new Error('Venue not found');
@@ -72,6 +76,7 @@ export function createVenueService(
         }
         throw error;
       }
+      await deleteUnusedImage(imageStorage, image?.imageKey ?? null);
     },
   };
 }

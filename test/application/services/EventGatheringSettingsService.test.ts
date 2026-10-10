@@ -57,6 +57,8 @@ function setup(
     update: vi.fn(),
     delete: vi.fn(),
     hasGatherings: vi.fn(),
+    findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
+    updateImageKey: vi.fn(),
   };
   const repository: IEventGatheringSettingsRepository = {
     // 1回目は差分計算用、2回目は保存後のレスポンス用

@@ -133,5 +133,22 @@ export function createGatheringSpotRepository(
           .get()
       );
     },
+
+    async findImageKey(gatheringSpotId) {
+      const row = await orm
+        .select({ imageKey: gathering_spots.imageKey })
+        .from(gathering_spots)
+        .where(eq(gathering_spots.id, gatheringSpotId))
+        .get();
+      return row ?? null;
+    },
+
+    async updateImageKey(gatheringSpotId, imageKey) {
+      await orm
+        .update(gathering_spots)
+        .set({ imageKey, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .where(eq(gathering_spots.id, gatheringSpotId))
+        .run();
+    },
   };
 }
