@@ -234,7 +234,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(57);
+    expect(documentedOperations).toHaveLength(56);
     expect(document.paths['/api/v1/gatherings']).toBeUndefined();
     const schedulePath =
       document.paths[
@@ -650,20 +650,44 @@ describe('集合APIの実ルーティング', () => {
     }
   );
 
-  it('競技ID配下の集合一覧APIは公開されているが認証が必要', async () => {
-    const res = await app.fetch(
-      new Request('http://example.com/api/v1/events/999999/gatherings'),
+  it.each(['1', '999999', 'not-a-number'])(
+    '競技ID=%sの旧集合一覧GETは認証の有無にかかわらず404になる',
+    async eventId => {
+      for (const headers of [{}, await bearerHeaders()]) {
+        const response = await app.fetch(
+          new Request(
+            `http://example.com/api/v1/events/${eventId}/gatherings`,
+            { headers }
+          ),
+          authEnv
+        );
+        expect(response.status).toBe(404);
+      }
+    }
+  );
+
+  it('OpenAPIは集合設定PUTと参加者GET/PUTを維持し、旧一覧GETと型を公開しない', async () => {
+    const response = await app.fetch(
+      new Request('http://example.com/openapi.json'),
       env
     );
-
-    expect(res.status).toBe(401);
-
-    expect(await res.json()).toEqual({
-      error: {
-        code: 'UNAUTHORIZED',
-        message: '認証が必要です',
-      },
-    });
+    const document = (await response.json()) as {
+      paths: Record<string, Record<string, unknown>>;
+      components: { schemas: Record<string, unknown> };
+    };
+    expect(
+      document.paths['/api/v1/events/{eventId}/gatherings']
+    ).not.toHaveProperty('get');
+    expect(
+      document.paths['/api/v1/events/{eventId}/gatherings']
+    ).toHaveProperty('put');
+    expect(
+      Object.keys(
+        document.paths['/api/v1/gatherings/{gatheringId}/members']
+      ).sort()
+    ).toEqual(['get', 'put']);
+    expect(document.components.schemas).not.toHaveProperty('Gathering');
+    expect(document.components.schemas).not.toHaveProperty('GatheringList');
   });
 });
 
