@@ -10,6 +10,7 @@ function buildEnv(): Env {
   return {
     DB: {} as Env['DB'],
     AUTH_KV: {} as Env['AUTH_KV'],
+    IMAGES: {} as Env['IMAGES'],
     MASTER_IMPORT_COMMIT_LOCK: {} as Env['MASTER_IMPORT_COMMIT_LOCK'],
     NOTIFICATION_DELIVERY_QUEUE: {} as Env['NOTIFICATION_DELIVERY_QUEUE'],
     ALLOWED_ORIGINS: '',

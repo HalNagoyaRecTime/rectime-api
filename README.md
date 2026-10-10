@@ -116,10 +116,18 @@ MIIEvQIBADA...（秘密鍵の内容）
 ### 6. ローカル D1 データベースのマイグレーション
 
 ```bash
-npm run "db:migrate --local"
+npm run db:migrate:local
 ```
 
-### 7. 起動
+### 7. ローカルの画像の初期データ
+
+```bash
+npm run images:seed:local
+```
+
+画像が未登録の実施場所・集合場所すべてに、サンプル画像を紐づける。集合場所を作成したあとや、画像が表示されなくなったときは再度実行する。
+
+### 8. 起動
 
 ```bash
 npm run dev
@@ -133,13 +141,15 @@ npm run dev
 
 ```bash
 # D1 マイグレーション（本番）
-npm run "db:migrate --remote"
+npm run db:migrate:remote
 
 # デプロイ
 npm run deploy
 ```
 
 本番環境のシークレットは Cloudflare ダッシュボード または `wrangler secret put <KEY>` で設定する。
+
+画像を保存する R2 バケット（`rectime-images`・`rectime-images-staging`・`rectime-images-dev`）は、初回のデプロイ前に `wrangler r2 bucket create <バケット名>` で作成しておく。
 
 運用時の監視、Smoke Test、障害切り分け、Rollback手順は
 [`docs/operations/ios-release-backend-runbook.md`](docs/operations/ios-release-backend-runbook.md)
