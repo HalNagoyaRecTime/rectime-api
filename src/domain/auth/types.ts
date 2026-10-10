@@ -31,6 +31,8 @@ export interface UserCategories {
 export type PkcePurpose = 'login' | 'account_deletion';
 
 export interface PkceEntry {
+  // Desktopの検証済みループバック戻り先。コード交換時も同じ値を使う。
+  desktop_redirect_uri?: string;
   code_verifier?: string;
   nonce: string;
   client_type: ClientType;
