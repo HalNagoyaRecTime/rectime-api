@@ -67,6 +67,11 @@ describe('scheduled handler', () => {
     const createDIContainerSpy = vi
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
+        notificationRetryService: {
+          retryDueDeliveries: vi
+            .fn()
+            .mockResolvedValue({ claimed: 0, sent: 0, failed: 0 }),
+        },
         notificationAudienceResolverService: { resolveDueSchedules },
         notificationDeliveryService: { enqueueReadySchedules },
         scheduledNotificationService: { enqueueDueNotifications },
@@ -101,6 +106,11 @@ describe('scheduled handler', () => {
     const createDIContainerSpy = vi
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
+        notificationRetryService: {
+          retryDueDeliveries: vi
+            .fn()
+            .mockResolvedValue({ claimed: 0, sent: 0, failed: 0 }),
+        },
         notificationAudienceResolverService: { resolveDueSchedules },
         notificationDeliveryService: { enqueueReadySchedules },
         scheduledNotificationService: { enqueueDueNotifications },
@@ -144,6 +154,11 @@ describe('scheduled handler', () => {
     const createDIContainerSpy = vi
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
+        notificationRetryService: {
+          retryDueDeliveries: vi
+            .fn()
+            .mockResolvedValue({ claimed: 0, sent: 0, failed: 0 }),
+        },
         notificationAudienceResolverService: { resolveDueSchedules },
         notificationDeliveryService: { enqueueReadySchedules },
         scheduledNotificationService: { enqueueDueNotifications },

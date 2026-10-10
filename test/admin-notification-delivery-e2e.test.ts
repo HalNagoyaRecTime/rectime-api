@@ -2,6 +2,13 @@ import { env as workerEnv } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageBatch } from '@cloudflare/workers-types';
 import type { IFcmService } from '../src/application/services/IFcmService';
+import { FcmRequestError } from '../src/application/services/IFcmService';
+import { createDIContainer } from '../src/di/container';
+import {
+  createDeliveryFixture,
+  getDelivery,
+  NOW,
+} from './notificationDeliveryFixtures';
 import type { NotificationDeliveryMessage } from '../src/domain/entities/NotificationDelivery';
 import { signAccessToken } from '../src/infrastructure/auth/jwt';
 import * as fcmServiceModule from '../src/infrastructure/services/FcmService';
@@ -60,6 +67,35 @@ async function createStaffToken(): Promise<string> {
 }
 
 describe('Admin notification POST to FCM', () => {
+  it('実DIの一時失敗をCron entrypointから同じDeliveryへ再送する', async () => {
+    const fixture = await createDeliveryFixture();
+    sendNotificationToTokenMock.mockRejectedValueOnce(
+      new FcmRequestError(503, 'UNAVAILABLE', '一時失敗')
+    );
+    const container = createDIContainer(testEnv);
+    await container.notificationRetryService.sendClaimedDelivery(
+      fixture.delivery,
+      NOW
+    );
+    expect(
+      await getDelivery(fixture.delivery.notification_push_delivery_id)
+    ).toMatchObject({ status: 'retry_wait', attempt_count: 1 });
+    const { ctx, waitUntilPromises } = buildExecutionContext();
+    await worker.scheduled(
+      {
+        cron: '* * * * *',
+        scheduledTime: NOW.getTime() + 11_000,
+        noRetry: () => {},
+      } as unknown as ScheduledEvent,
+      { ...testEnv, EVENT_DATE: '' },
+      ctx
+    );
+    await Promise.all(waitUntilPromises);
+    expect(sendNotificationToTokenMock).toHaveBeenCalledTimes(2);
+    expect(
+      await getDelivery(fixture.delivery.notification_push_delivery_id)
+    ).toMatchObject({ status: 'sent', attempt_count: 2 });
+  });
   beforeEach(async () => {
     sendNotificationToTokenMock.mockClear();
     vi.spyOn(fcmServiceModule, 'createFcmService').mockReturnValue({

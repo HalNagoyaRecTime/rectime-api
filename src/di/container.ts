@@ -1,4 +1,5 @@
 import { getDb } from '../lib/db';
+import { createNotificationRetryService } from '../application/services/NotificationRetryService';
 import { createNotificationScheduleActionRepository } from '../infrastructure/repositories/NotificationScheduleActionRepository';
 import { createNotificationScheduleActionService } from '../application/services/NotificationScheduleActionService';
 import { createNotificationScheduleActionController } from '../presentation/controllers/NotificationScheduleActionController';
@@ -210,7 +211,13 @@ export function createDIContainer(env: Env) {
     createNotificationAudienceResolverService(
       notificationAudienceResolverRepository
     );
+  const notificationRetryService = createNotificationRetryService({
+    notificationDeliveryRepository,
+    firebaseTokenRepository,
+    fcmService,
+  });
   const notificationDeliveryService = createNotificationDeliveryService({
+    notificationRetryService,
     notificationDeliveryRepository,
     firebaseTokenRepository,
     notificationDeliveryQueue,
@@ -316,6 +323,7 @@ export function createDIContainer(env: Env) {
     scheduledNotificationService,
     notificationAudienceResolverService,
     notificationDeliveryService,
+    notificationRetryService,
     gatheringSpotController,
     venueController,
     gatheringGroupMemberController,
