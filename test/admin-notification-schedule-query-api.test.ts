@@ -1,7 +1,10 @@
+import { createNotificationDeliveryRepository } from '../src/infrastructure/repositories/NotificationDeliveryRepository';
+import { createNotificationDeliveryService } from '../src/application/services/NotificationDeliveryService';
+import { createFirebaseTokenRepository } from '../src/infrastructure/repositories/FirebaseTokenRepository';
 import { createAdminNotificationCommandRepository } from '../src/infrastructure/repositories/AdminNotificationCommandRepository';
 import { NOTIFICATION_AUDIENCE_USER_DELETED_REASON } from '../src/domain/entities/NotificationAudienceResolver';
 import { env as workerEnv } from 'cloudflare:workers';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../src/index';
 import { signAccessToken } from '../src/infrastructure/auth/jwt';
 import type { Env } from '../src/lib/env';
@@ -79,13 +82,14 @@ describe('管理用通知スケジュール照会APIの認可と入力検証', (
       const id = created.notification_schedule_id;
       try {
         await workerEnv.DB.prepare(
-          'UPDATE notification_schedules SET send_status = ?, reason = ?, stopped_at = ? WHERE notification_schedule_id = ?'
+          'UPDATE notification_schedules SET send_status = ?, reason = ?, failed_reason = ?, stopped_at = ? WHERE notification_schedule_id = ?'
         )
           .bind(
             status,
             status === 'stopped'
               ? 'manual'
               : NOTIFICATION_AUDIENCE_USER_DELETED_REASON,
+            '過去の配信準備失敗理由',
             status === 'stopped' ? '2026-10-03T00:00:00.000Z' : null,
             id
           )
@@ -136,6 +140,106 @@ describe('管理用通知スケジュール照会APIの認可と入力検証', (
         )
           .bind(created.notification_id)
           .run();
+      }
+    }
+  );
+
+  it.each([null, '既存の対象消失理由', ''])(
+    '配信準備の失敗理由を一覧・詳細で返す（既存reason: %s）',
+    async existingReason => {
+      const staffId = await insertUser('配信準備失敗を確認するスタッフ', true);
+      const timestamp = '2026-10-03T00:00:00.000Z';
+      const created = await createAdminNotificationCommandRepository(
+        workerEnv.DB
+      ).create({
+        actor_user_id: staffId,
+        push_title: '配信準備テスト',
+        push_body: '本文',
+        detail_title: '詳細',
+        detail_body: '本文',
+        importance: 'normal',
+        audiences: [{ type: 'user', target_id: staffId }],
+        send_at: timestamp,
+        now: timestamp,
+      });
+      const id = created.notification_schedule_id;
+      const deliveryRepository = createNotificationDeliveryRepository(
+        workerEnv.DB
+      );
+      const preparationError = '配信準備に失敗しました';
+      const prepare = vi
+        .spyOn(deliveryRepository, 'prepareResolvedSchedule')
+        .mockRejectedValue(new Error(preparationError));
+      const service = createNotificationDeliveryService({
+        notificationDeliveryRepository: deliveryRepository,
+        firebaseTokenRepository: createFirebaseTokenRepository(workerEnv.DB),
+        notificationDeliveryQueue: {
+          enqueueMany: vi.fn().mockResolvedValue(undefined),
+        },
+        fcmService: {
+          sendNotificationToToken: vi
+            .fn()
+            .mockResolvedValue({ success: true, messageId: 'テスト' }),
+        },
+      });
+      try {
+        await workerEnv.DB.prepare(
+          "UPDATE notification_schedules SET send_status = 'resolving', recipients_resolved_at = ?, reason = ? WHERE notification_schedule_id = ?"
+        )
+          .bind(timestamp, existingReason, id)
+          .run();
+        expect(
+          await service.enqueueReadySchedules(new Date(timestamp))
+        ).toMatchObject({ failed_schedule_ids: [id], queued_schedule_ids: [] });
+        expect(prepare).toHaveBeenCalledWith(id, timestamp);
+        expect(
+          await workerEnv.DB.prepare(
+            'SELECT send_status, reason, failed_reason FROM notification_schedules WHERE notification_schedule_id = ?'
+          )
+            .bind(id)
+            .first()
+        ).toEqual({
+          send_status: 'failed',
+          reason: existingReason,
+          failed_reason: preparationError,
+        });
+        const expectedReason = existingReason ?? preparationError;
+        const detail = await requestAs(
+          staffId,
+          `/api/v1/admin/notifications/schedules/${id}`
+        );
+        expect(detail.status).toBe(200);
+        expect(await detail.json()).toMatchObject({
+          status: 'failed',
+          failureReason: expectedReason,
+        });
+        const list = await requestAs(
+          staffId,
+          '/api/v1/admin/notifications/schedules?from=2026-10-03T00%3A00%3A00Z&to=2026-10-03T23%3A59%3A59Z'
+        );
+        expect(list.status).toBe(200);
+        expect(await list.json()).toMatchObject({
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              notificationScheduleId: id,
+              status: 'failed',
+              failureReason: expectedReason,
+            }),
+          ]),
+        });
+      } finally {
+        prepare.mockRestore();
+        await workerEnv.DB.batch([
+          workerEnv.DB.prepare(
+            'DELETE FROM notification_audiences WHERE notification_schedule_id = ?'
+          ).bind(id),
+          workerEnv.DB.prepare(
+            'DELETE FROM notification_schedules WHERE notification_schedule_id = ?'
+          ).bind(id),
+          workerEnv.DB.prepare(
+            'DELETE FROM notifications WHERE notification_id = ?'
+          ).bind(created.notification_id),
+        ]);
       }
     }
   );

@@ -17,6 +17,7 @@ Schedule更新と直接User Audience削除は同じD1 batchで実行し、失敗
 アカウント削除時のreasonは「Audienceの対象ユーザーが削除されました」とし、個人情報やUser IDを含めない。
 既存のResolver失敗理由は維持する。
 管理用Schedule一覧・詳細APIにnullableなfailureReasonを追加し、failedの場合にreasonを返す。
+reasonがNULLの場合は、配信準備の失敗理由を保存するfailed_reasonから取得する。両方ある場合はreasonを優先し、両方NULLならfailureReasonもNULLとなる。
 停止理由stop.reasonのmanual / source_deletedは変更しない。
 failed以外ではfailureReasonはNULLとなる。
 
