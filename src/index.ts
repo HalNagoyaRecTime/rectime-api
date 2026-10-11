@@ -33,7 +33,11 @@ import {
 import { errorResponse } from './presentation/errors/errorResponse';
 import { toValidationErrorDetails } from './presentation/errors/validationErrorDetails';
 import type { ZodError } from 'zod';
-import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
+import {
+  apiOverviewRoute,
+  contactRoute,
+  healthRoute,
+} from './presentation/openapi/system';
 import {
   studentCreateRoute,
   studentDetailRoute,
@@ -168,10 +172,16 @@ app.use('*', (c, next) => {
 app.openapi(healthRoute, c => c.json({ status: 'ok' } as const, 200));
 
 // 認証不要。リダイレクト先は環境変数のみで決め、クエリ等は参照しない。
-app.get('/app/contact', c => {
-  const contactFormUrl = getContactFormUrl(c.env);
-  if (contactFormUrl === null) return c.notFound();
+app.openapi(contactRoute, c => {
   c.header('Cache-Control', 'no-store');
+  const contactFormUrl = getContactFormUrl(c.env);
+  if (contactFormUrl === null) {
+    // URL未設定は運営側の設定不備のため、404ではなく503で利用不可を伝える。
+    return c.html(
+      '<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>お問い合わせ</title></head><body><p>現在お問い合わせフォームを利用できません。</p></body></html>',
+      503
+    );
+  }
   return c.redirect(contactFormUrl, 302);
 });
 

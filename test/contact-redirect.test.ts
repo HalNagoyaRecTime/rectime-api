@@ -37,10 +37,15 @@ describe('GET /app/contact', () => {
     ['URLとして不正', 'not-a-url'],
     ['http', 'http://forms.example.com/r/contact'],
     ['javascript', 'javascript:alert(1)'],
-  ])('%sの場合はリダイレクトしない', async (_name, value) => {
+  ])('%sの場合はリダイレクトせず503のHTMLを返す', async (_name, value) => {
     const res = await request('/app/contact', value);
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(503);
     expect(res.headers.get('Location')).toBeNull();
+    expect(res.headers.get('Content-Type')).toContain('text/html');
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    expect(await res.text()).toContain(
+      '現在お問い合わせフォームを利用できません'
+    );
   });
 });
