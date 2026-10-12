@@ -244,7 +244,86 @@ describe('GET /auth/me', () => {
       is_staff: false,
       is_teacher: false,
     });
+    expect(body.user).not.toHaveProperty('teacher');
   });
+
+  it.each([false, true])(
+    '教師の担当クラスを返す（担当なし=%s）',
+    async empty => {
+      const user = await workerEnv.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('先生') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const teacher = await workerEnv.DB.prepare(
+        "INSERT INTO teachers (user_id, email) VALUES (?, 'teacher@example.com') RETURNING teacher_id"
+      )
+        .bind(user!.user_id)
+        .first<{ teacher_id: number }>();
+      const rooms: {
+        class_room_id: number;
+        class_code: string;
+        class_room_name: string;
+      }[] = [];
+      if (!empty) {
+        for (const [code, name] of [
+          ['2-B', '2年B組'],
+          ['1-A', '1年A組'],
+        ]) {
+          const room = await workerEnv.DB.prepare(
+            'INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES (?, ?, ?) RETURNING class_room_id'
+          )
+            .bind(code, name, teacher!.teacher_id)
+            .first<{ class_room_id: number }>();
+          rooms.push({
+            class_room_id: room!.class_room_id,
+            class_code: code,
+            class_room_name: name,
+          });
+        }
+      }
+      const token = await signAccessToken(
+        {
+          sub: String(user!.user_id),
+          oid: 'teacher-oid',
+          email: 'teacher@example.com',
+          display_name: '先生',
+          client_type: 'mobile',
+        },
+        JWT_SECRET,
+        3600
+      );
+      try {
+        const response = await buildApp().request(
+          '/me',
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'X-Client-Type': 'mobile',
+            },
+          },
+          buildEnv()
+        );
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          user: {
+            is_student: false,
+            is_teacher: true,
+            teacher: {
+              teacher_id: teacher!.teacher_id,
+              class_rooms: rooms.sort((a, b) =>
+                a.class_code.localeCompare(b.class_code)
+              ),
+            },
+          },
+        });
+      } finally {
+        await workerEnv.DB.prepare(
+          'UPDATE class_rooms SET teacher_id = NULL WHERE teacher_id = ?'
+        )
+          .bind(teacher!.teacher_id)
+          .run();
+      }
+    }
+  );
 
   it('Authorizationヘッダーが無い場合は401を返す', async () => {
     const app = buildApp();

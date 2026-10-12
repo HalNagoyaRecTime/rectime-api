@@ -11,6 +11,7 @@ import {
 } from 'vitest';
 import type { KVNamespace } from '@cloudflare/workers-types';
 import { microsoft } from '../../../../src/presentation/auth/routes/microsoft';
+import { account } from '../../../../src/presentation/auth/routes/account';
 import { verifyAccessToken } from '../../../../src/infrastructure/auth/jwt';
 import { generateRandom } from '../../../../src/infrastructure/auth/pkce';
 import { toBase64URL } from '../../../../src/infrastructure/auth/base64url';
@@ -1237,11 +1238,38 @@ describe('POST /auth/microsoft/token', () => {
 
     expect(firstResponse.status).toBe(200);
     const firstBody = (await firstResponse.json()) as {
+      access_token: string;
       user: { id: string; is_staff: boolean; is_teacher: boolean };
     };
     expect(firstBody.user.id).toBe(String(user!.user_id));
     expect(firstBody.user.is_staff).toBe(true);
     expect(firstBody.user.is_teacher).toBe(true);
+    const expectedTeacher = {
+      teacher_id: teacher!.teacher_id,
+      class_rooms: [
+        {
+          class_room_id: classRoom!.class_room_id,
+          class_code: 'TEACHER-LINK',
+          class_room_name: '教員紐付け確認',
+        },
+      ],
+    };
+    expect(firstBody.user).toMatchObject({ teacher: expectedTeacher });
+    const accountApp = new Hono<{ Bindings: Env }>();
+    accountApp.use('*', diContainerMiddleware);
+    accountApp.route('/', account);
+    const meResponse = await accountApp.request(
+      '/me',
+      {
+        headers: {
+          Authorization: `Bearer ${firstBody.access_token}`,
+          'X-Client-Type': 'mobile',
+        },
+      },
+      env
+    );
+    expect(meResponse.status).toBe(200);
+    expect(await meResponse.json()).toEqual({ user: firstBody.user });
 
     const usersAfterFirstLogin = await workerEnv.DB.prepare(
       'SELECT COUNT(*) AS count FROM users'
@@ -1281,6 +1309,7 @@ describe('POST /auth/microsoft/token', () => {
     expect(secondBody.user.id).toBe(String(user!.user_id));
     expect(secondBody.user.is_staff).toBe(true);
     expect(secondBody.user.is_teacher).toBe(true);
+    expect(secondBody.user).toMatchObject({ teacher: expectedTeacher });
 
     const usersAfterSecondLogin = await workerEnv.DB.prepare(
       'SELECT COUNT(*) AS count FROM users'
