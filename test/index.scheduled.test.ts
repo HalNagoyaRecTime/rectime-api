@@ -96,49 +96,76 @@ describe('scheduled handler', () => {
     createDIContainerSpy.mockRestore();
   });
 
-  it('再同期に失敗したGatheringがあればその回のResolverを開始しない', async () => {
-    const container = await import('../src/di/container');
-    const reconcileAll = vi.fn().mockResolvedValue({
-      processed_count: 1,
-      failed_gathering_ids: [52],
-    });
-    const resolveDueSchedules = vi.fn();
-    const enqueueReadySchedules = vi.fn();
-    const enqueueDueNotifications = vi.fn();
-    const createDIContainerSpy = vi
-      .spyOn(container, 'createDIContainer')
-      .mockReturnValue({
-        gatheringNotificationGeneratorService: { reconcileAll },
-        notificationAudienceResolverService: { resolveDueSchedules },
-        notificationDeliveryService: { enqueueReadySchedules },
-        scheduledNotificationService: { enqueueDueNotifications },
-      } as unknown as ReturnType<typeof container.createDIContainer>);
-    const consoleErrorSpy = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => {});
+  it.each(['一部失敗', '例外'] as const)(
+    '再同期の%sを記録し、Resolverと配信を続行する',
+    async failure => {
+      const container = await import('../src/di/container');
+      const error = new Error('再同期の一時失敗');
+      const reconcileAll =
+        failure === '一部失敗'
+          ? vi.fn().mockResolvedValue({
+              processed_count: 1,
+              failed_gathering_ids: [52],
+            })
+          : vi.fn().mockRejectedValue(error);
+      const resolveDueSchedules = vi.fn().mockResolvedValue({
+        completed_schedules: [],
+        retryable_schedule_ids: [],
+        failed_schedule_ids: [],
+      });
+      const enqueueReadySchedules = vi.fn().mockResolvedValue({
+        queued_schedule_ids: [],
+        completed_schedule_ids: [],
+        failed_schedule_ids: [],
+      });
+      const enqueueDueNotifications = vi.fn();
+      const createDIContainerSpy = vi
+        .spyOn(container, 'createDIContainer')
+        .mockReturnValue({
+          gatheringNotificationGeneratorService: { reconcileAll },
+          notificationAudienceResolverService: { resolveDueSchedules },
+          notificationDeliveryService: { enqueueReadySchedules },
+          scheduledNotificationService: { enqueueDueNotifications },
+        } as unknown as ReturnType<typeof container.createDIContainer>);
+      const consoleErrorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
-    const { ctx, waitUntilPromises } = buildExecutionContext();
-    const event = {
-      cron: '* * * * *',
-      scheduledTime: Date.now(),
-      noRetry: () => {},
-    } as unknown as ScheduledEvent;
+      const { ctx, waitUntilPromises } = buildExecutionContext();
+      const event = {
+        cron: '* * * * *',
+        scheduledTime: Date.now(),
+        noRetry: () => {},
+      } as unknown as ScheduledEvent;
 
-    await worker.scheduled(
-      event,
-      { ...workerEnv, EVENT_DATE: '2026-11-08' },
-      ctx
-    );
-    await expect(Promise.all(waitUntilPromises)).resolves.toBeDefined();
+      await worker.scheduled(
+        event,
+        { ...workerEnv, EVENT_DATE: '2026-11-08' },
+        ctx
+      );
+      await expect(Promise.all(waitUntilPromises)).resolves.toBeDefined();
 
-    expect(resolveDueSchedules).not.toHaveBeenCalled();
-    expect(enqueueReadySchedules).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      '[CRON] Gathering自動通知の再同期に失敗しました',
-      { gatheringIds: [52] }
-    );
-    createDIContainerSpy.mockRestore();
-  });
+      expect(resolveDueSchedules).toHaveBeenCalledTimes(1);
+      expect(resolveDueSchedules).toHaveBeenCalledWith(
+        new Date(event.scheduledTime)
+      );
+      expect(enqueueReadySchedules).toHaveBeenCalledTimes(1);
+      expect(enqueueReadySchedules).toHaveBeenCalledWith(
+        new Date(event.scheduledTime)
+      );
+      expect(reconcileAll.mock.invocationCallOrder[0]).toBeLessThan(
+        resolveDueSchedules.mock.invocationCallOrder[0]
+      );
+      expect(resolveDueSchedules.mock.invocationCallOrder[0]).toBeLessThan(
+        enqueueReadySchedules.mock.invocationCallOrder[0]
+      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[CRON] Gathering自動通知の再同期に失敗しました',
+        failure === '一部失敗' ? { gatheringIds: [52] } : error
+      );
+      createDIContainerSpy.mockRestore();
+    }
+  );
 
   it('Audience Resolver自体のrejectをログへ記録し、Cron Promiseをrejectさせない', async () => {
     const container = await import('../src/di/container');

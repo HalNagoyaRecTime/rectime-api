@@ -605,14 +605,12 @@ export default {
               console.error('[CRON] Gathering自動通知の再同期に失敗しました', {
                 gatheringIds: reconciliation.failed_gathering_ids,
               });
-              return;
             }
           } catch (error) {
             console.error(
               '[CRON] Gathering自動通知の再同期に失敗しました',
               error
             );
-            return;
           }
         }
 
