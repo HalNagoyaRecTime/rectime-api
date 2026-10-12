@@ -1,3 +1,4 @@
+import { markdownBodySchema } from '../markdown';
 import {
   NOTIFICATION_AUDIENCE_TYPES,
   NOTIFICATION_CREATION_METHODS,
@@ -48,8 +49,9 @@ const notificationContentBlockSchema = z
 export const notificationContentPushSchema =
   notificationContentBlockSchema.openapi('NotificationContentPush');
 
-export const notificationContentDetailSchema =
-  notificationContentBlockSchema.openapi('NotificationContentDetail');
+export const notificationContentDetailSchema = notificationContentBlockSchema
+  .extend({ body: markdownBodySchema })
+  .openapi('NotificationContentDetail');
 
 export const notificationContentSchema = z
   .object({

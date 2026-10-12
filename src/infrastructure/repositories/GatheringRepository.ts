@@ -1,9 +1,11 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
+
 import type { GatheringDetailsEntity } from '../../domain/entities/Gathering';
 import { IGatheringRepository } from '../../domain/interfaces/repositories/IGatheringRepository';
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
+
 import * as schema from '../database/schema';
 import { events, gathering_spots, gatherings } from '../database/schema';
 
@@ -26,19 +28,6 @@ export function createGatheringRepository(
   const orm = drizzle(db, { schema });
 
   return {
-    async findAll(): Promise<GatheringDetailsEntity[]> {
-      return orm
-        .select(detailSelection)
-        .from(gatherings)
-        .innerJoin(events, eq(gatherings.eventId, events.id))
-        .innerJoin(
-          gathering_spots,
-          eq(gatherings.gatheringSpotId, gathering_spots.id)
-        )
-        .orderBy(asc(gatherings.id))
-        .all();
-    },
-
     async findByEventId(eventId: number): Promise<GatheringDetailsEntity[]> {
       return orm
         .select(detailSelection)

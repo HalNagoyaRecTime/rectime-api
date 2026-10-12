@@ -2,6 +2,7 @@ import { createRoute } from '@hono/zod-openapi';
 import type {
   CreateEventRequestDTO,
   EventDetailDTO,
+  MyEventDTO,
   GetEventsRequestDTO,
 } from '../../application/dto/EventDTO';
 import { eventVenueListResponseSchema, venueIdsSchema } from './eventVenues';
@@ -61,6 +62,14 @@ export const eventListItemResponseSchema = eventResponseSchema
 
 export const eventListResponseSchema = z
   .object({
+    event_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable()
+      .openapi({
+        description:
+          'JSTの開催日（YYYY-MM-DD）。EVENT_DATEが未設定・不正ならnull。',
+      }),
     events: z.array(eventListItemResponseSchema),
     ...paginationFields,
   })
@@ -93,7 +102,7 @@ const isValidEventTimeRange = (data: {
 
 const eventBaseSchema = z.object({
   event_name: z.string().trim().min(1).max(100),
-  rule_text: z.string().trim().max(1000).nullable().optional(),
+  rule_text: z.string().max(1000).nullable().optional(),
   venue_ids: venueIdsSchema,
   start_time: hhmmSchema,
   end_time: hhmmSchema,
@@ -238,6 +247,34 @@ export const eventDeleteRoute = createRoute({
     403: forbiddenResponse,
     404: notFoundResponse,
     409: conflictResponse,
+    500: internalServerErrorResponse,
+  },
+});
+
+/** 本人の参加情報。イベント本文・時刻・会場はイベントAPIから取得する。 */
+export const myEventResponseSchema = z
+  .object({
+    event_id: z.number().int().positive(),
+    gathering_ids: z.array(z.number().int().positive()).openapi({
+      description:
+        '本人が所属する集合ID。重複なし、ID昇順。時刻・場所はイベント詳細のroundsと照合する。',
+    }),
+  })
+  .openapi('MyEvent') satisfies z.ZodType<MyEventDTO>;
+
+export const myEventsRoute = createRoute({
+  method: 'get',
+  path: '/me/events',
+  tags: ['Events'],
+  security: bearerAuth,
+  description:
+    '本人が参加するイベントIDと集合IDのみを開始時刻・イベントID順で返す。イベント情報はイベントAPIから取得する。未参加はeventsが空配列。',
+  responses: {
+    200: jsonResponse(
+      z.object({ events: z.array(myEventResponseSchema) }),
+      '本人の参加予定'
+    ),
+    401: unauthorizedResponse,
     500: internalServerErrorResponse,
   },
 });

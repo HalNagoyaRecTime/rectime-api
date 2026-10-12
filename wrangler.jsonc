@@ -98,16 +98,16 @@
   ],
   "env": {
     // `rectime-api-development` という別Workerとして作成される。
-    // ローカル開発(wrangler dev --env development)と、mainブランチ以外へのpush先/
-    // PRごとのpreviewデプロイ先(旧env.preview)の両方を兼ねる(env.previewは廃止し統合した)。
+    // ローカル開発(wrangler dev --env development)と、developブランチへのpush先の
+    // 両方を兼ねる(env.previewは廃止し統合した)。
+    // PRごとのpreviewデプロイは行わない(理由はdeploy.ymlのjobs.targetを参照)。
     // env.default は development と重複していたため削除した。
     //
     // web向けMicrosoft OAuthのredirect_uriは(#151により)リクエストURLから動的に
     // 組み立てられるため、wrangler側での設定は不要。ただしMicrosoft Entra側の
-    // アプリ登録には、実際にデプロイされるWorkerのコールバックURL
-    // (`wrangler versions upload --env development --preview-alias <固定名>` で得られる
-    // `https://<固定名>-rectime-api-development.<subdomain>.workers.dev/api/v1/auth/microsoft/callback`)
-    // を事前に追加登録しておく必要がある(preview-aliasを固定名で使い続けないとURLが変わり登録と食い違う)。
+    // アプリ登録には、developmentのコールバックURL
+    // (`https://rectime-api-development.<subdomain>.workers.dev/api/v1/auth/microsoft/callback`)
+    // を事前に追加登録しておく必要がある(未登録だとdevelopmentでのMicrosoftログインのみ失敗する)。
     "development": {
       "name": "rectime-api-development",
       "preview_urls": true,

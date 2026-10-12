@@ -58,6 +58,7 @@ import {
   eventDetailRoute,
   eventGatheringListRoute,
   eventListRoute,
+  myEventsRoute,
   eventUpdateRoute,
 } from './presentation/openapi/events';
 import { eventGatheringSettingsUpdateRoute } from './presentation/openapi/eventGatheringSettings';
@@ -74,7 +75,6 @@ import {
   masterImportDetailRoute,
 } from './presentation/openapi/masterImports';
 import {
-  gatheringListRoute,
   gatheringMemberListRoute,
   gatheringMemberReplaceRoute,
   gatheringSpotCreateRoute,
@@ -180,7 +180,6 @@ app.openapi(apiOverviewRoute, c => {
         events: '/api/v1/events',
         classRooms: '/api/v1/classrooms',
         gatheringSpots: '/api/v1/gathering-spots',
-        gatherings: '/api/v1/gatherings',
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
         firebaseTokens: '/api/v1/firebase-tokens',
         adminNotifications: '/api/v1/admin/notifications',
@@ -290,7 +289,7 @@ apiV1.openapi(authed(eventListRoute), c => {
 apiV1.openapi(authed(eventDetailRoute), c => {
   return c.get('container').eventController.getEventById(c);
 });
-apiV1.get('/me/events', requireAuth, c => {
+apiV1.openapi(authed(myEventsRoute), c => {
   return c.get('container').eventController.getMyEvents(c);
 });
 // 配布済みmobileが利用中の互換APIのため削除禁止（#395）。レスポンス形式・認可を維持する。
@@ -438,11 +437,6 @@ apiV1.openapi(staffOnly(gatheringMemberReplaceRoute), c => {
   return c
     .get('container')
     .gatheringGroupMemberController.replaceGatheringMembers(c);
-});
-
-// Gathering routes
-apiV1.openapi(staffOnly(gatheringListRoute), c => {
-  return c.get('container').gatheringController.getAllGatherings(c);
 });
 
 // Firebase token routes

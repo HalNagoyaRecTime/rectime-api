@@ -11,9 +11,6 @@ import {
   getNumberEnv,
   getBearerToken,
   refreshMicrosoftAccessToken,
-  userResponse,
-  getStudentInfoOrNull,
-  getUserCategories,
 } from '../helpers';
 import { rejectInactiveUser } from '../rejectInactiveUser';
 import {
@@ -26,6 +23,7 @@ import { logoutRequestDtoSchema } from '../../../application/dto/LogoutRequestDt
 import { LogoutCleanupFailedError } from '../../../application/errors/LogoutCleanupFailedError';
 import { createUserRepository } from '../../../infrastructure/repositories/UserRepository';
 import { AuthErrors } from '../../errors/authErrors';
+import { microsoftTokenError } from '../../errors/microsoftTokenError';
 import { CommonErrors } from '../../errors/commonErrors';
 import {
   errorResponse,
@@ -89,7 +87,7 @@ async function authenticateActiveUser(
 
 // GET /auth/me
 account.get('/me', async c => {
-  const { studentService } = c.get('container');
+  const { authProfileService } = c.get('container');
   const clientType = getClientType(c);
   if (clientType !== 'web' && clientType !== 'mobile') {
     return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
@@ -107,28 +105,14 @@ account.get('/me', async c => {
   const rejected = await rejectInactiveUser(c, claims.sub);
   if (rejected) return rejected;
 
-  const student = await getStudentInfoOrNull(
-    studentService,
-    Number(claims.sub)
-  );
-
-  const categories = await getUserCategories(c, claims.sub);
-  return c.json({
-    user: userResponse(
-      {
-        id: claims.sub,
-        email: claims.email,
-        display_name: claims.display_name,
-        avatar_url: claims.avatar_url ?? ACCOUNT_PHOTO_PATH,
-        avatar_updated_at: claims.avatar_updated_at ?? null,
-        student_id_number: student?.student_id_number ?? null,
-        class_code: student?.class_code ?? null,
-        class_room_name: student?.class_room_name ?? null,
-        attendance_number: student?.attendance_number ?? null,
-      },
-      categories
-    ),
+  const user = await authProfileService.getProfile({
+    id: claims.sub,
+    email: claims.email,
+    display_name: claims.display_name,
+    avatar_url: claims.avatar_url,
+    avatar_updated_at: claims.avatar_updated_at,
   });
+  return c.json({ user });
 });
 
 // GET /auth/me/photo
@@ -163,7 +147,7 @@ account.get('/me/photo', async c => {
 
   const refresh = JSON.parse(refreshRaw) as MobileRefreshEntry;
 
-  const tokens = await refreshMicrosoftAccessToken(
+  const result = await refreshMicrosoftAccessToken(
     c,
     refresh.ms_refresh_token,
     {
@@ -171,8 +155,19 @@ account.get('/me/photo', async c => {
     }
   );
 
-  if (!tokens?.access_token) {
-    return errorResponse(c, AuthErrors.GRAPH_TOKEN_EXCHANGE_FAILED);
+  if (!result.ok) {
+    return errorResponse(
+      c,
+      microsoftTokenError(
+        result,
+        AuthErrors.GRAPH_TOKEN_EXCHANGE_FAILED,
+        AuthErrors.AUTH_REFRESH_UNAVAILABLE
+      )
+    );
+  }
+  const tokens = result.tokens;
+  if (!tokens.access_token) {
+    return errorResponse(c, AuthErrors.AUTH_REFRESH_UNAVAILABLE);
   }
 
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
@@ -266,6 +261,8 @@ account.post('/logout', async c => {
 // mobile/web共通: refresh_token_id を使ってrectime-apiのアクセストークンを
 // 再発行する。refresh_token_id はローテーションし、レスポンスの
 // client_type は要求元(X-Client-Type)に合わせる。
+// 上流の一時障害は503、設定・不明エラーは500とし、更新用KVを変更しない。
+// REFRESH_TOKEN_EXPIREDはMicrosoftがHTTP 400で再認証を要求した場合だけ返す。
 account.post('/refresh', async c => {
   const clientType = getClientType(c);
   if (clientType !== 'web' && clientType !== 'mobile') {
@@ -316,15 +313,26 @@ account.post('/refresh', async c => {
   const rejected = await rejectInactiveUser(c, refresh.user_id);
   if (rejected) return rejected;
 
-  const tokens = await refreshMicrosoftAccessToken(
+  const result = await refreshMicrosoftAccessToken(
     c,
     refresh.ms_refresh_token,
     {
       includeClientAssertion: clientType === 'web',
     }
   );
-  if (!tokens?.refresh_token) {
-    return errorResponse(c, AuthErrors.REFRESH_TOKEN_EXPIRED);
+  if (!result.ok) {
+    return errorResponse(
+      c,
+      microsoftTokenError(
+        result,
+        AuthErrors.REFRESH_TOKEN_EXPIRED,
+        AuthErrors.AUTH_REFRESH_UNAVAILABLE
+      )
+    );
+  }
+  const tokens = result.tokens;
+  if (!tokens.access_token || !tokens.refresh_token) {
+    return errorResponse(c, AuthErrors.AUTH_REFRESH_UNAVAILABLE);
   }
 
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);

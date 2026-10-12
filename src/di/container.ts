@@ -73,6 +73,7 @@ import { createUserRepository } from '../infrastructure/repositories/UserReposit
 import { createUserStatusRepository } from '../infrastructure/repositories/UserStatusRepository';
 import { createUserStatusService } from '../application/services/UserStatusService';
 import { createUserStatusController } from '../presentation/controllers/UserStatusController';
+import { createAuthProfileService } from '../application/services/AuthProfileService';
 import { createAuthService } from '../application/services/authService';
 import { createLogoutService } from '../application/services/LogoutService';
 import { createKvRefreshSessionRepository } from '../infrastructure/repositories/KvRefreshSessionRepository';
@@ -144,6 +145,11 @@ export function createDIContainer(env: Env) {
     env.AUTH_KV,
     firebaseTokenRepository
   );
+  const authProfileService = createAuthProfileService(
+    userRepository,
+    studentRepository,
+    teacherRepository
+  );
   const logoutService = createLogoutService(
     firebaseTokenRepository,
     createKvRefreshSessionRepository(env.AUTH_KV)
@@ -180,7 +186,8 @@ export function createDIContainer(env: Env) {
   const eventService = createEventService(
     eventRepository,
     eventGatheringSettingsRepository,
-    venueRepository
+    venueRepository,
+    env.EVENT_DATE
   );
   const classRoomService = createClassRoomService(
     classRoomRepository,
@@ -301,6 +308,7 @@ export function createDIContainer(env: Env) {
     // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
     userStatusRepository,
     authService,
+    authProfileService,
     logoutService,
     userStatusController,
     accountDeletionService,

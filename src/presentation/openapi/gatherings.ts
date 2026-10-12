@@ -94,13 +94,10 @@ export const gatheringListResponseSchema = z
   .array(gatheringResponseSchema)
   .openapi('GatheringList');
 
-export type GatheringListResponseDTO = z.infer<
-  typeof gatheringListResponseSchema
->;
-
 export const gatheringSpotIdParams = z.object({
   gatheringSpotId: positivePathParam('gatheringSpotId', '集合場所ID'),
 });
+
 export const gatheringIdParams = z.object({
   gatheringId: positivePathParam('gatheringId', '集合予定ID'),
 });
@@ -274,20 +271,6 @@ export const gatheringMemberReplaceRoute = createRoute({
     401: unauthorizedResponse,
     403: forbiddenResponse,
     404: notFoundResponse,
-    500: internalServerErrorResponse,
-  },
-});
-
-export const gatheringListRoute = createRoute({
-  method: 'get',
-  path: '/gatherings',
-  tags: ['Gatherings'],
-  summary: '集合予定一覧を取得する',
-  security: bearerAuth,
-  responses: {
-    200: jsonResponse(gatheringListResponseSchema, '集合予定一覧'),
-    401: unauthorizedResponse,
-    403: forbiddenResponse,
     500: internalServerErrorResponse,
   },
 });
