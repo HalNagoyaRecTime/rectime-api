@@ -58,6 +58,7 @@ import {
   eventDetailRoute,
   eventGatheringListRoute,
   eventListRoute,
+  myEventsRoute,
   eventUpdateRoute,
 } from './presentation/openapi/events';
 import { eventGatheringSettingsUpdateRoute } from './presentation/openapi/eventGatheringSettings';
@@ -288,7 +289,7 @@ apiV1.openapi(authed(eventListRoute), c => {
 apiV1.openapi(authed(eventDetailRoute), c => {
   return c.get('container').eventController.getEventById(c);
 });
-apiV1.get('/me/events', requireAuth, c => {
+apiV1.openapi(authed(myEventsRoute), c => {
   return c.get('container').eventController.getMyEvents(c);
 });
 // 配布済みmobileが利用中の互換APIのため削除禁止（#395）。レスポンス形式・認可を維持する。

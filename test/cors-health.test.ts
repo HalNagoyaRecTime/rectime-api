@@ -87,6 +87,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/master-imports',
       '/api/v1/master-imports/{validatedFileId}',
       '/api/v1/master-imports/{validatedFileId}/commit',
+      '/api/v1/me/events',
       '/api/v1/me/notifications',
       '/api/v1/me/notifications/{notificationId}',
       '/api/v1/staffs',
@@ -234,7 +235,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(57);
+    expect(documentedOperations).toHaveLength(58);
     expect(document.paths['/api/v1/gatherings']).toBeUndefined();
     const schedulePath =
       document.paths[
