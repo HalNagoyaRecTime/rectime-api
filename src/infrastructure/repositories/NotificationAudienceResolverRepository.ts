@@ -220,9 +220,9 @@ function buildRecipientInsert(
   return db
     .prepare(
       `INSERT INTO notification_recipients (
-         notification_schedule_id, user_id, created_at
+         notification_schedule_id, user_id, created_at, updated_at
        )
-       SELECT ?, audience_users.user_id, ?
+       SELECT ?, audience_users.user_id, ?, ?
        FROM (${users.sql}) AS audience_users
        WHERE EXISTS (
          SELECT 1
@@ -241,6 +241,7 @@ function buildRecipientInsert(
     )
     .bind(
       scheduleId,
+      now,
       now,
       ...users.params,
       audience.notification_audience_id,
