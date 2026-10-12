@@ -3,19 +3,19 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0038_add_notification_recipient_updated_at.sql'
+    item => item.name === '0040_add_notification_recipient_updated_at.sql'
   );
   if (!migration) {
     throw new Error(
-      '0038_add_notification_recipient_updated_at.sql is not registered'
+      '0040_add_notification_recipient_updated_at.sql is not registered'
     );
   }
   return migration.queries;
 })();
 
-const testPrefix = '0038RecipientUpdatedAt';
+const testPrefix = '0040RecipientUpdatedAt';
 
-describe('0038_add_notification_recipient_updated_at.sql', () => {
+describe('0040_add_notification_recipient_updated_at.sql', () => {
   afterEach(async () => {
     await env.DB.prepare(
       `DELETE FROM notification_schedules
