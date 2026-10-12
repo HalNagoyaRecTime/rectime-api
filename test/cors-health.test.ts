@@ -388,6 +388,19 @@ describe('OpenAPIスキーマと実レスポンスの一致', () => {
     });
   });
 
+  it('開催日をDI経由で一覧レスポンスへ渡す', async () => {
+    const response = await app.fetch(
+      new Request('http://example.com/api/v1/events', {
+        headers: await bearerHeaders(),
+      }),
+      { ...authEnv, EVENT_DATE: '2026-10-09' }
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ event_date: '2026-10-09' });
+    expect(eventListResponseSchema.safeParse(body).success).toBe(true);
+  });
+
   it('成功レスポンスの本文が文書化されたスキーマに一致する', async () => {
     const res = await app.fetch(
       new Request('http://example.com/api/v1/events', {

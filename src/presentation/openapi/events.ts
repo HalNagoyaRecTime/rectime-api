@@ -61,6 +61,14 @@ export const eventListItemResponseSchema = eventResponseSchema
 
 export const eventListResponseSchema = z
   .object({
+    event_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable()
+      .openapi({
+        description:
+          'JSTの開催日（YYYY-MM-DD）。EVENT_DATEが未設定・不正ならnull。',
+      }),
     events: z.array(eventListItemResponseSchema),
     ...paginationFields,
   })

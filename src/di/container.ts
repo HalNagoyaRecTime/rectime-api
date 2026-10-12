@@ -179,7 +179,8 @@ export function createDIContainer(env: Env) {
   const eventService = createEventService(
     eventRepository,
     eventGatheringSettingsRepository,
-    venueRepository
+    venueRepository,
+    env.EVENT_DATE
   );
   const classRoomService = createClassRoomService(
     classRoomRepository,

@@ -1,3 +1,4 @@
+import { isValidEventDate } from '../../lib/eventDate';
 import type {
   EventListOptions,
   EventWithGatheringSummaryEntity,
@@ -69,13 +70,15 @@ function toEventListOptions(options: GetEventsRequestDTO): EventListOptions {
 export function createEventService(
   eventRepository: IEventRepository,
   eventGatheringSettingsRepository: IEventGatheringSettingsRepository,
-  venueRepository: IVenueRepository
+  venueRepository: IVenueRepository,
+  eventDate?: string
 ): IEventService {
   return {
     async getAllEvents(options) {
       const repositoryOptions = toEventListOptions(options);
       const result = await eventRepository.findAll(repositoryOptions);
       return {
+        event_date: isValidEventDate(eventDate) ? eventDate : null,
         events: result.events.map(toEventListItemDTO),
         total: result.total,
         limit: options.limit ?? 50,

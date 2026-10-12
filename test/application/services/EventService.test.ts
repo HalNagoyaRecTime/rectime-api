@@ -110,6 +110,62 @@ function createService(
 
 describe('EventService', () => {
   describe('getAllEvents', () => {
+    it.each([
+      ['2026-10-09', '2026-10-09'],
+      ['2028-02-29', '2028-02-29'],
+      [undefined, null],
+      ['', null],
+      ['2026-02-29', null],
+      ['2026-13-01', null],
+      ['2026-10-09T00:00:00Z', null],
+    ])(
+      '設定された開催日%sを%sとして空一覧でも返す',
+      async (configured, expected) => {
+        const repository = createRepository({
+          findAll: vi.fn().mockResolvedValue({ events: [], total: 0 }),
+        });
+        const service = createEventService(
+          repository,
+          createGatheringSettingsRepository(),
+          createVenueRepository(),
+          configured
+        );
+        expect(await service.getAllEvents({})).toEqual({
+          event_date: expected,
+          events: [],
+          total: 0,
+          limit: 50,
+          offset: 0,
+        });
+      }
+    );
+
+    it('ページングと時刻フィルターでも同じ開催日を返す', async () => {
+      const repository = createRepository({
+        findAll: vi.fn().mockResolvedValue({ events: [], total: 0 }),
+      });
+      const service = createEventService(
+        repository,
+        createGatheringSettingsRepository(),
+        createVenueRepository(),
+        '2026-10-09'
+      );
+      expect(
+        await service.getAllEvents({ start_time: '0930', limit: 1, offset: 2 })
+      ).toEqual({
+        event_date: '2026-10-09',
+        events: [],
+        total: 0,
+        limit: 1,
+        offset: 2,
+      });
+      expect(repository.findAll).toHaveBeenCalledWith({
+        startTime: '0930',
+        limit: 1,
+        offset: 2,
+      });
+    });
+
     it('EntityをレスポンスDTOへ変換し、既定のページング値を返す', async () => {
       const events = [
         buildEventWithGatheringSummary({
@@ -131,7 +187,13 @@ describe('EventService', () => {
         offset: 0,
       });
 
-      expect(result).toEqual({ events, total: 1, limit: 10, offset: 0 });
+      expect(result).toEqual({
+        event_date: null,
+        events,
+        total: 1,
+        limit: 10,
+        offset: 0,
+      });
       expect(repository.findAll).toHaveBeenCalledWith({
         startTime: '0900',
         limit: 10,
