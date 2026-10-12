@@ -300,7 +300,7 @@ describe('StudentService', () => {
       });
     });
 
-    describe('更新時刻による楽観ロック', () => {
+    describe('版番号による楽観ロック', () => {
       const input = {
         display_name: '更新後学生',
         class_room_id: 100,
@@ -308,13 +308,9 @@ describe('StudentService', () => {
         student_id_number: '10000',
       };
 
-      it('updated_at が取得時点と異なれば、他の確認より先に409用エラーにする', async () => {
+      it('lock_version が取得時点と異なれば、他の確認より先に409用エラーにする', async () => {
         const repository = createRepository({
-          findById: vi
-            .fn()
-            .mockResolvedValue(
-              buildStudent({ updatedAt: '2026-01-02 00:00:00' })
-            ),
+          findById: vi.fn().mockResolvedValue(buildStudent({ lockVersion: 2 })),
           findByStudentNum: vi.fn(),
           update: vi.fn(),
         });
@@ -326,26 +322,18 @@ describe('StudentService', () => {
         await expect(
           service.updateStudent(1, {
             ...input,
-            updated_at: '2026-01-01 00:00:00',
+            lock_version: 1,
           })
         ).rejects.toThrow('Student update conflict');
         expect(repository.findByStudentNum).not.toHaveBeenCalled();
         expect(repository.update).not.toHaveBeenCalled();
       });
 
-      it('updated_at が一致すれば、expectedUpdatedAt を付けて update を呼ぶ', async () => {
+      it('lock_version が一致すれば、expectedLockVersion を付けて update を呼ぶ', async () => {
         const repository = createRepository({
-          findById: vi
-            .fn()
-            .mockResolvedValue(
-              buildStudent({ updatedAt: '2026-01-01 00:00:00' })
-            ),
+          findById: vi.fn().mockResolvedValue(buildStudent({ lockVersion: 1 })),
           findByStudentNum: vi.fn().mockResolvedValue(null),
-          update: vi
-            .fn()
-            .mockResolvedValue(
-              buildStudent({ updatedAt: '2026-01-03 00:00:00' })
-            ),
+          update: vi.fn().mockResolvedValue(buildStudent({ lockVersion: 3 })),
         });
         const service = createStudentService(
           repository,
@@ -354,7 +342,7 @@ describe('StudentService', () => {
 
         const result = await service.updateStudent(1, {
           ...input,
-          updated_at: '2026-01-01 00:00:00',
+          lock_version: 1,
         });
 
         expect(repository.update).toHaveBeenCalledWith(1, {
@@ -362,18 +350,14 @@ describe('StudentService', () => {
           classRoomId: 100,
           attendanceNumber: 5,
           studentIdNumber: '10000',
-          expectedUpdatedAt: '2026-01-01 00:00:00',
+          expectedLockVersion: 1,
         });
-        expect(result.updated_at).toBe('2026-01-03 00:00:00');
+        expect(result.lock_version).toBe(3);
       });
 
       it('確認後に更新された競合（update が null）は、学生が残っていれば409用エラーにする', async () => {
         const repository = createRepository({
-          findById: vi
-            .fn()
-            .mockResolvedValue(
-              buildStudent({ updatedAt: '2026-01-01 00:00:00' })
-            ),
+          findById: vi.fn().mockResolvedValue(buildStudent({ lockVersion: 1 })),
           findByStudentNum: vi.fn().mockResolvedValue(null),
           update: vi.fn().mockResolvedValue(null),
         });
@@ -385,7 +369,7 @@ describe('StudentService', () => {
         await expect(
           service.updateStudent(1, {
             ...input,
-            updated_at: '2026-01-01 00:00:00',
+            lock_version: 1,
           })
         ).rejects.toThrow('Student update conflict');
       });
@@ -394,9 +378,7 @@ describe('StudentService', () => {
         const repository = createRepository({
           findById: vi
             .fn()
-            .mockResolvedValueOnce(
-              buildStudent({ updatedAt: '2026-01-01 00:00:00' })
-            )
+            .mockResolvedValueOnce(buildStudent({ lockVersion: 1 }))
             .mockResolvedValueOnce(null),
           findByStudentNum: vi.fn().mockResolvedValue(null),
           update: vi.fn().mockResolvedValue(null),
@@ -409,12 +391,12 @@ describe('StudentService', () => {
         await expect(
           service.updateStudent(1, {
             ...input,
-            updated_at: '2026-01-01 00:00:00',
+            lock_version: 1,
           })
         ).rejects.toThrow('Student not found');
       });
 
-      it('updated_at を指定せず update が null なら、再確認せず404用エラーにする', async () => {
+      it('lock_version を指定せず update が null なら、再確認せず404用エラーにする', async () => {
         const repository = createRepository({
           findById: vi.fn().mockResolvedValue(buildStudent()),
           findByStudentNum: vi.fn().mockResolvedValue(null),

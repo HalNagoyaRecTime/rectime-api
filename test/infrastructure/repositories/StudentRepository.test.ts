@@ -340,58 +340,80 @@ describe('StudentRepository', () => {
       ).resolves.toBeNull();
     });
 
-    describe('更新時刻による楽観ロック', () => {
-      async function createWithUpdatedAt(studentIdNumber: string) {
+    describe('版番号による楽観ロック', () => {
+      async function createStudent(studentIdNumber: string) {
         const created = await repo.create({
-          displayName: '更新時刻テスト',
+          displayName: '版番号テスト',
           classRoomId: seeded.classRoomId,
           attendanceNumber: 20,
           studentIdNumber,
         });
-        await env.DB.prepare(
-          'UPDATE students SET updated_at = ? WHERE student_id = ?'
-        )
-          .bind('2000-01-01 00:00:00', created.studentId)
-          .run();
         return created.studentId;
       }
 
-      const input = (studentIdNumber: string) => ({
-        displayName: '更新後',
+      const input = (studentIdNumber: string, displayName: string) => ({
+        displayName,
         classRoomId: seeded.classRoomId,
         attendanceNumber: 21,
         studentIdNumber,
       });
 
-      it('expectedUpdatedAt が現在の値と一致すれば更新し、updatedAt を進める', async () => {
-        const id = await createWithUpdatedAt('LOCK-S1');
+      it('expectedLockVersion が現在の値と一致すれば更新し、lockVersion を1増やす', async () => {
+        const id = await createStudent('LOCK-S1');
 
         const updated = await repo.update(id, {
-          ...input('LOCK-S1'),
-          expectedUpdatedAt: '2000-01-01 00:00:00',
+          ...input('LOCK-S1', '更新後'),
+          expectedLockVersion: 0,
         });
 
         expect(updated).toMatchObject({
           userName: '更新後',
           attendanceNumber: 21,
+          lockVersion: 1,
         });
-        expect(updated?.updatedAt).not.toBe('2000-01-01 00:00:00');
       });
 
-      it('expectedUpdatedAt が現在の値と異なれば null を返し、users も students も変更しない', async () => {
-        const id = await createWithUpdatedAt('LOCK-S2');
+      it('expectedLockVersion が現在の値と異なれば null を返し、users も students も変更しない', async () => {
+        const id = await createStudent('LOCK-S2');
 
         const updated = await repo.update(id, {
-          ...input('LOCK-S2'),
-          expectedUpdatedAt: '1999-12-31 23:59:59',
+          ...input('LOCK-S2', '上書きされてはいけない'),
+          expectedLockVersion: 5,
         });
 
         expect(updated).toBeNull();
         await expect(repo.findById(id)).resolves.toMatchObject({
-          userName: '更新時刻テスト',
+          userName: '版番号テスト',
           attendanceNumber: 20,
-          updatedAt: '2000-01-01 00:00:00',
+          lockVersion: 0,
         });
+      });
+
+      it('同じ版番号での2回の連続更新は、1回目だけ成功し2回目は競合する（同じ秒内でも）', async () => {
+        const id = await createStudent('LOCK-S3');
+
+        const first = await repo.update(id, {
+          ...input('LOCK-S3', 'Aの更新'),
+          expectedLockVersion: 0,
+        });
+        const second = await repo.update(id, {
+          ...input('LOCK-S3', 'Bの更新'),
+          expectedLockVersion: 0,
+        });
+
+        expect(first).toMatchObject({ userName: 'Aの更新', lockVersion: 1 });
+        expect(second).toBeNull();
+        await expect(repo.findById(id)).resolves.toMatchObject({
+          userName: 'Aの更新',
+        });
+      });
+
+      it('expectedLockVersion を指定しない更新は版番号を確認せず、lockVersion は進む', async () => {
+        const id = await createStudent('LOCK-S4');
+
+        const updated = await repo.update(id, input('LOCK-S4', '更新後'));
+
+        expect(updated).toMatchObject({ userName: '更新後', lockVersion: 1 });
       });
     });
   });

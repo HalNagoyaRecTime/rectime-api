@@ -35,7 +35,7 @@ export interface StudentWriteDTO {
 }
 
 export interface StudentUpdateDTO extends StudentWriteDTO {
-  updated_at?: string;
+  lock_version?: number;
 }
 
 export interface StudentPageDTO {

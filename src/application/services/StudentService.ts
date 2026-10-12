@@ -66,7 +66,7 @@ function toDomainWriteInput(student: StudentWriteDTO): StudentWriteInput {
 function toDomainUpdateInput(student: StudentUpdateDTO): StudentUpdateInput {
   return {
     ...toDomainWriteInput(student),
-    expectedUpdatedAt: student.updated_at,
+    expectedLockVersion: student.lock_version,
   };
 }
 
@@ -174,8 +174,8 @@ export function createStudentService(
       // 取得時点から変わっていれば、他の確認より先に409にする。
       // 確認後に更新される競合は、update() 側の条件で0件更新になって検出する。
       if (
-        input.expectedUpdatedAt !== undefined &&
-        input.expectedUpdatedAt !== existing.updatedAt
+        input.expectedLockVersion !== undefined &&
+        input.expectedLockVersion !== existing.lockVersion
       ) {
         throw new Error('Student update conflict');
       }
@@ -190,9 +190,9 @@ export function createStudentService(
 
       const updated = await studentRepository.update(id, input);
       if (!updated) {
-        // 更新時刻を条件にしていた場合、0件更新は削除か更新時刻の不一致のどちらか。
+        // 版番号を条件にしていた場合、0件更新は削除か版番号の不一致のどちらか。
         if (
-          input.expectedUpdatedAt !== undefined &&
+          input.expectedLockVersion !== undefined &&
           (await studentRepository.findById(id))
         ) {
           throw new Error('Student update conflict');

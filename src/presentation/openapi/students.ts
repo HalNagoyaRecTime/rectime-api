@@ -124,14 +124,14 @@ export const studentDetailRoute = createRoute({
 });
 
 // 登録済みのスキーマを extend() すると、OpenAPI では allOf で合成され、基底側の
-// additionalProperties: false が updated_at を拒否する仕様になってしまう。
+// additionalProperties: false が lock_version を拒否する仕様になってしまう。
 // そのため項目だけを引き継ぎ、新しいオブジェクトとして定義する。
 export const studentUpdateSchema = z
   .object({
     ...studentWriteSchema.shape,
-    updated_at: z.string().min(1).optional().openapi({
+    lock_version: z.number().int().min(0).optional().openapi({
       description:
-        '取得時点の `updated_at`。指定すると、取得後に変更されていた場合は409を返す。',
+        '取得時点の `lock_version`。指定すると、取得後に変更されていた場合は409を返す。',
     }),
   })
   .strict()

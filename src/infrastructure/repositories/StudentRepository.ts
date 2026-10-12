@@ -273,11 +273,13 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       id: number,
       student: StudentUpdateInput
     ): Promise<StudentEntity | null> {
-      // 更新時刻(expectedUpdatedAt)が指定された場合は、2文とも「取得時点から
+      // 版番号(expectedLockVersion)が指定された場合は、2文とも「取得時点から
       // studentsの行が変更されていない」ことを条件にする。batch() は文ごとに
       // 実行されるため、片方だけに条件を付けると、不一致のときに users だけ
       // 書き換わってしまう。users の更新は students の更新より先に置く
-      // （後に置くと、先に進んだ students.updated_at と一致しなくなる）。
+      // （後に置くと、先に進んだ students.lock_version と一致しなくなる）。
+      // 版番号は更新のたびに必ず1ずつ増えるため、updated_at（秒単位）では
+      // 区別できない同じ秒内の更新も検出できる。
       const [userResult, studentResult] = await db.batch<
         ReturnedUserRow | ReturnedStudentRow
       >([
@@ -291,7 +293,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
                AND (
                  ? IS NULL OR EXISTS (
                    SELECT 1 FROM students
-                   WHERE student_id = ? AND updated_at = ?
+                   WHERE student_id = ? AND lock_version = ?
                  )
                )
              RETURNING user_id, user_name, is_live_active`
@@ -299,17 +301,18 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
           .bind(
             student.displayName,
             id,
-            // D1は番号付きプレースホルダを使えないため、更新時刻の条件は値を繰り返し渡す
-            student.expectedUpdatedAt ?? null,
+            // D1は番号付きプレースホルダを使えないため、版番号の条件は値を繰り返し渡す
+            student.expectedLockVersion ?? null,
             id,
-            student.expectedUpdatedAt ?? null
+            student.expectedLockVersion ?? null
           ),
         db
           .prepare(
             `UPDATE students
-             SET class_room_id = ?, attendance_number = ?, student_id_number = ?, updated_at = CURRENT_TIMESTAMP
+             SET class_room_id = ?, attendance_number = ?, student_id_number = ?, updated_at = CURRENT_TIMESTAMP,
+                 lock_version = lock_version + 1
              WHERE student_id = ?
-               AND (? IS NULL OR updated_at = ?)
+               AND (? IS NULL OR lock_version = ?)
              RETURNING
                student_id,
                user_id,
@@ -327,8 +330,8 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
             student.attendanceNumber,
             student.studentIdNumber,
             id,
-            student.expectedUpdatedAt ?? null,
-            student.expectedUpdatedAt ?? null,
+            student.expectedLockVersion ?? null,
+            student.expectedLockVersion ?? null,
             student.classRoomId
           ),
       ]);

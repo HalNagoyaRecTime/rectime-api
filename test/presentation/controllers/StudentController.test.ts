@@ -493,31 +493,29 @@ describe('StudentController', () => {
       });
     });
 
-    it('更新時刻付きのリクエストをそのままサービスへ渡す', async () => {
+    it('版番号付きのリクエストをそのままサービスへ渡す', async () => {
       const { app, studentService } = setup();
       (
         studentService.updateStudent as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(
-        buildStudent({ ...input, updated_at: '2026-01-02 00:00:00' })
-      );
+      ).mockResolvedValue(buildStudent({ ...input, lock_version: 2 }));
 
       const res = await app.request('/students/1', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...input, updated_at: '2026-01-01 00:00:00' }),
+        body: JSON.stringify({ ...input, lock_version: 1 }),
       });
 
       expect(res.status).toBe(200);
       expect(studentService.updateStudent).toHaveBeenCalledWith(1, {
         ...input,
-        updated_at: '2026-01-01 00:00:00',
+        lock_version: 1,
       });
       expect(await res.json()).toMatchObject({
-        updated_at: '2026-01-02 00:00:00',
+        lock_version: 2,
       });
     });
 
-    it('更新時刻の不一致は 409 を返す', async () => {
+    it('版番号の不一致は 409 を返す', async () => {
       const { app, studentService } = setup();
       (
         studentService.updateStudent as ReturnType<typeof vi.fn>
@@ -526,7 +524,7 @@ describe('StudentController', () => {
       const res = await app.request('/students/1', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...input, updated_at: '2026-01-01 00:00:00' }),
+        body: JSON.stringify({ ...input, lock_version: 1 }),
       });
 
       expect(res.status).toBe(409);
@@ -538,26 +536,26 @@ describe('StudentController', () => {
       });
     });
 
-    it('updated_at が空文字の更新は 400 を返す', async () => {
+    it('lock_version が負の値の更新は 400 を返す', async () => {
       const { app, studentService } = setup();
 
       const res = await app.request('/students/1', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...input, updated_at: '' }),
+        body: JSON.stringify({ ...input, lock_version: -1 }),
       });
 
       expect(res.status).toBe(400);
       expect(studentService.updateStudent).not.toHaveBeenCalled();
     });
 
-    it('登録リクエストは updated_at を受け付けない', async () => {
+    it('登録リクエストは lock_version を受け付けない', async () => {
       const { app, studentService } = setup();
 
       const res = await app.request('/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...input, updated_at: '2026-01-01 00:00:00' }),
+        body: JSON.stringify({ ...input, lock_version: 1 }),
       });
 
       expect(res.status).toBe(400);

@@ -25,7 +25,7 @@ async function loadSchemas(): Promise<Record<string, JsonSchema>> {
 describe('更新リクエストのOpenAPIスキーマ', () => {
   it.each([
     ['ClassRoomWriteRequest', 'ClassRoomUpdateRequest', 'lockVersion'],
-    ['StudentWriteRequest', 'StudentUpdateRequest', 'updated_at'],
+    ['StudentWriteRequest', 'StudentUpdateRequest', 'lock_version'],
   ])(
     '%s に更新時刻を足した %s は、allOf を使わず1つのオブジェクトとして出力される',
     async (writeName, updateName, field) => {
