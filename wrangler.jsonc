@@ -124,7 +124,7 @@
         // 許可するEntraテナントID。
         "ALLOWED_MICROSOFT_TENANTS": "8d41d6d7-36ce-4e0c-8c6d-cf2c54c39039",
         // モバイルアプリのカスタムスキーム。バックエンドの環境によらず同一。
-        "MICROSOFT_MOBILE_REDIRECT_URI": "com.rectime.mobile://auth/callback",
+        "MICROSOFT_MOBILE_REDIRECT_URI": "io.github.halnagoyarectime://auth/callback",
         // このdevelop backendに実際に接続するフロントエンド。
         // TODO: recwatchのPRごとのPreview URLに応じた動的化を別途検討する
         // (Refererヘッダーから取得しALLOWED_ORIGINSで検証する方式を予定)。
@@ -218,7 +218,7 @@
         "MICROSOFT_CLIENT_ID": "be597fc9-7946-43a2-9ba8-6a96c96fd3b7",
         "MICROSOFT_TENANT": "organizations",
         "ALLOWED_MICROSOFT_TENANTS": "8d41d6d7-36ce-4e0c-8c6d-cf2c54c39039",
-        "MICROSOFT_MOBILE_REDIRECT_URI": "com.rectime.mobile://auth/callback",
+        "MICROSOFT_MOBILE_REDIRECT_URI": "io.github.halnagoyarectime://auth/callback",
         "FRONTEND_URL": "https://staging.recwatch.pages.dev",
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
