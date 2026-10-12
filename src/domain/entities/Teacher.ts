@@ -13,6 +13,7 @@ export interface TeacherEntity {
   isStaff: boolean;
   classRooms: TeacherClassRoomEntity[];
   updatedAt: string;
+  lockVersion: number;
 }
 
 export interface TeacherSearchFilter {

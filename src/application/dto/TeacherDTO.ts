@@ -13,6 +13,7 @@ export interface TeacherDTO {
   is_staff: boolean;
   class_rooms: TeacherClassRoomDTO[];
   updated_at: string;
+  lock_version: number;
 }
 
 export interface TeacherPageDTO {

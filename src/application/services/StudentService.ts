@@ -50,6 +50,7 @@ function toManagementDTO(student: StudentEntity): StudentManagementDTO {
       class_name: student.classRoomName,
     },
     updated_at: student.updatedAt,
+    lock_version: student.lockVersion,
   };
 }
 

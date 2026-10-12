@@ -30,6 +30,7 @@ export const studentResponseSchema = z
       class_name: z.string(),
     }),
     updated_at: z.string(),
+    lock_version: z.number().int(),
   })
   .openapi('Student');
 

@@ -198,6 +198,7 @@ describe('ClassRoomRepository', () => {
       .first<{ updated_at: string }>();
 
     expect(classroom.updatedAt).toBe(row?.updated_at);
+    expect(classroom.lockVersion).toBe(0);
     await expect(repo.findById(classroom.classRoomId)).resolves.toMatchObject({
       updatedAt: row?.updated_at,
     });

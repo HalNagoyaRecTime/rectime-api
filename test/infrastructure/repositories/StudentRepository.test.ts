@@ -253,6 +253,7 @@ describe('StudentRepository', () => {
         item => item.studentId === target.studentId
       );
       expect(listed?.updatedAt).toBe(row?.updated_at);
+      expect(listed?.lockVersion).toBe(0);
     });
   });
 

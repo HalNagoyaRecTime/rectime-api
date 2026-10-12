@@ -355,6 +355,7 @@ describe('TeacherRepository', () => {
         item => item.teacherId === target.teacherId
       );
       expect(listed?.updatedAt).toBe(row?.updated_at);
+      expect(listed?.lockVersion).toBe(0);
     });
   });
 

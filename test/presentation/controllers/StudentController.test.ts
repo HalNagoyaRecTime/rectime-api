@@ -27,6 +27,7 @@ function buildStudent(
       class_name: '1年A組',
     },
     updated_at: '2026-01-01 00:00:00',
+    lock_version: 0,
     ...overrides,
   };
 }

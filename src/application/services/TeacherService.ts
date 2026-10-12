@@ -41,6 +41,7 @@ function toDTO(teacher: TeacherEntity): TeacherDTO {
     is_staff: teacher.isStaff,
     class_rooms: teacher.classRooms.map(toClassRoomDTO),
     updated_at: teacher.updatedAt,
+    lock_version: teacher.lockVersion,
   };
 }
 

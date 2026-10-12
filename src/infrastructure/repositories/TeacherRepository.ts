@@ -106,6 +106,7 @@ function toEntity(
     isStaff: Boolean(row.staffs),
     classRooms,
     updatedAt: row.teachers.updatedAt,
+    lockVersion: row.teachers.lockVersion,
   };
 }
 

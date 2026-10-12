@@ -102,6 +102,7 @@ export function createClassRoomService(
         }
       : null,
     updated_at: classroom.updatedAt,
+    lock_version: classroom.lockVersion,
   });
 
   const ensureTeacherExists = async (teacherId: number | null) => {

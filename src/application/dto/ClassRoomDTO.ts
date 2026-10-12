@@ -11,6 +11,7 @@ export interface ClassRoomDTO {
   student_count: number;
   teacher: ClassRoomTeacherDTO | null;
   updated_at: string;
+  lock_version: number;
 }
 
 export interface ClassRoomPageDTO {

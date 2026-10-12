@@ -37,6 +37,7 @@ type ClassRoomRow = {
   teacherUserId: number | null;
   teacherDisplayName: string | null;
   updatedAt: string;
+  lockVersion: number;
 };
 
 function toEntity(row: ClassRoomRow): ClassRoomEntity {
@@ -46,6 +47,7 @@ function toEntity(row: ClassRoomRow): ClassRoomEntity {
     className: row.className,
     studentCount: Number(row.studentCount),
     updatedAt: row.updatedAt,
+    lockVersion: row.lockVersion,
     teacher:
       row.teacherId === null ||
       row.teacherUserId === null ||
@@ -75,6 +77,7 @@ export function createClassRoomRepository(
         teacherUserId: users.id,
         teacherDisplayName: users.userName,
         updatedAt: class_rooms.updatedAt,
+        lockVersion: class_rooms.lockVersion,
       })
       .from(class_rooms)
       .leftJoin(teachers, eq(teachers.id, class_rooms.teacherId))
@@ -91,6 +94,7 @@ export function createClassRoomRepository(
         class_rooms.classCode,
         class_rooms.name,
         class_rooms.updatedAt,
+        class_rooms.lockVersion,
         teachers.id,
         users.id,
         users.userName
@@ -134,6 +138,7 @@ export function createClassRoomRepository(
         teacherUserId: users.id,
         teacherDisplayName: users.userName,
         updatedAt: class_rooms.updatedAt,
+        lockVersion: class_rooms.lockVersion,
       })
       .from(class_rooms)
       .leftJoin(teachers, eq(teachers.id, class_rooms.teacherId))
@@ -173,6 +178,7 @@ export function createClassRoomRepository(
           class_rooms.classCode,
           class_rooms.name,
           class_rooms.updatedAt,
+          class_rooms.lockVersion,
           teachers.id,
           users.id,
           users.userName

@@ -35,6 +35,7 @@ export const teacherResponseSchema = z
     is_staff: z.boolean(),
     class_rooms: z.array(teacherClassRoomSchema),
     updated_at: z.string(),
+    lock_version: z.number().int(),
   })
   .openapi('Teacher');
 

@@ -11,6 +11,7 @@ export interface ClassRoomEntity {
   studentCount: number;
   teacher: ClassRoomTeacher | null;
   updatedAt: string;
+  lockVersion: number;
 }
 
 export interface ClassRoomPage {

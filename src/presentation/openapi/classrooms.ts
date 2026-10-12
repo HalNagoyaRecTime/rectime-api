@@ -31,6 +31,7 @@ export const classRoomResponseSchema = z
     student_count: z.number().int(),
     teacher: classRoomTeacherSchema.nullable(),
     updated_at: z.string(),
+    lock_version: z.number().int(),
   })
   .openapi('ClassRoom');
 

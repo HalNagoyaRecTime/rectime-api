@@ -24,6 +24,7 @@ export interface StudentManagementDTO {
     class_name: string;
   };
   updated_at: string;
+  lock_version: number;
 }
 
 export interface StudentWriteDTO {

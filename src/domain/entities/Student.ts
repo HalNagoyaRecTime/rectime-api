@@ -10,6 +10,7 @@ export interface StudentEntity {
   isLiveActive: boolean;
   isStaff: boolean;
   updatedAt: string;
+  lockVersion: number;
 }
 
 export interface StudentPage {

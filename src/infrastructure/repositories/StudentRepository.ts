@@ -69,6 +69,7 @@ function toDomain(row: StudentJoinRow): StudentEntity {
     isLiveActive: row.users.isLiveActive === 1,
     isStaff: Boolean(row.staffs),
     updatedAt: row.students.updatedAt,
+    lockVersion: row.students.lockVersion,
   };
 }
 

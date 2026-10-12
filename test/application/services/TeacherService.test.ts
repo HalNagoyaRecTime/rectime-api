@@ -14,6 +14,7 @@ function buildTeacher(overrides: Partial<TeacherEntity> = {}): TeacherEntity {
     isStaff: false,
     classRooms: [],
     updatedAt: '2026-01-01 00:00:00',
+    lockVersion: 0,
     ...overrides,
   };
 }
@@ -79,6 +80,7 @@ describe('TeacherService', () => {
         is_staff: false,
         class_rooms: [],
         updated_at: '2026-01-01 00:00:00',
+        lock_version: 0,
       });
       expect(
         classRoomRepository.findExistingClassRoomIds
@@ -127,6 +129,7 @@ describe('TeacherService', () => {
           class_name: classRoom.className,
         })),
         updated_at: teacher.updatedAt,
+        lock_version: teacher.lockVersion,
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
     });
