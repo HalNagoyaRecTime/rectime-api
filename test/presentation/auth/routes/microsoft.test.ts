@@ -25,6 +25,7 @@ import {
   diContainerMiddleware,
   type ContainerVariables,
 } from '../../../../src/presentation/middleware/diContainer';
+import { insertClassRoomWithTeam } from '../../../fixtures/classRooms';
 import { createUserRepository } from '../../../../src/infrastructure/repositories/UserRepository';
 
 const JWT_SECRET = 'a'.repeat(32);
@@ -139,6 +140,23 @@ function createMockKv(): KVNamespace {
 function buildApp() {
   const app = new Hono<{ Bindings: Env }>();
   app.use('*', diContainerMiddleware);
+  app.route('/', microsoft);
+  return app;
+}
+
+// 生徒情報取得(studentService.getByUserId)がD1の一時障害等で失敗する
+// ケースを再現するためのapp。KV書き込みより前にこの失敗を検知できていれば、
+// mobile_refresh系のKVエントリは作られないはず。
+function buildAppWithFailingStudentLookup() {
+  const app = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
+  app.use('*', diContainerMiddleware);
+  app.use('*', async (c, next) => {
+    const container = c.get('container');
+    container.authProfileService.getProfile = vi
+      .fn()
+      .mockRejectedValue(new Error('D1 transient failure'));
+    await next();
+  });
   app.route('/', microsoft);
   return app;
 }
@@ -1014,9 +1032,10 @@ describe('POST /auth/microsoft/token', () => {
   it('学籍番号紐付け時にuser_idが既に別のMicrosoftアカウントと紐付いている場合、409 STUDENT_ALREADY_LINKEDを返す', async () => {
     const env = buildEnv();
 
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3A', '3年A組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3A',
+      className: '3年A組',
+    });
 
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
@@ -1025,7 +1044,7 @@ describe('POST /auth/microsoft/token', () => {
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '50000')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     // この学生のuser_idに、既に別のMicrosoftアカウントが紐付いている状態を作る
@@ -1134,16 +1153,17 @@ describe('POST /auth/microsoft/token', () => {
   it('student + staffユーザーが初回ログイン時、既存Studentのuser_idでstaff判定されstudent_id_number/class_room_nameを返す', async () => {
     const env = buildEnv();
 
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3B', '3年B組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3B',
+      className: '3年B組',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('学生次郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 2, '60001')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
     await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
       .bind(user!.user_id)
@@ -1195,6 +1215,8 @@ describe('POST /auth/microsoft/token', () => {
         student_id_number: string | null;
         class_code: string | null;
         class_room_name: string | null;
+        class_room_id: number | null;
+        team_id: number | null;
         attendance_number: number | null;
       };
     };
@@ -1202,7 +1224,71 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.user.student_id_number).toBe('60001');
     expect(body.user.class_code).toBe('3B');
     expect(body.user.class_room_name).toBe('3年B組');
+    expect(body.user.class_room_id).toBe(classRoom.classRoomId);
+    expect(body.user.team_id).toBe(classRoom.teamId);
     expect(body.user.attendance_number).toBe(2);
+  });
+
+  it('生徒情報取得に失敗した場合、mobile_refresh系のKVエントリを書き込まずエラーにする', async () => {
+    const env = buildEnv();
+
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('教師三郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-student-lookup-failure', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+      .bind(user!.user_id)
+      .run();
+
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-student-lookup-failure',
+      oid: 'oid-student-lookup-failure',
+      tid: 'tid-1',
+      name: '教師三郎',
+      preferred_username: 'sensei-lookup-failure@example.com',
+      nonce: 'nonce-student-lookup-failure',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await env.AUTH_KV.put(
+      'pkce:state-student-lookup-failure',
+      JSON.stringify({
+        code_verifier: generateRandom(32),
+        nonce: 'nonce-student-lookup-failure',
+        client_type: 'web',
+        purpose: 'login',
+        created_at: new Date().toISOString(),
+      } satisfies PkceEntry)
+    );
+    stubMicrosoftFetch(idToken);
+    const app = buildAppWithFailingStudentLookup();
+
+    const res = await app.request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: 'auth-code-student-lookup-failure',
+          state: 'state-student-lookup-failure',
+        }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(500);
+    expect(
+      Array.from((env.AUTH_KV.put as ReturnType<typeof vi.fn>).mock.calls).some(
+        ([key]) => typeof key === 'string' && key.startsWith('mobile_refresh')
+      )
+    ).toBe(false);
   });
 
   it('事前登録済み教員はmobile初回ログインとwebログインで同じuser_id・担当クラスを維持する', async () => {
@@ -1222,11 +1308,11 @@ describe('POST /auth/microsoft/token', () => {
     await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
       .bind(user!.user_id)
       .run();
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ('TEACHER-LINK', '教員紐付け確認', ?) RETURNING class_room_id"
-    )
-      .bind(teacher!.teacher_id)
-      .first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'TEACHER-LINK',
+      className: '教員紐付け確認',
+      teacherId: teacher!.teacher_id,
+    });
 
     const firstResponse = await requestMobileLogin(env, {
       attemptId: 'teacher-link-1',
@@ -1248,7 +1334,7 @@ describe('POST /auth/microsoft/token', () => {
       teacher_id: teacher!.teacher_id,
       class_rooms: [
         {
-          class_room_id: classRoom!.class_room_id,
+          class_room_id: classRoom.classRoomId,
           class_code: 'TEACHER-LINK',
           class_room_name: '教員紐付け確認',
         },
@@ -1290,7 +1376,7 @@ describe('POST /auth/microsoft/token', () => {
     const assignedClassRoom = await workerEnv.DB.prepare(
       'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
     )
-      .bind(classRoom!.class_room_id)
+      .bind(classRoom.classRoomId)
       .first<{ teacher_id: number | null }>();
     expect(assignedClassRoom?.teacher_id).toBe(teacher!.teacher_id);
 
@@ -1324,7 +1410,7 @@ describe('POST /auth/microsoft/token', () => {
     const classRoomAfterSecondLogin = await workerEnv.DB.prepare(
       'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
     )
-      .bind(classRoom!.class_room_id)
+      .bind(classRoom.classRoomId)
       .first<{ teacher_id: number | null }>();
     expect(classRoomAfterSecondLogin?.teacher_id).toBe(teacher!.teacher_id);
   });
@@ -1464,16 +1550,17 @@ describe('POST /auth/microsoft/token', () => {
   it('studentのみ(staffではない)ユーザーはWebログインできない', async () => {
     const env = buildEnv();
 
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3E', '3年E組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3E',
+      className: '3年E組',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('学生三郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 3, '60002')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     const now = Math.floor(Date.now() / 1000);
@@ -1698,16 +1785,17 @@ describe('POST /auth/microsoft/token', () => {
     // 必須(#288)で新規登録の検証に使えないため、mobileで検証する。
     const env = buildEnv();
 
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3C', '3年C組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3C',
+      className: '3年C組',
+    });
     const oldUser = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('学生太郎(削除前)') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 3, '70001')"
     )
-      .bind(oldUser!.user_id, classRoom!.class_room_id)
+      .bind(oldUser!.user_id, classRoom.classRoomId)
       .run();
     await workerEnv.DB.prepare(
       "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-deleted-student-1', 'tid-1')"
@@ -1780,16 +1868,17 @@ describe('POST /auth/microsoft/token', () => {
   it('deletion_pendingの学生が学籍番号ログインを試みると410 ACCOUNT_DELETION_PENDINGを返す', async () => {
     const env = buildEnv();
 
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3D', '3年D組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3D',
+      className: '3年D組',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name, deletion_status) VALUES ('学生太郎(削除処理中)', 'deletion_pending') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 4, '70002')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     const now = Math.floor(Date.now() / 1000);

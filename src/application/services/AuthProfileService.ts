@@ -27,6 +27,8 @@ export function createAuthProfileService(
         student_id_number: student?.studentIdNumber ?? null,
         class_code: student?.classRoomCode ?? null,
         class_room_name: student?.classRoomName ?? null,
+        class_room_id: student?.classRoomId ?? null,
+        team_id: student?.teamId ?? null,
         attendance_number: student?.attendanceNumber ?? null,
         ...categories,
         ...(teacher

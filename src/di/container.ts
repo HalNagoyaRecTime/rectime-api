@@ -10,6 +10,7 @@ import { createStaffRepository } from '../infrastructure/repositories/StaffRepos
 import { createTeacherRepository } from '../infrastructure/repositories/TeacherRepository';
 import { createEventRepository } from '../infrastructure/repositories/EventRepository';
 import { createClassRoomRepository } from '../infrastructure/repositories/ClassRoomRepository';
+import { createTeamRepository } from '../infrastructure/repositories/TeamRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
 import { createNotificationResultQueryRepository } from '../infrastructure/repositories/NotificationResultQueryRepository';
@@ -50,6 +51,8 @@ import { createVenueService } from '../application/services/VenueService';
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createGatheringService } from '../application/services/GatheringService';
 import { createEventGatheringSettingsService } from '../application/services/EventGatheringSettingsService';
+import { createRankingService } from '../application/services/RankingService';
+import { createTeamService } from '../application/services/TeamService';
 import { createStudentController } from '../presentation/controllers/StudentController';
 import { createStaffController } from '../presentation/controllers/StaffController';
 import { createTeacherController } from '../presentation/controllers/TeacherController';
@@ -68,6 +71,8 @@ import { createVenueController } from '../presentation/controllers/VenueControll
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createGatheringController } from '../presentation/controllers/GatheringController';
 import { createEventGatheringSettingsController } from '../presentation/controllers/EventGatheringSettingsController';
+import { createRankingController } from '../presentation/controllers/RankingController';
+import { createTeamController } from '../presentation/controllers/TeamController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
 import { createUserStatusRepository } from '../infrastructure/repositories/UserStatusRepository';
 import { createUserStatusService } from '../application/services/UserStatusService';
@@ -104,6 +109,7 @@ export function createDIContainer(env: Env) {
   const teacherRepository = createTeacherRepository(db);
   const eventRepository = createEventRepository(db);
   const classRoomRepository = createClassRoomRepository(db);
+  const teamRepository = createTeamRepository(db);
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
   const notificationScheduleRepository =
     createNotificationScheduleRepository(db);
@@ -190,7 +196,8 @@ export function createDIContainer(env: Env) {
   );
   const classRoomService = createClassRoomService(
     classRoomRepository,
-    teacherRepository
+    teacherRepository,
+    teamRepository
   );
   const masterImportService = createMasterImportService(
     env.AUTH_KV,
@@ -257,6 +264,8 @@ export function createDIContainer(env: Env) {
     gatheringSpotRepository,
     eventGatheringSettingsRepository
   );
+  const rankingService = createRankingService(teamRepository);
+  const teamService = createTeamService(teamRepository);
 
   // Controllers
   const userStatusController = createUserStatusController(userStatusService);
@@ -294,6 +303,8 @@ export function createDIContainer(env: Env) {
   const gatheringController = createGatheringController(gatheringService);
   const eventGatheringSettingsController =
     createEventGatheringSettingsController(eventGatheringSettingsService);
+  const rankingController = createRankingController(rankingService);
+  const teamController = createTeamController(teamService);
 
   return {
     notificationScheduleActionController,
@@ -329,6 +340,8 @@ export function createDIContainer(env: Env) {
     gatheringGroupMemberController,
     gatheringController,
     eventGatheringSettingsController,
+    rankingController,
+    teamController,
   };
 }
 

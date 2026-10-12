@@ -1,3 +1,4 @@
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createNotificationConfigRepository } from '../../../src/infrastructure/repositories/NotificationConfigRepository';
@@ -37,9 +38,10 @@ async function createFixture(): Promise<Fixture> {
   const gatheringMemberId = await insertUser('gathering-member');
   const eventOnlyMemberId = await insertUser('event-only-member');
   const teacherUserId = await insertUser('teacher');
-  const classRoom = await env.DB.prepare(
-    "INSERT INTO class_rooms (class_code, class_name) VALUES ('AC1', 'Count 1組') RETURNING class_room_id"
-  ).first<{ class_room_id: number }>();
+  const classRoom = await insertClassRoomWithTeam(env.DB, {
+    classCode: 'AC1',
+    className: 'Count 1組',
+  });
   const event = await env.DB.prepare(
     "INSERT INTO events (event_name, start_time, end_time) VALUES ('Count Event', '0900', '1000') RETURNING event_id"
   ).first<{ event_id: number }>();
@@ -50,15 +52,15 @@ async function createFixture(): Promise<Fixture> {
     env.DB.prepare(
       `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
        VALUES (?, ?, 1, 'AC-S001')`
-    ).bind(activeStudentId, classRoom.class_room_id),
+    ).bind(activeStudentId, classRoom.classRoomId),
     env.DB.prepare(
       `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
        VALUES (?, ?, 2, 'AC-S002')`
-    ).bind(inactiveStudentId, classRoom.class_room_id),
+    ).bind(inactiveStudentId, classRoom.classRoomId),
     env.DB.prepare(
       `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
        VALUES (?, ?, 3, 'AC-S003')`
-    ).bind(deletedStudentId, classRoom.class_room_id),
+    ).bind(deletedStudentId, classRoom.classRoomId),
     env.DB.prepare('INSERT INTO teachers (user_id, email) VALUES (?, ?)').bind(
       teacherUserId,
       'audience-count-teacher@example.com'
@@ -110,7 +112,7 @@ async function createFixture(): Promise<Fixture> {
     gatheringMemberId,
     eventOnlyMemberId,
     teacherUserId,
-    classRoomId: classRoom.class_room_id,
+    classRoomId: classRoom.classRoomId,
     firstGatheringId: firstGathering.gathering_id,
     eventId: event.event_id,
   };
@@ -130,6 +132,8 @@ describe('NotificationConfigRepository', () => {
       env.DB.prepare('DELETE FROM gathering_spots'),
       env.DB.prepare('DELETE FROM students'),
       env.DB.prepare('DELETE FROM class_rooms'),
+      env.DB.prepare('DELETE FROM team_scores'),
+      env.DB.prepare('DELETE FROM teams'),
       env.DB.prepare('DELETE FROM staffs'),
       env.DB.prepare('DELETE FROM teachers'),
       env.DB.prepare('DELETE FROM events'),

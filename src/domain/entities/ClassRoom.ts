@@ -10,6 +10,7 @@ export interface ClassRoomEntity {
   className: string;
   studentCount: number;
   teacher: ClassRoomTeacher | null;
+  teamId: number;
 }
 
 export interface ClassRoomPage {
@@ -23,6 +24,7 @@ export interface ClassRoomInput {
   classCode: string;
   className: string;
   teacherId: number | null;
+  teamId: number | null;
 }
 
 export interface ClassRoomSearchFilter {
