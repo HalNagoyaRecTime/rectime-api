@@ -9,9 +9,18 @@ import type {
   NotificationDeliveryOutcome,
 } from './INotificationRetryService';
 
-export const FCM_RETRY_OFFSETS_SECONDS = [10, 30, 120, 300, 900] as const;
-export const FCM_PROCESSING_TIMEOUT_SECONDS = 120;
-export const FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS = 70;
+import {
+  FCM_RETRY_OFFSETS_SECONDS,
+  FCM_RETRY_WINDOW_SECONDS,
+  FCM_MAX_ATTEMPTS,
+  FCM_PROCESSING_TIMEOUT_SECONDS,
+  FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS,
+} from '../../domain/entities/NotificationRetryPolicy';
+export {
+  FCM_RETRY_OFFSETS_SECONDS,
+  FCM_PROCESSING_TIMEOUT_SECONDS,
+  FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS,
+} from '../../domain/entities/NotificationRetryPolicy';
 
 // HTTP v1の一時系Retryは公式表の429 / 500 / 503と対応error statusに限定する。
 // INVALID_ARGUMENTでTokenは削除しない（payload不正でも返り得る）。
@@ -79,8 +88,7 @@ export function createNotificationRetryService(deps: {
         offset => Date.parse(delivery.first_attempt_at) + offset * 1000
       ).find(milestone => milestone > now.getTime());
       const retryWindowEndsAt =
-        Date.parse(delivery.first_attempt_at) +
-        FCM_RETRY_OFFSETS_SECONDS[FCM_RETRY_OFFSETS_SECONDS.length - 1] * 1000;
+        Date.parse(delivery.first_attempt_at) + FCM_RETRY_WINDOW_SECONDS * 1000;
       if (classification !== 'temporary' || nextMilestone === undefined) {
         return (await repository.markFailed(
           delivery.notification_push_delivery_id,
@@ -142,7 +150,7 @@ export function createNotificationRetryService(deps: {
       const retiredScheduleIds = await repository.retireUnsendableDeliveries(
         nowIso,
         staleBefore,
-        FCM_RETRY_OFFSETS_SECONDS.length + 1
+        FCM_MAX_ATTEMPTS
       );
       const deliveries = await repository.claimRetryDeliveries(
         nowIso,

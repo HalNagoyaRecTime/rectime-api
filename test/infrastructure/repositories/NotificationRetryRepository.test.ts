@@ -13,6 +13,7 @@ import {
   FCM_RETRY_OFFSETS_SECONDS,
 } from '../../../src/application/services/NotificationRetryService';
 import { FcmRequestError } from '../../../src/application/services/IFcmService';
+import { FCM_RETRY_WINDOW_SECONDS } from '../../../src/domain/entities/NotificationRetryPolicy';
 
 function harness(error?: unknown) {
   const sendNotificationToToken = vi.fn(async () => {
@@ -166,13 +167,15 @@ describe('Retryとtimeout回収のD1統合', () => {
       next_retry_at: new Date(NOW.getTime() + 900_000).toISOString(),
     });
   });
-  it('15分期限後はFCMを呼ばずDeliveryを終端する', async () => {
+  it('最終再送予定とマージンの期限後はFCMを呼ばずDeliveryを終端する', async () => {
     const { delivery } = await createDeliveryFixture();
     await harness(
       new FcmRequestError(503, 'UNAVAILABLE', '一時失敗')
     ).service.sendClaimedDelivery(delivery, NOW);
     const h = harness(new FcmRequestError(503, 'UNAVAILABLE', '一時失敗'));
-    await h.service.retryDueDeliveries(new Date(NOW.getTime() + 900_001));
+    await h.service.retryDueDeliveries(
+      new Date(NOW.getTime() + FCM_RETRY_WINDOW_SECONDS * 1000 + 1)
+    );
     expect(h.sendNotificationToToken).not.toHaveBeenCalled();
     expect(
       await getDelivery(delivery.notification_push_delivery_id)
@@ -200,11 +203,16 @@ describe('Retryとtimeout回収のD1統合', () => {
       });
     }
   );
-  it('Retry-Afterで15分期限を超える429は再送せず失敗にする', async () => {
+  it('Retry-Afterでマージン込みの期限を超える429は再送せず失敗にする', async () => {
     const { delivery } = await createDeliveryFixture();
     expect(
       await harness(
-        new FcmRequestError(429, 'QUOTA_EXCEEDED', '制限', 901)
+        new FcmRequestError(
+          429,
+          'QUOTA_EXCEEDED',
+          '制限',
+          FCM_RETRY_WINDOW_SECONDS + 1
+        )
       ).service.sendClaimedDelivery(delivery, NOW)
     ).toBe('failed');
     expect(
@@ -213,6 +221,88 @@ describe('Retryとtimeout回収のD1統合', () => {
       status: 'failed',
       next_retry_at: null,
     });
+  });
+  it.each(['retry_wait', 'sending'] as const)(
+    'ミリ秒付き初回時刻の%sを最終再送予定後のcronで送信する',
+    async status => {
+      const { delivery } = await createDeliveryFixture();
+      const firstAttempt = new Date(NOW.getTime() + 3457);
+      const lastOffset = Math.max(...FCM_RETRY_OFFSETS_SECONDS);
+      const nextRetry = new Date(firstAttempt.getTime() + lastOffset * 1000);
+      await env.DB.prepare(
+        `UPDATE notification_push_deliveries
+         SET status = ?, first_attempt_at = ?, last_attempt_at = ?,
+             next_retry_at = ?, attempt_count = ?
+         WHERE notification_push_delivery_id = ?`
+      )
+        .bind(
+          status,
+          firstAttempt.toISOString(),
+          firstAttempt.toISOString(),
+          status === 'retry_wait' ? nextRetry.toISOString() : null,
+          FCM_RETRY_OFFSETS_SECONDS.length,
+          delivery.notification_push_delivery_id
+        )
+        .run();
+      const h = harness();
+      if (status === 'retry_wait') {
+        await h.service.retryDueDeliveries(
+          new Date(Math.floor(nextRetry.getTime() / 60_000) * 60_000)
+        );
+        expect(h.sendNotificationToToken).not.toHaveBeenCalled();
+      }
+      await h.service.retryDueDeliveries(
+        new Date(Math.ceil(nextRetry.getTime() / 60_000) * 60_000)
+      );
+      expect(h.sendNotificationToToken).toHaveBeenCalledTimes(1);
+      expect(
+        await getDelivery(delivery.notification_push_delivery_id)
+      ).toMatchObject({
+        status: 'sent',
+        attempt_count: FCM_RETRY_OFFSETS_SECONDS.length + 1,
+      });
+    }
+  );
+  it.each([0, 1])('マージン込みの期限から%sミリ秒後の取得境界', async delta => {
+    const { delivery } = await createDeliveryFixture();
+    const firstAttempt = new Date(NOW.getTime() + 3457);
+    await env.DB.prepare(
+      `UPDATE notification_push_deliveries
+       SET status = 'retry_wait', first_attempt_at = ?, next_retry_at = ?
+       WHERE notification_push_delivery_id = ?`
+    )
+      .bind(
+        firstAttempt.toISOString(),
+        firstAttempt.toISOString(),
+        delivery.notification_push_delivery_id
+      )
+      .run();
+    const h = harness();
+    await h.service.retryDueDeliveries(
+      new Date(firstAttempt.getTime() + FCM_RETRY_WINDOW_SECONDS * 1000 + delta)
+    );
+    expect(h.sendNotificationToToken).toHaveBeenCalledTimes(
+      delta === 0 ? 1 : 0
+    );
+    expect(
+      await getDelivery(delivery.notification_push_delivery_id)
+    ).toMatchObject({
+      status: delta === 0 ? 'sent' : 'failed',
+    });
+  });
+  it('Retry-Afterによる最終予定後の再送を期限マージン内なら許可する', async () => {
+    const { delivery } = await createDeliveryFixture();
+    const retryAfter = FCM_RETRY_WINDOW_SECONDS - 30;
+    expect(
+      await harness(
+        new FcmRequestError(429, 'QUOTA_EXCEEDED', '制限', retryAfter)
+      ).service.sendClaimedDelivery(delivery, NOW)
+    ).toBe('retry_wait');
+    const h = harness();
+    await h.service.retryDueDeliveries(
+      new Date(NOW.getTime() + retryAfter * 1000)
+    );
+    expect(h.sendNotificationToToken).toHaveBeenCalledTimes(1);
   });
   it.each([
     ['UNREGISTERED', 404, true],

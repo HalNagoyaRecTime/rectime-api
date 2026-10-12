@@ -1,6 +1,10 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { ClaimedNotificationPushDelivery } from '../../domain/entities/NotificationDelivery';
 import type { INotificationDeliveryRepository } from '../../domain/interfaces/repositories/INotificationDeliveryRepository';
+import {
+  FCM_MAX_ATTEMPTS,
+  FCM_RETRY_WINDOW_SECONDS,
+} from '../../domain/entities/NotificationRetryPolicy';
 
 interface CandidateRow {
   notification_schedule_id: number;
@@ -191,11 +195,17 @@ export function createNotificationDeliveryRepository(
             SELECT 1 FROM notification_recipients r JOIN notification_schedules s USING (notification_schedule_id)
             WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND s.send_status = 'stopped'
           ) OR (status IN ('retry_wait', 'sending') AND first_attempt_at IS NOT NULL
-            AND julianday(first_attempt_at, '+900 seconds') < julianday(?)))
+            AND julianday(first_attempt_at, ?) < julianday(?)))
         RETURNING (SELECT notification_schedule_id FROM notification_recipients r
           WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id) AS notification_schedule_id`
         )
-        .bind(now, staleBefore, maxAttempts, now)
+        .bind(
+          now,
+          staleBefore,
+          maxAttempts,
+          `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
+          now
+        )
         .all<{ notification_schedule_id: number }>();
       return [
         ...new Set(retired.results.map(row => row.notification_schedule_id)),
@@ -326,9 +336,17 @@ async function claimDeliveries(
   const eligible =
     staleBefore === undefined
       ? "status = 'pending'"
-      : "attempt_count < 6 AND first_attempt_at IS NOT NULL AND julianday(first_attempt_at, '+900 seconds') >= julianday(?) AND ((status = 'retry_wait' AND julianday(next_retry_at) <= julianday(?)) OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))";
+      : "attempt_count < ? AND first_attempt_at IS NOT NULL AND julianday(first_attempt_at, ?) >= julianday(?) AND ((status = 'retry_wait' AND julianday(next_retry_at) <= julianday(?)) OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))";
   const eligibilityBindings =
-    staleBefore === undefined ? [] : [now, now, staleBefore];
+    staleBefore === undefined
+      ? []
+      : [
+          FCM_MAX_ATTEMPTS,
+          `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
+          now,
+          now,
+          staleBefore,
+        ];
   const qualifiedEligible = eligible.replace(
     /\b(status|attempt_count|next_retry_at|last_attempt_at)\b/g,
     'd.$1'
