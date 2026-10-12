@@ -390,62 +390,73 @@ describe('ClassRoomRepository', () => {
     });
   });
 
-  describe('更新時刻による楽観ロック', () => {
-    async function createWithUpdatedAt(classCode: string, updatedAt: string) {
+  describe('版番号による楽観ロック', () => {
+    async function createClass(classCode: string) {
       const created = await repo.create({
         classCode,
-        className: '更新時刻テスト',
+        className: '版番号テスト',
         teacherId: null,
       });
-      await env.DB.prepare(
-        'UPDATE class_rooms SET updated_at = ? WHERE class_room_id = ?'
-      )
-        .bind(updatedAt, created.classRoomId)
-        .run();
       return created.classRoomId;
     }
 
-    it('expectedUpdatedAt が現在の値と一致すれば更新し、updatedAt を進める', async () => {
-      const id = await createWithUpdatedAt('LOCK-1', '2000-01-01 00:00:00');
-
-      const updated = await repo.update(id, {
-        classCode: 'LOCK-1',
-        className: '更新後',
-        teacherId: null,
-        expectedUpdatedAt: '2000-01-01 00:00:00',
-      });
-
-      expect(updated).toMatchObject({ className: '更新後' });
-      expect(updated?.updatedAt).not.toBe('2000-01-01 00:00:00');
+    const input = (classCode: string, className: string) => ({
+      classCode,
+      className,
+      teacherId: null,
     });
 
-    it('expectedUpdatedAt が現在の値と異なれば null を返し、何も変更しない', async () => {
-      const id = await createWithUpdatedAt('LOCK-2', '2000-01-01 00:00:00');
+    it('expectedLockVersion が現在の値と一致すれば更新し、lockVersion を1増やす', async () => {
+      const id = await createClass('LOCK-1');
 
       const updated = await repo.update(id, {
-        classCode: 'LOCK-2',
-        className: '上書きされてはいけない',
-        teacherId: null,
-        expectedUpdatedAt: '1999-12-31 23:59:59',
+        ...input('LOCK-1', '更新後'),
+        expectedLockVersion: 0,
+      });
+
+      expect(updated).toMatchObject({ className: '更新後', lockVersion: 1 });
+    });
+
+    it('expectedLockVersion が現在の値と異なれば null を返し、何も変更しない', async () => {
+      const id = await createClass('LOCK-2');
+
+      const updated = await repo.update(id, {
+        ...input('LOCK-2', '上書きされてはいけない'),
+        expectedLockVersion: 5,
       });
 
       expect(updated).toBeNull();
       await expect(repo.findById(id)).resolves.toMatchObject({
-        className: '更新時刻テスト',
-        updatedAt: '2000-01-01 00:00:00',
+        className: '版番号テスト',
+        lockVersion: 0,
       });
     });
 
-    it('expectedUpdatedAt を指定しない更新は更新時刻を確認しない', async () => {
-      const id = await createWithUpdatedAt('LOCK-3', '2000-01-01 00:00:00');
+    it('同じ版番号での2回の連続更新は、1回目だけ成功し2回目は競合する（同じ秒内でも）', async () => {
+      const id = await createClass('LOCK-3');
 
-      const updated = await repo.update(id, {
-        classCode: 'LOCK-3',
-        className: '更新後',
-        teacherId: null,
+      const first = await repo.update(id, {
+        ...input('LOCK-3', 'Aの更新'),
+        expectedLockVersion: 0,
+      });
+      const second = await repo.update(id, {
+        ...input('LOCK-3', 'Bの更新'),
+        expectedLockVersion: 0,
       });
 
-      expect(updated).toMatchObject({ className: '更新後' });
+      expect(first).toMatchObject({ className: 'Aの更新', lockVersion: 1 });
+      expect(second).toBeNull();
+      await expect(repo.findById(id)).resolves.toMatchObject({
+        className: 'Aの更新',
+      });
+    });
+
+    it('expectedLockVersion を指定しない更新は版番号を確認せず、lockVersion は進む', async () => {
+      const id = await createClass('LOCK-4');
+
+      const updated = await repo.update(id, input('LOCK-4', '更新後'));
+
+      expect(updated).toMatchObject({ className: '更新後', lockVersion: 1 });
     });
   });
 
@@ -535,7 +546,7 @@ describe('ClassRoomRepository', () => {
         classCode: '12B',
         className: '上書きされてはいけない',
         teacherId: null,
-        expectedUpdatedAt: fetched!.updatedAt,
+        expectedLockVersion: fetched!.lockVersion,
       });
 
       expect(updated).toBeNull();

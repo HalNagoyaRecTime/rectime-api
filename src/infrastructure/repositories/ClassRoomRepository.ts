@@ -293,15 +293,16 @@ export function createClassRoomRepository(
       // teacherId = null を「担任を外す」と解釈すると、表示から隠しただけの
       // 割り当てまで消えてしまう。担任が停止中のときの null は据え置きとして扱う。
       //
-      // 更新時刻(expectedUpdatedAt)が指定された場合は、取得時点から教室が変更
+      // 版番号(expectedLockVersion)が指定された場合は、取得時点から教室が変更
       // されていないこともWHEREで確認する。GETとPUTの間に別操作が挟まっていれば
-      // 0件更新になり、呼び出し側がnullとして受け取る。
+      // 0件更新になり、呼び出し側がnullとして受け取る。版番号は更新のたびに必ず
+      // 1ずつ増えるため、updated_at（秒単位）では区別できない同じ秒内の更新も検出できる。
       //
-      // 担任の稼働状態が変わったときは、担任クラスの updated_at も進む
-      // （UserStatusRepository.updateLiveActive）。そのため、更新時刻を指定していれば、
+      // 担任の稼働状態が変わったときは、担任クラスの版番号も進む
+      // （UserStatusRepository.updateLiveActive）。そのため、版番号を指定していれば、
       // 取得後に再有効化された担任を、null が送られてきたまま消すことはない。
       //
-      // 更新時刻を指定しない呼び出しでは、この確認は行われない。据え置きの判定は
+      // 版番号を指定しない呼び出しでは、この確認は行われない。据え置きの判定は
       // UPDATE実行時点のDBの状態を見るため、GETとPUTの間に担任が再有効化されると、
       // GET時点でnullだった値がそのまま送られて割り当てを消してしまう。
       let row;
@@ -320,9 +321,10 @@ export function createClassRoomRepository(
                      ) THEN teacher_id
                      ELSE ?
                    END,
-                   updated_at = CURRENT_TIMESTAMP
+                   updated_at = CURRENT_TIMESTAMP,
+                   lock_version = lock_version + 1
              WHERE class_room_id = ?
-               AND (? IS NULL OR updated_at = ?)
+               AND (? IS NULL OR lock_version = ?)
              RETURNING class_room_id`
           )
           .bind(
@@ -332,9 +334,9 @@ export function createClassRoomRepository(
             input.teacherId,
             input.teacherId,
             id,
-            // 更新時刻の条件も同じ理由で2回渡す
-            input.expectedUpdatedAt ?? null,
-            input.expectedUpdatedAt ?? null
+            // 版番号の条件も同じ理由で2回渡す
+            input.expectedLockVersion ?? null,
+            input.expectedLockVersion ?? null
           )
           .first<{ class_room_id: number }>();
       } catch (error) {

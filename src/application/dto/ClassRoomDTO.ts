@@ -28,7 +28,7 @@ export interface ClassRoomRequestDTO {
 }
 
 export interface ClassRoomUpdateRequestDTO extends ClassRoomRequestDTO {
-  updatedAt?: string;
+  lockVersion?: number;
 }
 
 export interface ClassRoomImportRow {

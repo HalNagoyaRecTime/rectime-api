@@ -65,7 +65,10 @@ export function createUserStatusRepository(
           .returning({ id: users.id, isLiveActive: users.isLiveActive }),
         orm
           .update(class_rooms)
-          .set({ updatedAt: now })
+          .set({
+            updatedAt: now,
+            lockVersion: sql`${class_rooms.lockVersion} + 1`,
+          })
           .where(
             and(
               inArray(

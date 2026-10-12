@@ -154,8 +154,8 @@ export function createClassRoomService(
       // 取得時点から変わっていれば、担任の存在確認などより先に409にする。
       // 確認後に更新される競合は、update() 側のWHEREで0件更新になって検出する。
       if (
-        input.updatedAt !== undefined &&
-        input.updatedAt !== existing.updatedAt
+        input.lockVersion !== undefined &&
+        input.lockVersion !== existing.lockVersion
       ) {
         throw new Error('Class update conflict');
       }
@@ -165,12 +165,12 @@ export function createClassRoomService(
           classCode: input.classCode,
           className: input.className,
           teacherId: input.teacherId,
-          expectedUpdatedAt: input.updatedAt,
+          expectedLockVersion: input.lockVersion,
         });
         if (!classroom) {
-          // 更新時刻を条件にしていた場合、0件更新は削除か更新時刻の不一致のどちらか。
+          // 版番号を条件にしていた場合、0件更新は削除か版番号の不一致のどちらか。
           if (
-            input.updatedAt !== undefined &&
+            input.lockVersion !== undefined &&
             (await classRoomRepository.findById(id))
           ) {
             throw new Error('Class update conflict');

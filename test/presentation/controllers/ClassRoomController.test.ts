@@ -319,7 +319,7 @@ describe('ClassRoomController', () => {
     expect(response.status).toBe(409);
   });
 
-  it('更新時刻付きの更新リクエストをそのままサービスへ渡す', async () => {
+  it('版番号付きの更新リクエストをそのままサービスへ渡す', async () => {
     const { app, service } = setup();
     (service.updateClassRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
       class_room_id: 1,
@@ -327,7 +327,7 @@ describe('ClassRoomController', () => {
       class_name: '高度情報学科AI開発先行コースB',
       student_count: 0,
       teacher: null,
-      updated_at: '2026-01-02 00:00:00',
+      lock_version: 2,
     });
 
     const response = await app.request('/classrooms/1', {
@@ -337,7 +337,7 @@ describe('ClassRoomController', () => {
         classCode: 'IA14B',
         className: '高度情報学科AI開発先行コースB',
         teacherId: null,
-        updatedAt: '2026-01-01 00:00:00',
+        lockVersion: 1,
       }),
     });
 
@@ -346,14 +346,14 @@ describe('ClassRoomController', () => {
       classCode: 'IA14B',
       className: '高度情報学科AI開発先行コースB',
       teacherId: null,
-      updatedAt: '2026-01-01 00:00:00',
+      lockVersion: 1,
     });
     expect(await response.json()).toMatchObject({
-      updated_at: '2026-01-02 00:00:00',
+      lock_version: 2,
     });
   });
 
-  it('更新時の更新時刻の不一致は409を返す', async () => {
+  it('更新時の版番号の不一致は409を返す', async () => {
     const { app, service } = setup();
     (service.updateClassRoom as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Class update conflict')
@@ -366,7 +366,7 @@ describe('ClassRoomController', () => {
         classCode: 'IA14A',
         className: '高度情報学科AI開発先行コース',
         teacherId: null,
-        updatedAt: '2026-01-01 00:00:00',
+        lockVersion: 1,
       }),
     });
 
@@ -379,7 +379,7 @@ describe('ClassRoomController', () => {
     });
   });
 
-  it('updatedAt が空文字の更新は400を返す', async () => {
+  it('lockVersion が負の値の更新は400を返す', async () => {
     const { app, service } = setup();
 
     const response = await app.request('/classrooms/1', {
@@ -389,7 +389,7 @@ describe('ClassRoomController', () => {
         classCode: 'IA14A',
         className: '高度情報学科AI開発先行コース',
         teacherId: null,
-        updatedAt: '',
+        lockVersion: -1,
       }),
     });
 
@@ -397,7 +397,7 @@ describe('ClassRoomController', () => {
     expect(service.updateClassRoom).not.toHaveBeenCalled();
   });
 
-  it('登録リクエストは updatedAt を受け付けない', async () => {
+  it('登録リクエストは lockVersion を受け付けない', async () => {
     const { app, service } = setup();
 
     const response = await app.request('/classrooms', {
@@ -407,7 +407,7 @@ describe('ClassRoomController', () => {
         classCode: 'IA14A',
         className: '高度情報学科AI開発先行コース',
         teacherId: null,
-        updatedAt: '2026-01-01 00:00:00',
+        lockVersion: 1,
       }),
     });
 
@@ -415,13 +415,12 @@ describe('ClassRoomController', () => {
     expect(service.createClassRoom).not.toHaveBeenCalled();
   });
 
-  it('更新リクエストのスキーマは updatedAt を任意で受け、未知のキーは拒否する', () => {
+  it('更新リクエストのスキーマは lockVersion を任意で受け、未知のキーは拒否する', () => {
     const base = { classCode: 'A01', className: 'Class A', teacherId: 1 };
 
     expect(classRoomUpdateSchema.safeParse(base).success).toBe(true);
     expect(
-      classRoomUpdateSchema.safeParse({ ...base, updatedAt: '2026-01-01' })
-        .success
+      classRoomUpdateSchema.safeParse({ ...base, lockVersion: 1 }).success
     ).toBe(true);
     expect(
       classRoomUpdateSchema.safeParse({ ...base, legacyField: true }).success

@@ -209,14 +209,15 @@ describe('ClassRoomService', () => {
     ).rejects.toThrow('Class code already exists');
   });
 
-  describe('更新時刻による楽観ロック', () => {
-    const existingClassRoom = (updatedAt: string) => ({
+  describe('版番号による楽観ロック', () => {
+    const existingClassRoom = (lockVersion: number) => ({
       classRoomId: 1,
       classCode: 'OLD',
       className: '旧クラス',
       studentCount: 0,
       teacher: null,
-      updatedAt,
+      updatedAt: '2026-01-01 00:00:00',
+      lockVersion,
     });
     const input = {
       classCode: 'IA14A',
@@ -224,10 +225,10 @@ describe('ClassRoomService', () => {
       teacherId: null,
     };
 
-    it('updatedAt が取得時点と異なれば、担任の確認より先に409用エラーにする', async () => {
+    it('lockVersion が取得時点と異なれば、担任の確認より先に409用エラーにする', async () => {
       const repo = repository();
       (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
-        existingClassRoom('2026-01-02 00:00:00')
+        existingClassRoom(2)
       );
       const teachers = teacherRepository();
 
@@ -235,42 +236,42 @@ describe('ClassRoomService', () => {
         createClassRoomService(repo, teachers).updateClassRoom(1, {
           ...input,
           teacherId: 5,
-          updatedAt: '2026-01-01 00:00:00',
+          lockVersion: 1,
         })
       ).rejects.toThrow('Class update conflict');
       expect(teachers.existsById).not.toHaveBeenCalled();
       expect(repo.update).not.toHaveBeenCalled();
     });
 
-    it('updatedAt が一致すれば、expectedUpdatedAt を付けて update を呼ぶ', async () => {
+    it('lockVersion が一致すれば、expectedLockVersion を付けて update を呼ぶ', async () => {
       const repo = repository();
       (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
-        existingClassRoom('2026-01-01 00:00:00')
+        existingClassRoom(1)
       );
       (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue({
-        ...existingClassRoom('2026-01-03 00:00:00'),
+        ...existingClassRoom(3),
         classCode: 'IA14A',
       });
 
       const result = await createClassRoomService(
         repo,
         teacherRepository()
-      ).updateClassRoom(1, { ...input, updatedAt: '2026-01-01 00:00:00' });
+      ).updateClassRoom(1, { ...input, lockVersion: 1 });
 
       expect(repo.update).toHaveBeenCalledWith(1, {
         ...input,
-        expectedUpdatedAt: '2026-01-01 00:00:00',
+        expectedLockVersion: 1,
       });
-      expect(result.updated_at).toBe('2026-01-03 00:00:00');
+      expect(result.lock_version).toBe(3);
     });
 
-    it('updatedAt を指定しなければ、更新時刻を比較せず expectedUpdatedAt も渡さない', async () => {
+    it('lockVersion を指定しなければ、版番号を比較せず expectedLockVersion も渡さない', async () => {
       const repo = repository();
       (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
-        existingClassRoom('2026-01-01 00:00:00')
+        existingClassRoom(1)
       );
       (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(
-        existingClassRoom('2026-01-03 00:00:00')
+        existingClassRoom(3)
       );
 
       await createClassRoomService(repo, teacherRepository()).updateClassRoom(
@@ -280,21 +281,21 @@ describe('ClassRoomService', () => {
 
       expect(repo.update).toHaveBeenCalledWith(1, {
         ...input,
-        expectedUpdatedAt: undefined,
+        expectedLockVersion: undefined,
       });
     });
 
     it('確認後に更新された競合（update が null）は、教室が残っていれば409用エラーにする', async () => {
       const repo = repository();
       (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
-        existingClassRoom('2026-01-01 00:00:00')
+        existingClassRoom(1)
       );
       (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
       await expect(
         createClassRoomService(repo, teacherRepository()).updateClassRoom(1, {
           ...input,
-          updatedAt: '2026-01-01 00:00:00',
+          lockVersion: 1,
         })
       ).rejects.toThrow('Class update conflict');
     });
@@ -302,22 +303,22 @@ describe('ClassRoomService', () => {
     it('確認後に削除された競合（update が null）は、404用エラーにする', async () => {
       const repo = repository();
       (repo.findById as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce(existingClassRoom('2026-01-01 00:00:00'))
+        .mockResolvedValueOnce(existingClassRoom(1))
         .mockResolvedValueOnce(null);
       (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
       await expect(
         createClassRoomService(repo, teacherRepository()).updateClassRoom(1, {
           ...input,
-          updatedAt: '2026-01-01 00:00:00',
+          lockVersion: 1,
         })
       ).rejects.toThrow('Class not found');
     });
 
-    it('updatedAt を指定せず update が null なら、再確認せず404用エラーにする', async () => {
+    it('lockVersion を指定せず update が null なら、再確認せず404用エラーにする', async () => {
       const repo = repository();
       (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
-        existingClassRoom('2026-01-01 00:00:00')
+        existingClassRoom(1)
       );
       (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 

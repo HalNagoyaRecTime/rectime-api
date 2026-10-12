@@ -24,7 +24,7 @@ async function loadSchemas(): Promise<Record<string, JsonSchema>> {
 // 更新時刻を、拡張側が基底の項目を拒否し、どの本文も満たせない仕様になる。
 describe('更新リクエストのOpenAPIスキーマ', () => {
   it.each([
-    ['ClassRoomWriteRequest', 'ClassRoomUpdateRequest', 'updatedAt'],
+    ['ClassRoomWriteRequest', 'ClassRoomUpdateRequest', 'lockVersion'],
     ['StudentWriteRequest', 'StudentUpdateRequest', 'updated_at'],
   ])(
     '%s に更新時刻を足した %s は、allOf を使わず1つのオブジェクトとして出力される',
