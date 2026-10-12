@@ -6,7 +6,7 @@ import type {
 // Event単位で集合予定をまとめて読み書きする契約。既存の一覧取得を担う
 // IGatheringRepository とは責務が異なるため、インターフェースを分けている。
 export interface IEventGatheringSettingsRepository {
-  // round ASC, gathering_time ASC, gathering_id ASC の順で返す。
+  // round ASC, gathering_id ASC の順で返す。
   // レスポンスの並び順をここで確定させ、上位層では並べ替えない。
   findByEventId(eventId: number): Promise<EventGatheringEntity[]>;
 

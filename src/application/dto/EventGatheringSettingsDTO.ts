@@ -8,6 +8,7 @@ export interface GatheringSettingInputDTO {
 
 export interface RoundSettingInputDTO {
   round: number;
+  start_time?: string | null;
   gatherings: GatheringSettingInputDTO[];
 }
 
@@ -31,6 +32,7 @@ export interface GatheringSettingDTO {
 
 export interface RoundSettingDTO {
   round: number;
+  start_time: string | null;
   gatherings: GatheringSettingDTO[];
 }
 

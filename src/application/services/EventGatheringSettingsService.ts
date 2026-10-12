@@ -29,6 +29,7 @@ function flattenRounds(rounds: RoundSettingInputDTO[]): RequestedGathering[] {
     round.gatherings.map(gathering => ({
       gathering_id: gathering.gathering_id,
       round: round.round,
+      round_start_time: round.start_time,
       gathering_time: gathering.gathering_time,
       gathering_spot_id: gathering.gathering_spot_id,
     }))
@@ -41,6 +42,8 @@ function isUnchanged(
 ): boolean {
   return (
     current.round === requested.round &&
+    (requested.round_start_time === undefined ||
+      current.round_start_time === requested.round_start_time) &&
     current.gathering_time === requested.gathering_time &&
     current.gathering_spot_id === requested.gathering_spot_id
   );

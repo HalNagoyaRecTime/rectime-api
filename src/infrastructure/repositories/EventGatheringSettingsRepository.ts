@@ -28,6 +28,7 @@ export function createEventGatheringSettingsRepository(
           gathering_id: gatherings.id,
           round: gatherings.round,
           gathering_time: gatherings.gatheringTime,
+          round_start_time: gatherings.roundStartTime,
           gathering_spot_id: gathering_spots.id,
           gathering_spot_name: gathering_spots.name,
           member_count: count(gathering_group_members.id),
@@ -43,11 +44,7 @@ export function createEventGatheringSettingsRepository(
         )
         .where(eq(gatherings.eventId, eventId))
         .groupBy(gatherings.id, gathering_spots.id)
-        .orderBy(
-          asc(gatherings.round),
-          asc(gatherings.gatheringTime),
-          asc(gatherings.id)
-        )
+        .orderBy(asc(gatherings.round), asc(gatherings.id))
         .all();
     },
 
@@ -72,6 +69,7 @@ export function createEventGatheringSettingsRepository(
             .update(gatherings)
             .set({
               round: update.round,
+              roundStartTime: update.round_start_time,
               gatheringTime: update.gathering_time,
               gatheringSpotId: update.gathering_spot_id,
               updatedAt: sql`CURRENT_TIMESTAMP`,
@@ -82,6 +80,7 @@ export function createEventGatheringSettingsRepository(
           orm.insert(gatherings).values({
             eventId: changeSet.event_id,
             round: create.round,
+            roundStartTime: create.round_start_time,
             gatheringTime: create.gathering_time,
             gatheringSpotId: create.gathering_spot_id,
           })

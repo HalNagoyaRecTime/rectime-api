@@ -55,12 +55,13 @@ async function insertGathering(
   eventId: number,
   spotId: number,
   round: number,
-  time: string
+  time: string,
+  startTime: string | null = null
 ): Promise<number> {
   const row = await workerEnv.DB.prepare(
-    'INSERT INTO gatherings (event_id, gathering_spot_id, round, gathering_time) VALUES (?, ?, ?, ?) RETURNING gathering_id'
+    'INSERT INTO gatherings (event_id, gathering_spot_id, round, gathering_time, round_start_time) VALUES (?, ?, ?, ?, ?) RETURNING gathering_id'
   )
-    .bind(eventId, spotId, round, time)
+    .bind(eventId, spotId, round, time, startTime)
     .first<{ gathering_id: number }>();
   return row!.gathering_id;
 }
@@ -113,8 +114,20 @@ describe('GET /api/v1/events/:eventId', () => {
 
     // 挿入順とレスポンスの並び順が一致しないよう、あえてRoundを前後させる。
     const round2 = await insertGathering(eventId, entrance1, 2, '11:30');
-    const round1Late = await insertGathering(eventId, entrance2, 1, '10:50');
-    const round1Early = await insertGathering(eventId, entrance1, 1, '10:45');
+    const round1Late = await insertGathering(
+      eventId,
+      entrance2,
+      1,
+      '10:50',
+      '1100'
+    );
+    const round1Early = await insertGathering(
+      eventId,
+      entrance1,
+      1,
+      '10:45',
+      '1110'
+    );
     await insertMember(round1Early);
     await insertMember(round1Early);
 
@@ -134,16 +147,8 @@ describe('GET /api/v1/events/:eventId', () => {
       rounds: [
         {
           round: 1,
+          start_time: '1100',
           gatherings: [
-            {
-              gathering_id: round1Early,
-              gathering_time: '10:45',
-              gathering_spot: {
-                gathering_spot_id: entrance1,
-                gathering_spot_name: '出入口①',
-              },
-              member_count: 2,
-            },
             {
               gathering_id: round1Late,
               gathering_time: '10:50',
@@ -153,10 +158,20 @@ describe('GET /api/v1/events/:eventId', () => {
               },
               member_count: 0,
             },
+            {
+              gathering_id: round1Early,
+              gathering_time: '10:45',
+              gathering_spot: {
+                gathering_spot_id: entrance1,
+                gathering_spot_name: '出入口①',
+              },
+              member_count: 2,
+            },
           ],
         },
         {
           round: 2,
+          start_time: null,
           gatherings: [
             {
               gathering_id: round2,
