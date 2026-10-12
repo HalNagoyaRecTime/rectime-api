@@ -17,7 +17,7 @@ export interface TeacherUpdateRequest {
   userName: string;
   email: string;
   classRoomIds: number[];
-  updatedAt?: string;
+  lockVersion?: number;
 }
 
 export interface ITeacherService {

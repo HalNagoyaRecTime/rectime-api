@@ -454,16 +454,16 @@ describe('TeacherController', () => {
     });
   });
 
-  describe('updateTeacher（更新時刻による楽観ロック）', () => {
+  describe('updateTeacher（版番号による楽観ロック）', () => {
     const validBody = {
       userName: '更新済み先生',
       email: 'koushin@example.ac.jp',
       classRoomIds: [1, 2],
     };
 
-    it('更新時刻付きのリクエストをそのままサービスへ渡す', async () => {
+    it('版番号付きのリクエストをそのままサービスへ渡す', async () => {
       const { app, teacherService } = setup();
-      const updated = buildTeacher({ updated_at: '2026-01-02 00:00:00' });
+      const updated = buildTeacher({ lock_version: 2 });
       (
         teacherService.updateTeacher as ReturnType<typeof vi.fn>
       ).mockResolvedValue(updated);
@@ -473,21 +473,21 @@ describe('TeacherController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...validBody,
-          updatedAt: '2026-01-01 00:00:00',
+          lockVersion: 1,
         }),
       });
 
       expect(res.status).toBe(200);
       expect(teacherService.updateTeacher).toHaveBeenCalledWith(1, {
         ...validBody,
-        updatedAt: '2026-01-01 00:00:00',
+        lockVersion: 1,
       });
       expect(await res.json()).toMatchObject({
-        updated_at: '2026-01-02 00:00:00',
+        lock_version: 2,
       });
     });
 
-    it('更新時刻の不一致は 409 を返す', async () => {
+    it('版番号の不一致は 409 を返す', async () => {
       const { app, teacherService } = setup();
       (
         teacherService.updateTeacher as ReturnType<typeof vi.fn>
@@ -498,7 +498,7 @@ describe('TeacherController', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...validBody,
-          updatedAt: '2026-01-01 00:00:00',
+          lockVersion: 1,
         }),
       });
 
@@ -511,13 +511,13 @@ describe('TeacherController', () => {
       });
     });
 
-    it('updatedAt が空文字の更新は 400 を返す', async () => {
+    it('lockVersion が負の値の更新は 400 を返す', async () => {
       const { app, teacherService } = setup();
 
       const res = await app.request('/teachers/1', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...validBody, updatedAt: '' }),
+        body: JSON.stringify({ ...validBody, lockVersion: -1 }),
       });
 
       expect(res.status).toBe(400);

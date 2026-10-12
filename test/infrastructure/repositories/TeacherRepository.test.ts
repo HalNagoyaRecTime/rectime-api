@@ -359,35 +359,33 @@ describe('TeacherRepository', () => {
     });
   });
 
-  describe('update（更新時刻による楽観ロック）', () => {
-    async function setUpdatedAt(teacherId: number, updatedAt: string) {
-      await env.DB.prepare(
-        'UPDATE teachers SET updated_at = ? WHERE teacher_id = ?'
-      )
-        .bind(updatedAt, teacherId)
-        .run();
-    }
-
-    async function classRoomTeacherIds() {
+  describe('update（版番号による楽観ロック）', () => {
+    async function classRoomAssignments() {
       const { results } = await env.DB.prepare(
-        'SELECT class_room_id, teacher_id FROM class_rooms ORDER BY class_room_id'
-      ).all<{ class_room_id: number; teacher_id: number | null }>();
+        'SELECT class_room_id, teacher_id, lock_version FROM class_rooms ORDER BY class_room_id'
+      ).all<{
+        class_room_id: number;
+        teacher_id: number | null;
+        lock_version: number;
+      }>();
       return results;
     }
 
-    it('expectedUpdatedAt が現在の値と一致すれば更新し、updatedAt を進める', async () => {
+    it('expectedLockVersion が現在の値と一致すれば更新し、教員と担当クラスの lockVersion を1増やす', async () => {
       const target = seeded.teachers[0];
-      await setUpdatedAt(target.teacherId, '2000-01-01 00:00:00');
+      const before = await classRoomAssignments();
 
       const updated = await repo.update(target.teacherId, {
         userName: '更新済み先生',
         email: 'lock-1@example.ac.jp',
         classRoomIds: [seeded.classRooms[1].classRoomId],
-        expectedUpdatedAt: '2000-01-01 00:00:00',
+        expectedLockVersion: 0,
       });
 
-      expect(updated).toMatchObject({ userName: '更新済み先生' });
-      expect(updated?.updatedAt).not.toBe('2000-01-01 00:00:00');
+      expect(updated).toMatchObject({
+        userName: '更新済み先生',
+        lockVersion: 1,
+      });
       expect(updated?.classRooms).toEqual([
         {
           classRoomId: seeded.classRooms[1].classRoomId,
@@ -395,42 +393,76 @@ describe('TeacherRepository', () => {
           className: seeded.classRooms[1].className,
         },
       ]);
+      // 担当が外れたクラスと付いたクラスの版番号も進む（教室の更新の楽観ロックが検出できる）
+      const after = await classRoomAssignments();
+      const bumped = after.filter(
+        (row, i) => row.lock_version === before[i].lock_version + 1
+      );
+      expect(bumped.map(row => row.class_room_id)).toEqual(
+        expect.arrayContaining([
+          seeded.classRooms[0].classRoomId,
+          seeded.classRooms[1].classRoomId,
+        ])
+      );
     });
 
-    it('expectedUpdatedAt が現在の値と異なれば null を返し、氏名・メール・担当クラスのどれも変更しない', async () => {
+    it('expectedLockVersion が現在の値と異なれば null を返し、氏名・メール・担当クラスのどれも変更しない', async () => {
       const target = seeded.teachers[0];
-      await setUpdatedAt(target.teacherId, '2000-01-01 00:00:00');
       const before = await repo.findById(target.teacherId);
-      const assignmentsBefore = await classRoomTeacherIds();
+      const assignmentsBefore = await classRoomAssignments();
 
       const updated = await repo.update(target.teacherId, {
         userName: '上書きされてはいけない',
         email: 'lock-2@example.ac.jp',
         classRoomIds: [seeded.classRooms[1].classRoomId],
-        expectedUpdatedAt: '1999-12-31 23:59:59',
+        expectedLockVersion: 5,
       });
 
       expect(updated).toBeNull();
       await expect(repo.findById(target.teacherId)).resolves.toEqual(before);
-      expect(await classRoomTeacherIds()).toEqual(assignmentsBefore);
+      expect(await classRoomAssignments()).toEqual(assignmentsBefore);
     });
 
     it('担当クラスを空にする更新も、不一致なら現在の担当クラスを解除しない', async () => {
       const target = seeded.teachers[0];
-      await setUpdatedAt(target.teacherId, '2000-01-01 00:00:00');
       const before = await repo.findById(target.teacherId);
 
       const updated = await repo.update(target.teacherId, {
         userName: target.displayName,
         email: 'lock-3@example.ac.jp',
         classRoomIds: [],
-        expectedUpdatedAt: '1999-12-31 23:59:59',
+        expectedLockVersion: 5,
       });
 
       expect(updated).toBeNull();
       expect((await repo.findById(target.teacherId))?.classRooms).toEqual(
         before?.classRooms
       );
+    });
+
+    it('同じ版番号での2回の連続更新は、1回目だけ成功し2回目は競合する', async () => {
+      const target = seeded.teachers[0];
+      const input = (userName: string, email: string) => ({
+        userName,
+        email,
+        classRoomIds: [seeded.classRooms[0].classRoomId],
+        expectedLockVersion: 0,
+      });
+
+      const first = await repo.update(
+        target.teacherId,
+        input('Aの更新', 'lock-4a@example.ac.jp')
+      );
+      const second = await repo.update(
+        target.teacherId,
+        input('Bの更新', 'lock-4b@example.ac.jp')
+      );
+
+      expect(first).toMatchObject({ userName: 'Aの更新', lockVersion: 1 });
+      expect(second).toBeNull();
+      await expect(repo.findById(target.teacherId)).resolves.toMatchObject({
+        userName: 'Aの更新',
+      });
     });
   });
 

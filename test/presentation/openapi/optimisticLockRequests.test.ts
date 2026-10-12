@@ -43,10 +43,10 @@ describe('更新リクエストのOpenAPIスキーマ', () => {
     }
   );
 
-  it('教員の更新リクエストは updatedAt を任意の項目として持つ', async () => {
+  it('教員の更新リクエストは lockVersion を任意の項目として持つ', async () => {
     const update = (await loadSchemas()).TeacherUpdateRequest;
 
-    expect(update.properties).toHaveProperty('updatedAt');
-    expect(update.required).not.toContain('updatedAt');
+    expect(update.properties).toHaveProperty('lockVersion');
+    expect(update.required).not.toContain('lockVersion');
   });
 });

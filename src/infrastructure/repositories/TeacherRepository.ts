@@ -363,7 +363,8 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
               .prepare(
                 `UPDATE class_rooms
                  SET teacher_id = last_insert_rowid(),
-                     updated_at = CURRENT_TIMESTAMP
+                     updated_at = CURRENT_TIMESTAMP,
+                     lock_version = lock_version + 1
                  WHERE class_room_id IN (${classRoomIdPlaceholders})
                    AND ${classRoomsExistCondition}
                  RETURNING class_room_id`
@@ -502,19 +503,21 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
 
       const now = new Date().toISOString();
 
-      // 更新時刻(expectedUpdatedAt)が指定された場合は、取得時点から teachers の
+      // 版番号(expectedLockVersion)が指定された場合は、取得時点から teachers の
       // 行が変更されていないことを、batch() 内のすべての文の条件にする。
       // batch() は文ごとに実行されるため、一部の文だけに条件を付けると、不一致の
       // ときに users の更新や担当クラスの解除だけが書き込まれてしまう。
-      // teachers の更新は updated_at を進めるため、条件を参照する他の文より後に置く。
-      const expectedUpdatedAt = input.expectedUpdatedAt;
+      // teachers の更新は lock_version を進めるため、条件を参照する他の文より後に置く。
+      // 版番号は更新のたびに必ず1ずつ増えるため、updated_at（秒単位やミリ秒）では
+      // 区別できない短い間隔の更新も検出できる。
+      const expectedLockVersion = input.expectedLockVersion;
       const versionCondition =
-        expectedUpdatedAt === undefined
+        expectedLockVersion === undefined
           ? undefined
           : sql`EXISTS (
               SELECT 1 FROM ${teachers}
               WHERE ${teachers.id} = ${id}
-                AND ${teachers.updatedAt} = ${expectedUpdatedAt}
+                AND ${teachers.lockVersion} = ${expectedLockVersion}
             )`;
 
       const updateUserStatement = orm
@@ -527,16 +530,20 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
 
       const updateTeacherStatement = orm
         .update(teachers)
-        .set({ email: input.email, updatedAt: now })
+        .set({
+          email: input.email,
+          updatedAt: now,
+          lockVersion: sql`${teachers.lockVersion} + 1`,
+        })
         .where(
           and(
             eq(teachers.id, id),
-            expectedUpdatedAt === undefined
+            expectedLockVersion === undefined
               ? undefined
-              : eq(teachers.updatedAt, expectedUpdatedAt)
+              : eq(teachers.lockVersion, expectedLockVersion)
           )
         )
-        .returning({ id: teachers.id });
+        .returning({ id: teachers.id, lockVersion: teachers.lockVersion });
 
       // 1クラスの担当教員は最大1人のため、担当クラスの入れ替えは
       // class_rooms.teacher_id の付け替えで表現する。
@@ -547,10 +554,14 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       // 反映されたまま残ることはない。
       const clearAssignmentsStatement = orm
         .update(class_rooms)
-        .set({ teacherId: null, updatedAt: now })
+        .set({
+          teacherId: null,
+          updatedAt: now,
+          lockVersion: sql`${class_rooms.lockVersion} + 1`,
+        })
         .where(and(eq(class_rooms.teacherId, id), versionCondition));
 
-      let updatedTeacherRows: { id: number }[];
+      let updatedTeacherRows: { id: number; lockVersion: number }[];
       if (input.classRoomIds.length > 0) {
         // class_rooms.teacher_id への UPDATE は、存在しないIDを条件に含めても
         // 単に0件更新で成功してしまいFK制約による検知が働かない。
@@ -567,7 +578,11 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
 
         const setAssignmentsStatement = orm
           .update(class_rooms)
-          .set({ teacherId: id, updatedAt: now })
+          .set({
+            teacherId: id,
+            updatedAt: now,
+            lockVersion: sql`${class_rooms.lockVersion} + 1`,
+          })
           .where(
             and(inArray(class_rooms.id, input.classRoomIds), versionCondition)
           );
@@ -584,8 +599,11 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           updateTeacherStatement,
         ]);
       }
-      // 更新時刻の条件に合う行が無かった場合は、何も書き込まれていない。
-      if (expectedUpdatedAt !== undefined && updatedTeacherRows.length === 0) {
+      // 版番号の条件に合う行が無かった場合は、何も書き込まれていない。
+      if (
+        expectedLockVersion !== undefined &&
+        updatedTeacherRows.length === 0
+      ) {
         return null;
       }
 
@@ -596,6 +614,9 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
             ...existing.teachers,
             email: input.email,
             updatedAt: now,
+            lockVersion:
+              updatedTeacherRows[0]?.lockVersion ??
+              existing.teachers.lockVersion + 1,
           },
           users: {
             ...existing.users,
@@ -621,7 +642,11 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       await orm.batch([
         orm
           .update(class_rooms)
-          .set({ teacherId: null, updatedAt: new Date().toISOString() })
+          .set({
+            teacherId: null,
+            updatedAt: new Date().toISOString(),
+            lockVersion: sql`${class_rooms.lockVersion} + 1`,
+          })
           .where(eq(class_rooms.teacherId, existing.id)),
         orm.delete(teachers).where(eq(teachers.id, existing.id)),
       ]);

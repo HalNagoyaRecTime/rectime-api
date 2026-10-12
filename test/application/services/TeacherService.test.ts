@@ -425,27 +425,23 @@ describe('TeacherService', () => {
     });
   });
 
-  describe('updateTeacher（更新時刻による楽観ロック）', () => {
+  describe('updateTeacher（版番号による楽観ロック）', () => {
     const input = {
       userName: '更新済み先生',
       email: 'svc-lock@example.ac.jp',
       classRoomIds: [1],
     };
 
-    it('updatedAt が取得時点と異なれば、クラスの確認より先に409用エラーにする', async () => {
+    it('lockVersion が取得時点と異なれば、クラスの確認より先に409用エラーにする', async () => {
       const repository = buildRepository({
-        findById: vi
-          .fn()
-          .mockResolvedValue(
-            buildTeacher({ updatedAt: '2026-01-02 00:00:00' })
-          ),
+        findById: vi.fn().mockResolvedValue(buildTeacher({ lockVersion: 2 })),
         update: vi.fn(),
       });
       const classRoomRepository = buildClassRoomRepository();
       const service = createTeacherService(repository, classRoomRepository);
 
       await expect(
-        service.updateTeacher(1, { ...input, updatedAt: '2026-01-01 00:00:00' })
+        service.updateTeacher(1, { ...input, lockVersion: 1 })
       ).rejects.toThrow('Teacher update conflict');
       expect(
         classRoomRepository.findExistingClassRoomIds
@@ -453,18 +449,10 @@ describe('TeacherService', () => {
       expect(repository.update).not.toHaveBeenCalled();
     });
 
-    it('updatedAt が一致すれば、expectedUpdatedAt を付けて update を呼ぶ', async () => {
+    it('lockVersion が一致すれば、expectedLockVersion を付けて update を呼ぶ', async () => {
       const repository = buildRepository({
-        findById: vi
-          .fn()
-          .mockResolvedValue(
-            buildTeacher({ updatedAt: '2026-01-01 00:00:00' })
-          ),
-        update: vi
-          .fn()
-          .mockResolvedValue(
-            buildTeacher({ updatedAt: '2026-01-03 00:00:00' })
-          ),
+        findById: vi.fn().mockResolvedValue(buildTeacher({ lockVersion: 1 })),
+        update: vi.fn().mockResolvedValue(buildTeacher({ lockVersion: 3 })),
       });
       const service = createTeacherService(
         repository,
@@ -473,23 +461,19 @@ describe('TeacherService', () => {
 
       const dto = await service.updateTeacher(1, {
         ...input,
-        updatedAt: '2026-01-01 00:00:00',
+        lockVersion: 1,
       });
 
       expect(repository.update).toHaveBeenCalledWith(1, {
         ...input,
-        expectedUpdatedAt: '2026-01-01 00:00:00',
+        expectedLockVersion: 1,
       });
-      expect(dto.updated_at).toBe('2026-01-03 00:00:00');
+      expect(dto.lock_version).toBe(3);
     });
 
     it('確認後に更新された競合（update が null）は、教員が残っていれば409用エラーにする', async () => {
       const repository = buildRepository({
-        findById: vi
-          .fn()
-          .mockResolvedValue(
-            buildTeacher({ updatedAt: '2026-01-01 00:00:00' })
-          ),
+        findById: vi.fn().mockResolvedValue(buildTeacher({ lockVersion: 1 })),
         update: vi.fn().mockResolvedValue(null),
       });
       const service = createTeacherService(
@@ -498,7 +482,7 @@ describe('TeacherService', () => {
       );
 
       await expect(
-        service.updateTeacher(1, { ...input, updatedAt: '2026-01-01 00:00:00' })
+        service.updateTeacher(1, { ...input, lockVersion: 1 })
       ).rejects.toThrow('Teacher update conflict');
     });
 
@@ -506,9 +490,7 @@ describe('TeacherService', () => {
       const repository = buildRepository({
         findById: vi
           .fn()
-          .mockResolvedValueOnce(
-            buildTeacher({ updatedAt: '2026-01-01 00:00:00' })
-          )
+          .mockResolvedValueOnce(buildTeacher({ lockVersion: 1 }))
           .mockResolvedValueOnce(null),
         update: vi.fn().mockResolvedValue(null),
       });
@@ -518,11 +500,11 @@ describe('TeacherService', () => {
       );
 
       await expect(
-        service.updateTeacher(1, { ...input, updatedAt: '2026-01-01 00:00:00' })
+        service.updateTeacher(1, { ...input, lockVersion: 1 })
       ).rejects.toThrow('Teacher not found');
     });
 
-    it('updatedAt を指定せず update が null なら、再確認せず404用エラーにする', async () => {
+    it('lockVersion を指定せず update が null なら、再確認せず404用エラーにする', async () => {
       const repository = buildRepository({
         findById: vi.fn().mockResolvedValue(buildTeacher()),
         update: vi.fn().mockResolvedValue(null),
