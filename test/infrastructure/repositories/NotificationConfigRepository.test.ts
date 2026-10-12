@@ -260,5 +260,25 @@ describe('NotificationConfigRepository', () => {
         ])
       ).resolves.toBe(false);
     });
+
+    it('deletion_statusがactive以外でも既存User targetとして有効にし、audience-countは0人を返す', async () => {
+      const pendingUserId = await insertUser(
+        'deletion-pending-direct',
+        1,
+        'deletion_pending'
+      );
+      const deletedUserId = await insertUser('deleted-direct', 1, 'deleted');
+      const targets = [
+        { type: 'user', target_id: pendingUserId },
+        { type: 'user', target_id: deletedUserId },
+      ] as const;
+
+      await expect(
+        repository.areAudienceTargetsAvailable([...targets])
+      ).resolves.toBe(true);
+      await expect(repository.countAudienceUsers([...targets])).resolves.toBe(
+        0
+      );
+    });
   });
 });
