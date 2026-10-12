@@ -343,6 +343,23 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
         ? await db.batch<
             ReturnedUserRow | ReturnedTeacherRow | { class_room_id: number }
           >([
+            // 他の教員が担当しているクラスを取る場合、取られた教員の版番号も進める。
+            // 後続の文が last_insert_rowid() で直前の INSERT の行を参照するため、
+            // 担当を付け替える前の状態を読むこの文は、最初の INSERT より前に置く。
+            db
+              .prepare(
+                `UPDATE teachers
+                 SET lock_version = lock_version + 1,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE teacher_id IN (
+                   SELECT teacher_id FROM class_rooms
+                   WHERE class_room_id IN (${classRoomIdPlaceholders})
+                     AND teacher_id IS NOT NULL
+                 )
+                   AND ${classRoomsExistCondition}
+                 RETURNING teacher_id`
+              )
+              .bind(...classRoomIds, ...classRoomIds, classRoomIds.length),
             db
               .prepare(
                 `INSERT INTO users (user_name, updated_at)
@@ -388,7 +405,9 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
               .bind(email),
           ]);
 
-      const [userResult, teacherResult] = batchResults;
+      const [userResult, teacherResult] = hasClassRoomAssignments
+        ? batchResults.slice(1)
+        : batchResults;
 
       const user = userResult.results[0] as ReturnedUserRow | undefined;
       const created = teacherResult.results[0] as
@@ -401,7 +420,8 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       }
 
       if (hasClassRoomAssignments) {
-        const assignmentResult = batchResults[2];
+        // [0] 取られる教員の版番号 / [1] users / [2] teachers / [3] 担当クラスの設定
+        const assignmentResult = batchResults[3];
         if (assignmentResult.results.length !== classRoomIds.length) {
           throw new Error('Failed to assign class rooms');
         }
@@ -586,8 +606,35 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           .where(
             and(inArray(class_rooms.id, input.classRoomIds), versionCondition)
           );
-        [, , , updatedTeacherRows] = await orm.batch([
+        // 他の教員が担当しているクラスを取る場合、取られた教員の担当クラスが変わる。
+        // その教員の版番号も進める。担当を付け替える前（setAssignments の前）に実行する。
+        const bumpOtherTeachersStatement = orm
+          .update(teachers)
+          .set({
+            updatedAt: now,
+            lockVersion: sql`${teachers.lockVersion} + 1`,
+          })
+          .where(
+            and(
+              inArray(
+                teachers.id,
+                orm
+                  .select({ id: class_rooms.teacherId })
+                  .from(class_rooms)
+                  .where(
+                    and(
+                      inArray(class_rooms.id, input.classRoomIds),
+                      isNotNull(class_rooms.teacherId),
+                      ne(class_rooms.teacherId, id)
+                    )
+                  )
+              ),
+              versionCondition
+            )
+          );
+        [, , , , updatedTeacherRows] = await orm.batch([
           updateUserStatement,
+          bumpOtherTeachersStatement,
           clearAssignmentsStatement,
           setAssignmentsStatement,
           updateTeacherStatement,

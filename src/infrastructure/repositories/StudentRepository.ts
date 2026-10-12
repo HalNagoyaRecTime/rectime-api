@@ -469,6 +469,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .set({
           studentIdNumber: `deleted-${userId}`,
           updatedAt: new Date().toISOString(),
+          lockVersion: sql`${students.lockVersion} + 1`,
         })
         .where(eq(students.userId, userId))
         .run();

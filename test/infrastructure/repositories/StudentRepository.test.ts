@@ -5,6 +5,7 @@ import type {
 } from '@cloudflare/workers-types';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createStudentRepository } from '../../../src/infrastructure/repositories/StudentRepository';
+import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import { seedStudents, type SeededData } from '../../fixtures/students';
 
@@ -415,6 +416,35 @@ describe('StudentRepository', () => {
 
         expect(updated).toMatchObject({ userName: '更新後', lockVersion: 1 });
       });
+    });
+  });
+
+  describe('表示名の同期が学生の版に反映される', () => {
+    it('学生を取得したあとに氏名が同期されると、古い版の学生PUTは競合し、新しい氏名が残る', async () => {
+      const target = seeded.students[0];
+      const fetched = await repo.findById(target.studentId);
+
+      await createUserRepository(env.DB).updateUser({
+        userId: String(target.userId),
+        oid: 'oid-sync',
+        tid: 'tid-sync',
+        sub: 'sub-sync',
+        email: 'sync@example.com',
+        displayName: '同期された新しい氏名',
+      });
+
+      const updated = await repo.update(target.studentId, {
+        displayName: fetched!.userName,
+        classRoomId: fetched!.classRoomId,
+        attendanceNumber: fetched!.attendanceNumber,
+        studentIdNumber: fetched!.studentIdNumber,
+        expectedLockVersion: fetched!.lockVersion,
+      });
+
+      expect(updated).toBeNull();
+      expect((await repo.findById(target.studentId))?.userName).toBe(
+        '同期された新しい氏名'
+      );
     });
   });
 
