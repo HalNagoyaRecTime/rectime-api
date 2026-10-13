@@ -3,9 +3,8 @@ import { createGatheringGroupMemberService } from '../../../src/application/serv
 import { createGatheringSpotService } from '../../../src/application/services/GatheringSpotService';
 import type { IGatheringGroupMemberRepository } from '../../../src/domain/interfaces/repositories/IGatheringGroupMemberRepository';
 import type { IGatheringSpotRepository } from '../../../src/domain/interfaces/repositories/IGatheringSpotRepository';
-import type { IImageStorage } from '../../../src/domain/interfaces/storages/IImageStorage';
 
-const imageStorage: IImageStorage = { put: vi.fn(), delete: vi.fn() };
+const deleteUnusedImage = vi.fn();
 
 describe('Gathering master services', () => {
   it('集合場所の作成・一覧取得結果をRepositoryから返す', async () => {
@@ -27,7 +26,7 @@ describe('Gathering master services', () => {
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
       updateImageKey: vi.fn(),
     };
-    const service = createGatheringSpotService(repository, imageStorage);
+    const service = createGatheringSpotService(repository, deleteUnusedImage);
 
     await expect(service.createGatheringSpot('体育館前')).resolves.toBe(spot);
     await expect(service.getAllGatheringSpots()).resolves.toEqual([spot]);
@@ -52,7 +51,7 @@ describe('Gathering master services', () => {
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
       updateImageKey: vi.fn(),
     };
-    const service = createGatheringSpotService(repository, imageStorage);
+    const service = createGatheringSpotService(repository, deleteUnusedImage);
     const input = { gathering_spot_name: '正門前' };
 
     await expect(service.updateGatheringSpot(1, input)).resolves.toBe(
@@ -74,7 +73,7 @@ describe('Gathering master services', () => {
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
       updateImageKey: vi.fn(),
     };
-    const service = createGatheringSpotService(repository, imageStorage);
+    const service = createGatheringSpotService(repository, deleteUnusedImage);
 
     await expect(
       service.updateGatheringSpot(999, {
@@ -96,13 +95,13 @@ describe('Gathering master services', () => {
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
       updateImageKey: vi.fn(),
     };
-    const service = createGatheringSpotService(repository, imageStorage);
+    const service = createGatheringSpotService(repository, deleteUnusedImage);
 
     await expect(service.deleteGatheringSpot(1)).resolves.toBeUndefined();
     expect(repository.delete).toHaveBeenCalledWith(1);
   });
 
-  it('画像のある集合場所を削除すると、保存先の画像も削除する', async () => {
+  it('画像のある集合場所を削除すると、その画像を不要になった画像として削除する', async () => {
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
       findExistingIds: vi.fn(),
@@ -117,12 +116,12 @@ describe('Gathering master services', () => {
         .mockResolvedValue({ imageKey: 'gathering-spots/1/old.webp' }),
       updateImageKey: vi.fn(),
     };
-    const storage: IImageStorage = { put: vi.fn(), delete: vi.fn() };
-    const service = createGatheringSpotService(repository, storage);
+    const deleteImage = vi.fn();
+    const service = createGatheringSpotService(repository, deleteImage);
 
     await service.deleteGatheringSpot(1);
 
-    expect(storage.delete).toHaveBeenCalledWith('gathering-spots/1/old.webp');
+    expect(deleteImage).toHaveBeenCalledWith('gathering-spots/1/old.webp');
   });
 
   it('利用中の集合場所は削除せず409用エラーにする', async () => {
@@ -138,7 +137,7 @@ describe('Gathering master services', () => {
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
       updateImageKey: vi.fn(),
     };
-    const service = createGatheringSpotService(repository, imageStorage);
+    const service = createGatheringSpotService(repository, deleteUnusedImage);
 
     await expect(service.deleteGatheringSpot(1)).rejects.toThrow(
       'Gathering spot is in use'

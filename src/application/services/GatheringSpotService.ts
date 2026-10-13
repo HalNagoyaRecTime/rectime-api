@@ -1,12 +1,11 @@
 import { GatheringSpotEntity } from '../../domain/entities/GatheringSpot';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
-import { IImageStorage } from '../../domain/interfaces/storages/IImageStorage';
-import { deleteUnusedImage } from './deleteUnusedImage';
+import { DeleteUnusedImage } from './deleteUnusedImage';
 import { IGatheringSpotService } from './IGatheringSpotService';
 
 export function createGatheringSpotService(
   gatheringSpotRepository: IGatheringSpotRepository,
-  imageStorage: IImageStorage
+  deleteUnusedImage: DeleteUnusedImage
 ): IGatheringSpotService {
   return {
     getAllGatheringSpots(): Promise<GatheringSpotEntity[]> {
@@ -53,7 +52,7 @@ export function createGatheringSpotService(
         }
         throw error;
       }
-      await deleteUnusedImage(imageStorage, image?.imageKey ?? null);
+      await deleteUnusedImage(image?.imageKey ?? null);
     },
   };
 }

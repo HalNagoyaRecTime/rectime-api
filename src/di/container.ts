@@ -66,6 +66,8 @@ import { createVenueController } from '../presentation/controllers/VenueControll
 import { createPlaceImageController } from '../presentation/controllers/PlaceImageController';
 import { createPlaceImageService } from '../application/services/PlaceImageService';
 import { createR2ImageStorage } from '../infrastructure/storages/R2ImageStorage';
+import { createPlaceImageKeyRepository } from '../infrastructure/repositories/PlaceImageKeyRepository';
+import { createDeleteUnusedImage } from '../application/services/deleteUnusedImage';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createEventGatheringSettingsController } from '../presentation/controllers/EventGatheringSettingsController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
@@ -244,13 +246,18 @@ export function createDIContainer(env: Env) {
     mobileNotificationRepository
   );
   const imageStorage = createR2ImageStorage(env.IMAGES);
+  const deleteUnusedImage = createDeleteUnusedImage(
+    imageStorage,
+    createPlaceImageKeyRepository(db)
+  );
   const gatheringSpotService = createGatheringSpotService(
     gatheringSpotRepository,
-    imageStorage
+    deleteUnusedImage
   );
-  const venueService = createVenueService(venueRepository, imageStorage);
+  const venueService = createVenueService(venueRepository, deleteUnusedImage);
   const placeImageService = createPlaceImageService(
     imageStorage,
+    deleteUnusedImage,
     venueRepository,
     gatheringSpotRepository
   );

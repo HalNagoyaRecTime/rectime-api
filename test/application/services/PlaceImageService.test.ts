@@ -17,12 +17,15 @@ function setup(found: { imageKey: string | null } | null = { imageKey: null }) {
     updateImageKey: vi.fn(),
   } as unknown as IGatheringSpotRepository;
   const imageStorage: IImageStorage = { put: vi.fn(), delete: vi.fn() };
+  const deleteUnusedImage = vi.fn();
   return {
     venueRepository,
     gatheringSpotRepository,
     imageStorage,
+    deleteUnusedImage,
     service: createPlaceImageService(
       imageStorage,
+      deleteUnusedImage,
       venueRepository,
       gatheringSpotRepository
     ),
@@ -60,26 +63,26 @@ describe('PlaceImageService', () => {
     expect(gatheringSpotRepository.updateImageKey).toHaveBeenCalledWith(2, key);
   });
 
-  it('前の画像を保存先から削除できなくても、差し替えは成功する', async () => {
-    const { venueRepository, imageStorage, service } = setup({
+  it('差し替えると、前の画像を不要になった画像として削除する', async () => {
+    const { deleteUnusedImage, service } = setup({
       imageKey: 'venues/1/old.png',
     });
-    vi.mocked(imageStorage.delete).mockRejectedValue(new Error('R2 error'));
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    await expect(service.setVenueImage(1, pngImage)).resolves.toBeUndefined();
-    expect(venueRepository.updateImageKey).toHaveBeenCalledWith(
-      1,
-      expect.stringMatching(/^venues\/1\//)
-    );
-  });
-
-  it('差し替えると、前の画像を保存先から削除する', async () => {
-    const { imageStorage, service } = setup({ imageKey: 'venues/1/old.png' });
 
     await service.setVenueImage(1, pngImage);
 
-    expect(imageStorage.delete).toHaveBeenCalledWith('venues/1/old.png');
+    expect(deleteUnusedImage).toHaveBeenCalledWith('venues/1/old.png');
+  });
+
+  it('Object の組み込みプロパティ名の形式は保存せず Invalid image を投げる', async () => {
+    const { imageStorage, service } = setup();
+
+    await expect(
+      service.setVenueImage(1, {
+        body: new ArrayBuffer(3),
+        contentType: 'toString',
+      })
+    ).rejects.toThrow('Invalid image');
+    expect(imageStorage.put).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -113,8 +116,8 @@ describe('PlaceImageService', () => {
     expect(imageStorage.put).not.toHaveBeenCalled();
   });
 
-  it('画像を削除すると、紐づけを外して保存先からも削除する', async () => {
-    const { gatheringSpotRepository, imageStorage, service } = setup({
+  it('画像を削除すると、紐づけを外して不要になった画像として削除する', async () => {
+    const { gatheringSpotRepository, deleteUnusedImage, service } = setup({
       imageKey: 'gathering-spots/2/old.png',
     });
 
@@ -124,18 +127,16 @@ describe('PlaceImageService', () => {
       2,
       null
     );
-    expect(imageStorage.delete).toHaveBeenCalledWith(
-      'gathering-spots/2/old.png'
-    );
+    expect(deleteUnusedImage).toHaveBeenCalledWith('gathering-spots/2/old.png');
   });
 
   it('画像が無い場所の削除は何もしない', async () => {
-    const { venueRepository, imageStorage, service } = setup();
+    const { venueRepository, deleteUnusedImage, service } = setup();
 
     await service.deleteVenueImage(1);
 
     expect(venueRepository.updateImageKey).not.toHaveBeenCalled();
-    expect(imageStorage.delete).not.toHaveBeenCalled();
+    expect(deleteUnusedImage).not.toHaveBeenCalled();
   });
 
   it('存在しない集合場所の画像削除は Gathering spot not found を投げる', async () => {

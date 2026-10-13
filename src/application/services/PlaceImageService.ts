@@ -2,16 +2,16 @@ import { PlaceImage, PlaceImageKey } from '../../domain/entities/PlaceImage';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
 import { IVenueRepository } from '../../domain/interfaces/repositories/IVenueRepository';
 import { IImageStorage } from '../../domain/interfaces/storages/IImageStorage';
-import { deleteUnusedImage } from './deleteUnusedImage';
+import { DeleteUnusedImage } from './deleteUnusedImage';
 import { IPlaceImageService } from './IPlaceImageService';
 
 export const MAX_PLACE_IMAGE_BYTES = 5 * 1024 * 1024;
 
-const IMAGE_EXTENSIONS: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-};
+const IMAGE_EXTENSIONS = new Map([
+  ['image/jpeg', 'jpg'],
+  ['image/png', 'png'],
+  ['image/webp', 'webp'],
+]);
 
 type PlaceImageTarget = {
   keyPrefix: string;
@@ -22,6 +22,7 @@ type PlaceImageTarget = {
 
 export function createPlaceImageService(
   imageStorage: IImageStorage,
+  deleteUnusedImage: DeleteUnusedImage,
   venueRepository: IVenueRepository,
   gatheringSpotRepository: IGatheringSpotRepository
 ): IPlaceImageService {
@@ -43,7 +44,7 @@ export function createPlaceImageService(
     id: number,
     image: PlaceImage
   ) => {
-    const extension = IMAGE_EXTENSIONS[image.contentType];
+    const extension = IMAGE_EXTENSIONS.get(image.contentType);
     if (
       !extension ||
       image.body.byteLength === 0 ||
@@ -57,7 +58,7 @@ export function createPlaceImageService(
     const imageKey = `${target.keyPrefix}/${id}/${crypto.randomUUID()}.${extension}`;
     await imageStorage.put(imageKey, image.body, image.contentType);
     await target.updateImageKey(id, imageKey);
-    await deleteUnusedImage(imageStorage, current.imageKey);
+    await deleteUnusedImage(current.imageKey);
   };
 
   const deleteImage = async (target: PlaceImageTarget, id: number) => {
@@ -66,7 +67,7 @@ export function createPlaceImageService(
     if (!current.imageKey) return;
 
     await target.updateImageKey(id, null);
-    await deleteUnusedImage(imageStorage, current.imageKey);
+    await deleteUnusedImage(current.imageKey);
   };
 
   return {

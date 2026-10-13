@@ -1,5 +1,6 @@
 import { env as workerEnv } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
+import { MAX_PLACE_IMAGE_BYTES } from '../src/application/services/PlaceImageService';
 import { app } from '../src/index';
 import { signAccessToken } from '../src/infrastructure/auth/jwt';
 import type { Env } from '../src/lib/env';
@@ -29,10 +30,12 @@ async function createToken(isStaff: boolean): Promise<string> {
   );
 }
 
-async function insertVenue(): Promise<number> {
+async function insertVenue(name = '画像APIテスト体育館'): Promise<number> {
   const row = await workerEnv.DB.prepare(
-    "INSERT INTO venues (venue_name) VALUES ('画像APIテスト体育館') RETURNING venue_id"
-  ).first<{ venue_id: number }>();
+    'INSERT INTO venues (venue_name) VALUES (?) RETURNING venue_id'
+  )
+    .bind(name)
+    .first<{ venue_id: number }>();
   return row!.venue_id;
 }
 
@@ -43,6 +46,47 @@ async function findImageKey(venueId: number): Promise<string | null> {
     .bind(venueId)
     .first<{ image_key: string | null }>();
   return row!.image_key;
+}
+
+function countingBody(totalBytes: number) {
+  const chunk = new Uint8Array(1024 * 1024);
+  let read = 0;
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        if (read >= totalBytes) {
+          controller.close();
+          return;
+        }
+        read += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+    },
+    { highWaterMark: 0 }
+  );
+  return { body, readBytes: () => read };
+}
+
+async function putImage(
+  path: string,
+  token: string,
+  body: BodyInit,
+  headers: Record<string, string> = {}
+): Promise<Response> {
+  return app.fetch(
+    new Request(`http://example.com/api/v1${path}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'image/png',
+        'X-Client-Type': 'web',
+        ...headers,
+      },
+      body,
+      duplex: 'half',
+    } as RequestInit),
+    testEnv
+  );
 }
 
 async function request(
@@ -71,7 +115,7 @@ describe('実施場所の画像API', () => {
       listed.objects.map(object => workerEnv.IMAGES.delete(object.key))
     );
     await workerEnv.DB.prepare(
-      "DELETE FROM venues WHERE venue_name = '画像APIテスト体育館'"
+      "DELETE FROM venues WHERE venue_name LIKE '画像APIテスト%'"
     ).run();
     await workerEnv.DB.prepare(
       "DELETE FROM staffs WHERE user_id IN (SELECT user_id FROM users WHERE user_name = '画像APIテストユーザー')"
@@ -116,6 +160,53 @@ describe('実施場所の画像API', () => {
     expect(response.status).toBe(204);
     expect(await findImageKey(venueId)).toBeNull();
     expect(await workerEnv.IMAGES.get(imageKey!)).toBeNull();
+  });
+
+  it('同じ画像を使う場所が残っていれば、片方を差し替えても画像は消さない', async () => {
+    const token = await createToken(true);
+    const first = await insertVenue('画像APIテスト第1体育館');
+    const second = await insertVenue('画像APIテスト第2体育館');
+    await workerEnv.IMAGES.put('venues/shared.png', new Uint8Array([9]));
+    await workerEnv.DB.prepare(
+      "UPDATE venues SET image_key = 'venues/shared.png' WHERE venue_id IN (?, ?)"
+    )
+      .bind(first, second)
+      .run();
+
+    const response = await request('PUT', `/venues/${first}/image`, token);
+
+    expect(response.status).toBe(204);
+    expect(await findImageKey(second)).toBe('venues/shared.png');
+    expect(await workerEnv.IMAGES.get('venues/shared.png')).not.toBeNull();
+  });
+
+  it('Content-Length が5MBを超える本文は、読み込まずに400を返す', async () => {
+    const token = await createToken(true);
+    const venueId = await insertVenue();
+    const { body, readBytes } = countingBody(MAX_PLACE_IMAGE_BYTES * 4);
+
+    const response = await putImage(`/venues/${venueId}/image`, token, body, {
+      'Content-Length': String(MAX_PLACE_IMAGE_BYTES * 4),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'INVALID_PLACE_IMAGE' },
+    });
+    expect(readBytes()).toBe(0);
+    expect(await findImageKey(venueId)).toBeNull();
+  });
+
+  it('Content-Length の無い本文は、5MBを超えた時点で読み込みを打ち切り400を返す', async () => {
+    const token = await createToken(true);
+    const venueId = await insertVenue();
+    const { body, readBytes } = countingBody(MAX_PLACE_IMAGE_BYTES * 4);
+
+    const response = await putImage(`/venues/${venueId}/image`, token, body);
+
+    expect(response.status).toBe(400);
+    expect(readBytes()).toBeLessThan(MAX_PLACE_IMAGE_BYTES * 2);
+    expect(await findImageKey(venueId)).toBeNull();
   });
 
   it('スタッフ以外は登録できない', async () => {

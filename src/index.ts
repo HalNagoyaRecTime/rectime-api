@@ -1,4 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { swaggerUI } from '@hono/swagger-ui';
 import { OpenAPIHono, type RouteConfig } from '@hono/zod-openapi';
@@ -31,6 +32,7 @@ import {
   positivePathParamToNumber,
 } from './presentation/openapi/schemas';
 import { errorResponse } from './presentation/errors/errorResponse';
+import { MAX_PLACE_IMAGE_BYTES } from './application/services/PlaceImageService';
 import { toValidationErrorDetails } from './presentation/errors/validationErrorDetails';
 import type { ZodError } from 'zod';
 import {
@@ -247,6 +249,18 @@ const staffOnly = <R extends RouteConfig>(route: R) => ({
   middleware: [requireAuth, requireStaff],
 });
 
+const staffOnlyImageUpload = <R extends RouteConfig>(route: R) => ({
+  ...route,
+  middleware: [
+    requireAuth,
+    requireStaff,
+    bodyLimit({
+      maxSize: MAX_PLACE_IMAGE_BYTES,
+      onError: c => errorResponse(c, EventErrors.INVALID_PLACE_IMAGE),
+    }),
+  ],
+});
+
 const validationErrorBody = (
   definition: { code: string; message: string },
   error: ZodError
@@ -442,13 +456,13 @@ apiV1.openapi(staffOnly(venueDeleteRoute), c => {
 });
 
 // Place image routes
-apiV1.openapi(staffOnly(venueImagePutRoute), c => {
+apiV1.openapi(staffOnlyImageUpload(venueImagePutRoute), c => {
   return c.get('container').placeImageController.putVenueImage(c);
 });
 apiV1.openapi(staffOnly(venueImageDeleteRoute), c => {
   return c.get('container').placeImageController.deleteVenueImage(c);
 });
-apiV1.openapi(staffOnly(gatheringSpotImagePutRoute), c => {
+apiV1.openapi(staffOnlyImageUpload(gatheringSpotImagePutRoute), c => {
   return c.get('container').placeImageController.putGatheringSpotImage(c);
 });
 apiV1.openapi(staffOnly(gatheringSpotImageDeleteRoute), c => {

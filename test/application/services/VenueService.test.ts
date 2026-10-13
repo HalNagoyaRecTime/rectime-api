@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createVenueService } from '../../../src/application/services/VenueService';
 import type { IVenueRepository } from '../../../src/domain/interfaces/repositories/IVenueRepository';
-import type { IImageStorage } from '../../../src/domain/interfaces/storages/IImageStorage';
 
 function setup(overrides: Partial<IVenueRepository> = {}) {
   const repository: IVenueRepository = {
@@ -16,11 +15,11 @@ function setup(overrides: Partial<IVenueRepository> = {}) {
     updateImageKey: vi.fn(),
     ...overrides,
   };
-  const imageStorage: IImageStorage = { put: vi.fn(), delete: vi.fn() };
+  const deleteUnusedImage = vi.fn();
   return {
     repository,
-    imageStorage,
-    service: createVenueService(repository, imageStorage),
+    deleteUnusedImage,
+    service: createVenueService(repository, deleteUnusedImage),
   };
 }
 
@@ -96,8 +95,8 @@ describe('VenueService', () => {
     await expect(service.deleteVenue(1)).rejects.toThrow('Venue not found');
   });
 
-  it('画像のある実施場所を削除すると、保存先の画像も削除する', async () => {
-    const { imageStorage, service } = setup({
+  it('画像のある実施場所を削除すると、その画像を不要になった画像として削除する', async () => {
+    const { deleteUnusedImage, service } = setup({
       delete: vi.fn().mockResolvedValue(true),
       findImageKey: vi
         .fn()
@@ -106,24 +105,11 @@ describe('VenueService', () => {
 
     await service.deleteVenue(1);
 
-    expect(imageStorage.delete).toHaveBeenCalledWith('venues/1/old.webp');
-  });
-
-  it('画像を保存先から削除できなくても、実施場所の削除は成功する', async () => {
-    const { imageStorage, service } = setup({
-      delete: vi.fn().mockResolvedValue(true),
-      findImageKey: vi
-        .fn()
-        .mockResolvedValue({ imageKey: 'venues/1/old.webp' }),
-    });
-    vi.mocked(imageStorage.delete).mockRejectedValue(new Error('R2 error'));
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    await expect(service.deleteVenue(1)).resolves.toBeUndefined();
+    expect(deleteUnusedImage).toHaveBeenCalledWith('venues/1/old.webp');
   });
 
   it('削除できなかった実施場所の画像は保存先に残す', async () => {
-    const { imageStorage, service } = setup({
+    const { deleteUnusedImage, service } = setup({
       delete: vi.fn().mockResolvedValue(false),
       findImageKey: vi
         .fn()
@@ -131,6 +117,6 @@ describe('VenueService', () => {
     });
 
     await expect(service.deleteVenue(1)).rejects.toThrow('Venue not found');
-    expect(imageStorage.delete).not.toHaveBeenCalled();
+    expect(deleteUnusedImage).not.toHaveBeenCalled();
   });
 });
