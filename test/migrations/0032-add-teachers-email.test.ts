@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+import { insertClassRoomWithTeam } from '../fixtures/classRooms';
 
 async function insertUser(userName: string): Promise<number> {
   const user = await env.DB.prepare(
@@ -76,17 +77,23 @@ describe('0032_add_teachers_email.sql', () => {
       .bind(userId, 'fk-check@example.ac.jp')
       .first<{ teacher_id: number }>();
 
-    await env.DB.prepare(
-      'INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES (?, ?, ?)'
+    await insertClassRoomWithTeam(env.DB, {
+      classCode: 'FK-CHECK',
+      className: 'FK検証クラス',
+      teacherId: teacher!.teacher_id,
+    });
+
+    const badTeam = await env.DB.prepare(
+      'INSERT INTO teams (team_name) VALUES (?) RETURNING team_id'
     )
-      .bind('FK-CHECK', 'FK検証クラス', teacher!.teacher_id)
-      .run();
+      .bind('FK検証クラス(不正)')
+      .first<{ team_id: number }>();
 
     await expect(
       env.DB.prepare(
-        'INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES (?, ?, ?)'
+        'INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id) VALUES (?, ?, ?, ?)'
       )
-        .bind('FK-CHECK-NG', 'FK検証クラス(不正)', 999999)
+        .bind('FK-CHECK-NG', 'FK検証クラス(不正)', 999999, badTeam!.team_id)
         .run()
     ).rejects.toThrow(/FOREIGN KEY/);
   });

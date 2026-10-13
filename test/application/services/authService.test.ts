@@ -13,6 +13,7 @@ import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/re
 import type { AppUser } from '../../../src/domain/auth/types';
 import type { StudentEntity } from '../../../src/domain/entities/Student';
 import type { MicrosoftClaims } from '../../../src/application/services/IAuthService';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 function buildFirebaseTokenRepository(): IFirebaseTokenRepository {
   return {
@@ -88,6 +89,7 @@ function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
     classRoomId: 1,
     classRoomCode: '3A',
     classRoomName: '3年A組',
+    teamId: 200,
     attendanceNumber: 5,
     studentIdNumber: '50000',
     isLiveActive: true,
@@ -1419,16 +1421,17 @@ describe('createAuthService (実DB・TOCTOU再現)', () => {
   it('学籍番号紐付けの確認直後に削除が完了しても、古いuser_idへ紐付けられずACCOUNT_DELETION_PENDINGになる', async () => {
     const { userRepository, service } = buildRealService();
 
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('T1', 'TOCTOUクラス') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'T1',
+      className: 'TOCTOUクラス',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('学生太郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '80001')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     const getDeletionStatusSpy = vi.spyOn(userRepository, 'getDeletionStatus');
