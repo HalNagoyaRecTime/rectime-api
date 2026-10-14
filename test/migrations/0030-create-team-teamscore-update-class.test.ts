@@ -294,6 +294,33 @@ describe('0030_create_team_teamscore_update_class.sql', () => {
     expect(seq!.seq).toBeGreaterThanOrEqual(HIGH);
   });
 
+  it('class_roomsに想定外の列があるときは、列を失わずに中断し何も変更しない', async () => {
+    await prepareLegacySchema();
+    // 他のPR(例: 楽観ロックのlock_version)が先に列を足した環境を再現する。
+    await env.DB.prepare(
+      'ALTER TABLE class_rooms ADD COLUMN lock_version INTEGER NOT NULL DEFAULT 0'
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO class_rooms (class_room_id, class_code, class_name, lock_version) VALUES (900901, '90L', 'テスト90L組', 3)"
+    ).run();
+
+    await expect(runMigration()).rejects.toThrow(
+      'class_rooms_has_columns_0030_would_drop'
+    );
+
+    // バッチ全体が巻き戻り、teamsは作られず、class_roomsの列と値も残る。
+    const teams = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('teams', 'team_scores', '__migration_0030_guard')"
+    ).all<{ name: string }>();
+    expect(teams.results.map(row => row.name)).not.toContain(
+      '__migration_0030_guard'
+    );
+    const row = await env.DB.prepare(
+      'SELECT lock_version FROM class_rooms WHERE class_room_id = 900901'
+    ).first<{ lock_version: number }>();
+    expect(row?.lock_version).toBe(3);
+  });
+
   it('クラス名が重複していても移行できる', async () => {
     await prepareLegacySchema();
     await env.DB.prepare(

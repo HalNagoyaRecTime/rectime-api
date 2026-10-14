@@ -1,3 +1,17 @@
+-- このマイグレーションはclass_roomsを作り直す(下記)。作り直しでは、列を明示して
+-- コピーするため、他のマイグレーションが先に足した列(例: lock_version)は消えてしまう。
+-- SQLでは列の有無で処理を分けられないため、想定の6列以外が存在する場合は、列を黙って
+-- 失わずにここで中断する(同じバッチ内なので何も書き込まれない)。
+-- 中断した場合は、このマイグレーションをその列の追加より先に適用するか、
+-- 作り直しの列にその列を加えてから適用する。
+CREATE TABLE __migration_0030_guard (
+  ok INTEGER NOT NULL CONSTRAINT class_rooms_has_columns_0030_would_drop CHECK (ok = 1)
+);
+INSERT INTO __migration_0030_guard (ok)
+SELECT CASE WHEN COUNT(*) = 6 THEN 1 ELSE 0 END
+FROM pragma_table_info('class_rooms');
+DROP TABLE __migration_0030_guard;
+
 CREATE TABLE teams (
   team_id INTEGER PRIMARY KEY AUTOINCREMENT,
   -- 複数クラスをまとめた編成名として運用されるため、重複は運用事故に
