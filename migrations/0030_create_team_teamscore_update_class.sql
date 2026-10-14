@@ -33,12 +33,32 @@ SELECT class_room_id, class_name||'('||class_code||')' FROM class_rooms;
 -- 消せなくなる。
 
 -- class_rooms.team_id はNOT NULLにするが、SQLite(D1)は既存行があるカラムを
--- 後からNOT NULLに変更できない。また、students.class_room_id が class_rooms を
--- 外部キー参照しているため、class_roomsを単純にDROPすると暗黙のDELETEで
--- FK違反になる。そのため、students側も含めて旧テーブルを退避名へ移し、
--- 最終テーブル名で作り直してから旧テーブルを子→親の順で削除する。
-ALTER TABLE class_rooms RENAME TO class_rooms_legacy;
-ALTER TABLE students RENAME TO students_legacy;
+-- 後からNOT NULLに変更できないため、class_roomsを作り直す。
+--
+-- 作り直すのはclass_roomsだけで、students・他のテーブルには触れない。
+-- students.class_room_id のFKは「テーブル名」で解決されるため、class_roomsを
+-- 同名で作り直せば参照は元のまま維持される(0032のteachersと同じ性質)。
+-- studentsを作り直すと、他の移行が足した索引・制約(0033の索引、studentsを
+-- NULL許容にする移行など)を、適用順によって巻き戻してしまうため避ける。
+--
+-- 子(students)が参照中のclass_roomsをDROPするとFK違反になるため、コミット時まで
+-- 検査を遅らせる。作り直した後は同名のテーブルが存在するので、検査は成功する。
+PRAGMA defer_foreign_keys = TRUE;
+
+-- AUTOINCREMENTが一度払い出したIDを再利用しないよう、高水位を退避する。
+CREATE TABLE __migration_0030_sequences (class_rooms_seq INTEGER NOT NULL);
+INSERT INTO __migration_0030_sequences (class_rooms_seq)
+SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'class_rooms'), 0);
+
+-- 行を退避してから親(class_rooms)をDROPし、同名で作り直した表へ戻す。
+-- 別名の表(class_rooms_new)へ先にコピーしてRENAMEする方式だと、DROPで増えた
+-- 遅延FK違反の数が、同名の親表へのINSERTでしか減らないためコミット時に残り、
+-- studentsに行がある環境でFK違反になる。
+CREATE TABLE __migration_0030_class_rooms AS
+SELECT class_room_id, class_code, class_name, teacher_id, created_at, updated_at
+FROM class_rooms;
+
+DROP TABLE class_rooms;
 
 CREATE TABLE class_rooms (
   class_room_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,42 +80,26 @@ INSERT INTO class_rooms (
 )
 SELECT
   class_room_id, class_code, class_name, teacher_id, class_room_id, created_at, updated_at
-FROM class_rooms_legacy;
+FROM __migration_0030_class_rooms;
 
--- students自体のスキーマ・データは変更せず、参照先だけを新しいclass_roomsに
--- 向け直すために作り直す。
-CREATE TABLE students (
-  student_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  class_room_id INTEGER NOT NULL,
-  attendance_number INTEGER NOT NULL,
-  student_id_number TEXT NOT NULL UNIQUE,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(user_id),
-  FOREIGN KEY (class_room_id) REFERENCES class_rooms(class_room_id),
-  UNIQUE (user_id)
-);
+DROP TABLE __migration_0030_class_rooms;
 
-INSERT INTO students (
-  student_id, user_id, class_room_id, attendance_number,
-  student_id_number, created_at, updated_at
+-- 作り直しで採番の高水位が下がっていれば、退避した値へ戻す。
+UPDATE sqlite_sequence
+SET seq = MAX(
+  seq,
+  (SELECT class_rooms_seq FROM __migration_0030_sequences)
 )
-SELECT
-  student_id, user_id, class_room_id, attendance_number,
-  student_id_number, created_at, updated_at
-FROM students_legacy;
+WHERE name = 'class_rooms';
 
--- 外部キーの子から順に旧テーブルを削除する。
-DROP TABLE students_legacy;
-DROP TABLE class_rooms_legacy;
+INSERT INTO sqlite_sequence (name, seq)
+SELECT 'class_rooms', class_rooms_seq
+FROM __migration_0030_sequences
+WHERE class_rooms_seq > 0
+  AND NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'class_rooms');
+
+DROP TABLE __migration_0030_sequences;
 
 CREATE UNIQUE INDEX uq_class_rooms_class_code ON class_rooms(class_code);
 CREATE INDEX idx_class_rooms_teacher_id ON class_rooms(teacher_id);
 CREATE INDEX idx_class_rooms_team_id ON class_rooms(team_id);
-
--- 0033_create_notification_v2_schema.sql が students に作った索引は、上の students の
--- 再作成で旧テーブルごと失われる。この移行は0033より後に実行される環境(stg・本番)が
--- あるため、ここで作り直す。
-CREATE INDEX IF NOT EXISTS idx_students_class_room_id_user_id
-  ON students(class_room_id, user_id);
