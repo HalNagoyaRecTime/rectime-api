@@ -20,6 +20,8 @@ export type Env = {
    * 無認証で読めてしまうため、本番では意図的に設定しない。
    */
   DOCS_ENABLED?: string;
+  /** お問い合わせ用Microsoft FormsのURL。未設定・不正なら /app/contact はリダイレクトしない。 */
+  CONTACT_FORM_URL?: string;
   FIREBASE_PROJECT_ID: string;
   FIREBASE_CLIENT_EMAIL: string;
   FIREBASE_PRIVATE_KEY: string;
@@ -39,4 +41,16 @@ export type Env = {
 /** OpenAPI仕様（/openapi.json・/docs）を公開してよい環境か。 */
 export function isDocsEnabled(env: Env): boolean {
   return (env.DOCS_ENABLED ?? '').trim().toLowerCase() === 'true';
+}
+
+/** お問い合わせフォームのリダイレクト先。未設定やhttps以外の不正な値ならnullを返す。 */
+export function getContactFormUrl(env: Env): string | null {
+  const value = (env.CONTACT_FORM_URL ?? '').trim();
+  if (value === '') return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
