@@ -166,6 +166,34 @@ describe('実施場所の画像API', () => {
     expect(await workerEnv.IMAGES.get(imageKey!)).toBeNull();
   });
 
+  it('一覧のレスポンスでは、登録した画像の署名付きURLを返す', async () => {
+    const token = await createToken(true);
+    const venueId = await insertVenue();
+    await request('PUT', `/venues/${venueId}/image`, token);
+    const imageKey = await findImageKey(venueId);
+
+    const response = await app.fetch(
+      new Request('http://example.com/api/v1/venues', {
+        headers: { Authorization: `Bearer ${token}`, 'X-Client-Type': 'web' },
+      }),
+      testEnv
+    );
+    const venue = (
+      (await response.json()) as Array<{
+        venue_id: number;
+        image_url: string | null;
+      }>
+    ).find(item => item.venue_id === venueId);
+
+    const imageUrl = new URL(venue!.image_url!);
+    expect(imageUrl.origin + imageUrl.pathname).toBe(
+      `${workerEnv.IMAGES_BUCKET_URL}/${imageKey}`
+    );
+    expect(imageUrl.searchParams.get('X-Amz-Signature')).toMatch(
+      /^[0-9a-f]{64}$/
+    );
+  });
+
   it('同じ画像を使う場所が残っていれば、片方を差し替えても画像は消さない', async () => {
     const token = await createToken(true);
     const first = await insertVenue('画像APIテスト第1体育館');

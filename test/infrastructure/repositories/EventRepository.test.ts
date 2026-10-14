@@ -115,8 +115,16 @@ describe('EventRepository', () => {
         const others = result.events.filter(e => e.event_id !== target.eventId);
 
         expect(event?.venues).toEqual([
-          { venue_id: venueIds[0], venue_name: 'findAll用第1体育館' },
-          { venue_id: venueIds[1], venue_name: 'findAll用グラウンド' },
+          {
+            venue_id: venueIds[0],
+            venue_name: 'findAll用第1体育館',
+            image_key: null,
+          },
+          {
+            venue_id: venueIds[1],
+            venue_name: 'findAll用グラウンド',
+            image_key: null,
+          },
         ]);
         expect(others.every(e => e.venues.length === 0)).toBe(true);
       } finally {
@@ -228,10 +236,12 @@ describe('EventRepository', () => {
           {
             venue_id: venueIds[0],
             venue_name: 'findWithVenuesById用第1体育館',
+            image_key: null,
           },
           {
             venue_id: venueIds[1],
             venue_name: 'findWithVenuesById用グラウンド',
+            image_key: null,
           },
         ]);
       } finally {
@@ -280,8 +290,16 @@ describe('EventRepository', () => {
         expect(created).toMatchObject({
           event_name: 'create用イベント',
           venues: [
-            { venue_id: venueIds[0], venue_name: 'create用第1体育館' },
-            { venue_id: venueIds[1], venue_name: 'create用グラウンド' },
+            {
+              venue_id: venueIds[0],
+              venue_name: 'create用第1体育館',
+              image_key: null,
+            },
+            {
+              venue_id: venueIds[1],
+              venue_name: 'create用グラウンド',
+              image_key: null,
+            },
           ],
         });
       } finally {
@@ -337,8 +355,16 @@ describe('EventRepository', () => {
           event_name: '更新後のイベント',
           rule_text: '規則',
           venues: [
-            { venue_id: venueIds[1], venue_name: 'update用グラウンド' },
-            { venue_id: venueIds[2], venue_name: 'update用トラック' },
+            {
+              venue_id: venueIds[1],
+              venue_name: 'update用グラウンド',
+              image_key: null,
+            },
+            {
+              venue_id: venueIds[2],
+              venue_name: 'update用トラック',
+              image_key: null,
+            },
           ],
           start_time: '1000',
           end_time: '1030',

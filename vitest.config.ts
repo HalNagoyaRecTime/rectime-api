@@ -19,8 +19,13 @@ export default defineConfig(async () => {
           configPath: './wrangler.jsonc',
           environment: 'development',
         },
+        remoteBindings: false,
         miniflare: {
-          bindings: { TEST_MIGRATIONS: migrations },
+          bindings: {
+            TEST_MIGRATIONS: migrations,
+            R2_ACCESS_KEY_ID: 'test-access-key-id',
+            R2_SECRET_ACCESS_KEY: 'test-secret-access-key',
+          },
         },
       }),
     ],

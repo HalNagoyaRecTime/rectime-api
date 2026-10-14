@@ -12,6 +12,9 @@ export type Env = {
   DB: D1Database;
   AUTH_KV: KVNamespace;
   IMAGES: R2Bucket;
+  IMAGES_BUCKET_URL: string;
+  R2_ACCESS_KEY_ID: string;
+  R2_SECRET_ACCESS_KEY: string;
   MASTER_IMPORT_COMMIT_LOCK: DurableObjectNamespace<MasterImportCommitLock>;
   NOTIFICATION_DELIVERY_QUEUE: Queue<NotificationDeliveryMessage>;
   ALLOWED_ORIGINS?: string;

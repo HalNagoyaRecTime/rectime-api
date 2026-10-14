@@ -37,6 +37,7 @@ function buildGathering(
     gathering_time: '10:45',
     gathering_spot_id: 1,
     gathering_spot_name: '出入口①',
+    gathering_spot_image_key: null,
     member_count: 0,
     ...overrides,
   };
@@ -98,6 +99,10 @@ function createVenueRepository(
   };
 }
 
+const imageUrlSigner = {
+  sign: async (key: string) => `https://signed.example/${key}`,
+};
+
 function createService(
   repository: IEventRepository,
   gatheringSettingsRepository = createGatheringSettingsRepository(),
@@ -106,7 +111,8 @@ function createService(
   return createEventService(
     repository,
     gatheringSettingsRepository,
-    venueRepository
+    venueRepository,
+    imageUrlSigner
   );
 }
 
@@ -130,6 +136,7 @@ describe('EventService', () => {
           repository,
           createGatheringSettingsRepository(),
           createVenueRepository(),
+          imageUrlSigner,
           configured
         );
         expect(await service.getAllEvents({})).toEqual({
@@ -150,6 +157,7 @@ describe('EventService', () => {
         repository,
         createGatheringSettingsRepository(),
         createVenueRepository(),
+        imageUrlSigner,
         '2026-10-09'
       );
       expect(
@@ -223,8 +231,8 @@ describe('EventService', () => {
     it('集合予定をRound単位にまとめて返す', async () => {
       const event = buildEventWithVenues({
         venues: [
-          { venue_id: 2, venue_name: 'グラウンド' },
-          { venue_id: 5, venue_name: '第1体育館' },
+          { venue_id: 2, venue_name: 'グラウンド', image_key: null },
+          { venue_id: 5, venue_name: '第1体育館', image_key: null },
         ],
       });
       const gatheringSettingsRepository = createGatheringSettingsRepository([
@@ -235,6 +243,7 @@ describe('EventService', () => {
           gathering_time: '11:00',
           gathering_spot_id: 2,
           gathering_spot_name: '出入口②',
+          gathering_spot_image_key: null,
           member_count: 8,
         }),
         buildGathering({
@@ -262,6 +271,7 @@ describe('EventService', () => {
               gathering_spot: {
                 gathering_spot_id: 1,
                 gathering_spot_name: '出入口①',
+                image_url: null,
               },
               member_count: 16,
             },
@@ -271,6 +281,7 @@ describe('EventService', () => {
               gathering_spot: {
                 gathering_spot_id: 2,
                 gathering_spot_name: '出入口②',
+                image_url: null,
               },
               member_count: 8,
             },
@@ -285,6 +296,7 @@ describe('EventService', () => {
               gathering_spot: {
                 gathering_spot_id: 1,
                 gathering_spot_name: '出入口①',
+                image_url: null,
               },
               member_count: 0,
             },
@@ -332,7 +344,7 @@ describe('EventService', () => {
       const events = [
         {
           ...buildEventWithVenues({
-            venues: [{ venue_id: 3, venue_name: '第2体育館' }],
+            venues: [{ venue_id: 3, venue_name: '第2体育館', image_key: null }],
           }),
           gathering_ids: [101, 102],
         },
@@ -352,7 +364,7 @@ describe('EventService', () => {
   describe('createEvent', () => {
     it('リクエストDTOをDomain入力型へ変換して作成する', async () => {
       const event = buildEventWithVenues({
-        venues: [{ venue_id: 3, venue_name: '体育館' }],
+        venues: [{ venue_id: 3, venue_name: '体育館', image_key: null }],
       });
       const repository = createRepository({
         create: vi.fn().mockResolvedValue(event),
@@ -366,7 +378,10 @@ describe('EventService', () => {
           start_time: '0900',
           end_time: '0930',
         })
-      ).resolves.toEqual(event);
+      ).resolves.toEqual({
+        ...event,
+        venues: [{ venue_id: 3, venue_name: '体育館', image_url: null }],
+      });
 
       expect(repository.create).toHaveBeenCalledWith({
         name: '開会式',
