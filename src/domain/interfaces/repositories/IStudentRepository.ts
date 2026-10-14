@@ -23,6 +23,10 @@ export interface IStudentRepository {
   findByUserId: (userId: number) => Promise<StudentEntity | null>;
   findAll: (options: StudentSearchFilter) => Promise<StudentPage>;
   findByStudentNum: (studentNum: string) => Promise<StudentEntity | null>;
+  findByClassRoomAndAttendanceNumber: (
+    classRoomId: number,
+    attendanceNumber: number
+  ) => Promise<StudentEntity | null>;
   findExistingStudentNumbers: (
     studentNumbers: string[]
   ) => Promise<Set<string>>;

@@ -33,6 +33,7 @@ function buildDeps() {
       offset: 0,
     }),
     findByStudentNum: vi.fn(),
+    findByClassRoomAndAttendanceNumber: vi.fn(),
     findExistingStudentNumbers: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),

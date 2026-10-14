@@ -96,6 +96,9 @@ export const students = sqliteTable(
       table.classRoomId,
       table.userId
     ),
+    uniqueIndex('ux_students_class_room_attendance')
+      .on(table.classRoomId, table.attendanceNumber)
+      .where(sql`${table.classRoomId} IS NOT NULL`),
     check(
       'ck_students_class_room_attendance_pair',
       sql`(${table.classRoomId} IS NULL AND ${table.attendanceNumber} IS NULL)

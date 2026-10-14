@@ -335,6 +335,27 @@ describe('StudentController', () => {
       });
     });
 
+    it('同じクラスの出席番号重複は409を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.createStudent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Attendance number already exists'));
+
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'ATTENDANCE_NUMBER_ALREADY_EXISTS',
+          message: '同じクラスで同じ出席番号の学生が既に存在します',
+        },
+      });
+    });
+
     it('存在しないクラスは 404 を返す', async () => {
       const { app, studentService } = setup();
       (
@@ -513,6 +534,24 @@ describe('StudentController', () => {
       });
     });
 
+    it('更新時の出席番号重複も409を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.updateStudent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Attendance number already exists'));
+
+      const res = await app.request('/students/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'ATTENDANCE_NUMBER_ALREADY_EXISTS' },
+      });
+    });
+
     it('存在しないクラスは 404 を返す', async () => {
       const { app, studentService } = setup();
       (
@@ -621,6 +660,47 @@ describe('StudentController', () => {
 
       expect(res.status).toBe(status);
       expect(await res.json()).toMatchObject({ error: { code } });
+    });
+
+    it('同じクラスの出席番号重複は409を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.updateStudentClassRoom as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Attendance number already exists'));
+
+      const res = await app.request('/students/1/classroom', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ class_room_id: 2, attendance_number: 8 }),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'ATTENDANCE_NUMBER_ALREADY_EXISTS' },
+      });
+    });
+
+    it('DBの出席番号UNIQUE制約違反も409を返す', async () => {
+      const { app, studentService } = setup();
+      const sqliteError = new Error(
+        'UNIQUE constraint failed: students.class_room_id, students.attendance_number'
+      );
+      (
+        studentService.updateStudentClassRoom as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(
+        new Error('D1_ERROR: constraint failed', { cause: sqliteError })
+      );
+
+      const res = await app.request('/students/1/classroom', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ class_room_id: 2, attendance_number: 8 }),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'ATTENDANCE_NUMBER_ALREADY_EXISTS' },
+      });
     });
   });
 });

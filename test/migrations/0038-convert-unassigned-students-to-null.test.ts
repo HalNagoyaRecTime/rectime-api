@@ -74,7 +74,7 @@ describe('0038_convert_unassigned_students_to_null.sql', () => {
           class_room_id,
           attendance_number,
           student_id_number
-        ) VALUES (?, ?, 2, ?)`
+        ) VALUES (?, ?, 38002, ?)`
       ).bind(
         assignedUserId,
         assignedClassRoom!.class_room_id,
@@ -107,7 +107,7 @@ describe('0038_convert_unassigned_students_to_null.sql', () => {
         {
           user_id: assignedUserId,
           class_room_id: assignedClassRoom!.class_room_id,
-          attendance_number: 2,
+          attendance_number: 38002,
         },
       ]);
 

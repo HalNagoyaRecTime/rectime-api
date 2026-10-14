@@ -154,6 +154,10 @@ export function createStudentService(
       const input = toDomainWriteInput(student);
       await ensureClassRoomExists(input.classRoomId);
       await ensureStudentNumberAvailable(input.studentIdNumber);
+      await ensureAttendanceNumberAvailable(
+        input.classRoomId,
+        input.attendanceNumber
+      );
       return toManagementDTO(await studentRepository.create(input));
     },
 
@@ -174,6 +178,11 @@ export function createStudentService(
       if (duplicate && duplicate.studentId !== id) {
         throw new Error('Student number already exists');
       }
+      await ensureAttendanceNumberAvailable(
+        input.classRoomId,
+        input.attendanceNumber,
+        id
+      );
 
       const updated = await studentRepository.update(id, input);
       if (!updated) {
@@ -190,6 +199,11 @@ export function createStudentService(
         throw new Error('Student not found');
       }
       await ensureClassRoomExists(assignment.class_room_id);
+      await ensureAttendanceNumberAvailable(
+        assignment.class_room_id,
+        assignment.attendance_number,
+        id
+      );
 
       const updated = await studentRepository.updateClassRoom(id, {
         classRoomId: assignment.class_room_id,
@@ -270,6 +284,23 @@ export function createStudentService(
   ): Promise<void> {
     if (await studentRepository.findByStudentNum(studentNumber)) {
       throw new Error('Student number already exists');
+    }
+  }
+
+  async function ensureAttendanceNumberAvailable(
+    classRoomId: number | null,
+    attendanceNumber: number | null,
+    currentStudentId?: number
+  ): Promise<void> {
+    if (classRoomId === null || attendanceNumber === null) {
+      return;
+    }
+    const occupied = await studentRepository.findByClassRoomAndAttendanceNumber(
+      classRoomId,
+      attendanceNumber
+    );
+    if (occupied && occupied.studentId !== currentStudentId) {
+      throw new Error('Attendance number already exists');
     }
   }
 }

@@ -271,6 +271,10 @@ describe('OpenAPI documentation', () => {
     expect(
       document.paths['/api/v1/students/{studentId}/classroom']
     ).toHaveProperty('patch');
+    const studentClassRoomUpdate = document.paths[
+      '/api/v1/students/{studentId}/classroom'
+    ].patch as { responses: Record<string, unknown> };
+    expect(studentClassRoomUpdate.responses).toHaveProperty('409');
     expect(
       document.paths['/api/v1/admin/notifications/{notificationId}']
     ).toHaveProperty('patch');
