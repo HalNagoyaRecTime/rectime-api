@@ -102,6 +102,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/teams/{teamId}/score',
       '/api/v1/venues',
       '/api/v1/venues/{venueId}',
+      '/app/contact',
       '/health',
     ]);
 
@@ -239,7 +240,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(64);
+    expect(documentedOperations).toHaveLength(65);
     expect(document.paths['/api/v1/gatherings']).toBeUndefined();
     const schedulePath =
       document.paths[
