@@ -38,6 +38,15 @@ function isStudentNumberUniqueConstraintError(error: unknown): boolean {
   );
 }
 
+function isAttendanceNumberUniqueConstraintError(error: unknown): boolean {
+  const message = getErrorChainMessage(error);
+  return (
+    message.includes('UNIQUE constraint failed') &&
+    message.includes('students.class_room_id') &&
+    message.includes('students.attendance_number')
+  );
+}
+
 export function createStudentController(studentService: IStudentService) {
   const getStudentById = async (c: Context) => {
     try {
@@ -123,13 +132,11 @@ export function createStudentController(studentService: IStudentService) {
         200
       );
     } catch (error) {
-      if (error instanceof Error && error.message === 'Student not found') {
-        return errorResponse(c, UserErrors.STUDENT_NOT_FOUND);
-      }
-      if (error instanceof Error && error.message === 'Class room not found') {
-        return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
-      }
-      return errorResponse(c, UserErrors.STUDENT_CLASS_ROOM_UPDATE_FAILED);
+      return toStudentErrorResponse(
+        c,
+        error,
+        UserErrors.STUDENT_CLASS_ROOM_UPDATE_FAILED
+      );
     }
   };
 
@@ -180,6 +187,7 @@ function toStudentErrorResponse(
   fallbackError:
     | typeof UserErrors.STUDENT_CREATE_FAILED
     | typeof UserErrors.STUDENT_UPDATE_FAILED
+    | typeof UserErrors.STUDENT_CLASS_ROOM_UPDATE_FAILED
 ) {
   if (!(error instanceof Error)) {
     return errorResponse(c, fallbackError);
@@ -198,6 +206,12 @@ function toStudentErrorResponse(
     isStudentNumberUniqueConstraintError(error)
   ) {
     return errorResponse(c, UserErrors.STUDENT_NUMBER_ALREADY_EXISTS);
+  }
+  if (
+    error.message === 'Attendance number already exists' ||
+    isAttendanceNumberUniqueConstraintError(error)
+  ) {
+    return errorResponse(c, UserErrors.ATTENDANCE_NUMBER_ALREADY_EXISTS);
   }
   return errorResponse(c, fallbackError);
 }

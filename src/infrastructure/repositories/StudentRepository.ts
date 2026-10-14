@@ -191,6 +191,27 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       return result ? toDomain(result) : null;
     },
 
+    async findByClassRoomAndAttendanceNumber(
+      classRoomId: number,
+      attendanceNumber: number
+    ): Promise<StudentEntity | null> {
+      const result = await orm
+        .select()
+        .from(students)
+        .innerJoin(users, eq(students.userId, users.id))
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
+        .where(
+          and(
+            eq(students.classRoomId, classRoomId),
+            eq(students.attendanceNumber, attendanceNumber)
+          )
+        )
+        .get();
+
+      return result ? toDomain(result) : null;
+    },
+
     async findExistingStudentNumbers(
       studentNumbers: string[]
     ): Promise<Set<string>> {

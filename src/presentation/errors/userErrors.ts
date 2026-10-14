@@ -82,6 +82,11 @@ export const UserErrors = {
     message:
       '学生情報が他の操作で更新されています。最新の内容を取得してやり直してください',
   },
+  ATTENDANCE_NUMBER_ALREADY_EXISTS: {
+    status: 409,
+    code: 'ATTENDANCE_NUMBER_ALREADY_EXISTS',
+    message: '同じクラスで同じ出席番号の学生が既に存在します',
+  },
   STUDENT_CREATE_FAILED: {
     status: 500,
     code: 'STUDENT_CREATE_FAILED',

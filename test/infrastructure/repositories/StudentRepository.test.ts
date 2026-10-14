@@ -311,6 +311,25 @@ describe('StudentRepository', () => {
     });
   });
 
+  describe('findByClassRoomAndAttendanceNumber', () => {
+    it('クラスと出席番号で学生を取得できる', async () => {
+      const target = seeded.students[0];
+
+      await expect(
+        repo.findByClassRoomAndAttendanceNumber(
+          target.classRoomId,
+          target.attendanceNumber
+        )
+      ).resolves.toMatchObject({ studentId: target.studentId });
+    });
+
+    it('該当する学生がいない場合はnullを返す', async () => {
+      await expect(
+        repo.findByClassRoomAndAttendanceNumber(seeded.classRoomId, 999)
+      ).resolves.toBeNull();
+    });
+  });
+
   describe('create / update', () => {
     it('学生を作成、更新できる', async () => {
       const input = {
