@@ -153,6 +153,18 @@ MIIEvQIBADA...（秘密鍵の内容）
 npm run db:migrate:local
 ```
 
+`0040_enforce_unique_student_attendance_number.sql`が
+`duplicate_group_count = 0`のCHECK制約で停止した場合は、次のSQLで既存の重複を確認する。
+対象Studentを勝手に削除せず、正しい所属・出席番号を確認して整理したあとにMigrationを再実行する。
+
+```sql
+SELECT class_room_id, attendance_number, GROUP_CONCAT(student_id) AS student_ids
+FROM students
+WHERE class_room_id IS NOT NULL
+GROUP BY class_room_id, attendance_number
+HAVING COUNT(*) > 1;
+```
+
 ### 7. Cloudflare へのログイン
 
 ローカルでも画像は Cloudflare 上の `rectime-images-dev` バケットを使うため、チームのアカウントにログインしておく。
