@@ -7,7 +7,7 @@ import { createDIContainer } from './di/container';
 import { CommonErrors } from './presentation/errors/commonErrors';
 import { EventErrors } from './presentation/errors/eventErrors';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
-import { isDocsEnabled, type Env } from './lib/env';
+import { getContactFormUrl, isDocsEnabled, type Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
 import { getAllowedOriginRules, isAllowedOrigin } from './lib/allowedOrigins';
 import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
@@ -33,7 +33,11 @@ import {
 import { errorResponse } from './presentation/errors/errorResponse';
 import { toValidationErrorDetails } from './presentation/errors/validationErrorDetails';
 import type { ZodError } from 'zod';
-import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
+import {
+  apiOverviewRoute,
+  contactRoute,
+  healthRoute,
+} from './presentation/openapi/system';
 import {
   studentCreateRoute,
   studentDetailRoute,
@@ -56,8 +60,8 @@ import {
   eventCreateRoute,
   eventDeleteRoute,
   eventDetailRoute,
-  eventGatheringListRoute,
   eventListRoute,
+  myEventsRoute,
   eventUpdateRoute,
 } from './presentation/openapi/events';
 import { eventGatheringSettingsUpdateRoute } from './presentation/openapi/eventGatheringSettings';
@@ -74,7 +78,6 @@ import {
   masterImportDetailRoute,
 } from './presentation/openapi/masterImports';
 import {
-  gatheringListRoute,
   gatheringMemberListRoute,
   gatheringMemberReplaceRoute,
   gatheringSpotCreateRoute,
@@ -100,6 +103,10 @@ import {
 } from './presentation/openapi/notification/admin';
 import { firebaseTokenRegistrationRoute } from './presentation/openapi/notification/firebaseTokens';
 import { notificationScheduleResultsRoute } from './presentation/openapi/notification/schedules';
+import {
+  notificationScheduleResendRoute,
+  notificationScheduleDeleteRoute,
+} from './presentation/openapi/notification/schedules';
 import {
   notificationScheduleListRoute,
   notificationScheduleDetailRoute,
@@ -164,6 +171,20 @@ app.use('*', (c, next) => {
 
 app.openapi(healthRoute, c => c.json({ status: 'ok' } as const, 200));
 
+// 認証不要。リダイレクト先は環境変数のみで決め、クエリ等は参照しない。
+app.openapi(contactRoute, c => {
+  c.header('Cache-Control', 'no-store');
+  const contactFormUrl = getContactFormUrl(c.env);
+  if (contactFormUrl === null) {
+    // URL未設定は運営側の設定不備のため、404ではなく503で利用不可を伝える。
+    return c.html(
+      '<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>お問い合わせ</title></head><body><p>現在お問い合わせフォームを利用できません。</p></body></html>',
+      503
+    );
+  }
+  return c.redirect(contactFormUrl, 302);
+});
+
 app.openapi(apiOverviewRoute, c => {
   return c.json(
     {
@@ -176,7 +197,6 @@ app.openapi(apiOverviewRoute, c => {
         events: '/api/v1/events',
         classRooms: '/api/v1/classrooms',
         gatheringSpots: '/api/v1/gathering-spots',
-        gatherings: '/api/v1/gatherings',
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
         firebaseTokens: '/api/v1/firebase-tokens',
         adminNotifications: '/api/v1/admin/notifications',
@@ -286,13 +306,8 @@ apiV1.openapi(authed(eventListRoute), c => {
 apiV1.openapi(authed(eventDetailRoute), c => {
   return c.get('container').eventController.getEventById(c);
 });
-apiV1.get('/me/events', requireAuth, c => {
+apiV1.openapi(authed(myEventsRoute), c => {
   return c.get('container').eventController.getMyEvents(c);
-});
-// 配布済みmobileが利用中の互換APIのため削除禁止（#395）。レスポンス形式・認可を維持する。
-// リポジトリ内の呼び出しが0件でも削除不可。2027年度以降、OpenAPI記載の全条件を満たして#386で削除する。
-apiV1.openapi(authed(eventGatheringListRoute), c => {
-  return c.get('container').gatheringController.getGatheringsByEventId(c);
 });
 apiV1.openapi(staffOnly(eventGatheringSettingsUpdateRoute), c => {
   return c
@@ -422,9 +437,7 @@ apiV1.openapi(staffOnly(venueDeleteRoute), c => {
 
 // Gathering member routes
 //
-// GETだけはstaff限定にしない: 学生アプリが本人の参加する集合を判定して
-// 「出場」表示を出すのにこの一覧取得を使っている(レビュー指摘)。
-// 追加・削除(POST/DELETE)は引き続きstaff限定とする。
+// 参加者一覧のGETは認証済みユーザー向け、参加者を変更するPUTはstaff限定とする。
 apiV1.openapi(authed(gatheringMemberListRoute), c => {
   return c
     .get('container')
@@ -436,17 +449,29 @@ apiV1.openapi(staffOnly(gatheringMemberReplaceRoute), c => {
     .gatheringGroupMemberController.replaceGatheringMembers(c);
 });
 
-// Gathering routes
-apiV1.openapi(staffOnly(gatheringListRoute), c => {
-  return c.get('container').gatheringController.getAllGatherings(c);
-});
-
 // Firebase token routes
 apiV1.openapi(authed(firebaseTokenRegistrationRoute), c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
 });
 
 // Notification routes
+apiV1.openapi(staffOnly(notificationScheduleResendRoute), c =>
+  c
+    .get('container')
+    .notificationScheduleActionController.resendSchedule(
+      c,
+      Number(c.req.valid('param').notificationScheduleId),
+      c.req.valid('json')
+    )
+);
+apiV1.openapi(staffOnly(notificationScheduleDeleteRoute), c =>
+  c
+    .get('container')
+    .notificationScheduleActionController.cancelSchedule(
+      c,
+      Number(c.req.valid('param').notificationScheduleId)
+    )
+);
 apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
   return c
     .get('container')
@@ -526,10 +551,14 @@ apiV1.openapi(staffOnly(notificationPushDeliveryDetailRoute), c => {
     .notificationResultQueryController.getPushDeliveryDetail(c);
 });
 apiV1.openapi(authed(myNotificationListRoute), c => {
-  return c.get('container').mobileNotificationController.getNotifications(c);
+  return c
+    .get('container')
+    .mobileNotificationController.getNotifications(c, c.req.valid('query'));
 });
 apiV1.openapi(authed(myNotificationDetailRoute), c => {
-  return c.get('container').mobileNotificationController.getNotificationById(c);
+  return c
+    .get('container')
+    .mobileNotificationController.getNotificationById(c, c.req.valid('param'));
 });
 
 // Auth routes
@@ -596,8 +625,15 @@ export default {
     const eventDateValid = isValidEventDate(env.EVENT_DATE);
     const container = createDIContainer(env);
     ctx.waitUntil(
+      container.notificationRetryService
+        .enqueueDueDeliveries(scheduledAt)
+        .catch(error => {
+          console.error('[CRON] 通知のRetry・timeout回収に失敗しました', error);
+        })
+    );
+    ctx.waitUntil(
       (async () => {
-        if (eventDateValid) {
+        if (eventDateValid && scheduledAt.getUTCMinutes() === 0) {
           try {
             const reconciliation =
               await container.gatheringNotificationGeneratorService.reconcileAll();
@@ -636,7 +672,8 @@ export default {
           try {
             const deliveryResult =
               await container.notificationDeliveryService.enqueueReadySchedules(
-                scheduledAt
+                scheduledAt,
+                { manualOnly: !eventDateValid }
               );
             if (deliveryResult.failed_schedule_ids.length > 0) {
               console.error('[CRON] Notification Delivery準備に失敗しました', {
@@ -680,7 +717,8 @@ export default {
     await consumeNotificationDeliveryQueue(
       batch,
       container.scheduledNotificationService,
-      container.notificationDeliveryService
+      container.notificationDeliveryService,
+      container.notificationRetryService
     );
   },
 };

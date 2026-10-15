@@ -43,6 +43,11 @@ export function createNotificationCreationRepository(
         throw new Error('Audienceは1件以上必要です');
       }
 
+      if (
+        command.sync_cutoff &&
+        Date.parse(command.send_at) < Date.parse(command.sync_cutoff)
+      )
+        return { status: 'already_exists' };
       for (let attempt = 0; attempt < AUTOMATIC_SYNC_MAX_ATTEMPTS; attempt++) {
         if (await hasStartedSourceSchedule(db, command.source)) {
           return { status: 'already_exists' };
@@ -63,7 +68,10 @@ export function createNotificationCreationRepository(
           previous.send_status !== 'scheduled' ||
           previous.scheduled_by_user_id !== null ||
           previous.started_at !== null ||
-          previous.recipients_resolved_at !== null
+          previous.recipients_resolved_at !== null ||
+          (command.sync_cutoff !== undefined &&
+            Date.parse(previous.send_at ?? '') <
+              Date.parse(command.sync_cutoff))
         ) {
           return { status: 'already_exists' };
         }
@@ -96,6 +104,7 @@ export function createNotificationCreationRepository(
                        AND automatic.scheduled_by_user_id IS NULL
                        AND automatic.started_at IS NULL
                        AND automatic.recipients_resolved_at IS NULL
+                       AND (? IS NULL OR julianday(automatic.send_at) >= julianday(?))
                    )`
               )
               .bind(
@@ -109,7 +118,9 @@ export function createNotificationCreationRepository(
                 command.source.type,
                 command.source.id,
                 previous.source_hash,
-                previous.notification_schedule_id
+                previous.notification_schedule_id,
+                command.sync_cutoff ?? null,
+                command.sync_cutoff ?? null
               ),
             db
               .prepare(
@@ -118,6 +129,7 @@ export function createNotificationCreationRepository(
                  WHERE notification_schedule_id = ? AND notification_id = ?
                    AND send_status = 'scheduled' AND scheduled_by_user_id IS NULL
                    AND started_at IS NULL AND recipients_resolved_at IS NULL
+                   AND (? IS NULL OR julianday(send_at) >= julianday(?))
                    AND NOT EXISTS (
                      SELECT 1 FROM notification_schedules started
                      WHERE started.notification_id = notification_schedules.notification_id
@@ -137,6 +149,8 @@ export function createNotificationCreationRepository(
                 command.now,
                 previous.notification_schedule_id,
                 previous.notification_id,
+                command.sync_cutoff ?? null,
+                command.sync_cutoff ?? null,
                 command.source.type,
                 command.source.id,
                 command.source.hash

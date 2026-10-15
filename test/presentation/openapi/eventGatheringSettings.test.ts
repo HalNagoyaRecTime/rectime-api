@@ -34,8 +34,8 @@ describe('集合設定保存APIのOpenAPI定義', () => {
     schemas = document.components.schemas;
   });
 
-  it('既存のGETと同じパスにPUTを追加する', () => {
-    expect(Object.keys(operations).sort()).toEqual(['get', 'put']);
+  it('集合設定のパスにはPUTだけを公開する', () => {
+    expect(Object.keys(operations)).toEqual(['put']);
   });
 
   it('PUTは保存後の集合設定を200で返し、契約どおりのエラーを定義する', () => {

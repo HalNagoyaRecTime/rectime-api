@@ -1,3 +1,5 @@
+export const AUTOMATIC_SYNC_PENDING_REASON = 'AUTOMATIC_SYNC_PENDING';
+
 import type {
   NotificationAudienceType,
   NotificationImportance,
@@ -41,6 +43,7 @@ export type AutomaticNotificationCreationCommand = Omit<
   scheduled_by_user_id: null;
   source: NonNullable<NotificationCreationCommand['source']>;
   legacy_schedule: null;
+  sync_cutoff?: string;
 };
 
 export interface NotificationCreationResult {

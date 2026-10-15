@@ -22,6 +22,7 @@ function teacherRepository(
   overrides: Partial<ITeacherRepository> = {}
 ): ITeacherRepository {
   return {
+    findByUserId: vi.fn().mockResolvedValue(null),
     findById: vi.fn(),
     findAll: vi.fn(),
     existsById: vi.fn().mockResolvedValue(true),

@@ -15,9 +15,6 @@ import {
   buildWebRedirectUri,
   exchangeMicrosoftToken,
   upsertUser,
-  userResponse,
-  getStudentInfoOrNull,
-  getUserCategories,
 } from '../helpers';
 import {
   getAllowedFrontendOrigin,
@@ -32,6 +29,8 @@ import {
 import type { ContainerVariables } from '../../middleware/diContainer';
 import { createUserRepository } from '../../../infrastructure/repositories/UserRepository';
 import { AuthErrors } from '../../errors/authErrors';
+import { microsoftTokenError } from '../../errors/microsoftTokenError';
+import { isDesktopRedirectUri } from '../desktopRedirect';
 import { CommonErrors } from '../../errors/commonErrors';
 import { errorResponse } from '../../errors/errorResponse';
 
@@ -44,6 +43,13 @@ const microsoft = new Hono<{
 
 // GET /auth/microsoft/login
 microsoft.get('/login', async c => {
+  const desktopRedirectUri = c.req.header('X-Desktop-Redirect-Uri');
+  if (
+    desktopRedirectUri !== undefined &&
+    (getClientType(c) !== 'mobile' || !isDesktopRedirectUri(desktopRedirectUri))
+  ) {
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
+  }
   const clientType = getClientType(c);
   if (!clientType) {
     return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
@@ -77,6 +83,9 @@ microsoft.get('/login', async c => {
         nonce,
         client_type: 'mobile',
         purpose: 'login',
+        ...(desktopRedirectUri
+          ? { desktop_redirect_uri: desktopRedirectUri }
+          : {}),
         created_at: new Date().toISOString(),
       } satisfies PkceEntry),
       { expirationTtl: 600 }
@@ -85,7 +94,7 @@ microsoft.get('/login', async c => {
     return c.json({
       auth_url: buildMicrosoftAuthorizeUrl(
         c,
-        c.env.MICROSOFT_MOBILE_REDIRECT_URI,
+        desktopRedirectUri ?? c.env.MICROSOFT_MOBILE_REDIRECT_URI,
         state,
         codeChallenge,
         nonce
@@ -129,6 +138,13 @@ microsoft.get('/login', async c => {
 // ことで、/delete-token側がupsertUserや一般API用Tokenの発行に進まない
 // ようにする。
 microsoft.get('/delete-login', async c => {
+  const desktopRedirectUri = c.req.header('X-Desktop-Redirect-Uri');
+  if (
+    desktopRedirectUri !== undefined &&
+    (getClientType(c) !== 'mobile' || !isDesktopRedirectUri(desktopRedirectUri))
+  ) {
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
+  }
   const clientType = getClientType(c);
   if (!clientType) {
     return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
@@ -162,6 +178,9 @@ microsoft.get('/delete-login', async c => {
         nonce,
         client_type: 'mobile',
         purpose: 'account_deletion',
+        ...(desktopRedirectUri
+          ? { desktop_redirect_uri: desktopRedirectUri }
+          : {}),
         created_at: new Date().toISOString(),
       } satisfies PkceEntry),
       { expirationTtl: 600 }
@@ -173,7 +192,7 @@ microsoft.get('/delete-login', async c => {
       // Microsoft側のセッションが残っている場合に無入力で認証が完了し得るため)。
       auth_url: buildMicrosoftAuthorizeUrl(
         c,
-        c.env.MICROSOFT_MOBILE_REDIRECT_URI,
+        desktopRedirectUri ?? c.env.MICROSOFT_MOBILE_REDIRECT_URI,
         state,
         codeChallenge,
         nonce,
@@ -314,22 +333,33 @@ microsoft.post('/token', async c => {
     return errorResponse(c, AuthErrors.CODE_VERIFIER_MISSING);
   }
 
-  const tokens = await exchangeMicrosoftToken(
+  const result = await exchangeMicrosoftToken(
     c,
     {
       grant_type: 'authorization_code',
       code: body.code,
       redirect_uri:
         clientType === 'mobile'
-          ? c.env.MICROSOFT_MOBILE_REDIRECT_URI
+          ? (pkce.desktop_redirect_uri ?? c.env.MICROSOFT_MOBILE_REDIRECT_URI)
           : buildWebRedirectUri(c),
       code_verifier: codeVerifier,
     },
     { includeClientAssertion: clientType === 'web' }
   );
 
-  if (!tokens?.id_token || !tokens.refresh_token) {
-    return errorResponse(c, AuthErrors.TOKEN_EXCHANGE_FAILED);
+  if (!result.ok) {
+    return errorResponse(
+      c,
+      microsoftTokenError(
+        result,
+        AuthErrors.TOKEN_EXCHANGE_FAILED,
+        AuthErrors.AUTH_PROVIDER_UNAVAILABLE
+      )
+    );
+  }
+  const tokens = result.tokens;
+  if (!tokens.id_token || !tokens.refresh_token) {
+    return errorResponse(c, AuthErrors.AUTH_PROVIDER_UNAVAILABLE);
   }
 
   let claims;
@@ -386,8 +416,8 @@ microsoft.post('/token', async c => {
     }
   }
 
-  const { studentService } = c.get('container');
-  const student = await getStudentInfoOrNull(studentService, Number(user.id));
+  const { authProfileService } = c.get('container');
+  const profile = await authProfileService.getProfile(user);
 
   const refreshTokenId = crypto.randomUUID();
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
@@ -431,23 +461,12 @@ microsoft.post('/token', async c => {
     jwtTtl
   );
 
-  const categories = await getUserCategories(c, user.id);
-
   return c.json({
     access_token: accessToken,
     refresh_token_id: refreshTokenId,
     token_type: 'Bearer',
     expires_in: jwtTtl,
-    user: userResponse(
-      {
-        ...user,
-        student_id_number: student?.student_id_number ?? null,
-        class_code: student?.class_code ?? null,
-        class_room_name: student?.class_room_name ?? null,
-        attendance_number: student?.attendance_number ?? null,
-      },
-      categories
-    ),
+    user: profile,
   });
 });
 
@@ -515,22 +534,33 @@ microsoft.post('/delete-token', async c => {
     return errorResponse(c, AuthErrors.CODE_VERIFIER_MISSING);
   }
 
-  const tokens = await exchangeMicrosoftToken(
+  const result = await exchangeMicrosoftToken(
     c,
     {
       grant_type: 'authorization_code',
       code: body.code,
       redirect_uri:
         clientType === 'mobile'
-          ? c.env.MICROSOFT_MOBILE_REDIRECT_URI
+          ? (pkce.desktop_redirect_uri ?? c.env.MICROSOFT_MOBILE_REDIRECT_URI)
           : buildWebRedirectUri(c),
       code_verifier: codeVerifier,
     },
     { includeClientAssertion: clientType === 'web' }
   );
 
-  if (!tokens?.id_token) {
-    return errorResponse(c, AuthErrors.TOKEN_EXCHANGE_FAILED);
+  if (!result.ok) {
+    return errorResponse(
+      c,
+      microsoftTokenError(
+        result,
+        AuthErrors.TOKEN_EXCHANGE_FAILED,
+        AuthErrors.AUTH_PROVIDER_UNAVAILABLE
+      )
+    );
+  }
+  const tokens = result.tokens;
+  if (!tokens.id_token) {
+    return errorResponse(c, AuthErrors.AUTH_PROVIDER_UNAVAILABLE);
   }
 
   let claims;

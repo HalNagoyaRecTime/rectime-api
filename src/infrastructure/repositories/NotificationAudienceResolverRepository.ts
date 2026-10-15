@@ -1,3 +1,4 @@
+import { AUTOMATIC_SYNC_PENDING_REASON } from '../../domain/entities/NotificationCreation';
 import type {
   D1Database,
   D1PreparedStatement,
@@ -7,12 +8,16 @@ import {
   type NotificationAudienceType,
 } from '../../domain/entities/Notification';
 import {
+  NOTIFICATION_AUDIENCE_TARGET_MISSING_REASON,
   UnresolvableNotificationAudienceError,
   type UnresolvedNotificationAudience,
 } from '../../domain/entities/NotificationAudienceResolver';
 import type { NotificationAudienceTarget } from '../../domain/entities/AdminNotificationCommand';
 import type { INotificationAudienceResolverRepository } from '../../domain/interfaces/repositories/INotificationAudienceResolverRepository';
-import { buildAudienceUserSelect } from './NotificationAudienceUserQuery';
+import {
+  areAudienceTargetsAvailable,
+  buildAudienceUserSelect,
+} from './NotificationAudienceUserQuery';
 
 interface CandidateRow {
   notification_schedule_id: number;
@@ -42,7 +47,7 @@ export function createNotificationAudienceResolverRepository(
            JOIN notifications n ON n.notification_id = s.notification_id
            WHERE n.notification_type = 'notification_general'
              ${sourceCondition}
-             AND s.recipients_resolved_at IS NULL
+             AND s.recipients_resolved_at IS NULL AND s.failed_reason IS NOT '${AUTOMATIC_SYNC_PENDING_REASON}'
              AND datetime(s.send_at) <= datetime(?)
              AND s.send_status IN ('scheduled', 'resolving')
            ORDER BY s.send_at, s.notification_schedule_id
@@ -64,7 +69,7 @@ export function createNotificationAudienceResolverRepository(
                started_at = COALESCE(started_at, ?),
                updated_at = ?
            WHERE notification_schedule_id = ?
-             AND send_status = 'scheduled'
+             AND send_status = 'scheduled' AND failed_reason IS NOT '${AUTOMATIC_SYNC_PENDING_REASON}'
              AND datetime(send_at) <= datetime(?)
              AND recipients_resolved_at IS NULL
              AND EXISTS (
@@ -104,6 +109,19 @@ export function createNotificationAudienceResolverRepository(
     },
 
     async resolveAudience(scheduleId, audience, now) {
+      // 対象消失は空Audienceとして確定せず、ServiceでScheduleをfailedにする。
+      if (
+        !(await areAudienceTargetsAvailable(
+          db,
+          [toAudienceTarget(audience)],
+          'resolver'
+        ))
+      ) {
+        throw new UnresolvableNotificationAudienceError(
+          audience.notification_audience_id,
+          `${NOTIFICATION_AUDIENCE_TARGET_MISSING_REASON} (Audience ${audience.notification_audience_id}, ${audience.audience_type}: ${audience.target_id})`
+        );
+      }
       const insert = buildRecipientInsert(db, scheduleId, audience, now);
       const markResolved = db
         .prepare(
@@ -205,9 +223,9 @@ function buildRecipientInsert(
   return db
     .prepare(
       `INSERT INTO notification_recipients (
-         notification_schedule_id, user_id, created_at
+         notification_schedule_id, user_id, created_at, updated_at
        )
-       SELECT ?, audience_users.user_id, ?
+       SELECT ?, audience_users.user_id, ?, ?
        FROM (${users.sql}) AS audience_users
        WHERE EXISTS (
          SELECT 1
@@ -226,6 +244,7 @@ function buildRecipientInsert(
     )
     .bind(
       scheduleId,
+      now,
       now,
       ...users.params,
       audience.notification_audience_id,

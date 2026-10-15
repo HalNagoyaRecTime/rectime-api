@@ -36,6 +36,20 @@ npm install
 |---|---|
 | Web | `http://localhost:8787/api/v1/auth/microsoft/callback` |
 | モバイル/デスクトップ | `com.rectime.mobile://auth/callback` |
+| モバイル/デスクトップ（Desktopループバック） | `http://localhost/auth/callback` |
+
+DesktopはシステムブラウザとAuthorization Code + PKCEを使う。
+`http://localhost/auth/callback` は「モバイルとデスクトップ アプリケーション」に登録する。
+Web用とはパスを分け、ポート番号は登録時に固定しない。
+Microsoftはlocalhostのポートを戻り先の一致判定に使わない。
+[Microsoftのlocalhostの規則](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url#localhost-exceptions)
+
+DesktopもAPIのネイティブクライアント契約（`X-Client-Type: mobile`）を使う。
+`/auth/microsoft/login` と `/auth/microsoft/delete-login` に任意の
+`X-Desktop-Redirect-Uri: http://localhost:<空きポート>/auth/callback` を送る。
+APIはlocalhost・固定パス・1024以上のポートを検証し、stateと一緒に戻り先を保存する。
+`/token` と `/delete-token` は保存した同じ戻り先でコードを交換する。
+Desktop用の環境変数は不要。`MICROSOFT_MOBILE_REDIRECT_URI` はAndroid/iOS用のまま使う。
 
 #### API のアクセス許可
 
@@ -215,3 +229,7 @@ GitHub Actionsは可動tagを直接参照せず、正確なversionをコメン�
 自動検証できない`actions/add-to-project`は月次更新から除外する。
 major更新はこの月次workflowの対象外とし、別途事前検証してから実施する。
 2026年12月1日の定期実行は、同日のmajor更新と重複しないよう自動的にskipする。
+
+### イベント一覧の開催日
+
+`GET /api/v1/events` はトップレベルの `event_date` に既存の `EVENT_DATE`（JST、`YYYY-MM-DD`）を返します。未設定または不正な日付は `null` です。開催日を設定できていなくてもイベント一覧は取得でき、イベント本文・ページング・認証は変わりません。通知配信の開催日と同じ設定を参照し、別の設定値やDB列は追加しません。モバイルのライブアクティビティでの利用は後続対応です。

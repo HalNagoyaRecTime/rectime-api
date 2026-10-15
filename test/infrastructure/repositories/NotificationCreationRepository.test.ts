@@ -1,3 +1,4 @@
+import { createNotificationAudienceResolverRepository } from '../../../src/infrastructure/repositories/NotificationAudienceResolverRepository';
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { AutomaticNotificationCreationCommand } from '../../../src/domain/entities/NotificationCreation';
@@ -661,6 +662,109 @@ describe('NotificationCreationRepository', () => {
       push_body: '集合時間は10:45です。',
       source_hash: 'hash-10-45',
     });
+  });
+
+  it.each([9, 10, 11])(
+    '毎時再同期は送信まで%s分の通知に10分締切を適用する',
+    async minutes => {
+      const fixture = await createFixture();
+      const now = '2026-10-04T00:00:00.000Z';
+      const previousSend = new Date(
+        Date.parse(now) + minutes * 60_000
+      ).toISOString();
+      const command = {
+        ...buildAutomaticCommand(
+          fixture.gatheringId,
+          'original',
+          '10:45',
+          previousSend
+        ),
+        now,
+      };
+      const original = await repository.createOrUpdateAutomatic(command);
+      if (original.status !== 'created') throw new Error('通知未作成');
+      const nextSend = '2026-10-05T01:00:00.000Z';
+      const result = await repository.createOrUpdateAutomatic({
+        ...command,
+        source: { ...command.source, hash: 'new-date' },
+        send_at: nextSend,
+        sync_cutoff: '2026-10-04T00:10:00.000Z',
+      });
+      expect(result.status).toBe(minutes < 10 ? 'already_exists' : 'updated');
+      const row = await env.DB.prepare(
+        'SELECT s.send_at, n.source_hash FROM notification_schedules s JOIN notifications n USING (notification_id) WHERE s.notification_schedule_id = ?'
+      )
+        .bind(original.result.notification_schedule_id)
+        .first();
+      expect(row).toMatchObject({
+        send_at: minutes < 10 ? previousSend : nextSend,
+        source_hash: minutes < 10 ? 'original' : 'new-date',
+      });
+    }
+  );
+
+  it('再同期に失敗した通知は次のCronでも送信開始せず、復旧後に同じ通知を再同期する', async () => {
+    const fixture = await createFixture();
+    await env.DB.prepare(
+      "UPDATE gatherings SET gathering_time = '10:45' WHERE gathering_id = ?"
+    )
+      .bind(fixture.gatheringId)
+      .run();
+    const gatheringRepository = createGatheringNotificationGeneratorRepository(
+      env.DB
+    );
+    const now = () => '2026-10-04T00:00:00.000Z';
+    const original = createGatheringNotificationGeneratorService(
+      gatheringRepository,
+      repository,
+      '2026-11-07',
+      now
+    );
+    await original.generate(fixture.gatheringId);
+    const failed = createGatheringNotificationGeneratorService(
+      gatheringRepository,
+      {
+        ...repository,
+        createOrUpdateAutomatic: async () => {
+          throw new Error('再同期失敗');
+        },
+      },
+      '2026-11-08',
+      now
+    );
+    expect((await failed.reconcileAll()).failed_gathering_ids).toEqual([
+      fixture.gatheringId,
+    ]);
+    const row = await env.DB.prepare(
+      "SELECT s.notification_schedule_id, s.failed_reason FROM notification_schedules s JOIN notifications n USING (notification_id) WHERE n.source_type = 'gathering' AND n.source_id = ?"
+    )
+      .bind(fixture.gatheringId)
+      .first<{ notification_schedule_id: number; failed_reason: string }>();
+    expect(row!.failed_reason).toBe('AUTOMATIC_SYNC_PENDING');
+    const resolver = createNotificationAudienceResolverRepository(env.DB);
+    expect(
+      await resolver.findDueCandidates('2026-11-10T00:00:00.000Z', 100)
+    ).toEqual([]);
+    expect(
+      await resolver.claimScheduled(
+        row!.notification_schedule_id,
+        '2026-11-10T00:00:00.000Z'
+      )
+    ).toBe(false);
+    const recovered = createGatheringNotificationGeneratorService(
+      gatheringRepository,
+      repository,
+      '2026-11-08',
+      now
+    );
+    expect((await recovered.reconcileAll()).failed_gathering_ids).toEqual([]);
+    expect(
+      await resolver.findDueCandidates('2026-11-10T00:00:00.000Z', 100)
+    ).toEqual([
+      expect.objectContaining({
+        notification_schedule_id: row!.notification_schedule_id,
+      }),
+    ]);
   });
 });
 

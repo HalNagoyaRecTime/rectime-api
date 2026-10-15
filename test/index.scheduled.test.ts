@@ -40,7 +40,7 @@ describe('scheduled handler', () => {
     const { ctx, waitUntilPromises } = buildExecutionContext();
     const event = {
       cron: '0 18 * * *',
-      scheduledTime: Date.now(),
+      scheduledTime: Date.parse('2026-11-07T01:00:00Z'),
       noRetry: () => {},
     } as unknown as ScheduledEvent;
 
@@ -69,6 +69,11 @@ describe('scheduled handler', () => {
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
         gatheringNotificationGeneratorService: { reconcileAll },
+        notificationRetryService: {
+          enqueueDueDeliveries: vi
+            .fn()
+            .mockResolvedValue({ claimed: 0, sent: 0, failed: 0 }),
+        },
         notificationAudienceResolverService: { resolveDueSchedules },
         notificationDeliveryService: { enqueueReadySchedules },
         scheduledNotificationService: { enqueueDueNotifications },
@@ -77,7 +82,7 @@ describe('scheduled handler', () => {
     const { ctx, waitUntilPromises } = buildExecutionContext();
     const event = {
       cron: '* * * * *',
-      scheduledTime: Date.now(),
+      scheduledTime: Date.parse('2026-11-07T01:00:00Z'),
       noRetry: () => {},
     } as unknown as ScheduledEvent;
 
@@ -90,7 +95,8 @@ describe('scheduled handler', () => {
       { manualOnly: true }
     );
     expect(enqueueReadySchedules).toHaveBeenCalledWith(
-      new Date(event.scheduledTime)
+      new Date(event.scheduledTime),
+      { manualOnly: true }
     );
     expect(enqueueDueNotifications).not.toHaveBeenCalled();
     createDIContainerSpy.mockRestore();
@@ -122,6 +128,9 @@ describe('scheduled handler', () => {
       const createDIContainerSpy = vi
         .spyOn(container, 'createDIContainer')
         .mockReturnValue({
+          notificationRetryService: {
+            enqueueDueDeliveries: vi.fn().mockResolvedValue(0),
+          },
           gatheringNotificationGeneratorService: { reconcileAll },
           notificationAudienceResolverService: { resolveDueSchedules },
           notificationDeliveryService: { enqueueReadySchedules },
@@ -134,7 +143,7 @@ describe('scheduled handler', () => {
       const { ctx, waitUntilPromises } = buildExecutionContext();
       const event = {
         cron: '* * * * *',
-        scheduledTime: Date.now(),
+        scheduledTime: Date.parse('2026-11-07T01:00:00Z'),
         noRetry: () => {},
       } as unknown as ScheduledEvent;
 
@@ -151,7 +160,8 @@ describe('scheduled handler', () => {
       );
       expect(enqueueReadySchedules).toHaveBeenCalledTimes(1);
       expect(enqueueReadySchedules).toHaveBeenCalledWith(
-        new Date(event.scheduledTime)
+        new Date(event.scheduledTime),
+        { manualOnly: false }
       );
       expect(reconcileAll.mock.invocationCallOrder[0]).toBeLessThan(
         resolveDueSchedules.mock.invocationCallOrder[0]
@@ -181,6 +191,11 @@ describe('scheduled handler', () => {
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
         gatheringNotificationGeneratorService: { reconcileAll },
+        notificationRetryService: {
+          enqueueDueDeliveries: vi
+            .fn()
+            .mockResolvedValue({ claimed: 0, sent: 0, failed: 0 }),
+        },
         notificationAudienceResolverService: { resolveDueSchedules },
         notificationDeliveryService: { enqueueReadySchedules },
         scheduledNotificationService: { enqueueDueNotifications },
@@ -192,7 +207,7 @@ describe('scheduled handler', () => {
     const { ctx, waitUntilPromises } = buildExecutionContext();
     const event = {
       cron: '* * * * *',
-      scheduledTime: Date.now(),
+      scheduledTime: Date.parse('2026-11-07T01:00:00Z'),
       noRetry: () => {},
     } as unknown as ScheduledEvent;
 
@@ -237,6 +252,11 @@ describe('scheduled handler', () => {
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
         gatheringNotificationGeneratorService: { reconcileAll },
+        notificationRetryService: {
+          enqueueDueDeliveries: vi
+            .fn()
+            .mockResolvedValue({ claimed: 0, sent: 0, failed: 0 }),
+        },
         notificationAudienceResolverService: { resolveDueSchedules },
         notificationDeliveryService: { enqueueReadySchedules },
         scheduledNotificationService: { enqueueDueNotifications },
@@ -248,7 +268,7 @@ describe('scheduled handler', () => {
     const { ctx, waitUntilPromises } = buildExecutionContext();
     const event = {
       cron: '* * * * *',
-      scheduledTime: Date.now(),
+      scheduledTime: Date.parse('2026-11-07T01:00:00Z'),
       noRetry: () => {},
     } as unknown as ScheduledEvent;
 
@@ -263,7 +283,8 @@ describe('scheduled handler', () => {
       new Date(event.scheduledTime)
     );
     expect(enqueueReadySchedules).toHaveBeenCalledWith(
-      new Date(event.scheduledTime)
+      new Date(event.scheduledTime),
+      { manualOnly: false }
     );
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       '[CRON] Notification Delivery preparation error',

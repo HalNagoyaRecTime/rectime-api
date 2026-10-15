@@ -1,5 +1,5 @@
 import { createRoute } from '@hono/zod-openapi';
-import { eventVenueListResponseSchema } from '../eventVenues';
+import { notificationTypeSchema } from './commonSchemas';
 import {
   badRequestResponse,
   bearerAuth,
@@ -14,24 +14,16 @@ import {
   z,
 } from '../schemas';
 
-export const mobileNotificationEventSchema = z
-  .object({
-    event_id: z.number().int(),
-    event_name: z.string(),
-    venues: eventVenueListResponseSchema,
-    start_time: z.string(),
-    end_time: z.string(),
-  })
-  .openapi('MobileNotificationEvent');
-
 export const mobileNotificationResponseSchema = z
   .object({
     notification_id: z.number().int(),
-    notification_type: z.string(),
+    notification_type: notificationTypeSchema,
     title: z.string(),
     body: z.string(),
-    scheduled_at: isoDateTimeSchema,
-    related_event: mobileNotificationEventSchema.nullable(),
+    scheduled_at: isoDateTimeSchema.openapi({
+      description:
+        '認証UserがRecipientになったScheduleだけを対象にsend_at降順、同時刻はnotification_schedule_id降順で選んだ1件のsend_at。',
+    }),
   })
   .openapi('MobileNotification');
 
@@ -46,13 +38,26 @@ export const mobileNotificationIdParams = z.object({
   notificationId: positivePathParam('notificationId', '通知ID'),
 });
 
+export const mobileNotificationListQuery = paginationQuery(100, 50).extend({
+  offset: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .optional()
+    .default(0)
+    .openapi({ param: { name: 'offset', in: 'query' }, example: 0 }),
+});
+
 export const myNotificationListRoute = createRoute({
   method: 'get',
   path: '/me/notifications',
   tags: ['My notifications'],
   summary: '自分宛の通知一覧を取得する',
+  description:
+    '本人Recipientがあるnotification_general通知をNotification単位で返す。Token有無やPush配送状態に依存せず、本人RecipientがあるScheduleのうちsend_at降順、同時刻はnotification_schedule_id降順で選んだsend_atをscheduled_atとして返す。',
   security: bearerAuth,
-  request: { query: paginationQuery(100, 50) },
+  request: { query: mobileNotificationListQuery },
   responses: {
     200: jsonResponse(mobileNotificationListResponseSchema, '通知一覧'),
     400: badRequestResponse,

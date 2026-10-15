@@ -14,8 +14,11 @@ export interface GatheringNotificationReconciliationResult {
 
 export interface IGatheringNotificationGeneratorService {
   generate(
-    gatheringId: number
-  ): Promise<'created' | 'updated' | 'already_exists' | 'not_found'>;
+    gatheringId: number,
+    syncCutoff?: string
+  ): Promise<
+    'created' | 'updated' | 'already_exists' | 'not_found' | 'skipped'
+  >;
   reconcileAll(): Promise<GatheringNotificationReconciliationResult>;
 }
 
@@ -28,8 +31,11 @@ export function createGatheringNotificationGeneratorService(
   now: () => string = () => new Date().toISOString()
 ): IGatheringNotificationGeneratorService {
   const generate = async (
-    gatheringId: number
-  ): Promise<'created' | 'updated' | 'already_exists' | 'not_found'> => {
+    gatheringId: number,
+    syncCutoff?: string
+  ): Promise<
+    'created' | 'updated' | 'already_exists' | 'not_found' | 'skipped'
+  > => {
     let lastOutcome: 'created' | 'updated' | 'already_exists' | undefined;
 
     for (let attempt = 0; attempt < GENERATOR_SYNC_MAX_ATTEMPTS; attempt++) {
@@ -37,10 +43,11 @@ export function createGatheringNotificationGeneratorService(
         await gatheringRepository.findGatheringTime(gatheringId);
       if (gatheringTime === null) return 'not_found';
 
-      if (!eventDate) {
-        throw new Error(
-          'EVENT_DATE must be configured for gathering reminders'
+      if (!isValidEventDate(eventDate)) {
+        console.warn(
+          '[GATHERING_NOTIFICATION] EVENT_DATE未設定または不正のため自動通知を保留します'
         );
+        return 'skipped';
       }
       const sourceHash = await createGatheringTimeSourceHash(gatheringTime);
       const audiences: NotificationAudienceTarget[] = [
@@ -65,6 +72,7 @@ export function createGatheringNotificationGeneratorService(
           },
           now: timestamp,
           legacy_schedule: null,
+          ...(syncCutoff ? { sync_cutoff: syncCutoff } : {}),
         });
       lastOutcome = outcome.status;
 
@@ -72,6 +80,7 @@ export function createGatheringNotificationGeneratorService(
         await gatheringRepository.findGatheringTime(gatheringId);
       if (currentGatheringTime === null) return 'not_found';
       if (currentGatheringTime === gatheringTime) {
+        await gatheringRepository.clearSynchronizationFailure(gatheringId);
         return lastOutcome;
       }
     }
@@ -86,11 +95,12 @@ export function createGatheringNotificationGeneratorService(
 
     async reconcileAll() {
       if (!isValidEventDate(eventDate)) {
-        throw new Error(
-          'EVENT_DATE must be configured for gathering reminders'
-        );
+        return { processed_count: 0, failed_gathering_ids: [] };
       }
 
+      const syncCutoff = new Date(
+        Date.parse(now()) + 10 * 60_000
+      ).toISOString();
       const gatheringIds =
         await gatheringRepository.findConfiguredGatheringIds();
       const failedGatheringIds: number[] = [];
@@ -98,10 +108,11 @@ export function createGatheringNotificationGeneratorService(
 
       for (const gatheringId of gatheringIds) {
         try {
-          await generate(gatheringId);
+          await generate(gatheringId, syncCutoff);
           processedCount++;
         } catch {
           failedGatheringIds.push(gatheringId);
+          await gatheringRepository.markSynchronizationFailed(gatheringId);
         }
       }
 

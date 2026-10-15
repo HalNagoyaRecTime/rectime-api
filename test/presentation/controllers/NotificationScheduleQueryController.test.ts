@@ -15,6 +15,7 @@ const detail: NotificationScheduleDetailDTO = {
   importance: 'normal',
   sendAt: '2026-07-23T02:00:00.000Z',
   status: 'sending',
+  failureReason: null,
   stop: null,
   creation: { method: 'manual', user: null, source: null },
   audienceProgress: { totalCount: 0, resolvedCount: 0 },

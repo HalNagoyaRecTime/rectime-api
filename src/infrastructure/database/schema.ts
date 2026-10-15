@@ -488,10 +488,11 @@ export const notification_recipients = sqliteTable(
     notificationScheduleId: integer('notification_schedule_id')
       .notNull()
       .references(() => notification_schedules.id, { onDelete: 'cascade' }),
-    userId: integer('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
+    updatedAt: text('updated_at'),
   },
   table => [
     uniqueIndex('uq_notification_recipients_schedule_user').on(
