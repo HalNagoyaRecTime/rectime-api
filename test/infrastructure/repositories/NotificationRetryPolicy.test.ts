@@ -22,9 +22,17 @@ describe('再送設定変更時のD1とServiceの整合', () => {
   it('設定の最終予定と試行回数に合わせて最後の再送を予約し送信する', async () => {
     const { delivery } = await createDeliveryFixture();
     await env.DB.prepare(
-      'UPDATE notification_push_deliveries SET attempt_count = ? WHERE notification_push_delivery_id = ?'
+      'UPDATE notification_push_deliveries SET attempt_count = ?, last_attempt_at = ? WHERE notification_push_delivery_id = ?'
     )
-      .bind(FCM_MAX_ATTEMPTS - 1, delivery.notification_push_delivery_id)
+      .bind(
+        FCM_MAX_ATTEMPTS - 1,
+        new Date(
+          NOW.getTime() +
+            FCM_RETRY_OFFSETS_SECONDS[FCM_RETRY_OFFSETS_SECONDS.length - 2] *
+              1000
+        ).toISOString(),
+        delivery.notification_push_delivery_id
+      )
       .run();
     const sendNotificationToToken = vi
       .fn()

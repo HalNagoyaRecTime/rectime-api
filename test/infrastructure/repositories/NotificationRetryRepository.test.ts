@@ -411,3 +411,154 @@ describe('Retryとtimeout回収のD1統合', () => {
     ).toMatchObject({ status: 'failed', firebase_token_id: null });
   });
 });
+
+describe('配信所有権と再送Queueの回帰', () => {
+  beforeEach(clearNotificationFixtures);
+  it('回収された古いWorkerはFCMを呼ばず、期限切れleaseも延長しない', async () => {
+    const { delivery } = await createDeliveryFixture();
+    const h = harness();
+    const later = new Date(NOW.getTime() + 121_000);
+    expect(await h.service.sendClaimedDelivery(delivery, later)).toBe(
+      'superseded'
+    );
+    const [reclaimed] = await repository.claimRetryDeliveries(
+      later.toISOString(),
+      new Date(NOW.getTime() + 1000).toISOString(),
+      5
+    );
+    expect(reclaimed.attempt_count).toBe(2);
+    expect(await h.service.sendClaimedDelivery(delivery, later)).toBe(
+      'superseded'
+    );
+    expect(h.sendNotificationToToken).not.toHaveBeenCalled();
+    expect(await h.service.sendClaimedDelivery(reclaimed, later)).toBe('sent');
+    expect(h.sendNotificationToToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('1500件の同時失敗を全件Queueへ分散し、重複Queueでも各Deliveryを一度だけ再送する', async () => {
+    const fixture = await createDeliveryFixture();
+    const row = await env.DB.prepare(
+      'SELECT notification_recipient_id FROM notification_push_deliveries WHERE notification_push_delivery_id = ?'
+    )
+      .bind(fixture.delivery.notification_push_delivery_id)
+      .first<{ notification_recipient_id: number }>();
+    for (let offset = 1; offset < 1500; offset += 100) {
+      const commands = [];
+      for (let index = offset; index < Math.min(offset + 100, 1500); index++) {
+        commands.push(
+          env.DB.prepare(
+            `INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 1, ?)`
+          ).bind(fixture.userId, `retry-load-${index}`)
+        );
+        commands.push(
+          env.DB.prepare(
+            `INSERT INTO notification_push_deliveries
+          (notification_recipient_id, firebase_token_id, platform, status, attempt_count, first_attempt_at, last_attempt_at, next_retry_at, created_at, updated_at)
+          VALUES (?, (SELECT firebase_token_id FROM firebase_tokens WHERE fcm_token = ?), 1, 'retry_wait', 1, ?, ?, ?, ?, ?)`
+          ).bind(
+            row!.notification_recipient_id,
+            `retry-load-${index}`,
+            ...Array(5).fill(NOW.toISOString())
+          )
+        );
+      }
+      await env.DB.batch(commands);
+    }
+    await env.DB.prepare(
+      "UPDATE notification_push_deliveries SET status = 'retry_wait', next_retry_at = ?"
+    )
+      .bind(NOW.toISOString())
+      .run();
+    const messages: import('../../../src/domain/entities/NotificationDelivery').NotificationDeliveryMessage[] =
+      [];
+    const h = harness();
+    const service = createNotificationRetryService({
+      notificationDeliveryRepository: repository,
+      firebaseTokenRepository: tokens,
+      fcmService: { sendNotificationToToken: h.sendNotificationToToken },
+      notificationDeliveryQueue: {
+        enqueueMany: async batch => {
+          messages.push(...batch);
+        },
+      },
+    });
+    const now = new Date(NOW.getTime() + 60_000);
+    expect(await service.enqueueDueDeliveries(now)).toBe(1500);
+    expect(h.sendNotificationToToken).not.toHaveBeenCalled();
+    expect(
+      messages.every(message => message.retryDeliveryIds!.length <= 90)
+    ).toBe(true);
+    for (const message of messages)
+      await service.retryDueDeliveries(now, message.retryDeliveryIds);
+    // Queueの重複配送でも完了済みattemptをclaimしない。
+    for (const message of messages)
+      await service.retryDueDeliveries(now, message.retryDeliveryIds);
+    expect(h.sendNotificationToToken).toHaveBeenCalledTimes(1500);
+    const result = await env.DB.prepare(
+      "SELECT count(*) AS count FROM notification_push_deliveries WHERE status = 'sent'"
+    ).first<{ count: number }>();
+    expect(result!.count).toBe(1500);
+  }, 60000);
+});
+
+it('FCM待機中の6件目をclaimせず、送信枠が空いてから取得する', async () => {
+  await clearNotificationFixtures();
+  const fixture = await createDeliveryFixture();
+  const recipient = await env.DB.prepare(
+    'SELECT notification_recipient_id FROM notification_push_deliveries WHERE notification_push_delivery_id = ?'
+  )
+    .bind(fixture.delivery.notification_push_delivery_id)
+    .first<{ notification_recipient_id: number }>();
+  for (let i = 0; i < 5; i++) {
+    const token = await env.DB.prepare(
+      'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 1, ?) RETURNING firebase_token_id'
+    )
+      .bind(fixture.userId, `waiting-${i}`)
+      .first<{ firebase_token_id: number }>();
+    await env.DB.prepare(
+      "INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status) VALUES (?, ?, 1, 'pending')"
+    )
+      .bind(recipient!.notification_recipient_id, token!.firebase_token_id)
+      .run();
+  }
+  await env.DB.prepare(
+    "UPDATE notification_push_deliveries SET status = 'pending', attempt_count = 0, first_attempt_at = NULL, last_attempt_at = NULL"
+  ).run();
+  let release!: () => void;
+  let started!: () => void;
+  const gate = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  const firstWave = new Promise<void>(resolve => {
+    started = resolve;
+  });
+  let calls = 0;
+  const { createNotificationDeliveryService } =
+    await import('../../../src/application/services/NotificationDeliveryService');
+  const service = createNotificationDeliveryService({
+    notificationDeliveryRepository: repository,
+    firebaseTokenRepository: tokens,
+    notificationDeliveryQueue: { enqueueMany: async () => {} },
+    fcmService: {
+      sendNotificationToToken: async () => {
+        calls++;
+        if (calls === 5) started();
+        await gate;
+        return { success: true, messageId: 'sent' };
+      },
+    },
+  });
+  const sending = service.sendQueuedNotifications([fixture.scheduleId], NOW);
+  await firstWave;
+  try {
+    expect(
+      await env.DB.prepare(
+        "SELECT count(*) AS count FROM notification_push_deliveries WHERE status = 'pending'"
+      ).first()
+    ).toMatchObject({ count: 1 });
+  } finally {
+    release();
+    await sending;
+  }
+  expect(calls).toBe(6);
+});

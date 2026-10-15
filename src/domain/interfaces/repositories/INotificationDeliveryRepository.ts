@@ -23,8 +23,21 @@ export interface INotificationDeliveryRepository {
   claimRetryDeliveries(
     now: string,
     staleBefore: string,
-    limit: number
+    limit: number,
+    deliveryIds?: number[]
   ): Promise<ClaimedNotificationPushDelivery[]>;
+  findDueRetryDeliveryIds(
+    now: string,
+    staleBefore: string,
+    afterId: number,
+    limit: number
+  ): Promise<number[]>;
+  renewDeliveryLease(
+    deliveryId: number,
+    attemptCount: number,
+    now: string,
+    staleBefore: string
+  ): Promise<boolean>;
   retireUnsendableDeliveries(
     now: string,
     staleBefore: string,

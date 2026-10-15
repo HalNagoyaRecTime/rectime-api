@@ -8,7 +8,9 @@ export interface INotificationRetryService {
     delivery: ClaimedNotificationPushDelivery,
     now?: Date
   ): Promise<NotificationDeliveryOutcome>;
+  enqueueDueDeliveries(now?: Date): Promise<number>;
   retryDueDeliveries(
-    now?: Date
+    now?: Date,
+    deliveryIds?: number[]
   ): Promise<{ claimed: number; sent: number; failed: number }>;
 }

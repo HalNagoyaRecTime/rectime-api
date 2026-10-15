@@ -488,9 +488,9 @@ export const notification_recipients = sqliteTable(
     notificationScheduleId: integer('notification_schedule_id')
       .notNull()
       .references(() => notification_schedules.id, { onDelete: 'cascade' }),
-    userId: integer('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
   },
   table => [

@@ -62,6 +62,7 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
     const response = await fetch(
       `https://fcm.googleapis.com/v1/projects/${config.projectId}/messages:send`,
       {
+        signal: AbortSignal.timeout(30_000),
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -220,6 +221,7 @@ async function createAccessToken(
   });
 
   const response = await fetch(GOOGLE_TOKEN_URL, {
+    signal: AbortSignal.timeout(30_000),
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',

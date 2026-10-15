@@ -28,6 +28,7 @@ interface ScheduleQueryRow {
   stopped_by_user_id: number | null;
   stopped_by_user_name: string | null;
   reason: string | null;
+  failed_reason: string | null;
   created_by_user_id: number | null;
   creator_name: string | null;
   source_type: string | null;
@@ -61,6 +62,7 @@ const scheduleSelection = `
   ns.stopped_by_user_id,
   stopped_by.user_name AS stopped_by_user_name,
   ns.reason,
+  ns.failed_reason,
   n.created_by_user_id,
   creator.user_name AS creator_name,
   n.source_type,
@@ -187,6 +189,8 @@ function toListItem(row: ScheduleQueryRow): NotificationScheduleQueryListItem {
     importance: toImportance(row.importance),
     send_at: row.send_at,
     status: toScheduleStatus(row.send_status),
+    failure_reason:
+      row.send_status === 'failed' ? (row.reason ?? row.failed_reason) : null,
     stop: toStop(row),
     creation: toCreation(row),
   };

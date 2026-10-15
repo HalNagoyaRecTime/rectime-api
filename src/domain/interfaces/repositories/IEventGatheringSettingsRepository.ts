@@ -3,8 +3,7 @@ import type {
   EventGatheringEntity,
 } from '../../entities/EventGathering';
 
-// Event単位で集合予定をまとめて読み書きする契約。既存の一覧取得を担う
-// IGatheringRepository とは責務が異なるため、インターフェースを分けている。
+// Event単位で集合予定をまとめて読み書きする契約。
 export interface IEventGatheringSettingsRepository {
   // round ASC, gathering_time ASC, gathering_id ASC の順で返す。
   // レスポンスの並び順をここで確定させ、上位層では並べ替えない。

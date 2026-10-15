@@ -68,7 +68,7 @@ describe('scheduled handler', () => {
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
         notificationRetryService: {
-          retryDueDeliveries: vi
+          enqueueDueDeliveries: vi
             .fn()
             .mockResolvedValue({ claimed: 0, sent: 0, failed: 0 }),
         },
@@ -107,7 +107,7 @@ describe('scheduled handler', () => {
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
         notificationRetryService: {
-          retryDueDeliveries: vi
+          enqueueDueDeliveries: vi
             .fn()
             .mockResolvedValue({ claimed: 0, sent: 0, failed: 0 }),
         },
@@ -155,7 +155,7 @@ describe('scheduled handler', () => {
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
         notificationRetryService: {
-          retryDueDeliveries: vi
+          enqueueDueDeliveries: vi
             .fn()
             .mockResolvedValue({ claimed: 0, sent: 0, failed: 0 }),
         },
