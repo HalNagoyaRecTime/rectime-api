@@ -76,6 +76,29 @@ jobs:
       - name: Wrangler bundleをdry runで検証
         run: npm exec -- wrangler deploy --dry-run --env development --outdir .wrangler/dependency-validation
 
+  migration-check:
+    # developを取り込むPR(develop→main、develop→develop-v2)は、developへのPRで
+    # 検査済みの変更をまとめて反映するものなので対象外にする。
+    if: github.event_name == 'pull_request' && github.head_ref != 'develop'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # PR先ブランチとの差分を取るため、全履歴を取得する
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: migrationの変更と番号を検査
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: npm run migrations:check
+
   action-smoke:
     if: >-
       github.event_name == 'workflow_dispatch' &&
