@@ -20,8 +20,48 @@ export interface INotificationDeliveryRepository {
     now: string,
     limit: number
   ): Promise<ClaimedNotificationPushDelivery[]>;
-  markSent(deliveryId: number, messageId: string, now: string): Promise<void>;
-  markFailed(deliveryId: number, reason: string, now: string): Promise<void>;
+  claimRetryDeliveries(
+    now: string,
+    staleBefore: string,
+    limit: number,
+    deliveryIds?: number[]
+  ): Promise<ClaimedNotificationPushDelivery[]>;
+  findDueRetryDeliveryIds(
+    now: string,
+    staleBefore: string,
+    afterId: number,
+    limit: number
+  ): Promise<number[]>;
+  renewDeliveryLease(
+    deliveryId: number,
+    attemptCount: number,
+    now: string,
+    staleBefore: string
+  ): Promise<boolean>;
+  retireUnsendableDeliveries(
+    now: string,
+    staleBefore: string,
+    maxAttempts: number
+  ): Promise<number[]>;
+  saveRetry(
+    deliveryId: number,
+    attemptCount: number,
+    reason: string,
+    nextRetryAt: string,
+    now: string
+  ): Promise<'retry_wait' | 'stopped' | 'failed' | 'superseded'>;
+  markSent(
+    deliveryId: number,
+    messageId: string,
+    now: string,
+    attemptCount?: number
+  ): Promise<boolean>;
+  markFailed(
+    deliveryId: number,
+    reason: string,
+    now: string,
+    attemptCount?: number
+  ): Promise<boolean>;
   completeScheduleIfDone(scheduleId: number, now: string): Promise<boolean>;
   markScheduleFailed(
     scheduleId: number,
