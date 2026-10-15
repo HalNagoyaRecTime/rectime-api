@@ -1,4 +1,10 @@
 import {
+  normalizeFirebaseConfig,
+  validateFirebaseConfig,
+  importFirebasePrivateKey,
+  type FirebaseConfig,
+} from './FcmConfiguration';
+import {
   IFcmService,
   FcmNotificationInput,
   FcmNotificationResult,
@@ -10,12 +16,6 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 3600;
 const ACCESS_TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
-
-type FirebaseConfig = {
-  projectId: string;
-  clientEmail: string;
-  privateKey: string;
-};
 
 type CachedAccessToken = {
   value: string;
@@ -29,7 +29,13 @@ type AccessTokenCacheEntry = {
 
 const accessTokenCache = new Map<string, AccessTokenCacheEntry>();
 
-export function createFcmService(config: FirebaseConfig): IFcmService {
+export function createFcmService(input: FirebaseConfig): IFcmService & {
+  ensureConfigured(): Promise<void>;
+} {
+  const config = normalizeFirebaseConfig(input);
+  let configurationCheck: Promise<void> | undefined;
+  const ensureConfigured = () =>
+    (configurationCheck ??= validateFirebaseConfig(config));
   const cacheKey = `${config.projectId}:${config.clientEmail}`;
 
   const getAccessToken = async (): Promise<string> => {
@@ -56,7 +62,7 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
   const sendNotificationToToken = async (
     input: FcmNotificationInput
   ): Promise<FcmNotificationResult> => {
-    validateFirebaseCredentials(config);
+    await ensureConfigured();
 
     const accessToken = await getAccessToken();
     const response = await fetch(
@@ -110,6 +116,7 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
 
   return {
     sendNotificationToToken,
+    ensureConfigured,
   };
 }
 
@@ -179,20 +186,6 @@ function getAccessTokenCacheEntry(cacheKey: string): AccessTokenCacheEntry {
   const created = { token: null, request: null };
   accessTokenCache.set(cacheKey, created);
   return created;
-}
-
-function validateFirebaseCredentials(config: FirebaseConfig) {
-  const missingKeys = [
-    ['FIREBASE_PROJECT_ID', config.projectId],
-    ['FIREBASE_CLIENT_EMAIL', config.clientEmail],
-    ['FIREBASE_PRIVATE_KEY', config.privateKey],
-  ]
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
-
-  if (missingKeys.length > 0) {
-    throw new Error(`Missing Cloudflare Secrets: ${missingKeys.join(', ')}`);
-  }
 }
 
 async function createAccessToken(
@@ -272,7 +265,7 @@ async function createSignedJwt(options: {
   const encodedHeader = base64UrlEncodeJson(header);
   const encodedPayload = base64UrlEncodeJson(payload);
   const unsignedToken = `${encodedHeader}.${encodedPayload}`;
-  const privateKey = await importPrivateKey(options.privateKey);
+  const privateKey = await importFirebasePrivateKey(options.privateKey);
   const signature = await crypto.subtle.sign(
     'RSASSA-PKCS1-v1_5',
     privateKey,
@@ -280,25 +273,6 @@ async function createSignedJwt(options: {
   );
 
   return `${unsignedToken}.${base64UrlEncodeBytes(new Uint8Array(signature))}`;
-}
-
-async function importPrivateKey(privateKey: string): Promise<CryptoKey> {
-  const normalizedPrivateKey = privateKey.replace(/\\n/g, '\n');
-  const pemContents = normalizedPrivateKey
-    .replace('-----BEGIN PRIVATE KEY-----', '')
-    .replace('-----END PRIVATE KEY-----', '')
-    .replace(/\s/g, '');
-
-  return crypto.subtle.importKey(
-    'pkcs8',
-    base64ToArrayBuffer(pemContents),
-    {
-      name: 'RSASSA-PKCS1-v1_5',
-      hash: 'SHA-256',
-    },
-    false,
-    ['sign']
-  );
 }
 
 function base64UrlEncodeJson(value: unknown): string {
@@ -315,15 +289,4 @@ function base64UrlEncodeBytes(bytes: Uint8Array): string {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/, '');
-}
-
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-
-  for (let i = 0; i < binaryString.length; i += 1) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
-  return bytes.buffer;
 }

@@ -208,6 +208,7 @@ export function createDIContainer(env: Env) {
     notificationScheduleRepository,
     notificationDeliveryQueue,
     fcmService,
+    ensureConfigured: fcmService.ensureConfigured,
   });
   const notificationAudienceResolverService =
     createNotificationAudienceResolverService(
@@ -218,6 +219,7 @@ export function createDIContainer(env: Env) {
     firebaseTokenRepository,
     notificationDeliveryQueue,
     fcmService,
+    ensureConfigured: fcmService.ensureConfigured,
   });
   const adminNotificationManagementService =
     createAdminNotificationManagementService(

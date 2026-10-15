@@ -17,16 +17,20 @@ export function createScheduledNotificationService(deps: {
   notificationScheduleRepository: INotificationScheduleRepository;
   notificationDeliveryQueue: INotificationDeliveryQueue;
   fcmService: IFcmService;
+  ensureConfigured?: () => Promise<void>;
 }): IScheduledNotificationService {
   const {
     firebaseTokenRepository,
     notificationScheduleRepository,
     notificationDeliveryQueue,
     fcmService,
+    ensureConfigured = async () => {},
   } = deps;
 
   return {
     async enqueueDueNotifications(now = new Date()) {
+      // 配信をclaimする前に検証し、設定不備で未送信データを失敗確定にしない。
+      await ensureConfigured();
       const dueAt = now.toISOString();
       const staleBefore = new Date(
         now.getTime() - NOTIFICATION_DELIVERY_LEASE_TIMEOUT_MS
@@ -53,6 +57,8 @@ export function createScheduledNotificationService(deps: {
     },
 
     async sendQueuedNotifications(notificationScheduleIds, now = new Date()) {
+      // 配信をclaimする前に検証し、設定不備で未送信データを失敗確定にしない。
+      await ensureConfigured();
       const uniqueScheduleIds = [...new Set(notificationScheduleIds)].slice(
         0,
         NOTIFICATION_DELIVERY_MESSAGE_SIZE
