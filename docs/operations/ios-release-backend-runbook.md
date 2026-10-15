@@ -76,6 +76,12 @@ iOSリリース時に、認証・主要API・D1・デプロイで問題が発生
 - `ALLOWED_ORIGINS`
 - `FRONTEND_URL`
 - `EVENT_DATE`
+- `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY`
+- `NOTIFICATION_DELIVERY_QUEUE`
+
+通知Secretの登録名は`npm run notifications:check -- --env development`でも確認できる。
+stagingは`--env staging`、本番は引数なし。値の形式・Google側の権限・実配信は別途確認する。
+設定不備で保留された未送信は設定修正後のCron／Queue処理から再開する。既にfailedの履歴は自動復活しない。
 
 確認結果は`設定あり／なし`だけを記録し、Secret値や暗号化前の内容は残さない。
 
