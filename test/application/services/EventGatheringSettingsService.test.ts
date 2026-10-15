@@ -94,7 +94,14 @@ describe('EventGatheringSettingsService', () => {
 
       expect(repository.apply).toHaveBeenCalledWith({
         event_id: EVENT_ID,
-        creates: [{ round: 2, gathering_time: '11:00', gathering_spot_id: 3 }],
+        creates: [
+          {
+            round: 2,
+            round_start_time: null,
+            gathering_time: '11:00',
+            gathering_spot_id: 3,
+          },
+        ],
         updates: [],
         delete_ids: [102],
       });
@@ -131,12 +138,14 @@ describe('EventGatheringSettingsService', () => {
           {
             gathering_id: 101,
             round: 2,
+            round_start_time: null,
             gathering_time: '10:45',
             gathering_spot_id: 1,
           },
           {
             gathering_id: 102,
             round: 2,
+            round_start_time: null,
             gathering_time: '11:00',
             gathering_spot_id: 2,
           },
@@ -496,4 +505,64 @@ describe('EventGatheringSettingsService', () => {
       expect(repository.findByEventId).toHaveBeenCalledTimes(2);
     });
   });
+});
+
+describe('開始時刻省略時のラウンド整合性', () => {
+  it('追加した集合にもラウンドの既存開始時刻を保存する', async () => {
+    const current = existing.map(g => ({
+      ...g,
+      member_count: 0,
+      round_start_time: '0900',
+    }));
+    const { service, repository } = setup({ current });
+    await service.saveEventGatheringSettings({
+      event_id: EVENT_ID,
+      rounds: [
+        {
+          round: 1,
+          gatherings: [
+            ...current.map(g => ({
+              gathering_id: g.gathering_id,
+              gathering_time: g.gathering_time,
+              gathering_spot_id: g.gathering_spot_id,
+            })),
+            { gathering_time: '09:30', gathering_spot_id: 3 },
+          ],
+        },
+      ],
+    });
+    expect(
+      vi.mocked(repository.apply).mock.calls[0][0].creates[0].round_start_time
+    ).toBe('0900');
+  });
+  it.each([null, '1100'])(
+    '移動元の開始時刻を引き継がず移動先の%sを全集合へ保存する',
+    async destination => {
+      const current = [
+        { ...existing[0], member_count: 0, round_start_time: '0900' },
+        { ...existing[1], round: 2, round_start_time: destination },
+      ];
+      const { service, repository } = setup({ current });
+      await service.saveEventGatheringSettings({
+        event_id: EVENT_ID,
+        rounds: [
+          {
+            round: 2,
+            gatherings: current.map(g => ({
+              gathering_id: g.gathering_id,
+              gathering_time: g.gathering_time,
+              gathering_spot_id: g.gathering_spot_id,
+            })),
+          },
+        ],
+      });
+      expect(vi.mocked(repository.apply).mock.calls[0][0].updates).toEqual([
+        expect.objectContaining({
+          gathering_id: 101,
+          round: 2,
+          round_start_time: destination,
+        }),
+      ]);
+    }
+  );
 });

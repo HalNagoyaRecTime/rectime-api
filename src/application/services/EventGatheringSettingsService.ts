@@ -11,7 +11,10 @@ import type {
   EventGatheringSettingsDTO,
   RoundSettingInputDTO,
 } from '../dto/EventGatheringSettingsDTO';
-import { buildEventGatheringSettings } from './eventGatheringRounds';
+import {
+  buildEventGatheringSettings,
+  buildRoundSettings,
+} from './eventGatheringRounds';
 import { isForeignKeyError } from './foreignKeyError';
 import type {
   IEventGatheringSettingsService,
@@ -24,12 +27,22 @@ interface RequestedGathering extends EventGatheringWriteInput {
 
 // Round単位の入力を集合予定1件ごとに展開する。以降の差分計算は
 // Roundの入れ子を意識せずに済む。
-function flattenRounds(rounds: RoundSettingInputDTO[]): RequestedGathering[] {
+function flattenRounds(
+  rounds: RoundSettingInputDTO[],
+  current: EventGatheringEntity[]
+): RequestedGathering[] {
+  // 省略時はAPIの読取りと同じラウンド単位の値を引き継ぐ。
+  const starts = new Map(
+    buildRoundSettings(current).map(round => [round.round, round.start_time])
+  );
   return rounds.flatMap(round =>
     round.gatherings.map(gathering => ({
       gathering_id: gathering.gathering_id,
       round: round.round,
-      round_start_time: round.start_time,
+      round_start_time:
+        round.start_time === undefined
+          ? (starts.get(round.round) ?? null)
+          : round.start_time,
       gathering_time: gathering.gathering_time,
       gathering_spot_id: gathering.gathering_spot_id,
     }))
@@ -42,8 +55,7 @@ function isUnchanged(
 ): boolean {
   return (
     current.round === requested.round &&
-    (requested.round_start_time === undefined ||
-      current.round_start_time === requested.round_start_time) &&
+    current.round_start_time === requested.round_start_time &&
     current.gathering_time === requested.gathering_time &&
     current.gathering_spot_id === requested.gathering_spot_id
   );
@@ -114,15 +126,15 @@ export function createEventGatheringSettingsService(
         throw new Error('Event not found');
       }
 
-      const requested = flattenRounds(command.rounds);
+      const current = await eventGatheringSettingsRepository.findByEventId(
+        command.event_id
+      );
+      const requested = flattenRounds(command.rounds, current);
       const gatheringSpotIds = Array.from(
         new Set(requested.map(gathering => gathering.gathering_spot_id))
       );
       await ensureGatheringSpotsExist(gatheringSpotIds);
 
-      const current = await eventGatheringSettingsRepository.findByEventId(
-        command.event_id
-      );
       const changeSet = buildChangeSet(command.event_id, current, requested);
 
       try {
