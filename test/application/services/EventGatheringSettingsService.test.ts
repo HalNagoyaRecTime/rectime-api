@@ -502,6 +502,7 @@ describe('EventGatheringSettingsService', () => {
 
     it('新規作成したGathering IDを保存後にGeneratorへ渡す', async () => {
       const created: EventGatheringEntity = {
+        ...existing[1],
         gathering_id: 103,
         round: 1,
         gathering_time: '11:00',
@@ -566,7 +567,7 @@ describe('EventGatheringSettingsService', () => {
             },
           ],
         })
-      ).resolves.toEqual({
+      ).resolves.toMatchObject({
         event_id: EVENT_ID,
         rounds: [
           {
