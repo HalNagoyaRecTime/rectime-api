@@ -33,15 +33,26 @@ export function buildRoundSettings(
   gatherings: EventGatheringEntity[]
 ): RoundSettingDTO[] {
   const rounds: RoundSettingDTO[] = [];
+  let startSourceId = Number.POSITIVE_INFINITY;
   for (const gathering of gatherings) {
     const last = rounds[rounds.length - 1];
     if (last && last.round === gathering.round) {
       last.gatherings.push(toGatheringSettingDTO(gathering));
     } else {
+      startSourceId = Number.POSITIVE_INFINITY;
       rounds.push({
         round: gathering.round,
+        start_time: null,
         gatherings: [toGatheringSettingDTO(gathering)],
       });
+    }
+    const round = rounds[rounds.length - 1];
+    if (
+      gathering.round_start_time != null &&
+      gathering.gathering_id < startSourceId
+    ) {
+      round.start_time = gathering.round_start_time;
+      startSourceId = gathering.gathering_id;
     }
   }
   return rounds;

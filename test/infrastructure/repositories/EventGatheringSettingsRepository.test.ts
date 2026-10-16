@@ -116,7 +116,7 @@ describe('EventGatheringSettingsRepository', () => {
       await expect(repository.findByEventId(eventId)).resolves.toEqual([]);
     });
 
-    it('round, gathering_time, gathering_id の順で返す', async () => {
+    it('round, gathering_id の順で返す', async () => {
       const eventId = await insertEvent('順序');
       const spotId = await insertSpot('順序場所');
       const round2 = await insertGathering(eventId, spotId, 2, '10:00');
@@ -126,11 +126,11 @@ describe('EventGatheringSettingsRepository', () => {
 
       const result = await repository.findByEventId(eventId);
 
-      // 同時刻は gathering_id 昇順なので、後から作った round1EarlyA が後ろ
+      // 集合時刻に関係なく、登録済みの集合番号で並べる。
       expect(result.map(gathering => gathering.gathering_id)).toEqual([
+        round1Late,
         round1EarlyB,
         round1EarlyA,
-        round1Late,
         round2,
       ]);
     });
@@ -151,6 +151,7 @@ describe('EventGatheringSettingsRepository', () => {
           round: 1,
           gathering_time: '10:00',
           gathering_spot_id: spotId,
+          round_start_time: null,
           gathering_spot_name: '出入口①',
           member_count: 2,
         },
@@ -159,10 +160,50 @@ describe('EventGatheringSettingsRepository', () => {
           round: 1,
           gathering_time: '10:30',
           gathering_spot_id: spotId,
+          round_start_time: null,
           gathering_spot_name: '出入口①',
           member_count: 0,
         },
       ]);
+    });
+
+    it('開始時刻を保存し、省略時は維持してnullで消せる', async () => {
+      const eventId = await insertEvent('開始時刻');
+      const spotId = await insertSpot('場所');
+      const gatheringId = await insertGathering(eventId, spotId, 1, '10:00');
+      const input = {
+        gathering_id: gatheringId,
+        round: 1,
+        gathering_time: '10:00',
+        gathering_spot_id: spotId,
+      };
+      await repository.apply({
+        event_id: eventId,
+        creates: [],
+        updates: [{ ...input, round_start_time: '1100' }],
+        delete_ids: [],
+      });
+      expect(
+        (await repository.findByEventId(eventId))[0].round_start_time
+      ).toBe('1100');
+      await repository.apply({
+        event_id: eventId,
+        creates: [],
+        updates: [input],
+        delete_ids: [],
+      });
+      expect(
+        (await repository.findByEventId(eventId))[0].round_start_time
+      ).toBe('1100');
+      await repository.apply({
+        event_id: eventId,
+        creates: [],
+        updates: [{ ...input, round_start_time: null }],
+        delete_ids: [],
+      });
+      expect(
+        (await repository.findByEventId(eventId))[0].round_start_time
+      ).toBeNull();
     });
 
     it('他Eventの集合予定は含めない', async () => {

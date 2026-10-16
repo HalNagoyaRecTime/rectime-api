@@ -5,6 +5,7 @@ export interface EventGatheringEntity {
   gathering_id: number;
   round: number;
   gathering_time: string;
+  round_start_time: string | null;
   gathering_spot_id: number;
   gathering_spot_name: string;
   member_count: number;
@@ -13,6 +14,7 @@ export interface EventGatheringEntity {
 export interface EventGatheringWriteInput {
   round: number;
   gathering_time: string;
+  round_start_time?: string | null;
   gathering_spot_id: number;
 }
 

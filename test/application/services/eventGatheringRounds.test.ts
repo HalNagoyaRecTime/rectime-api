@@ -8,6 +8,7 @@ function gathering(
   return {
     round: 1,
     gathering_time: '10:00',
+    round_start_time: null,
     gathering_spot_id: 1,
     gathering_spot_name: '出入口①',
     member_count: 0,
@@ -55,5 +56,17 @@ describe('buildEventGatheringSettings', () => {
       gathering_spot: { gathering_spot_id: 7, gathering_spot_name: '体育館前' },
       member_count: 16,
     });
+  });
+  it('開始時刻はnullを飛ばし、最小の集合IDの値を採用する', () => {
+    const result = buildEventGatheringSettings(12, [
+      gathering({ gathering_id: 1, round_start_time: null }),
+      gathering({ gathering_id: 9, round_start_time: '0900' }),
+      gathering({ gathering_id: 3, round_start_time: '1100' }),
+      gathering({ gathering_id: 4, round: 2, round_start_time: null }),
+    ]);
+    expect(result.rounds.map(round => round.start_time)).toEqual([
+      '1100',
+      null,
+    ]);
   });
 });
