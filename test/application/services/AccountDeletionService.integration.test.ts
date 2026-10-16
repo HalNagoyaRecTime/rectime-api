@@ -339,19 +339,35 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     const otherUser = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('通知Recipient保持対象') RETURNING user_id"
     ).first<{ user_id: number }>();
+    const targetTokenSent = await workerEnv.DB.prepare(
+      'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 1, ?) RETURNING firebase_token_id'
+    )
+      .bind(targetUser!.user_id, 'account-deletion-target-sent-token')
+      .first<{ firebase_token_id: number }>();
+    const targetTokenFailed = await workerEnv.DB.prepare(
+      'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, ?) RETURNING firebase_token_id'
+    )
+      .bind(targetUser!.user_id, 'account-deletion-target-failed-token')
+      .first<{ firebase_token_id: number }>();
+    const otherToken = await workerEnv.DB.prepare(
+      'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 1, ?) RETURNING firebase_token_id'
+    )
+      .bind(otherUser!.user_id, 'account-deletion-other-token')
+      .first<{ firebase_token_id: number }>();
     const notification = await workerEnv.DB.prepare(
       "INSERT INTO notifications (created_by_user_id, notification_type, push_title, push_body, title, body) VALUES (?, 'manual', '件名', '本文', '件名', '本文') RETURNING notification_id"
     )
       .bind(targetUser!.user_id)
       .first<{ notification_id: number }>();
     const schedule = await workerEnv.DB.prepare(
-      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, stopped_by_user_id, notification_id, send_status, send_at) VALUES (?, ?, ?, ?, 'draft', '2026-09-24T09:00:00.000Z') RETURNING notification_schedule_id"
+      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, stopped_by_user_id, notification_id, firebase_token_id, send_status, send_at) VALUES (?, ?, ?, ?, ?, 'draft', '2026-09-24T09:00:00.000Z') RETURNING notification_schedule_id"
     )
       .bind(
         targetUser!.user_id,
         targetUser!.user_id,
         targetUser!.user_id,
-        notification!.notification_id
+        notification!.notification_id,
+        targetTokenSent!.firebase_token_id
       )
       .first<{ notification_schedule_id: number }>();
     const otherNotification = await workerEnv.DB.prepare(
@@ -360,15 +376,21 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(otherUser!.user_id)
       .first<{ notification_id: number }>();
     const completedSchedule = await workerEnv.DB.prepare(
-      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, stopped_by_user_id, notification_id, send_status, send_at, recipients_resolved_at, started_at, completed_at) VALUES (?, ?, ?, ?, 'completed', '2026-09-24T09:00:00.000Z', '2026-09-24T09:01:00.000Z', '2026-09-24T09:02:00.000Z', '2026-09-24T09:03:00.000Z') RETURNING notification_schedule_id"
+      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, stopped_by_user_id, notification_id, firebase_token_id, send_status, send_at, recipients_resolved_at, started_at, completed_at) VALUES (?, ?, ?, ?, ?, 'completed', '2026-09-24T09:00:00.000Z', '2026-09-24T09:01:00.000Z', '2026-09-24T09:02:00.000Z', '2026-09-24T09:03:00.000Z') RETURNING notification_schedule_id"
     )
       .bind(
         otherUser!.user_id,
         otherUser!.user_id,
         otherUser!.user_id,
-        otherNotification!.notification_id
+        otherNotification!.notification_id,
+        targetTokenFailed!.firebase_token_id
       )
       .first<{ notification_schedule_id: number }>();
+    const completedRecipient = await workerEnv.DB.prepare(
+      'INSERT INTO notification_recipients (notification_schedule_id, user_id) VALUES (?, ?) RETURNING notification_recipient_id'
+    )
+      .bind(completedSchedule!.notification_schedule_id, otherUser!.user_id)
+      .first<{ notification_recipient_id: number }>();
     await workerEnv.DB.batch([
       workerEnv.DB.prepare(
         'INSERT INTO notification_audiences (notification_schedule_id, audience_type, target_id) VALUES (?, ?, ?)'
@@ -411,14 +433,36 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     )
       .bind(schedule!.notification_schedule_id, otherUser!.user_id)
       .first<{ notification_recipient_id: number }>();
-    await workerEnv.DB.batch([
-      workerEnv.DB.prepare(
-        "INSERT INTO notification_push_deliveries (notification_recipient_id, platform, status) VALUES (?, 1, 'pending')"
-      ).bind(removedRecipient!.notification_recipient_id),
-      workerEnv.DB.prepare(
-        "INSERT INTO notification_push_deliveries (notification_recipient_id, platform, status) VALUES (?, 2, 'pending')"
-      ).bind(keptRecipient!.notification_recipient_id),
-    ]);
+    const sentDelivery = await workerEnv.DB.prepare(
+      "INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status, attempt_count, sent_at) VALUES (?, ?, 1, 'sent', 1, '2026-09-24T09:10:00.000Z') RETURNING notification_push_delivery_id"
+    )
+      .bind(
+        removedRecipient!.notification_recipient_id,
+        targetTokenSent!.firebase_token_id
+      )
+      .first<{ notification_push_delivery_id: number }>();
+    const failedDelivery = await workerEnv.DB.prepare(
+      "INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status, attempt_count) VALUES (?, ?, 2, 'failed', 2) RETURNING notification_push_delivery_id"
+    )
+      .bind(
+        removedRecipient!.notification_recipient_id,
+        targetTokenFailed!.firebase_token_id
+      )
+      .first<{ notification_push_delivery_id: number }>();
+    const otherDelivery = await workerEnv.DB.prepare(
+      "INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status, attempt_count) VALUES (?, ?, 1, 'sent', 1) RETURNING notification_push_delivery_id"
+    )
+      .bind(
+        keptRecipient!.notification_recipient_id,
+        otherToken!.firebase_token_id
+      )
+      .first<{ notification_push_delivery_id: number }>();
+    const deliveryCountsBefore = await workerEnv.DB.prepare(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sent,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+       FROM notification_push_deliveries`
+    ).first<{ total: number; sent: number; failed: number }>();
     await markAsDeleted(targetUser!.user_id);
 
     await buildService().deleteRelatedData(String(targetUser!.user_id));
@@ -475,19 +519,64 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     expect(remainingTargetAudiences?.count).toBe(0);
 
     const remainingRecipients = await workerEnv.DB.prepare(
-      'SELECT user_id FROM notification_recipients WHERE notification_schedule_id = ? ORDER BY user_id'
+      'SELECT notification_recipient_id, user_id FROM notification_recipients WHERE notification_schedule_id = ? ORDER BY notification_recipient_id'
     )
       .bind(schedule!.notification_schedule_id)
-      .all<{ user_id: number }>();
-    expect(remainingRecipients.results.map(row => row.user_id)).toEqual([
-      otherUser!.user_id,
+      .all<{ notification_recipient_id: number; user_id: number | null }>();
+    expect(remainingRecipients.results).toEqual([
+      {
+        notification_recipient_id: removedRecipient!.notification_recipient_id,
+        user_id: null,
+      },
+      {
+        notification_recipient_id: keptRecipient!.notification_recipient_id,
+        user_id: otherUser!.user_id,
+      },
     ]);
     const remainingDeliveries = await workerEnv.DB.prepare(
-      'SELECT notification_recipient_id FROM notification_push_deliveries ORDER BY notification_recipient_id'
-    ).all<{ notification_recipient_id: number }>();
-    expect(
-      remainingDeliveries.results.map(row => row.notification_recipient_id)
-    ).toEqual([keptRecipient!.notification_recipient_id]);
+      'SELECT notification_push_delivery_id, notification_recipient_id, firebase_token_id, status FROM notification_push_deliveries ORDER BY notification_push_delivery_id'
+    ).all<{
+      notification_push_delivery_id: number;
+      notification_recipient_id: number;
+      firebase_token_id: number | null;
+      status: string;
+    }>();
+    expect(remainingDeliveries.results).toEqual([
+      {
+        notification_push_delivery_id:
+          sentDelivery!.notification_push_delivery_id,
+        notification_recipient_id: removedRecipient!.notification_recipient_id,
+        firebase_token_id: null,
+        status: 'sent',
+      },
+      {
+        notification_push_delivery_id:
+          failedDelivery!.notification_push_delivery_id,
+        notification_recipient_id: removedRecipient!.notification_recipient_id,
+        firebase_token_id: null,
+        status: 'failed',
+      },
+      {
+        notification_push_delivery_id:
+          otherDelivery!.notification_push_delivery_id,
+        notification_recipient_id: keptRecipient!.notification_recipient_id,
+        firebase_token_id: otherToken!.firebase_token_id,
+        status: 'sent',
+      },
+    ]);
+    const deliveryCountsAfter = await workerEnv.DB.prepare(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sent,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+       FROM notification_push_deliveries`
+    ).first<{ total: number; sent: number; failed: number }>();
+    expect(deliveryCountsAfter).toEqual(deliveryCountsBefore);
+    const retainedScheduleToken = await workerEnv.DB.prepare(
+      'SELECT firebase_token_id FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(schedule!.notification_schedule_id)
+      .first<{ firebase_token_id: number | null }>();
+    expect(retainedScheduleToken?.firebase_token_id).toBeNull();
     const notificationActor = await workerEnv.DB.prepare(
       'SELECT created_by_user_id, updated_at FROM notifications WHERE notification_id = ?'
     )
@@ -542,12 +631,170 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .bind(completedSchedule!.notification_schedule_id)
       .first();
     expect(retainedCompletedSchedule).not.toBeNull();
+    const retainedCompletedRecipient = await workerEnv.DB.prepare(
+      'SELECT notification_recipient_id, user_id FROM notification_recipients WHERE notification_recipient_id = ?'
+    )
+      .bind(completedRecipient!.notification_recipient_id)
+      .first<{ notification_recipient_id: number; user_id: number | null }>();
+    expect(retainedCompletedRecipient).toEqual({
+      notification_recipient_id: completedRecipient!.notification_recipient_id,
+      user_id: otherUser!.user_id,
+    });
     const retainedNotification = await workerEnv.DB.prepare(
       'SELECT notification_id FROM notifications WHERE notification_id = ?'
     )
       .bind(otherNotification!.notification_id)
       .first();
     expect(retainedNotification).not.toBeNull();
+  });
+
+  it('同一ScheduleでUserを順番に削除しても匿名RecipientとDeliveryを複数保持する', async () => {
+    const userA = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('匿名Recipient A') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const userB = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('匿名Recipient B') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const tokenA = await workerEnv.DB.prepare(
+      'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 1, ?) RETURNING firebase_token_id'
+    )
+      .bind(userA!.user_id, 'sequential-anonymization-token-a')
+      .first<{ firebase_token_id: number }>();
+    const tokenB = await workerEnv.DB.prepare(
+      'INSERT INTO firebase_tokens (user_id, platform, fcm_token) VALUES (?, 2, ?) RETURNING firebase_token_id'
+    )
+      .bind(userB!.user_id, 'sequential-anonymization-token-b')
+      .first<{ firebase_token_id: number }>();
+    const notification = await workerEnv.DB.prepare(
+      "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('notification_general', '順次匿名化', '本文', '順次匿名化', '本文') RETURNING notification_id"
+    ).first<{ notification_id: number }>();
+    const schedule = await workerEnv.DB.prepare(
+      "INSERT INTO notification_schedules (notification_id, firebase_token_id, send_status, send_at) VALUES (?, ?, 'sent', '2026-09-24T09:00:00.000Z') RETURNING notification_schedule_id"
+    )
+      .bind(notification!.notification_id, tokenA!.firebase_token_id)
+      .first<{ notification_schedule_id: number }>();
+    const recipientA = await workerEnv.DB.prepare(
+      'INSERT INTO notification_recipients (notification_schedule_id, user_id) VALUES (?, ?) RETURNING notification_recipient_id'
+    )
+      .bind(schedule!.notification_schedule_id, userA!.user_id)
+      .first<{ notification_recipient_id: number }>();
+    const recipientB = await workerEnv.DB.prepare(
+      'INSERT INTO notification_recipients (notification_schedule_id, user_id) VALUES (?, ?) RETURNING notification_recipient_id'
+    )
+      .bind(schedule!.notification_schedule_id, userB!.user_id)
+      .first<{ notification_recipient_id: number }>();
+    await workerEnv.DB.batch([
+      workerEnv.DB.prepare(
+        "INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status, attempt_count) VALUES (?, ?, 1, 'sent', 1)"
+      ).bind(recipientA!.notification_recipient_id, tokenA!.firebase_token_id),
+      workerEnv.DB.prepare(
+        "INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status, attempt_count) VALUES (?, ?, 2, 'failed', 3)"
+      ).bind(recipientB!.notification_recipient_id, tokenB!.firebase_token_id),
+    ]);
+    const summaryBefore = await workerEnv.DB.prepare(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sent,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+       FROM notification_push_deliveries`
+    ).first<{ total: number; sent: number; failed: number }>();
+
+    await markAsDeleted(userA!.user_id);
+    await buildService().deleteRelatedData(String(userA!.user_id));
+
+    const afterUserA = await workerEnv.DB.prepare(
+      'SELECT notification_recipient_id, user_id, updated_at FROM notification_recipients WHERE notification_schedule_id = ? ORDER BY notification_recipient_id'
+    )
+      .bind(schedule!.notification_schedule_id)
+      .all<{
+        notification_recipient_id: number;
+        user_id: number | null;
+        updated_at: string | null;
+      }>();
+    expect(afterUserA.results).toEqual([
+      {
+        notification_recipient_id: recipientA!.notification_recipient_id,
+        user_id: null,
+        updated_at: expect.stringMatching(
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+        ),
+      },
+      {
+        notification_recipient_id: recipientB!.notification_recipient_id,
+        user_id: userB!.user_id,
+        updated_at: null,
+      },
+    ]);
+    const deliveriesAfterUserA = await workerEnv.DB.prepare(
+      'SELECT notification_recipient_id, firebase_token_id, status FROM notification_push_deliveries ORDER BY notification_recipient_id'
+    ).all<{
+      notification_recipient_id: number;
+      firebase_token_id: number | null;
+      status: string;
+    }>();
+    expect(deliveriesAfterUserA.results).toEqual([
+      {
+        notification_recipient_id: recipientA!.notification_recipient_id,
+        firebase_token_id: null,
+        status: 'sent',
+      },
+      {
+        notification_recipient_id: recipientB!.notification_recipient_id,
+        firebase_token_id: tokenB!.firebase_token_id,
+        status: 'failed',
+      },
+    ]);
+
+    await markAsDeleted(userB!.user_id);
+    await buildService().deleteRelatedData(String(userB!.user_id));
+
+    const finalRecipients = await workerEnv.DB.prepare(
+      'SELECT notification_recipient_id, user_id FROM notification_recipients WHERE notification_schedule_id = ? ORDER BY notification_recipient_id'
+    )
+      .bind(schedule!.notification_schedule_id)
+      .all<{ notification_recipient_id: number; user_id: number | null }>();
+    expect(finalRecipients.results).toEqual([
+      {
+        notification_recipient_id: recipientA!.notification_recipient_id,
+        user_id: null,
+      },
+      {
+        notification_recipient_id: recipientB!.notification_recipient_id,
+        user_id: null,
+      },
+    ]);
+    const finalDeliveries = await workerEnv.DB.prepare(
+      'SELECT notification_recipient_id, firebase_token_id, status FROM notification_push_deliveries ORDER BY notification_recipient_id'
+    ).all<{
+      notification_recipient_id: number;
+      firebase_token_id: number | null;
+      status: string;
+    }>();
+    expect(finalDeliveries.results).toEqual([
+      {
+        notification_recipient_id: recipientA!.notification_recipient_id,
+        firebase_token_id: null,
+        status: 'sent',
+      },
+      {
+        notification_recipient_id: recipientB!.notification_recipient_id,
+        firebase_token_id: null,
+        status: 'failed',
+      },
+    ]);
+    const summaryAfter = await workerEnv.DB.prepare(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sent,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+       FROM notification_push_deliveries`
+    ).first<{ total: number; sent: number; failed: number }>();
+    expect(summaryAfter).toEqual(summaryBefore);
+
+    // 2回目のcleanupでは既にNULLのRecipientに触れず正常終了する。
+    await expect(
+      buildNotificationAccountDeletionService().purgeUserNotificationData(
+        userB!.user_id
+      )
+    ).resolves.toEqual({ firebaseTokensDeleted: false });
   });
 
   it.each([
