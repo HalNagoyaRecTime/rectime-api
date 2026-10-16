@@ -37,7 +37,6 @@ function setup() {
     getAudienceStatus: vi
       .fn()
       .mockResolvedValue({ exists: true, active_token_count: 2 }),
-    create: vi.fn(),
   };
   return {
     managementRepository,

@@ -6,20 +6,17 @@ import type { Env } from '../../../src/lib/env';
 import type { ContainerVariables } from '../../../src/presentation/middleware/diContainer';
 import type { AuthenticationVariables } from '../../../src/presentation/middleware/bearerAuthentication';
 import type { AuthVariables } from '../../../src/presentation/middleware/requireAuth';
+import {
+  mobileNotificationIdParams,
+  mobileNotificationListQuery,
+} from '../../../src/presentation/openapi/notification/mobileNotifications';
 
 const notification = {
   notification_id: 5,
-  notification_type: 'event_reminder',
+  notification_type: 'notification_general',
   title: '競技開始のお知らせ',
   body: '競技開始時間が近づいています。',
   scheduled_at: '2026-07-23T10:15:00+09:00',
-  related_event: {
-    event_id: 3,
-    event_name: '綱引き',
-    venues: [{ venue_id: 2, venue_name: 'グラウンド' }],
-    start_time: '1030',
-    end_time: '1100',
-  },
 };
 
 function setup() {
@@ -39,9 +36,22 @@ function setup() {
     );
     await next();
   });
-  app.get('/me/notifications', c => controller.getNotifications(c));
+  app.get('/me/notifications', c =>
+    controller.getNotifications(
+      c,
+      mobileNotificationListQuery.parse({
+        limit: c.req.query('limit'),
+        offset: c.req.query('offset'),
+      })
+    )
+  );
   app.get('/me/notifications/:notificationId', c =>
-    controller.getNotificationById(c)
+    controller.getNotificationById(
+      c,
+      mobileNotificationIdParams.parse({
+        notificationId: c.req.param('notificationId'),
+      })
+    )
   );
   const bindings = {} as Env;
   const authorizedRequest = (path: string) =>
@@ -98,19 +108,6 @@ describe('MobileNotificationController', () => {
     });
   });
 
-  it.each([
-    '/me/notifications?limit=0',
-    '/me/notifications?limit=101',
-    '/me/notifications?offset=-1',
-  ])('不正な一覧条件%sは400を返す', async path => {
-    const { service, authorizedRequest } = setup();
-
-    const response = await authorizedRequest(path);
-
-    expect(response.status).toBe(400);
-    expect(service.getNotifications).not.toHaveBeenCalled();
-  });
-
   it('本人宛ての通知詳細を返す', async () => {
     const { service, authorizedRequest } = setup();
     (service.getNotificationById as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -122,6 +119,23 @@ describe('MobileNotificationController', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(notification);
     expect(service.getNotificationById).toHaveBeenCalledWith(5, 12);
+  });
+
+  it('Number.MAX_SAFE_INTEGERの通知IDを正確にServiceへ渡す', async () => {
+    const { service, authorizedRequest } = setup();
+    (service.getNotificationById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      notification
+    );
+
+    const response = await authorizedRequest(
+      `/me/notifications/${Number.MAX_SAFE_INTEGER}`
+    );
+
+    expect(response.status).toBe(200);
+    expect(service.getNotificationById).toHaveBeenCalledWith(
+      Number.MAX_SAFE_INTEGER,
+      12
+    );
   });
 
   it('本人宛てではない通知は404を返す', async () => {
@@ -139,15 +153,6 @@ describe('MobileNotificationController', () => {
         message: '通知が見つかりません',
       },
     });
-  });
-
-  it('不正な通知IDは400を返す', async () => {
-    const { service, authorizedRequest } = setup();
-
-    const response = await authorizedRequest('/me/notifications/invalid');
-
-    expect(response.status).toBe(400);
-    expect(service.getNotificationById).not.toHaveBeenCalled();
   });
 
   it.each(['/me/notifications', '/me/notifications/5'])(
@@ -178,5 +183,17 @@ describe('MobileNotificationController', () => {
         message: '通知一覧の取得に失敗しました',
       },
     });
+  });
+
+  it('詳細取得の想定外エラーは500を返す', async () => {
+    const { service, authorizedRequest } = setup();
+    (service.getNotificationById as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('database error')
+    );
+
+    const response = await authorizedRequest('/me/notifications/5');
+
+    expect(response.status).toBe(500);
+    expect(service.getNotificationById).toHaveBeenCalledWith(5, 12);
   });
 });

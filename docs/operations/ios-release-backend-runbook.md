@@ -177,6 +177,27 @@ npx wrangler tail rectime-api --format pretty
 5. `INVALID_TOKEN`、`SESSION_EXPIRED`などのエラーコードを確認する。
 6. Token本文をデコード結果を含めて共有しない。
 
+#### 認証更新の一時障害と失効の区別（API #509）
+
+| `/auth/refresh` の結果 | 判断 | 更新用KV |
+| --- | --- | --- |
+| `503 AUTH_REFRESH_UNAVAILABLE` | Microsoftの429/5xx、通信失敗、10秒タイムアウト、不正な応答。次回の通信で再試行する | Refresh ID・トークン・TTLを変更しない |
+| `500 AUTH_PROVIDER_ERROR` | 証明書・クライアント設定、不明な上流エラー。サーバー側を調査する | 同上 |
+| `401 REFRESH_TOKEN_EXPIRED` | MicrosoftがHTTP 400で`invalid_grant`または`interaction_required`を返した。再ログインが必要 | 既存仕様 |
+| `401 SESSION_EXPIRED` / `401 USER_DEACTIVATED` | 更新情報の期限切れ／管理者による利用停止 | 既存仕様 |
+
+削除開始済みの`ACCOUNT_DELETION_PENDING`は既存のHTTP 410を維持する。
+一時障害ではAPI内で自動再試行せず、同じRefresh IDによる次回の要求を受け付ける。
+Access Tokenの期限検証と、成功時のRefresh IDローテーション・TTLは従来どおり。
+写真用トークン更新も同じ分類を使用する。ログイン・削除確認の一時障害は`503 AUTH_PROVIDER_UNAVAILABLE`になる。
+
+モバイル #305 のマージ・配布条件は、**API #509 の修正を先に対象環境へデプロイすること**。
+デプロイ後、development／stagingで上流503を模擬し、503応答・旧KVの維持・同じRefresh IDによる復旧を確認する。
+旧APIが一時障害を`401 REFRESH_TOKEN_EXPIRED`へ変換する間は、モバイル側だけでは本当の失効と区別できない。
+
+上流コードの意味は[Microsoftのトークンエンドポイント仕様](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow#refresh-the-access-token)を参照する。
+HTTP 429/5xxを優先し、`error_description`の文章から認証失効と推測しない。
+
 ### 7.3 API 5xx
 
 1. 発生時刻、Endpoint、HTTP Method、Status、request IDがあれば記録する。

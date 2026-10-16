@@ -1,3 +1,10 @@
+import { createNotificationDeliveryRepository } from '../../../src/infrastructure/repositories/NotificationDeliveryRepository';
+import { createAdminNotificationCommandRepository } from '../../../src/infrastructure/repositories/AdminNotificationCommandRepository';
+import { createNotificationAudienceResolverRepository } from '../../../src/infrastructure/repositories/NotificationAudienceResolverRepository';
+import { createNotificationAudienceResolverService } from '../../../src/application/services/NotificationAudienceResolverService';
+import { createNotificationScheduleQueryRepository } from '../../../src/infrastructure/repositories/NotificationScheduleQueryRepository';
+import { createNotificationScheduleQueryService } from '../../../src/application/services/NotificationScheduleQueryService';
+import { NOTIFICATION_AUDIENCE_USER_DELETED_REASON } from '../../../src/domain/entities/NotificationAudienceResolver';
 import { env as workerEnv } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createAccountDeletionService } from '../../../src/application/services/AccountDeletionService';
@@ -11,6 +18,7 @@ import { createNotificationAccountDeletionService } from '../../../src/applicati
 import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
 import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 import type { IGatheringGroupMemberRepository } from '../../../src/domain/interfaces/repositories/IGatheringGroupMemberRepository';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 // #265 PR4: 関連データの削除・匿名化を実DBで検証する。特に「D1・KV・
 // Firebaseの途中で失敗しても、安全に再実行・再開できる」ことを、同じ
@@ -91,6 +99,239 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
       .first<{ deletion_status: string; purged_at: string | null }>();
     return row!;
   }
+
+  const due = '2026-10-03T00:00:00.000Z';
+  async function user(name: string) {
+    const row = await workerEnv.DB.prepare(
+      'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
+    )
+      .bind(name)
+      .first<{ user_id: number }>();
+    if (!row) throw new Error('User作成失敗');
+    return row.user_id;
+  }
+  async function directSchedule(actorId: number, ids: number[]) {
+    return createAdminNotificationCommandRepository(workerEnv.DB).create({
+      actor_user_id: actorId,
+      push_title: '削除テスト',
+      push_body: '本文',
+      detail_title: '削除テスト',
+      detail_body: '本文',
+      importance: 'normal',
+      send_at: due,
+      now: due,
+      audiences: ids.map(id => ({ type: 'user' as const, target_id: id })),
+    });
+  }
+  async function scheduleRow(id: number) {
+    return workerEnv.DB.prepare(
+      'SELECT send_status, reason, updated_at, recipients_resolved_at FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(id)
+      .first();
+  }
+  it.each([
+    ['scheduled', false],
+    ['scheduled', true],
+    ['resolving', false],
+    ['resolving', true],
+  ] as const)(
+    '%sの直接User削除後に部分配信せず失敗理由を残す（複数Audience: %s）',
+    async (status, multiple) => {
+      const target = await user('削除対象');
+      const other = await user('残る対象');
+      const created = await directSchedule(
+        other,
+        multiple ? [target, other] : [target]
+      );
+      const unrelated = await directSchedule(other, [other]);
+      const id = created.notification_schedule_id;
+      await workerEnv.DB.prepare(
+        'UPDATE notification_schedules SET send_status = ? WHERE notification_schedule_id = ?'
+      )
+        .bind(status, id)
+        .run();
+      await createUserRepository(workerEnv.DB).markAsDeleted(String(target));
+      await buildService().deleteRelatedData(String(target));
+      const failed = await scheduleRow(id);
+      expect(failed).toMatchObject({
+        send_status: 'failed',
+        reason: NOTIFICATION_AUDIENCE_USER_DELETED_REASON,
+        recipients_resolved_at: null,
+      });
+      const cleanup = createNotificationAccountDeletionRepository(workerEnv.DB);
+      await cleanup.deleteDirectUserAudiencesByUserId(target);
+      expect(await scheduleRow(id)).toEqual(failed);
+      const resolver = createNotificationAudienceResolverService(
+        createNotificationAudienceResolverRepository(workerEnv.DB)
+      );
+      const result = await resolver.resolveDueSchedules(new Date(due));
+      expect(
+        result.completed_schedules.map(row => row.notification_schedule_id)
+      ).not.toContain(id);
+      expect(
+        result.completed_schedules.map(row => row.notification_schedule_id)
+      ).toContain(unrelated.notification_schedule_id);
+      expect(
+        await workerEnv.DB.prepare(
+          'SELECT COUNT(*) AS count FROM notification_recipients WHERE notification_schedule_id = ?'
+        )
+          .bind(id)
+          .first()
+      ).toEqual({ count: 0 });
+      const deliveryRepo = createNotificationDeliveryRepository(workerEnv.DB);
+      expect(
+        (await deliveryRepo.findReadySchedules(due, 100)).map(
+          row => row.notification_schedule_id
+        )
+      ).not.toContain(id);
+      expect(await deliveryRepo.claimPendingDeliveries([id], due, 100)).toEqual(
+        []
+      );
+      const query = createNotificationScheduleQueryService(
+        createNotificationScheduleQueryRepository(workerEnv.DB)
+      );
+      expect(await query.getNotificationScheduleById(id)).toMatchObject({
+        status: 'failed',
+        failureReason: NOTIFICATION_AUDIENCE_USER_DELETED_REASON,
+        stop: null,
+      });
+      expect(
+        (await query.getNotificationSchedules({ from: due, to: due })).items
+      ).toContainEqual(
+        expect.objectContaining({
+          notificationScheduleId: id,
+          failureReason: NOTIFICATION_AUDIENCE_USER_DELETED_REASON,
+        })
+      );
+    }
+  );
+
+  it('全User Audienceの一人が退会してもScheduleを失敗させない', async () => {
+    const target = await user('間接対象の削除User');
+    const other = await user('残るUser');
+    const created = await directSchedule(other, [target]);
+    const id = created.notification_schedule_id;
+    await workerEnv.DB.prepare(
+      "UPDATE notification_audiences SET audience_type = 'all', target_id = NULL WHERE notification_schedule_id = ?"
+    )
+      .bind(id)
+      .run();
+    await createUserRepository(workerEnv.DB).markAsDeleted(String(target));
+    await buildService().deleteRelatedData(String(target));
+    expect(await scheduleRow(id)).toMatchObject({
+      send_status: 'scheduled',
+      reason: null,
+    });
+    const resolver = createNotificationAudienceResolverService(
+      createNotificationAudienceResolverRepository(workerEnv.DB)
+    );
+    expect(
+      (await resolver.resolveDueSchedules(new Date(due))).completed_schedules
+    ).toContainEqual({
+      notification_schedule_id: id,
+      recipient_count: 1,
+    });
+  });
+
+  it('ResolverのAudience取得後に削除しても正常完了せず、確定済みの他Recipientを維持する', async () => {
+    const target = await user('途中削除対象');
+    const other = await user('確定済みの対象');
+    const created = await directSchedule(other, [other, target]);
+    const id = created.notification_schedule_id;
+    const repo = createNotificationAudienceResolverRepository(workerEnv.DB);
+    expect(await repo.claimScheduled(id, due)).toBe(true);
+    const audiences = await repo.findUnresolvedAudiences(id);
+    await repo.resolveAudience(id, audiences[0], due);
+    await createUserRepository(workerEnv.DB).markAsDeleted(String(target));
+    await buildService().deleteRelatedData(String(target));
+    await expect(repo.resolveAudience(id, audiences[1], due)).rejects.toThrow();
+    expect(await repo.completeScheduleIfResolved(id, due)).toBe(false);
+    expect(await scheduleRow(id)).toMatchObject({
+      send_status: 'failed',
+      reason: NOTIFICATION_AUDIENCE_USER_DELETED_REASON,
+    });
+    expect(
+      await workerEnv.DB.prepare(
+        'SELECT user_id FROM notification_recipients WHERE notification_schedule_id = ?'
+      )
+        .bind(id)
+        .all()
+    ).toMatchObject({ results: [{ user_id: other }] });
+  });
+
+  it.each([
+    'scheduled',
+    'resolving',
+    'sending',
+    'completed',
+    'stopped',
+    'failed',
+  ] as const)('対象確定済み・終了済みの%sを変更しない', async status => {
+    const target = await user('確定後削除対象');
+    const actor = await user('作成者');
+    const created = await directSchedule(actor, [target]);
+    const id = created.notification_schedule_id;
+    await workerEnv.DB.prepare(
+      'UPDATE notification_schedules SET send_status = ?, recipients_resolved_at = ?, reason = ? WHERE notification_schedule_id = ?'
+    )
+      .bind(
+        status,
+        status === 'scheduled' || status === 'resolving' || status === 'sending'
+          ? due
+          : null,
+        '既存理由',
+        id
+      )
+      .run();
+    const original = await scheduleRow(id);
+    await createNotificationAccountDeletionRepository(
+      workerEnv.DB
+    ).deleteDirectUserAudiencesByUserId(target);
+    expect(await scheduleRow(id)).toEqual(original);
+  });
+
+  it('Audience削除が失敗したらSchedule更新もrollbackし、再実行で失敗理由を記録する', async () => {
+    const target = await user('rollback対象');
+    const actor = await user('作成者');
+    const created = await directSchedule(actor, [target]);
+    const id = created.notification_schedule_id;
+    const original = await scheduleRow(id);
+    const db = workerEnv.DB;
+    const failingDb = new Proxy(db, {
+      get(object, key) {
+        if (key === 'batch')
+          return (statements: D1PreparedStatement[]) =>
+            db.batch([
+              statements[0],
+              db.prepare('DELETE FROM nonexistent_rollback_test'),
+            ]);
+        const value = Reflect.get(object, key);
+        return typeof value === 'function' ? value.bind(object) : value;
+      },
+    });
+    await expect(
+      createNotificationAccountDeletionRepository(
+        failingDb
+      ).deleteDirectUserAudiencesByUserId(target)
+    ).rejects.toThrow();
+    expect(await scheduleRow(id)).toEqual(original);
+    expect(
+      await db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM notification_audiences WHERE audience_type = 'user' AND target_id = ?"
+        )
+        .bind(target)
+        .first()
+    ).toEqual({ count: 1 });
+    await createNotificationAccountDeletionRepository(
+      db
+    ).deleteDirectUserAudiencesByUserId(target);
+    expect(await scheduleRow(id)).toMatchObject({
+      send_status: 'failed',
+      reason: NOTIFICATION_AUDIENCE_USER_DELETED_REASON,
+    });
+  });
 
   it('直接User Audienceを先に削除し、他Audience・履歴・actor参照を維持する', async () => {
     const targetUser = await workerEnv.DB.prepare(
@@ -370,16 +611,17 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
   );
 
   it('学生ユーザーの関連データを削除・匿名化し、再実行しても安全である', async () => {
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-1', '削除統合テストクラス') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'DEL-INT-1',
+      className: '削除統合テストクラス',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('統合削除太郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77001')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     const event = await workerEnv.DB.prepare(
@@ -515,11 +757,11 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     )
       .bind(user!.user_id, `teacher-${user!.user_id}@example.test`)
       .first<{ teacher_id: number }>();
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ('DEL-INT-2', '削除統合テストクラス2', ?) RETURNING class_room_id"
-    )
-      .bind(teacher!.teacher_id)
-      .first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'DEL-INT-2',
+      className: '削除統合テストクラス2',
+      teacherId: teacher!.teacher_id,
+    });
 
     await markAsDeleted(user!.user_id);
     const service = buildService();
@@ -535,7 +777,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     const classRoomRow = await workerEnv.DB.prepare(
       'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
     )
-      .bind(classRoom!.class_room_id)
+      .bind(classRoom.classRoomId)
       .first<{ teacher_id: number | null }>();
     expect(classRoomRow?.teacher_id).toBeNull();
 
@@ -559,16 +801,17 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
   });
 
   it('一部の関連データだけ既に削除された状態(途中失敗を模した状態)から再実行しても完了できる', async () => {
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-3', '再開テストクラス') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'DEL-INT-3',
+      className: '再開テストクラス',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('再開テスト太郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77002')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
     await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
       .bind(user!.user_id)
@@ -687,16 +930,17 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     // 通常の運用では起こりにくいが、同一user_idが複数ロールに同時に
     // 存在するケースでも、各リポジトリのdeleteByUserId/anonymizeByUserId
     // が独立してWHERE user_id = ?で動作し、正しく処理されることを確認する。
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-4', '複合ロールテストクラス') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'DEL-INT-4',
+      className: '複合ロールテストクラス',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('複合ロール太郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77003')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
     await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
       .bind(user!.user_id)
@@ -709,7 +953,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     await workerEnv.DB.prepare(
       'UPDATE class_rooms SET teacher_id = ? WHERE class_room_id = ?'
     )
-      .bind(teacher!.teacher_id, classRoom!.class_room_id)
+      .bind(teacher!.teacher_id, classRoom.classRoomId)
       .run();
 
     await markAsDeleted(user!.user_id);
@@ -733,7 +977,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     const classRoomRow = await workerEnv.DB.prepare(
       'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
     )
-      .bind(classRoom!.class_room_id)
+      .bind(classRoom.classRoomId)
       .first<{ teacher_id: number | null }>();
     expect(classRoomRow?.teacher_id).toBeNull();
 
@@ -788,16 +1032,17 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
   });
 
   it('deletion_statusがdeletedでないユーザーに対しては例外を投げ、何も変更しない', async () => {
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-5', '順序違反テストクラス') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'DEL-INT-5',
+      className: '順序違反テストクラス',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('順序違反太郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77004')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     // markAsDeletedを呼ばず(deletion_status: 'active'のまま)deleteRelatedData
@@ -867,16 +1112,17 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     });
 
     it('途中失敗で後片付けが未完了のまま残った利用者を、再度のretryPendingPurges呼び出しで拾い直せる', async () => {
-      const classRoom = await workerEnv.DB.prepare(
-        "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-6', '再実行テストクラス') RETURNING class_room_id"
-      ).first<{ class_room_id: number }>();
+      const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+        classCode: 'DEL-INT-6',
+        className: '再実行テストクラス',
+      });
       const user = await workerEnv.DB.prepare(
         "INSERT INTO users (user_name) VALUES ('再実行対象太郎') RETURNING user_id"
       ).first<{ user_id: number }>();
       await workerEnv.DB.prepare(
         "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77005')"
       )
-        .bind(user!.user_id, classRoom!.class_room_id)
+        .bind(user!.user_id, classRoom.classRoomId)
         .run();
       await markAsDeleted(user!.user_id);
 

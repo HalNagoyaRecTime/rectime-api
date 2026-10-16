@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ManualNotificationAudience } from '../../../src/domain/entities/AdminNotification';
 import { createAdminNotificationRepository } from '../../../src/infrastructure/repositories/AdminNotificationRepository';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 interface Fixture {
   creatorId: number;
@@ -11,9 +12,10 @@ interface Fixture {
 }
 
 async function createFixture(): Promise<Fixture> {
-  const classroom = await env.DB.prepare(
-    "INSERT INTO class_rooms (class_code, class_name) VALUES ('A1', 'A組') RETURNING class_room_id"
-  ).first<{ class_room_id: number }>();
+  const classroom = await insertClassRoomWithTeam(env.DB, {
+    classCode: 'A1',
+    className: 'A組',
+  });
   const creator = await env.DB.prepare(
     "INSERT INTO users (user_name) VALUES ('管理者') RETURNING user_id"
   ).first<{ user_id: number }>();
@@ -44,10 +46,10 @@ async function createFixture(): Promise<Fixture> {
     ),
     env.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, 'S001')"
-    ).bind(first!.user_id, classroom!.class_room_id),
+    ).bind(first!.user_id, classroom.classRoomId),
     env.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 2, 'S002')"
-    ).bind(second!.user_id, classroom!.class_room_id),
+    ).bind(second!.user_id, classroom.classRoomId),
     env.DB.prepare(
       'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
     ).bind(gathering!.gathering_id, first!.user_id),
@@ -67,7 +69,7 @@ async function createFixture(): Promise<Fixture> {
 
   return {
     creatorId: creator!.user_id,
-    classRoomId: classroom!.class_room_id,
+    classRoomId: classroom.classRoomId,
     gatheringId: gathering!.gathering_id,
     eventId: event!.event_id,
   };
@@ -86,6 +88,8 @@ describe('AdminNotificationRepository', () => {
       env.DB.prepare('DELETE FROM gathering_spots'),
       env.DB.prepare('DELETE FROM students'),
       env.DB.prepare('DELETE FROM class_rooms'),
+      env.DB.prepare('DELETE FROM team_scores'),
+      env.DB.prepare('DELETE FROM teams'),
       env.DB.prepare('DELETE FROM staffs'),
       env.DB.prepare('DELETE FROM teachers'),
       env.DB.prepare('DELETE FROM events'),
@@ -116,56 +120,13 @@ describe('AdminNotificationRepository', () => {
         event_id: fixture.eventId,
       }),
     ],
-  ] as const)('%sの有効Tokenを一括解決する', async (_, buildAudience) => {
+  ] as const)('%sの対象と有効Token数を取得する', async (_, buildAudience) => {
     const fixture = await createFixture();
     const audience = buildAudience(fixture) as ManualNotificationAudience;
 
     await expect(repository.getAudienceStatus(audience)).resolves.toEqual({
       exists: true,
       active_token_count: 2,
-    });
-
-    const result = await repository.create({
-      created_user_id: fixture.creatorId,
-      title: '集合場所のお知らせ',
-      body: '体育館前へ集合してください。',
-      audience,
-      scheduled_at: '2026-07-23T09:00:00+09:00',
-    });
-
-    expect(result).toMatchObject({
-      notification_type: 'manual',
-      schedule_count: 2,
-      send_status: 'draft',
-      importance: 2,
-    });
-    const rows = await env.DB.prepare(
-      `SELECT
-         ns.created_user_id,
-         ns.event_id,
-         ns.importance,
-         ns.send_status,
-         ns.send_at,
-         n.notification_type,
-         n.title,
-         n.body
-       FROM notification_schedules ns
-       INNER JOIN notifications n ON n.notification_id = ns.notification_id
-       WHERE ns.notification_id = ?
-       ORDER BY ns.firebase_token_id`
-    )
-      .bind(result.notification_id)
-      .all();
-    expect(rows.results).toHaveLength(2);
-    expect(rows.results[0]).toMatchObject({
-      created_user_id: fixture.creatorId,
-      event_id: audience.type === 'event_participants' ? fixture.eventId : null,
-      importance: 2,
-      send_status: 'draft',
-      send_at: '2026-07-23T00:00:00.000Z',
-      notification_type: 'manual',
-      title: '集合場所のお知らせ',
-      body: '体育館前へ集合してください。',
     });
   });
 
@@ -190,7 +151,7 @@ describe('AdminNotificationRepository', () => {
     expect(fixture.gatheringId).toBeGreaterThan(0);
   });
 
-  it('同じ競技の複数集合に所属する利用者へ通知予定を重複作成しない', async () => {
+  it('同じ競技の複数集合に所属する利用者を重複なく数える', async () => {
     const fixture = await createFixture();
     const secondGathering = await env.DB.prepare(
       'INSERT INTO gatherings (event_id, gathering_spot_id) SELECT event_id, gathering_spot_id FROM gatherings WHERE gathering_id = ? RETURNING gathering_id'
@@ -206,39 +167,22 @@ describe('AdminNotificationRepository', () => {
       .bind(secondGathering!.gathering_id, fixture.gatheringId)
       .run();
 
-    const result = await repository.create({
-      created_user_id: fixture.creatorId,
-      title: '競技参加者へのお知らせ',
-      body: '集合時間を確認してください。',
-      audience: {
+    await expect(
+      repository.getAudienceStatus({
         type: 'event_participants',
         event_id: fixture.eventId,
-      },
-      scheduled_at: '2026-07-23T09:00:00+09:00',
-    });
-
-    expect(result.schedule_count).toBe(2);
+      })
+    ).resolves.toEqual({ exists: true, active_token_count: 2 });
   });
 
-  it('作成直前に対象Tokenが無効化されても孤立した通知本文を残さない', async () => {
-    const fixture = await createFixture();
+  it('対象が存在しても有効Tokenがなければ0件を返す', async () => {
+    await createFixture();
     await env.DB.prepare(
       'UPDATE firebase_tokens SET is_firebase_active = 0'
     ).run();
 
     await expect(
-      repository.create({
-        created_user_id: fixture.creatorId,
-        title: '集合場所のお知らせ',
-        body: '体育館前へ集合してください。',
-        audience: { type: 'all' },
-        scheduled_at: '2026-07-23T09:00:00+09:00',
-      })
-    ).rejects.toThrow('Failed to create manual notification');
-
-    const notification = await env.DB.prepare(
-      "SELECT notification_id FROM notifications WHERE notification_type = 'manual'"
-    ).first();
-    expect(notification).toBeNull();
+      repository.getAudienceStatus({ type: 'all' })
+    ).resolves.toEqual({ exists: true, active_token_count: 0 });
   });
 });

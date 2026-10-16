@@ -1,3 +1,4 @@
+import { markdownBodySchema } from '../markdown';
 import {
   NOTIFICATION_AUDIENCE_TYPES,
   NOTIFICATION_CREATION_METHODS,
@@ -48,8 +49,9 @@ const notificationContentBlockSchema = z
 export const notificationContentPushSchema =
   notificationContentBlockSchema.openapi('NotificationContentPush');
 
-export const notificationContentDetailSchema =
-  notificationContentBlockSchema.openapi('NotificationContentDetail');
+export const notificationContentDetailSchema = notificationContentBlockSchema
+  .extend({ body: markdownBodySchema })
+  .openapi('NotificationContentDetail');
 
 export const notificationContentSchema = z
   .object({
@@ -133,7 +135,7 @@ export const notificationAudienceItemSchema = z
 
 export const notificationAudienceSchema = z
   .object({
-    items: z.array(notificationAudienceItemSchema).min(1),
+    items: z.array(notificationAudienceItemSchema),
   })
   .strict()
   .openapi('NotificationAudience');
@@ -249,6 +251,10 @@ export const notificationScheduleListItemSchema = z
     importance: notificationImportanceSchema,
     sendAt: utcDateTimeSchema,
     status: notificationStatusSchemas.schedule,
+    failureReason: z
+      .string()
+      .nullable()
+      .describe('Scheduleがfailedの場合の失敗理由'),
     stop: notificationStopSchema.nullable(),
     creation: notificationCreationSchema,
   })
@@ -292,6 +298,10 @@ export const notificationScheduleDetailSchema = z
     importance: notificationImportanceSchema,
     sendAt: utcDateTimeSchema,
     status: notificationStatusSchemas.schedule,
+    failureReason: z
+      .string()
+      .nullable()
+      .describe('Scheduleがfailedの場合の失敗理由'),
     stop: notificationStopSchema.nullable(),
     creation: notificationCreationSchema,
     audienceProgress: notificationAudienceProgressSchema,
@@ -380,7 +390,7 @@ export const notificationDateRangeQuery = z
 
 export const notificationResultsQuery = z
   .object({
-    page: digitsOnlyInteger(1, undefined, 1),
+    page: digitsOnlyInteger(1, Number.MAX_SAFE_INTEGER, 1),
     limit: digitsOnlyInteger(1, 100, 50),
   })
   .strict()

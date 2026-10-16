@@ -81,11 +81,6 @@ export const EventErrors = {
     code: 'EVENT_GATHERINGS_UPDATE_FAILED',
     message: '競技の集合設定の更新に失敗しました',
   },
-  GATHERING_LIST_FAILED: {
-    status: 500,
-    code: 'GATHERING_LIST_FAILED',
-    message: '集合グループ一覧の取得に失敗しました',
-  },
   EVENT_GATHERING_LIST_FAILED: {
     status: 500,
     code: 'EVENT_GATHERING_LIST_FAILED',
@@ -200,5 +195,25 @@ export const EventErrors = {
     status: 500,
     code: 'VENUE_DELETE_FAILED',
     message: '実施場所の削除に失敗しました',
+  },
+  INVALID_PLACE_IMAGE: {
+    status: 400,
+    code: 'INVALID_PLACE_IMAGE',
+    message: '画像はJPEG・PNG・WebP形式の5MB以下のファイルを指定してください',
+  },
+  PLACE_IMAGE_CONFLICT: {
+    status: 409,
+    code: 'PLACE_IMAGE_CONFLICT',
+    message: '画像が同時に変更されました。もう一度お試しください',
+  },
+  PLACE_IMAGE_UPDATE_FAILED: {
+    status: 500,
+    code: 'PLACE_IMAGE_UPDATE_FAILED',
+    message: '画像の登録に失敗しました',
+  },
+  PLACE_IMAGE_DELETE_FAILED: {
+    status: 500,
+    code: 'PLACE_IMAGE_DELETE_FAILED',
+    message: '画像の削除に失敗しました',
   },
 } as const satisfies Record<string, ApiErrorDefinition>;

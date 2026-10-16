@@ -4,6 +4,8 @@ import type { NotificationAudienceTarget } from '../../../src/domain/entities/Ad
 import { createAdminNotificationCommandRepository } from '../../../src/infrastructure/repositories/AdminNotificationCommandRepository';
 import { createNotificationAudienceResolverRepository } from '../../../src/infrastructure/repositories/NotificationAudienceResolverRepository';
 import { createNotificationAudienceResolverService } from '../../../src/application/services/NotificationAudienceResolverService';
+import { NOTIFICATION_AUDIENCE_TARGET_MISSING_REASON } from '../../../src/domain/entities/NotificationAudienceResolver';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 const commandRepository = createAdminNotificationCommandRepository(env.DB);
 const repository = createNotificationAudienceResolverRepository(env.DB);
@@ -51,27 +53,27 @@ async function createFixture(): Promise<Fixture> {
   const activeGatheringMemberId = await insertUser('active-gathering-member');
   const activeEventMemberId = await insertUser('active-event-member');
   const teacherUserId = await insertUser('teacher');
-  const classRoom = await env.DB.prepare(
-    "INSERT INTO class_rooms (class_code, class_name) VALUES ('AR1', 'Resolver 1組') RETURNING class_room_id"
-  ).first<{ class_room_id: number }>();
-  if (!classRoom) throw new Error('Resolver用ClassRoomを作成できませんでした');
+  const classRoom = await insertClassRoomWithTeam(env.DB, {
+    classCode: 'AR1',
+    className: 'Resolver 1組',
+  });
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
        VALUES (?, ?, 1, 'AR-S001')`
-    ).bind(activeStudentId, classRoom.class_room_id),
+    ).bind(activeStudentId, classRoom.classRoomId),
     env.DB.prepare(
       `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
        VALUES (?, ?, 2, 'AR-S002')`
-    ).bind(inactiveStudentId, classRoom.class_room_id),
+    ).bind(inactiveStudentId, classRoom.classRoomId),
     env.DB.prepare(
       `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
        VALUES (?, ?, 3, 'AR-S003')`
-    ).bind(deletionPendingStudentId, classRoom.class_room_id),
+    ).bind(deletionPendingStudentId, classRoom.classRoomId),
     env.DB.prepare(
       `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
        VALUES (?, ?, 4, 'AR-S004')`
-    ).bind(deletedStudentId, classRoom.class_room_id),
+    ).bind(deletedStudentId, classRoom.classRoomId),
     env.DB.prepare('INSERT INTO teachers (user_id, email) VALUES (?, ?)').bind(
       teacherUserId,
       'audience-resolver-teacher@example.com'
@@ -147,7 +149,7 @@ async function createFixture(): Promise<Fixture> {
     activeGatheringMemberId,
     activeEventMemberId,
     teacherUserId,
-    classRoomId: classRoom.class_room_id,
+    classRoomId: classRoom.classRoomId,
     firstGatheringId,
     eventId: event.event_id,
   };
@@ -184,6 +186,90 @@ async function recipientIds(scheduleId: number): Promise<number[]> {
   return rows.results.map(row => row.user_id);
 }
 
+const TARGET_TYPES = ['class_room', 'gathering', 'event', 'user'] as const;
+
+async function createDeletableTarget(
+  type: (typeof TARGET_TYPES)[number],
+  fixture: Fixture
+): Promise<{
+  target: NotificationAudienceTarget;
+  remove: () => Promise<void>;
+}> {
+  const definitions = {
+    class_room: {
+      insert:
+        "INSERT INTO class_rooms (class_code, class_name, team_id) SELECT 'AR2', '削除対象', team_id FROM teams ORDER BY team_id LIMIT 1 RETURNING class_room_id AS id",
+      table: 'class_rooms',
+      column: 'class_room_id',
+    },
+    gathering: {
+      insert: `INSERT INTO gatherings (event_id, gathering_spot_id, round, gathering_time)
+               SELECT ${fixture.eventId}, gathering_spot_id, 3, '09:00'
+               FROM gathering_spots ORDER BY gathering_spot_id LIMIT 1 RETURNING gathering_id AS id`,
+      table: 'gatherings',
+      column: 'gathering_id',
+    },
+    event: {
+      insert:
+        "INSERT INTO events (event_name, start_time, end_time) VALUES ('削除対象', '1000', '1100') RETURNING event_id AS id",
+      table: 'events',
+      column: 'event_id',
+    },
+    user: {
+      insert:
+        "INSERT INTO users (user_name, is_live_active) VALUES ('削除対象', 1) RETURNING user_id AS id",
+      table: 'users',
+      column: 'user_id',
+    },
+  };
+  const definition = definitions[type];
+  const row = await env.DB.prepare(definition.insert).first<{ id: number }>();
+  if (!row) throw new Error('削除対象を作成できませんでした');
+  return {
+    target: { type, target_id: row.id },
+    async remove() {
+      await env.DB.prepare(
+        `DELETE FROM ${definition.table} WHERE ${definition.column} = ?`
+      )
+        .bind(row.id)
+        .run();
+    },
+  };
+}
+
+async function scheduleSnapshot(scheduleId: number) {
+  const [schedule, audiences, recipients, deliveries] = await Promise.all([
+    env.DB.prepare(
+      'SELECT * FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(scheduleId)
+      .first(),
+    env.DB.prepare(
+      'SELECT * FROM notification_audiences WHERE notification_schedule_id = ? ORDER BY notification_audience_id'
+    )
+      .bind(scheduleId)
+      .all(),
+    env.DB.prepare(
+      'SELECT * FROM notification_recipients WHERE notification_schedule_id = ? ORDER BY notification_recipient_id'
+    )
+      .bind(scheduleId)
+      .all(),
+    env.DB.prepare(
+      `SELECT d.* FROM notification_push_deliveries d
+                    JOIN notification_recipients r USING (notification_recipient_id)
+                    WHERE r.notification_schedule_id = ? ORDER BY notification_push_delivery_id`
+    )
+      .bind(scheduleId)
+      .all(),
+  ]);
+  return {
+    schedule,
+    audiences: audiences.results,
+    recipients: recipients.results,
+    deliveries: deliveries.results,
+  };
+}
+
 describe('NotificationAudienceResolverRepository', () => {
   beforeEach(async () => {
     await env.DB.batch([
@@ -198,11 +284,273 @@ describe('NotificationAudienceResolverRepository', () => {
       env.DB.prepare('DELETE FROM gathering_spots'),
       env.DB.prepare('DELETE FROM students'),
       env.DB.prepare('DELETE FROM class_rooms'),
+      env.DB.prepare('DELETE FROM team_scores'),
+      env.DB.prepare('DELETE FROM teams'),
       env.DB.prepare('DELETE FROM staffs'),
       env.DB.prepare('DELETE FROM teachers'),
       env.DB.prepare('DELETE FROM events'),
       env.DB.prepare('DELETE FROM users'),
     ]);
+  });
+
+  describe.each(TARGET_TYPES)('%sの対象消失', type => {
+    it.each(['scheduled', 'resolving'] as const)(
+      '%s開始時に対象がなければfailedにし、Recipientを追加せず再実行しない',
+      async initialStatus => {
+        const fixture = await createFixture();
+        const { target, remove } = await createDeletableTarget(type, fixture);
+        const { scheduleId } = await createSchedule(fixture.actorUserId, [
+          target,
+        ]);
+        if (initialStatus === 'resolving')
+          await repository.claimScheduled(scheduleId, NOW);
+        await remove();
+
+        expect(await service.resolveDueSchedules(new Date(NOW))).toEqual({
+          completed_schedules: [],
+          retryable_schedule_ids: [],
+          failed_schedule_ids: [scheduleId],
+        });
+        const state = await scheduleSnapshot(scheduleId);
+        expect(state.schedule).toMatchObject({
+          send_status: 'failed',
+          recipients_resolved_at: null,
+        });
+        expect(state.schedule?.reason).toBe(
+          `${NOTIFICATION_AUDIENCE_TARGET_MISSING_REASON} (Audience ${state.audiences[0].notification_audience_id}, ${type}: ${target.target_id})`
+        );
+        expect(state.audiences[0].resolved_at).toBeNull();
+        expect(state.recipients).toEqual([]);
+        expect(
+          await service.resolveDueSchedules(
+            new Date('2026-09-24T12:01:00.000Z')
+          )
+        ).toEqual({
+          completed_schedules: [],
+          retryable_schedule_ids: [],
+          failed_schedule_ids: [],
+        });
+        expect(await scheduleSnapshot(scheduleId)).toEqual(state);
+      }
+    );
+
+    it('再開時の対象消失で先に確定したAudienceとRecipientを保持し、後続Audienceを処理しない', async () => {
+      const fixture = await createFixture();
+      const { target, remove } = await createDeletableTarget(type, fixture);
+      const { scheduleId } = await createSchedule(fixture.actorUserId, [
+        { type: 'user', target_id: fixture.actorUserId },
+        target,
+        { type: 'user', target_id: fixture.activeStudentId },
+      ]);
+      await repository.claimScheduled(scheduleId, NOW);
+      const audiences = await repository.findUnresolvedAudiences(scheduleId);
+      await repository.resolveAudience(scheduleId, audiences[0], NOW);
+      await remove();
+      await service.resolveDueSchedules(new Date(NOW));
+      const state = await scheduleSnapshot(scheduleId);
+      expect(state.schedule).toMatchObject({
+        send_status: 'failed',
+        recipients_resolved_at: null,
+      });
+      expect(state.audiences.map(row => row.resolved_at)).toEqual([
+        NOW,
+        null,
+        null,
+      ]);
+      expect(await recipientIds(scheduleId)).toEqual([fixture.actorUserId]);
+    });
+
+    it.each(['resolving', 'sending', 'completed'] as const)(
+      'Recipient確定後の%sでは対象削除後もSchedule・Audience・既存Recipient・Deliveryを変更しない',
+      async status => {
+        const fixture = await createFixture();
+        const { target, remove } = await createDeletableTarget(type, fixture);
+        const { scheduleId } = await createSchedule(fixture.actorUserId, [
+          { type: 'user', target_id: fixture.actorUserId },
+          target,
+        ]);
+        const resolved = await service.resolveDueSchedules(new Date(NOW));
+        expect(resolved.failed_schedule_ids).toEqual([]);
+        expect(resolved.completed_schedules).toHaveLength(1);
+        await env.DB.batch([
+          env.DB.prepare(
+            'UPDATE notification_schedules SET send_status = ? WHERE notification_schedule_id = ?'
+          ).bind(status, scheduleId),
+          env.DB.prepare(
+            `INSERT INTO notification_push_deliveries (notification_recipient_id, platform, status, sent_at)
+                        SELECT notification_recipient_id, 1, 'sent', ? FROM notification_recipients
+                        WHERE notification_schedule_id = ? AND user_id = ?`
+          ).bind(NOW, scheduleId, fixture.actorUserId),
+        ]);
+        await remove();
+        // Userの物理削除によるFK cascadeは削除側の仕様。Resolverによる変更だけを確認する。
+        const state = await scheduleSnapshot(scheduleId);
+        expect(await recipientIds(scheduleId)).toContain(fixture.actorUserId);
+        expect(state.deliveries).toHaveLength(1);
+        expect(
+          await service.resolveDueSchedules(
+            new Date('2026-09-24T12:01:00.000Z')
+          )
+        ).toEqual({
+          completed_schedules: [],
+          retryable_schedule_ids: [],
+          failed_schedule_ids: [],
+        });
+        expect(await scheduleSnapshot(scheduleId)).toEqual(state);
+      }
+    );
+  });
+
+  describe.each(['deletion_pending', 'deleted'] as const)(
+    'User Audienceの退会状態が%s',
+    deletionStatus => {
+      it('target rowが残っていてもScheduleをfailedにし、確定済みRecipientとDeliveryを保持する', async () => {
+        const fixture = await createFixture();
+        const targetUserId = await insertUser(
+          `direct-audience-${deletionStatus}`
+        );
+        const { scheduleId } = await createSchedule(fixture.actorUserId, [
+          { type: 'user', target_id: fixture.actorUserId },
+          { type: 'user', target_id: targetUserId },
+        ]);
+        await repository.claimScheduled(scheduleId, NOW);
+        const audiences = await repository.findUnresolvedAudiences(scheduleId);
+        await repository.resolveAudience(scheduleId, audiences[0], NOW);
+        await env.DB.prepare(
+          `INSERT INTO notification_push_deliveries (notification_recipient_id, platform, status, sent_at)
+           SELECT notification_recipient_id, 1, 'sent', ? FROM notification_recipients
+           WHERE notification_schedule_id = ? AND user_id = ?`
+        )
+          .bind(NOW, scheduleId, fixture.actorUserId)
+          .run();
+        await env.DB.prepare(
+          'UPDATE users SET deletion_status = ? WHERE user_id = ?'
+        )
+          .bind(deletionStatus, targetUserId)
+          .run();
+
+        expect(await service.resolveDueSchedules(new Date(NOW))).toEqual({
+          completed_schedules: [],
+          retryable_schedule_ids: [],
+          failed_schedule_ids: [scheduleId],
+        });
+        const state = await scheduleSnapshot(scheduleId);
+        expect(state.schedule).toMatchObject({
+          send_status: 'failed',
+          recipients_resolved_at: null,
+        });
+        expect(state.schedule?.reason).toBe(
+          `${NOTIFICATION_AUDIENCE_TARGET_MISSING_REASON} (Audience ${state.audiences[1]?.notification_audience_id}, user: ${targetUserId})`
+        );
+        expect(state.audiences.map(row => row.resolved_at)).toEqual([
+          NOW,
+          null,
+        ]);
+        expect(await recipientIds(scheduleId)).toEqual([fixture.actorUserId]);
+        expect(state.deliveries).toHaveLength(1);
+
+        expect(
+          await service.resolveDueSchedules(
+            new Date('2026-09-24T12:01:00.000Z')
+          )
+        ).toEqual({
+          completed_schedules: [],
+          retryable_schedule_ids: [],
+          failed_schedule_ids: [],
+        });
+        expect(await scheduleSnapshot(scheduleId)).toEqual(state);
+      });
+    }
+  );
+
+  it('deletion_status=activeでis_live_active=0のUserはvalid targetとして0 Recipientで解決する', async () => {
+    const fixture = await createFixture();
+    const inactiveUserId = await insertUser('direct-audience-inactive', 0);
+    const { scheduleId } = await createSchedule(fixture.actorUserId, [
+      { type: 'user', target_id: inactiveUserId },
+    ]);
+
+    expect(await service.resolveDueSchedules(new Date(NOW))).toEqual({
+      completed_schedules: [
+        { notification_schedule_id: scheduleId, recipient_count: 0 },
+      ],
+      retryable_schedule_ids: [],
+      failed_schedule_ids: [],
+    });
+    const state = await scheduleSnapshot(scheduleId);
+    expect(state.schedule).toMatchObject({
+      send_status: 'resolving',
+      recipients_resolved_at: NOW,
+    });
+    expect(state.audiences[0]?.resolved_at).toBe(NOW);
+    expect(state.recipients).toEqual([]);
+  });
+
+  it('Recipient確定後のlogical deletionではSchedule・Audience・Recipient・Deliveryを変更しない', async () => {
+    const fixture = await createFixture();
+    const { scheduleId } = await createSchedule(fixture.actorUserId, [
+      { type: 'user', target_id: fixture.activeStudentId },
+    ]);
+    expect(await service.resolveDueSchedules(new Date(NOW))).toMatchObject({
+      completed_schedules: [
+        { notification_schedule_id: scheduleId, recipient_count: 1 },
+      ],
+      failed_schedule_ids: [],
+    });
+    await env.DB.prepare(
+      `INSERT INTO notification_push_deliveries (notification_recipient_id, platform, status, sent_at)
+       SELECT notification_recipient_id, 1, 'sent', ? FROM notification_recipients
+       WHERE notification_schedule_id = ? AND user_id = ?`
+    )
+      .bind(NOW, scheduleId, fixture.activeStudentId)
+      .run();
+    await env.DB.prepare(
+      "UPDATE users SET deletion_status = 'deleted' WHERE user_id = ?"
+    )
+      .bind(fixture.activeStudentId)
+      .run();
+    const state = await scheduleSnapshot(scheduleId);
+
+    expect(
+      await service.resolveDueSchedules(new Date('2026-09-24T12:01:00.000Z'))
+    ).toEqual({
+      completed_schedules: [],
+      retryable_schedule_ids: [],
+      failed_schedule_ids: [],
+    });
+    expect(await scheduleSnapshot(scheduleId)).toEqual(state);
+  });
+
+  it('Gathering source消失はAudience対象消失として処理しない（#449）', async () => {
+    const fixture = await createFixture();
+    const { target, remove } = await createDeletableTarget(
+      'gathering',
+      fixture
+    );
+    const { notificationId, scheduleId } = await createSchedule(
+      fixture.actorUserId,
+      [{ type: 'all', target_id: null }]
+    );
+    await env.DB.prepare(
+      `UPDATE notifications
+                         SET source_type = 'gathering', source_id = ?, source_hash = 'test-source'
+                         WHERE notification_id = ?`
+    )
+      .bind(target.target_id, notificationId)
+      .run();
+    await remove();
+    expect(await service.resolveDueSchedules(new Date(NOW))).toEqual({
+      completed_schedules: [
+        { notification_schedule_id: scheduleId, recipient_count: 5 },
+      ],
+      retryable_schedule_ids: [],
+      failed_schedule_ids: [],
+    });
+    expect((await scheduleSnapshot(scheduleId)).schedule).toMatchObject({
+      send_status: 'resolving',
+      recipients_resolved_at: NOW,
+      reason: null,
+    });
   });
 
   it('5種類すべてでactive Userだけを解決し、class_roomへ教師を含めない', async () => {
@@ -229,12 +577,6 @@ describe('NotificationAudienceResolverRepository', () => {
       await createSchedule(fixture.actorUserId, [
         { type: 'gathering', target_id: fixture.firstGatheringId },
         { type: 'event', target_id: fixture.eventId },
-      ]),
-      await createSchedule(fixture.actorUserId, [
-        { type: 'user', target_id: fixture.deletionPendingStudentId },
-      ]),
-      await createSchedule(fixture.actorUserId, [
-        { type: 'user', target_id: fixture.deletedStudentId },
       ]),
     ];
 
@@ -271,8 +613,6 @@ describe('NotificationAudienceResolverRepository', () => {
       fixture.activeEventMemberId,
     ]);
     expect(await recipientIds(schedules[5].scheduleId)).toEqual([]);
-    expect(await recipientIds(schedules[7].scheduleId)).toEqual([]);
-    expect(await recipientIds(schedules[8].scheduleId)).toEqual([]);
 
     const excludedUserIds = [
       fixture.inactiveStudentId,

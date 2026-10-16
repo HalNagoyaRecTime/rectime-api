@@ -157,7 +157,7 @@ export const positivePathParamToNumber = (
 
 /**
  * QueryはHTTP上では文字列のため、digits-onlyを検証してから数値へ変換する。
- * OpenAPIとControllerが同じschemaをsafeParseすることで、受理範囲を一致させる。
+ * OpenAPI routeが検証と変換を行い、Controllerは検証済みの値を受け取る。
  */
 const digitsOnlyNumber = (minimum: number, maximum?: number) => {
   const numberSchema = z.number().int().min(minimum);
@@ -198,8 +198,8 @@ export const paginationQuery = (limitMax: number, limitDefault: number) =>
       .int()
       .min(1)
       .max(limitMax)
-      .default(limitDefault)
       .optional()
+      .default(limitDefault)
       .openapi({
         param: { name: 'limit', in: 'query' },
         example: limitDefault,
@@ -208,8 +208,8 @@ export const paginationQuery = (limitMax: number, limitDefault: number) =>
       .number()
       .int()
       .min(0)
-      .default(0)
       .optional()
+      .default(0)
       .openapi({ param: { name: 'offset', in: 'query' }, example: 0 }),
   });
 
