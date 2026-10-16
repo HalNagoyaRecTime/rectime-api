@@ -112,6 +112,8 @@ cp .dev.vars.example .dev.vars
 | `ALLOWED_ORIGINS` | CORS で許可するフロントエンドの origin（カンマ区切り複数可） |
 | `EVENT_DATE` | 通知配信を許可する開催日（JST、`YYYY-MM-DD`）。未設定・不正な値の場合は配信しない |
 | `JWT_SECRET` | 32 文字以上のランダム文字列 |
+| `R2_ACCESS_KEY_ID` | 画像の署名付きURLに使う R2 の API トークン（Object Read only）のアクセスキー ID |
+| `R2_SECRET_ACCESS_KEY` | 同じ API トークンのシークレットアクセスキー |
 
 Web向けのMicrosoft OAuth redirect_uriは環境ごとの固定値をsecretとして持たず、
 実際のリクエストURL(`https://<worker実際のオリジン>/api/v1/auth/microsoft/callback`)
@@ -133,7 +135,17 @@ MIIEvQIBADA...（秘密鍵の内容）
 npm run db:migrate:local
 ```
 
-### 7. ローカルの画像の初期データ
+### 7. Cloudflare へのログイン
+
+ローカルでも画像は Cloudflare 上の `rectime-images-dev` バケットを使うため、チームのアカウントにログインしておく。
+
+```bash
+npx wrangler login
+```
+
+`.env` などに `CLOUDFLARE_API_TOKEN` があると、ログインよりそちらが優先される。
+
+### 8. ローカルの画像の初期データ
 
 ```bash
 npm run images:seed:local
@@ -141,7 +153,7 @@ npm run images:seed:local
 
 画像が未登録の実施場所・集合場所すべてに、サンプル画像を紐づける。集合場所を作成したあとや、画像が表示されなくなったときは再度実行する。
 
-### 8. 起動
+### 9. 起動
 
 ```bash
 npm run dev
@@ -163,7 +175,7 @@ npm run deploy
 
 本番環境のシークレットは Cloudflare ダッシュボード または `wrangler secret put <KEY>` で設定する。
 
-画像を保存する R2 バケット（`rectime-images`・`rectime-images-staging`・`rectime-images-dev`）は、初回のデプロイ前に `wrangler r2 bucket create <バケット名>` で作成しておく。
+画像を保存する R2 バケット（`rectime-images`・`rectime-images-staging`・`rectime-images-dev`）は、初回のデプロイ前に `wrangler r2 bucket create <バケット名>` で作成しておく。画像は R2 の署名付きURLで直接配信するため、R2 の API トークン（Object Read only）を作成し、`R2_ACCESS_KEY_ID`・`R2_SECRET_ACCESS_KEY` を各環境のシークレットに設定する。
 
 運用時の監視、Smoke Test、障害切り分け、Rollback手順は
 [`docs/operations/ios-release-backend-runbook.md`](docs/operations/ios-release-backend-runbook.md)

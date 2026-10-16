@@ -66,6 +66,7 @@ import { createVenueController } from '../presentation/controllers/VenueControll
 import { createPlaceImageController } from '../presentation/controllers/PlaceImageController';
 import { createPlaceImageService } from '../application/services/PlaceImageService';
 import { createR2ImageStorage } from '../infrastructure/storages/R2ImageStorage';
+import { createR2ImageUrlSigner } from '../infrastructure/storages/R2ImageUrlSigner';
 import { createPlaceImageKeyRepository } from '../infrastructure/repositories/PlaceImageKeyRepository';
 import { createDeleteUnusedImage } from '../application/services/deleteUnusedImage';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
@@ -84,6 +85,11 @@ import { createAuthorizationService } from '../application/services/Authorizatio
 import type { Env } from '../lib/env';
 
 export function createDIContainer(env: Env) {
+  const imageUrlSigner = createR2ImageUrlSigner({
+    bucketUrl: env.IMAGES_BUCKET_URL,
+    accessKeyId: env.R2_ACCESS_KEY_ID,
+    secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+  });
   const db = getDb(env);
   const notificationScheduleActionController =
     createNotificationScheduleActionController(
@@ -187,6 +193,7 @@ export function createDIContainer(env: Env) {
     eventRepository,
     eventGatheringSettingsRepository,
     venueRepository,
+    imageUrlSigner,
     env.EVENT_DATE
   );
   const classRoomService = createClassRoomService(
@@ -252,9 +259,14 @@ export function createDIContainer(env: Env) {
   );
   const gatheringSpotService = createGatheringSpotService(
     gatheringSpotRepository,
-    deleteUnusedImage
+    deleteUnusedImage,
+    imageUrlSigner
   );
-  const venueService = createVenueService(venueRepository, deleteUnusedImage);
+  const venueService = createVenueService(
+    venueRepository,
+    deleteUnusedImage,
+    imageUrlSigner
+  );
   const placeImageService = createPlaceImageService(
     imageStorage,
     deleteUnusedImage,
@@ -267,7 +279,8 @@ export function createDIContainer(env: Env) {
   const eventGatheringSettingsService = createEventGatheringSettingsService(
     eventRepository,
     gatheringSpotRepository,
-    eventGatheringSettingsRepository
+    eventGatheringSettingsRepository,
+    imageUrlSigner
   );
 
   // Controllers

@@ -4,13 +4,25 @@ import { createGatheringSpotService } from '../../../src/application/services/Ga
 import type { IGatheringGroupMemberRepository } from '../../../src/domain/interfaces/repositories/IGatheringGroupMemberRepository';
 import type { IGatheringSpotRepository } from '../../../src/domain/interfaces/repositories/IGatheringSpotRepository';
 
+const imageUrlSigner = {
+  sign: async (key: string) => `https://signed.example/${key}`,
+};
+
 const deleteUnusedImage = vi.fn();
 
 describe('Gathering master services', () => {
-  it('集合場所の作成・一覧取得結果をRepositoryから返す', async () => {
+  it('集合場所の作成・一覧取得結果を、画像のURLに変換して返す', async () => {
     const spot = {
       gathering_spot_id: 1,
       gathering_spot_name: '体育館前',
+      image_key: 'gathering-spots/1/a.png',
+      created_at: '2026-01-01 00:00:00',
+      updated_at: '2026-01-01 00:00:00',
+    };
+    const expected = {
+      gathering_spot_id: 1,
+      gathering_spot_name: '体育館前',
+      image_url: 'https://signed.example/gathering-spots/1/a.png',
       created_at: '2026-01-01 00:00:00',
       updated_at: '2026-01-01 00:00:00',
     };
@@ -26,16 +38,23 @@ describe('Gathering master services', () => {
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
       replaceImageKey: vi.fn(),
     };
-    const service = createGatheringSpotService(repository, deleteUnusedImage);
+    const service = createGatheringSpotService(
+      repository,
+      deleteUnusedImage,
+      imageUrlSigner
+    );
 
-    await expect(service.createGatheringSpot('体育館前')).resolves.toBe(spot);
-    await expect(service.getAllGatheringSpots()).resolves.toEqual([spot]);
+    await expect(service.createGatheringSpot('体育館前')).resolves.toEqual(
+      expected
+    );
+    await expect(service.getAllGatheringSpots()).resolves.toEqual([expected]);
   });
 
   it('集合場所の更新をIDと入力値ごとRepositoryへ委譲する', async () => {
     const updatedSpot = {
       gathering_spot_id: 1,
       gathering_spot_name: '正門前',
+      image_key: null,
       created_at: '2026-01-01 00:00:00',
       updated_at: '2026-01-02 00:00:00',
     };
@@ -51,12 +70,20 @@ describe('Gathering master services', () => {
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
       replaceImageKey: vi.fn(),
     };
-    const service = createGatheringSpotService(repository, deleteUnusedImage);
+    const service = createGatheringSpotService(
+      repository,
+      deleteUnusedImage,
+      imageUrlSigner
+    );
     const input = { gathering_spot_name: '正門前' };
 
-    await expect(service.updateGatheringSpot(1, input)).resolves.toBe(
-      updatedSpot
-    );
+    await expect(service.updateGatheringSpot(1, input)).resolves.toEqual({
+      gathering_spot_id: 1,
+      gathering_spot_name: '正門前',
+      image_url: null,
+      created_at: '2026-01-01 00:00:00',
+      updated_at: '2026-01-02 00:00:00',
+    });
     expect(repository.update).toHaveBeenCalledWith(1, input);
   });
 
@@ -73,7 +100,11 @@ describe('Gathering master services', () => {
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
       replaceImageKey: vi.fn(),
     };
-    const service = createGatheringSpotService(repository, deleteUnusedImage);
+    const service = createGatheringSpotService(
+      repository,
+      deleteUnusedImage,
+      imageUrlSigner
+    );
 
     await expect(
       service.updateGatheringSpot(999, {
@@ -95,7 +126,11 @@ describe('Gathering master services', () => {
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
       replaceImageKey: vi.fn(),
     };
-    const service = createGatheringSpotService(repository, deleteUnusedImage);
+    const service = createGatheringSpotService(
+      repository,
+      deleteUnusedImage,
+      imageUrlSigner
+    );
 
     await expect(service.deleteGatheringSpot(1)).resolves.toBeUndefined();
     expect(repository.delete).toHaveBeenCalledWith(1);
@@ -117,7 +152,11 @@ describe('Gathering master services', () => {
       replaceImageKey: vi.fn(),
     };
     const deleteImage = vi.fn();
-    const service = createGatheringSpotService(repository, deleteImage);
+    const service = createGatheringSpotService(
+      repository,
+      deleteImage,
+      imageUrlSigner
+    );
 
     await service.deleteGatheringSpot(1);
 
@@ -137,7 +176,11 @@ describe('Gathering master services', () => {
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
       replaceImageKey: vi.fn(),
     };
-    const service = createGatheringSpotService(repository, deleteUnusedImage);
+    const service = createGatheringSpotService(
+      repository,
+      deleteUnusedImage,
+      imageUrlSigner
+    );
 
     await expect(service.deleteGatheringSpot(1)).rejects.toThrow(
       'Gathering spot is in use'
