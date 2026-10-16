@@ -24,6 +24,8 @@ describe('AdminNotificationQueryRepository', () => {
       env.DB.prepare('DELETE FROM gathering_spots'),
       env.DB.prepare('DELETE FROM students'),
       env.DB.prepare('DELETE FROM class_rooms'),
+      env.DB.prepare('DELETE FROM team_scores'),
+      env.DB.prepare('DELETE FROM teams'),
       env.DB.prepare('DELETE FROM staffs'),
       env.DB.prepare('DELETE FROM teachers'),
       env.DB.prepare('DELETE FROM events'),

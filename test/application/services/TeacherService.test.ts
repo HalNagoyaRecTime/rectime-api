@@ -48,7 +48,11 @@ function buildClassRoomRepository(
     create: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),
+    updateAndCleanupTeam: vi.fn(),
     delete: vi.fn(),
+    deleteAndCleanupTeam: vi.fn(),
+    teacherExists: vi.fn(),
+    existsWithTeamId: vi.fn(),
     hasStudents: vi.fn(),
     ...overrides,
   };

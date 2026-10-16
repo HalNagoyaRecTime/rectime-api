@@ -12,8 +12,10 @@ export function createAuthProfileService(
   return {
     async getProfile(identity) {
       const userId = Number(identity.id);
-      const student = await studentRepository.findByUserId(userId);
-      const categories = await userRepository.getUserCategories(userId);
+      const [student, categories] = await Promise.all([
+        studentRepository.findByUserId(userId),
+        userRepository.getUserCategories(userId),
+      ]);
       const teacher = categories.is_teacher
         ? await teacherRepository.findByUserId(userId)
         : null;
@@ -27,6 +29,8 @@ export function createAuthProfileService(
         student_id_number: student?.studentIdNumber ?? null,
         class_code: student?.classRoomCode ?? null,
         class_room_name: student?.classRoomName ?? null,
+        class_room_id: student?.classRoomId ?? null,
+        team_id: student?.teamId ?? null,
         attendance_number: student?.attendanceNumber ?? null,
         ...categories,
         ...(teacher

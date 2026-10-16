@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createUserStatusRepository } from '../../../src/infrastructure/repositories/UserStatusRepository';
 import type { IUserStatusRepository } from '../../../src/domain/interfaces/repositories/IUserStatusRepository';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 describe('UserStatusRepository', () => {
   let repo: IUserStatusRepository;
@@ -41,14 +42,15 @@ describe('UserStatusRepository', () => {
 
   it('無効化してもStudent固有データ・所属情報は保持される', async () => {
     await insertActiveStaff('残る管理者');
-    const classRoom = await env.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('KEEP', '保持確認') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(env.DB, {
+      classCode: 'KEEP',
+      className: '保持確認',
+    });
     const target = await insertUser('学生');
     await env.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 7, 'KEEP-001')"
     )
-      .bind(target, classRoom!.class_room_id)
+      .bind(target, classRoom.classRoomId)
       .run();
 
     await repo.updateLiveActive(target, false);
@@ -63,7 +65,7 @@ describe('UserStatusRepository', () => {
         student_id_number: string;
       }>();
     expect(student).toEqual({
-      class_room_id: classRoom!.class_room_id,
+      class_room_id: classRoom.classRoomId,
       attendance_number: 7,
       student_id_number: 'KEEP-001',
     });

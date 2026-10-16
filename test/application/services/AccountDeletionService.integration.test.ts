@@ -18,6 +18,7 @@ import { createNotificationAccountDeletionService } from '../../../src/applicati
 import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
 import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 import type { IGatheringGroupMemberRepository } from '../../../src/domain/interfaces/repositories/IGatheringGroupMemberRepository';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 // #265 PR4: 関連データの削除・匿名化を実DBで検証する。特に「D1・KV・
 // Firebaseの途中で失敗しても、安全に再実行・再開できる」ことを、同じ
@@ -610,16 +611,17 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
   );
 
   it('学生ユーザーの関連データを削除・匿名化し、再実行しても安全である', async () => {
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-1', '削除統合テストクラス') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'DEL-INT-1',
+      className: '削除統合テストクラス',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('統合削除太郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77001')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     const event = await workerEnv.DB.prepare(
@@ -755,11 +757,11 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     )
       .bind(user!.user_id, `teacher-${user!.user_id}@example.test`)
       .first<{ teacher_id: number }>();
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ('DEL-INT-2', '削除統合テストクラス2', ?) RETURNING class_room_id"
-    )
-      .bind(teacher!.teacher_id)
-      .first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'DEL-INT-2',
+      className: '削除統合テストクラス2',
+      teacherId: teacher!.teacher_id,
+    });
 
     await markAsDeleted(user!.user_id);
     const service = buildService();
@@ -775,7 +777,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     const classRoomRow = await workerEnv.DB.prepare(
       'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
     )
-      .bind(classRoom!.class_room_id)
+      .bind(classRoom.classRoomId)
       .first<{ teacher_id: number | null }>();
     expect(classRoomRow?.teacher_id).toBeNull();
 
@@ -799,16 +801,17 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
   });
 
   it('一部の関連データだけ既に削除された状態(途中失敗を模した状態)から再実行しても完了できる', async () => {
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-3', '再開テストクラス') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'DEL-INT-3',
+      className: '再開テストクラス',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('再開テスト太郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77002')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
     await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
       .bind(user!.user_id)
@@ -927,16 +930,17 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     // 通常の運用では起こりにくいが、同一user_idが複数ロールに同時に
     // 存在するケースでも、各リポジトリのdeleteByUserId/anonymizeByUserId
     // が独立してWHERE user_id = ?で動作し、正しく処理されることを確認する。
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-4', '複合ロールテストクラス') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'DEL-INT-4',
+      className: '複合ロールテストクラス',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('複合ロール太郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77003')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
     await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
       .bind(user!.user_id)
@@ -949,7 +953,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     await workerEnv.DB.prepare(
       'UPDATE class_rooms SET teacher_id = ? WHERE class_room_id = ?'
     )
-      .bind(teacher!.teacher_id, classRoom!.class_room_id)
+      .bind(teacher!.teacher_id, classRoom.classRoomId)
       .run();
 
     await markAsDeleted(user!.user_id);
@@ -973,7 +977,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     const classRoomRow = await workerEnv.DB.prepare(
       'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
     )
-      .bind(classRoom!.class_room_id)
+      .bind(classRoom.classRoomId)
       .first<{ teacher_id: number | null }>();
     expect(classRoomRow?.teacher_id).toBeNull();
 
@@ -1028,16 +1032,17 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
   });
 
   it('deletion_statusがdeletedでないユーザーに対しては例外を投げ、何も変更しない', async () => {
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-5', '順序違反テストクラス') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'DEL-INT-5',
+      className: '順序違反テストクラス',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('順序違反太郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77004')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
 
     // markAsDeletedを呼ばず(deletion_status: 'active'のまま)deleteRelatedData
@@ -1107,16 +1112,17 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     });
 
     it('途中失敗で後片付けが未完了のまま残った利用者を、再度のretryPendingPurges呼び出しで拾い直せる', async () => {
-      const classRoom = await workerEnv.DB.prepare(
-        "INSERT INTO class_rooms (class_code, class_name) VALUES ('DEL-INT-6', '再実行テストクラス') RETURNING class_room_id"
-      ).first<{ class_room_id: number }>();
+      const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+        classCode: 'DEL-INT-6',
+        className: '再実行テストクラス',
+      });
       const user = await workerEnv.DB.prepare(
         "INSERT INTO users (user_name) VALUES ('再実行対象太郎') RETURNING user_id"
       ).first<{ user_id: number }>();
       await workerEnv.DB.prepare(
         "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77005')"
       )
-        .bind(user!.user_id, classRoom!.class_room_id)
+        .bind(user!.user_id, classRoom.classRoomId)
         .run();
       await markAsDeleted(user!.user_id);
 
