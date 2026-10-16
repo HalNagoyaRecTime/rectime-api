@@ -21,8 +21,9 @@ export interface IGatheringSpotRepository {
   delete: (gatheringSpotId: number) => Promise<boolean>;
   hasGatherings: (gatheringSpotId: number) => Promise<boolean>;
   findImageKey: (gatheringSpotId: number) => Promise<PlaceImageKey | null>;
-  updateImageKey: (
+  replaceImageKey: (
     gatheringSpotId: number,
+    currentImageKey: string | null,
     imageKey: string | null
-  ) => Promise<void>;
+  ) => Promise<boolean>;
 }

@@ -12,7 +12,7 @@ function setup(overrides: Partial<IVenueRepository> = {}) {
     delete: vi.fn(),
     hasEvents: vi.fn().mockResolvedValue(false),
     findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
-    updateImageKey: vi.fn(),
+    replaceImageKey: vi.fn(),
     ...overrides,
   };
   const deleteUnusedImage = vi.fn();

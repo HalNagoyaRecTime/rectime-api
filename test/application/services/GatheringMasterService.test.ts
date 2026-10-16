@@ -24,7 +24,7 @@ describe('Gathering master services', () => {
       delete: vi.fn(),
       hasGatherings: vi.fn(),
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
-      updateImageKey: vi.fn(),
+      replaceImageKey: vi.fn(),
     };
     const service = createGatheringSpotService(repository, deleteUnusedImage);
 
@@ -49,7 +49,7 @@ describe('Gathering master services', () => {
       delete: vi.fn(),
       hasGatherings: vi.fn(),
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
-      updateImageKey: vi.fn(),
+      replaceImageKey: vi.fn(),
     };
     const service = createGatheringSpotService(repository, deleteUnusedImage);
     const input = { gathering_spot_name: '正門前' };
@@ -71,7 +71,7 @@ describe('Gathering master services', () => {
       delete: vi.fn(),
       hasGatherings: vi.fn(),
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
-      updateImageKey: vi.fn(),
+      replaceImageKey: vi.fn(),
     };
     const service = createGatheringSpotService(repository, deleteUnusedImage);
 
@@ -93,7 +93,7 @@ describe('Gathering master services', () => {
       delete: vi.fn().mockResolvedValue(true),
       hasGatherings: vi.fn().mockResolvedValue(false),
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
-      updateImageKey: vi.fn(),
+      replaceImageKey: vi.fn(),
     };
     const service = createGatheringSpotService(repository, deleteUnusedImage);
 
@@ -114,7 +114,7 @@ describe('Gathering master services', () => {
       findImageKey: vi
         .fn()
         .mockResolvedValue({ imageKey: 'gathering-spots/1/old.webp' }),
-      updateImageKey: vi.fn(),
+      replaceImageKey: vi.fn(),
     };
     const deleteImage = vi.fn();
     const service = createGatheringSpotService(repository, deleteImage);
@@ -135,7 +135,7 @@ describe('Gathering master services', () => {
       delete: vi.fn(),
       hasGatherings: vi.fn().mockResolvedValue(true),
       findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
-      updateImageKey: vi.fn(),
+      replaceImageKey: vi.fn(),
     };
     const service = createGatheringSpotService(repository, deleteUnusedImage);
 

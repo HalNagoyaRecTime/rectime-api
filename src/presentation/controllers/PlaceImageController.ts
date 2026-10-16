@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import { IPlaceImageService } from '../../application/services/IPlaceImageService';
+import { PLACE_IMAGE_CONFLICT } from '../../application/services/PlaceImageService';
 import { PlaceImage } from '../../domain/entities/PlaceImage';
 import { ApiErrorDefinition, errorResponse } from '../errors/errorResponse';
 import { EventErrors } from '../errors/eventErrors';
@@ -70,6 +71,9 @@ export function createPlaceImageController(
       if (error instanceof Error && error.message === target.notFoundMessage) {
         return errorResponse(c, target.notFoundError);
       }
+      if (error instanceof Error && error.message === PLACE_IMAGE_CONFLICT) {
+        return errorResponse(c, EventErrors.PLACE_IMAGE_CONFLICT);
+      }
       return errorResponse(c, EventErrors.PLACE_IMAGE_UPDATE_FAILED);
     }
   };
@@ -84,6 +88,9 @@ export function createPlaceImageController(
     } catch (error) {
       if (error instanceof Error && error.message === target.notFoundMessage) {
         return errorResponse(c, target.notFoundError);
+      }
+      if (error instanceof Error && error.message === PLACE_IMAGE_CONFLICT) {
+        return errorResponse(c, EventErrors.PLACE_IMAGE_CONFLICT);
       }
       return errorResponse(c, EventErrors.PLACE_IMAGE_DELETE_FAILED);
     }

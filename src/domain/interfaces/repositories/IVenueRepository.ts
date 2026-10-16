@@ -18,5 +18,9 @@ export interface IVenueRepository {
   delete: (venueId: number) => Promise<boolean>;
   hasEvents: (venueId: number) => Promise<boolean>;
   findImageKey: (venueId: number) => Promise<PlaceImageKey | null>;
-  updateImageKey: (venueId: number, imageKey: string | null) => Promise<void>;
+  replaceImageKey: (
+    venueId: number,
+    currentImageKey: string | null,
+    imageKey: string | null
+  ) => Promise<boolean>;
 }

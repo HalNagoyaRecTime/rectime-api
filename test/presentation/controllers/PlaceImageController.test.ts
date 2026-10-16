@@ -73,6 +73,20 @@ describe('PlaceImageController', () => {
     });
   });
 
+  it('画像が同時に変更されていたら409を返す', async () => {
+    const { app, placeImageService } = setup();
+    vi.mocked(placeImageService.setVenueImage).mockRejectedValue(
+      new Error('Place image conflict')
+    );
+
+    const response = await putImage(app, '/venues/1/image');
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'PLACE_IMAGE_CONFLICT' },
+    });
+  });
+
   it('不正な実施場所IDは400を返す', async () => {
     const { app, placeImageService } = setup();
 
@@ -110,6 +124,22 @@ describe('PlaceImageController', () => {
     expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({
       error: { code: 'GATHERING_SPOT_NOT_FOUND' },
+    });
+  });
+
+  it('削除の前に画像が変更されていたら409を返す', async () => {
+    const { app, placeImageService } = setup();
+    vi.mocked(placeImageService.deleteVenueImage).mockRejectedValue(
+      new Error('Place image conflict')
+    );
+
+    const response = await app.request('/venues/1/image', {
+      method: 'DELETE',
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'PLACE_IMAGE_CONFLICT' },
     });
   });
 

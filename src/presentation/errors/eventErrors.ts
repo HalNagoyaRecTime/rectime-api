@@ -201,6 +201,11 @@ export const EventErrors = {
     code: 'INVALID_PLACE_IMAGE',
     message: '画像はJPEG・PNG・WebP形式の5MB以下のファイルを指定してください',
   },
+  PLACE_IMAGE_CONFLICT: {
+    status: 409,
+    code: 'PLACE_IMAGE_CONFLICT',
+    message: '画像が同時に変更されました。もう一度お試しください',
+  },
   PLACE_IMAGE_UPDATE_FAILED: {
     status: 500,
     code: 'PLACE_IMAGE_UPDATE_FAILED',

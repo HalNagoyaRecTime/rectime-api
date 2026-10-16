@@ -1,5 +1,15 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc, count, desc, eq, inArray, like, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  like,
+  sql,
+} from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringSpotEntity } from '../../domain/entities/GatheringSpot';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
@@ -143,12 +153,20 @@ export function createGatheringSpotRepository(
       return row ?? null;
     },
 
-    async updateImageKey(gatheringSpotId, imageKey) {
-      await orm
+    async replaceImageKey(gatheringSpotId, currentImageKey, imageKey) {
+      const result = await orm
         .update(gathering_spots)
         .set({ imageKey, updatedAt: sql`CURRENT_TIMESTAMP` })
-        .where(eq(gathering_spots.id, gatheringSpotId))
+        .where(
+          and(
+            eq(gathering_spots.id, gatheringSpotId),
+            currentImageKey === null
+              ? isNull(gathering_spots.imageKey)
+              : eq(gathering_spots.imageKey, currentImageKey)
+          )
+        )
         .run();
+      return result.meta.changes > 0;
     },
   };
 }

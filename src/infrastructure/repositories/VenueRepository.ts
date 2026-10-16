@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { VenueEntity } from '../../domain/entities/Venue';
 import { IVenueRepository } from '../../domain/interfaces/repositories/IVenueRepository';
@@ -124,12 +124,20 @@ export function createVenueRepository(db: D1Database): IVenueRepository {
       return row ?? null;
     },
 
-    async updateImageKey(venueId, imageKey) {
-      await orm
+    async replaceImageKey(venueId, currentImageKey, imageKey) {
+      const result = await orm
         .update(venues)
         .set({ imageKey, updatedAt: sql`CURRENT_TIMESTAMP` })
-        .where(eq(venues.id, venueId))
+        .where(
+          and(
+            eq(venues.id, venueId),
+            currentImageKey === null
+              ? isNull(venues.imageKey)
+              : eq(venues.imageKey, currentImageKey)
+          )
+        )
         .run();
+      return result.meta.changes > 0;
     },
   };
 }

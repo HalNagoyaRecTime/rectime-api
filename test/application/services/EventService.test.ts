@@ -94,7 +94,7 @@ function createVenueRepository(
     delete: vi.fn(),
     hasEvents: vi.fn(),
     findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
-    updateImageKey: vi.fn(),
+    replaceImageKey: vi.fn(),
   };
 }
 

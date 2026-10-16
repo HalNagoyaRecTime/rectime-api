@@ -48,6 +48,10 @@ async function findImageKey(venueId: number): Promise<string | null> {
   return row!.image_key;
 }
 
+const PNG_BODY = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0,
+]);
+
 function countingBody(totalBytes: number) {
   const chunk = new Uint8Array(1024 * 1024);
   let read = 0;
@@ -102,7 +106,7 @@ async function request(
         'Content-Type': 'image/png',
         'X-Client-Type': 'web',
       },
-      body: method === 'PUT' ? new Uint8Array([1, 2, 3]) : undefined,
+      body: method === 'PUT' ? PNG_BODY : undefined,
     }),
     testEnv
   );
@@ -178,6 +182,26 @@ describe('実施場所の画像API', () => {
     expect(response.status).toBe(204);
     expect(await findImageKey(second)).toBe('venues/shared.png');
     expect(await workerEnv.IMAGES.get('venues/shared.png')).not.toBeNull();
+  });
+
+  it('PNG と宣言されていても中身が PNG でなければ400を返し、保存しない', async () => {
+    const token = await createToken(true);
+    const venueId = await insertVenue();
+
+    const response = await putImage(
+      `/venues/${venueId}/image`,
+      token,
+      new TextEncoder().encode('<html></html>')
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'INVALID_PLACE_IMAGE' },
+    });
+    expect(await findImageKey(venueId)).toBeNull();
+    expect(
+      (await workerEnv.IMAGES.list({ prefix: 'venues/' })).objects
+    ).toHaveLength(0);
   });
 
   it('Content-Length が5MBを超える本文は、読み込まずに400を返す', async () => {
