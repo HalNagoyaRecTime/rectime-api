@@ -10,6 +10,7 @@ type OpenApiOperation = {
 type OpenApiSchema = {
   required?: string[];
   allOf?: unknown[];
+  properties?: Record<string, unknown>;
 };
 
 type OpenApiDocument = {
@@ -32,14 +33,24 @@ beforeAll(async () => {
 });
 
 const mobileGetPaths = [
+  '/api/v1/me/events',
   '/api/v1/events',
   '/api/v1/events/{eventId}',
-  '/api/v1/events/{eventId}/gatherings',
   '/api/v1/me/notifications',
   '/api/v1/me/notifications/{notificationId}',
 ] as const;
 
 describe('mobile API contract', () => {
+  it('本人参加イベントは参加IDだけを必須として返す', () => {
+    const schema = document.components.schemas.MyEvent;
+    expect(schema?.required).toEqual(['event_id', 'gathering_ids']);
+    expect(Object.keys(schema?.properties ?? {}).sort()).toEqual([
+      'event_id',
+      'gathering_ids',
+    ]);
+    expect(schema?.allOf).toBeUndefined();
+  });
+
   it.each(mobileGetPaths)(
     'documents Bearer authentication for GET %s',
     path => {
@@ -60,20 +71,6 @@ describe('mobile API contract', () => {
         'venues',
         'start_time',
         'end_time',
-        'created_at',
-        'updated_at',
-      ],
-    ],
-    [
-      'Gathering',
-      [
-        'gathering_id',
-        'event_id',
-        'gathering_spot_id',
-        'gathering_time',
-        'round',
-        'event_name',
-        'gathering_spot_name',
         'created_at',
         'updated_at',
       ],

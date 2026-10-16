@@ -742,8 +742,10 @@ describe('NotificationDeliveryRepository and Service', () => {
       )
         .bind(fixture.scheduleId)
         .first<{ reason: string | null; failed_reason: string | null }>();
-      expect(failedReason?.reason).toContain('delivery generation blocked');
-      expect(failedReason?.failed_reason).toBeNull();
+      expect(failedReason?.reason).toBeNull();
+      expect(failedReason?.failed_reason).toContain(
+        'delivery generation blocked'
+      );
       expect(await deliveryRows(fixture.scheduleId)).toEqual([]);
     } finally {
       await env.DB.prepare(

@@ -80,6 +80,18 @@ describe('Admin notification POST to FCM', () => {
     expect(
       await getDelivery(fixture.delivery.notification_push_delivery_id)
     ).toMatchObject({ status: 'retry_wait', attempt_count: 1 });
+    const retryMessages: NotificationDeliveryMessage[] = [];
+    const retryEnv: Env = {
+      ...testEnv,
+      EVENT_DATE: '',
+      NOTIFICATION_DELIVERY_QUEUE: {
+        sendBatch: vi.fn(
+          async (messages: { body: NotificationDeliveryMessage }[]) => {
+            retryMessages.push(...messages.map(message => message.body));
+          }
+        ),
+      } as unknown as Env['NOTIFICATION_DELIVERY_QUEUE'],
+    };
     const { ctx, waitUntilPromises } = buildExecutionContext();
     await worker.scheduled(
       {
@@ -87,10 +99,29 @@ describe('Admin notification POST to FCM', () => {
         scheduledTime: NOW.getTime() + 11_000,
         noRetry: () => {},
       } as unknown as ScheduledEvent,
-      { ...testEnv, EVENT_DATE: '' },
+      retryEnv,
       ctx
     );
     await Promise.all(waitUntilPromises);
+    expect(retryMessages).toHaveLength(1);
+    expect(sendNotificationToTokenMock).toHaveBeenCalledTimes(1);
+    // CronはQueueへ分散し、Queue消費で実際の再送とattempt更新を行う。
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(NOW.getTime() + 11_000));
+    try {
+      await worker.queue(
+        {
+          messages: retryMessages.map(body => ({
+            body,
+            ack: vi.fn(),
+            retry: vi.fn(),
+          })),
+        } as unknown as MessageBatch<NotificationDeliveryMessage>,
+        retryEnv
+      );
+    } finally {
+      vi.useRealTimers();
+    }
     expect(sendNotificationToTokenMock).toHaveBeenCalledTimes(2);
     expect(
       await getDelivery(fixture.delivery.notification_push_delivery_id)

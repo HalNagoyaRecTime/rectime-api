@@ -7,6 +7,7 @@ export const NOTIFICATION_DELIVERY_LEASE_TIMEOUT_MS = 6 * 60 * 1000;
 
 export interface NotificationDeliveryMessage {
   notificationScheduleIds: number[];
+  retryDeliveryIds?: number[];
 }
 
 export const NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT = 100;

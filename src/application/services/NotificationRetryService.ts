@@ -1,7 +1,7 @@
 import type { ClaimedNotificationPushDelivery } from '../../domain/entities/NotificationDelivery';
-import { NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT } from '../../domain/entities/NotificationDelivery';
 import { firebasePlatformToName } from '../../domain/entities/FirebaseToken';
 import type { INotificationDeliveryRepository } from '../../domain/interfaces/repositories/INotificationDeliveryRepository';
+import type { INotificationDeliveryQueue } from '../../domain/interfaces/queues/INotificationDeliveryQueue';
 import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 import { FcmRequestError, type IFcmService } from './IFcmService';
 import type {
@@ -9,9 +9,18 @@ import type {
   NotificationDeliveryOutcome,
 } from './INotificationRetryService';
 
-export const FCM_RETRY_OFFSETS_SECONDS = [10, 30, 120, 300, 900] as const;
-export const FCM_PROCESSING_TIMEOUT_SECONDS = 120;
-export const FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS = 70;
+import {
+  FCM_RETRY_OFFSETS_SECONDS,
+  FCM_RETRY_WINDOW_SECONDS,
+  FCM_MAX_ATTEMPTS,
+  FCM_PROCESSING_TIMEOUT_SECONDS,
+  FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS,
+} from '../../domain/entities/NotificationRetryPolicy';
+export {
+  FCM_RETRY_OFFSETS_SECONDS,
+  FCM_PROCESSING_TIMEOUT_SECONDS,
+  FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS,
+} from '../../domain/entities/NotificationRetryPolicy';
 
 // HTTP v1の一時系Retryは公式表の429 / 500 / 503と対応error statusに限定する。
 // INVALID_ARGUMENTでTokenは削除しない（payload不正でも返り得る）。
@@ -43,6 +52,7 @@ export function createNotificationRetryService(deps: {
   notificationDeliveryRepository: INotificationDeliveryRepository;
   firebaseTokenRepository: Pick<IFirebaseTokenRepository, 'deleteById'>;
   fcmService: IFcmService;
+  notificationDeliveryQueue?: INotificationDeliveryQueue;
 }): INotificationRetryService {
   const repository = deps.notificationDeliveryRepository;
   const sendClaimedDelivery = async (
@@ -50,6 +60,15 @@ export function createNotificationRetryService(deps: {
     now = new Date()
   ): Promise<NotificationDeliveryOutcome> => {
     const nowIso = now.toISOString();
+    const ownsLease = await repository.renewDeliveryLease(
+      delivery.notification_push_delivery_id,
+      delivery.attempt_count,
+      nowIso,
+      new Date(
+        now.getTime() - FCM_PROCESSING_TIMEOUT_SECONDS * 1000
+      ).toISOString()
+    );
+    if (!ownsLease) return 'superseded';
     let messageId: string;
     try {
       const response = await deps.fcmService.sendNotificationToToken({
@@ -79,8 +98,7 @@ export function createNotificationRetryService(deps: {
         offset => Date.parse(delivery.first_attempt_at) + offset * 1000
       ).find(milestone => milestone > now.getTime());
       const retryWindowEndsAt =
-        Date.parse(delivery.first_attempt_at) +
-        FCM_RETRY_OFFSETS_SECONDS[FCM_RETRY_OFFSETS_SECONDS.length - 1] * 1000;
+        Date.parse(delivery.first_attempt_at) + FCM_RETRY_WINDOW_SECONDS * 1000;
       if (classification !== 'temporary' || nextMilestone === undefined) {
         return (await repository.markFailed(
           delivery.notification_push_delivery_id,
@@ -134,7 +152,43 @@ export function createNotificationRetryService(deps: {
   };
   return {
     sendClaimedDelivery,
-    async retryDueDeliveries(now = new Date()) {
+    async enqueueDueDeliveries(now = new Date()) {
+      if (!deps.notificationDeliveryQueue)
+        throw new Error('再送Queueが設定されていません');
+      const nowIso = now.toISOString();
+      const staleBefore = new Date(
+        now.getTime() - FCM_PROCESSING_TIMEOUT_SECONDS * 1000
+      ).toISOString();
+      const retired = await repository.retireUnsendableDeliveries(
+        nowIso,
+        staleBefore,
+        FCM_MAX_ATTEMPTS
+      );
+      for (const id of retired)
+        await repository.completeScheduleIfDone(id, nowIso);
+      let afterId = 0;
+      let queued = 0;
+      while (true) {
+        const ids = await repository.findDueRetryDeliveryIds(
+          nowIso,
+          staleBefore,
+          afterId,
+          90
+        );
+        if (ids.length === 0) break;
+        // Queueに入れる段階ではclaimせず、実際に送信するWorkerが取得する。
+        await deps.notificationDeliveryQueue.enqueueMany([
+          { notificationScheduleIds: [], retryDeliveryIds: ids },
+        ]);
+        queued += ids.length;
+        afterId = ids[ids.length - 1];
+      }
+      return queued;
+    },
+    async retryDueDeliveries(now, deliveryIds) {
+      const suppliedNow = now;
+      const clock = suppliedNow ? () => suppliedNow : () => new Date();
+      now = clock();
       const nowIso = now.toISOString();
       const staleBefore = new Date(
         now.getTime() - FCM_PROCESSING_TIMEOUT_SECONDS * 1000
@@ -142,28 +196,37 @@ export function createNotificationRetryService(deps: {
       const retiredScheduleIds = await repository.retireUnsendableDeliveries(
         nowIso,
         staleBefore,
-        FCM_RETRY_OFFSETS_SECONDS.length + 1
+        FCM_MAX_ATTEMPTS
       );
-      const deliveries = await repository.claimRetryDeliveries(
-        nowIso,
-        staleBefore,
-        NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT
-      );
-      const result = { claimed: deliveries.length, sent: 0, failed: 0 };
+      const result = { claimed: 0, sent: 0, failed: 0 };
       const errors: unknown[] = [];
-      for (const delivery of deliveries) {
-        try {
-          const outcome = await sendClaimedDelivery(delivery, now);
-          if (outcome === 'sent') result.sent++;
-          if (outcome === 'failed') result.failed++;
-        } catch (error) {
-          errors.push(error);
-        }
+      const scheduleIds = new Set<number>();
+      while (true) {
+        const current = clock();
+        const deliveries = await repository.claimRetryDeliveries(
+          current.toISOString(),
+          new Date(
+            current.getTime() - FCM_PROCESSING_TIMEOUT_SECONDS * 1000
+          ).toISOString(),
+          5,
+          deliveryIds
+        );
+        if (deliveries.length === 0) break;
+        result.claimed += deliveries.length;
+        await Promise.all(
+          deliveries.map(async delivery => {
+            scheduleIds.add(delivery.notification_schedule_id);
+            try {
+              const outcome = await sendClaimedDelivery(delivery, current);
+              if (outcome === 'sent') result.sent++;
+              if (outcome === 'failed') result.failed++;
+            } catch (error) {
+              errors.push(error);
+            }
+          })
+        );
       }
-      for (const scheduleId of new Set([
-        ...retiredScheduleIds,
-        ...deliveries.map(delivery => delivery.notification_schedule_id),
-      ]))
+      for (const scheduleId of new Set([...retiredScheduleIds, ...scheduleIds]))
         await repository.completeScheduleIfDone(scheduleId, nowIso);
       if (errors.length > 0) throw errors[0];
       return result;

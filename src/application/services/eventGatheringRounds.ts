@@ -4,9 +4,11 @@ import type {
   GatheringSettingDTO,
   RoundSettingDTO,
 } from '../dto/EventGatheringSettingsDTO';
+import type { ImageUrlOf } from './imageUrls';
 
 function toGatheringSettingDTO(
-  gathering: EventGatheringEntity
+  gathering: EventGatheringEntity,
+  imageUrlOf: ImageUrlOf
 ): GatheringSettingDTO {
   return {
     gathering_id: gathering.gathering_id,
@@ -14,6 +16,7 @@ function toGatheringSettingDTO(
     gathering_spot: {
       gathering_spot_id: gathering.gathering_spot_id,
       gathering_spot_name: gathering.gathering_spot_name,
+      image_url: imageUrlOf(gathering.gathering_spot_image_key),
     },
     member_count: gathering.member_count,
   };
@@ -30,17 +33,18 @@ function toGatheringSettingDTO(
  * Application Serviceからも呼べる形にしている。
  */
 export function buildRoundSettings(
-  gatherings: EventGatheringEntity[]
+  gatherings: EventGatheringEntity[],
+  imageUrlOf: ImageUrlOf
 ): RoundSettingDTO[] {
   const rounds: RoundSettingDTO[] = [];
   for (const gathering of gatherings) {
     const last = rounds[rounds.length - 1];
     if (last && last.round === gathering.round) {
-      last.gatherings.push(toGatheringSettingDTO(gathering));
+      last.gatherings.push(toGatheringSettingDTO(gathering, imageUrlOf));
     } else {
       rounds.push({
         round: gathering.round,
-        gatherings: [toGatheringSettingDTO(gathering)],
+        gatherings: [toGatheringSettingDTO(gathering, imageUrlOf)],
       });
     }
   }
@@ -49,7 +53,11 @@ export function buildRoundSettings(
 
 export function buildEventGatheringSettings(
   eventId: number,
-  gatherings: EventGatheringEntity[]
+  gatherings: EventGatheringEntity[],
+  imageUrlOf: ImageUrlOf
 ): EventGatheringSettingsDTO {
-  return { event_id: eventId, rounds: buildRoundSettings(gatherings) };
+  return {
+    event_id: eventId,
+    rounds: buildRoundSettings(gatherings, imageUrlOf),
+  };
 }

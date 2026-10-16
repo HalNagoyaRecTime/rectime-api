@@ -1,6 +1,10 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { ClaimedNotificationPushDelivery } from '../../domain/entities/NotificationDelivery';
 import type { INotificationDeliveryRepository } from '../../domain/interfaces/repositories/INotificationDeliveryRepository';
+import {
+  FCM_MAX_ATTEMPTS,
+  FCM_RETRY_WINDOW_SECONDS,
+} from '../../domain/entities/NotificationRetryPolicy';
 
 interface CandidateRow {
   notification_schedule_id: number;
@@ -174,8 +178,62 @@ export function createNotificationDeliveryRepository(
     async claimPendingDeliveries(scheduleIds, now, limit) {
       return claimDeliveries(db, scheduleIds, now, limit);
     },
-    async claimRetryDeliveries(now, staleBefore, limit) {
-      return claimDeliveries(db, null, now, limit, staleBefore);
+    async claimRetryDeliveries(now, staleBefore, limit, deliveryIds) {
+      return claimDeliveries(db, null, now, limit, staleBefore, deliveryIds);
+    },
+    async findDueRetryDeliveryIds(now, staleBefore, afterId, limit) {
+      const rows = await db
+        .prepare(
+          `SELECT d.notification_push_delivery_id
+        FROM notification_push_deliveries d
+        JOIN notification_recipients r USING (notification_recipient_id)
+        JOIN notification_schedules s USING (notification_schedule_id)
+        JOIN notifications n USING (notification_id)
+        WHERE d.notification_push_delivery_id > ? AND s.send_status = 'sending'
+          AND n.notification_type = 'notification_general' AND d.firebase_token_id IS NOT NULL
+          AND d.attempt_count < ? AND julianday(d.first_attempt_at, ?) >= julianday(?)
+          AND ((d.status = 'retry_wait' AND julianday(d.next_retry_at) <= julianday(?))
+            OR (d.status = 'sending' AND julianday(d.last_attempt_at) < julianday(?)))
+        ORDER BY d.notification_push_delivery_id LIMIT ?`
+        )
+        .bind(
+          afterId,
+          FCM_MAX_ATTEMPTS,
+          `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
+          now,
+          now,
+          staleBefore,
+          limit
+        )
+        .all<DeliveryIdRow>();
+      return rows.results.map(row => row.notification_push_delivery_id);
+    },
+    async renewDeliveryLease(deliveryId, attemptCount, now, staleBefore) {
+      // attemptを所有するWorkerだけが、送信直前にleaseを更新できる。
+      const result = await db
+        .prepare(
+          `UPDATE notification_push_deliveries
+        SET last_attempt_at = ?, updated_at = ?
+        WHERE notification_push_delivery_id = ? AND status = 'sending' AND attempt_count = ?
+          AND julianday(last_attempt_at) >= julianday(?)
+          AND julianday(first_attempt_at, ?) >= julianday(?)
+          AND firebase_token_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM notification_recipients r
+            JOIN notification_schedules s USING (notification_schedule_id)
+            WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id
+              AND s.send_status = 'sending')`
+        )
+        .bind(
+          now,
+          now,
+          deliveryId,
+          attemptCount,
+          staleBefore,
+          `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
+          now
+        )
+        .run();
+      return result.meta.changes === 1;
     },
     async retireUnsendableDeliveries(now, staleBefore, maxAttempts) {
       const retired = await db
@@ -191,11 +249,17 @@ export function createNotificationDeliveryRepository(
             SELECT 1 FROM notification_recipients r JOIN notification_schedules s USING (notification_schedule_id)
             WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND s.send_status = 'stopped'
           ) OR (status IN ('retry_wait', 'sending') AND first_attempt_at IS NOT NULL
-            AND julianday(first_attempt_at, '+900 seconds') < julianday(?)))
+            AND julianday(first_attempt_at, ?) < julianday(?)))
         RETURNING (SELECT notification_schedule_id FROM notification_recipients r
           WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id) AS notification_schedule_id`
         )
-        .bind(now, staleBefore, maxAttempts, now)
+        .bind(
+          now,
+          staleBefore,
+          maxAttempts,
+          `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
+          now
+        )
         .all<{ notification_schedule_id: number }>();
       return [
         ...new Set(retired.results.map(row => row.notification_schedule_id)),
@@ -297,7 +361,7 @@ export function createNotificationDeliveryRepository(
       const result = await db
         .prepare(
           `UPDATE notification_schedules
-           SET send_status = 'failed', reason = ?, updated_at = ?
+           SET send_status = 'failed', failed_reason = ?, updated_at = ?
            WHERE notification_schedule_id = ?
              AND send_status = 'resolving'
              AND recipients_resolved_at IS NOT NULL
@@ -319,16 +383,25 @@ async function claimDeliveries(
   scheduleIds: number[] | null,
   now: string,
   limit: number,
-  staleBefore?: string
+  staleBefore?: string,
+  deliveryIds?: number[]
 ): Promise<ClaimedNotificationPushDelivery[]> {
-  if (scheduleIds?.length === 0) return [];
+  if (scheduleIds?.length === 0 || deliveryIds?.length === 0) return [];
   const schedulePlaceholders = scheduleIds?.map(() => '?').join(', ');
   const eligible =
     staleBefore === undefined
       ? "status = 'pending'"
-      : "attempt_count < 6 AND first_attempt_at IS NOT NULL AND julianday(first_attempt_at, '+900 seconds') >= julianday(?) AND ((status = 'retry_wait' AND julianday(next_retry_at) <= julianday(?)) OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))";
+      : "attempt_count < ? AND first_attempt_at IS NOT NULL AND julianday(first_attempt_at, ?) >= julianday(?) AND ((status = 'retry_wait' AND julianday(next_retry_at) <= julianday(?)) OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))";
   const eligibilityBindings =
-    staleBefore === undefined ? [] : [now, now, staleBefore];
+    staleBefore === undefined
+      ? []
+      : [
+          FCM_MAX_ATTEMPTS,
+          `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
+          now,
+          now,
+          staleBefore,
+        ];
   const qualifiedEligible = eligible.replace(
     /\b(status|attempt_count|next_retry_at|last_attempt_at)\b/g,
     'd.$1'
@@ -346,11 +419,17 @@ async function claimDeliveries(
              AND s.send_status = 'sending'
              AND n.notification_type = 'notification_general'
              AND ${qualifiedEligible}
+             ${deliveryIds ? `AND d.notification_push_delivery_id IN (${deliveryIds.map(() => '?').join(', ')})` : ''}
              AND d.firebase_token_id IS NOT NULL
            ORDER BY d.notification_push_delivery_id
            LIMIT ?`
     )
-    .bind(...(scheduleIds ?? []), ...eligibilityBindings, limit)
+    .bind(
+      ...(scheduleIds ?? []),
+      ...eligibilityBindings,
+      ...(deliveryIds ?? []),
+      limit
+    )
     .all<DeliveryIdRow>();
   if (candidates.results.length === 0) return [];
 

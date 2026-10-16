@@ -11,7 +11,7 @@ function buildEvent(
     event_id: 1,
     event_name: '徒競走',
     rule_text: null,
-    venues: [{ venue_id: 2, venue_name: 'トラック' }],
+    venues: [{ venue_id: 2, venue_name: 'トラック', image_key: null }],
     start_time: '0930',
     end_time: '0950',
     created_at: '2026-01-01',
@@ -53,7 +53,7 @@ describe('EventController', () => {
       const { app, eventService } = setup();
       const events = [buildEvent()];
       (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
-        { events, total: 1, limit: 50, offset: 0 }
+        { event_date: null, events, total: 1, limit: 50, offset: 0 }
       );
 
       const response = await app.request('/events');
@@ -65,6 +65,7 @@ describe('EventController', () => {
       });
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
+        event_date: null,
         events,
         total: 1,
         limit: 50,
@@ -72,11 +73,32 @@ describe('EventController', () => {
       });
     });
 
+    it('Serviceの開催日を環境変数で上書きせずそのまま返す', async () => {
+      const { app, eventService } = setup();
+      const result = {
+        event_date: '2026-10-09',
+        events: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      };
+      (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
+        result
+      );
+      const response = await app.request(
+        '/events',
+        {},
+        { EVENT_DATE: '2026-10-10' }
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(result);
+    });
+
     it('start_time、limit、offsetクエリの値をサービスに渡す', async () => {
       const { app, eventService } = setup();
       const events = [buildEvent()];
       (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
-        { events, total: 1, limit: 10, offset: 20 }
+        { event_date: null, events, total: 1, limit: 10, offset: 20 }
       );
 
       const response = await app.request(
@@ -90,6 +112,7 @@ describe('EventController', () => {
       });
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
+        event_date: null,
         events,
         total: 1,
         limit: 10,
@@ -116,6 +139,7 @@ describe('EventController', () => {
       const { app, eventService } = setup();
       (eventService.getAllEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
         {
+          event_date: null,
           events: [],
           total: 0,
           limit: 100,
@@ -243,7 +267,7 @@ describe('EventController', () => {
 
     it('認証済みユーザーIDでServiceを呼び出し、参加イベント一覧を返す', async () => {
       const { app, eventService } = setup();
-      const events = [buildEvent()];
+      const events = [{ event_id: 1, gathering_ids: [101, 102] }];
       (eventService.getMyEvents as ReturnType<typeof vi.fn>).mockResolvedValue(
         events
       );
