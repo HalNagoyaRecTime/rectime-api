@@ -2,6 +2,7 @@ import type {
   StudentEntity,
   StudentPage,
   StudentSearchFilter,
+  StudentUpdateInput,
   StudentWriteInput,
 } from '../../entities/Student';
 
@@ -28,7 +29,7 @@ export interface IStudentRepository {
   create: (student: StudentWriteInput) => Promise<StudentEntity>;
   update: (
     id: number,
-    student: StudentWriteInput
+    student: StudentUpdateInput
   ) => Promise<StudentEntity | null>;
   createMany: (input: BulkCreateStudentsInput) => Promise<void>;
   // アカウント削除(#265 PR4)専用。student_id_numberはUNIQUE制約付きで、

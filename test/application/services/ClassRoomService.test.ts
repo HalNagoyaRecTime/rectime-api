@@ -210,6 +210,129 @@ describe('ClassRoomService', () => {
     ).rejects.toThrow('Class code already exists');
   });
 
+  describe('版番号による楽観ロック', () => {
+    const existingClassRoom = (lockVersion: number) => ({
+      classRoomId: 1,
+      classCode: 'OLD',
+      className: '旧クラス',
+      studentCount: 0,
+      teacher: null,
+      updatedAt: '2026-01-01 00:00:00',
+      lockVersion,
+    });
+    const input = {
+      classCode: 'IA14A',
+      className: '高度情報学科AI開発先行コース',
+      teacherId: null,
+    };
+
+    it('lockVersion が取得時点と異なれば、担任の確認より先に409用エラーにする', async () => {
+      const repo = repository();
+      (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        existingClassRoom(2)
+      );
+      const teachers = teacherRepository();
+
+      await expect(
+        createClassRoomService(repo, teachers).updateClassRoom(1, {
+          ...input,
+          teacherId: 5,
+          lockVersion: 1,
+        })
+      ).rejects.toThrow('Class update conflict');
+      expect(teachers.existsById).not.toHaveBeenCalled();
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('lockVersion が一致すれば、expectedLockVersion を付けて update を呼ぶ', async () => {
+      const repo = repository();
+      (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        existingClassRoom(1)
+      );
+      (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...existingClassRoom(3),
+        classCode: 'IA14A',
+      });
+
+      const result = await createClassRoomService(
+        repo,
+        teacherRepository()
+      ).updateClassRoom(1, { ...input, lockVersion: 1 });
+
+      expect(repo.update).toHaveBeenCalledWith(1, {
+        ...input,
+        expectedLockVersion: 1,
+      });
+      expect(result.lock_version).toBe(3);
+    });
+
+    it('lockVersion を指定しなければ、版番号を比較せず expectedLockVersion も渡さない', async () => {
+      const repo = repository();
+      (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        existingClassRoom(1)
+      );
+      (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+        existingClassRoom(3)
+      );
+
+      await createClassRoomService(repo, teacherRepository()).updateClassRoom(
+        1,
+        input
+      );
+
+      expect(repo.update).toHaveBeenCalledWith(1, {
+        ...input,
+        expectedLockVersion: undefined,
+      });
+    });
+
+    it('確認後に更新された競合（update が null）は、教室が残っていれば409用エラーにする', async () => {
+      const repo = repository();
+      (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        existingClassRoom(1)
+      );
+      (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+      await expect(
+        createClassRoomService(repo, teacherRepository()).updateClassRoom(1, {
+          ...input,
+          lockVersion: 1,
+        })
+      ).rejects.toThrow('Class update conflict');
+    });
+
+    it('確認後に削除された競合（update が null）は、404用エラーにする', async () => {
+      const repo = repository();
+      (repo.findById as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(existingClassRoom(1))
+        .mockResolvedValueOnce(null);
+      (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+      await expect(
+        createClassRoomService(repo, teacherRepository()).updateClassRoom(1, {
+          ...input,
+          lockVersion: 1,
+        })
+      ).rejects.toThrow('Class not found');
+    });
+
+    it('lockVersion を指定せず update が null なら、再確認せず404用エラーにする', async () => {
+      const repo = repository();
+      (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        existingClassRoom(1)
+      );
+      (repo.update as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+      await expect(
+        createClassRoomService(repo, teacherRepository()).updateClassRoom(
+          1,
+          input
+        )
+      ).rejects.toThrow('Class not found');
+      expect(repo.findById).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('学生が所属するクラスの削除を拒否する', async () => {
     const repo = repository();
     (repo.hasStudents as ReturnType<typeof vi.fn>).mockResolvedValue(true);

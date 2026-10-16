@@ -13,6 +13,8 @@ function buildTeacher(overrides: Partial<TeacherEntity> = {}): TeacherEntity {
     isLiveActive: true,
     isStaff: false,
     classRooms: [],
+    updatedAt: '2026-01-01 00:00:00',
+    lockVersion: 0,
     ...overrides,
   };
 }
@@ -78,6 +80,8 @@ describe('TeacherService', () => {
         is_live_active: true,
         is_staff: false,
         class_rooms: [],
+        updated_at: '2026-01-01 00:00:00',
+        lock_version: 0,
       });
       expect(
         classRoomRepository.findExistingClassRoomIds
@@ -125,6 +129,8 @@ describe('TeacherService', () => {
           class_code: classRoom.classCode,
           class_name: classRoom.className,
         })),
+        updated_at: teacher.updatedAt,
+        lock_version: teacher.lockVersion,
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
     });
@@ -417,6 +423,102 @@ describe('TeacherService', () => {
           classRoomIds: [],
         })
       ).rejects.toThrow('teachers.user_id');
+    });
+  });
+
+  describe('updateTeacher（版番号による楽観ロック）', () => {
+    const input = {
+      userName: '更新済み先生',
+      email: 'svc-lock@example.ac.jp',
+      classRoomIds: [1],
+    };
+
+    it('lockVersion が取得時点と異なれば、クラスの確認より先に409用エラーにする', async () => {
+      const repository = buildRepository({
+        findById: vi.fn().mockResolvedValue(buildTeacher({ lockVersion: 2 })),
+        update: vi.fn(),
+      });
+      const classRoomRepository = buildClassRoomRepository();
+      const service = createTeacherService(repository, classRoomRepository);
+
+      await expect(
+        service.updateTeacher(1, { ...input, lockVersion: 1 })
+      ).rejects.toThrow('Teacher update conflict');
+      expect(
+        classRoomRepository.findExistingClassRoomIds
+      ).not.toHaveBeenCalled();
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('lockVersion が一致すれば、expectedLockVersion を付けて update を呼ぶ', async () => {
+      const repository = buildRepository({
+        findById: vi.fn().mockResolvedValue(buildTeacher({ lockVersion: 1 })),
+        update: vi.fn().mockResolvedValue(buildTeacher({ lockVersion: 3 })),
+      });
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
+
+      const dto = await service.updateTeacher(1, {
+        ...input,
+        lockVersion: 1,
+      });
+
+      expect(repository.update).toHaveBeenCalledWith(1, {
+        ...input,
+        expectedLockVersion: 1,
+      });
+      expect(dto.lock_version).toBe(3);
+    });
+
+    it('確認後に更新された競合（update が null）は、教員が残っていれば409用エラーにする', async () => {
+      const repository = buildRepository({
+        findById: vi.fn().mockResolvedValue(buildTeacher({ lockVersion: 1 })),
+        update: vi.fn().mockResolvedValue(null),
+      });
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
+
+      await expect(
+        service.updateTeacher(1, { ...input, lockVersion: 1 })
+      ).rejects.toThrow('Teacher update conflict');
+    });
+
+    it('確認後に削除された競合（update が null）は、404用エラーにする', async () => {
+      const repository = buildRepository({
+        findById: vi
+          .fn()
+          .mockResolvedValueOnce(buildTeacher({ lockVersion: 1 }))
+          .mockResolvedValueOnce(null),
+        update: vi.fn().mockResolvedValue(null),
+      });
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
+
+      await expect(
+        service.updateTeacher(1, { ...input, lockVersion: 1 })
+      ).rejects.toThrow('Teacher not found');
+    });
+
+    it('lockVersion を指定せず update が null なら、再確認せず404用エラーにする', async () => {
+      const repository = buildRepository({
+        findById: vi.fn().mockResolvedValue(buildTeacher()),
+        update: vi.fn().mockResolvedValue(null),
+      });
+      const service = createTeacherService(
+        repository,
+        buildClassRoomRepository()
+      );
+
+      await expect(service.updateTeacher(1, input)).rejects.toThrow(
+        'Teacher not found'
+      );
+      expect(repository.findById).toHaveBeenCalledTimes(1);
     });
   });
 

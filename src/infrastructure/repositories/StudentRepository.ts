@@ -17,6 +17,7 @@ import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import type {
   StudentEntity,
   StudentPage,
+  StudentUpdateInput,
   StudentWriteInput,
 } from '../../domain/entities/Student';
 import {
@@ -67,6 +68,8 @@ function toDomain(row: StudentJoinRow): StudentEntity {
     studentIdNumber: row.students.studentIdNumber,
     isLiveActive: row.users.isLiveActive === 1,
     isStaff: Boolean(row.staffs),
+    updatedAt: row.students.updatedAt,
+    lockVersion: row.students.lockVersion,
   };
 }
 
@@ -268,8 +271,15 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
 
     async update(
       id: number,
-      student: StudentWriteInput
+      student: StudentUpdateInput
     ): Promise<StudentEntity | null> {
+      // 版番号(expectedLockVersion)が指定された場合は、2文とも「取得時点から
+      // studentsの行が変更されていない」ことを条件にする。batch() は文ごとに
+      // 実行されるため、片方だけに条件を付けると、不一致のときに users だけ
+      // 書き換わってしまう。users の更新は students の更新より先に置く
+      // （後に置くと、先に進んだ students.lock_version と一致しなくなる）。
+      // 版番号は更新のたびに必ず1ずつ増えるため、updated_at（秒単位）では
+      // 区別できない同じ秒内の更新も検出できる。
       const [userResult, studentResult] = await db.batch<
         ReturnedUserRow | ReturnedStudentRow
       >([
@@ -280,14 +290,29 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
              WHERE user_id = (
                SELECT user_id FROM students WHERE student_id = ?
              )
+               AND (
+                 ? IS NULL OR EXISTS (
+                   SELECT 1 FROM students
+                   WHERE student_id = ? AND lock_version = ?
+                 )
+               )
              RETURNING user_id, user_name, is_live_active`
           )
-          .bind(student.displayName, id),
+          .bind(
+            student.displayName,
+            id,
+            // D1は番号付きプレースホルダを使えないため、版番号の条件は値を繰り返し渡す
+            student.expectedLockVersion ?? null,
+            id,
+            student.expectedLockVersion ?? null
+          ),
         db
           .prepare(
             `UPDATE students
-             SET class_room_id = ?, attendance_number = ?, student_id_number = ?, updated_at = CURRENT_TIMESTAMP
+             SET class_room_id = ?, attendance_number = ?, student_id_number = ?, updated_at = CURRENT_TIMESTAMP,
+                 lock_version = lock_version + 1
              WHERE student_id = ?
+               AND (? IS NULL OR lock_version = ?)
              RETURNING
                student_id,
                user_id,
@@ -305,6 +330,8 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
             student.attendanceNumber,
             student.studentIdNumber,
             id,
+            student.expectedLockVersion ?? null,
+            student.expectedLockVersion ?? null,
             student.classRoomId
           ),
       ]);
@@ -442,6 +469,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .set({
           studentIdNumber: `deleted-${userId}`,
           updatedAt: new Date().toISOString(),
+          lockVersion: sql`${students.lockVersion} + 1`,
         })
         .where(eq(students.userId, userId))
         .run();

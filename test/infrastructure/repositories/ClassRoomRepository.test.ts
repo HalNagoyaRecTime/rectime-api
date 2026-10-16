@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createClassRoomRepository } from '../../../src/infrastructure/repositories/ClassRoomRepository';
+import { createUserStatusRepository } from '../../../src/infrastructure/repositories/UserStatusRepository';
 import type { IClassRoomRepository } from '../../../src/domain/interfaces/repositories/IClassRoomRepository';
 import * as schema from '../../../src/infrastructure/database/schema';
 import {
@@ -186,6 +187,21 @@ describe('ClassRoomRepository', () => {
       studentCount: 1,
     });
     await expect(repo.findById(999999)).resolves.toBeNull();
+  });
+
+  it('class_rooms.updated_at を updatedAt として一覧・詳細の両方で返す', async () => {
+    const classroom = (await repo.findAll({ limit: 1, offset: 0 })).items[0];
+    const row = await env.DB.prepare(
+      'SELECT updated_at FROM class_rooms WHERE class_room_id = ?'
+    )
+      .bind(classroom.classRoomId)
+      .first<{ updated_at: string }>();
+
+    expect(classroom.updatedAt).toBe(row?.updated_at);
+    expect(classroom.lockVersion).toBe(0);
+    await expect(repo.findById(classroom.classRoomId)).resolves.toMatchObject({
+      updatedAt: row?.updated_at,
+    });
   });
 
   it('担任未設定のクラスを作成・更新・削除できる', async () => {
@@ -374,6 +390,192 @@ describe('ClassRoomRepository', () => {
     });
   });
 
+  describe('版番号による楽観ロック', () => {
+    async function createClass(classCode: string) {
+      const created = await repo.create({
+        classCode,
+        className: '版番号テスト',
+        teacherId: null,
+      });
+      return created.classRoomId;
+    }
+
+    const input = (classCode: string, className: string) => ({
+      classCode,
+      className,
+      teacherId: null,
+    });
+
+    it('expectedLockVersion が現在の値と一致すれば更新し、lockVersion を1増やす', async () => {
+      const id = await createClass('LOCK-1');
+
+      const updated = await repo.update(id, {
+        ...input('LOCK-1', '更新後'),
+        expectedLockVersion: 0,
+      });
+
+      expect(updated).toMatchObject({ className: '更新後', lockVersion: 1 });
+    });
+
+    it('expectedLockVersion が現在の値と異なれば null を返し、何も変更しない', async () => {
+      const id = await createClass('LOCK-2');
+
+      const updated = await repo.update(id, {
+        ...input('LOCK-2', '上書きされてはいけない'),
+        expectedLockVersion: 5,
+      });
+
+      expect(updated).toBeNull();
+      await expect(repo.findById(id)).resolves.toMatchObject({
+        className: '版番号テスト',
+        lockVersion: 0,
+      });
+    });
+
+    it('同じ版番号での2回の連続更新は、1回目だけ成功し2回目は競合する（同じ秒内でも）', async () => {
+      const id = await createClass('LOCK-3');
+
+      const first = await repo.update(id, {
+        ...input('LOCK-3', 'Aの更新'),
+        expectedLockVersion: 0,
+      });
+      const second = await repo.update(id, {
+        ...input('LOCK-3', 'Bの更新'),
+        expectedLockVersion: 0,
+      });
+
+      expect(first).toMatchObject({ className: 'Aの更新', lockVersion: 1 });
+      expect(second).toBeNull();
+      await expect(repo.findById(id)).resolves.toMatchObject({
+        className: 'Aの更新',
+      });
+    });
+
+    it('expectedLockVersion を指定しない更新は版番号を確認せず、lockVersion は進む', async () => {
+      const id = await createClass('LOCK-4');
+
+      const updated = await repo.update(id, input('LOCK-4', '更新後'));
+
+      expect(updated).toMatchObject({ className: '更新後', lockVersion: 1 });
+    });
+  });
+
+  describe('担任の付け替えと教員の lockVersion', () => {
+    async function insertTeacher(name: string) {
+      const user = await env.DB.prepare(
+        'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
+      )
+        .bind(name)
+        .first<{ user_id: number }>();
+      const teacher = await env.DB.prepare(
+        'INSERT INTO teachers (user_id, email) VALUES (?, ?) RETURNING teacher_id'
+      )
+        .bind(user!.user_id, `${name}@example.ac.jp`)
+        .first<{ teacher_id: number }>();
+      return teacher!.teacher_id;
+    }
+
+    async function readTeacherLock(teacherId: number) {
+      const row = await env.DB.prepare(
+        'SELECT lock_version FROM teachers WHERE teacher_id = ?'
+      )
+        .bind(teacherId)
+        .first<{ lock_version: number }>();
+      return row?.lock_version;
+    }
+
+    it('担任を付け替えると、旧担任と新担任の lock_version が1ずつ進む', async () => {
+      const oldTeacher = await insertTeacher('付替旧担任');
+      const newTeacher = await insertTeacher('付替新担任');
+      const created = await repo.create({
+        classCode: 'SW-1',
+        className: '付け替え',
+        teacherId: oldTeacher,
+      });
+      // 担任付きの作成で、担任の版番号が進んでいる
+      expect(await readTeacherLock(oldTeacher)).toBe(1);
+
+      await repo.update(created.classRoomId, {
+        classCode: 'SW-1',
+        className: '付け替え',
+        teacherId: newTeacher,
+      });
+
+      expect(await readTeacherLock(oldTeacher)).toBe(2);
+      expect(await readTeacherLock(newTeacher)).toBe(1);
+    });
+
+    it('担任が変わらない更新（クラス名だけの変更）では、担任の lock_version は進まない', async () => {
+      const teacher = await insertTeacher('据置担任');
+      const created = await repo.create({
+        classCode: 'SW-2',
+        className: '据え置き',
+        teacherId: teacher,
+      });
+      const before = await readTeacherLock(teacher);
+
+      await repo.update(created.classRoomId, {
+        classCode: 'SW-2',
+        className: '据え置き（改称）',
+        teacherId: teacher,
+      });
+
+      expect(await readTeacherLock(teacher)).toBe(before);
+    });
+
+    it('版番号の不一致で更新されなかった場合は、担任の lock_version を進めない', async () => {
+      const oldTeacher = await insertTeacher('不一致旧担任');
+      const newTeacher = await insertTeacher('不一致新担任');
+      const created = await repo.create({
+        classCode: 'SW-3',
+        className: '不一致',
+        teacherId: oldTeacher,
+      });
+      const oldBefore = await readTeacherLock(oldTeacher);
+
+      const updated = await repo.update(created.classRoomId, {
+        classCode: 'SW-3',
+        className: '不一致',
+        teacherId: newTeacher,
+        expectedLockVersion: 99,
+      });
+
+      expect(updated).toBeNull();
+      expect(await readTeacherLock(oldTeacher)).toBe(oldBefore);
+      expect(await readTeacherLock(newTeacher)).toBe(0);
+    });
+
+    it('担任を外す更新では、旧担任の lock_version が進む', async () => {
+      const teacher = await insertTeacher('解除担任');
+      const created = await repo.create({
+        classCode: 'SW-4',
+        className: '解除',
+        teacherId: teacher,
+      });
+      const before = await readTeacherLock(teacher);
+
+      await repo.update(created.classRoomId, {
+        classCode: 'SW-4',
+        className: '解除',
+        teacherId: null,
+      });
+
+      expect(await readTeacherLock(teacher)).toBe(before! + 1);
+    });
+
+    it('createMany で担任を指定したクラスを作成すると、担任の lock_version が進む', async () => {
+      const teacher = await insertTeacher('一括担任');
+
+      await repo.createMany([
+        { classCode: 'SW-5A', className: '一括A', teacherId: teacher },
+        { classCode: 'SW-5B', className: '一括B', teacherId: teacher },
+        { classCode: 'SW-5C', className: '一括C', teacherId: null },
+      ]);
+
+      expect(await readTeacherLock(teacher)).toBe(1);
+    });
+  });
+
   describe('担任の稼働状態', () => {
     it('無効化された教員は担任として返さないが、割り当ては残り再有効化で戻る', async () => {
       const target = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
@@ -432,6 +634,40 @@ describe('ClassRoomRepository', () => {
 
       await expect(repo.findById(target!.classRoomId)).resolves.toMatchObject({
         className: '2年Bクラス（改称）',
+        teacher: { displayName: '担任教員' },
+      });
+    });
+
+    it('取得後に停止中の担任が再有効化されていた場合、更新時刻付きの更新は0件更新になり担任の割り当ては残る', async () => {
+      const target = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
+        c => c.classCode === '12B'
+      );
+      await env.DB.prepare(
+        "UPDATE users SET is_live_active = 0 WHERE user_name = '担任教員'"
+      ).run();
+      // 管理画面が取得した時点の教室。担任は停止中のため null で返る
+      const fetched = await repo.findById(target!.classRoomId);
+      expect(fetched?.teacher).toBeNull();
+      const teacherUser = await env.DB.prepare(
+        "SELECT user_id FROM users WHERE user_name = '担任教員'"
+      ).first<{ user_id: number }>();
+
+      // 取得後に、別の操作で担任が再有効化される
+      await createUserStatusRepository(env.DB).updateLiveActive(
+        teacherUser!.user_id,
+        true
+      );
+
+      const updated = await repo.update(target!.classRoomId, {
+        classCode: '12B',
+        className: '上書きされてはいけない',
+        teacherId: null,
+        expectedLockVersion: fetched!.lockVersion,
+      });
+
+      expect(updated).toBeNull();
+      await expect(repo.findById(target!.classRoomId)).resolves.toMatchObject({
+        className: fetched!.className,
         teacher: { displayName: '担任教員' },
       });
     });

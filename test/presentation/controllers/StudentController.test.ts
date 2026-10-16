@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createStudentController } from '../../../src/presentation/controllers/StudentController';
 import type { IStudentService } from '../../../src/application/services/IStudentService';
 import type { StudentManagementDTO } from '../../../src/application/dto/StudentDTO';
+import { UserErrors } from '../../../src/presentation/errors/userErrors';
 import {
   studentListQuery,
   studentListRoute,
@@ -25,6 +26,8 @@ function buildStudent(
       class_code: '1A',
       class_name: '1年A組',
     },
+    updated_at: '2026-01-01 00:00:00',
+    lock_version: 0,
     ...overrides,
   };
 }
@@ -488,6 +491,75 @@ describe('StudentController', () => {
           message: '指定されたクラスが見つかりません',
         },
       });
+    });
+
+    it('版番号付きのリクエストをそのままサービスへ渡す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.updateStudent as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(buildStudent({ ...input, lock_version: 2 }));
+
+      const res = await app.request('/students/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...input, lock_version: 1 }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(studentService.updateStudent).toHaveBeenCalledWith(1, {
+        ...input,
+        lock_version: 1,
+      });
+      expect(await res.json()).toMatchObject({
+        lock_version: 2,
+      });
+    });
+
+    it('版番号の不一致は 409 を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.updateStudent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Student update conflict'));
+
+      const res = await app.request('/students/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...input, lock_version: 1 }),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'STUDENT_UPDATE_CONFLICT',
+          message: UserErrors.STUDENT_UPDATE_CONFLICT.message,
+        },
+      });
+    });
+
+    it('lock_version が負の値の更新は 400 を返す', async () => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...input, lock_version: -1 }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.updateStudent).not.toHaveBeenCalled();
+    });
+
+    it('登録リクエストは lock_version を受け付けない', async () => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...input, lock_version: 1 }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.createStudent).not.toHaveBeenCalled();
     });
   });
 });

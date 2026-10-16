@@ -8,11 +8,13 @@ import {
   StudentImportRowError,
   StudentImportValidationResult,
   StudentPageDTO,
+  StudentUpdateDTO,
   StudentWriteDTO,
 } from '../dto/StudentDTO';
 import type {
   StudentEntity,
   StudentSearchFilter,
+  StudentUpdateInput,
   StudentWriteInput,
 } from '../../domain/entities/Student';
 import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
@@ -47,6 +49,8 @@ function toManagementDTO(student: StudentEntity): StudentManagementDTO {
       class_code: student.classRoomCode,
       class_name: student.classRoomName,
     },
+    updated_at: student.updatedAt,
+    lock_version: student.lockVersion,
   };
 }
 
@@ -56,6 +60,13 @@ function toDomainWriteInput(student: StudentWriteDTO): StudentWriteInput {
     classRoomId: student.class_room_id,
     attendanceNumber: student.attendance_number,
     studentIdNumber: student.student_id_number,
+  };
+}
+
+function toDomainUpdateInput(student: StudentUpdateDTO): StudentUpdateInput {
+  return {
+    ...toDomainWriteInput(student),
+    expectedLockVersion: student.lock_version,
   };
 }
 
@@ -153,12 +164,20 @@ export function createStudentService(
 
     async updateStudent(
       id: number,
-      student: StudentWriteDTO
+      student: StudentUpdateDTO
     ): Promise<StudentManagementDTO> {
-      const input = toDomainWriteInput(student);
+      const input = toDomainUpdateInput(student);
       const existing = await studentRepository.findById(id);
       if (!existing) {
         throw new Error('Student not found');
+      }
+      // 取得時点から変わっていれば、他の確認より先に409にする。
+      // 確認後に更新される競合は、update() 側の条件で0件更新になって検出する。
+      if (
+        input.expectedLockVersion !== undefined &&
+        input.expectedLockVersion !== existing.lockVersion
+      ) {
+        throw new Error('Student update conflict');
       }
 
       await ensureClassRoomExists(input.classRoomId);
@@ -171,6 +190,13 @@ export function createStudentService(
 
       const updated = await studentRepository.update(id, input);
       if (!updated) {
+        // 版番号を条件にしていた場合、0件更新は削除か版番号の不一致のどちらか。
+        if (
+          input.expectedLockVersion !== undefined &&
+          (await studentRepository.findById(id))
+        ) {
+          throw new Error('Student update conflict');
+        }
         throw new Error('Student not found');
       }
       return toManagementDTO(updated);

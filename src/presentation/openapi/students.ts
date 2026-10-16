@@ -29,6 +29,8 @@ export const studentResponseSchema = z
       class_code: z.string(),
       class_name: z.string(),
     }),
+    updated_at: z.string(),
+    lock_version: z.number().int(),
   })
   .openapi('Student');
 
@@ -121,6 +123,20 @@ export const studentDetailRoute = createRoute({
   },
 });
 
+// 登録済みのスキーマを extend() すると、OpenAPI では allOf で合成され、基底側の
+// additionalProperties: false が lock_version を拒否する仕様になってしまう。
+// そのため項目だけを引き継ぎ、新しいオブジェクトとして定義する。
+export const studentUpdateSchema = z
+  .object({
+    ...studentWriteSchema.shape,
+    lock_version: z.number().int().min(0).optional().openapi({
+      description:
+        '取得時点の `lock_version`。指定すると、取得後に変更されていた場合は409を返す。',
+    }),
+  })
+  .strict()
+  .openapi('StudentUpdateRequest');
+
 export const studentCreateRoute = createRoute({
   method: 'post',
   path: '/students',
@@ -153,7 +169,7 @@ export const studentUpdateRoute = createRoute({
   request: {
     params: studentIdParams,
     body: {
-      content: { 'application/json': { schema: studentWriteSchema } },
+      content: { 'application/json': { schema: studentUpdateSchema } },
       required: true,
     },
   },

@@ -10,6 +10,8 @@ export interface ClassRoomDTO {
   class_name: string;
   student_count: number;
   teacher: ClassRoomTeacherDTO | null;
+  updated_at: string;
+  lock_version: number;
 }
 
 export interface ClassRoomPageDTO {
@@ -23,6 +25,10 @@ export interface ClassRoomRequestDTO {
   classCode: string;
   className: string;
   teacherId: number | null;
+}
+
+export interface ClassRoomUpdateRequestDTO extends ClassRoomRequestDTO {
+  lockVersion?: number;
 }
 
 export interface ClassRoomImportRow {

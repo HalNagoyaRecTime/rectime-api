@@ -36,6 +36,8 @@ type ClassRoomRow = {
   teacherId: number | null;
   teacherUserId: number | null;
   teacherDisplayName: string | null;
+  updatedAt: string;
+  lockVersion: number;
 };
 
 function toEntity(row: ClassRoomRow): ClassRoomEntity {
@@ -44,6 +46,8 @@ function toEntity(row: ClassRoomRow): ClassRoomEntity {
     classCode: row.classCode,
     className: row.className,
     studentCount: Number(row.studentCount),
+    updatedAt: row.updatedAt,
+    lockVersion: row.lockVersion,
     teacher:
       row.teacherId === null ||
       row.teacherUserId === null ||
@@ -72,6 +76,8 @@ export function createClassRoomRepository(
         teacherId: teachers.id,
         teacherUserId: users.id,
         teacherDisplayName: users.userName,
+        updatedAt: class_rooms.updatedAt,
+        lockVersion: class_rooms.lockVersion,
       })
       .from(class_rooms)
       .leftJoin(teachers, eq(teachers.id, class_rooms.teacherId))
@@ -87,6 +93,8 @@ export function createClassRoomRepository(
         class_rooms.id,
         class_rooms.classCode,
         class_rooms.name,
+        class_rooms.updatedAt,
+        class_rooms.lockVersion,
         teachers.id,
         users.id,
         users.userName
@@ -129,6 +137,8 @@ export function createClassRoomRepository(
         teacherId: teachers.id,
         teacherUserId: users.id,
         teacherDisplayName: users.userName,
+        updatedAt: class_rooms.updatedAt,
+        lockVersion: class_rooms.lockVersion,
       })
       .from(class_rooms)
       .leftJoin(teachers, eq(teachers.id, class_rooms.teacherId))
@@ -167,6 +177,8 @@ export function createClassRoomRepository(
           class_rooms.id,
           class_rooms.classCode,
           class_rooms.name,
+          class_rooms.updatedAt,
+          class_rooms.lockVersion,
           teachers.id,
           users.id,
           users.userName
@@ -239,15 +251,31 @@ export function createClassRoomRepository(
     async create(input: ClassRoomInput) {
       let row;
       try {
-        row = await orm
+        const insertStatement = orm
           .insert(class_rooms)
           .values({
             classCode: input.classCode,
             name: input.className,
             teacherId: input.teacherId,
           })
-          .returning({ id: class_rooms.id })
-          .get();
+          .returning({ id: class_rooms.id });
+        // 担任付きで作成すると、その教員の担当クラスが増える。教員の版番号も同じ
+        // batch で進め、取得済みの古い担当クラスのPUTが、増えた担当を外さないようにする。
+        if (input.teacherId === null) {
+          row = await insertStatement.get();
+        } else {
+          const [inserted] = await orm.batch([
+            insertStatement,
+            orm
+              .update(teachers)
+              .set({
+                updatedAt: sql`CURRENT_TIMESTAMP`,
+                lockVersion: sql`${teachers.lockVersion} + 1`,
+              })
+              .where(eq(teachers.id, input.teacherId)),
+          ]);
+          row = inserted[0];
+        }
       } catch (error) {
         throw unwrapDatabaseError(error);
       }
@@ -260,19 +288,41 @@ export function createClassRoomRepository(
       const statements = chunkArray(
         inputs,
         Math.floor(D1_MAX_BOUND_PARAMETERS / 3)
-      ).map(chunk => {
-        const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');
-        const values = chunk.flatMap(input => [
-          input.classCode,
-          input.className,
-          input.teacherId,
-        ]);
-        return db
-          .prepare(
-            `INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ${placeholders}`
-          )
-          .bind(...values);
-      });
+      )
+        .map(chunk => {
+          const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');
+          const values = chunk.flatMap(input => [
+            input.classCode,
+            input.className,
+            input.teacherId,
+          ]);
+          const insertStatement = db
+            .prepare(
+              `INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ${placeholders}`
+            )
+            .bind(...values);
+          // 担任に指定された教員の担当クラスが増えるため、その教員の版番号も進める
+          const teacherIds = Array.from(
+            new Set(
+              chunk
+                .map(input => input.teacherId)
+                .filter((teacherId): teacherId is number => teacherId !== null)
+            )
+          );
+          if (teacherIds.length === 0) return [insertStatement];
+          return [
+            insertStatement,
+            db
+              .prepare(
+                `UPDATE teachers
+                 SET lock_version = lock_version + 1,
+                     updated_at = CURRENT_TIMESTAMP
+               WHERE teacher_id IN (${teacherIds.map(() => '?').join(', ')})`
+              )
+              .bind(...teacherIds),
+          ];
+        })
+        .flat();
       if (statements.length > 0) await db.batch(statements);
     },
     async update(id, input) {
@@ -281,39 +331,85 @@ export function createClassRoomRepository(
       // teacherId = null を「担任を外す」と解釈すると、表示から隠しただけの
       // 割り当てまで消えてしまう。担任が停止中のときの null は据え置きとして扱う。
       //
-      // 既知の制約: この判定はUPDATE実行時点のDBの状態を見ている。教室の編集は
-      // GETとPUTの2リクエストにまたがるため、その間に別操作で担任が再有効化されると、
-      // GET時点でnullだった値がそのまま送られて割り当てを消してしまう。塞ぐには
-      // GET時点の状態を持ち回る仕組み（更新時刻を条件に含める楽観ロックなど）が要るが、
-      // 全項目置換のPUTすべてに関わる設計変更になるため、ここでは扱わない。
-      let row;
-      try {
-        row = await db
-          .prepare(
-            `UPDATE class_rooms
-               SET class_code = ?,
-                   class_name = ?,
-                   teacher_id = CASE
+      // 版番号(expectedLockVersion)が指定された場合は、取得時点から教室が変更
+      // されていないこともWHEREで確認する。GETとPUTの間に別操作が挟まっていれば
+      // 0件更新になり、呼び出し側がnullとして受け取る。版番号は更新のたびに必ず
+      // 1ずつ増えるため、updated_at（秒単位）では区別できない同じ秒内の更新も検出できる。
+      //
+      // 担任の稼働状態が変わったときは、担任クラスの版番号も進む
+      // （UserStatusRepository.updateLiveActive）。そのため、版番号を指定していれば、
+      // 取得後に再有効化された担任を、null が送られてきたまま消すことはない。
+      //
+      // 版番号を指定しない呼び出しでは、この確認は行われない。据え置きの判定は
+      // UPDATE実行時点のDBの状態を見るため、GETとPUTの間に担任が再有効化されると、
+      // GET時点でnullだった値がそのまま送られて割り当てを消してしまう。
+      // 担任が実際に変わる更新では、旧・新の担任の版番号も進める。教員の更新(PUT)は
+      // 担当クラスを全置換するため、教室側から担当が変わったことを教員の版で
+      // 検出できるようにする。教室の版番号の条件が合うとき（＝この更新が実際に
+      // 行われるとき）だけ進め、先に置く（更新後は旧担任が分からなくなる）。
+      // 「変わる」の判定は、停止中の担任の据え置き（teacher_id の CASE）と同じ式にする。
+      const effectiveTeacherId = `CASE
                      WHEN ? IS NULL AND EXISTS (
                        SELECT 1 FROM teachers t
                        JOIN users u ON u.user_id = t.user_id
-                       WHERE t.teacher_id = class_rooms.teacher_id
+                       WHERE t.teacher_id = %s.teacher_id
                          AND u.is_live_active = 0
-                     ) THEN teacher_id
+                     ) THEN %s.teacher_id
                      ELSE ?
-                   END,
-                   updated_at = CURRENT_TIMESTAMP
-             WHERE class_room_id = ? RETURNING class_room_id`
-          )
-          .bind(
-            input.classCode,
-            input.className,
-            // D1は番号付きプレースホルダを使えないため、CASEのWHENとELSEへ同じ値を2回渡す
-            input.teacherId,
-            input.teacherId,
-            id
-          )
-          .first<{ class_room_id: number }>();
+                   END`;
+      let row;
+      try {
+        const [, updateResult] = await db.batch<{ class_room_id: number }>([
+          db
+            .prepare(
+              `UPDATE teachers
+                 SET lock_version = lock_version + 1,
+                     updated_at = CURRENT_TIMESTAMP
+               WHERE teacher_id IN (
+                 SELECT teacher_id FROM class_rooms WHERE class_room_id = ?
+                 UNION SELECT ?
+               )
+                 AND EXISTS (
+                   SELECT 1 FROM class_rooms c
+                   WHERE c.class_room_id = ?
+                     AND (? IS NULL OR c.lock_version = ?)
+                     AND c.teacher_id IS NOT (${effectiveTeacherId.replaceAll('%s', 'c')})
+                 )`
+            )
+            .bind(
+              id,
+              input.teacherId,
+              id,
+              input.expectedLockVersion ?? null,
+              input.expectedLockVersion ?? null,
+              input.teacherId,
+              input.teacherId
+            ),
+          db
+            .prepare(
+              `UPDATE class_rooms
+               SET class_code = ?,
+                   class_name = ?,
+                   teacher_id = ${effectiveTeacherId.replaceAll('%s', 'class_rooms')},
+                   updated_at = CURRENT_TIMESTAMP,
+                   lock_version = lock_version + 1
+             WHERE class_room_id = ?
+               AND (? IS NULL OR lock_version = ?)
+             RETURNING class_room_id`
+            )
+            .bind(
+              input.classCode,
+              input.className,
+              // D1は番号付きプレースホルダを使えないため、CASEのWHENとELSEへ同じ値を2回渡す
+              input.teacherId,
+              input.teacherId,
+              id,
+              // 版番号の条件も同じ理由で2回渡す
+              input.expectedLockVersion ?? null,
+              input.expectedLockVersion ?? null
+            ),
+        ]);
+        row = updateResult.results[0];
       } catch (error) {
         throw unwrapDatabaseError(error);
       }

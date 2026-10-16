@@ -9,6 +9,8 @@ export interface StudentEntity {
   studentIdNumber: string;
   isLiveActive: boolean;
   isStaff: boolean;
+  updatedAt: string;
+  lockVersion: number;
 }
 
 export interface StudentPage {
@@ -23,6 +25,11 @@ export interface StudentWriteInput {
   classRoomId: number;
   attendanceNumber: number;
   studentIdNumber: string;
+}
+
+export interface StudentUpdateInput extends StudentWriteInput {
+  // 取得時点の lockVersion。指定された場合だけ、更新時点で値が変わっていないことを確認する。
+  expectedLockVersion?: number;
 }
 
 export interface StudentSearchFilter {
