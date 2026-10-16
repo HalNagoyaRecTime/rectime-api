@@ -10,6 +10,7 @@
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate:remote": "wrangler d1 migrations apply rectime-api --remote",
     "db:migrate:local": "wrangler d1 migrations apply rectime-api-dev --local --env development",
+    "images:seed:local": "wrangler r2 object put rectime-images-dev/seed/place.png --file public/map/recmap.png --content-type image/png --local --env development && wrangler d1 execute rectime-api-dev --local --env development --command \"UPDATE venues SET image_key = 'seed/place.png' WHERE image_key IS NULL; UPDATE gathering_spots SET image_key = 'seed/place.png' WHERE image_key IS NULL;\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "format:fix": "prettier --write .",

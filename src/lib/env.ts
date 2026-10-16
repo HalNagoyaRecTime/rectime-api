@@ -3,6 +3,7 @@ import type {
   DurableObjectNamespace,
   KVNamespace,
   Queue,
+  R2Bucket,
 } from '@cloudflare/workers-types';
 import type { MasterImportCommitLock } from '../infrastructure/masterImports/MasterImportCommitLock';
 import type { NotificationDeliveryMessage } from '../domain/entities/NotificationDelivery';
@@ -10,6 +11,7 @@ import type { NotificationDeliveryMessage } from '../domain/entities/Notificatio
 export type Env = {
   DB: D1Database;
   AUTH_KV: KVNamespace;
+  IMAGES: R2Bucket;
   MASTER_IMPORT_COMMIT_LOCK: DurableObjectNamespace<MasterImportCommitLock>;
   NOTIFICATION_DELIVERY_QUEUE: Queue<NotificationDeliveryMessage>;
   ALLOWED_ORIGINS?: string;
