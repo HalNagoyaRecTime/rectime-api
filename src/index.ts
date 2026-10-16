@@ -111,6 +111,7 @@ import {
 } from './presentation/openapi/notification/admin';
 import { firebaseTokenRegistrationRoute } from './presentation/openapi/notification/firebaseTokens';
 import { notificationScheduleResultsRoute } from './presentation/openapi/notification/schedules';
+import { notificationScheduleStopRoute } from './presentation/openapi/notification/schedules';
 import {
   notificationScheduleResendRoute,
   notificationScheduleDeleteRoute,
@@ -489,6 +490,14 @@ apiV1.openapi(authed(firebaseTokenRegistrationRoute), c => {
 });
 
 // Notification routes
+apiV1.openapi(staffOnly(notificationScheduleStopRoute), c => {
+  return c
+    .get('container')
+    .notificationStopController.stopSchedule(
+      c,
+      Number(c.req.valid('param').notificationScheduleId)
+    );
+});
 apiV1.openapi(staffOnly(notificationScheduleResendRoute), c =>
   c
     .get('container')
@@ -658,6 +667,13 @@ export default {
     const scheduledAt = new Date(event.scheduledTime);
     const container = createDIContainer(env);
     ctx.waitUntil(
+      container.notificationRetryService
+        .enqueueDueDeliveries(scheduledAt)
+        .catch(error => {
+          console.error('[CRON] 通知のRetry・timeout回収に失敗しました', error);
+        })
+    );
+    ctx.waitUntil(
       container.notificationAudienceResolverService
         .resolveDueSchedules(scheduledAt)
         .then(async result => {
@@ -718,7 +734,8 @@ export default {
     await consumeNotificationDeliveryQueue(
       batch,
       container.scheduledNotificationService,
-      container.notificationDeliveryService
+      container.notificationDeliveryService,
+      container.notificationRetryService
     );
   },
 };

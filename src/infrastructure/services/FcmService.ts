@@ -62,6 +62,7 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
     const response = await fetch(
       `https://fcm.googleapis.com/v1/projects/${config.projectId}/messages:send`,
       {
+        signal: AbortSignal.timeout(30_000),
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -90,7 +91,8 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
         fcmErrorCode,
         `FCM request failed: HTTP ${response.status}${
           fcmErrorCode ? ` ${fcmErrorCode}` : ''
-        }`
+        }`,
+        parseRetryAfter(response.headers.get('Retry-After'))
       );
     }
 
@@ -111,6 +113,17 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
   return {
     sendNotificationToToken,
   };
+}
+
+export function parseRetryAfter(
+  value: string | null,
+  now = Date.now()
+): number | null {
+  if (value === null) return null;
+  const seconds = /^\d+$/.test(value.trim())
+    ? Number(value)
+    : (Date.parse(value) - now) / 1000;
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds) : null;
 }
 
 function buildPlatformConfig(
@@ -208,6 +221,7 @@ async function createAccessToken(
   });
 
   const response = await fetch(GOOGLE_TOKEN_URL, {
+    signal: AbortSignal.timeout(30_000),
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
