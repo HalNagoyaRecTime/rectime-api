@@ -1,4 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { swaggerUI } from '@hono/swagger-ui';
 import { OpenAPIHono, type RouteConfig } from '@hono/zod-openapi';
@@ -31,6 +32,7 @@ import {
   positivePathParamToNumber,
 } from './presentation/openapi/schemas';
 import { errorResponse } from './presentation/errors/errorResponse';
+import { MAX_PLACE_IMAGE_BYTES } from './application/services/PlaceImageService';
 import { toValidationErrorDetails } from './presentation/errors/validationErrorDetails';
 import type { ZodError } from 'zod';
 import {
@@ -91,6 +93,12 @@ import {
   venueListRoute,
   venueUpdateRoute,
 } from './presentation/openapi/venues';
+import {
+  gatheringSpotImageDeleteRoute,
+  gatheringSpotImagePutRoute,
+  venueImageDeleteRoute,
+  venueImagePutRoute,
+} from './presentation/openapi/placeImages';
 import { legacyAdminNotificationUpdateRoute } from './presentation/openapi/notification/legacy/admin';
 import {
   adminNotificationCreateRoute,
@@ -239,6 +247,18 @@ const authed = <R extends RouteConfig>(route: R) => ({
 const staffOnly = <R extends RouteConfig>(route: R) => ({
   ...route,
   middleware: [requireAuth, requireStaff],
+});
+
+const staffOnlyImageUpload = <R extends RouteConfig>(route: R) => ({
+  ...route,
+  middleware: [
+    requireAuth,
+    requireStaff,
+    bodyLimit({
+      maxSize: MAX_PLACE_IMAGE_BYTES,
+      onError: c => errorResponse(c, EventErrors.INVALID_PLACE_IMAGE),
+    }),
+  ],
 });
 
 const validationErrorBody = (
@@ -433,6 +453,20 @@ apiV1.openapi(staffOnly(venueUpdateRoute), c => {
 });
 apiV1.openapi(staffOnly(venueDeleteRoute), c => {
   return c.get('container').venueController.deleteVenue(c);
+});
+
+// Place image routes
+apiV1.openapi(staffOnlyImageUpload(venueImagePutRoute), c => {
+  return c.get('container').placeImageController.putVenueImage(c);
+});
+apiV1.openapi(staffOnly(venueImageDeleteRoute), c => {
+  return c.get('container').placeImageController.deleteVenueImage(c);
+});
+apiV1.openapi(staffOnlyImageUpload(gatheringSpotImagePutRoute), c => {
+  return c.get('container').placeImageController.putGatheringSpotImage(c);
+});
+apiV1.openapi(staffOnly(gatheringSpotImageDeleteRoute), c => {
+  return c.get('container').placeImageController.deleteGatheringSpotImage(c);
 });
 
 // Gathering member routes

@@ -15,11 +15,16 @@ import type {
   UpdateEventRequestDTO,
 } from '../dto/EventDTO';
 import { buildRoundSettings } from './eventGatheringRounds';
+import { ImageUrlOf, signImageUrls } from './imageUrls';
+import type { IImageUrlSigner } from '../../domain/interfaces/storages/IImageUrlSigner';
 import { ensureVenuesExist, saveWithVenues } from './eventVenueIds';
 import type { IVenueRepository } from '../../domain/interfaces/repositories/IVenueRepository';
 import type { IEventService } from './IEventService';
 
-function toEventDTO(event: EventWithVenuesEntity): EventDTO {
+function toEventDTO(
+  event: EventWithVenuesEntity,
+  imageUrlOf: ImageUrlOf
+): EventDTO {
   return {
     event_id: event.event_id,
     event_name: event.event_name,
@@ -27,6 +32,7 @@ function toEventDTO(event: EventWithVenuesEntity): EventDTO {
     venues: event.venues.map(venue => ({
       venue_id: venue.venue_id,
       venue_name: venue.venue_name,
+      image_url: imageUrlOf(venue.image_key),
     })),
     start_time: event.start_time,
     end_time: event.end_time,
@@ -36,10 +42,11 @@ function toEventDTO(event: EventWithVenuesEntity): EventDTO {
 }
 
 function toEventListItemDTO(
-  event: EventWithGatheringSummaryEntity
+  event: EventWithGatheringSummaryEntity,
+  imageUrlOf: ImageUrlOf
 ): EventListItemDTO {
   return {
-    ...toEventDTO(event),
+    ...toEventDTO(event, imageUrlOf),
     gathering_summary: {
       gathering_count: event.gathering_summary.gathering_count,
       configured_gathering_count:
@@ -71,15 +78,25 @@ export function createEventService(
   eventRepository: IEventRepository,
   eventGatheringSettingsRepository: IEventGatheringSettingsRepository,
   venueRepository: IVenueRepository,
+  imageUrlSigner: IImageUrlSigner,
   eventDate?: string
 ): IEventService {
+  const signVenueImageUrls = (events: EventWithVenuesEntity[]) =>
+    signImageUrls(
+      imageUrlSigner,
+      events.flatMap(event => event.venues.map(venue => venue.image_key))
+    );
+
   return {
     async getAllEvents(options) {
       const repositoryOptions = toEventListOptions(options);
       const result = await eventRepository.findAll(repositoryOptions);
+      const imageUrlOf = await signVenueImageUrls(result.events);
       return {
         event_date: isValidEventDate(eventDate) ? eventDate : null,
-        events: result.events.map(toEventListItemDTO),
+        events: result.events.map(event =>
+          toEventListItemDTO(event, imageUrlOf)
+        ),
         total: result.total,
         limit: options.limit ?? 50,
         offset: options.offset ?? 0,
@@ -94,9 +111,13 @@ export function createEventService(
       // 参加人数まで含めてRepositoryが1クエリで返すため、集合予定ごとの追加取得はしない。
       const gatherings =
         await eventGatheringSettingsRepository.findByEventId(id);
+      const imageUrlOf = await signImageUrls(imageUrlSigner, [
+        ...event.venues.map(venue => venue.image_key),
+        ...gatherings.map(gathering => gathering.gathering_spot_image_key),
+      ]);
       return {
-        ...toEventDTO(event),
-        rounds: buildRoundSettings(gatherings),
+        ...toEventDTO(event, imageUrlOf),
+        rounds: buildRoundSettings(gatherings, imageUrlOf),
       };
     },
     async getMyEvents(userId) {
@@ -108,11 +129,10 @@ export function createEventService(
     },
     async createEvent(event) {
       await ensureVenuesExist(venueRepository, event.venue_ids);
-      return toEventDTO(
-        await saveWithVenues(() =>
-          eventRepository.create(toEventWriteInput(event))
-        )
+      const created = await saveWithVenues(() =>
+        eventRepository.create(toEventWriteInput(event))
       );
+      return toEventDTO(created, await signVenueImageUrls([created]));
     },
     async updateEvent(id: number, event: UpdateEventRequestDTO) {
       if (event.start_time >= event.end_time) {
@@ -128,7 +148,7 @@ export function createEventService(
       if (!updated) {
         throw new Error('Event not found');
       }
-      return toEventDTO(updated);
+      return toEventDTO(updated, await signVenueImageUrls([updated]));
     },
     async deleteEvent(id: number): Promise<void> {
       if (await eventRepository.hasReferences(id)) {

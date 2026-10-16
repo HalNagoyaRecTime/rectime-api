@@ -158,6 +158,7 @@ export const venues = sqliteTable(
   {
     id: integer('venue_id').primaryKey({ autoIncrement: true }),
     name: text('venue_name').notNull(),
+    imageKey: text('image_key'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
@@ -219,6 +220,7 @@ export const gatherings = sqliteTable(
 export const gathering_spots = sqliteTable('gathering_spots', {
   id: integer('gathering_spot_id').primaryKey({ autoIncrement: true }),
   name: text('gathering_spot_name').notNull(),
+  imageKey: text('image_key'),
   createdAt: text('created_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
