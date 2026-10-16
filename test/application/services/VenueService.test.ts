@@ -11,12 +11,49 @@ function setup(overrides: Partial<IVenueRepository> = {}) {
     update: vi.fn(),
     delete: vi.fn(),
     hasEvents: vi.fn().mockResolvedValue(false),
+    findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
+    replaceImageKey: vi.fn(),
     ...overrides,
   };
-  return { repository, service: createVenueService(repository) };
+  const deleteUnusedImage = vi.fn();
+  return {
+    repository,
+    deleteUnusedImage,
+    service: createVenueService(repository, deleteUnusedImage, {
+      sign: async (key: string) => `https://signed.example/${key}`,
+    }),
+  };
 }
 
 describe('VenueService', () => {
+  it('一覧・ページの実施場所を、画像のURLに変換して返す', async () => {
+    const venue = {
+      venue_id: 1,
+      venue_name: '第1体育館',
+      image_key: 'venues/1/a.png',
+      created_at: '2026-01-01 00:00:00',
+      updated_at: '2026-01-01 00:00:00',
+    };
+    const expected = {
+      venue_id: 1,
+      venue_name: '第1体育館',
+      image_url: 'https://signed.example/venues/1/a.png',
+      created_at: '2026-01-01 00:00:00',
+      updated_at: '2026-01-01 00:00:00',
+    };
+    const { service } = setup({
+      findAll: vi.fn().mockResolvedValue([venue]),
+      findPage: vi
+        .fn()
+        .mockResolvedValue({ venues: [venue], total: 1, limit: 20, offset: 0 }),
+    });
+
+    await expect(service.getAllVenues()).resolves.toEqual([expected]);
+    await expect(
+      service.getVenuePage({ limit: 20, offset: 0 })
+    ).resolves.toEqual({ venues: [expected], total: 1, limit: 20, offset: 0 });
+  });
+
   it('一覧取得をリポジトリへ委譲する', async () => {
     const { repository, service } = setup({
       findAll: vi.fn().mockResolvedValue([]),
@@ -86,5 +123,30 @@ describe('VenueService', () => {
     const { service } = setup({ delete: vi.fn().mockResolvedValue(false) });
 
     await expect(service.deleteVenue(1)).rejects.toThrow('Venue not found');
+  });
+
+  it('画像のある実施場所を削除すると、その画像を不要になった画像として削除する', async () => {
+    const { deleteUnusedImage, service } = setup({
+      delete: vi.fn().mockResolvedValue(true),
+      findImageKey: vi
+        .fn()
+        .mockResolvedValue({ imageKey: 'venues/1/old.webp' }),
+    });
+
+    await service.deleteVenue(1);
+
+    expect(deleteUnusedImage).toHaveBeenCalledWith('venues/1/old.webp');
+  });
+
+  it('削除できなかった実施場所の画像は保存先に残す', async () => {
+    const { deleteUnusedImage, service } = setup({
+      delete: vi.fn().mockResolvedValue(false),
+      findImageKey: vi
+        .fn()
+        .mockResolvedValue({ imageKey: 'venues/1/old.webp' }),
+    });
+
+    await expect(service.deleteVenue(1)).rejects.toThrow('Venue not found');
+    expect(deleteUnusedImage).not.toHaveBeenCalled();
   });
 });

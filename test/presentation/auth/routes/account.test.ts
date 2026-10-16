@@ -75,6 +75,10 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
   return {
     DB: workerEnv.DB,
     AUTH_KV: createMockKv(),
+    IMAGES: workerEnv.IMAGES,
+    IMAGES_BUCKET_URL: 'https://r2.example.com/rectime-images',
+    R2_ACCESS_KEY_ID: 'test-access-key-id',
+    R2_SECRET_ACCESS_KEY: 'test-secret-access-key',
     MASTER_IMPORT_COMMIT_LOCK: {} as Env['MASTER_IMPORT_COMMIT_LOCK'],
     NOTIFICATION_DELIVERY_QUEUE: {} as Env['NOTIFICATION_DELIVERY_QUEUE'],
     ALLOWED_ORIGINS: '',

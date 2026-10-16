@@ -1,4 +1,8 @@
 import { getDb } from '../lib/db';
+import { createNotificationStopRepository } from '../infrastructure/repositories/NotificationStopRepository';
+import { createNotificationStopService } from '../application/services/NotificationStopService';
+import { createNotificationStopController } from '../presentation/controllers/NotificationStopController';
+import { createNotificationRetryService } from '../application/services/NotificationRetryService';
 import { createNotificationScheduleActionRepository } from '../infrastructure/repositories/NotificationScheduleActionRepository';
 import { createNotificationScheduleActionService } from '../application/services/NotificationScheduleActionService';
 import { createNotificationScheduleActionController } from '../presentation/controllers/NotificationScheduleActionController';
@@ -66,6 +70,12 @@ import { createNotificationConfigController } from '../presentation/controllers/
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
 import { createVenueController } from '../presentation/controllers/VenueController';
+import { createPlaceImageController } from '../presentation/controllers/PlaceImageController';
+import { createPlaceImageService } from '../application/services/PlaceImageService';
+import { createR2ImageStorage } from '../infrastructure/storages/R2ImageStorage';
+import { createR2ImageUrlSigner } from '../infrastructure/storages/R2ImageUrlSigner';
+import { createPlaceImageKeyRepository } from '../infrastructure/repositories/PlaceImageKeyRepository';
+import { createDeleteUnusedImage } from '../application/services/deleteUnusedImage';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createEventGatheringSettingsController } from '../presentation/controllers/EventGatheringSettingsController';
 import { createRankingController } from '../presentation/controllers/RankingController';
@@ -84,7 +94,18 @@ import { createAuthorizationService } from '../application/services/Authorizatio
 import type { Env } from '../lib/env';
 
 export function createDIContainer(env: Env) {
+  const imageUrlSigner = createR2ImageUrlSigner({
+    bucketUrl: env.IMAGES_BUCKET_URL,
+    accessKeyId: env.R2_ACCESS_KEY_ID,
+    secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+  });
   const db = getDb(env);
+  const notificationStopService = createNotificationStopService(
+    createNotificationStopRepository(db)
+  );
+  const notificationStopController = createNotificationStopController(
+    notificationStopService
+  );
   const notificationScheduleActionController =
     createNotificationScheduleActionController(
       createNotificationScheduleActionService(
@@ -188,6 +209,7 @@ export function createDIContainer(env: Env) {
     eventRepository,
     eventGatheringSettingsRepository,
     venueRepository,
+    imageUrlSigner,
     env.EVENT_DATE
   );
   const classRoomService = createClassRoomService(
@@ -220,7 +242,14 @@ export function createDIContainer(env: Env) {
     createNotificationAudienceResolverService(
       notificationAudienceResolverRepository
     );
+  const notificationRetryService = createNotificationRetryService({
+    notificationDeliveryQueue,
+    notificationDeliveryRepository,
+    firebaseTokenRepository,
+    fcmService,
+  });
   const notificationDeliveryService = createNotificationDeliveryService({
+    notificationRetryService,
     notificationDeliveryRepository,
     firebaseTokenRepository,
     notificationDeliveryQueue,
@@ -247,17 +276,35 @@ export function createDIContainer(env: Env) {
   const mobileNotificationService = createMobileNotificationService(
     mobileNotificationRepository
   );
+  const imageStorage = createR2ImageStorage(env.IMAGES);
+  const deleteUnusedImage = createDeleteUnusedImage(
+    imageStorage,
+    createPlaceImageKeyRepository(db)
+  );
   const gatheringSpotService = createGatheringSpotService(
+    gatheringSpotRepository,
+    deleteUnusedImage,
+    imageUrlSigner
+  );
+  const venueService = createVenueService(
+    venueRepository,
+    deleteUnusedImage,
+    imageUrlSigner
+  );
+  const placeImageService = createPlaceImageService(
+    imageStorage,
+    deleteUnusedImage,
+    venueRepository,
     gatheringSpotRepository
   );
-  const venueService = createVenueService(venueRepository);
   const gatheringGroupMemberService = createGatheringGroupMemberService(
     gatheringGroupMemberRepository
   );
   const eventGatheringSettingsService = createEventGatheringSettingsService(
     eventRepository,
     gatheringSpotRepository,
-    eventGatheringSettingsRepository
+    eventGatheringSettingsRepository,
+    imageUrlSigner
   );
   const rankingService = createRankingService(teamRepository);
   const teamService = createTeamService(teamRepository);
@@ -292,6 +339,7 @@ export function createDIContainer(env: Env) {
   const gatheringSpotController =
     createGatheringSpotController(gatheringSpotService);
   const venueController = createVenueController(venueService);
+  const placeImageController = createPlaceImageController(placeImageService);
   const gatheringGroupMemberController = createGatheringGroupMemberController(
     gatheringGroupMemberService
   );
@@ -301,6 +349,8 @@ export function createDIContainer(env: Env) {
   const teamController = createTeamController(teamService);
 
   return {
+    notificationStopService,
+    notificationStopController,
     notificationScheduleActionController,
     notificationScheduleQueryController,
     // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
@@ -329,8 +379,10 @@ export function createDIContainer(env: Env) {
     scheduledNotificationService,
     notificationAudienceResolverService,
     notificationDeliveryService,
+    notificationRetryService,
     gatheringSpotController,
     venueController,
+    placeImageController,
     gatheringGroupMemberController,
     eventGatheringSettingsController,
     rankingController,

@@ -4,6 +4,12 @@ export const eventVenueResponseSchema = z
   .object({
     venue_id: z.number().int(),
     venue_name: z.string(),
+    image_url: z.string().nullable().openapi({
+      description:
+        '画像の署名付きURL（R2から直接取得する。7日間有効で、日付が変わるとURLも変わる）。画像が無ければnull。',
+      example:
+        'https://<account>.r2.cloudflarestorage.com/rectime-images/venues/1/3f9a.webp?X-Amz-Signature=...',
+    }),
   })
   .openapi('EventVenue');
 

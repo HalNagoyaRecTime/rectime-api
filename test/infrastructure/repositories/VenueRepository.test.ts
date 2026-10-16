@@ -132,4 +132,60 @@ describe('VenueRepository', () => {
 
     expect(await venueRepository.hasEvents(venue.venue_id)).toBe(true);
   });
+
+  it('画像キーを紐づけて取得でき、外すと null に戻る', async () => {
+    const venue = await venueRepository.create('実施場所テスト画像');
+
+    expect(
+      await venueRepository.replaceImageKey(
+        venue.venue_id,
+        null,
+        'venues/1/a.png'
+      )
+    ).toBe(true);
+    expect(await venueRepository.findImageKey(venue.venue_id)).toEqual({
+      imageKey: 'venues/1/a.png',
+    });
+
+    expect(
+      await venueRepository.replaceImageKey(
+        venue.venue_id,
+        'venues/1/a.png',
+        null
+      )
+    ).toBe(true);
+    expect(await venueRepository.findImageKey(venue.venue_id)).toEqual({
+      imageKey: null,
+    });
+  });
+
+  it('画像キーが読み取ったときから変わっていれば更新せず false を返す', async () => {
+    const venue = await venueRepository.create('実施場所テスト画像競合');
+    await venueRepository.replaceImageKey(
+      venue.venue_id,
+      null,
+      'venues/1/other.png'
+    );
+
+    expect(
+      await venueRepository.replaceImageKey(
+        venue.venue_id,
+        null,
+        'venues/1/a.png'
+      )
+    ).toBe(false);
+    expect(await venueRepository.findImageKey(venue.venue_id)).toEqual({
+      imageKey: 'venues/1/other.png',
+    });
+  });
+
+  it('存在しない実施場所の画像キーは更新せず false を返す', async () => {
+    expect(
+      await venueRepository.replaceImageKey(999999, null, 'venues/1/a.png')
+    ).toBe(false);
+  });
+
+  it('存在しない実施場所の画像キーは null を返す', async () => {
+    expect(await venueRepository.findImageKey(999999)).toBeNull();
+  });
 });

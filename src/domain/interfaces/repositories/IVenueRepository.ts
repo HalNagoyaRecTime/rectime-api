@@ -4,6 +4,7 @@ import {
   VenueListOptions,
   VenuePage,
 } from '../../entities/Venue';
+import { PlaceImageKey } from '../../entities/PlaceImage';
 
 export interface IVenueRepository {
   findAll: () => Promise<VenueEntity[]>;
@@ -16,4 +17,10 @@ export interface IVenueRepository {
   ) => Promise<VenueEntity | null>;
   delete: (venueId: number) => Promise<boolean>;
   hasEvents: (venueId: number) => Promise<boolean>;
+  findImageKey: (venueId: number) => Promise<PlaceImageKey | null>;
+  replaceImageKey: (
+    venueId: number,
+    currentImageKey: string | null,
+    imageKey: string | null
+  ) => Promise<boolean>;
 }
