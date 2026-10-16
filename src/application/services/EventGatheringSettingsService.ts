@@ -13,6 +13,8 @@ import type {
   RoundSettingInputDTO,
 } from '../dto/EventGatheringSettingsDTO';
 import { buildEventGatheringSettings } from './eventGatheringRounds';
+import { signImageUrls } from './imageUrls';
+import type { IImageUrlSigner } from '../../domain/interfaces/storages/IImageUrlSigner';
 import { isForeignKeyError } from './foreignKeyError';
 import type {
   IEventGatheringSettingsService,
@@ -51,6 +53,7 @@ export function createEventGatheringSettingsService(
   eventRepository: IEventRepository,
   gatheringSpotRepository: IGatheringSpotRepository,
   eventGatheringSettingsRepository: IEventGatheringSettingsRepository,
+  imageUrlSigner: IImageUrlSigner,
   gatheringNotificationGeneratorService: IGatheringNotificationGeneratorService
 ): IEventGatheringSettingsService {
   const ensureGatheringSpotsExist = async (gatheringSpotIds: number[]) => {
@@ -152,7 +155,14 @@ export function createEventGatheringSettingsService(
         }
       }
 
-      return buildEventGatheringSettings(command.event_id, savedGatherings);
+      return buildEventGatheringSettings(
+        command.event_id,
+        savedGatherings,
+        await signImageUrls(
+          imageUrlSigner,
+          savedGatherings.map(gathering => gathering.gathering_spot_image_key)
+        )
+      );
     },
   };
 }

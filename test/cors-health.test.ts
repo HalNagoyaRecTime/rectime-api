@@ -72,6 +72,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/admin/notifications/schedules/{notificationScheduleId}',
       '/api/v1/admin/notifications/schedules/{notificationScheduleId}/resend',
       '/api/v1/admin/notifications/schedules/{notificationScheduleId}/results',
+      '/api/v1/admin/notifications/schedules/{notificationScheduleId}/stop',
       '/api/v1/admin/notifications/{notificationId}',
       '/api/v1/admin/users/{userId}',
       '/api/v1/admin/users/{userId}/staff',
@@ -83,6 +84,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/firebase-tokens',
       '/api/v1/gathering-spots',
       '/api/v1/gathering-spots/{gatheringSpotId}',
+      '/api/v1/gathering-spots/{gatheringSpotId}/image',
       '/api/v1/gatherings/{gatheringId}/members',
       '/api/v1/master-imports',
       '/api/v1/master-imports/{validatedFileId}',
@@ -98,6 +100,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/teachers/{teacherId}',
       '/api/v1/venues',
       '/api/v1/venues/{venueId}',
+      '/api/v1/venues/{venueId}/image',
       '/app/contact',
       '/health',
     ]);
@@ -236,7 +239,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(58);
+    expect(documentedOperations).toHaveLength(63);
     expect(document.paths['/api/v1/gatherings']).toBeUndefined();
     const schedulePath =
       document.paths[

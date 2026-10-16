@@ -15,6 +15,7 @@ const existing: EventGatheringEntity[] = [
     gathering_time: '10:45',
     gathering_spot_id: 1,
     gathering_spot_name: '出入口①',
+    gathering_spot_image_key: null,
     member_count: 16,
   },
   {
@@ -23,6 +24,7 @@ const existing: EventGatheringEntity[] = [
     gathering_time: '10:55',
     gathering_spot_id: 2,
     gathering_spot_name: '出入口②',
+    gathering_spot_image_key: null,
     member_count: 0,
   },
 ];
@@ -58,6 +60,8 @@ function setup(
     update: vi.fn(),
     delete: vi.fn(),
     hasGatherings: vi.fn(),
+    findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
+    replaceImageKey: vi.fn(),
   };
   const repository: IEventGatheringSettingsRepository = {
     // 1回目は差分計算用、2回目は保存後のレスポンス用
@@ -78,6 +82,7 @@ function setup(
     eventRepository,
     gatheringSpotRepository,
     repository,
+    { sign: async (key: string) => `https://signed.example/${key}` },
     gatheringNotificationGeneratorService
   );
   return {
@@ -90,6 +95,43 @@ function setup(
 }
 
 describe('EventGatheringSettingsService', () => {
+  it('通知生成に失敗しても保存済み集合の画像URLを返し、残りの通知同期を続ける', async () => {
+    const current = existing.map(gathering => ({
+      ...gathering,
+      gathering_spot_image_key: `gathering-spots/${gathering.gathering_spot_id}/image.png`,
+    }));
+    const { service, repository, gatheringNotificationGeneratorService } =
+      setup({ current });
+    vi.mocked(
+      gatheringNotificationGeneratorService.generate
+    ).mockRejectedValueOnce(new Error('通知生成の一時障害'));
+    const saved = await service.saveEventGatheringSettings({
+      event_id: EVENT_ID,
+      rounds: [
+        {
+          round: 1,
+          gatherings: current.map(gathering => ({
+            gathering_id: gathering.gathering_id,
+            gathering_time: gathering.gathering_time,
+            gathering_spot_id: gathering.gathering_spot_id,
+          })),
+        },
+      ],
+    });
+    expect(repository.apply).toHaveBeenCalledOnce();
+    expect(
+      gatheringNotificationGeneratorService.generate
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      saved.rounds[0].gatherings.map(
+        gathering => gathering.gathering_spot.image_url
+      )
+    ).toEqual([
+      'https://signed.example/gathering-spots/1/image.png',
+      'https://signed.example/gathering-spots/2/image.png',
+    ]);
+  });
+
   describe('差分の組み立て', () => {
     it('gathering_id の無い集合予定は作成、リクエストに無い既存は削除に振り分ける', async () => {
       const { service, repository } = setup({
@@ -393,6 +435,7 @@ describe('EventGatheringSettingsService', () => {
           gathering_time: '11:00',
           gathering_spot_id: 3,
           gathering_spot_name: '出入口③',
+          gathering_spot_image_key: null,
           member_count: 0,
         },
       ];
@@ -438,6 +481,7 @@ describe('EventGatheringSettingsService', () => {
                 gathering_spot: {
                   gathering_spot_id: 1,
                   gathering_spot_name: '出入口①',
+                  image_url: null,
                 },
                 member_count: 16,
               },
@@ -447,6 +491,7 @@ describe('EventGatheringSettingsService', () => {
                 gathering_spot: {
                   gathering_spot_id: 2,
                   gathering_spot_name: '出入口②',
+                  image_url: null,
                 },
                 member_count: 0,
               },
@@ -461,6 +506,7 @@ describe('EventGatheringSettingsService', () => {
                 gathering_spot: {
                   gathering_spot_id: 3,
                   gathering_spot_name: '出入口③',
+                  image_url: null,
                 },
                 member_count: 0,
               },
