@@ -1,9 +1,11 @@
 import { GatheringSpotEntity } from '../../domain/entities/GatheringSpot';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
+import { DeleteUnusedImage } from './deleteUnusedImage';
 import { IGatheringSpotService } from './IGatheringSpotService';
 
 export function createGatheringSpotService(
-  gatheringSpotRepository: IGatheringSpotRepository
+  gatheringSpotRepository: IGatheringSpotRepository,
+  deleteUnusedImage: DeleteUnusedImage
 ): IGatheringSpotService {
   return {
     getAllGatheringSpots(): Promise<GatheringSpotEntity[]> {
@@ -33,6 +35,7 @@ export function createGatheringSpotService(
       if (await gatheringSpotRepository.hasGatherings(gatheringSpotId)) {
         throw new Error('Gathering spot is in use');
       }
+      const image = await gatheringSpotRepository.findImageKey(gatheringSpotId);
       try {
         if (!(await gatheringSpotRepository.delete(gatheringSpotId))) {
           throw new Error('Gathering spot not found');
@@ -49,6 +52,7 @@ export function createGatheringSpotService(
         }
         throw error;
       }
+      await deleteUnusedImage(image?.imageKey ?? null);
     },
   };
 }

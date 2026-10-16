@@ -63,6 +63,11 @@ import { createNotificationConfigController } from '../presentation/controllers/
 import { createMobileNotificationController } from '../presentation/controllers/MobileNotificationController';
 import { createGatheringSpotController } from '../presentation/controllers/GatheringSpotController';
 import { createVenueController } from '../presentation/controllers/VenueController';
+import { createPlaceImageController } from '../presentation/controllers/PlaceImageController';
+import { createPlaceImageService } from '../application/services/PlaceImageService';
+import { createR2ImageStorage } from '../infrastructure/storages/R2ImageStorage';
+import { createPlaceImageKeyRepository } from '../infrastructure/repositories/PlaceImageKeyRepository';
+import { createDeleteUnusedImage } from '../application/services/deleteUnusedImage';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createEventGatheringSettingsController } from '../presentation/controllers/EventGatheringSettingsController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
@@ -240,10 +245,22 @@ export function createDIContainer(env: Env) {
   const mobileNotificationService = createMobileNotificationService(
     mobileNotificationRepository
   );
+  const imageStorage = createR2ImageStorage(env.IMAGES);
+  const deleteUnusedImage = createDeleteUnusedImage(
+    imageStorage,
+    createPlaceImageKeyRepository(db)
+  );
   const gatheringSpotService = createGatheringSpotService(
+    gatheringSpotRepository,
+    deleteUnusedImage
+  );
+  const venueService = createVenueService(venueRepository, deleteUnusedImage);
+  const placeImageService = createPlaceImageService(
+    imageStorage,
+    deleteUnusedImage,
+    venueRepository,
     gatheringSpotRepository
   );
-  const venueService = createVenueService(venueRepository);
   const gatheringGroupMemberService = createGatheringGroupMemberService(
     gatheringGroupMemberRepository
   );
@@ -283,6 +300,7 @@ export function createDIContainer(env: Env) {
   const gatheringSpotController =
     createGatheringSpotController(gatheringSpotService);
   const venueController = createVenueController(venueService);
+  const placeImageController = createPlaceImageController(placeImageService);
   const gatheringGroupMemberController = createGatheringGroupMemberController(
     gatheringGroupMemberService
   );
@@ -320,6 +338,7 @@ export function createDIContainer(env: Env) {
     notificationDeliveryService,
     gatheringSpotController,
     venueController,
+    placeImageController,
     gatheringGroupMemberController,
     eventGatheringSettingsController,
   };
