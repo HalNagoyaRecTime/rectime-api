@@ -42,11 +42,16 @@ function toManagementDTO(student: StudentEntity): StudentManagementDTO {
     attendance_number: student.attendanceNumber,
     is_live_active: student.isLiveActive,
     is_staff: student.isStaff,
-    class_room: {
-      class_room_id: student.classRoomId,
-      class_code: student.classRoomCode,
-      class_name: student.classRoomName,
-    },
+    class_room:
+      student.classRoomId === null ||
+      student.classRoomCode === null ||
+      student.classRoomName === null
+        ? null
+        : {
+            class_room_id: student.classRoomId,
+            class_code: student.classRoomCode,
+            class_name: student.classRoomName,
+          },
   };
 }
 
@@ -229,7 +234,12 @@ export function createStudentService(
     },
   };
 
-  async function ensureClassRoomExists(classRoomId: number): Promise<void> {
+  async function ensureClassRoomExists(
+    classRoomId: number | null
+  ): Promise<void> {
+    if (classRoomId === null) {
+      return;
+    }
     if (!(await classRoomRepository.findById(classRoomId))) {
       throw new Error('Class room not found');
     }
