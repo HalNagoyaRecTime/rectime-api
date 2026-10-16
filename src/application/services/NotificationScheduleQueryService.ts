@@ -58,6 +58,8 @@ function toListItem(
     importance: schedule.importance,
     sendAt: schedule.send_at,
     status: schedule.status,
+    failureReason:
+      schedule.status === 'failed' ? schedule.failure_reason : null,
     stop: schedule.stop
       ? {
           reason: schedule.stop.reason,

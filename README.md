@@ -36,6 +36,20 @@ npm install
 |---|---|
 | Web | `http://localhost:8787/api/v1/auth/microsoft/callback` |
 | モバイル/デスクトップ | `com.rectime.mobile://auth/callback` |
+| モバイル/デスクトップ（Desktopループバック） | `http://localhost/auth/callback` |
+
+DesktopはシステムブラウザとAuthorization Code + PKCEを使う。
+`http://localhost/auth/callback` は「モバイルとデスクトップ アプリケーション」に登録する。
+Web用とはパスを分け、ポート番号は登録時に固定しない。
+Microsoftはlocalhostのポートを戻り先の一致判定に使わない。
+[Microsoftのlocalhostの規則](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url#localhost-exceptions)
+
+DesktopもAPIのネイティブクライアント契約（`X-Client-Type: mobile`）を使う。
+`/auth/microsoft/login` と `/auth/microsoft/delete-login` に任意の
+`X-Desktop-Redirect-Uri: http://localhost:<空きポート>/auth/callback` を送る。
+APIはlocalhost・固定パス・1024以上のポートを検証し、stateと一緒に戻り先を保存する。
+`/token` と `/delete-token` は保存した同じ戻り先でコードを交換する。
+Desktop用の環境変数は不要。`MICROSOFT_MOBILE_REDIRECT_URI` はAndroid/iOS用のまま使う。
 
 #### API のアクセス許可
 
@@ -98,6 +112,8 @@ cp .dev.vars.example .dev.vars
 | `ALLOWED_ORIGINS` | CORS で許可するフロントエンドの origin（カンマ区切り複数可） |
 | `EVENT_DATE` | 通知配信を許可する開催日（JST、`YYYY-MM-DD`）。未設定・不正な値の場合は配信しない |
 | `JWT_SECRET` | 32 文字以上のランダム文字列 |
+| `R2_ACCESS_KEY_ID` | 画像の署名付きURLに使う R2 の API トークン（Object Read only）のアクセスキー ID |
+| `R2_SECRET_ACCESS_KEY` | 同じ API トークンのシークレットアクセスキー |
 
 Web向けのMicrosoft OAuth redirect_uriは環境ごとの固定値をsecretとして持たず、
 実際のリクエストURL(`https://<worker実際のオリジン>/api/v1/auth/microsoft/callback`)
@@ -116,10 +132,28 @@ MIIEvQIBADA...（秘密鍵の内容）
 ### 6. ローカル D1 データベースのマイグレーション
 
 ```bash
-npm run "db:migrate --local"
+npm run db:migrate:local
 ```
 
-### 7. 起動
+### 7. Cloudflare へのログイン
+
+ローカルでも画像は Cloudflare 上の `rectime-images-dev` バケットを使うため、チームのアカウントにログインしておく。
+
+```bash
+npx wrangler login
+```
+
+`.env` などに `CLOUDFLARE_API_TOKEN` があると、ログインよりそちらが優先される。
+
+### 8. ローカルの画像の初期データ
+
+```bash
+npm run images:seed:local
+```
+
+画像が未登録の実施場所・集合場所すべてに、サンプル画像を紐づける。集合場所を作成したあとや、画像が表示されなくなったときは再度実行する。
+
+### 9. 起動
 
 ```bash
 npm run dev
@@ -133,13 +167,15 @@ npm run dev
 
 ```bash
 # D1 マイグレーション（本番）
-npm run "db:migrate --remote"
+npm run db:migrate:remote
 
 # デプロイ
 npm run deploy
 ```
 
 本番環境のシークレットは Cloudflare ダッシュボード または `wrangler secret put <KEY>` で設定する。
+
+画像を保存する R2 バケット（`rectime-images`・`rectime-images-staging`・`rectime-images-dev`）は、初回のデプロイ前に `wrangler r2 bucket create <バケット名>` で作成しておく。画像は R2 の署名付きURLで直接配信するため、R2 の API トークン（Object Read only）を作成し、`R2_ACCESS_KEY_ID`・`R2_SECRET_ACCESS_KEY` を各環境のシークレットに設定する。
 
 運用時の監視、Smoke Test、障害切り分け、Rollback手順は
 [`docs/operations/ios-release-backend-runbook.md`](docs/operations/ios-release-backend-runbook.md)
@@ -215,3 +251,7 @@ GitHub Actionsは可動tagを直接参照せず、正確なversionをコメン�
 自動検証できない`actions/add-to-project`は月次更新から除外する。
 major更新はこの月次workflowの対象外とし、別途事前検証してから実施する。
 2026年12月1日の定期実行は、同日のmajor更新と重複しないよう自動的にskipする。
+
+### イベント一覧の開催日
+
+`GET /api/v1/events` はトップレベルの `event_date` に既存の `EVENT_DATE`（JST、`YYYY-MM-DD`）を返します。未設定または不正な日付は `null` です。開催日を設定できていなくてもイベント一覧は取得でき、イベント本文・ページング・認証は変わりません。通知配信の開催日と同じ設定を参照し、別の設定値やDB列は追加しません。モバイルのライブアクティビティでの利用は後続対応です。

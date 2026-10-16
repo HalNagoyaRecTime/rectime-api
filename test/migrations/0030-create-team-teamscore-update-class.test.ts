@@ -16,7 +16,8 @@ const migrationQueries = (() => {
 // class_rooms.team_id は teams(team_id) を、students.class_room_id は
 // class_rooms(class_room_id) をそれぞれNOT NULLの外部キーで参照しているため、
 // DROP TABLEすると参照元の行に対して暗黙DELETEが走りFK違反になる。
-// 実データを保持したままriderename退避し、空の受け皿テーブルを同名で作り直す。
+// 実データを保持したままrename退避し、空の受け皿テーブルを同名で作り直す。
+// (0030自体はstudentsを作り直さない。ここでは移行前のclass_rooms/studentsを再現するためだけに作る)
 async function prepareLegacySchema() {
   await env.DB.batch([
     env.DB.prepare('DROP INDEX IF EXISTS idx_class_rooms_team_id'),
@@ -239,6 +240,85 @@ describe('0030_create_team_teamscore_update_class.sql', () => {
       .bind('90H', 'テスト90H組', team!.team_id)
       .first<{ class_room_id: number }>();
     expect(next!.class_room_id).toBeGreaterThan(ROOM);
+  });
+
+  it('studentsは作り直されず、他の移行が足した索引や定義がそのまま残る', async () => {
+    await prepareLegacySchema();
+    // 0033が作る索引を、0030より先に適用済みの環境(stg/prod)として再現する。
+    // 同名の索引は退避したstudents_backup側に残っているため、先に外す。
+    await env.DB.prepare(
+      'DROP INDEX IF EXISTS idx_students_class_room_id_user_id'
+    ).run();
+    await env.DB.prepare(
+      'CREATE INDEX idx_students_class_room_id_user_id ON students(class_room_id, user_id)'
+    ).run();
+    const before = await env.DB.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'students'"
+    ).first<{ sql: string }>();
+
+    await runMigration();
+
+    const after = await env.DB.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'students'"
+    ).first<{ sql: string }>();
+    expect(after!.sql).toBe(before!.sql);
+
+    const indexes = await env.DB.prepare('PRAGMA index_list(students)').all<{
+      name: string;
+    }>();
+    expect(indexes.results.map(index => index.name)).toContain(
+      'idx_students_class_room_id_user_id'
+    );
+  });
+
+  it('class_roomsの採番の高水位が、行を消した後でも戻らない', async () => {
+    await prepareLegacySchema();
+    const HIGH = 900801;
+    await env.DB.prepare(
+      "INSERT INTO class_rooms (class_room_id, class_code, class_name) VALUES (?, '90Z', 'テスト90Z組')"
+    )
+      .bind(HIGH)
+      .run();
+    await env.DB.prepare('DELETE FROM class_rooms WHERE class_room_id = ?')
+      .bind(HIGH)
+      .run();
+    await env.DB.prepare(
+      "INSERT INTO class_rooms (class_code, class_name) VALUES ('90Y2', 'テスト90Y2組')"
+    ).run();
+
+    await runMigration();
+
+    const seq = await env.DB.prepare(
+      "SELECT seq FROM sqlite_sequence WHERE name = 'class_rooms'"
+    ).first<{ seq: number }>();
+    expect(seq!.seq).toBeGreaterThanOrEqual(HIGH);
+  });
+
+  it('class_roomsに想定外の列があるときは、列を失わずに中断し何も変更しない', async () => {
+    await prepareLegacySchema();
+    // 他のPR(例: 楽観ロックのlock_version)が先に列を足した環境を再現する。
+    await env.DB.prepare(
+      'ALTER TABLE class_rooms ADD COLUMN lock_version INTEGER NOT NULL DEFAULT 0'
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO class_rooms (class_room_id, class_code, class_name, lock_version) VALUES (900901, '90L', 'テスト90L組', 3)"
+    ).run();
+
+    await expect(runMigration()).rejects.toThrow(
+      'class_rooms_has_columns_0030_would_drop'
+    );
+
+    // バッチ全体が巻き戻り、teamsは作られず、class_roomsの列と値も残る。
+    const teams = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('teams', 'team_scores', '__migration_0030_guard')"
+    ).all<{ name: string }>();
+    expect(teams.results.map(row => row.name)).not.toContain(
+      '__migration_0030_guard'
+    );
+    const row = await env.DB.prepare(
+      'SELECT lock_version FROM class_rooms WHERE class_room_id = 900901'
+    ).first<{ lock_version: number }>();
+    expect(row?.lock_version).toBe(3);
   });
 
   it('クラス名が重複していても移行できる', async () => {

@@ -52,6 +52,7 @@ export const scheduleListItem = {
   importance: 'normal' as const,
   sendAt: date,
   status: 'sending' as const,
+  failureReason: null,
   stop,
   creation,
 };

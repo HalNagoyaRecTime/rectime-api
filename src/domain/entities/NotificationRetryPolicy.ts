@@ -1,0 +1,8 @@
+export const FCM_RETRY_OFFSETS_SECONDS = [10, 30, 120, 300, 900] as const;
+// 毎分のcronと処理開始の遅れを吸収するため、最終再送予定に2分の余裕を加える。
+export const FCM_RETRY_DEADLINE_MARGIN_SECONDS = 120;
+export const FCM_RETRY_WINDOW_SECONDS =
+  Math.max(...FCM_RETRY_OFFSETS_SECONDS) + FCM_RETRY_DEADLINE_MARGIN_SECONDS;
+export const FCM_MAX_ATTEMPTS = FCM_RETRY_OFFSETS_SECONDS.length + 1;
+export const FCM_PROCESSING_TIMEOUT_SECONDS = 120;
+export const FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS = 70;
