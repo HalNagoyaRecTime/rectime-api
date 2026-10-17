@@ -46,6 +46,9 @@ export const NOTIFICATION_IMPORTANCE_LEVELS = [
   'high',
 ] as const;
 
+export const DEFAULT_NOTIFICATION_IMPORTANCE =
+  'normal' satisfies NotificationImportance;
+
 export type NotificationImportance =
   (typeof NOTIFICATION_IMPORTANCE_LEVELS)[number];
 

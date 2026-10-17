@@ -1,3 +1,4 @@
+import { isValidEventDate } from '../lib/eventDate';
 import { getDb } from '../lib/db';
 import { createNotificationStopRepository } from '../infrastructure/repositories/NotificationStopRepository';
 import { createNotificationStopService } from '../application/services/NotificationStopService';
@@ -21,6 +22,8 @@ import { createNotificationResultQueryRepository } from '../infrastructure/repos
 import { createNotificationAccountDeletionRepository } from '../infrastructure/repositories/NotificationAccountDeletionRepository';
 import { createAdminNotificationRepository } from '../infrastructure/repositories/AdminNotificationRepository';
 import { createAdminNotificationCommandRepository } from '../infrastructure/repositories/AdminNotificationCommandRepository';
+import { createNotificationCreationRepository } from '../infrastructure/repositories/NotificationCreationRepository';
+import { createGatheringNotificationGeneratorRepository } from '../infrastructure/repositories/GatheringNotificationGeneratorRepository';
 import { createNotificationConfigRepository } from '../infrastructure/repositories/NotificationConfigRepository';
 import { createAdminNotificationQueryRepository } from '../infrastructure/repositories/AdminNotificationQueryRepository';
 import { createNotificationAudienceResolverRepository } from '../infrastructure/repositories/NotificationAudienceResolverRepository';
@@ -46,6 +49,7 @@ import { createNotificationAudienceResolverService } from '../application/servic
 import { createNotificationDeliveryService } from '../application/services/NotificationDeliveryService';
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createAdminNotificationCommandService } from '../application/services/AdminNotificationCommandService';
+import { createGatheringNotificationGeneratorService } from '../application/services/GatheringNotificationGeneratorService';
 import { createNotificationConfigService } from '../application/services/NotificationConfigService';
 import { createAdminNotificationQueryService } from '../application/services/AdminNotificationQueryService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
@@ -138,20 +142,29 @@ export function createDIContainer(env: Env) {
   const adminNotificationRepository = createAdminNotificationRepository(db);
   const adminNotificationManagementRepository =
     createAdminNotificationManagementRepository(db);
+  const notificationCreationRepository =
+    createNotificationCreationRepository(db);
   const adminNotificationCommandRepository =
-    createAdminNotificationCommandRepository(db);
+    createAdminNotificationCommandRepository(
+      db,
+      notificationCreationRepository
+    );
   const notificationConfigRepository = createNotificationConfigRepository(db);
   const adminNotificationQueryRepository =
     createAdminNotificationQueryRepository(db);
   const notificationAudienceResolverRepository =
     createNotificationAudienceResolverRepository(db);
-  const notificationDeliveryRepository =
-    createNotificationDeliveryRepository(db);
+  const notificationDeliveryRepository = createNotificationDeliveryRepository(
+    db,
+    { automaticDeliveryEnabled: isValidEventDate(env.EVENT_DATE) }
+  );
   const mobileNotificationRepository = createMobileNotificationRepository(db);
   const gatheringSpotRepository = createGatheringSpotRepository(db);
   const venueRepository = createVenueRepository(db);
   const gatheringGroupMemberRepository =
     createGatheringGroupMemberRepository(db);
+  const gatheringNotificationGeneratorRepository =
+    createGatheringNotificationGeneratorRepository(db);
   const eventGatheringSettingsRepository =
     createEventGatheringSettingsRepository(db);
   const notificationDeliveryQueue = createNotificationDeliveryQueue(
@@ -270,6 +283,12 @@ export function createDIContainer(env: Env) {
     adminNotificationCommandRepository,
     adminNotificationQueryService
   );
+  const gatheringNotificationGeneratorService =
+    createGatheringNotificationGeneratorService(
+      gatheringNotificationGeneratorRepository,
+      notificationCreationRepository,
+      env.EVENT_DATE
+    );
   const notificationConfigService = createNotificationConfigService(
     notificationConfigRepository
   );
@@ -304,7 +323,8 @@ export function createDIContainer(env: Env) {
     eventRepository,
     gatheringSpotRepository,
     eventGatheringSettingsRepository,
-    imageUrlSigner
+    imageUrlSigner,
+    gatheringNotificationGeneratorService
   );
   const rankingService = createRankingService(teamRepository);
   const teamService = createTeamService(teamRepository);
@@ -377,6 +397,7 @@ export function createDIContainer(env: Env) {
     notificationConfigController,
     mobileNotificationController,
     scheduledNotificationService,
+    gatheringNotificationGeneratorService,
     notificationAudienceResolverService,
     notificationDeliveryService,
     notificationRetryService,

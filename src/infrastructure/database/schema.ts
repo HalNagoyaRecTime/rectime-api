@@ -498,6 +498,7 @@ export const notification_recipients = sqliteTable(
       onDelete: 'set null',
     }),
     createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
+    updatedAt: text('updated_at'),
   },
   table => [
     uniqueIndex('uq_notification_recipients_schedule_user').on(

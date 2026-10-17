@@ -2,10 +2,12 @@ import type { NotificationDeliveryProcessingResult } from '../../domain/entities
 
 export interface INotificationDeliveryService {
   enqueueReadySchedules: (
-    now?: Date
+    now?: Date,
+    options?: { manualOnly?: boolean }
   ) => Promise<NotificationDeliveryProcessingResult>;
   sendQueuedNotifications: (
     notificationScheduleIds: number[],
-    now?: Date
+    now?: Date,
+    options?: { manualOnly?: boolean }
   ) => Promise<{ claimed: number; sent: number; failed: number }>;
 }
