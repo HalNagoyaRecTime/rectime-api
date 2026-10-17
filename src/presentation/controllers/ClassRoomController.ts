@@ -137,6 +137,9 @@ function handleWriteError(
   if (error instanceof Error && error.message === 'Teacher not found') {
     return errorResponse(c, UserErrors.TEACHER_NOT_FOUND);
   }
+  if (error instanceof Error && error.message === 'Team not found') {
+    return errorResponse(c, UserErrors.TEAM_NOT_FOUND);
+  }
   if (error instanceof Error && error.message === 'Class not found') {
     return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
   }
@@ -145,6 +148,9 @@ function handleWriteError(
   }
   if (error instanceof Error && error.message === 'Class update conflict') {
     return errorResponse(c, UserErrors.CLASS_ROOM_UPDATE_CONFLICT);
+  }
+  if (error instanceof Error && error.message === 'Team name already exists') {
+    return errorResponse(c, UserErrors.TEAM_NAME_ALREADY_EXISTS);
   }
   return errorResponse(c, fallbackError);
 }

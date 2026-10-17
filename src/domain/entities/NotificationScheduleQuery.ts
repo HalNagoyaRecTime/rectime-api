@@ -39,6 +39,7 @@ export interface NotificationScheduleQueryListItem {
   importance: NotificationImportance;
   send_at: string;
   status: NotificationScheduleStatus;
+  failure_reason: string | null;
   stop: {
     reason: NotificationStopReason;
     stopped_at: string;

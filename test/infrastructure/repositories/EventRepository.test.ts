@@ -115,8 +115,16 @@ describe('EventRepository', () => {
         const others = result.events.filter(e => e.event_id !== target.eventId);
 
         expect(event?.venues).toEqual([
-          { venue_id: venueIds[0], venue_name: 'findAll用第1体育館' },
-          { venue_id: venueIds[1], venue_name: 'findAll用グラウンド' },
+          {
+            venue_id: venueIds[0],
+            venue_name: 'findAll用第1体育館',
+            image_key: null,
+          },
+          {
+            venue_id: venueIds[1],
+            venue_name: 'findAll用グラウンド',
+            image_key: null,
+          },
         ]);
         expect(others.every(e => e.venues.length === 0)).toBe(true);
       } finally {
@@ -228,10 +236,12 @@ describe('EventRepository', () => {
           {
             venue_id: venueIds[0],
             venue_name: 'findWithVenuesById用第1体育館',
+            image_key: null,
           },
           {
             venue_id: venueIds[1],
             venue_name: 'findWithVenuesById用グラウンド',
+            image_key: null,
           },
         ]);
       } finally {
@@ -280,8 +290,16 @@ describe('EventRepository', () => {
         expect(created).toMatchObject({
           event_name: 'create用イベント',
           venues: [
-            { venue_id: venueIds[0], venue_name: 'create用第1体育館' },
-            { venue_id: venueIds[1], venue_name: 'create用グラウンド' },
+            {
+              venue_id: venueIds[0],
+              venue_name: 'create用第1体育館',
+              image_key: null,
+            },
+            {
+              venue_id: venueIds[1],
+              venue_name: 'create用グラウンド',
+              image_key: null,
+            },
           ],
         });
       } finally {
@@ -337,8 +355,16 @@ describe('EventRepository', () => {
           event_name: '更新後のイベント',
           rule_text: '規則',
           venues: [
-            { venue_id: venueIds[1], venue_name: 'update用グラウンド' },
-            { venue_id: venueIds[2], venue_name: 'update用トラック' },
+            {
+              venue_id: venueIds[1],
+              venue_name: 'update用グラウンド',
+              image_key: null,
+            },
+            {
+              venue_id: venueIds[2],
+              venue_name: 'update用トラック',
+              image_key: null,
+            },
           ],
           start_time: '1000',
           end_time: '1030',
@@ -399,7 +425,11 @@ describe('EventRepository', () => {
 
         expect(result).toHaveLength(1);
         expect(result[0].event_id).toBe(target.eventId);
-        expect(result[0].venues).toEqual([]);
+        expect(Object.keys(result[0]).sort()).toEqual([
+          'event_id',
+          'gathering_ids',
+        ]);
+        expect(result[0].gathering_ids).toEqual([gathering!.gathering_id]);
       } finally {
         await env.DB.prepare(
           'DELETE FROM gathering_group_members WHERE gathering_id = ?'
@@ -417,6 +447,71 @@ describe('EventRepository', () => {
         await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
           .bind(user!.user_id)
           .run();
+      }
+    });
+
+    it('複数ラウンドの本人集合だけを重複せずID順で返す', async () => {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('本人集合テスト') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const other = await env.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('別ユーザー集合テスト') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const spot = await env.DB.prepare(
+        "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('本人集合テスト場所') RETURNING gathering_spot_id"
+      ).first<{ gathering_spot_id: number }>();
+      const ids: number[] = [];
+      const target = seeded.events[0];
+      try {
+        for (const round of [1, 2, 3]) {
+          const row = await env.DB.prepare(
+            'INSERT INTO gatherings (event_id, gathering_spot_id, round, gathering_time) VALUES (?, ?, ?, ?) RETURNING gathering_id'
+          )
+            .bind(target.eventId, spot!.gathering_spot_id, round, '10:00')
+            .first<{ gathering_id: number }>();
+          ids.push(row!.gathering_id);
+        }
+        for (const id of [ids[1], ids[0]]) {
+          await env.DB.prepare(
+            'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+          )
+            .bind(id, user!.user_id)
+            .run();
+        }
+        await env.DB.prepare(
+          'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+        )
+          .bind(ids[2], other!.user_id)
+          .run();
+        const result = await repo.findByParticipantUserId(user!.user_id);
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual({
+          event_id: target.eventId,
+          gathering_ids: [ids[0], ids[1]],
+        });
+        expect(
+          (await repo.findByParticipantUserId(other!.user_id))[0].gathering_ids
+        ).toEqual([ids[2]]);
+      } finally {
+        for (const id of ids) {
+          await env.DB.prepare(
+            'DELETE FROM gathering_group_members WHERE gathering_id = ?'
+          )
+            .bind(id)
+            .run();
+          await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
+            .bind(id)
+            .run();
+        }
+        await env.DB.prepare(
+          'DELETE FROM gathering_spots WHERE gathering_spot_id = ?'
+        )
+          .bind(spot!.gathering_spot_id)
+          .run();
+        for (const id of [user!.user_id, other!.user_id])
+          await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+            .bind(id)
+            .run();
       }
     });
 

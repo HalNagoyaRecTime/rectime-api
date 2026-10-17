@@ -10,6 +10,7 @@ import {
   seedStaffsTeachers,
   type SeededData,
 } from '../../fixtures/staffsTeachers';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 // User の無効化は PATCH /api/v1/admin/users/:userId が使う UserStatusRepository で行う。
 // テスト用の直接SQLではなく実運用と同じ経路を通すことで、
@@ -481,6 +482,7 @@ describe('TeacherRepository', () => {
           classCode: seeded.classRooms[1].classCode,
           className: seeded.classRooms[1].className,
           teacherId: target.teacherId,
+          teamId: null,
         }
       );
 
@@ -955,11 +957,11 @@ describe('TeacherRepository', () => {
       )
         .bind(user!.user_id, `teacher-${user!.user_id}@example.test`)
         .first<{ teacher_id: number }>();
-      const classRoom = await env.DB.prepare(
-        "INSERT INTO class_rooms (class_code, class_name, teacher_id) VALUES ('DEL-1', '削除確認クラス', ?) RETURNING class_room_id"
-      )
-        .bind(teacher!.teacher_id)
-        .first<{ class_room_id: number }>();
+      const classRoom = await insertClassRoomWithTeam(env.DB, {
+        classCode: 'DEL-1',
+        className: '削除確認クラス',
+        teacherId: teacher!.teacher_id,
+      });
 
       await expect(repo.deleteByUserId(user!.user_id)).resolves.toBe(true);
 
@@ -973,7 +975,7 @@ describe('TeacherRepository', () => {
       const classRoomRow = await env.DB.prepare(
         'SELECT teacher_id FROM class_rooms WHERE class_room_id = ?'
       )
-        .bind(classRoom!.class_room_id)
+        .bind(classRoom.classRoomId)
         .first<{ teacher_id: number | null }>();
       expect(classRoomRow?.teacher_id).toBeNull();
     });

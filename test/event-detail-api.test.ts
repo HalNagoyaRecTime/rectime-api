@@ -126,8 +126,8 @@ describe('GET /api/v1/events/:eventId', () => {
       event_name: 'リレー',
       rule_text: 'バトンを使用します。',
       venues: [
-        { venue_id: mainCourt, venue_name: 'メインコート' },
-        { venue_id: subCourt, venue_name: 'サブコート' },
+        { venue_id: mainCourt, venue_name: 'メインコート', image_url: null },
+        { venue_id: subCourt, venue_name: 'サブコート', image_url: null },
       ],
       start_time: '1100',
       end_time: '1230',
@@ -141,6 +141,7 @@ describe('GET /api/v1/events/:eventId', () => {
               gathering_spot: {
                 gathering_spot_id: entrance1,
                 gathering_spot_name: '出入口①',
+                image_url: null,
               },
               member_count: 2,
             },
@@ -150,6 +151,7 @@ describe('GET /api/v1/events/:eventId', () => {
               gathering_spot: {
                 gathering_spot_id: entrance2,
                 gathering_spot_name: '出入口②',
+                image_url: null,
               },
               member_count: 0,
             },
@@ -164,6 +166,7 @@ describe('GET /api/v1/events/:eventId', () => {
               gathering_spot: {
                 gathering_spot_id: entrance1,
                 gathering_spot_name: '出入口①',
+                image_url: null,
               },
               member_count: 0,
             },
@@ -188,4 +191,68 @@ describe('GET /api/v1/events/:eventId', () => {
       rounds: [],
     });
   });
+});
+
+it('イベントの作成・更新・再取得でMarkdownの空白を保存する', async () => {
+  const userId = await insertUser();
+  await workerEnv.DB.prepare(
+    'UPDATE users SET is_live_active = 1 WHERE user_id = ?'
+  )
+    .bind(userId)
+    .run();
+  await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
+    .bind(userId)
+    .run();
+  const token = await signAccessToken(
+    {
+      sub: String(userId),
+      oid: `markdown-${userId}`,
+      email: 'markdown@example.com',
+      display_name: 'Markdown test',
+      client_type: 'web',
+    },
+    JWT_SECRET,
+    3600
+  );
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+    'X-Client-Type': 'web',
+  };
+  const venueId = await insertVenue('Markdown test venue');
+  const body = {
+    event_name: 'Markdown test',
+    rule_text: '\n    code\n本文  \n次の行  ',
+    venue_ids: [venueId],
+    start_time: '0900',
+    end_time: '1000',
+  };
+  const response = await app.fetch(
+    new Request('http://example.com/api/v1/events', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    }),
+    testEnv
+  );
+  expect(response.status).toBe(201);
+  const created = (await response.json()) as {
+    event_id: number;
+    rule_text: string;
+  };
+  expect(created.rule_text).toBe(body.rule_text);
+  const rule_text = '更新  \n次の行\n';
+  const url = `http://example.com/api/v1/events/${created.event_id}`;
+  const updated = await app.fetch(
+    new Request(url, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ ...body, rule_text }),
+    }),
+    testEnv
+  );
+  expect(updated.status).toBe(200);
+  const loaded = await app.fetch(new Request(url, { headers }), testEnv);
+  expect(loaded.status).toBe(200);
+  expect(await loaded.json()).toMatchObject({ rule_text });
 });

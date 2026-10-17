@@ -5,6 +5,7 @@ export interface StudentEntity {
   classRoomId: number;
   classRoomCode: string;
   classRoomName: string;
+  teamId: number;
   attendanceNumber: number;
   studentIdNumber: string;
   isLiveActive: boolean;

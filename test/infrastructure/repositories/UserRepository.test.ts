@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 // migrations/0011 で microsoft_account_links は auth_users(users_id: TEXTのUUID) ではなく
 // users(user_id: INTEGER自動採番) を参照するようになった。UserRepository は
@@ -87,17 +88,18 @@ describe('UserRepository', () => {
       await expect(repo.isStaff(user!.user_id)).resolves.toBe(false);
     });
 
-    it('studentsにのみ登録されたユーザーはfalseを返す', async () => {
-      const classRoom = await env.DB.prepare(
-        "INSERT INTO class_rooms (class_code, class_name) VALUES ('AUTHZ', '権限確認') RETURNING class_room_id"
-      ).first<{ class_room_id: number }>();
+    it('studentsにのみ登録されたユーザーには更新権限がない', async () => {
+      const classRoom = await insertClassRoomWithTeam(env.DB, {
+        classCode: 'AUTHZ',
+        className: '権限確認',
+      });
       const user = await env.DB.prepare(
         "INSERT INTO users (user_name) VALUES ('学生') RETURNING user_id"
       ).first<{ user_id: number }>();
       await env.DB.prepare(
         "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, 'AUTHZ-001')"
       )
-        .bind(user!.user_id, classRoom!.class_room_id)
+        .bind(user!.user_id, classRoom.classRoomId)
         .run();
 
       await expect(repo.isStaff(user!.user_id)).resolves.toBe(false);
@@ -106,16 +108,17 @@ describe('UserRepository', () => {
 
   describe('getUserCategories', () => {
     it('studentsにのみ登録されたユーザーはis_studentのみtrue', async () => {
-      const classRoom = await env.DB.prepare(
-        "INSERT INTO class_rooms (class_code, class_name) VALUES ('CAT', 'カテゴリ確認') RETURNING class_room_id"
-      ).first<{ class_room_id: number }>();
+      const classRoom = await insertClassRoomWithTeam(env.DB, {
+        classCode: 'CAT',
+        className: 'カテゴリ確認',
+      });
       const user = await env.DB.prepare(
         "INSERT INTO users (user_name) VALUES ('学生') RETURNING user_id"
       ).first<{ user_id: number }>();
       await env.DB.prepare(
         "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, 'CAT-001')"
       )
-        .bind(user!.user_id, classRoom!.class_room_id)
+        .bind(user!.user_id, classRoom.classRoomId)
         .run();
 
       await expect(repo.getUserCategories(user!.user_id)).resolves.toEqual({
@@ -435,11 +438,10 @@ describe('UserRepository', () => {
 
     describe('学生・教員の lock_version', () => {
       async function insertPerson(name: string) {
-        const classRoom = await env.DB.prepare(
-          'INSERT INTO class_rooms (class_code, class_name) VALUES (?, ?) RETURNING class_room_id'
-        )
-          .bind(`LV-${name}`, 'lv')
-          .first<{ class_room_id: number }>();
+        const classRoom = await insertClassRoomWithTeam(env.DB, {
+          classCode: `LV-${name}`,
+          className: `lv-${name}`,
+        });
         const studentUser = await env.DB.prepare(
           'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
         )
@@ -448,7 +450,7 @@ describe('UserRepository', () => {
         await env.DB.prepare(
           "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, 'LV-0001')"
         )
-          .bind(studentUser!.user_id, classRoom!.class_room_id)
+          .bind(studentUser!.user_id, classRoom.classRoomId)
           .run();
         const teacherUser = await env.DB.prepare(
           'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'

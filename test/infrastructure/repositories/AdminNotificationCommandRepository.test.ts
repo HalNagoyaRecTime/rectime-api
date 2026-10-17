@@ -23,6 +23,8 @@ describe('AdminNotificationCommandRepository', () => {
       env.DB.prepare('DELETE FROM gathering_spots'),
       env.DB.prepare('DELETE FROM students'),
       env.DB.prepare('DELETE FROM class_rooms'),
+      env.DB.prepare('DELETE FROM team_scores'),
+      env.DB.prepare('DELETE FROM teams'),
       env.DB.prepare('DELETE FROM staffs'),
       env.DB.prepare('DELETE FROM teachers'),
       env.DB.prepare('DELETE FROM events'),
@@ -176,6 +178,21 @@ describe('AdminNotificationCommandRepository', () => {
         { type: 'user', target_id: 999999 },
       ])
     ).resolves.toBe(false);
+  });
+
+  it('deletion_statusがactive以外でも既存User targetの存在確認を維持する', async () => {
+    const fixture = await createFixture();
+    await env.DB.prepare(
+      "UPDATE users SET deletion_status = 'deleted' WHERE user_id = ?"
+    )
+      .bind(fixture.actorUserId)
+      .run();
+
+    await expect(
+      repository.areAudienceTargetsAvailable([
+        { type: 'user', target_id: fixture.actorUserId },
+      ])
+    ).resolves.toBe(true);
   });
 
   it('手動通知をSchedule明示削除後に削除し、子行をCASCADEする', async () => {

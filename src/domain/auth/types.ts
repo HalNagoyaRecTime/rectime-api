@@ -31,6 +31,8 @@ export interface UserCategories {
 export type PkcePurpose = 'login' | 'account_deletion';
 
 export interface PkceEntry {
+  // Desktopの検証済みループバック戻り先。コード交換時も同じ値を使う。
+  desktop_redirect_uri?: string;
   code_verifier?: string;
   nonce: string;
   client_type: ClientType;
@@ -47,6 +49,15 @@ export interface MicrosoftTokenResponse {
   error?: string;
   error_description?: string;
 }
+
+// 上流の失効と一時障害を区別し、利用者の認証情報を誤って削除しない。
+export type MicrosoftTokenFailure = {
+  ok: false;
+  reason: 'reauthentication_required' | 'unavailable' | 'provider_error';
+};
+
+export type MicrosoftTokenResult =
+  { ok: true; tokens: MicrosoftTokenResponse } | MicrosoftTokenFailure;
 
 // 削除確認Token(deletion_confirmation:{token})の値。一回限り・短期間の
 // 使い捨てで、本人確認済みのuser_idのみを保持する。upsertUserや一般API用

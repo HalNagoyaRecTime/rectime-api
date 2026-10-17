@@ -1,5 +1,15 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc, count, desc, eq, inArray, like, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  like,
+  sql,
+} from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { GatheringSpotEntity } from '../../domain/entities/GatheringSpot';
 import { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
@@ -12,6 +22,7 @@ function toEntity(
   return {
     gathering_spot_id: row.id,
     gathering_spot_name: row.name,
+    image_key: row.imageKey,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
@@ -132,6 +143,31 @@ export function createGatheringSpotRepository(
           .where(eq(schema.gatherings.gatheringSpotId, gatheringSpotId))
           .get()
       );
+    },
+
+    async findImageKey(gatheringSpotId) {
+      const row = await orm
+        .select({ imageKey: gathering_spots.imageKey })
+        .from(gathering_spots)
+        .where(eq(gathering_spots.id, gatheringSpotId))
+        .get();
+      return row ?? null;
+    },
+
+    async replaceImageKey(gatheringSpotId, currentImageKey, imageKey) {
+      const result = await orm
+        .update(gathering_spots)
+        .set({ imageKey, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .where(
+          and(
+            eq(gathering_spots.id, gatheringSpotId),
+            currentImageKey === null
+              ? isNull(gathering_spots.imageKey)
+              : eq(gathering_spots.imageKey, currentImageKey)
+          )
+        )
+        .run();
+      return result.meta.changes > 0;
     },
   };
 }

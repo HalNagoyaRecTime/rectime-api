@@ -11,6 +11,7 @@ import {
   teachers,
   users,
 } from '../../../src/infrastructure/database/schema';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 describe('ClassRoomRepository', () => {
   let repo: IClassRoomRepository;
@@ -28,6 +29,8 @@ describe('ClassRoomRepository', () => {
     await orm.delete(teachers);
     await orm.delete(users);
     await orm.delete(class_rooms);
+    await env.DB.prepare('DELETE FROM team_scores').run();
+    await env.DB.prepare('DELETE FROM teams').run();
     const [teacherUser] = await orm
       .insert(users)
       .values({ userName: '担任教員' })
@@ -36,20 +39,22 @@ describe('ClassRoomRepository', () => {
       .insert(teachers)
       .values({ userId: teacherUser.id, email: 'tannin@example.ac.jp' })
       .returning();
-    const classrooms = await orm
-      .insert(class_rooms)
-      .values([
-        { classCode: '12B', name: '2年Bクラス', teacherId: teacher.id },
-        { classCode: 'IA14A', name: '高度情報学科AI開発先行コース' },
-      ])
-      .returning();
+    const classroom1 = await insertClassRoomWithTeam(env.DB, {
+      classCode: '12B',
+      className: '2年Bクラス',
+      teacherId: teacher.id,
+    });
+    await insertClassRoomWithTeam(env.DB, {
+      classCode: 'IA14A',
+      className: '高度情報学科AI開発先行コース',
+    });
     const [studentUser] = await orm
       .insert(users)
       .values({ userName: '所属学生' })
       .returning();
     await orm.insert(students).values({
       userId: studentUser.id,
-      classRoomId: classrooms[0].id,
+      classRoomId: classroom1.classRoomId,
       attendanceNumber: 1,
       studentIdNumber: 'CLASS-TEST-001',
     });
@@ -58,7 +63,7 @@ describe('ClassRoomRepository', () => {
   });
 
   describe('findAll', () => {
-    it('class_rooms を class_room_id 昇順で返し、limitとoffsetを適用する', async () => {
+    it('class_rooms を classRoomId 昇順で返し、limitとoffsetを適用する', async () => {
       const result = await repo.findAll({ limit: 1, offset: 1 });
 
       expect(result.items).toHaveLength(1);
@@ -130,11 +135,13 @@ describe('ClassRoomRepository', () => {
             classCode: 'SORT-TIE-A',
             className: '同名クラス',
             teacherId: null,
+            teamId: null,
           });
           await repo.create({
             classCode: 'SORT-TIE-B',
             className: '同名クラス',
             teacherId: null,
+            teamId: null,
           });
         }
 
@@ -209,6 +216,7 @@ describe('ClassRoomRepository', () => {
       classCode: '13A',
       className: '3年Aクラス',
       teacherId: null,
+      teamId: null,
     });
     expect(created).toMatchObject({
       classCode: '13A',
@@ -221,6 +229,7 @@ describe('ClassRoomRepository', () => {
       classCode: '13B',
       className: '3年Bクラス',
       teacherId: null,
+      teamId: null,
     });
     expect(updated).toMatchObject({
       classCode: '13B',
@@ -230,12 +239,342 @@ describe('ClassRoomRepository', () => {
     await expect(repo.findById(created.classRoomId)).resolves.toBeNull();
   });
 
+  it('既存のteam_idを指定して作成すると、そのteamをそのまま使い新規teamを作らない', async () => {
+    const base = await repo.create({
+      classCode: '16A',
+      className: '6年Aクラス',
+      teacherId: null,
+      teamId: null,
+    });
+
+    const joined = await repo.create({
+      classCode: '16B',
+      className: '6年Bクラス（合同）',
+      teacherId: null,
+      teamId: base.teamId,
+    });
+
+    expect(joined.teamId).toBe(base.teamId);
+  });
+
+  it('deleteはclass_roomの行だけを削除し、teamの削除有無は判断しない（判断はApplication層の責務）', async () => {
+    const base = await repo.create({
+      classCode: '17A',
+      className: '7年Aクラス',
+      teacherId: null,
+      teamId: null,
+    });
+    const joined = await repo.create({
+      classCode: '17B',
+      className: '7年Bクラス（合同）',
+      teacherId: null,
+      teamId: base.teamId,
+    });
+
+    await expect(repo.delete(joined.classRoomId)).resolves.toBe(true);
+    await expect(repo.findById(base.classRoomId)).resolves.toMatchObject({
+      teamId: base.teamId,
+    });
+
+    // 他のclass_roomがまだ参照していてもいなくても、deleteはteamに手を出さない。
+    const teamRow = await env.DB.prepare(
+      'SELECT team_id FROM teams WHERE team_id = ?'
+    )
+      .bind(base.teamId)
+      .first();
+    expect(teamRow).not.toBeNull();
+
+    await expect(repo.delete(base.classRoomId)).resolves.toBe(true);
+    const teamRowAfterLastDelete = await env.DB.prepare(
+      'SELECT team_id FROM teams WHERE team_id = ?'
+    )
+      .bind(base.teamId)
+      .first();
+    expect(teamRowAfterLastDelete).not.toBeNull();
+  });
+
+  describe('existsWithTeamId', () => {
+    it('他のclass_roomが同じteamを参照していればtrueを返す', async () => {
+      const base = await repo.create({
+        classCode: '18A',
+        className: '8年Aクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      const joined = await repo.create({
+        classCode: '18B',
+        className: '8年Bクラス（合同）',
+        teacherId: null,
+        teamId: base.teamId,
+      });
+
+      await expect(
+        repo.existsWithTeamId(base.teamId, joined.classRoomId)
+      ).resolves.toBe(true);
+    });
+
+    it('自分自身しか参照していなければfalseを返す（excludeで自分自身を除外する）', async () => {
+      const base = await repo.create({
+        classCode: '19A',
+        className: '9年Aクラス',
+        teacherId: null,
+        teamId: null,
+      });
+
+      await expect(
+        repo.existsWithTeamId(base.teamId, base.classRoomId)
+      ).resolves.toBe(false);
+    });
+  });
+
+  describe('deleteAndCleanupTeam', () => {
+    it('他のclass_roomがteamを参照していなければ、クラス削除とあわせてteamも削除する', async () => {
+      const base = await repo.create({
+        classCode: '21A',
+        className: '1年Aクラス',
+        teacherId: null,
+        teamId: null,
+      });
+
+      await expect(
+        repo.deleteAndCleanupTeam(base.classRoomId, base.teamId)
+      ).resolves.toBe(true);
+
+      await expect(repo.findById(base.classRoomId)).resolves.toBeNull();
+      const teamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.teamId)
+        .first();
+      expect(teamRow).toBeNull();
+    });
+
+    it('他のclass_roomがteamを参照していれば、クラス削除だけ行いteamは残す', async () => {
+      const base = await repo.create({
+        classCode: '21B',
+        className: '1年Bクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      const joined = await repo.create({
+        classCode: '21C',
+        className: '1年Cクラス（合同）',
+        teacherId: null,
+        teamId: base.teamId,
+      });
+
+      await expect(
+        repo.deleteAndCleanupTeam(joined.classRoomId, base.teamId)
+      ).resolves.toBe(true);
+
+      const teamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.teamId)
+        .first();
+      expect(teamRow).not.toBeNull();
+    });
+
+    it('存在しないclass_room_idの場合はfalseを返す', async () => {
+      await expect(repo.deleteAndCleanupTeam(999999, 999999)).resolves.toBe(
+        false
+      );
+    });
+
+    it('team_scoresが残っていれば、他のclass_roomがなくてもteamは残す', async () => {
+      const base = await repo.create({
+        classCode: '21D',
+        className: '1年Dクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 10)'
+      )
+        .bind(base.teamId)
+        .run();
+
+      await expect(
+        repo.deleteAndCleanupTeam(base.classRoomId, base.teamId)
+      ).resolves.toBe(true);
+
+      await expect(repo.findById(base.classRoomId)).resolves.toBeNull();
+      const teamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.teamId)
+        .first();
+      expect(teamRow).not.toBeNull();
+
+      // team_scoresを残したteamはCLEANUP_EMPTY_TEAM_SQLでは消えないため、
+      // 他ファイルの無条件DELETE FROM teamsがFK違反で壊れないよう明示的に後始末する。
+      await env.DB.prepare('DELETE FROM team_scores WHERE team_id = ?')
+        .bind(base.teamId)
+        .run();
+      await env.DB.prepare('DELETE FROM teams WHERE team_id = ?')
+        .bind(base.teamId)
+        .run();
+    });
+
+    it('team_scoresの行があっても得点が0ならteamを削除する', async () => {
+      const base = await repo.create({
+        classCode: '21E',
+        className: '1年Eクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 0)'
+      )
+        .bind(base.teamId)
+        .run();
+
+      await expect(
+        repo.deleteAndCleanupTeam(base.classRoomId, base.teamId)
+      ).resolves.toBe(true);
+
+      const teamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.teamId)
+        .first();
+      expect(teamRow).toBeNull();
+    });
+  });
+
+  describe('updateAndCleanupTeam', () => {
+    it('team_idを変更し、移動元teamに他のclass_roomがなければ移動元teamも削除する', async () => {
+      const base = await repo.create({
+        classCode: '22A',
+        className: '2年Aクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      const destination = await repo.create({
+        classCode: '22B',
+        className: '2年Bクラス',
+        teacherId: null,
+        teamId: null,
+      });
+
+      const updated = await repo.updateAndCleanupTeam(
+        base.classRoomId,
+        {
+          classCode: base.classCode,
+          className: base.className,
+          teacherId: null,
+          teamId: destination.teamId,
+        },
+        base.teamId
+      );
+
+      expect(updated?.teamId).toBe(destination.teamId);
+      const oldTeamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.teamId)
+        .first();
+      expect(oldTeamRow).toBeNull();
+    });
+
+    it('移動元teamに他のclass_roomが残っていれば、移動元teamは削除しない', async () => {
+      const base = await repo.create({
+        classCode: '22C',
+        className: '2年Cクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      const sibling = await repo.create({
+        classCode: '22D',
+        className: '2年Dクラス（合同）',
+        teacherId: null,
+        teamId: base.teamId,
+      });
+      const destination = await repo.create({
+        classCode: '22E',
+        className: '2年Eクラス',
+        teacherId: null,
+        teamId: null,
+      });
+
+      await repo.updateAndCleanupTeam(
+        base.classRoomId,
+        {
+          classCode: base.classCode,
+          className: base.className,
+          teacherId: null,
+          teamId: destination.teamId,
+        },
+        base.teamId
+      );
+
+      const oldTeamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.teamId)
+        .first();
+      expect(oldTeamRow).not.toBeNull();
+      await expect(repo.findById(sibling.classRoomId)).resolves.toMatchObject({
+        teamId: base.teamId,
+      });
+    });
+
+    it('移動元teamにteam_scoresが残っていれば、他のclass_roomがなくても移動元teamは削除しない', async () => {
+      const base = await repo.create({
+        classCode: '22F',
+        className: '2年Fクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      const destination = await repo.create({
+        classCode: '22G',
+        className: '2年Gクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 10)'
+      )
+        .bind(base.teamId)
+        .run();
+
+      const updated = await repo.updateAndCleanupTeam(
+        base.classRoomId,
+        {
+          classCode: base.classCode,
+          className: base.className,
+          teacherId: null,
+          teamId: destination.teamId,
+        },
+        base.teamId
+      );
+
+      expect(updated?.teamId).toBe(destination.teamId);
+      const oldTeamRow = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_id = ?'
+      )
+        .bind(base.teamId)
+        .first();
+      expect(oldTeamRow).not.toBeNull();
+
+      // team_scoresを残したteamはCLEANUP_EMPTY_TEAM_SQLでは消えないため、
+      // 他ファイルの無条件DELETE FROM teamsがFK違反で壊れないよう明示的に後始末する。
+      await env.DB.prepare('DELETE FROM team_scores WHERE team_id = ?')
+        .bind(base.teamId)
+        .run();
+      await env.DB.prepare('DELETE FROM teams WHERE team_id = ?')
+        .bind(base.teamId)
+        .run();
+    });
+  });
+
   it('class_codeの一意制約を適用する', async () => {
     await expect(
       repo.create({
         classCode: 'IA14A',
         className: '重複クラス',
         teacherId: null,
+        teamId: null,
       })
     ).rejects.toThrow(/UNIQUE/);
   });
@@ -249,6 +588,7 @@ describe('ClassRoomRepository', () => {
         classCode: 'IA14A',
         className: '重複クラス',
         teacherId: null,
+        teamId: null,
       })
     ).rejects.toThrow(/UNIQUE/);
 
@@ -356,6 +696,60 @@ describe('ClassRoomRepository', () => {
       await expect(repo.findByCode('15A')).resolves.toBeNull();
     });
 
+    it('class_codeが重複する行がある場合、作成しかけたteamも残らない（team挿入とclass_rooms挿入は同一トランザクション）', async () => {
+      const before = await env.DB.prepare(
+        'SELECT COUNT(*) AS total FROM teams'
+      ).first<{ total: number }>();
+
+      await expect(
+        repo.createMany([
+          {
+            classCode: '15C',
+            className: '孤立チーム確認クラス',
+            teacherId: null,
+          },
+          {
+            classCode: 'IA14A',
+            className: '重複クラス',
+            teacherId: null,
+          },
+        ])
+      ).rejects.toThrow();
+
+      const after = await env.DB.prepare(
+        'SELECT COUNT(*) AS total FROM teams'
+      ).first<{ total: number }>();
+      expect(after?.total).toBe(before?.total);
+
+      const orphanedTeam = await env.DB.prepare(
+        'SELECT team_id FROM teams WHERE team_name = ?'
+      )
+        .bind('孤立チーム確認クラス(15C)')
+        .first();
+      expect(orphanedTeam).toBeNull();
+    });
+
+    it('クラス名が重複する行があっても作成できる（暫定チーム名はクラスコードで一意化される）', async () => {
+      await repo.createMany([
+        {
+          classCode: '20A',
+          className: '重複組',
+          teacherId: null,
+        },
+        {
+          classCode: '20B',
+          className: '重複組',
+          teacherId: null,
+        },
+      ]);
+
+      const created20A = await repo.findByCode('20A');
+      const created20B = await repo.findByCode('20B');
+      expect(created20A?.className).toBe('重複組');
+      expect(created20B?.className).toBe('重複組');
+      expect(created20A?.teamId).not.toBe(created20B?.teamId);
+    });
+
     it('後続チャンクの重複エラーでも先行チャンクを残さない', async () => {
       const inputs = Array.from({ length: 34 }, (_, index) => ({
         classCode: `ATOMIC-${index}`,
@@ -387,6 +781,37 @@ describe('ClassRoomRepository', () => {
       await expect(repo.findByCode('BULK2K-1999')).resolves.toMatchObject({
         className: '一括クラス1999',
       });
+    }, 15000);
+
+    it('db.batch()の呼び出しがチャンク分割された場合、後のチャンクが失敗すると先に確定した分もまとめて後片付けされる', async () => {
+      const CHUNK_SIZE = 20; // Math.floor(D1_MAX_BOUND_PARAMETERS / 5)と同じ値
+      const firstChunkInputs = Array.from({ length: CHUNK_SIZE }, (_, i) => ({
+        classCode: `CROSS-CHUNK-${i}`,
+        className: `チャンク跨ぎクラス${i}`,
+        teacherId: null,
+      }));
+      const secondChunkInputs = [
+        {
+          // 既存のclass_codeにぶつけて2チャンク目を失敗させる
+          classCode: 'IA14A',
+          className: '2チャンク目で重複するクラス',
+          teacherId: null,
+        },
+      ];
+
+      await expect(
+        repo.createMany([...firstChunkInputs, ...secondChunkInputs])
+      ).rejects.toThrow();
+
+      // 1チャンク目(20件)は一度コミットされているはずだが、
+      // 2チャンク目の失敗を受けてまとめて後片付けされていること
+      for (const input of firstChunkInputs) {
+        await expect(repo.findByCode(input.classCode)).resolves.toBeNull();
+      }
+      const orphanedTeams = await env.DB.prepare(
+        "SELECT team_id FROM teams WHERE team_name LIKE 'チャンク跨ぎクラス%'"
+      ).all();
+      expect(orphanedTeams.results).toHaveLength(0);
     });
   });
 
@@ -396,6 +821,7 @@ describe('ClassRoomRepository', () => {
         classCode,
         className: '版番号テスト',
         teacherId: null,
+        teamId: null,
       });
       return created.classRoomId;
     }
@@ -404,6 +830,7 @@ describe('ClassRoomRepository', () => {
       classCode,
       className,
       teacherId: null,
+      teamId: null,
     });
 
     it('expectedLockVersion が現在の値と一致すれば更新し、lockVersion を1増やす', async () => {
@@ -491,6 +918,7 @@ describe('ClassRoomRepository', () => {
         classCode: 'SW-1',
         className: '付け替え',
         teacherId: oldTeacher,
+        teamId: null,
       });
       // 担任付きの作成で、担任の版番号が進んでいる
       expect(await readTeacherLock(oldTeacher)).toBe(1);
@@ -499,6 +927,7 @@ describe('ClassRoomRepository', () => {
         classCode: 'SW-1',
         className: '付け替え',
         teacherId: newTeacher,
+        teamId: null,
       });
 
       expect(await readTeacherLock(oldTeacher)).toBe(2);
@@ -511,6 +940,7 @@ describe('ClassRoomRepository', () => {
         classCode: 'SW-2',
         className: '据え置き',
         teacherId: teacher,
+        teamId: null,
       });
       const before = await readTeacherLock(teacher);
 
@@ -518,6 +948,7 @@ describe('ClassRoomRepository', () => {
         classCode: 'SW-2',
         className: '据え置き（改称）',
         teacherId: teacher,
+        teamId: null,
       });
 
       expect(await readTeacherLock(teacher)).toBe(before);
@@ -530,6 +961,7 @@ describe('ClassRoomRepository', () => {
         classCode: 'SW-3',
         className: '不一致',
         teacherId: oldTeacher,
+        teamId: null,
       });
       const oldBefore = await readTeacherLock(oldTeacher);
 
@@ -537,6 +969,7 @@ describe('ClassRoomRepository', () => {
         classCode: 'SW-3',
         className: '不一致',
         teacherId: newTeacher,
+        teamId: null,
         expectedLockVersion: 99,
       });
 
@@ -551,6 +984,7 @@ describe('ClassRoomRepository', () => {
         classCode: 'SW-4',
         className: '解除',
         teacherId: teacher,
+        teamId: null,
       });
       const before = await readTeacherLock(teacher);
 
@@ -558,6 +992,7 @@ describe('ClassRoomRepository', () => {
         classCode: 'SW-4',
         className: '解除',
         teacherId: null,
+        teamId: null,
       });
 
       expect(await readTeacherLock(teacher)).toBe(before! + 1);
@@ -622,6 +1057,7 @@ describe('ClassRoomRepository', () => {
         classCode: '12B',
         className: '2年Bクラス（改称）',
         teacherId: null,
+        teamId: null,
       });
       expect(updated).toMatchObject({
         className: '2年Bクラス（改称）',
@@ -662,6 +1098,7 @@ describe('ClassRoomRepository', () => {
         classCode: '12B',
         className: '上書きされてはいけない',
         teacherId: null,
+        teamId: null,
         expectedLockVersion: fetched!.lockVersion,
       });
 
@@ -681,6 +1118,7 @@ describe('ClassRoomRepository', () => {
         classCode: '12B',
         className: '2年Bクラス',
         teacherId: null,
+        teamId: null,
       });
 
       expect(updated).toMatchObject({ teacher: null });

@@ -1,4 +1,5 @@
 import type { MessageBatch } from '@cloudflare/workers-types';
+import type { INotificationRetryService } from '../../application/services/INotificationRetryService';
 import type { INotificationDeliveryService } from '../../application/services/INotificationDeliveryService';
 import type { IScheduledNotificationService } from '../../application/services/IScheduledNotificationService';
 import {
@@ -10,7 +11,8 @@ import {
 export async function consumeNotificationDeliveryQueue(
   batch: MessageBatch<NotificationDeliveryMessage>,
   legacyService: IScheduledNotificationService,
-  notificationDeliveryService: INotificationDeliveryService
+  notificationDeliveryService: INotificationDeliveryService,
+  retryService?: INotificationRetryService
 ): Promise<void> {
   for (const message of batch.messages) {
     if (!isNotificationDeliveryMessage(message.body)) {
@@ -22,6 +24,15 @@ export async function consumeNotificationDeliveryQueue(
     }
 
     try {
+      if (message.body.retryDeliveryIds) {
+        if (!retryService) throw new Error('再送Serviceが設定されていません');
+        await retryService.retryDueDeliveries(
+          undefined,
+          message.body.retryDeliveryIds
+        );
+        message.ack();
+        continue;
+      }
       const [legacyResult, deliveryResult] = await Promise.allSettled([
         Promise.resolve().then(() =>
           legacyService.sendQueuedNotifications(
@@ -75,6 +86,17 @@ function isNotificationDeliveryMessage(
   if (!value || typeof value !== 'object') return false;
   if (!('notificationScheduleIds' in value)) return false;
 
+  if ('retryDeliveryIds' in value) {
+    const ids = value.retryDeliveryIds;
+    return (
+      Array.isArray(value.notificationScheduleIds) &&
+      value.notificationScheduleIds.length === 0 &&
+      Array.isArray(ids) &&
+      ids.length > 0 &&
+      ids.length <= 90 &&
+      ids.every(id => Number.isSafeInteger(id) && id > 0)
+    );
+  }
   const ids = value.notificationScheduleIds;
   return (
     Array.isArray(ids) &&

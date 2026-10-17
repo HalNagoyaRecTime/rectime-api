@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { VenueEntity } from '../../domain/entities/Venue';
 import { IVenueRepository } from '../../domain/interfaces/repositories/IVenueRepository';
@@ -14,6 +14,7 @@ function toEntity(row: typeof venues.$inferSelect): VenueEntity {
   return {
     venue_id: row.id,
     venue_name: row.name,
+    image_key: row.imageKey,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
@@ -113,6 +114,31 @@ export function createVenueRepository(db: D1Database): IVenueRepository {
           .where(eq(event_venues.venueId, venueId))
           .get()
       );
+    },
+
+    async findImageKey(venueId) {
+      const row = await orm
+        .select({ imageKey: venues.imageKey })
+        .from(venues)
+        .where(eq(venues.id, venueId))
+        .get();
+      return row ?? null;
+    },
+
+    async replaceImageKey(venueId, currentImageKey, imageKey) {
+      const result = await orm
+        .update(venues)
+        .set({ imageKey, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .where(
+          and(
+            eq(venues.id, venueId),
+            currentImageKey === null
+              ? isNull(venues.imageKey)
+              : eq(venues.imageKey, currentImageKey)
+          )
+        )
+        .run();
+      return result.meta.changes > 0;
     },
   };
 }

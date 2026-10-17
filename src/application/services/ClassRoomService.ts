@@ -10,10 +10,14 @@ import type {
   ClassRoomRequestDTO,
   ClassRoomUpdateRequestDTO,
 } from '../dto/ClassRoomDTO';
-import type { ClassRoomEntity } from '../../domain/entities/ClassRoom';
-import type { ClassRoomSearchFilter } from '../../domain/entities/ClassRoom';
+import type {
+  ClassRoomEntity,
+  ClassRoomInput,
+  ClassRoomSearchFilter,
+} from '../../domain/entities/ClassRoom';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import type { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
+import type { ITeamRepository } from '../../domain/interfaces/repositories/ITeamRepository';
 import type { IClassRoomService } from './IClassRoomService';
 
 async function findImportErrors(
@@ -64,36 +68,17 @@ async function findImportErrors(
   return errors;
 }
 
-function getErrorChainMessage(error: unknown): string {
-  const messages: string[] = [];
-  const visited = new Set<Error>();
-  let current = error;
-
-  while (current instanceof Error && !visited.has(current)) {
-    visited.add(current);
-    messages.push(current.message);
-    current = current.cause;
-  }
-
-  return messages.join(' ');
-}
-
-function isClassCodeUniqueError(error: unknown): boolean {
-  const message = getErrorChainMessage(error);
-  return (
-    message.includes('UNIQUE') && message.includes('class_rooms.class_code')
-  );
-}
-
 export function createClassRoomService(
   classRoomRepository: IClassRoomRepository,
-  teacherRepository: ITeacherRepository
+  teacherRepository: ITeacherRepository,
+  teamRepository: ITeamRepository
 ): IClassRoomService {
   const toDTO = (classroom: ClassRoomEntity): ClassRoomDTO => ({
     class_room_id: classroom.classRoomId,
     class_code: classroom.classCode,
     class_name: classroom.className,
     student_count: classroom.studentCount,
+    team_id: classroom.teamId,
     teacher: classroom.teacher
       ? {
           teacher_id: classroom.teacher.teacherId,
@@ -112,6 +97,31 @@ export function createClassRoomService(
     ) {
       throw new Error('Teacher not found');
     }
+  };
+
+  const ensureTeamExists = async (teamId: number | null) => {
+    if (teamId !== null && !(await teamRepository.exists(teamId))) {
+      throw new Error('Team not found');
+    }
+  };
+
+  const toClassRoomInput = (input: ClassRoomRequestDTO): ClassRoomInput => ({
+    classCode: input.classCode,
+    className: input.className,
+    teacherId: input.teacherId,
+    teamId: input.teamId ?? null,
+  });
+
+  const mapWriteError = (error: unknown): never => {
+    if (error instanceof Error) {
+      if (error.message.includes('class_rooms.class_code')) {
+        throw new Error('Class code already exists');
+      }
+      if (error.message.includes('teams.team_name')) {
+        throw new Error('Team name already exists');
+      }
+    }
+    throw error;
   };
 
   return {
@@ -135,13 +145,11 @@ export function createClassRoomService(
 
     async createClassRoom(input: ClassRoomRequestDTO): Promise<ClassRoomDTO> {
       await ensureTeacherExists(input.teacherId);
+      await ensureTeamExists(input.teamId ?? null);
       try {
-        return toDTO(await classRoomRepository.create(input));
+        return toDTO(await classRoomRepository.create(toClassRoomInput(input)));
       } catch (error) {
-        if (isClassCodeUniqueError(error)) {
-          throw new Error('Class code already exists');
-        }
-        throw error;
+        throw mapWriteError(error);
       }
     },
 
@@ -160,13 +168,23 @@ export function createClassRoomService(
         throw new Error('Class update conflict');
       }
       await ensureTeacherExists(input.teacherId);
+      await ensureTeamExists(input.teamId ?? null);
       try {
-        const classroom = await classRoomRepository.update(id, {
-          classCode: input.classCode,
-          className: input.className,
-          teacherId: input.teacherId,
+        // 担当チームが変わる場合は、元のチームが空になれば片付ける更新を使う。
+        const teamChanged =
+          input.teamId != null && existing.teamId !== input.teamId;
+        const updateInput = {
+          ...toClassRoomInput(input),
           expectedLockVersion: input.lockVersion,
-        });
+        };
+
+        const classroom = teamChanged
+          ? await classRoomRepository.updateAndCleanupTeam(
+              id,
+              updateInput,
+              existing.teamId
+            )
+          : await classRoomRepository.update(id, updateInput);
         if (!classroom) {
           // 版番号を条件にしていた場合、0件更新は削除か版番号の不一致のどちらか。
           if (
@@ -179,10 +197,7 @@ export function createClassRoomService(
         }
         return toDTO(classroom);
       } catch (error) {
-        if (isClassCodeUniqueError(error)) {
-          throw new Error('Class code already exists');
-        }
-        throw error;
+        throw mapWriteError(error);
       }
     },
 
@@ -190,7 +205,12 @@ export function createClassRoomService(
       if (await classRoomRepository.hasStudents(id)) {
         throw new Error('Class is referenced by students');
       }
-      if (!(await classRoomRepository.delete(id))) {
+      const classroom = await classRoomRepository.findById(id);
+      if (!classroom) throw new Error('Class not found');
+
+      if (
+        !(await classRoomRepository.deleteAndCleanupTeam(id, classroom.teamId))
+      ) {
         throw new Error('Class not found');
       }
     },

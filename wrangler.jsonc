@@ -14,6 +14,10 @@
     // /openapi.json と /docs は404になる(src/index.ts の requireDocsEnabled)。
     // API仕様・内部エラーコード・DB形状のヒントを無認証で公開しないため。
     "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
+    // /app/contact のリダイレクト先(Microsoft Forms「アプリお問い合わせ」)。
+    // 空・未設定・https以外のときはリダイレクトせず404を返す。
+    "CONTACT_FORM_URL": "https://forms.cloud.microsoft/r/LAsntFuQcF",
+    "IMAGES_BUCKET_URL": "https://539494518db0c8b96ec2f6fdd30fb990.r2.cloudflarestorage.com/rectime-images",
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
   // 公開されている(README.md参照)。カスタムドメイン/routesは未設定のため、
@@ -41,6 +45,8 @@
       "FIREBASE_PROJECT_ID",
       "FIREBASE_CLIENT_EMAIL",
       "FIREBASE_PRIVATE_KEY",
+      "R2_ACCESS_KEY_ID",
+      "R2_SECRET_ACCESS_KEY",
     ],
   },
   "triggers": {
@@ -82,6 +88,12 @@
       "migrations_dir": "migrations",
     },
   ],
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "rectime-images",
+    },
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -98,16 +110,16 @@
   ],
   "env": {
     // `rectime-api-development` という別Workerとして作成される。
-    // ローカル開発(wrangler dev --env development)と、mainブランチ以外へのpush先/
-    // PRごとのpreviewデプロイ先(旧env.preview)の両方を兼ねる(env.previewは廃止し統合した)。
+    // ローカル開発(wrangler dev --env development)と、developブランチへのpush先の
+    // 両方を兼ねる(env.previewは廃止し統合した)。
+    // PRごとのpreviewデプロイは行わない(理由はdeploy.ymlのjobs.targetを参照)。
     // env.default は development と重複していたため削除した。
     //
     // web向けMicrosoft OAuthのredirect_uriは(#151により)リクエストURLから動的に
     // 組み立てられるため、wrangler側での設定は不要。ただしMicrosoft Entra側の
-    // アプリ登録には、実際にデプロイされるWorkerのコールバックURL
-    // (`wrangler versions upload --env development --preview-alias <固定名>` で得られる
-    // `https://<固定名>-rectime-api-development.<subdomain>.workers.dev/api/v1/auth/microsoft/callback`)
-    // を事前に追加登録しておく必要がある(preview-aliasを固定名で使い続けないとURLが変わり登録と食い違う)。
+    // アプリ登録には、developmentのコールバックURL
+    // (`https://rectime-api-development.<subdomain>.workers.dev/api/v1/auth/microsoft/callback`)
+    // を事前に追加登録しておく必要がある(未登録だとdevelopmentでのMicrosoftログインのみ失敗する)。
     "development": {
       "name": "rectime-api-development",
       "preview_urls": true,
@@ -117,6 +129,9 @@
         "ALLOWED_ORIGINS": "http://localhost:5173,https://recwatch.pages.dev,https://*.recwatch.pages.dev",
         "DOCS_ENABLED": "true",
         "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
+        // /app/contact のリダイレクト先(Microsoft Forms「アプリお問い合わせ」)。
+        // 空・未設定・https以外のときはリダイレクトせず404を返す。
+        "CONTACT_FORM_URL": "https://forms.cloud.microsoft/r/LAsntFuQcF",
         // Entraアプリの「アプリケーション(クライアント)ID」。非公開の資格情報ではないためvarsで直接設定する。
         "MICROSOFT_CLIENT_ID": "be597fc9-7946-43a2-9ba8-6a96c96fd3b7",
         // Entraのマルチテナント共通エンドポイント値。環境によらず同一。
@@ -137,6 +152,7 @@
         // 未設定だと更新系エンドポイントが500になる(#204レビュー指摘)。実イベントの日付に
         // 追随させる必要はない検証用環境のため、固定のダミー値を使う。
         "EVENT_DATE": "2026-01-01",
+        "IMAGES_BUCKET_URL": "https://539494518db0c8b96ec2f6fdd30fb990.r2.cloudflarestorage.com/rectime-images-dev",
       },
       // triggersはトップレベルから継承されるため、明示しないと本番同様の毎分cronが
       // development(旧env.previewが明示的に無効化していた分)でも有効になってしまう。
@@ -150,7 +166,8 @@
       // 10秒タイムアウトし、テストスイートが不安定になることを確認したため。
       // ただし実デプロイ先としても使う以上、以下は実際には必須(`wrangler secret put <NAME> --env development`
       // で登録すること): MICROSOFT_CLIENT_PRIVATE_KEY / MICROSOFT_CERT_THUMBPRINT / JWT_SECRET /
-      // FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY
+      // FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY /
+      // R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
       // (secrets.requiredを宣言しない代償として、デプロイ時の事前検証は効かない)。
       "kv_namespaces": [
         {
@@ -168,6 +185,13 @@
           "database_name": "rectime-api-dev",
           "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
           "migrations_dir": "migrations",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "IMAGES",
+          "bucket_name": "rectime-images-dev",
+          "remote": true,
         },
       ],
       "durable_objects": {
@@ -224,10 +248,12 @@
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
         "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
+        "CONTACT_FORM_URL": "https://forms.cloud.microsoft/r/LAsntFuQcF",
         // 通知配信を許可する開催日(YYYY-MM-DD)。未設定だと更新系エンドポイントが
         // 500になる(#204レビュー指摘)。本番相当の検証環境だが、実イベント日付に
         // 追随させる必要はないため固定のダミー値を使う。
         "EVENT_DATE": "2026-01-01",
+        "IMAGES_BUCKET_URL": "https://539494518db0c8b96ec2f6fdd30fb990.r2.cloudflarestorage.com/rectime-images-staging",
       },
       "secrets": {
         "required": [
@@ -237,6 +263,8 @@
           "FIREBASE_PROJECT_ID",
           "FIREBASE_CLIENT_EMAIL",
           "FIREBASE_PRIVATE_KEY",
+          "R2_ACCESS_KEY_ID",
+          "R2_SECRET_ACCESS_KEY",
         ],
       },
       // 本番相当のcronを検証したくなった時点で有効化を検討する。まずは無効で始める。
@@ -255,6 +283,12 @@
           "database_name": "rectime-api-staging",
           "database_id": "f069ce58-7d88-4bd9-aab0-ab6c62eb2349",
           "migrations_dir": "migrations",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "IMAGES",
+          "bucket_name": "rectime-images-staging",
         },
       ],
       "durable_objects": {

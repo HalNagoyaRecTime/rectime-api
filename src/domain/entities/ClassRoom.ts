@@ -12,6 +12,7 @@ export interface ClassRoomEntity {
   teacher: ClassRoomTeacher | null;
   updatedAt: string;
   lockVersion: number;
+  teamId: number;
 }
 
 export interface ClassRoomPage {
@@ -25,6 +26,7 @@ export interface ClassRoomInput {
   classCode: string;
   className: string;
   teacherId: number | null;
+  teamId: number | null;
 }
 
 export interface ClassRoomUpdateInput extends ClassRoomInput {

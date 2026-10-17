@@ -13,11 +13,22 @@ export interface IClassRoomRepository {
   findExistingClassRoomIds: (classRoomIds: number[]) => Promise<Set<number>>;
   findExistingClassCodes: (classCodes: string[]) => Promise<Set<string>>;
   create: (input: ClassRoomInput) => Promise<ClassRoomEntity>;
-  createMany: (inputs: ClassRoomInput[]) => Promise<void>;
+  createMany: (inputs: Omit<ClassRoomInput, 'teamId'>[]) => Promise<void>;
   update: (
     id: number,
     input: ClassRoomUpdateInput
   ) => Promise<ClassRoomEntity | null>;
+  updateAndCleanupTeam: (
+    id: number,
+    input: ClassRoomUpdateInput,
+    previousTeamId: number
+  ) => Promise<ClassRoomEntity | null>;
   delete: (id: number) => Promise<boolean>;
+  deleteAndCleanupTeam: (id: number, teamId: number) => Promise<boolean>;
+  teacherExists: (id: number) => Promise<boolean>;
+  existsWithTeamId: (
+    teamId: number,
+    excludeClassRoomId?: number
+  ) => Promise<boolean>;
   hasStudents: (id: number) => Promise<boolean>;
 }

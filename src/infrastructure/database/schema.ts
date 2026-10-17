@@ -21,6 +21,9 @@ export const class_rooms = sqliteTable(
     // 未定のこともあるためNULLを許容する。逆方向（1人の教員が複数クラスを
     // 担当すること）は許容するため、UNIQUE制約は付けない。
     teacherId: integer('teacher_id').references(() => teachers.id),
+    teamId: integer('team_id')
+      .notNull()
+      .references(() => teams.id),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
@@ -32,6 +35,7 @@ export const class_rooms = sqliteTable(
   table => [
     uniqueIndex('uq_class_rooms_class_code').on(table.classCode),
     index('idx_class_rooms_teacher_id').on(table.teacherId),
+    index('idx_class_rooms_team_id').on(table.teamId),
   ]
 );
 
@@ -161,6 +165,7 @@ export const venues = sqliteTable(
   {
     id: integer('venue_id').primaryKey({ autoIncrement: true }),
     name: text('venue_name').notNull(),
+    imageKey: text('image_key'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
@@ -222,6 +227,7 @@ export const gatherings = sqliteTable(
 export const gathering_spots = sqliteTable('gathering_spots', {
   id: integer('gathering_spot_id').primaryKey({ autoIncrement: true }),
   name: text('gathering_spot_name').notNull(),
+  imageKey: text('image_key'),
   createdAt: text('created_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
@@ -491,9 +497,9 @@ export const notification_recipients = sqliteTable(
     notificationScheduleId: integer('notification_schedule_id')
       .notNull()
       .references(() => notification_schedules.id, { onDelete: 'cascade' }),
-    userId: integer('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
   },
   table => [
@@ -562,6 +568,39 @@ export const microsoft_account_links = sqliteTable('microsoft_account_links', {
     .unique(),
   oid: text('oid').notNull(),
   tid: text('tid').notNull(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const teams = sqliteTable(
+  'teams',
+  {
+    id: integer('team_id').primaryKey({ autoIncrement: true }),
+    name: text('team_name').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  table => [uniqueIndex('uq_teams_team_name').on(table.name)]
+);
+
+// 得点は編成ごとの合計のみを保持する。イベント別の内訳は要件に無いため持たない。
+// (内訳が必要になった場合はevent_idを含む明細テーブルを別途追加し、
+//  ここは集計結果のキャッシュとして扱う)
+export const team_scores = sqliteTable('team_scores', {
+  id: integer('team_score_id').primaryKey({ autoIncrement: true }),
+  teamId: integer('team_id')
+    .notNull()
+    .unique()
+    .references(() => teams.id),
+  scores: integer('scores').notNull().default(0),
   createdAt: text('created_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
