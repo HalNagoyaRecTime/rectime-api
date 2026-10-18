@@ -1,8 +1,8 @@
 import type { D1Database, D1Result } from '@cloudflare/workers-types';
 import type { NotificationDeleteResult } from '../../domain/entities/AdminNotificationCommand';
 import type { IAdminNotificationCommandRepository } from '../../domain/interfaces/repositories/IAdminNotificationCommandRepository';
+import { areAudienceTargetsAvailable } from './NotificationAudienceUserQuery';
 import type {
-  NotificationAudienceType,
   NotificationImportance,
   NotificationSourceType,
 } from '../../domain/entities/Notification';
@@ -22,40 +22,7 @@ export function createAdminNotificationCommandRepository(
 ): IAdminNotificationCommandRepository {
   return {
     async areAudienceTargetsAvailable(targets) {
-      const tableByType: Record<
-        Exclude<NotificationAudienceType, 'all'>,
-        string
-      > = {
-        class_room: 'class_rooms',
-        gathering: 'gatherings',
-        event: 'events',
-        user: 'users',
-      };
-      const idColumnByType: Record<
-        Exclude<NotificationAudienceType, 'all'>,
-        string
-      > = {
-        class_room: 'class_room_id',
-        gathering: 'gathering_id',
-        event: 'event_id',
-        user: 'user_id',
-      };
-
-      for (const target of targets) {
-        if (target.type === 'all') continue;
-        const row = await db
-          .prepare(
-            'SELECT EXISTS (SELECT 1 FROM ' +
-              tableByType[target.type] +
-              ' WHERE ' +
-              idColumnByType[target.type] +
-              ' = ?) AS target_exists'
-          )
-          .bind(target.target_id)
-          .first<{ target_exists: number }>();
-        if (row?.target_exists !== 1) return false;
-      }
-      return true;
+      return areAudienceTargetsAvailable(db, targets);
     },
 
     async create(command) {

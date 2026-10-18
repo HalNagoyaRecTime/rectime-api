@@ -1,3 +1,4 @@
+import { markdownBodySchema } from '../openapi/markdown';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import type { IAdminNotificationManagementService } from '../../application/services/IAdminNotificationManagementService';
@@ -38,7 +39,7 @@ const audienceSchema = z.discriminatedUnion('type', [
 const updateSchema = z
   .object({
     title: z.string().trim().min(1).optional(),
-    body: z.string().trim().min(1).optional(),
+    body: markdownBodySchema.optional(),
     scheduledAt: z.string().datetime({ offset: true }).optional(),
     audience: audienceSchema.optional(),
   })

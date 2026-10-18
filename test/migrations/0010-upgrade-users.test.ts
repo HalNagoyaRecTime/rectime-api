@@ -34,6 +34,68 @@ const TRANSFORM_STATEMENTS = [
   `INSERT INTO students (student_id, user_id, class_room_id, attendance_number, student_id_number, created_at, updated_at) SELECT sd.f_student_id, m.f_users_id, COALESCE(m.f_class_room_id, (SELECT class_room_id FROM class_rooms WHERE class_code = '__UNASSIGNED__')), sd.f_attendance_number, sd.f_student_id_number, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM m_student_description sd INNER JOIN m_users m ON sd.f_users_id = m.f_users_id`,
 ];
 
+// TRANSFORM_STATEMENTS は 0010 時点の class_rooms(team_id 列が無い)を前提に
+// している。現在の class_rooms は 0028 で team_id が NOT NULL になっているため、
+// このテストの間だけ実DBのclass_rooms/studentsを退避し、0010当時と同じ形の
+// 受け皿を用意してから変換SQLを実行する。
+async function withLegacyClassRoomsSchema<T>(
+  fn: () => Promise<T>
+): Promise<T> {
+  await env.DB.batch([
+    env.DB.prepare('DROP INDEX IF EXISTS idx_class_rooms_team_id'),
+    env.DB.prepare('DROP INDEX IF EXISTS uq_class_rooms_class_code'),
+    env.DB.prepare('DROP INDEX IF EXISTS idx_class_rooms_teacher_id'),
+    env.DB.prepare('ALTER TABLE students RENAME TO students_0010_backup'),
+    env.DB.prepare('ALTER TABLE class_rooms RENAME TO class_rooms_0010_backup'),
+    env.DB.prepare(
+      `CREATE TABLE class_rooms (
+        class_room_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        class_code TEXT NOT NULL,
+        class_name TEXT NOT NULL,
+        teacher_id INTEGER REFERENCES teachers(teacher_id),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`
+    ),
+    env.DB.prepare(
+      `CREATE TABLE students (
+        student_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        class_room_id INTEGER NOT NULL,
+        attendance_number INTEGER NOT NULL,
+        student_id_number TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(user_id),
+        FOREIGN KEY (class_room_id) REFERENCES class_rooms(class_room_id),
+        UNIQUE (user_id)
+      )`
+    ),
+  ]);
+
+  try {
+    return await fn();
+  } finally {
+    await env.DB.batch([
+      env.DB.prepare('DROP TABLE IF EXISTS students'),
+      env.DB.prepare('DROP TABLE IF EXISTS class_rooms'),
+      env.DB.prepare('ALTER TABLE students_0010_backup RENAME TO students'),
+      env.DB.prepare(
+        'ALTER TABLE class_rooms_0010_backup RENAME TO class_rooms'
+      ),
+      env.DB.prepare(
+        'CREATE UNIQUE INDEX uq_class_rooms_class_code ON class_rooms(class_code)'
+      ),
+      env.DB.prepare(
+        'CREATE INDEX idx_class_rooms_teacher_id ON class_rooms(teacher_id)'
+      ),
+      env.DB.prepare(
+        'CREATE INDEX idx_class_rooms_team_id ON class_rooms(team_id)'
+      ),
+    ]);
+  }
+}
+
 async function runTransform() {
   await env.DB.batch(
     TRANSFORM_STATEMENTS.map(sql => env.DB.prepare(sql))
@@ -152,6 +214,7 @@ describe('0010_upgrade_users.sql のデータ変換ロジック', () => {
       ),
     ]);
 
+    await withLegacyClassRoomsSchema(async () => {
     try {
       await runTransform();
 
@@ -217,6 +280,7 @@ describe('0010_upgrade_users.sql のデータ変換ロジック', () => {
         studentIds: [DESC_ASSIGNED, DESC_UNASSIGNED],
       });
     }
+    });
   });
 
   it('孤立した description (対応する m_users が無い) がある場合、CHECK制約違反で変換全体を中断しロールバックする', async () => {
@@ -244,28 +308,30 @@ describe('0010_upgrade_users.sql のデータ変換ロジック', () => {
       ),
     ]);
 
-    await expect(runTransform()).rejects.toThrow('CHECK constraint failed');
+    await withLegacyClassRoomsSchema(async () => {
+      await expect(runTransform()).rejects.toThrow('CHECK constraint failed');
 
-    // db.batch() はアトミックに実行されるため、CHECK制約違反より前に実行された
-    // users への INSERT も含めて全てロールバックされているはずである
-    const migratedUser = await env.DB.prepare(
-      'SELECT user_id FROM users WHERE user_id = ?'
-    )
-      .bind(VALID_USER)
-      .first();
-    expect(migratedUser).toBeNull();
+      // db.batch() はアトミックに実行されるため、CHECK制約違反より前に実行された
+      // users への INSERT も含めて全てロールバックされているはずである
+      const migratedUser = await env.DB.prepare(
+        'SELECT user_id FROM users WHERE user_id = ?'
+      )
+        .bind(VALID_USER)
+        .first();
+      expect(migratedUser).toBeNull();
 
-    const migratedStudent = await env.DB.prepare(
-      'SELECT student_id FROM students WHERE student_id IN (?, ?)'
-    )
-      .bind(DESC_VALID, DESC_ORPHAN)
-      .all();
-    expect(migratedStudent.results).toHaveLength(0);
+      const migratedStudent = await env.DB.prepare(
+        'SELECT student_id FROM students WHERE student_id IN (?, ?)'
+      )
+        .bind(DESC_VALID, DESC_ORPHAN)
+        .all();
+      expect(migratedStudent.results).toHaveLength(0);
 
-    await cleanupMigratedRows({
-      classRoomIds: [],
-      userIds: [VALID_USER, ORPHAN_USER],
-      studentIds: [DESC_VALID, DESC_ORPHAN],
+      await cleanupMigratedRows({
+        classRoomIds: [],
+        userIds: [VALID_USER, ORPHAN_USER],
+        studentIds: [DESC_VALID, DESC_ORPHAN],
+      });
     });
   });
 

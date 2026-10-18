@@ -37,3 +37,26 @@ export const apiOverviewRoute = createRoute({
     200: jsonResponse(apiOverviewResponseSchema, 'APIの概要'),
   },
 });
+
+export const contactRoute = createRoute({
+  method: 'get',
+  path: '/app/contact',
+  tags: ['System'],
+  summary: 'お問い合わせフォームへリダイレクトする',
+  description:
+    '認証不要。環境変数 CONTACT_FORM_URL のMicrosoft Formsへ302でリダイレクトする。リダイレクト先はクエリ等では変更できない。',
+  responses: {
+    302: {
+      description: 'お問い合わせフォームへリダイレクト',
+      headers: z.object({
+        Location: z.string().url(),
+        'Cache-Control': z.literal('no-store'),
+      }),
+    },
+    503: {
+      description:
+        'お問い合わせフォームのURLが未設定または不正で、利用できない',
+      content: { 'text/html': { schema: z.string() } },
+    },
+  },
+});

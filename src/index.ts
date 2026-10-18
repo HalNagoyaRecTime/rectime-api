@@ -1,4 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { swaggerUI } from '@hono/swagger-ui';
 import { OpenAPIHono, type RouteConfig } from '@hono/zod-openapi';
@@ -7,7 +8,7 @@ import { createDIContainer } from './di/container';
 import { CommonErrors } from './presentation/errors/commonErrors';
 import { EventErrors } from './presentation/errors/eventErrors';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
-import { isDocsEnabled, type Env } from './lib/env';
+import { getContactFormUrl, isDocsEnabled, type Env } from './lib/env';
 import { isEventDate, isValidEventDate } from './lib/eventDate';
 import { getAllowedOriginRules, isAllowedOrigin } from './lib/allowedOrigins';
 import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
@@ -28,10 +29,17 @@ import {
 import {
   validationDefaultHook,
   type ErrorResponseDTO,
+  positivePathParamToNumber,
 } from './presentation/openapi/schemas';
+import { errorResponse } from './presentation/errors/errorResponse';
+import { MAX_PLACE_IMAGE_BYTES } from './application/services/PlaceImageService';
 import { toValidationErrorDetails } from './presentation/errors/validationErrorDetails';
 import type { ZodError } from 'zod';
-import { apiOverviewRoute, healthRoute } from './presentation/openapi/system';
+import {
+  apiOverviewRoute,
+  contactRoute,
+  healthRoute,
+} from './presentation/openapi/system';
 import {
   studentCreateRoute,
   studentDetailRoute,
@@ -54,8 +62,8 @@ import {
   eventCreateRoute,
   eventDeleteRoute,
   eventDetailRoute,
-  eventGatheringListRoute,
   eventListRoute,
+  myEventsRoute,
   eventUpdateRoute,
 } from './presentation/openapi/events';
 import { eventGatheringSettingsUpdateRoute } from './presentation/openapi/eventGatheringSettings';
@@ -67,12 +75,20 @@ import {
   classRoomUpdateRoute,
 } from './presentation/openapi/classrooms';
 import {
+  rankingListRoute,
+  teamCreateRoute,
+  teamDetailRoute,
+  teamListRoute,
+  teamScoreAddRoute,
+  teamUpdateRoute,
+  teamDeleteRoute,
+} from './presentation/openapi/ranking';
+import {
   masterImportCommitRoute,
   masterImportCreateRoute,
   masterImportDetailRoute,
 } from './presentation/openapi/masterImports';
 import {
-  gatheringListRoute,
   gatheringMemberListRoute,
   gatheringMemberReplaceRoute,
   gatheringSpotCreateRoute,
@@ -87,16 +103,33 @@ import {
   venueUpdateRoute,
 } from './presentation/openapi/venues';
 import {
-  legacyAdminNotificationDetailRoute,
-  legacyAdminNotificationListRoute,
-  legacyAdminNotificationUpdateRoute,
-} from './presentation/openapi/notification/legacy/admin';
+  gatheringSpotImageDeleteRoute,
+  gatheringSpotImagePutRoute,
+  venueImageDeleteRoute,
+  venueImagePutRoute,
+} from './presentation/openapi/placeImages';
+import { legacyAdminNotificationUpdateRoute } from './presentation/openapi/notification/legacy/admin';
 import {
   adminNotificationCreateRoute,
   adminNotificationDeleteRoute,
+  adminNotificationDetailRoute,
+  adminNotificationListRoute,
   adminNotificationPatchRoute,
+  notificationAudienceCountRoute,
+  notificationConfigRoute,
 } from './presentation/openapi/notification/admin';
 import { firebaseTokenRegistrationRoute } from './presentation/openapi/notification/firebaseTokens';
+import { notificationScheduleResultsRoute } from './presentation/openapi/notification/schedules';
+import { notificationScheduleStopRoute } from './presentation/openapi/notification/schedules';
+import {
+  notificationScheduleResendRoute,
+  notificationScheduleDeleteRoute,
+} from './presentation/openapi/notification/schedules';
+import {
+  notificationScheduleListRoute,
+  notificationScheduleDetailRoute,
+} from './presentation/openapi/notification/schedules';
+import { notificationPushDeliveryDetailRoute } from './presentation/openapi/notification/pushDeliveries';
 import {
   myNotificationDetailRoute,
   myNotificationListRoute,
@@ -156,6 +189,20 @@ app.use('*', (c, next) => {
 
 app.openapi(healthRoute, c => c.json({ status: 'ok' } as const, 200));
 
+// 認証不要。リダイレクト先は環境変数のみで決め、クエリ等は参照しない。
+app.openapi(contactRoute, c => {
+  c.header('Cache-Control', 'no-store');
+  const contactFormUrl = getContactFormUrl(c.env);
+  if (contactFormUrl === null) {
+    // URL未設定は運営側の設定不備のため、404ではなく503で利用不可を伝える。
+    return c.html(
+      '<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>お問い合わせ</title></head><body><p>現在お問い合わせフォームを利用できません。</p></body></html>',
+      503
+    );
+  }
+  return c.redirect(contactFormUrl, 302);
+});
+
 app.openapi(apiOverviewRoute, c => {
   return c.json(
     {
@@ -168,7 +215,6 @@ app.openapi(apiOverviewRoute, c => {
         events: '/api/v1/events',
         classRooms: '/api/v1/classrooms',
         gatheringSpots: '/api/v1/gathering-spots',
-        gatherings: '/api/v1/gatherings',
         gatheringMembers: '/api/v1/gatherings/{gatheringId}/members',
         firebaseTokens: '/api/v1/firebase-tokens',
         adminNotifications: '/api/v1/admin/notifications',
@@ -211,6 +257,18 @@ const authed = <R extends RouteConfig>(route: R) => ({
 const staffOnly = <R extends RouteConfig>(route: R) => ({
   ...route,
   middleware: [requireAuth, requireStaff],
+});
+
+const staffOnlyImageUpload = <R extends RouteConfig>(route: R) => ({
+  ...route,
+  middleware: [
+    requireAuth,
+    requireStaff,
+    bodyLimit({
+      maxSize: MAX_PLACE_IMAGE_BYTES,
+      onError: c => errorResponse(c, EventErrors.INVALID_PLACE_IMAGE),
+    }),
+  ],
 });
 
 const validationErrorBody = (
@@ -278,13 +336,8 @@ apiV1.openapi(authed(eventListRoute), c => {
 apiV1.openapi(authed(eventDetailRoute), c => {
   return c.get('container').eventController.getEventById(c);
 });
-apiV1.get('/me/events', requireAuth, c => {
+apiV1.openapi(authed(myEventsRoute), c => {
   return c.get('container').eventController.getMyEvents(c);
-});
-// 配布済みmobileが利用中の互換APIのため削除禁止（#395）。レスポンス形式・認可を維持する。
-// リポジトリ内の呼び出しが0件でも削除不可。2027年度以降、OpenAPI記載の全条件を満たして#386で削除する。
-apiV1.openapi(authed(eventGatheringListRoute), c => {
-  return c.get('container').gatheringController.getGatheringsByEventId(c);
 });
 apiV1.openapi(staffOnly(eventGatheringSettingsUpdateRoute), c => {
   return c
@@ -354,6 +407,31 @@ apiV1.openapi(staffOnly(classRoomDeleteRoute), c => {
   return c.get('container').classRoomController.deleteClassRoom(c);
 });
 
+// Ranking routes
+apiV1.openapi(authed(rankingListRoute), c => {
+  return c.get('container').rankingController.getRanking(c);
+});
+apiV1.openapi(staffOnly(teamScoreAddRoute), c => {
+  return c.get('container').rankingController.addTeamScore(c);
+});
+
+// Team routes
+apiV1.openapi(authed(teamListRoute), c => {
+  return c.get('container').teamController.getAllTeams(c);
+});
+apiV1.openapi(authed(teamDetailRoute), c => {
+  return c.get('container').teamController.getTeamById(c);
+});
+apiV1.openapi(staffOnly(teamCreateRoute), c => {
+  return c.get('container').teamController.createTeam(c);
+});
+apiV1.openapi(staffOnly(teamUpdateRoute), c => {
+  return c.get('container').teamController.updateTeam(c);
+});
+apiV1.openapi(staffOnly(teamDeleteRoute), c => {
+  return c.get('container').teamController.deleteTeam(c);
+});
+
 // Master import routes
 apiV1.openapi(staffOnly(masterImportCreateRoute), c => {
   return c.get('container').masterImportController.createImport(c);
@@ -412,11 +490,23 @@ apiV1.openapi(staffOnly(venueDeleteRoute), c => {
   return c.get('container').venueController.deleteVenue(c);
 });
 
+// Place image routes
+apiV1.openapi(staffOnlyImageUpload(venueImagePutRoute), c => {
+  return c.get('container').placeImageController.putVenueImage(c);
+});
+apiV1.openapi(staffOnly(venueImageDeleteRoute), c => {
+  return c.get('container').placeImageController.deleteVenueImage(c);
+});
+apiV1.openapi(staffOnlyImageUpload(gatheringSpotImagePutRoute), c => {
+  return c.get('container').placeImageController.putGatheringSpotImage(c);
+});
+apiV1.openapi(staffOnly(gatheringSpotImageDeleteRoute), c => {
+  return c.get('container').placeImageController.deleteGatheringSpotImage(c);
+});
+
 // Gathering member routes
 //
-// GETだけはstaff限定にしない: 学生アプリが本人の参加する集合を判定して
-// 「出場」表示を出すのにこの一覧取得を使っている(レビュー指摘)。
-// 追加・削除(POST/DELETE)は引き続きstaff限定とする。
+// 参加者一覧のGETは認証済みユーザー向け、参加者を変更するPUTはstaff限定とする。
 apiV1.openapi(authed(gatheringMemberListRoute), c => {
   return c
     .get('container')
@@ -428,17 +518,56 @@ apiV1.openapi(staffOnly(gatheringMemberReplaceRoute), c => {
     .gatheringGroupMemberController.replaceGatheringMembers(c);
 });
 
-// Gathering routes
-apiV1.openapi(staffOnly(gatheringListRoute), c => {
-  return c.get('container').gatheringController.getAllGatherings(c);
-});
-
 // Firebase token routes
 apiV1.openapi(authed(firebaseTokenRegistrationRoute), c => {
   return c.get('container').firebaseTokenController.registerFirebaseToken(c);
 });
 
 // Notification routes
+apiV1.openapi(staffOnly(notificationScheduleStopRoute), c => {
+  return c
+    .get('container')
+    .notificationStopController.stopSchedule(
+      c,
+      Number(c.req.valid('param').notificationScheduleId)
+    );
+});
+apiV1.openapi(staffOnly(notificationScheduleResendRoute), c =>
+  c
+    .get('container')
+    .notificationScheduleActionController.resendSchedule(
+      c,
+      Number(c.req.valid('param').notificationScheduleId),
+      c.req.valid('json')
+    )
+);
+apiV1.openapi(staffOnly(notificationScheduleDeleteRoute), c =>
+  c
+    .get('container')
+    .notificationScheduleActionController.cancelSchedule(
+      c,
+      Number(c.req.valid('param').notificationScheduleId)
+    )
+);
+apiV1.openapi(staffOnly(notificationScheduleListRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleQueryController.getNotificationSchedules(c);
+});
+apiV1.openapi(staffOnly(notificationScheduleDetailRoute), c => {
+  return c
+    .get('container')
+    .notificationScheduleQueryController.getNotificationScheduleById(c);
+});
+// /{notificationId} より先に登録し、固定パスを優先する。
+apiV1.openapi(staffOnly(notificationConfigRoute), c => {
+  return c.get('container').notificationConfigController.getConfig(c);
+});
+apiV1.openapi(staffOnly(notificationAudienceCountRoute), c => {
+  return c
+    .get('container')
+    .notificationConfigController.countAudience(c, c.req.valid('json'));
+});
 apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
   return c
     .get('container')
@@ -447,15 +576,15 @@ apiV1.openapi(staffOnly(adminNotificationCreateRoute), c => {
       c.req.valid('json')
     );
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationListRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationListRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotifications(c);
+    .adminNotificationQueryController.getAdminNotifications(c);
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationDetailRoute), c => {
+apiV1.openapi(staffOnly(adminNotificationDetailRoute), c => {
   return c
     .get('container')
-    .adminNotificationManagementController.getAdminNotificationById(c);
+    .adminNotificationQueryController.getAdminNotificationById(c);
 });
 apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
   return c
@@ -463,27 +592,50 @@ apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
     .adminNotificationManagementController.updateAdminNotification(c);
 });
 apiV1.openapi(staffOnly(adminNotificationPatchRoute), c => {
+  const notificationId = positivePathParamToNumber(
+    c.req.valid('param').notificationId
+  );
+  if (notificationId === undefined) {
+    return errorResponse(c, CommonErrors.VALIDATION_ERROR);
+  }
   return c
     .get('container')
     .adminNotificationCommandController.patchNotification(
       c,
-      Number(c.req.valid('param').notificationId),
+      notificationId,
       c.req.valid('json')
     );
 });
 apiV1.openapi(staffOnly(adminNotificationDeleteRoute), c => {
+  const notificationId = positivePathParamToNumber(
+    c.req.valid('param').notificationId
+  );
+  if (notificationId === undefined) {
+    return errorResponse(c, CommonErrors.VALIDATION_ERROR);
+  }
   return c
     .get('container')
-    .adminNotificationCommandController.deleteNotification(
-      c,
-      Number(c.req.valid('param').notificationId)
-    );
+    .adminNotificationCommandController.deleteNotification(c, notificationId);
+});
+apiV1.openapi(staffOnly(notificationScheduleResultsRoute), c => {
+  return c
+    .get('container')
+    .notificationResultQueryController.getScheduleResults(c);
+});
+apiV1.openapi(staffOnly(notificationPushDeliveryDetailRoute), c => {
+  return c
+    .get('container')
+    .notificationResultQueryController.getPushDeliveryDetail(c);
 });
 apiV1.openapi(authed(myNotificationListRoute), c => {
-  return c.get('container').mobileNotificationController.getNotifications(c);
+  return c
+    .get('container')
+    .mobileNotificationController.getNotifications(c, c.req.valid('query'));
 });
 apiV1.openapi(authed(myNotificationDetailRoute), c => {
-  return c.get('container').mobileNotificationController.getNotificationById(c);
+  return c
+    .get('container')
+    .mobileNotificationController.getNotificationById(c, c.req.valid('param'));
 });
 
 // Auth routes
@@ -549,6 +701,13 @@ export default {
     const scheduledAt = new Date(event.scheduledTime);
     const container = createDIContainer(env);
     ctx.waitUntil(
+      container.notificationRetryService
+        .enqueueDueDeliveries(scheduledAt)
+        .catch(error => {
+          console.error('[CRON] 通知のRetry・timeout回収に失敗しました', error);
+        })
+    );
+    ctx.waitUntil(
       container.notificationAudienceResolverService
         .resolveDueSchedules(scheduledAt)
         .then(async result => {
@@ -609,7 +768,8 @@ export default {
     await consumeNotificationDeliveryQueue(
       batch,
       container.scheduledNotificationService,
-      container.notificationDeliveryService
+      container.notificationDeliveryService,
+      container.notificationRetryService
     );
   },
 };
