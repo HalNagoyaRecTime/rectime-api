@@ -80,7 +80,10 @@ export function createGatheringNotificationGeneratorService(
         await gatheringRepository.findGatheringTime(gatheringId);
       if (currentGatheringTime === null) return 'not_found';
       if (currentGatheringTime === gatheringTime) {
-        await gatheringRepository.clearSynchronizationFailure(gatheringId);
+        await gatheringRepository.clearAutomaticScheduleHold(
+          gatheringId,
+          gatheringTime
+        );
         return lastOutcome;
       }
     }
@@ -112,7 +115,7 @@ export function createGatheringNotificationGeneratorService(
           processedCount++;
         } catch {
           failedGatheringIds.push(gatheringId);
-          await gatheringRepository.markSynchronizationFailed(gatheringId);
+          await gatheringRepository.holdAutomaticSchedules(gatheringId);
         }
       }
 

@@ -5,28 +5,42 @@ import type { IGatheringNotificationGeneratorRepository } from '../../domain/int
 export function createGatheringNotificationGeneratorRepository(
   db: D1Database
 ): IGatheringNotificationGeneratorRepository {
-  const updateSyncFailure = async (gatheringId: number, failed: boolean) => {
+  const holdAutomaticSchedules = async (gatheringId: number) => {
     await db
       .prepare(
         `UPDATE notification_schedules SET failed_reason = ?
-      WHERE send_status = 'scheduled' AND started_at IS NULL AND scheduled_by_user_id IS NULL
-        AND (? = 1 OR failed_reason = ?)
-        AND notification_id IN (SELECT notification_id FROM notifications
-          WHERE source_type = 'gathering' AND source_id = ? AND notifications.created_at = notification_schedules.created_at)`
+         WHERE send_status = 'scheduled' AND started_at IS NULL AND scheduled_by_user_id IS NULL
+           AND notification_id IN (
+             SELECT notification_id FROM notifications
+             WHERE source_type = 'gathering' AND source_id = ?
+               AND notifications.created_at = notification_schedules.created_at
+           )`
       )
-      .bind(
-        failed ? AUTOMATIC_SYNC_PENDING_REASON : null,
-        failed ? 1 : 0,
-        AUTOMATIC_SYNC_PENDING_REASON,
-        gatheringId
-      )
+      .bind(AUTOMATIC_SYNC_PENDING_REASON, gatheringId)
       .run();
   };
   return {
-    markSynchronizationFailed: gatheringId =>
-      updateSyncFailure(gatheringId, true),
-    clearSynchronizationFailure: gatheringId =>
-      updateSyncFailure(gatheringId, false),
+    holdAutomaticSchedules,
+    async clearAutomaticScheduleHold(gatheringId, expectedGatheringTime) {
+      await db
+        .prepare(
+          `UPDATE notification_schedules SET failed_reason = NULL
+           WHERE send_status = 'scheduled' AND started_at IS NULL
+             AND scheduled_by_user_id IS NULL
+             AND failed_reason = ?
+             AND notification_id IN (
+               SELECT n.notification_id
+               FROM notifications n
+               JOIN gatherings g ON g.gathering_id = n.source_id
+               WHERE n.source_type = 'gathering'
+                 AND n.source_id = ?
+                 AND n.created_at = notification_schedules.created_at
+                 AND g.gathering_time IS ?
+             )`
+        )
+        .bind(AUTOMATIC_SYNC_PENDING_REASON, gatheringId, expectedGatheringTime)
+        .run();
+    },
     async findGatheringTime(gatheringId) {
       const row = await db
         .prepare('SELECT gathering_time FROM gatherings WHERE gathering_id = ?')

@@ -112,13 +112,31 @@ describe('EventGatheringSettingsService', () => {
           round: 1,
           gatherings: current.map(gathering => ({
             gathering_id: gathering.gathering_id,
-            gathering_time: gathering.gathering_time,
+            gathering_time:
+              gathering.gathering_id === 101
+                ? '11:00'
+                : gathering.gathering_time,
             gathering_spot_id: gathering.gathering_spot_id,
           })),
         },
       ],
     });
-    expect(repository.apply).toHaveBeenCalledOnce();
+    expect(repository.apply).toHaveBeenCalledWith(
+      {
+        event_id: EVENT_ID,
+        creates: [],
+        updates: [
+          {
+            gathering_id: 101,
+            round: 1,
+            gathering_time: '11:00',
+            gathering_spot_id: 1,
+          },
+        ],
+        delete_ids: [],
+      },
+      { holdNotificationSyncGatheringIds: [101] }
+    );
     expect(
       gatheringNotificationGeneratorService.generate
     ).toHaveBeenCalledTimes(2);
@@ -180,25 +198,28 @@ describe('EventGatheringSettingsService', () => {
         ],
       });
 
-      expect(repository.apply).toHaveBeenCalledWith({
-        event_id: EVENT_ID,
-        creates: [],
-        updates: [
-          {
-            gathering_id: 101,
-            round: 2,
-            gathering_time: '10:45',
-            gathering_spot_id: 1,
-          },
-          {
-            gathering_id: 102,
-            round: 2,
-            gathering_time: '11:00',
-            gathering_spot_id: 2,
-          },
-        ],
-        delete_ids: [],
-      });
+      expect(repository.apply).toHaveBeenCalledWith(
+        {
+          event_id: EVENT_ID,
+          creates: [],
+          updates: [
+            {
+              gathering_id: 101,
+              round: 2,
+              gathering_time: '10:45',
+              gathering_spot_id: 1,
+            },
+            {
+              gathering_id: 102,
+              round: 2,
+              gathering_time: '11:00',
+              gathering_spot_id: 2,
+            },
+          ],
+          delete_ids: [],
+        },
+        { holdNotificationSyncGatheringIds: [102] }
+      );
     });
 
     // 変更のない行まで更新すると updated_at だけが進む。

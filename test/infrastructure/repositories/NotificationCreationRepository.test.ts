@@ -1,7 +1,10 @@
 import { createNotificationAudienceResolverRepository } from '../../../src/infrastructure/repositories/NotificationAudienceResolverRepository';
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { AutomaticNotificationCreationCommand } from '../../../src/domain/entities/NotificationCreation';
+import {
+  AUTOMATIC_SYNC_PENDING_REASON,
+  type AutomaticNotificationCreationCommand,
+} from '../../../src/domain/entities/NotificationCreation';
 import { createNotificationCreationRepository } from '../../../src/infrastructure/repositories/NotificationCreationRepository';
 import { createGatheringNotificationGeneratorRepository } from '../../../src/infrastructure/repositories/GatheringNotificationGeneratorRepository';
 import { createGatheringNotificationGeneratorService } from '../../../src/application/services/GatheringNotificationGeneratorService';
@@ -721,6 +724,12 @@ describe('NotificationCreationRepository', () => {
       now
     );
     await original.generate(fixture.gatheringId);
+    await gatheringRepository.holdAutomaticSchedules(fixture.gatheringId);
+    await env.DB.prepare(
+      "UPDATE gatherings SET gathering_time = '11:00' WHERE gathering_id = ?"
+    )
+      .bind(fixture.gatheringId)
+      .run();
     const failed = createGatheringNotificationGeneratorService(
       gatheringRepository,
       {
@@ -751,6 +760,17 @@ describe('NotificationCreationRepository', () => {
         '2026-11-10T00:00:00.000Z'
       )
     ).toBe(false);
+    await gatheringRepository.clearAutomaticScheduleHold(
+      fixture.gatheringId,
+      '10:45'
+    );
+    const stillHeld = await env.DB.prepare(
+      'SELECT failed_reason FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(row!.notification_schedule_id)
+      .first<{ failed_reason: string | null }>();
+    expect(stillHeld?.failed_reason).toBe(AUTOMATIC_SYNC_PENDING_REASON);
+
     const recovered = createGatheringNotificationGeneratorService(
       gatheringRepository,
       repository,
@@ -758,6 +778,15 @@ describe('NotificationCreationRepository', () => {
       now
     );
     expect((await recovered.reconcileAll()).failed_gathering_ids).toEqual([]);
+    const syncedSchedule = await env.DB.prepare(
+      'SELECT send_at, failed_reason FROM notification_schedules WHERE notification_schedule_id = ?'
+    )
+      .bind(row!.notification_schedule_id)
+      .first<{ send_at: string; failed_reason: string | null }>();
+    expect(syncedSchedule).toEqual({
+      send_at: '2026-11-08T01:45:00.000Z',
+      failed_reason: null,
+    });
     expect(
       await resolver.findDueCandidates('2026-11-10T00:00:00.000Z', 100)
     ).toEqual([

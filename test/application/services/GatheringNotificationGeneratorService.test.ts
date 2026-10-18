@@ -34,8 +34,8 @@ describe('GatheringNotificationGeneratorService', () => {
 
   it('現在の集合時間からAudience付きのautomatic通知を作る', async () => {
     const gatheringRepository: IGatheringNotificationGeneratorRepository = {
-      markSynchronizationFailed: vi.fn(),
-      clearSynchronizationFailure: vi.fn(),
+      holdAutomaticSchedules: vi.fn(),
+      clearAutomaticScheduleHold: vi.fn(),
       findGatheringTime: vi.fn().mockResolvedValue('10:45'),
       findConfiguredGatheringIds: vi.fn().mockResolvedValue([51]),
     };
@@ -78,8 +78,8 @@ describe('GatheringNotificationGeneratorService', () => {
 
   it('同一Hashの一意制約競合は既生成として返す', async () => {
     const gatheringRepository: IGatheringNotificationGeneratorRepository = {
-      markSynchronizationFailed: vi.fn(),
-      clearSynchronizationFailure: vi.fn(),
+      holdAutomaticSchedules: vi.fn(),
+      clearAutomaticScheduleHold: vi.fn(),
       findGatheringTime: vi.fn().mockResolvedValue('10:45'),
       findConfiguredGatheringIds: vi.fn().mockResolvedValue([51]),
     };
@@ -101,8 +101,8 @@ describe('GatheringNotificationGeneratorService', () => {
   it('集合時間だけの編集でHashを変え、Gathering source IDは維持する', async () => {
     let gatheringTime = '10:45';
     const gatheringRepository: IGatheringNotificationGeneratorRepository = {
-      markSynchronizationFailed: vi.fn(),
-      clearSynchronizationFailure: vi.fn(),
+      holdAutomaticSchedules: vi.fn(),
+      clearAutomaticScheduleHold: vi.fn(),
       findGatheringTime: vi.fn(async () => gatheringTime),
       findConfiguredGatheringIds: vi.fn().mockResolvedValue([51]),
     };
@@ -148,8 +148,8 @@ describe('GatheringNotificationGeneratorService', () => {
 
   it('処理中に集合時間が変わった場合は最新値へ再同期する', async () => {
     const gatheringRepository: IGatheringNotificationGeneratorRepository = {
-      markSynchronizationFailed: vi.fn(),
-      clearSynchronizationFailure: vi.fn(),
+      holdAutomaticSchedules: vi.fn(),
+      clearAutomaticScheduleHold: vi.fn(),
       findGatheringTime: vi
         .fn()
         .mockResolvedValueOnce('10:45')
@@ -200,8 +200,8 @@ describe('GatheringNotificationGeneratorService', () => {
       [52, '11:00'],
     ]);
     const gatheringRepository: IGatheringNotificationGeneratorRepository = {
-      markSynchronizationFailed: vi.fn(),
-      clearSynchronizationFailure: vi.fn(),
+      holdAutomaticSchedules: vi.fn(),
+      clearAutomaticScheduleHold: vi.fn(),
       findGatheringTime: vi.fn(async gatheringId => {
         return gatheringTimes.get(gatheringId) ?? null;
       }),
@@ -249,8 +249,8 @@ describe('GatheringNotificationGeneratorService', () => {
 
   it('Gatheringが見つからない場合は通知を作らない', async () => {
     const gatheringRepository: IGatheringNotificationGeneratorRepository = {
-      markSynchronizationFailed: vi.fn(),
-      clearSynchronizationFailure: vi.fn(),
+      holdAutomaticSchedules: vi.fn(),
+      clearAutomaticScheduleHold: vi.fn(),
       findGatheringTime: vi.fn().mockResolvedValue(null),
       findConfiguredGatheringIds: vi.fn().mockResolvedValue([]),
     };
@@ -269,8 +269,8 @@ describe('GatheringNotificationGeneratorService', () => {
 
   it('EVENT_DATEが未設定または不正なら通知を作らない', async () => {
     const gatheringRepository: IGatheringNotificationGeneratorRepository = {
-      markSynchronizationFailed: vi.fn(),
-      clearSynchronizationFailure: vi.fn(),
+      holdAutomaticSchedules: vi.fn(),
+      clearAutomaticScheduleHold: vi.fn(),
       findGatheringTime: vi.fn().mockResolvedValue('10:45'),
       findConfiguredGatheringIds: vi.fn().mockResolvedValue([51]),
     };

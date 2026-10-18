@@ -126,9 +126,26 @@ export function createEventGatheringSettingsService(
         command.event_id
       );
       const changeSet = buildChangeSet(command.event_id, current, requested);
+      const currentById = new Map(
+        current.map(gathering => [gathering.gathering_id, gathering])
+      );
+      const changedGatheringTimeIds = changeSet.updates
+        .filter(
+          update =>
+            currentById.get(update.gathering_id)?.gathering_time !==
+            update.gathering_time
+        )
+        .map(update => update.gathering_id);
 
       try {
-        await eventGatheringSettingsRepository.apply(changeSet);
+        // Gathering更新と旧automatic Scheduleの保留を同一batchで確定する。
+        if (changedGatheringTimeIds.length > 0) {
+          await eventGatheringSettingsRepository.apply(changeSet, {
+            holdNotificationSyncGatheringIds: changedGatheringTimeIds,
+          });
+        } else {
+          await eventGatheringSettingsRepository.apply(changeSet);
+        }
       } catch (error) {
         // 事前確認と保存の間に状態が変わると外部キー制約で失敗する。
         // Eventや集合場所が消えていたのか、削除対象に参加者が加わったのかを
