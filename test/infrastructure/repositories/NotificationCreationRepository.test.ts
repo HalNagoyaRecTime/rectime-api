@@ -14,6 +14,9 @@ const repository = createNotificationCreationRepository(env.DB);
 
 describe('NotificationCreationRepository', () => {
   beforeEach(async () => {
+    const teamsTable = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'teams'"
+    ).first<{ name: string }>();
     await env.DB.batch([
       env.DB.prepare('DELETE FROM notification_push_deliveries'),
       env.DB.prepare('DELETE FROM notification_recipients'),
@@ -26,6 +29,12 @@ describe('NotificationCreationRepository', () => {
       env.DB.prepare('DELETE FROM gathering_spots'),
       env.DB.prepare('DELETE FROM students'),
       env.DB.prepare('DELETE FROM class_rooms'),
+      ...(teamsTable
+        ? [
+            env.DB.prepare('DELETE FROM team_scores'),
+            env.DB.prepare('DELETE FROM teams'),
+          ]
+        : []),
       env.DB.prepare('DELETE FROM staffs'),
       env.DB.prepare('DELETE FROM teachers'),
       env.DB.prepare('DELETE FROM events'),
