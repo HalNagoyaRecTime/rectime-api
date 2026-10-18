@@ -4,6 +4,7 @@
 
 - シークレット、資格情報、個人情報、実環境の値をリポジトリにコミット・プッシュしない。
 - `migrations/`配下のファイルは変更・削除しない。
+- 新規migrationの番号は、PR先ブランチの最大番号より大きくする(CIの`migration-check`で検査する。手元では`BASE_REF=origin/develop npm run migrations:check`)。
 - PR作成時は`.github/PULL_REQUEST_TEMPLATE.md`に沿って記載する。
 - コミットメッセージとソースコード内のコメント・メッセージ・説明は、日本語で簡潔に書く。
 
