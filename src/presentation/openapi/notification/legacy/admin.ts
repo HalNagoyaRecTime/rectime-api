@@ -1,3 +1,4 @@
+import { markdownBodySchema } from '../../markdown';
 import { createRoute } from '@hono/zod-openapi';
 import {
   badRequestResponse,
@@ -101,7 +102,7 @@ export const legacyAdminNotificationIdParams = z.object({
 export const updateManualNotificationSchema = z
   .object({
     title: z.string().trim().min(1).optional(),
-    body: z.string().trim().min(1).optional(),
+    body: markdownBodySchema.optional(),
     scheduledAt: isoDateTimeSchema.optional(),
     audience: manualNotificationAudienceRequestSchema.optional(),
   })

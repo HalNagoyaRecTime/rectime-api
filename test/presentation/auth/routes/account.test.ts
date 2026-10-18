@@ -21,6 +21,7 @@ import type {
 } from '../../../../src/domain/auth/types';
 import type { Env } from '../../../../src/lib/env';
 import { diContainerMiddleware } from '../../../../src/presentation/middleware/diContainer';
+import { insertClassRoomWithTeam } from '../../../fixtures/classRooms';
 
 const JWT_SECRET = 'a'.repeat(32);
 
@@ -74,6 +75,10 @@ function buildEnv(overrides: Partial<Env> = {}): Env {
   return {
     DB: workerEnv.DB,
     AUTH_KV: createMockKv(),
+    IMAGES: workerEnv.IMAGES,
+    IMAGES_BUCKET_URL: 'https://r2.example.com/rectime-images',
+    R2_ACCESS_KEY_ID: 'test-access-key-id',
+    R2_SECRET_ACCESS_KEY: 'test-secret-access-key',
     MASTER_IMPORT_COMMIT_LOCK: {} as Env['MASTER_IMPORT_COMMIT_LOCK'],
     NOTIFICATION_DELIVERY_QUEUE: {} as Env['NOTIFICATION_DELIVERY_QUEUE'],
     ALLOWED_ORIGINS: '',
@@ -244,7 +249,86 @@ describe('GET /auth/me', () => {
       is_staff: false,
       is_teacher: false,
     });
+    expect(body.user).not.toHaveProperty('teacher');
   });
+
+  it.each([false, true])(
+    '教師の担当クラスを返す（担当なし=%s）',
+    async empty => {
+      const user = await workerEnv.DB.prepare(
+        "INSERT INTO users (user_name) VALUES ('先生') RETURNING user_id"
+      ).first<{ user_id: number }>();
+      const teacher = await workerEnv.DB.prepare(
+        "INSERT INTO teachers (user_id, email) VALUES (?, 'teacher@example.com') RETURNING teacher_id"
+      )
+        .bind(user!.user_id)
+        .first<{ teacher_id: number }>();
+      const rooms: {
+        class_room_id: number;
+        class_code: string;
+        class_room_name: string;
+      }[] = [];
+      if (!empty) {
+        for (const [code, name] of [
+          ['2-B', '2年B組'],
+          ['1-A', '1年A組'],
+        ]) {
+          const room = await insertClassRoomWithTeam(workerEnv.DB, {
+            classCode: code,
+            className: name,
+            teacherId: teacher!.teacher_id,
+          });
+          rooms.push({
+            class_room_id: room.classRoomId,
+            class_code: code,
+            class_room_name: name,
+          });
+        }
+      }
+      const token = await signAccessToken(
+        {
+          sub: String(user!.user_id),
+          oid: 'teacher-oid',
+          email: 'teacher@example.com',
+          display_name: '先生',
+          client_type: 'mobile',
+        },
+        JWT_SECRET,
+        3600
+      );
+      try {
+        const response = await buildApp().request(
+          '/me',
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'X-Client-Type': 'mobile',
+            },
+          },
+          buildEnv()
+        );
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          user: {
+            is_student: false,
+            is_teacher: true,
+            teacher: {
+              teacher_id: teacher!.teacher_id,
+              class_rooms: rooms.sort((a, b) =>
+                a.class_code.localeCompare(b.class_code)
+              ),
+            },
+          },
+        });
+      } finally {
+        await workerEnv.DB.prepare(
+          'UPDATE class_rooms SET teacher_id = NULL WHERE teacher_id = ?'
+        )
+          .bind(teacher!.teacher_id)
+          .run();
+      }
+    }
+  );
 
   it('Authorizationヘッダーが無い場合は401を返す', async () => {
     const app = buildApp();
@@ -280,16 +364,17 @@ describe('GET /auth/me', () => {
 
   it('学生ユーザーの場合はstudent_id_number/class_room_nameを含めて返す', async () => {
     const env = buildEnv();
-    const classRoom = await workerEnv.DB.prepare(
-      "INSERT INTO class_rooms (class_code, class_name) VALUES ('3A', '3年A組') RETURNING class_room_id"
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: '3A',
+      className: '3年A組',
+    });
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('学生太郎') RETURNING user_id"
     ).first<{ user_id: number }>();
     await workerEnv.DB.prepare(
       "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '50001')"
     )
-      .bind(user!.user_id, classRoom!.class_room_id)
+      .bind(user!.user_id, classRoom.classRoomId)
       .run();
     const userId = String(user!.user_id);
     const token = await signAccessToken(
@@ -317,6 +402,8 @@ describe('GET /auth/me', () => {
         student_id_number: string | null;
         class_code: string | null;
         class_room_name: string | null;
+        class_room_id: number | null;
+        team_id: number | null;
         attendance_number: number | null;
       };
     };
@@ -324,11 +411,13 @@ describe('GET /auth/me', () => {
       student_id_number: '50001',
       class_code: '3A',
       class_room_name: '3年A組',
+      class_room_id: classRoom.classRoomId,
+      team_id: classRoom.teamId,
       attendance_number: 1,
     });
   });
 
-  it('学生でないユーザーの場合はstudent_id_number/class_room_nameがnullで返る', async () => {
+  it('学生でないユーザーの場合はstudent_id_number/class_room_name/class_room_id/team_idがnullで返る', async () => {
     const env = buildEnv();
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('教師花子') RETURNING user_id"
@@ -364,6 +453,8 @@ describe('GET /auth/me', () => {
         student_id_number: string | null;
         class_code: string | null;
         class_room_name: string | null;
+        class_room_id: number | null;
+        team_id: number | null;
         attendance_number: number | null;
       };
     };
@@ -371,6 +462,8 @@ describe('GET /auth/me', () => {
       student_id_number: null,
       class_code: null,
       class_room_name: null,
+      class_room_id: null,
+      team_id: null,
       attendance_number: null,
     });
   });

@@ -274,7 +274,7 @@ describe('MobileNotificationRepository', () => {
     });
   });
 
-  it('User削除でRecipientとDeliveryがCASCADEされ本人通知履歴から消える', async () => {
+  it('User削除でRecipientを匿名化しDelivery履歴を維持する', async () => {
     const userId = await createUser();
     const notificationId = await createNotification('削除後に残らない通知');
     const scheduleId = await createSchedule(notificationId);
@@ -292,18 +292,18 @@ describe('MobileNotificationRepository', () => {
 
     expect(
       await env.DB.prepare(
-        'SELECT COUNT(*) AS total FROM notification_recipients WHERE notification_recipient_id = ?'
+        'SELECT user_id FROM notification_recipients WHERE notification_recipient_id = ?'
       )
         .bind(recipientId)
         .first()
-    ).toEqual({ total: 0 });
+    ).toEqual({ user_id: null });
     expect(
       await env.DB.prepare(
         'SELECT COUNT(*) AS total FROM notification_push_deliveries WHERE notification_recipient_id = ?'
       )
         .bind(recipientId)
         .first()
-    ).toEqual({ total: 0 });
+    ).toEqual({ total: 1 });
     expect(await listForUser(userId)).toEqual({
       notifications: [],
       total: 0,

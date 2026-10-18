@@ -11,6 +11,7 @@ const detail: NotificationScheduleQueryDetail = {
   importance: 'high',
   send_at: '2026-07-23T02:00:00.000Z',
   status: 'sending',
+  failure_reason: null,
   stop: null,
   creation: {
     method: 'automatic',
@@ -60,6 +61,7 @@ describe('NotificationScheduleQueryService', () => {
           importance: 'high',
           sendAt: '2026-07-23T02:00:00.000Z',
           status: 'sending',
+          failureReason: null,
           stop: null,
           creation: {
             method: 'automatic',

@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createAdminNotificationManagementRepository } from '../../../src/infrastructure/repositories/AdminNotificationManagementRepository';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 interface Fixture {
   creatorId: number;
@@ -15,9 +16,10 @@ async function createFixture(
   statuses: Array<'draft' | 'sending' | 'sent' | 'failed'> = ['draft', 'draft'],
   notificationType: 'manual' | 'event_reminder' = 'manual'
 ): Promise<Fixture> {
-  const classroom = await env.DB.prepare(
-    "INSERT INTO class_rooms (class_code, class_name) VALUES ('A1', 'A組') RETURNING class_room_id"
-  ).first<{ class_room_id: number }>();
+  const classroom = await insertClassRoomWithTeam(env.DB, {
+    classCode: 'A1',
+    className: 'A組',
+  });
   const creator = await env.DB.prepare(
     "INSERT INTO users (user_name) VALUES ('管理者') RETURNING user_id"
   ).first<{ user_id: number }>();
@@ -48,7 +50,7 @@ async function createFixture(
     await env.DB.prepare(
       'INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, ?, ?)'
     )
-      .bind(user!.user_id, classroom!.class_room_id, index + 1, `S${index + 1}`)
+      .bind(user!.user_id, classroom.classRoomId, index + 1, `S${index + 1}`)
       .run();
     await env.DB.prepare(
       'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
@@ -82,7 +84,7 @@ async function createFixture(
     creatorId: creator!.user_id,
     notificationId: notification!.notification_id,
     eventId: event!.event_id,
-    classRoomId: classroom!.class_room_id,
+    classRoomId: classroom.classRoomId,
     gatheringId: gathering!.gathering_id,
     tokenIds,
   };
@@ -101,6 +103,8 @@ describe('AdminNotificationManagementRepository', () => {
       env.DB.prepare('DELETE FROM gathering_spots'),
       env.DB.prepare('DELETE FROM students'),
       env.DB.prepare('DELETE FROM class_rooms'),
+      env.DB.prepare('DELETE FROM team_scores'),
+      env.DB.prepare('DELETE FROM teams'),
       env.DB.prepare('DELETE FROM staffs'),
       env.DB.prepare('DELETE FROM teachers'),
       env.DB.prepare('DELETE FROM events'),

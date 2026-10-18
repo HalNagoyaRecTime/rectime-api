@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
 
-// venues / event_venues は migrations/0033 で追加した実施場所のマスタと
+// venues / event_venues は migrations/0034・0035 で追加した実施場所のマスタと
 // 競技との中間テーブルで、まだ専用のリポジトリ層を持たない。
 // ここでは「同じ競技に同じ実施場所を二重登録できない」ことを含む制約が
 // スキーマレベルで機能しているかを直接SQLで検証する。
