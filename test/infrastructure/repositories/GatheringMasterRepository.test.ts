@@ -364,4 +364,44 @@ describe('Gathering master repositories', () => {
       memberRepository.deleteByUserId(userId)
     ).resolves.toBeUndefined();
   });
+
+  it('集合場所に画像キーを紐づけて取得できる', async () => {
+    const spot = await gatheringSpotRepository.create('所属テスト場所-画像');
+    gatheringSpotIds.push(spot.gathering_spot_id);
+
+    expect(
+      await gatheringSpotRepository.replaceImageKey(
+        spot.gathering_spot_id,
+        null,
+        'gathering-spots/1/a.png'
+      )
+    ).toBe(true);
+
+    expect(
+      await gatheringSpotRepository.findImageKey(spot.gathering_spot_id)
+    ).toEqual({ imageKey: 'gathering-spots/1/a.png' });
+    expect(await gatheringSpotRepository.findImageKey(999999)).toBeNull();
+  });
+
+  it('集合場所の画像キーが読み取ったときから変わっていれば更新せず false を返す', async () => {
+    const spot =
+      await gatheringSpotRepository.create('所属テスト場所-画像競合');
+    gatheringSpotIds.push(spot.gathering_spot_id);
+    await gatheringSpotRepository.replaceImageKey(
+      spot.gathering_spot_id,
+      null,
+      'gathering-spots/1/other.png'
+    );
+
+    expect(
+      await gatheringSpotRepository.replaceImageKey(
+        spot.gathering_spot_id,
+        null,
+        'gathering-spots/1/a.png'
+      )
+    ).toBe(false);
+    expect(
+      await gatheringSpotRepository.findImageKey(spot.gathering_spot_id)
+    ).toEqual({ imageKey: 'gathering-spots/1/other.png' });
+  });
 });

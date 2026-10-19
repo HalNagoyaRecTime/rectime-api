@@ -33,13 +33,10 @@ export function createFcmService(input: FirebaseConfig): IFcmService & {
   ensureConfigured(): Promise<void>;
 } {
   const config = normalizeFirebaseConfig(input);
-  let configurationCheck: Promise<void> | undefined;
-  const ensureConfigured = () =>
-    (configurationCheck ??= validateFirebaseConfig(config));
-  const cacheKey = `${config.projectId}:${config.clientEmail}`;
+  const cacheKey = createAccessTokenCacheKey(config);
 
   const getAccessToken = async (): Promise<string> => {
-    const cacheEntry = getAccessTokenCacheEntry(cacheKey);
+    const cacheEntry = getAccessTokenCacheEntry(await cacheKey);
 
     if (cacheEntry.token && Date.now() < cacheEntry.token.refreshAt) {
       return cacheEntry.token.value;
@@ -59,6 +56,14 @@ export function createFcmService(input: FirebaseConfig): IFcmService & {
     return (await cacheEntry.request).value;
   };
 
+  let configurationCheck: Promise<void> | undefined;
+  const ensureConfigured = async () => {
+    await (configurationCheck ??= validateFirebaseConfig(config));
+    // Signing and exchanging the JWT verifies the key and service account
+    // before delivery records are claimed. The send path reuses this token.
+    await getAccessToken();
+  };
+
   const sendNotificationToToken = async (
     input: FcmNotificationInput
   ): Promise<FcmNotificationResult> => {
@@ -68,6 +73,7 @@ export function createFcmService(input: FirebaseConfig): IFcmService & {
     const response = await fetch(
       `https://fcm.googleapis.com/v1/projects/${config.projectId}/messages:send`,
       {
+        signal: AbortSignal.timeout(30_000),
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -96,7 +102,8 @@ export function createFcmService(input: FirebaseConfig): IFcmService & {
         fcmErrorCode,
         `FCM request failed: HTTP ${response.status}${
           fcmErrorCode ? ` ${fcmErrorCode}` : ''
-        }`
+        }`,
+        parseRetryAfter(response.headers.get('Retry-After'))
       );
     }
 
@@ -118,6 +125,17 @@ export function createFcmService(input: FirebaseConfig): IFcmService & {
     sendNotificationToToken,
     ensureConfigured,
   };
+}
+
+export function parseRetryAfter(
+  value: string | null,
+  now = Date.now()
+): number | null {
+  if (value === null) return null;
+  const seconds = /^\d+$/.test(value.trim())
+    ? Number(value)
+    : (Date.parse(value) - now) / 1000;
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds) : null;
 }
 
 function buildPlatformConfig(
@@ -188,6 +206,17 @@ function getAccessTokenCacheEntry(cacheKey: string): AccessTokenCacheEntry {
   return created;
 }
 
+async function createAccessTokenCacheKey(
+  config: FirebaseConfig
+): Promise<string> {
+  const credential = new TextEncoder().encode(config.privateKey);
+  const digest = await crypto.subtle.digest('SHA-256', credential);
+  const fingerprint = Array.from(new Uint8Array(digest), byte =>
+    byte.toString(16).padStart(2, '0')
+  ).join('');
+  return `${config.projectId}:${config.clientEmail}:${fingerprint}`;
+}
+
 async function createAccessToken(
   config: FirebaseConfig
 ): Promise<CachedAccessToken> {
@@ -201,6 +230,7 @@ async function createAccessToken(
   });
 
   const response = await fetch(GOOGLE_TOKEN_URL, {
+    signal: AbortSignal.timeout(30_000),
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -214,8 +244,15 @@ async function createAccessToken(
   const tokenBody = await response.json();
 
   if (!response.ok) {
+    const errorCode =
+      tokenBody &&
+      typeof tokenBody === 'object' &&
+      'error' in tokenBody &&
+      typeof tokenBody.error === 'string'
+        ? tokenBody.error
+        : 'unknown';
     throw new Error(
-      `Google OAuth token request failed: ${JSON.stringify(tokenBody)}`
+      `Google OAuth token request failed: HTTP ${response.status} (${errorCode})`
     );
   }
 
@@ -223,7 +260,8 @@ async function createAccessToken(
     !tokenBody ||
     typeof tokenBody !== 'object' ||
     !('access_token' in tokenBody) ||
-    typeof tokenBody.access_token !== 'string'
+    typeof tokenBody.access_token !== 'string' ||
+    tokenBody.access_token.length === 0
   ) {
     throw new Error('Google OAuth token response did not include access_token');
   }

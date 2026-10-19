@@ -18,6 +18,8 @@ export interface AuthUserProfileDTO extends UserCategories {
   student_id_number: string | null;
   class_code: string | null;
   class_room_name: string | null;
+  class_room_id: number | null;
+  team_id: number | null;
   attendance_number: number | null;
   teacher?: AuthTeacherDTO;
 }

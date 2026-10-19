@@ -190,3 +190,29 @@ describe('NotificationDeliveryQueueConsumer', () => {
     expect(message.retry).not.toHaveBeenCalled();
   });
 });
+
+it('再送専用messageはlegacy・初回送信を呼ばず再送を完了してackする', async () => {
+  const message = createMessage({
+    notificationScheduleIds: [],
+    retryDeliveryIds: [41, 42],
+  });
+  const legacy = createLegacyService();
+  const delivery = createDeliveryServiceStub();
+  const retry = {
+    enqueueDueDeliveries: vi.fn(),
+    sendClaimedDelivery: vi.fn(),
+    retryDueDeliveries: vi
+      .fn()
+      .mockResolvedValue({ claimed: 2, sent: 2, failed: 0 }),
+  };
+  await consumeNotificationDeliveryQueue(
+    createBatch(message),
+    legacy,
+    delivery,
+    retry
+  );
+  expect(retry.retryDueDeliveries).toHaveBeenCalledWith(undefined, [41, 42]);
+  expect(legacy.sendQueuedNotifications).not.toHaveBeenCalled();
+  expect(delivery.sendQueuedNotifications).not.toHaveBeenCalled();
+  expect(message.ack).toHaveBeenCalledOnce();
+});

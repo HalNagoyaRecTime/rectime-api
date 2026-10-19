@@ -8,6 +8,7 @@ import {
   students as studentsTable,
   users,
 } from '../../src/infrastructure/database/schema';
+import { insertClassRoomWithTeam } from './classRooms';
 
 // テスト専用の学生データ。マイグレーションのシードには依存しない。
 const STUDENTS = [
@@ -44,6 +45,7 @@ export type SeededStudent = {
 
 export type SeededData = {
   classRoomId: number;
+  teamId: number;
   secondClassRoomId: number;
   students: SeededStudent[];
   // students を持たないユーザー（findAll で除外されることの検証用）
@@ -62,31 +64,23 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
   await orm.delete(staffsTable);
   await orm.delete(users);
   await orm.delete(class_rooms);
+  await db.prepare('DELETE FROM team_scores').run();
+  await db.prepare('DELETE FROM teams').run();
 
   const now = new Date().toISOString();
-  const [classRoom] = await orm
-    .insert(class_rooms)
-    .values({
-      classCode: 'TEST-1',
-      name: 'テスト教室',
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning();
-  const [secondClassRoom] = await orm
-    .insert(class_rooms)
-    .values({
-      classCode: 'TEST-2',
-      name: '別テスト教室',
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning();
+  const { classRoomId, teamId } = await insertClassRoomWithTeam(db, {
+    classCode: 'TEST-1',
+    className: 'テスト教室',
+  });
+  const { classRoomId: secondClassRoomId } = await insertClassRoomWithTeam(db, {
+    classCode: 'TEST-2',
+    className: '別テスト教室',
+  });
 
   const seededStudents: SeededStudent[] = [];
   for (const [index, s] of STUDENTS.entries()) {
-    const classRoomId =
-      index === STUDENTS.length - 1 ? secondClassRoom.id : classRoom.id;
+    const studentClassRoomId =
+      index === STUDENTS.length - 1 ? secondClassRoomId : classRoomId;
     const [user] = await orm
       .insert(users)
       .values({
@@ -100,7 +94,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
       .insert(studentsTable)
       .values({
         userId: user.id,
-        classRoomId,
+        classRoomId: studentClassRoomId,
         attendanceNumber: s.attendanceNumber,
         studentIdNumber: s.studentIdNumber,
         createdAt: now,
@@ -111,7 +105,7 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
     seededStudents.push({
       studentId: student.id,
       userId: user.id,
-      classRoomId,
+      classRoomId: studentClassRoomId,
       displayName: s.displayName,
       attendanceNumber: s.attendanceNumber,
       studentIdNumber: s.studentIdNumber,
@@ -143,8 +137,9 @@ export async function seedStudents(db: D1Database): Promise<SeededData> {
     .returning();
 
   return {
-    classRoomId: classRoom.id,
-    secondClassRoomId: secondClassRoom.id,
+    classRoomId,
+    teamId,
+    secondClassRoomId,
     students: seededStudents,
     teacher: { userId: teacher.id, displayName: teacher.userName },
   };

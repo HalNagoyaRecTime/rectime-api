@@ -5,6 +5,7 @@ import { createAdminNotificationCommandRepository } from '../../../src/infrastru
 import { createNotificationAudienceResolverRepository } from '../../../src/infrastructure/repositories/NotificationAudienceResolverRepository';
 import { createNotificationAudienceResolverService } from '../../../src/application/services/NotificationAudienceResolverService';
 import { NOTIFICATION_AUDIENCE_TARGET_MISSING_REASON } from '../../../src/domain/entities/NotificationAudienceResolver';
+import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 
 const commandRepository = createAdminNotificationCommandRepository(env.DB);
 const repository = createNotificationAudienceResolverRepository(env.DB);
@@ -52,27 +53,27 @@ async function createFixture(): Promise<Fixture> {
   const activeGatheringMemberId = await insertUser('active-gathering-member');
   const activeEventMemberId = await insertUser('active-event-member');
   const teacherUserId = await insertUser('teacher');
-  const classRoom = await env.DB.prepare(
-    "INSERT INTO class_rooms (class_code, class_name) VALUES ('AR1', 'Resolver 1組') RETURNING class_room_id"
-  ).first<{ class_room_id: number }>();
-  if (!classRoom) throw new Error('Resolver用ClassRoomを作成できませんでした');
+  const classRoom = await insertClassRoomWithTeam(env.DB, {
+    classCode: 'AR1',
+    className: 'Resolver 1組',
+  });
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
        VALUES (?, ?, 1, 'AR-S001')`
-    ).bind(activeStudentId, classRoom.class_room_id),
+    ).bind(activeStudentId, classRoom.classRoomId),
     env.DB.prepare(
       `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
        VALUES (?, ?, 2, 'AR-S002')`
-    ).bind(inactiveStudentId, classRoom.class_room_id),
+    ).bind(inactiveStudentId, classRoom.classRoomId),
     env.DB.prepare(
       `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
        VALUES (?, ?, 3, 'AR-S003')`
-    ).bind(deletionPendingStudentId, classRoom.class_room_id),
+    ).bind(deletionPendingStudentId, classRoom.classRoomId),
     env.DB.prepare(
       `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
        VALUES (?, ?, 4, 'AR-S004')`
-    ).bind(deletedStudentId, classRoom.class_room_id),
+    ).bind(deletedStudentId, classRoom.classRoomId),
     env.DB.prepare('INSERT INTO teachers (user_id, email) VALUES (?, ?)').bind(
       teacherUserId,
       'audience-resolver-teacher@example.com'
@@ -148,7 +149,7 @@ async function createFixture(): Promise<Fixture> {
     activeGatheringMemberId,
     activeEventMemberId,
     teacherUserId,
-    classRoomId: classRoom.class_room_id,
+    classRoomId: classRoom.classRoomId,
     firstGatheringId,
     eventId: event.event_id,
   };
@@ -197,7 +198,7 @@ async function createDeletableTarget(
   const definitions = {
     class_room: {
       insert:
-        "INSERT INTO class_rooms (class_code, class_name) VALUES ('AR2', '削除対象') RETURNING class_room_id AS id",
+        "INSERT INTO class_rooms (class_code, class_name, team_id) SELECT 'AR2', '削除対象', team_id FROM teams ORDER BY team_id LIMIT 1 RETURNING class_room_id AS id",
       table: 'class_rooms',
       column: 'class_room_id',
     },
@@ -283,6 +284,8 @@ describe('NotificationAudienceResolverRepository', () => {
       env.DB.prepare('DELETE FROM gathering_spots'),
       env.DB.prepare('DELETE FROM students'),
       env.DB.prepare('DELETE FROM class_rooms'),
+      env.DB.prepare('DELETE FROM team_scores'),
+      env.DB.prepare('DELETE FROM teams'),
       env.DB.prepare('DELETE FROM staffs'),
       env.DB.prepare('DELETE FROM teachers'),
       env.DB.prepare('DELETE FROM events'),

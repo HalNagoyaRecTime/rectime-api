@@ -1,3 +1,4 @@
+import { insertClassRoomWithTeam } from './fixtures/classRooms';
 import { env as workerEnv } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../src/index';
@@ -86,6 +87,8 @@ describe('通知config・audience-count API', () => {
       workerEnv.DB.prepare('DELETE FROM gathering_spots'),
       workerEnv.DB.prepare('DELETE FROM students'),
       workerEnv.DB.prepare('DELETE FROM class_rooms'),
+      workerEnv.DB.prepare('DELETE FROM team_scores'),
+      workerEnv.DB.prepare('DELETE FROM teams'),
       workerEnv.DB.prepare('DELETE FROM staffs'),
       workerEnv.DB.prepare('DELETE FROM teachers'),
       workerEnv.DB.prepare('DELETE FROM events'),
@@ -114,27 +117,28 @@ describe('通知config・audience-count API', () => {
       const token = await createToken(true);
       const activeStudentId = await insertUser('Count active student');
       const inactiveStudentId = await insertUser('Count inactive student', 0);
-      const classRoom = await workerEnv.DB.prepare(
-        "INSERT INTO class_rooms (class_code, class_name) VALUES ('CA1', 'Config API 1組') RETURNING class_room_id"
-      ).first<{ class_room_id: number }>();
+      const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+        classCode: 'CA1',
+        className: 'Config API 1組',
+      });
       if (!classRoom)
         throw new Error('API test ClassRoomを作成できませんでした');
       await workerEnv.DB.batch([
         workerEnv.DB.prepare(
           `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
            VALUES (?, ?, 1, 'CA-S001')`
-        ).bind(activeStudentId, classRoom.class_room_id),
+        ).bind(activeStudentId, classRoom.classRoomId),
         workerEnv.DB.prepare(
           `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
            VALUES (?, ?, 2, 'CA-S002')`
-        ).bind(inactiveStudentId, classRoom.class_room_id),
+        ).bind(inactiveStudentId, classRoom.classRoomId),
       ]);
 
       const response = await postAudienceCount(
         {
           audience: {
             items: [
-              { type: 'class_room', targetId: classRoom.class_room_id },
+              { type: 'class_room', targetId: classRoom.classRoomId },
               { type: 'user', targetId: activeStudentId },
             ],
           },

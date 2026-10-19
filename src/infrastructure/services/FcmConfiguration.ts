@@ -32,7 +32,9 @@ export async function validateFirebaseConfig(
   if (missing.length > 0) {
     throw new Error(`Missing Cloudflare Secrets: ${missing.join(', ')}`);
   }
-  if (/\s/.test(config.projectId))
+  // Resource Manager project IDs are 6–30 lowercase letters, digits, or
+  // hyphens; they start with a letter and cannot end with a hyphen.
+  if (!/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(config.projectId))
     throw new Error('Invalid Cloudflare Secret: FIREBASE_PROJECT_ID');
   if (!/^[^@\s]+@[^@\s]+$/.test(config.clientEmail))
     throw new Error('Invalid Cloudflare Secret: FIREBASE_CLIENT_EMAIL');

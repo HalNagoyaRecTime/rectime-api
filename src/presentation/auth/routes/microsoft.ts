@@ -416,6 +416,9 @@ microsoft.post('/token', async c => {
     }
   }
 
+  // プロフィール(学生情報・種別・担当クラス)の取得は、生きたMicrosoft
+  // リフレッシュトークンをKVへ書き込む前に、すべて検知したいため、副作用より
+  // 先にawaitする。
   const { authProfileService } = c.get('container');
   const profile = await authProfileService.getProfile(user);
 

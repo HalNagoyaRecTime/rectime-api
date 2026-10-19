@@ -152,6 +152,7 @@ describe('EventGatheringSettingsRepository', () => {
           gathering_time: '10:00',
           gathering_spot_id: spotId,
           gathering_spot_name: '出入口①',
+          gathering_spot_image_key: null,
           member_count: 2,
         },
         {
@@ -160,6 +161,7 @@ describe('EventGatheringSettingsRepository', () => {
           gathering_time: '10:30',
           gathering_spot_id: spotId,
           gathering_spot_name: '出入口①',
+          gathering_spot_image_key: null,
           member_count: 0,
         },
       ]);

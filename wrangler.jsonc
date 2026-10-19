@@ -17,6 +17,7 @@
     // /app/contact のリダイレクト先(Microsoft Forms「アプリお問い合わせ」)。
     // 空・未設定・https以外のときはリダイレクトせず404を返す。
     "CONTACT_FORM_URL": "https://forms.cloud.microsoft/r/LAsntFuQcF",
+    "IMAGES_BUCKET_URL": "https://539494518db0c8b96ec2f6fdd30fb990.r2.cloudflarestorage.com/rectime-images",
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
   // 公開されている(README.md参照)。カスタムドメイン/routesは未設定のため、
@@ -44,6 +45,8 @@
       "FIREBASE_PROJECT_ID",
       "FIREBASE_CLIENT_EMAIL",
       "FIREBASE_PRIVATE_KEY",
+      "R2_ACCESS_KEY_ID",
+      "R2_SECRET_ACCESS_KEY",
     ],
   },
   "triggers": {
@@ -83,6 +86,12 @@
       "database_name": "rectime-api",
       "database_id": "f031b887-a3a2-41f1-8c54-5ccdd323fcbb",
       "migrations_dir": "migrations",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "rectime-images",
     },
   ],
   "durable_objects": {
@@ -143,6 +152,7 @@
         // 未設定だと更新系エンドポイントが500になる(#204レビュー指摘)。実イベントの日付に
         // 追随させる必要はない検証用環境のため、固定のダミー値を使う。
         "EVENT_DATE": "2026-01-01",
+        "IMAGES_BUCKET_URL": "https://539494518db0c8b96ec2f6fdd30fb990.r2.cloudflarestorage.com/rectime-images-dev",
       },
       // triggersはトップレベルから継承されるため、明示しないと本番同様の毎分cronが
       // development(旧env.previewが明示的に無効化していた分)でも有効になってしまう。
@@ -156,7 +166,8 @@
       // 10秒タイムアウトし、テストスイートが不安定になることを確認したため。
       // ただし実デプロイ先としても使う以上、以下は実際には必須(`wrangler secret put <NAME> --env development`
       // で登録すること): MICROSOFT_CLIENT_PRIVATE_KEY / MICROSOFT_CERT_THUMBPRINT / JWT_SECRET /
-      // FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY
+      // FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY /
+      // R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
       // (secrets.requiredを宣言しない代償として、デプロイ時の事前検証は効かない)。
       "kv_namespaces": [
         {
@@ -174,6 +185,13 @@
           "database_name": "rectime-api-dev",
           "database_id": "58250875-594b-401e-9e9f-66c19de7506f",
           "migrations_dir": "migrations",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "IMAGES",
+          "bucket_name": "rectime-images-dev",
+          "remote": true,
         },
       ],
       "durable_objects": {
@@ -235,6 +253,7 @@
         // 500になる(#204レビュー指摘)。本番相当の検証環境だが、実イベント日付に
         // 追随させる必要はないため固定のダミー値を使う。
         "EVENT_DATE": "2026-01-01",
+        "IMAGES_BUCKET_URL": "https://539494518db0c8b96ec2f6fdd30fb990.r2.cloudflarestorage.com/rectime-images-staging",
       },
       "secrets": {
         "required": [
@@ -244,6 +263,8 @@
           "FIREBASE_PROJECT_ID",
           "FIREBASE_CLIENT_EMAIL",
           "FIREBASE_PRIVATE_KEY",
+          "R2_ACCESS_KEY_ID",
+          "R2_SECRET_ACCESS_KEY",
         ],
       },
       // 本番相当のcronを検証したくなった時点で有効化を検討する。まずは無効で始める。
@@ -262,6 +283,12 @@
           "database_name": "rectime-api-staging",
           "database_id": "f069ce58-7d88-4bd9-aab0-ab6c62eb2349",
           "migrations_dir": "migrations",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "IMAGES",
+          "bucket_name": "rectime-images-staging",
         },
       ],
       "durable_objects": {

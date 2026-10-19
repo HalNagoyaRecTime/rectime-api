@@ -68,4 +68,29 @@ describe('FCM設定の検証', () => {
       )
     ).rejects.toThrow('Invalid Cloudflare Secret: FIREBASE_CLIENT_EMAIL');
   });
+  it.each([
+    'sample/project',
+    'sample project',
+    'Sample-project',
+    '1sample-project',
+    'sample-',
+    'short',
+    `${'a'.repeat(29)}-`,
+  ])('Google Cloud Project IDの形式不正を拒否する: %s', async projectId => {
+    await expect(
+      validateFirebaseConfig(
+        normalizeFirebaseConfig({ ...config(), projectId })
+      )
+    ).rejects.toThrow('Invalid Cloudflare Secret: FIREBASE_PROJECT_ID');
+  });
+  it.each(['a1234b', `${'a'.repeat(29)}1`])(
+    'Google Cloud Project IDの有効な境界を受理する: %s',
+    async projectId => {
+      await expect(
+        validateFirebaseConfig(
+          normalizeFirebaseConfig({ ...config(), projectId })
+        )
+      ).resolves.toBeUndefined();
+    }
+  );
 });
