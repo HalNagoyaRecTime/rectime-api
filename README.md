@@ -153,7 +153,7 @@ MIIEvQIBADA...（秘密鍵の内容）
 npm run db:migrate:local
 ```
 
-`0040_enforce_unique_student_attendance_number.sql`が
+`0047_enforce_unique_student_attendance_number.sql`が
 `duplicate_group_count = 0`のCHECK制約で停止した場合は、次のSQLで既存の重複を確認する。
 対象Studentを勝手に削除せず、正しい所属・出席番号を確認して整理したあとにMigrationを再実行する。
 
