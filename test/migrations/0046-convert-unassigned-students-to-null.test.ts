@@ -6,11 +6,11 @@ import { insertClassRoomWithTeam } from '../fixtures/classRooms';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0038_convert_unassigned_students_to_null.sql'
+    item => item.name === '0046_convert_unassigned_students_to_null.sql'
   );
   if (!migration) {
     throw new Error(
-      '0038_convert_unassigned_students_to_null.sql is not registered'
+      '0046_convert_unassigned_students_to_null.sql is not registered'
     );
   }
   return migration.queries;
@@ -29,7 +29,7 @@ async function insertUser(userName: string): Promise<number> {
   return user!.user_id;
 }
 
-describe('0038_convert_unassigned_students_to_null.sql', () => {
+describe('0046_convert_unassigned_students_to_null.sql', () => {
   it('__UNASSIGNED__所属のStudentだけを未所属へ移行する', async () => {
     let createdUnassignedTeamId: number | null = null;
     let unassignedClassRoom = await env.DB.prepare(
@@ -57,8 +57,8 @@ describe('0038_convert_unassigned_students_to_null.sql', () => {
       .first<{ class_room_id: number }>();
     expect(assignedClassRoom).not.toBeNull();
 
-    const unassignedUserId = await insertUser('0038旧未所属Student');
-    const assignedUserId = await insertUser('0038所属Student');
+    const unassignedUserId = await insertUser('0046旧未所属Student');
+    const assignedUserId = await insertUser('0046所属Student');
 
     await env.DB.batch([
       env.DB.prepare(
@@ -71,7 +71,7 @@ describe('0038_convert_unassigned_students_to_null.sql', () => {
       ).bind(
         unassignedUserId,
         unassignedClassRoom!.class_room_id,
-        '0038-UNASSIGNED'
+        '0046-UNASSIGNED'
       ),
       env.DB.prepare(
         `INSERT INTO students (
@@ -83,7 +83,7 @@ describe('0038_convert_unassigned_students_to_null.sql', () => {
       ).bind(
         assignedUserId,
         assignedClassRoom!.class_room_id,
-        '0038-ASSIGNED'
+        '0046-ASSIGNED'
       ),
     ]);
 
@@ -146,8 +146,8 @@ describe('0038_convert_unassigned_students_to_null.sql', () => {
       `INSERT INTO notifications (
          notification_type, push_title, push_body, title, body
        ) VALUES (
-         'notification_general', '0038移行確認', '0038移行確認',
-         '0038移行確認', '0038移行確認'
+         'notification_general', '0046移行確認', '0046移行確認',
+         '0046移行確認', '0046移行確認'
        )
        RETURNING notification_id`
     ).first<{ notification_id: number }>();
