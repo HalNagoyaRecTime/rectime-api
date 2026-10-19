@@ -956,12 +956,12 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     // 退会した学生が使っていたクラス・出席番号で再登録できる。
     const replacement = await createStudentRepository(workerEnv.DB).create({
       displayName: '再登録太郎',
-      classRoomId: classRoom!.class_room_id,
+      classRoomId: classRoom!.classRoomId,
       attendanceNumber: 1,
       studentIdNumber: '77001-RECREATED',
     });
     expect(replacement).toMatchObject({
-      classRoomId: classRoom!.class_room_id,
+      classRoomId: classRoom!.classRoomId,
       attendanceNumber: 1,
     });
 
