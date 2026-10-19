@@ -454,15 +454,16 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
     async anonymizeByUserId(userId: number): Promise<boolean> {
       // users.user_nameの匿名化はUserRepository.anonymizeUserがロールの
       // 種類によらず担当する(AccountDeletionService.deleteRelatedDataの
-      // 先頭で呼び出し済み)。ここではstudents固有のカラム
-      // (student_id_number)のみを扱う。
+      // 先頭で呼び出し済み)。ここではstudents固有のカラムを扱う。
       //
-      // class_room_id・attendance_numberは学生本人の個人情報ではないため
-      // 変更しない。student_id_numberはUNIQUE制約付きだが、userIdを含む
-      // ことで他の匿名化済み行と衝突しない値にする。
+      // 退会後に同じクラス・出席番号で再登録できるよう、所属情報も
+      // NULLにして一意制約上の枠を解放する。student_id_numberはUNIQUE
+      // 制約付きだが、userIdを含むことで他の匿名化済み行と衝突しない。
       const result = await orm
         .update(students)
         .set({
+          classRoomId: null,
+          attendanceNumber: null,
           studentIdNumber: `deleted-${userId}`,
           updatedAt: new Date().toISOString(),
           lockVersion: sql`${students.lockVersion} + 1`,

@@ -937,13 +937,33 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     expect(stateAfterComplete.deletion_status).toBe('deleted');
     expect(stateAfterComplete.purged_at).not.toBeNull();
 
-    // students: 行は残るが匿名化されている
+    // students: 行は残るが匿名化され、所属情報は解放されている
     const studentRow = await workerEnv.DB.prepare(
-      'SELECT student_id_number FROM students WHERE user_id = ?'
+      'SELECT student_id_number, class_room_id, attendance_number FROM students WHERE user_id = ?'
     )
       .bind(user!.user_id)
-      .first<{ student_id_number: string }>();
-    expect(studentRow?.student_id_number).toBe(`deleted-${user!.user_id}`);
+      .first<{
+        student_id_number: string;
+        class_room_id: number | null;
+        attendance_number: number | null;
+      }>();
+    expect(studentRow).toMatchObject({
+      student_id_number: `deleted-${user!.user_id}`,
+      class_room_id: null,
+      attendance_number: null,
+    });
+
+    // 退会した学生が使っていたクラス・出席番号で再登録できる。
+    const replacement = await createStudentRepository(workerEnv.DB).create({
+      displayName: '再登録太郎',
+      classRoomId: classRoom!.class_room_id,
+      attendanceNumber: 1,
+      studentIdNumber: '77001-RECREATED',
+    });
+    expect(replacement).toMatchObject({
+      classRoomId: classRoom!.class_room_id,
+      attendanceNumber: 1,
+    });
 
     // gathering_group_members: 削除される
     const memberRow = await workerEnv.DB.prepare(

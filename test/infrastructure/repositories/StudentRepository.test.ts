@@ -1023,7 +1023,7 @@ describe('StudentRepository', () => {
   });
 
   describe('anonymizeByUserId', () => {
-    it('student_id_numberをプレースホルダに書き換え、行は残す(user_nameはUserRepository.anonymizeUserの責務)', async () => {
+    it('student_id_numberをプレースホルダに書き換え、所属情報を解放して行は残す(user_nameはUserRepository.anonymizeUserの責務)', async () => {
       const classRoomId = seeded.students[0].classRoomId;
       const user = await env.DB.prepare(
         "INSERT INTO users (user_name) VALUES ('匿名化対象太郎') RETURNING user_id"
@@ -1039,8 +1039,8 @@ describe('StudentRepository', () => {
       const result = await repo.findById(student!.student_id);
       expect(result).toMatchObject({
         studentIdNumber: `deleted-${user!.user_id}`,
-        classRoomId,
-        attendanceNumber: 99,
+        classRoomId: null,
+        attendanceNumber: null,
       });
       // user_nameの匿名化はUserRepository.anonymizeUserの責務であり、
       // StudentRepository.anonymizeByUserIdはstudents固有のカラムのみを
