@@ -4,11 +4,11 @@ import { insertClassRoomWithTeam } from '../fixtures/classRooms';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0041_release_deleted_student_assignments.sql'
+    item => item.name === '0048_release_deleted_student_assignments.sql'
   );
   if (!migration) {
     throw new Error(
-      '0041_release_deleted_student_assignments.sql is not registered'
+      '0048_release_deleted_student_assignments.sql is not registered'
     );
   }
   return migration.queries;
@@ -18,20 +18,20 @@ async function runMigration(): Promise<void> {
   await env.DB.batch(migrationQueries.map(query => env.DB.prepare(query)));
 }
 
-describe('0041_release_deleted_student_assignments.sql', () => {
+describe('0048_release_deleted_student_assignments.sql', () => {
   it('退会済みStudentの所属情報だけを解放し、同じ出席番号を再利用できる', async () => {
     const classRoom = await insertClassRoomWithTeam(env.DB, {
-      classCode: '0041-A',
-      className: '0041 Aクラス',
+      classCode: '0048-A',
+      className: '0048 Aクラス',
     });
     const deletedUser = await env.DB.prepare(
       `INSERT INTO users (user_name, deletion_status)
-       VALUES ('0041 退会済み', 'deleted')
+       VALUES ('0048 退会済み', 'deleted')
        RETURNING user_id`
     ).first<{ user_id: number }>();
     const replacementUser = await env.DB.prepare(
       `INSERT INTO users (user_name)
-       VALUES ('0041 再登録')
+       VALUES ('0048 再登録')
        RETURNING user_id`
     ).first<{ user_id: number }>();
 
@@ -39,7 +39,7 @@ describe('0041_release_deleted_student_assignments.sql', () => {
       await env.DB.prepare(
         `INSERT INTO students (
            user_id, class_room_id, attendance_number, student_id_number
-         ) VALUES (?, ?, 5, '0041-DELETED')`
+         ) VALUES (?, ?, 5, '0048-DELETED')`
       )
         .bind(deletedUser!.user_id, classRoom.classRoomId)
         .run();
@@ -65,14 +65,14 @@ describe('0041_release_deleted_student_assignments.sql', () => {
         env.DB.prepare(
           `INSERT INTO students (
              user_id, class_room_id, attendance_number, student_id_number
-           ) VALUES (?, ?, 5, '0041-RECREATED')`
+           ) VALUES (?, ?, 5, '0048-RECREATED')`
         )
           .bind(replacementUser!.user_id, classRoom.classRoomId)
           .run()
       ).resolves.toBeDefined();
     } finally {
       await env.DB.prepare(
-        "DELETE FROM students WHERE student_id_number LIKE '0041-%'"
+        "DELETE FROM students WHERE student_id_number LIKE '0048-%'"
       ).run();
       await env.DB.prepare('DELETE FROM users WHERE user_id IN (?, ?)')
         .bind(deletedUser!.user_id, replacementUser!.user_id)
