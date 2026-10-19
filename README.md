@@ -258,11 +258,9 @@ major更新はこの月次workflowの対象外とし、別途事前検証して�
 
 ## ローカルCronの自動実行
 
-Cronを自動実行しながら確認する場合は、通常の `npm run dev` の代わりに次を使う。
+ローカルでCronを自動実行しながら確認する場合は、標準の `npm run dev` を使う。
 
-```bash
-npm run dev:cron
-```
+従来のWrangler単独起動は `npm run dev:plain` で実行できる。明示的なCron起動用の `npm run dev:cron` も同じ動作をする。
 
 `wrangler.jsonc` のトップレベル `triggers.crons` をUTCで再現する。
 現在の毎分通知と日次のアカウント削除の後片付けを共通で扱う。
@@ -271,7 +269,7 @@ npm run dev:cron
 development環境のリソースと `.dev.vars` を使い、ローカルDBの保存先は通常起動と同じ。
 ローカルDBに保存された配信予定は実FCMへ送信されるため、端末の受信まで確認できる。
 
-ポート変更は `npm run dev:cron -- --port 8788 --inspector-port 9231`。
+ポート変更は `npm run dev -- --port 8788 --inspector-port 9231`。
 Cron設定を変更した場合は再起動する。Ctrl+Cで新しい発火を止め、実行中のScheduled処理を待って停止する。
 
 5項目Cron式に対応し、数値の曜日はCloudflareの日曜=1〜土曜=7を変換する。
