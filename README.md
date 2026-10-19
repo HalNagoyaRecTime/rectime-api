@@ -255,3 +255,28 @@ major更新はこの月次workflowの対象外とし、別途事前検証して�
 ### イベント一覧の開催日
 
 `GET /api/v1/events` はトップレベルの `event_date` に既存の `EVENT_DATE`（JST、`YYYY-MM-DD`）を返します。未設定または不正な日付は `null` です。開催日を設定できていなくてもイベント一覧は取得でき、イベント本文・ページング・認証は変わりません。通知配信の開催日と同じ設定を参照し、別の設定値やDB列は追加しません。モバイルのライブアクティビティでの利用は後続対応です。
+
+## ローカルCronの自動実行
+
+Cronを自動実行しながら確認する場合は、通常の `npm run dev` の代わりに次を使う。
+
+```bash
+npm run dev:cron
+```
+
+`wrangler.jsonc` のトップレベル `triggers.crons` をUTCで再現する。
+現在の毎分通知と日次のアカウント削除の後片付けを共通で扱う。
+発火は開発依存の `cron`、Workerの起動・ホットリロード・DB・Queueは固定版Wranglerが担当する。
+公式のScheduledテスト入口から既存の `scheduled()` を実行する。
+development環境のリソースと `.dev.vars` を使い、ローカルDBの保存先は通常起動と同じ。
+ローカルDBに保存された配信予定は実FCMへ送信されるため、端末の受信まで確認できる。
+
+ポート変更は `npm run dev:cron -- --port 8788 --inspector-port 9231`。
+Cron設定を変更した場合は再起動する。Ctrl+Cで新しい発火を止め、実行中のScheduled処理を待って停止する。
+
+5項目Cron式に対応し、数値の曜日はCloudflareの日曜=1〜土曜=7を変換する。
+Quartz固有のL/W/#等は非対応で、使用時は起動エラーになる。
+Cloudflareによる実際の発火・分散実行の確認は、専用のデプロイ環境で行う。
+
+`npm run test:local-cron` で共通Cronと実Scheduled→Queue経路を検証する（`npm test` にも含む）。
+実時間の毎分発火を待つため、最大約1分かかる。
