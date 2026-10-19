@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { createNotificationAudienceResolverRepository } from '../../src/infrastructure/repositories/NotificationAudienceResolverRepository';
 import { createNotificationScheduleQueryRepository } from '../../src/infrastructure/repositories/NotificationScheduleQueryRepository';
+import { insertClassRoomWithTeam } from '../fixtures/classRooms';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
@@ -30,17 +31,19 @@ async function insertUser(userName: string): Promise<number> {
 
 describe('0038_convert_unassigned_students_to_null.sql', () => {
   it('__UNASSIGNED__所属のStudentだけを未所属へ移行する', async () => {
+    let createdUnassignedTeamId: number | null = null;
     let unassignedClassRoom = await env.DB.prepare(
       `SELECT class_room_id
        FROM class_rooms
        WHERE class_code = '__UNASSIGNED__'`
     ).first<{ class_room_id: number }>();
     if (!unassignedClassRoom) {
-      unassignedClassRoom = await env.DB.prepare(
-        `INSERT INTO class_rooms (class_code, class_name)
-         VALUES ('__UNASSIGNED__', '未割当')
-         RETURNING class_room_id`
-      ).first<{ class_room_id: number }>();
+      const created = await insertClassRoomWithTeam(env.DB, {
+        classCode: '__UNASSIGNED__',
+        className: '未割当',
+      });
+      createdUnassignedTeamId = created.teamId;
+      unassignedClassRoom = { class_room_id: created.classRoomId };
     }
 
     const assignedClassRoom = await env.DB.prepare(
@@ -126,15 +129,19 @@ describe('0038_convert_unassigned_students_to_null.sql', () => {
       await env.DB.prepare('DELETE FROM users WHERE user_id IN (?, ?)')
         .bind(unassignedUserId, assignedUserId)
         .run();
+      if (createdUnassignedTeamId !== null) {
+        await env.DB.prepare('DELETE FROM teams WHERE team_id = ?')
+          .bind(createdUnassignedTeamId)
+          .run();
+      }
     }
   });
 
   it('旧未割当クラス宛ての未解決予約通知を停止する', async () => {
-    const unassignedClassRoom = await env.DB.prepare(
-      `INSERT INTO class_rooms (class_code, class_name)
-       VALUES ('__UNASSIGNED__', '未割当')
-       RETURNING class_room_id`
-    ).first<{ class_room_id: number }>();
+    const unassignedClassRoom = await insertClassRoomWithTeam(env.DB, {
+      classCode: '__UNASSIGNED__',
+      className: '未割当',
+    });
     const notification = await env.DB.prepare(
       `INSERT INTO notifications (
          notification_type, push_title, push_body, title, body
@@ -159,7 +166,7 @@ describe('0038_convert_unassigned_students_to_null.sql', () => {
     )
       .bind(
         schedule!.notification_schedule_id,
-        unassignedClassRoom!.class_room_id
+        unassignedClassRoom.classRoomId
       )
       .run();
 
@@ -220,6 +227,9 @@ describe('0038_convert_unassigned_students_to_null.sql', () => {
       await env.DB.prepare(
         "DELETE FROM class_rooms WHERE class_code = '__UNASSIGNED__'"
       ).run();
+      await env.DB.prepare('DELETE FROM teams WHERE team_id = ?')
+        .bind(unassignedClassRoom.teamId)
+        .run();
     }
   });
 });

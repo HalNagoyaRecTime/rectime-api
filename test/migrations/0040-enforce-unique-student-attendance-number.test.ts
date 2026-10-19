@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+import { insertClassRoomWithTeam } from '../fixtures/classRooms';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
@@ -28,16 +29,14 @@ async function insertUser(userName: string): Promise<number> {
 
 describe('0040_enforce_unique_student_attendance_number.sql', () => {
   it('同じクラスの出席番号重複を拒否し、別クラスと未所属は許可する', async () => {
-    const firstClassRoom = await env.DB.prepare(
-      `INSERT INTO class_rooms (class_code, class_name)
-       VALUES ('0040-A', '0040 Aクラス')
-       RETURNING class_room_id`
-    ).first<{ class_room_id: number }>();
-    const secondClassRoom = await env.DB.prepare(
-      `INSERT INTO class_rooms (class_code, class_name)
-       VALUES ('0040-B', '0040 Bクラス')
-       RETURNING class_room_id`
-    ).first<{ class_room_id: number }>();
+    const firstClassRoom = await insertClassRoomWithTeam(env.DB, {
+      classCode: '0040-A',
+      className: '0040 Aクラス',
+    });
+    const secondClassRoom = await insertClassRoomWithTeam(env.DB, {
+      classCode: '0040-B',
+      className: '0040 Bクラス',
+    });
     const userIds = await Promise.all([
       insertUser('0040 Student 1'),
       insertUser('0040 Student 2'),
@@ -51,7 +50,7 @@ describe('0040_enforce_unique_student_attendance_number.sql', () => {
           user_id, class_room_id, attendance_number, student_id_number
         ) VALUES (?, ?, 1, '0040-1')`
       )
-        .bind(userIds[0], firstClassRoom!.class_room_id)
+        .bind(userIds[0], firstClassRoom.classRoomId)
         .run();
 
       await expect(
@@ -60,7 +59,7 @@ describe('0040_enforce_unique_student_attendance_number.sql', () => {
             user_id, class_room_id, attendance_number, student_id_number
           ) VALUES (?, ?, 1, '0040-2')`
         )
-          .bind(userIds[1], firstClassRoom!.class_room_id)
+          .bind(userIds[1], firstClassRoom.classRoomId)
           .run()
       ).rejects.toThrow(/UNIQUE constraint failed/);
 
@@ -70,7 +69,7 @@ describe('0040_enforce_unique_student_attendance_number.sql', () => {
             user_id, class_room_id, attendance_number, student_id_number
           ) VALUES (?, ?, 1, '0040-3')`
         )
-          .bind(userIds[2], secondClassRoom!.class_room_id)
+          .bind(userIds[2], secondClassRoom.classRoomId)
           .run()
       ).resolves.toBeDefined();
 
@@ -94,15 +93,17 @@ describe('0040_enforce_unique_student_attendance_number.sql', () => {
       await env.DB.prepare(
         `DELETE FROM class_rooms WHERE class_code IN ('0040-A', '0040-B')`
       ).run();
+      await env.DB.prepare('DELETE FROM teams WHERE team_id IN (?, ?)')
+        .bind(firstClassRoom.teamId, secondClassRoom.teamId)
+        .run();
     }
   });
 
   it('既存の重複を残したまま一意制約の追加を中断する', async () => {
-    const classRoom = await env.DB.prepare(
-      `INSERT INTO class_rooms (class_code, class_name)
-       VALUES ('0040-DUPLICATE', '0040 重複確認クラス')
-       RETURNING class_room_id`
-    ).first<{ class_room_id: number }>();
+    const classRoom = await insertClassRoomWithTeam(env.DB, {
+      classCode: '0040-DUPLICATE',
+      className: '0040 重複確認クラス',
+    });
     const userIds = await Promise.all([
       insertUser('0040 Duplicate Student 1'),
       insertUser('0040 Duplicate Student 2'),
@@ -116,12 +117,12 @@ describe('0040_enforce_unique_student_attendance_number.sql', () => {
         `INSERT INTO students (
            user_id, class_room_id, attendance_number, student_id_number
          ) VALUES (?, ?, 40, '0040-DUPLICATE-1')`
-      ).bind(userIds[0], classRoom!.class_room_id),
+      ).bind(userIds[0], classRoom.classRoomId),
       env.DB.prepare(
         `INSERT INTO students (
            user_id, class_room_id, attendance_number, student_id_number
          ) VALUES (?, ?, 40, '0040-DUPLICATE-2')`
-      ).bind(userIds[1], classRoom!.class_room_id),
+      ).bind(userIds[1], classRoom.classRoomId),
     ]);
 
     try {
@@ -135,7 +136,7 @@ describe('0040_enforce_unique_student_attendance_number.sql', () => {
          WHERE class_room_id = ? AND attendance_number = 40
          ORDER BY student_id_number`
       )
-        .bind(classRoom!.class_room_id)
+        .bind(classRoom.classRoomId)
         .all<{ student_id_number: string }>();
       expect(duplicatedStudents.results).toEqual([
         { student_id_number: '0040-DUPLICATE-1' },
@@ -155,7 +156,10 @@ describe('0040_enforce_unique_student_attendance_number.sql', () => {
         .bind(...userIds)
         .run();
       await env.DB.prepare('DELETE FROM class_rooms WHERE class_room_id = ?')
-        .bind(classRoom!.class_room_id)
+        .bind(classRoom.classRoomId)
+        .run();
+      await env.DB.prepare('DELETE FROM teams WHERE team_id = ?')
+        .bind(classRoom.teamId)
         .run();
       await env.DB.prepare(
         `CREATE UNIQUE INDEX IF NOT EXISTS ux_students_class_room_attendance
