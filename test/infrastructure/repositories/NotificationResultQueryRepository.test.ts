@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createNotificationResultQueryRepository } from '../../../src/infrastructure/repositories/NotificationResultQueryRepository';
+import { createNotificationAccountDeletionRepository } from '../../../src/infrastructure/repositories/NotificationAccountDeletionRepository';
 
 const repository = createNotificationResultQueryRepository(env.DB);
 
@@ -237,6 +238,73 @@ describe('NotificationResultQueryRepository', () => {
     await expect(
       repository.findScheduleResults(999999, { page: 1, limit: 50 })
     ).resolves.toBeNull();
+  });
+
+  it('匿名化Recipientを集計とページ分割の前に除外し、ページを詰めて返す', async () => {
+    const scheduleId = await insertSchedule(await insertNotification());
+    const deletedUser = await insertUser('匿名化対象');
+    const firstUser = await insertUser('表示対象1');
+    const secondUser = await insertUser('表示対象2');
+    await insertRecipient(scheduleId, deletedUser);
+    const firstRecipient = await insertRecipient(scheduleId, firstUser);
+    // 同じ退会者の別Recipientを作らず、別ユーザーの匿名化行を間に挟む。
+    const anotherDeletedUser = await insertUser('別の匿名化対象');
+    await insertRecipient(scheduleId, anotherDeletedUser);
+    const secondRecipient = await insertRecipient(scheduleId, secondUser);
+    const deletionRepository = createNotificationAccountDeletionRepository(
+      env.DB
+    );
+    await deletionRepository.anonymizeRecipientsByUserId(deletedUser);
+    await deletionRepository.anonymizeRecipientsByUserId(anotherDeletedUser);
+
+    for (const [index, recipientId] of [
+      firstRecipient,
+      secondRecipient,
+    ].entries()) {
+      const result = await repository.findScheduleResults(scheduleId, {
+        page: index + 1,
+        limit: 1,
+      });
+      expect(result?.total_count).toBe(2);
+      expect(
+        result?.recipients.map(item => item.notification_recipient_id)
+      ).toEqual([recipientId]);
+    }
+    await expect(
+      repository.findScheduleResults(scheduleId, { page: 3, limit: 1 })
+    ).resolves.toMatchObject({ total_count: 2, recipients: [] });
+  });
+
+  it('全Recipientが匿名化されてもScheduleと配信履歴を保持し、件数0を返す', async () => {
+    const scheduleId = await insertSchedule(await insertNotification());
+    const userId = await insertUser('全員匿名化対象');
+    const recipientId = await insertRecipient(scheduleId, userId);
+    const tokenId = await insertToken(userId, 1, 'anonymous');
+    const deliveryId = await insertDelivery(recipientId, tokenId, {
+      platform: 1,
+      status: 'sent',
+      attemptCount: 1,
+      firstAttemptAt: '2026-07-23T00:00:00.000Z',
+      lastAttemptAt: '2026-07-23T00:00:00.000Z',
+      sentAt: '2026-07-23T00:00:01.000Z',
+    });
+    await createNotificationAccountDeletionRepository(
+      env.DB
+    ).anonymizeRecipientsByUserId(userId);
+
+    await expect(
+      repository.findScheduleResults(scheduleId, { page: 1, limit: 50 })
+    ).resolves.toEqual({
+      notification_schedule_id: scheduleId,
+      total_count: 0,
+      recipients: [],
+    });
+    await expect(
+      repository.findPushDeliveryById(deliveryId)
+    ).resolves.toMatchObject({
+      notification_recipient_id: recipientId,
+      status: 'sent',
+    });
   });
 
   it('Token削除後もPush Delivery詳細を残してToken IDをnullで返し、1 queryで取得する', async () => {
