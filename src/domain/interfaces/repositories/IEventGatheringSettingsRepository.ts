@@ -12,5 +12,8 @@ export interface IEventGatheringSettingsRepository {
   // 差分を1つのトランザクションで適用する。いずれかの文が失敗すると
   // 全体が取り消され、中途半端な状態は残らない。
   // 参加者が残っている集合予定の削除は外部キー制約で失敗する。
-  apply(changeSet: EventGatheringChangeSet): Promise<void>;
+  apply(
+    changeSet: EventGatheringChangeSet,
+    options?: { holdNotificationSyncGatheringIds?: number[] }
+  ): Promise<void>;
 }
