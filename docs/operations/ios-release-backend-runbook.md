@@ -21,10 +21,10 @@ iOSリリース時に、認証・主要API・D1・デプロイで問題が発生
 | 用途 | Worker | ベースURL | D1 | Queue | デプロイ契機 |
 | --- | --- | --- | --- | --- | --- |
 | production | `rectime-api` | `https://rectime-api.rectime-project.workers.dev` | `rectime-api` | `rectime-notification-delivery` | `main`でDeploy Workflowを手動実行した場合のみ |
-| staging | `rectime-api-staging` | `https://rectime-api-staging.rectime-project.workers.dev` | `rectime-api-staging` | `rectime-notification-delivery-staging` | `main`へのpush |
+| staging | `rectime-api-staging` | `https://rectime-api-staging.rectime-project.workers.dev` | `rectime-api-staging` | `rectime-notification-delivery-staging` | `develop`へのpush |
 | development | `rectime-api-development` | `https://rectime-api-development.rectime-project.workers.dev` | `rectime-api-dev` | `rectime-notification-delivery-dev` | `develop`へのpush／PRごとのプレビュー |
 
-> `main`へのpushはstagingへ反映される。productionへ反映するには、`main`でDeploy Workflowを手動実行する必要がある。
+> `develop`へのpushはdevelopmentとstagingの両方へ反映され、`main`へのpushではデプロイされない。productionへ反映するには、`main`でDeploy Workflowを手動実行する必要がある。
 
 ### プレビュー環境について
 
