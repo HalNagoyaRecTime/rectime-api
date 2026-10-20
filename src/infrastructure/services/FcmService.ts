@@ -9,6 +9,7 @@ import {
   FcmNotificationInput,
   FcmNotificationResult,
   FcmRequestError,
+  FcmConfigurationError,
 } from '../../application/services/IFcmService';
 import type { FirebasePlatformName } from '../../domain/entities/FirebaseToken';
 
@@ -251,7 +252,7 @@ async function createAccessToken(
       typeof tokenBody.error === 'string'
         ? tokenBody.error
         : 'unknown';
-    throw new Error(
+    throw new FcmConfigurationError(
       `Google OAuth token request failed: HTTP ${response.status} (${errorCode})`
     );
   }
@@ -263,7 +264,9 @@ async function createAccessToken(
     typeof tokenBody.access_token !== 'string' ||
     tokenBody.access_token.length === 0
   ) {
-    throw new Error('Google OAuth token response did not include access_token');
+    throw new FcmConfigurationError(
+      'Google OAuth token response did not include access_token'
+    );
   }
 
   const expiresInSeconds =

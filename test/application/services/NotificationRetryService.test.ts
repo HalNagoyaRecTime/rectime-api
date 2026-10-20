@@ -3,7 +3,10 @@ import {
   createNotificationRetryService,
   classifyFcmError,
 } from '../../../src/application/services/NotificationRetryService';
-import { FcmRequestError } from '../../../src/application/services/IFcmService';
+import {
+  FcmConfigurationError,
+  FcmRequestError,
+} from '../../../src/application/services/IFcmService';
 import { parseRetryAfter } from '../../../src/infrastructure/services/FcmService';
 import type { INotificationDeliveryRepository } from '../../../src/domain/interfaces/repositories/INotificationDeliveryRepository';
 import type { IFirebaseTokenRepository } from '../../../src/domain/interfaces/repositories/IFirebaseTokenRepository';
@@ -19,29 +22,35 @@ describe('FCM error分類', () => {
       );
     }
   );
-  it.each([
-    'INTERNAL',
-    'UNAVAILABLE',
-    'QUOTA_EXCEEDED',
-    'THIRD_PARTY_AUTH_ERROR',
-  ])('%sを再送する', code => {
-    expect(classifyFcmError(new FcmRequestError(503, code, '失敗'))).toBe(
-      'temporary'
-    );
-  });
+  it.each(['INTERNAL', 'UNAVAILABLE', 'QUOTA_EXCEEDED'])(
+    '%sを再送する',
+    code => {
+      expect(classifyFcmError(new FcmRequestError(503, code, '失敗'))).toBe(
+        'temporary'
+      );
+    }
+  );
   it('UNREGISTEREDだけToken削除とし、文字列からToken削除を推測しない', () => {
     expect(
       classifyFcmError(new FcmRequestError(404, 'UNREGISTERED', '失敗'))
     ).toBe('unregistered');
     expect(classifyFcmError(new Error('invalid token'))).toBe('temporary');
     expect(classifyFcmError(new FcmRequestError(401, null, '認証失敗'))).toBe(
-      'temporary'
+      'configuration'
     );
     expect(
       classifyFcmError(
         new FcmRequestError(403, 'PERMISSION_DENIED', '権限設定を確認')
       )
-    ).toBe('temporary');
+    ).toBe('configuration');
+    expect(
+      classifyFcmError(
+        new FcmRequestError(401, 'THIRD_PARTY_AUTH_ERROR', 'APNs設定なし')
+      )
+    ).toBe('configuration');
+    expect(classifyFcmError(new FcmConfigurationError('OAuth失敗'))).toBe(
+      'configuration'
+    );
   });
   it('Retry-Afterの秒数・HTTP日付・不正値を処理する', () => {
     expect(parseRetryAfter('90')).toBe(90);

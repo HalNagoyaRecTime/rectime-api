@@ -4,6 +4,8 @@ import type { INotificationDeliveryRepository } from '../../domain/interfaces/re
 import type { INotificationDeliveryQueue } from '../../domain/interfaces/queues/INotificationDeliveryQueue';
 import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 import { FcmRequestError, type IFcmService } from './IFcmService';
+import { classifyFcmError } from './FcmErrorPolicy';
+export { classifyFcmError } from './FcmErrorPolicy';
 import type {
   INotificationRetryService,
   NotificationDeliveryOutcome,
@@ -15,44 +17,14 @@ import {
   FCM_MAX_ATTEMPTS,
   FCM_PROCESSING_TIMEOUT_SECONDS,
   FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS,
+  FCM_CONFIG_BLOCKED_REASON,
+  FCM_CONFIG_RETRY_DELAY_SECONDS,
 } from '../../domain/entities/NotificationRetryPolicy';
 export {
   FCM_RETRY_OFFSETS_SECONDS,
   FCM_PROCESSING_TIMEOUT_SECONDS,
   FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS,
 } from '../../domain/entities/NotificationRetryPolicy';
-
-// Token・payloadの恒久エラーはfailedとし、認証・権限設定の修正余地はRetryに残す。
-// https://firebase.google.com/docs/cloud-messaging/error-codes
-export function classifyFcmError(
-  error: unknown
-): 'temporary' | 'permanent' | 'unregistered' {
-  if (!(error instanceof FcmRequestError)) return 'temporary';
-  if (error.fcmErrorCode === 'UNREGISTERED') return 'unregistered';
-  if (
-    ['INVALID_ARGUMENT', 'SENDER_ID_MISMATCH'].includes(
-      error.fcmErrorCode ?? ''
-    )
-  )
-    return 'permanent';
-  // 認証・IAM設定は運用側で修正できるため、配信行を恒久失敗にしない。
-  if (
-    [401, 403].includes(error.httpStatus) ||
-    ['UNAUTHENTICATED', 'PERMISSION_DENIED'].includes(error.fcmErrorCode ?? '')
-  )
-    return 'temporary';
-  if (
-    [429, 500, 503].includes(error.httpStatus) ||
-    [
-      'QUOTA_EXCEEDED',
-      'INTERNAL',
-      'UNAVAILABLE',
-      'THIRD_PARTY_AUTH_ERROR',
-    ].includes(error.fcmErrorCode ?? '')
-  )
-    return 'temporary';
-  return 'permanent';
-}
 
 export function createNotificationRetryService(deps: {
   notificationDeliveryRepository: INotificationDeliveryRepository;
@@ -102,6 +74,18 @@ export function createNotificationRetryService(deps: {
         await deps.firebaseTokenRepository.deleteById(
           delivery.firebase_token_id
         );
+      // 認証・権限設定の障害は15分の通常Retry期限を適用しない。
+      if (classification === 'configuration') {
+        return repository.saveRetry(
+          delivery.notification_push_delivery_id,
+          delivery.attempt_count,
+          FCM_CONFIG_BLOCKED_REASON,
+          new Date(
+            now.getTime() + FCM_CONFIG_RETRY_DELAY_SECONDS * 1000
+          ).toISOString(),
+          nowIso
+        );
+      }
       const nextMilestone = FCM_RETRY_OFFSETS_SECONDS.map(
         offset => Date.parse(delivery.first_attempt_at) + offset * 1000
       ).find(milestone => milestone > now.getTime());

@@ -9,6 +9,7 @@ import {
 } from '../../domain/entities/NotificationDelivery';
 import { IFcmService, isPermanentFcmTokenError } from './IFcmService';
 import { IScheduledNotificationService } from './IScheduledNotificationService';
+import { classifyFcmError } from './FcmErrorPolicy';
 
 const MAX_CONCURRENT_FCM_REQUESTS = 5;
 
@@ -109,11 +110,19 @@ export function createScheduledNotificationService(deps: {
               },
             });
           } catch (error) {
-            if (shouldDeleteToken(error)) {
+            const invalidToken = shouldDeleteToken(error);
+            if (invalidToken) {
               await firebaseTokenRepository.deleteById(
                 schedule.firebase_token_id
               );
             }
+            // 設定障害・一時障害はsendingを保ち、lease失効後に再送する。
+            const category = classifyFcmError(error);
+            if (
+              !invalidToken &&
+              (category === 'configuration' || category === 'temporary')
+            )
+              return 'deferred' as const;
             await notificationScheduleRepository.markFailed(
               schedule.notification_schedule_id,
               error instanceof Error ? error.message : String(error)

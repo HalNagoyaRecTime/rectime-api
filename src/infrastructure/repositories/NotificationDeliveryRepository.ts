@@ -4,6 +4,7 @@ import type { INotificationDeliveryRepository } from '../../domain/interfaces/re
 import {
   FCM_MAX_ATTEMPTS,
   FCM_RETRY_WINDOW_SECONDS,
+  FCM_CONFIG_BLOCKED_REASON,
 } from '../../domain/entities/NotificationRetryPolicy';
 
 interface CandidateRow {
@@ -191,13 +192,14 @@ export function createNotificationDeliveryRepository(
         JOIN notifications n USING (notification_id)
         WHERE d.notification_push_delivery_id > ? AND s.send_status = 'sending'
           AND n.notification_type = 'notification_general' AND d.firebase_token_id IS NOT NULL
-          AND d.attempt_count < ? AND julianday(d.first_attempt_at, ?) >= julianday(?)
+          AND (d.failed_reason = ? OR (d.attempt_count < ? AND julianday(d.first_attempt_at, ?) >= julianday(?)))
           AND ((d.status = 'retry_wait' AND julianday(d.next_retry_at) <= julianday(?))
             OR (d.status = 'sending' AND julianday(d.last_attempt_at) < julianday(?)))
         ORDER BY d.notification_push_delivery_id LIMIT ?`
         )
         .bind(
           afterId,
+          FCM_CONFIG_BLOCKED_REASON,
           FCM_MAX_ATTEMPTS,
           `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
           now,
@@ -245,10 +247,10 @@ export function createNotificationDeliveryRepository(
         ) THEN 'stopped' ELSE 'failed' END,
         failed_reason = '再送対象のTokenがないか試行上限に到達しました', next_retry_at = NULL, updated_at = ?
         WHERE (status IN ('pending', 'retry_wait') OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))
-          AND (firebase_token_id IS NULL OR attempt_count >= ? OR EXISTS (
+          AND (firebase_token_id IS NULL OR (COALESCE(failed_reason, '') <> ? AND attempt_count >= ?) OR EXISTS (
             SELECT 1 FROM notification_recipients r JOIN notification_schedules s USING (notification_schedule_id)
             WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND s.send_status = 'stopped'
-          ) OR (status IN ('retry_wait', 'sending') AND first_attempt_at IS NOT NULL
+          ) OR (COALESCE(failed_reason, '') <> ? AND status IN ('retry_wait', 'sending') AND first_attempt_at IS NOT NULL
             AND julianday(first_attempt_at, ?) < julianday(?)))
         RETURNING (SELECT notification_schedule_id FROM notification_recipients r
           WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id) AS notification_schedule_id`
@@ -256,7 +258,9 @@ export function createNotificationDeliveryRepository(
         .bind(
           now,
           staleBefore,
+          FCM_CONFIG_BLOCKED_REASON,
           maxAttempts,
+          FCM_CONFIG_BLOCKED_REASON,
           `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
           now
         )
@@ -391,11 +395,12 @@ async function claimDeliveries(
   const eligible =
     staleBefore === undefined
       ? "status = 'pending'"
-      : "attempt_count < ? AND first_attempt_at IS NOT NULL AND julianday(first_attempt_at, ?) >= julianday(?) AND ((status = 'retry_wait' AND julianday(next_retry_at) <= julianday(?)) OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))";
+      : "(failed_reason = ? OR (attempt_count < ? AND first_attempt_at IS NOT NULL AND julianday(first_attempt_at, ?) >= julianday(?))) AND ((status = 'retry_wait' AND julianday(next_retry_at) <= julianday(?)) OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))";
   const eligibilityBindings =
     staleBefore === undefined
       ? []
       : [
+          FCM_CONFIG_BLOCKED_REASON,
           FCM_MAX_ATTEMPTS,
           `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
           now,
@@ -403,7 +408,7 @@ async function claimDeliveries(
           staleBefore,
         ];
   const qualifiedEligible = eligible.replace(
-    /\b(status|attempt_count|next_retry_at|last_attempt_at)\b/g,
+    /\b(status|attempt_count|next_retry_at|last_attempt_at|failed_reason)\b/g,
     'd.$1'
   );
   const candidates = await db
@@ -439,9 +444,9 @@ async function claimDeliveries(
         .prepare(
           `UPDATE notification_push_deliveries
                SET status = 'sending',
-                   first_attempt_at = COALESCE(first_attempt_at, ?),
+                   first_attempt_at = CASE WHEN failed_reason = ? THEN ? ELSE COALESCE(first_attempt_at, ?) END,
                    last_attempt_at = ?,
-                   attempt_count = attempt_count + 1,
+                   attempt_count = CASE WHEN failed_reason = ? THEN 1 ELSE attempt_count + 1 END,
                    next_retry_at = NULL, failed_reason = NULL,
                    updated_at = ?
                WHERE notification_push_delivery_id = ?
@@ -460,8 +465,11 @@ async function claimDeliveries(
                RETURNING notification_push_delivery_id`
         )
         .bind(
+          FCM_CONFIG_BLOCKED_REASON,
           now,
           now,
+          now,
+          FCM_CONFIG_BLOCKED_REASON,
           now,
           candidate.notification_push_delivery_id,
           ...eligibilityBindings
