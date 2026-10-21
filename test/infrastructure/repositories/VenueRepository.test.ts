@@ -108,6 +108,90 @@ describe('VenueRepository', () => {
     ).toBeNull();
   });
 
+  describe('更新の楽観ロック', () => {
+    it('作成直後の lock_version は 0 で、更新のたびに 1 ずつ増える', async () => {
+      const venue = await venueRepository.create('実施場所テストロック');
+      expect(venue.lock_version).toBe(0);
+
+      const first = await venueRepository.update(venue.venue_id, {
+        venue_name: '実施場所テストロック1',
+      });
+      const second = await venueRepository.update(venue.venue_id, {
+        venue_name: '実施場所テストロック2',
+      });
+
+      expect(first?.lock_version).toBe(1);
+      expect(second?.lock_version).toBe(2);
+    });
+
+    it('取得時点の lock_version を指定すると、一致すれば更新して版を進める', async () => {
+      const venue = await venueRepository.create('実施場所テストロック一致');
+
+      const updated = await venueRepository.update(venue.venue_id, {
+        venue_name: '実施場所テストロック一致後',
+        expected_lock_version: venue.lock_version,
+      });
+
+      expect(updated).toMatchObject({
+        venue_name: '実施場所テストロック一致後',
+        lock_version: venue.lock_version + 1,
+      });
+    });
+
+    it('lock_version が取得時点と違えば更新せず null を返す', async () => {
+      const venue = await venueRepository.create('実施場所テストロック不一致');
+      await venueRepository.update(venue.venue_id, {
+        venue_name: '実施場所テストロック別操作',
+      });
+
+      const result = await venueRepository.update(venue.venue_id, {
+        venue_name: '実施場所テストロック古い版',
+        expected_lock_version: venue.lock_version,
+      });
+
+      expect(result).toBeNull();
+      const [stored] = (await venueRepository.findAll()).filter(
+        found => found.venue_id === venue.venue_id
+      );
+      expect(stored).toMatchObject({
+        venue_name: '実施場所テストロック別操作',
+        lock_version: 1,
+      });
+    });
+
+    it('同じ版から続けて更新しても、2回目は null になる（同じ秒内でも検出できる）', async () => {
+      const venue = await venueRepository.create('実施場所テストロック連続');
+
+      const first = await venueRepository.update(venue.venue_id, {
+        venue_name: '実施場所テストロック連続1',
+        expected_lock_version: venue.lock_version,
+      });
+      const second = await venueRepository.update(venue.venue_id, {
+        venue_name: '実施場所テストロック連続2',
+        expected_lock_version: venue.lock_version,
+      });
+
+      expect(first).not.toBeNull();
+      expect(second).toBeNull();
+    });
+
+    it('画像キーの差し替えでも lock_version が進む', async () => {
+      const venue = await venueRepository.create('実施場所テストロック画像');
+
+      await venueRepository.replaceImageKey(
+        venue.venue_id,
+        null,
+        'venues/1/a.png'
+      );
+
+      const stale = await venueRepository.update(venue.venue_id, {
+        venue_name: '実施場所テストロック画像後',
+        expected_lock_version: venue.lock_version,
+      });
+      expect(stale).toBeNull();
+    });
+  });
+
   it('削除できた場合のみ true を返す', async () => {
     const venue = await venueRepository.create('実施場所テスト削除');
 
