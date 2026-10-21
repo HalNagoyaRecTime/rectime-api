@@ -116,7 +116,7 @@ describe('EventGatheringSettingsRepository', () => {
       await expect(repository.findByEventId(eventId)).resolves.toEqual([]);
     });
 
-    it('round, gathering_time, gathering_id の順で返す', async () => {
+    it('round, gathering_id の順で返す', async () => {
       const eventId = await insertEvent('順序');
       const spotId = await insertSpot('順序場所');
       const round2 = await insertGathering(eventId, spotId, 2, '10:00');
@@ -126,11 +126,11 @@ describe('EventGatheringSettingsRepository', () => {
 
       const result = await repository.findByEventId(eventId);
 
-      // 同時刻は gathering_id 昇順なので、後から作った round1EarlyA が後ろ
+      // 集合時刻に関係なく、登録済みの集合番号で並べる。
       expect(result.map(gathering => gathering.gathering_id)).toEqual([
+        round1Late,
         round1EarlyB,
         round1EarlyA,
-        round1Late,
         round2,
       ]);
     });
@@ -153,6 +153,7 @@ describe('EventGatheringSettingsRepository', () => {
           gathering_spot_id: spotId,
           gathering_spot_name: '出入口①',
           gathering_spot_image_key: null,
+          round_start_time: null,
           member_count: 2,
         },
         {
@@ -162,6 +163,7 @@ describe('EventGatheringSettingsRepository', () => {
           gathering_spot_id: spotId,
           gathering_spot_name: '出入口①',
           gathering_spot_image_key: null,
+          round_start_time: null,
           member_count: 0,
         },
       ]);

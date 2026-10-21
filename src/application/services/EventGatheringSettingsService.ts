@@ -7,11 +7,15 @@ import type {
 import type { IEventGatheringSettingsRepository } from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 import type { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
+import type { IGatheringNotificationGeneratorService } from './GatheringNotificationGeneratorService';
 import type {
   EventGatheringSettingsDTO,
   RoundSettingInputDTO,
 } from '../dto/EventGatheringSettingsDTO';
-import { buildEventGatheringSettings } from './eventGatheringRounds';
+import {
+  buildEventGatheringSettings,
+  buildRoundSettings,
+} from './eventGatheringRounds';
 import { signImageUrls } from './imageUrls';
 import type { IImageUrlSigner } from '../../domain/interfaces/storages/IImageUrlSigner';
 import { isForeignKeyError } from './foreignKeyError';
@@ -26,11 +30,24 @@ interface RequestedGathering extends EventGatheringWriteInput {
 
 // Round単位の入力を集合予定1件ごとに展開する。以降の差分計算は
 // Roundの入れ子を意識せずに済む。
-function flattenRounds(rounds: RoundSettingInputDTO[]): RequestedGathering[] {
+function flattenRounds(
+  rounds: RoundSettingInputDTO[],
+  current: EventGatheringEntity[]
+): RequestedGathering[] {
+  const startTimes = new Map(
+    buildRoundSettings(current, () => null).map(round => [
+      round.round,
+      round.start_time,
+    ])
+  );
   return rounds.flatMap(round =>
     round.gatherings.map(gathering => ({
       gathering_id: gathering.gathering_id,
       round: round.round,
+      round_start_time:
+        round.start_time === undefined
+          ? (startTimes.get(round.round) ?? null)
+          : round.start_time,
       gathering_time: gathering.gathering_time,
       gathering_spot_id: gathering.gathering_spot_id,
     }))
@@ -43,6 +60,7 @@ function isUnchanged(
 ): boolean {
   return (
     current.round === requested.round &&
+    current.round_start_time === requested.round_start_time &&
     current.gathering_time === requested.gathering_time &&
     current.gathering_spot_id === requested.gathering_spot_id
   );
@@ -52,7 +70,8 @@ export function createEventGatheringSettingsService(
   eventRepository: IEventRepository,
   gatheringSpotRepository: IGatheringSpotRepository,
   eventGatheringSettingsRepository: IEventGatheringSettingsRepository,
-  imageUrlSigner: IImageUrlSigner
+  imageUrlSigner: IImageUrlSigner,
+  gatheringNotificationGeneratorService: IGatheringNotificationGeneratorService
 ): IEventGatheringSettingsService {
   const ensureGatheringSpotsExist = async (gatheringSpotIds: number[]) => {
     const existing =
@@ -114,19 +133,36 @@ export function createEventGatheringSettingsService(
         throw new Error('Event not found');
       }
 
-      const requested = flattenRounds(command.rounds);
+      const current = await eventGatheringSettingsRepository.findByEventId(
+        command.event_id
+      );
+      const requested = flattenRounds(command.rounds, current);
       const gatheringSpotIds = Array.from(
         new Set(requested.map(gathering => gathering.gathering_spot_id))
       );
       await ensureGatheringSpotsExist(gatheringSpotIds);
 
-      const current = await eventGatheringSettingsRepository.findByEventId(
-        command.event_id
-      );
       const changeSet = buildChangeSet(command.event_id, current, requested);
+      const currentById = new Map(
+        current.map(gathering => [gathering.gathering_id, gathering])
+      );
+      const changedGatheringTimeIds = changeSet.updates
+        .filter(
+          update =>
+            currentById.get(update.gathering_id)?.gathering_time !==
+            update.gathering_time
+        )
+        .map(update => update.gathering_id);
 
       try {
-        await eventGatheringSettingsRepository.apply(changeSet);
+        // Gathering更新と旧automatic Scheduleの保留を同一batchで確定する。
+        if (changedGatheringTimeIds.length > 0) {
+          await eventGatheringSettingsRepository.apply(changeSet, {
+            holdNotificationSyncGatheringIds: changedGatheringTimeIds,
+          });
+        } else {
+          await eventGatheringSettingsRepository.apply(changeSet);
+        }
       } catch (error) {
         // 事前確認と保存の間に状態が変わると外部キー制約で失敗する。
         // Eventや集合場所が消えていたのか、削除対象に参加者が加わったのかを
@@ -139,15 +175,26 @@ export function createEventGatheringSettingsService(
         throw new Error('Gathering in use');
       }
 
-      const saved = await eventGatheringSettingsRepository.findByEventId(
-        command.event_id
-      );
+      const savedGatherings =
+        await eventGatheringSettingsRepository.findByEventId(command.event_id);
+      // Gathering保存はここで確定済み。通知生成の一時失敗で保存APIを500にせず、
+      // 全Gatheringへの即時同期を試したうえでCronの定期reconciliationに回復を委ねる。
+      for (const gathering of savedGatherings) {
+        try {
+          await gatheringNotificationGeneratorService.generate(
+            gathering.gathering_id
+          );
+        } catch {
+          // 定期reconciliationが次回Cronで再試行する。
+        }
+      }
+
       return buildEventGatheringSettings(
         command.event_id,
-        saved,
+        savedGatherings,
         await signImageUrls(
           imageUrlSigner,
-          saved.map(gathering => gathering.gathering_spot_image_key)
+          savedGatherings.map(gathering => gathering.gathering_spot_image_key)
         )
       );
     },

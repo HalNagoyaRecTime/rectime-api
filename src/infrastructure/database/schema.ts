@@ -210,6 +210,7 @@ export const gatherings = sqliteTable(
       .notNull()
       .references(() => gathering_spots.id),
     gatheringTime: text('gathering_time').notNull().default('99:59'),
+    roundStartTime: text('round_start_time'),
     round: integer('round').notNull().default(99),
     createdAt: text('created_at')
       .notNull()
@@ -501,6 +502,7 @@ export const notification_recipients = sqliteTable(
       onDelete: 'set null',
     }),
     createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
+    updatedAt: text('updated_at'),
   },
   table => [
     uniqueIndex('uq_notification_recipients_schedule_user').on(
