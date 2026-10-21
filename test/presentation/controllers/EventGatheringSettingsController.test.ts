@@ -70,6 +70,32 @@ describe('EventGatheringSettingsController', () => {
     });
   });
 
+  it.each(['0000', '2359', null])(
+    '開始時刻%sを保存できる',
+    async start_time => {
+      const { service, request } = setup();
+      const rounds = [{ ...validBody.rounds[0], start_time }];
+      const response = await request('/events/12/gatherings', { rounds });
+      expect(response.status).toBe(200);
+      expect(service.saveEventGatheringSettings).toHaveBeenCalledWith({
+        event_id: 12,
+        rounds,
+      });
+    }
+  );
+
+  it.each(['24:00', '2400', '99:59', '11:00', 'abc'])(
+    '不正な開始時刻%sは保存しない',
+    async start_time => {
+      const { service, request } = setup();
+      const response = await request('/events/12/gatherings', {
+        rounds: [{ ...validBody.rounds[0], start_time }],
+      });
+      expect(response.status).toBe(400);
+      expect(service.saveEventGatheringSettings).not.toHaveBeenCalled();
+    }
+  );
+
   // 以下の400はコントローラ内の保険を対象にしている。実運用では
   // ルート定義(OpenAPI)の検証が先に走り、ここへは到達しないため、
   // 応答コードがルート側と揃っていることまで確認する。

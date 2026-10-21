@@ -13,6 +13,7 @@ const existing: EventGatheringEntity[] = [
     gathering_id: 101,
     round: 1,
     gathering_time: '10:45',
+    round_start_time: null,
     gathering_spot_id: 1,
     gathering_spot_name: '出入口①',
     gathering_spot_image_key: null,
@@ -22,6 +23,7 @@ const existing: EventGatheringEntity[] = [
     gathering_id: 102,
     round: 1,
     gathering_time: '10:55',
+    round_start_time: null,
     gathering_spot_id: 2,
     gathering_spot_name: '出入口②',
     gathering_spot_image_key: null,
@@ -129,6 +131,7 @@ describe('EventGatheringSettingsService', () => {
           {
             gathering_id: 101,
             round: 1,
+            round_start_time: null,
             gathering_time: '11:00',
             gathering_spot_id: 1,
           },
@@ -168,7 +171,14 @@ describe('EventGatheringSettingsService', () => {
 
       expect(repository.apply).toHaveBeenCalledWith({
         event_id: EVENT_ID,
-        creates: [{ round: 2, gathering_time: '11:00', gathering_spot_id: 3 }],
+        creates: [
+          {
+            round: 2,
+            round_start_time: null,
+            gathering_time: '11:00',
+            gathering_spot_id: 3,
+          },
+        ],
         updates: [],
         delete_ids: [102],
       });
@@ -206,12 +216,14 @@ describe('EventGatheringSettingsService', () => {
             {
               gathering_id: 101,
               round: 2,
+              round_start_time: null,
               gathering_time: '10:45',
               gathering_spot_id: 1,
             },
             {
               gathering_id: 102,
               round: 2,
+              round_start_time: null,
               gathering_time: '11:00',
               gathering_spot_id: 2,
             },
@@ -231,6 +243,7 @@ describe('EventGatheringSettingsService', () => {
         rounds: [
           {
             round: 1,
+            start_time: null,
             gatherings: [
               {
                 gathering_id: 101,
@@ -445,6 +458,42 @@ describe('EventGatheringSettingsService', () => {
     });
   });
 
+  it('ラウンドの開始時刻を全集合に保存し、省略した旧入力は既存値を維持する', async () => {
+    const current = existing.map(gathering => ({
+      ...gathering,
+      round_start_time: '1100',
+    }));
+    const { service, repository } = setup({ current });
+    const gatherings = current.map(g => ({
+      gathering_id: g.gathering_id,
+      gathering_time: g.gathering_time,
+      gathering_spot_id: g.gathering_spot_id,
+    }));
+    await service.saveEventGatheringSettings({
+      event_id: EVENT_ID,
+      rounds: [{ round: 1, gatherings }],
+    });
+    expect(vi.mocked(repository.apply).mock.calls[0][0].updates).toEqual([]);
+    await service.saveEventGatheringSettings({
+      event_id: EVENT_ID,
+      rounds: [{ round: 1, start_time: '1130', gatherings }],
+    });
+    expect(
+      vi
+        .mocked(repository.apply)
+        .mock.calls[1][0].updates.map(g => g.round_start_time)
+    ).toEqual(['1130', '1130']);
+    await service.saveEventGatheringSettings({
+      event_id: EVENT_ID,
+      rounds: [{ round: 1, start_time: null, gatherings }],
+    });
+    expect(
+      vi
+        .mocked(repository.apply)
+        .mock.calls[2][0].updates.map(g => g.round_start_time)
+    ).toEqual([null, null]);
+  });
+
   describe('保存後のレスポンス', () => {
     it('保存後に再取得した一覧をRound単位に束ねて返す', async () => {
       const saved: EventGatheringEntity[] = [
@@ -453,6 +502,7 @@ describe('EventGatheringSettingsService', () => {
         {
           gathering_id: 103,
           round: 2,
+          round_start_time: null,
           gathering_time: '11:00',
           gathering_spot_id: 3,
           gathering_spot_name: '出入口③',
@@ -470,6 +520,7 @@ describe('EventGatheringSettingsService', () => {
         rounds: [
           {
             round: 1,
+            start_time: null,
             gatherings: [
               {
                 gathering_id: 101,
@@ -495,6 +546,7 @@ describe('EventGatheringSettingsService', () => {
         rounds: [
           {
             round: 1,
+            start_time: null,
             gatherings: [
               {
                 gathering_id: 101,
@@ -520,6 +572,7 @@ describe('EventGatheringSettingsService', () => {
           },
           {
             round: 2,
+            start_time: null,
             gatherings: [
               {
                 gathering_id: 103,
@@ -675,4 +728,64 @@ describe('EventGatheringSettingsService', () => {
       ).toHaveBeenNthCalledWith(2, 102);
     });
   });
+});
+
+describe('開始時刻省略時のラウンド整合性', () => {
+  it('追加した集合にもラウンドの既存開始時刻を保存する', async () => {
+    const current = existing.map(g => ({
+      ...g,
+      member_count: 0,
+      round_start_time: '0900',
+    }));
+    const { service, repository } = setup({ current });
+    await service.saveEventGatheringSettings({
+      event_id: EVENT_ID,
+      rounds: [
+        {
+          round: 1,
+          gatherings: [
+            ...current.map(g => ({
+              gathering_id: g.gathering_id,
+              gathering_time: g.gathering_time,
+              gathering_spot_id: g.gathering_spot_id,
+            })),
+            { gathering_time: '09:30', gathering_spot_id: 3 },
+          ],
+        },
+      ],
+    });
+    expect(
+      vi.mocked(repository.apply).mock.calls[0][0].creates[0].round_start_time
+    ).toBe('0900');
+  });
+  it.each([null, '1100'])(
+    '移動元の開始時刻を引き継がず移動先の%sを全集合へ保存する',
+    async destination => {
+      const current = [
+        { ...existing[0], member_count: 0, round_start_time: '0900' },
+        { ...existing[1], round: 2, round_start_time: destination },
+      ];
+      const { service, repository } = setup({ current });
+      await service.saveEventGatheringSettings({
+        event_id: EVENT_ID,
+        rounds: [
+          {
+            round: 2,
+            gatherings: current.map(g => ({
+              gathering_id: g.gathering_id,
+              gathering_time: g.gathering_time,
+              gathering_spot_id: g.gathering_spot_id,
+            })),
+          },
+        ],
+      });
+      expect(vi.mocked(repository.apply).mock.calls[0][0].updates).toEqual([
+        expect.objectContaining({
+          gathering_id: 101,
+          round: 2,
+          round_start_time: destination,
+        }),
+      ]);
+    }
+  );
 });
