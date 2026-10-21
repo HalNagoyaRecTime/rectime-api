@@ -50,7 +50,8 @@ function buildService() {
     service: createAuthProfileService(
       { getUserCategories },
       { findByUserId: findStudent },
-      { findByUserId: findTeacher }
+      { findByUserId: findTeacher },
+      'nhs.hal.ac.jp'
     ),
   };
 }
@@ -68,6 +69,7 @@ describe('AuthProfileService', () => {
       class_room_id: null,
       team_id: null,
       attendance_number: null,
+      student_profile_missing: false,
       is_student: false,
       is_staff: false,
       is_teacher: false,
@@ -149,6 +151,51 @@ describe('AuthProfileService', () => {
       is_teacher: true,
     });
     expect(await service.getProfile(identity)).not.toHaveProperty('teacher');
+  });
+
+  describe('student_profile_missing', () => {
+    const studentEmailIdentity = {
+      ...identity,
+      email: 'nhs00123@nhs.hal.ac.jp',
+    };
+
+    it('学生メールで学生情報があればfalseを返す', async () => {
+      const { service, findStudent } = buildService();
+      findStudent.mockResolvedValue(student);
+      expect(await service.getProfile(studentEmailIdentity)).toMatchObject({
+        student_profile_missing: false,
+      });
+    });
+
+    it('学生メールで学生情報がなければtrueを返す', async () => {
+      const { service } = buildService();
+      expect(await service.getProfile(studentEmailIdentity)).toMatchObject({
+        student_id_number: null,
+        is_student: false,
+        student_profile_missing: true,
+      });
+    });
+
+    it('大文字や前後の空白を含む学生メールも学生メールとして判定する', async () => {
+      const { service } = buildService();
+      expect(
+        await service.getProfile({
+          ...identity,
+          email: ' NHS00123@NHS.HAL.AC.JP ',
+        })
+      ).toMatchObject({ student_profile_missing: true });
+    });
+
+    it.each([
+      ['教員・職員のメール', 'teacher@hal.ac.jp'],
+      ['学生ドメインでもnhs + 数字でないメール', 'staff01@nhs.hal.ac.jp'],
+      ['nhs + 数字でも学生ドメインでないメール', 'nhs00123@hal.ac.jp'],
+    ])('%sはfalseを返す', async (_, email) => {
+      const { service } = buildService();
+      expect(await service.getProfile({ ...identity, email })).toMatchObject({
+        student_profile_missing: false,
+      });
+    });
   });
 
   it('DB障害を情報なしとして握りつぶさない', async () => {

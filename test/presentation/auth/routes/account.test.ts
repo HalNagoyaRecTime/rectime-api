@@ -414,6 +414,7 @@ describe('GET /auth/me', () => {
       class_room_id: classRoom.classRoomId,
       team_id: classRoom.teamId,
       attendance_number: 1,
+      student_profile_missing: false,
     });
   });
 
@@ -465,6 +466,46 @@ describe('GET /auth/me', () => {
       class_room_id: null,
       team_id: null,
       attendance_number: null,
+      student_profile_missing: false,
+    });
+  });
+
+  it('学生メールなのに学生情報がないユーザーはstudent_profile_missing: trueを返す', async () => {
+    const env = buildEnv();
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('未登録学生') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    const token = await signAccessToken(
+      {
+        sub: String(user!.user_id),
+        oid: 'oid-missing-student',
+        email: 'nhs59999@nhs.hal.ac.jp',
+        display_name: '未登録学生',
+        client_type: 'web',
+      },
+      JWT_SECRET,
+      3600
+    );
+    const app = buildApp();
+
+    const res = await app.request(
+      '/me',
+      { headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      user?: {
+        is_student: boolean;
+        student_id_number: string | null;
+        student_profile_missing: boolean;
+      };
+    };
+    expect(body.user).toMatchObject({
+      is_student: false,
+      student_id_number: null,
+      student_profile_missing: true,
     });
   });
 

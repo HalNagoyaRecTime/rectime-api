@@ -112,7 +112,7 @@
     // `rectime-api-development` という別Workerとして作成される。
     // ローカル開発(wrangler dev --env development)と、developブランチへのpush先の
     // 両方を兼ねる(env.previewは廃止し統合した)。
-    // PRごとのpreviewデプロイは行わない(理由はdeploy.ymlのjobs.targetを参照)。
+    // PRごとのpreviewデプロイは行わない(理由はdeploy.ymlを参照)。
     // env.default は development と重複していたため削除した。
     //
     // web向けMicrosoft OAuthのredirect_uriは(#151により)リクエストURLから動的に
@@ -223,7 +223,7 @@
       },
     },
     // Cloudflare上のStaging環境。`rectime-api-staging` という別Workerとして作成される。
-    // mainへのpushで自動デプロイされる(本番はworkflow_dispatchでの手動デプロイのみ)。
+    // developへのpushで、developmentと合わせて自動デプロイされる(本番はworkflow_dispatchでの手動デプロイのみ)。
     // development/previewとは異なり、D1/KV/Queueは共有せず専用リソースを持つ
     // (本番相当の検証を行うための独立環境のため)。
     //

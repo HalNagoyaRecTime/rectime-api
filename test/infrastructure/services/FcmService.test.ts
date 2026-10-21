@@ -479,4 +479,85 @@ describe('FcmService', () => {
       }
     );
   });
+
+  describe('ensureConfigured', () => {
+    it('claim前のOAuth確認で取得したtokenを実送信に再利用する', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: 'token-ready' }), {
+            status: 200,
+          })
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ name: 'projects/x/messages/1' }), {
+            status: 200,
+          })
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const service = createFcmService(buildConfig());
+      await service.ensureConfigured();
+      await service.sendNotificationToToken({
+        token: 'device-token',
+        title: 'タイトル',
+        body: '本文',
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'https://oauth2.googleapis.com/token'
+      );
+      expect(fetchMock.mock.calls[1][0]).toBe(
+        'https://fcm.googleapis.com/v1/projects/project-1/messages:send'
+      );
+    });
+
+    it('invalid_grantをclaim前に検知し、応答の説明文や認証情報を漏らさない', async () => {
+      const fetchMock = vi.fn().mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: 'invalid_grant',
+            error_description: 'must not appear in logs',
+          }),
+          { status: 400 }
+        )
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const service = createFcmService(buildConfig());
+
+      await expect(service.ensureConfigured()).rejects.toThrow(
+        'Google OAuth token request failed: HTTP 400 (invalid_grant)'
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'https://oauth2.googleapis.com/token'
+      );
+    });
+
+    it('一時的なOAuth障害の後も次回の事前確認で再試行する', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ error: 'temporarily_unavailable' }), {
+            status: 503,
+          })
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: 'token-recovered' }), {
+            status: 200,
+          })
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const service = createFcmService(buildConfig());
+
+      await expect(service.ensureConfigured()).rejects.toThrow(
+        'Google OAuth token request failed: HTTP 503 (temporarily_unavailable)'
+      );
+      await expect(service.ensureConfigured()).resolves.toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
 });

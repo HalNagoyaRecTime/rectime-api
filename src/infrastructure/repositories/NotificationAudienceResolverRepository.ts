@@ -1,3 +1,4 @@
+import { AUTOMATIC_SYNC_PENDING_REASON } from '../../domain/entities/NotificationCreation';
 import type {
   D1Database,
   D1PreparedStatement,
@@ -37,14 +38,16 @@ export function createNotificationAudienceResolverRepository(
   db: D1Database
 ): INotificationAudienceResolverRepository {
   return {
-    async findDueCandidates(now, limit) {
+    async findDueCandidates(now, limit, manualOnly = false) {
+      const sourceCondition = manualOnly ? 'AND n.source_type IS NULL' : '';
       const rows = await db
         .prepare(
           `SELECT s.notification_schedule_id, s.send_status
            FROM notification_schedules s
            JOIN notifications n ON n.notification_id = s.notification_id
            WHERE n.notification_type = 'notification_general'
-             AND s.recipients_resolved_at IS NULL
+             ${sourceCondition}
+             AND s.recipients_resolved_at IS NULL AND s.failed_reason IS NOT '${AUTOMATIC_SYNC_PENDING_REASON}'
              AND datetime(s.send_at) <= datetime(?)
              AND s.send_status IN ('scheduled', 'resolving')
            ORDER BY s.send_at, s.notification_schedule_id
@@ -66,7 +69,7 @@ export function createNotificationAudienceResolverRepository(
                started_at = COALESCE(started_at, ?),
                updated_at = ?
            WHERE notification_schedule_id = ?
-             AND send_status = 'scheduled'
+             AND send_status = 'scheduled' AND failed_reason IS NOT '${AUTOMATIC_SYNC_PENDING_REASON}'
              AND datetime(send_at) <= datetime(?)
              AND recipients_resolved_at IS NULL
              AND EXISTS (
@@ -220,9 +223,9 @@ function buildRecipientInsert(
   return db
     .prepare(
       `INSERT INTO notification_recipients (
-         notification_schedule_id, user_id, created_at
+         notification_schedule_id, user_id, created_at, updated_at
        )
-       SELECT ?, audience_users.user_id, ?
+       SELECT ?, audience_users.user_id, ?, ?
        FROM (${users.sql}) AS audience_users
        WHERE EXISTS (
          SELECT 1
@@ -241,6 +244,7 @@ function buildRecipientInsert(
     )
     .bind(
       scheduleId,
+      now,
       now,
       ...users.params,
       audience.notification_audience_id,

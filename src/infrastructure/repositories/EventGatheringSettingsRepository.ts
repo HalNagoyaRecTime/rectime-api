@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, asc, count, eq, sql } from 'drizzle-orm';
+import { and, asc, count, eq, exists, isNull, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { drizzle } from 'drizzle-orm/d1';
 import type {
@@ -8,10 +8,13 @@ import type {
 } from '../../domain/entities/EventGathering';
 import type { IEventGatheringSettingsRepository } from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
 import * as schema from '../database/schema';
+import { AUTOMATIC_SYNC_PENDING_REASON } from '../../domain/entities/NotificationCreation';
 import {
   gathering_group_members,
   gathering_spots,
   gatherings,
+  notification_schedules,
+  notifications,
 } from '../database/schema';
 
 export function createEventGatheringSettingsRepository(
@@ -28,6 +31,7 @@ export function createEventGatheringSettingsRepository(
           gathering_id: gatherings.id,
           round: gatherings.round,
           gathering_time: gatherings.gatheringTime,
+          round_start_time: gatherings.roundStartTime,
           gathering_spot_id: gathering_spots.id,
           gathering_spot_name: gathering_spots.name,
           gathering_spot_image_key: gathering_spots.imageKey,
@@ -44,15 +48,14 @@ export function createEventGatheringSettingsRepository(
         )
         .where(eq(gatherings.eventId, eventId))
         .groupBy(gatherings.id, gathering_spots.id)
-        .orderBy(
-          asc(gatherings.round),
-          asc(gatherings.gatheringTime),
-          asc(gatherings.id)
-        )
+        .orderBy(asc(gatherings.round), asc(gatherings.id))
         .all();
     },
 
-    async apply(changeSet: EventGatheringChangeSet): Promise<void> {
+    async apply(
+      changeSet: EventGatheringChangeSet,
+      options: { holdNotificationSyncGatheringIds?: number[] } = {}
+    ): Promise<void> {
       // 更新・削除は event_id も条件に含める。Application Service が対象Eventの
       // 集合予定だけを差分に入れる前提だが、他Eventの行を書き換える経路を
       // DB側でも塞いでおく。
@@ -65,6 +68,40 @@ export function createEventGatheringSettingsRepository(
       // 参加者(gathering_group_members)は消さない。参加者が残っている集合予定の
       // DELETE は外部キー制約で失敗し、batch 全体が取り消される。
       const statements: BatchItem<'sqlite'>[] = [
+        ...(options.holdNotificationSyncGatheringIds ?? []).map(gatheringId =>
+          orm
+            .update(notification_schedules)
+            .set({
+              failedReason: AUTOMATIC_SYNC_PENDING_REASON,
+              updatedAt: sql`CURRENT_TIMESTAMP`,
+            })
+            .where(
+              and(
+                eq(notification_schedules.sendStatus, 'scheduled'),
+                isNull(notification_schedules.startedAt),
+                isNull(notification_schedules.scheduledByUserId),
+                exists(
+                  orm
+                    .select({ notificationId: notifications.notificationId })
+                    .from(notifications)
+                    .where(
+                      and(
+                        eq(
+                          notifications.notificationId,
+                          notification_schedules.notificationId
+                        ),
+                        eq(notifications.sourceType, 'gathering'),
+                        eq(notifications.sourceId, gatheringId),
+                        eq(
+                          notifications.createdAt,
+                          notification_schedules.createdAt
+                        )
+                      )
+                    )
+                )
+              )
+            )
+        ),
         ...changeSet.delete_ids.map(gatheringId =>
           orm.delete(gatherings).where(ownedBy(gatheringId))
         ),
@@ -73,6 +110,7 @@ export function createEventGatheringSettingsRepository(
             .update(gatherings)
             .set({
               round: update.round,
+              roundStartTime: update.round_start_time,
               gatheringTime: update.gathering_time,
               gatheringSpotId: update.gathering_spot_id,
               updatedAt: sql`CURRENT_TIMESTAMP`,
@@ -83,6 +121,7 @@ export function createEventGatheringSettingsRepository(
           orm.insert(gatherings).values({
             eventId: changeSet.event_id,
             round: create.round,
+            roundStartTime: create.round_start_time,
             gatheringTime: create.gathering_time,
             gatheringSpotId: create.gathering_spot_id,
           })

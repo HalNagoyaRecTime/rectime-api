@@ -423,6 +423,46 @@ describe('StudentController', () => {
       expect(res.status).toBe(400);
       expect(studentService.createStudent).not.toHaveBeenCalled();
     });
+
+    it('class_room_idとattendance_numberが両方nullなら受け付ける', async () => {
+      const { app, studentService } = setup();
+      const body = {
+        ...input,
+        class_room_id: null,
+        attendance_number: null,
+      };
+      (
+        studentService.createStudent as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(
+        buildStudent({ attendance_number: null, class_room: null })
+      );
+
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      expect(res.status).toBe(201);
+      expect(studentService.createStudent).toHaveBeenCalledWith(body);
+    });
+
+    it.each([
+      { class_room_id: null, attendance_number: 10 },
+      { class_room_id: 1, attendance_number: null },
+    ])('所属情報の片方だけがnullの場合は400を返す', async assignment => {
+      const { app, studentService } = setup();
+      const body = { ...input, ...assignment };
+
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.createStudent).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateStudent', () => {
@@ -547,6 +587,51 @@ describe('StudentController', () => {
 
       expect(res.status).toBe(400);
       expect(studentService.updateStudent).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { class_room_id: null, attendance_number: 10 },
+      { class_room_id: 1, attendance_number: null },
+    ])(
+      '更新でも、所属情報の片方だけがnullの場合は400を返す',
+      async assignment => {
+        const { app, studentService } = setup();
+
+        const res = await app.request('/students/1', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...input, ...assignment }),
+        });
+
+        expect(res.status).toBe(400);
+        expect(studentService.updateStudent).not.toHaveBeenCalled();
+      }
+    );
+
+    it('更新で、所属情報を両方nullにできる（lock_version付きでも）', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.updateStudent as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(buildStudent({ class_room: null }));
+
+      const res = await app.request('/students/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...input,
+          class_room_id: null,
+          attendance_number: null,
+          lock_version: 1,
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(studentService.updateStudent).toHaveBeenCalledWith(1, {
+        ...input,
+        class_room_id: null,
+        attendance_number: null,
+        lock_version: 1,
+      });
     });
 
     it('登録リクエストは lock_version を受け付けない', async () => {
