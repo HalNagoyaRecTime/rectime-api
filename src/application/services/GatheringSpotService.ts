@@ -16,6 +16,7 @@ function toGatheringSpotDTO(
     image_url: imageUrlOf(gatheringSpot.image_key),
     created_at: gatheringSpot.created_at,
     updated_at: gatheringSpot.updated_at,
+    lock_version: gatheringSpot.lock_version,
   };
 }
 

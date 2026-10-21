@@ -25,6 +25,7 @@ function toEntity(
     image_key: row.imageKey,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
+    lock_version: row.lockVersion,
   };
 }
 

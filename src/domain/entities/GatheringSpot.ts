@@ -4,6 +4,7 @@ export interface GatheringSpotEntity {
   image_key: string | null;
   created_at: string;
   updated_at: string;
+  lock_version: number;
 }
 
 export interface GatheringSpotListOptions {

@@ -10,6 +10,7 @@ export interface EventDTO {
   end_time: string;
   created_at: string;
   updated_at: string;
+  lock_version: number;
 }
 
 /** イベントに紐づく実施場所。venue_id昇順で返す。 */

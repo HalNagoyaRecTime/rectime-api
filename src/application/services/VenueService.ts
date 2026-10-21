@@ -30,6 +30,7 @@ function toVenueDTO(venue: VenueEntity, imageUrlOf: ImageUrlOf): VenueDTO {
     image_url: imageUrlOf(venue.image_key),
     created_at: venue.created_at,
     updated_at: venue.updated_at,
+    lock_version: venue.lock_version,
   };
 }
 

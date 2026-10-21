@@ -19,6 +19,7 @@ function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
     end_time: '0930',
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
+    lock_version: 0,
     ...overrides,
   };
 }

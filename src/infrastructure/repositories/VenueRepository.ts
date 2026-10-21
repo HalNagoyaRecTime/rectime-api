@@ -17,6 +17,7 @@ function toEntity(row: typeof venues.$inferSelect): VenueEntity {
     image_key: row.imageKey,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
+    lock_version: row.lockVersion,
   };
 }
 

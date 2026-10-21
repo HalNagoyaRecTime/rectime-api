@@ -29,6 +29,10 @@ export const venueResponseSchema = z
     }),
     created_at: timestampSchema,
     updated_at: timestampSchema,
+    lock_version: z.number().int().min(0).openapi({
+      description:
+        '更新の競合を検出するための版番号。更新のたびに1ずつ増える。更新時に `lockVersion` として送り返す。',
+    }),
   })
   .openapi('Venue');
 

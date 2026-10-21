@@ -12,6 +12,7 @@ export interface EventEntity {
   end_time: string; // JSTのHHMM形式（例: "1745"）
   created_at: string;
   updated_at: string;
+  lock_version: number;
 }
 
 /**

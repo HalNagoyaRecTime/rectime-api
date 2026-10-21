@@ -39,6 +39,7 @@ function toEntity(row: typeof events.$inferSelect): EventEntity {
     end_time: row.endTime,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
+    lock_version: row.lockVersion,
   };
 }
 

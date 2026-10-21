@@ -38,6 +38,7 @@ function toEventDTO(
     end_time: event.end_time,
     created_at: event.created_at,
     updated_at: event.updated_at,
+    lock_version: event.lock_version,
   };
 }
 

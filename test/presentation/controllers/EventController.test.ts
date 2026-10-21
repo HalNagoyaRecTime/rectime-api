@@ -16,6 +16,7 @@ function buildEvent(
     end_time: '0950',
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
+    lock_version: 0,
     ...overrides,
   };
 }
