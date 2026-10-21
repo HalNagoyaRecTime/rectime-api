@@ -7,6 +7,8 @@ import type { Env } from '../src/lib/env';
 const JWT_SECRET = 'r'.repeat(32);
 const testEnv: Env = { ...workerEnv, JWT_SECRET };
 let userIds: number[] = [];
+let eventIds: number[] = [];
+let venueIds: number[] = [];
 
 async function createStaffToken(): Promise<string> {
   const user = await workerEnv.DB.prepare(
@@ -50,6 +52,24 @@ async function requestAsStaff(
 }
 
 afterEach(async () => {
+  if (eventIds.length > 0) {
+    await workerEnv.DB.batch(
+      eventIds.map(eventId =>
+        workerEnv.DB.prepare('DELETE FROM events WHERE event_id = ?').bind(
+          eventId
+        )
+      )
+    );
+  }
+  if (venueIds.length > 0) {
+    await workerEnv.DB.batch(
+      venueIds.map(venueId =>
+        workerEnv.DB.prepare('DELETE FROM venues WHERE venue_id = ?').bind(
+          venueId
+        )
+      )
+    );
+  }
   if (userIds.length > 0) {
     await workerEnv.DB.batch(
       userIds.flatMap(userId => [
@@ -63,29 +83,103 @@ afterEach(async () => {
     );
   }
   userIds = [];
+  eventIds = [];
+  venueIds = [];
 });
 
 describe('OpenAPIHono実ルートのvalidation契約', () => {
-  it('Eventの時刻範囲エラーはINVALID_EVENT_REQUESTを返す', async () => {
+  it('同一時刻の出席締切を作成・更新し、その時刻のまま取得できる', async () => {
     const token = await createStaffToken();
+    const venue = await workerEnv.DB.prepare(
+      'INSERT INTO venues (venue_name) VALUES (?) RETURNING venue_id'
+    )
+      .bind(`締切テスト会場 ${crypto.randomUUID()}`)
+      .first<{ venue_id: number }>();
+    if (!venue) throw new Error('締切検証用の会場を作成できませんでした');
+    venueIds.push(venue.venue_id);
+    const deadline = {
+      event_name: '出席確認',
+      rule_text: '出席確認の締切時刻です。',
+      venue_ids: [venue.venue_id],
+      start_time: '0910',
+      end_time: '0910',
+    };
 
-    const response = await requestAsStaff(token, '/api/v1/events', {
+    const createdResponse = await requestAsStaff(token, '/api/v1/events', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        event_name: '徒競走',
-        rule_text: null,
-        venue_ids: [1],
-        start_time: '1000',
-        end_time: '0900',
-      }),
+      body: JSON.stringify(deadline),
+    });
+    const created = (await createdResponse.json()) as { event_id: number };
+    if (created.event_id) eventIds.push(created.event_id);
+    expect(createdResponse.status).toBe(201);
+    expect(created).toMatchObject({
+      event_name: '出席確認',
+      start_time: '0910',
+      end_time: '0910',
     });
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({
-      error: { code: 'INVALID_EVENT_REQUEST' },
+    const updatedDeadline = {
+      ...deadline,
+      start_time: '0920',
+      end_time: '0920',
+    };
+    const updatedResponse = await requestAsStaff(
+      token,
+      `/api/v1/events/${created.event_id}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedDeadline),
+      }
+    );
+    expect(updatedResponse.status).toBe(200);
+    expect(await updatedResponse.json()).toMatchObject({
+      event_id: created.event_id,
+      start_time: '0920',
+      end_time: '0920',
+    });
+
+    const detailResponse = await requestAsStaff(
+      token,
+      `/api/v1/events/${created.event_id}`
+    );
+    expect(detailResponse.status).toBe(200);
+    expect(await detailResponse.json()).toMatchObject({
+      event_id: created.event_id,
+      event_name: '出席確認',
+      start_time: '0920',
+      end_time: '0920',
+      rounds: [],
     });
   });
+
+  it.each([
+    ['POST', '/api/v1/events'],
+    ['PUT', '/api/v1/events/1'],
+  ])(
+    '%s Eventの逆転した時刻はINVALID_EVENT_REQUESTを返す',
+    async (method, path) => {
+      const token = await createStaffToken();
+
+      const response = await requestAsStaff(token, path, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue_ids: [1],
+          start_time: '1000',
+          end_time: '0900',
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'INVALID_EVENT_REQUEST' },
+      });
+    }
+  );
 
   it('Eventの一般schemaエラーはVALIDATION_ERRORを返す', async () => {
     const token = await createStaffToken();

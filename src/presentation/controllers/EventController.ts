@@ -177,7 +177,7 @@ function updateEventError(c: Context, error: unknown) {
   }
   if (
     error instanceof Error &&
-    error.message === 'end_time must be after start_time'
+    error.message === '終了時刻は開始時刻以降を指定してください。'
   ) {
     return errorResponse(c, EventErrors.INVALID_EVENT_TIME_RANGE);
   }
@@ -194,7 +194,7 @@ function eventError(
 ) {
   if (
     error instanceof Error &&
-    error.message === 'end_time must be after start_time'
+    error.message === '終了時刻は開始時刻以降を指定してください。'
   ) {
     return errorResponse(c, EventErrors.INVALID_EVENT_TIME_RANGE);
   }
