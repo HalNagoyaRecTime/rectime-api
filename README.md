@@ -258,23 +258,24 @@ major更新はこの月次workflowの対象外とし、別途事前検証して�
 
 ## ローカルCronの自動実行
 
-ローカルでCronを自動実行しながら確認する場合は、標準の `npm run dev` を使う。
+通常の `npm run dev` は従来どおりCronなしで起動する。Cronを自動実行したい場合だけ `npm run dev:cron` またはIntelliJの `run dev with cron` を明示的に選ぶ。
 
-従来のWrangler単独起動は `npm run dev:plain` で実行できる。明示的なCron起動用の `npm run dev:cron` も同じ動作をする。
+**注意:** `dev:cron` はローカルDBに配信予定がありFirebase資格情報が設定されていると、実端末へFCMを送信する場合がある。開発用データ・資格情報でのみ実行する。
 
 `wrangler.jsonc` のトップレベル `triggers.crons` をUTCで再現する。
 現在の毎分通知と日次のアカウント削除の後片付けを共通で扱う。
-発火は開発依存の `cron`、Workerの起動・ホットリロード・DB・Queueは固定版Wranglerが担当する。
-公式のScheduledテスト入口から既存の `scheduled()` を実行する。
+発火時刻の計算は開発依存の `cron`、Workerの起動・ホットリロード・DB・Queueは固定版Wrangler CLI (`wrangler dev --test-scheduled`) が担当する。
+非安定のWrangler JavaScript APIには依存せず、固定版Wrangler 4.103.0の `--test-scheduled` が公開する `/__scheduled` 経由で既存の `scheduled()` を実行する。Wrangler更新時は公式パスの互換性を結合テストで確認する。
 development環境のリソースと `.dev.vars` を使い、ローカルDBの保存先は通常起動と同じ。
-ローカルDBに保存された配信予定は実FCMへ送信されるため、端末の受信まで確認できる。
+Cron付きの開発サーバーとScheduledテスト入口は `127.0.0.1` にのみバインドし、LAN上の別端末から発火させない。
+実FCMによる端末の受信も必要な場合は、誤配信のないローカル通知予定を用意する。
 
-ポート変更は `npm run dev -- --port 8788 --inspector-port 9231`。
+Cron付き起動のポート変更は `npm run dev:cron -- --port 8788 --inspector-port 9231`。通常起動では従来どおり `npm run dev -- --port 8788` などWranglerのオプションを指定できる。
 Cron設定を変更した場合は再起動する。Ctrl+Cで新しい発火を止め、実行中のScheduled処理を待って停止する。
 
 5項目Cron式に対応し、数値の曜日はCloudflareの日曜=1〜土曜=7を変換する。
 Quartz固有のL/W/#等は非対応で、使用時は起動エラーになる。
 Cloudflareによる実際の発火・分散実行の確認は、専用のデプロイ環境で行う。
 
-`npm run test:local-cron` で共通Cronと実Scheduled→Queue経路を検証する（`npm test` にも含む）。
-実時間の毎分発火を待つため、最大約1分かかる。
+`npm run test:local-cron` でCron式の変換と実Scheduled→Queue→KV経路を検証する。
+`npm test` とは別のCI Jobで実行し、通常のテストやpre-pushを遅くしない。Wranglerのバージョンを更新するときは、必ずこの結合テストも実行する。

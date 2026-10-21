@@ -6,9 +6,18 @@ import {
   createLocalCronScheduler,
   toLocalCronExpression,
 } from './local-cron.mjs';
-import { startLocalCronWorker } from './dev-with-cron.mjs';
+import { parseJsonc, startLocalCronWorker } from './dev-with-cron.mjs';
 
 const silent = { log() {}, error() {} };
+
+test('JSONCのコメントと末尾カンマを処理し、文字列のURLは保持する', () => {
+  assert.deepEqual(
+    parseJsonc(
+      '{ // コメント\n "url": "https://example.com/a", "crons": ["* * * * *",], }'
+    ),
+    { url: 'https://example.com/a', crons: ['* * * * *'] }
+  );
+});
 
 test('UTCの毎分・日次CronとCloudflareの曜日番号を再現する', async () => {
   assert.equal(toLocalCronExpression('0 18 * * 1-7'), '0 18 * * 0-6');
@@ -114,8 +123,8 @@ test('Worker実行失敗を記録し、次の発火を実行できる', async ()
 });
 
 test(
-  '時刻で自動発火し、同じWorkerのScheduled→Queue→KVを通る',
-  { timeout: 75000 },
+  'Wrangler CLI経由でScheduled→Queue→KVを実行する',
+  { timeout: 60_000 },
   async () => {
     const runtime = await startLocalCronWorker({
       config: fileURLToPath(
@@ -124,17 +133,18 @@ test(
       port: 0,
       inspectorPort: false,
       persist: false,
-      watch: false,
       logger: silent,
     });
     try {
+      // 毎分の壁時計待ちを避け、Schedulerから実WorkerのScheduled入口へ送る。
+      await runtime.scheduler.jobs[0].fireOnTick();
+      const deadline = Date.now() + 15_000;
       let result;
-      const timeout = Date.now() + 65000;
       do {
         result = await (await runtime.worker.fetch('http://localhost/')).json();
         if (result.queue) break;
-        await delay(250);
-      } while (Date.now() < timeout);
+        await delay(150);
+      } while (Date.now() < deadline);
       assert.equal(result.scheduled?.cron, '* * * * *');
       assert.equal(result.queue?.cron, '* * * * *');
       assert.ok(Number.isFinite(result.scheduled.scheduledTime));

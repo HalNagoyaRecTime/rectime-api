@@ -5,8 +5,7 @@
     "node": ">=22.13 <23"
   },
   "scripts": {
-    "dev": "node scripts/dev-with-cron.mjs",
-    "dev:plain": "wrangler dev --env development --ip 0.0.0.0",
+    "dev": "wrangler dev --env development --ip 0.0.0.0",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate:remote": "wrangler d1 migrations apply rectime-api --remote",
@@ -23,7 +22,7 @@
     "actions:check": "node .github/scripts/update-actions.mjs --check",
     "actions:update:compatible": "node .github/scripts/update-actions.mjs --update-compatible",
     "dependencies:update:compatible": "ncu --target semver --cooldown 7 --upgrade --reject npm-check-updates,wrangler,@cloudflare/workers-types,@cloudflare/vitest-pool-workers",
-    "test": "npm run test:local-cron && vitest run",
+    "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
