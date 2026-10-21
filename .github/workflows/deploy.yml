@@ -6,114 +6,35 @@ on:
     types: [completed]
   workflow_dispatch:
 
-# concurrency.group と jobs.migrate.environment / jobs.deploy.environment は
-# production/staging判定の式を共有している。どれもジョブのステップが実行される前に
-# 評価されるフィールドのため、ステップのoutputsを介して1箇所に共通化することができない
-# (needsで依存する別jobに判定を切り出せば可能だが、そこまでの構成変更はしていない)。
-# production/stagingの判定式を変更する場合は、この3箇所すべてを必ず合わせて変更すること。
-#
-# concurrency.groupへの参加とcancel-in-progressの発火は、ワークフロー実行がキューされた
-# 時点(=jobs.target.ifが評価される前)で起こる。後からskipされる実行であっても、
-# 'development'グループに入ると、待機中のdevelopデプロイがその実行に置き換えられて
-# キャンセルされてしまう。これを防ぐため、jobs.targetでskipする実行は専用のグループに分離する。
-#
-# - workflow_dispatch(main以外): 'invalid-dispatch-<ブランチ名>'に分離する。
-# - PR(pull_request)起点の実行: PRごとに一意な'pr-<番号>'に分離する。
-#   fork由来のPRではセキュリティ上の理由からworkflow_run.pull_requestsが空になり、
-#   PR番号がnullになるため、フォールバックとしてworkflow_run.id(実行ごとに一意)を使う。
-#
-# cancel-in-progressは全イベント種別でfalse固定にしている。jobs.migrateが
-# `d1 migrations apply`を実行中のまま巻き添えキャンセルされると、D1の状態が
-# 中途半端になる可能性があるため(レビュー指摘: PR #204 discussion_r3818106363、
-# MayugeStudio)。連続pushはキャンセルされず順番に直列実行される分、反映が数分
-# 遅れる場合があるが、それよりD1の整合性を優先する。
-concurrency:
-  group: deploy-cloudflare-workers-${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' && 'production' || format('invalid-dispatch-{0}', github.ref_name)) || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || (github.event.workflow_run.event == 'pull_request') && format('pr-{0}', github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id) || 'development' }}
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
 jobs:
-  target:
-    # workflow_dispatchがmain以外のブランチから実行された場合、ここでジョブ自体を
-    # skipする(以前は"Set deploy target"ステップのシェル側ガードのみで、そこに至る
-    # 前にconcurrency.groupの'development'フォールバックに入って進行中のdevelop
-    # デプロイを巻き添えキャンセルしてしまっていた。concurrency.group側の対応は上部参照)。
-    # シェル側のガードは冗長化として残す。
-    #
-    # PR(pull_request)起点の実行もここでskipする。以前はPRごとにpreview版を
-    # アップロードし、その前にPRブランチのmigrationを共有のdevelopment用D1
-    # (rectime-api-dev)へ適用していた。しかし未マージのmigrationが共有D1へ入るため、
-    # PR内でmigrationを改名・修正すると、D1の適用記録(d1_migrations)と実際のスキーマが
-    # 食い違い、developを含む以降のmigrateがすべて失敗した(#462の作業中に発生)。
-    # また、このWorkerはDurable Objectを実装しているため、Cloudflareの仕様上
-    # preview URLが発行されず、アップロードしたpreview版には誰もアクセスできなかった。
-    # そのため、PRではmigrate/デプロイを行わず、PRの検証はCIのテストで行う。
-    #
-    # migrate/deployはこのjobにneeds:で依存しており、このjobがskipされると
-    # デフォルトの挙動でmigrate/deployも自動的にskipされる(GitHub Actionsの仕様)。
+  deploy:
+    # PRではデプロイしない。未マージのmigrationが共有D1に入ると、PR内で改名・修正したときに
+    # d1_migrationsと実際のスキーマが食い違い、以降のmigrateがすべて失敗するため(#462)。
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') ||
       (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
-    name: Determine deploy target (${{ github.event.workflow_run.head_branch || github.ref_name }})
-    runs-on: ubuntu-latest
-    outputs:
-      env_flag: ${{ steps.target.outputs.env_flag }}
-      d1_database: ${{ steps.target.outputs.d1_database }}
-    steps:
-      - name: Set deploy target
-        id: target
-        env:
-          BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
-          EVENT: ${{ github.event.workflow_run.event || 'workflow_dispatch' }}
-        run: |
-          if [ "$EVENT" = "workflow_dispatch" ]; then
-            # 本番デプロイは手動実行(workflow_dispatch)のみで行うが、
-            # 誤って main 以外のブランチから実行され本番に反映されることを防ぐため、
-            # ブランチも合わせて検証する。
-            if [ "$BRANCH" != "main" ]; then
-              echo "::error::本番デプロイはmainブランチからのworkflow_dispatchのみ許可されています(現在のブランチ: $BRANCH)"
-              exit 1
-            fi
-            echo "env_flag=" >> "$GITHUB_OUTPUT"
-            echo "d1_database=rectime-api" >> "$GITHUB_OUTPUT"
-          elif [ "$EVENT" != "push" ]; then
-            # jobs.target.ifでpush以外はskipしているが、冗長化としてシェル側でも拒否する。
-            echo "::error::push以外を起点とするworkflow_run($EVENT)はデプロイ対象外です"
-            exit 1
-          elif [ "$BRANCH" = "main" ]; then
-            # mainへのpushはstagingへ自動デプロイする(本番はworkflow_dispatchのみ)。
-            echo "env_flag=--env staging" >> "$GITHUB_OUTPUT"
-            echo "d1_database=rectime-api-staging" >> "$GITHUB_OUTPUT"
-          else
-            echo "env_flag=--env development" >> "$GITHUB_OUTPUT"
-            echo "d1_database=rectime-api-dev" >> "$GITHUB_OUTPUT"
-          fi
-
-  migrate:
-    needs: target
-    # 同じD1へのmigrationを直列化するため、D1データベース名を基準にした専用グループを使う
-    # (レビュー指摘: PR #204 review 4957824497)。PR起点の実行はjobs.targetでskipするため、
-    # 現在は上部のconcurrency.groupだけでも同じD1への同時実行は起きないが、デプロイ対象の
-    # 追加などで前提が変わっても安全なように残している。
-    # cancel-in-progressはfalse固定: 直列待ちにするだけで、進行中のmigrationを
-    # 決してキャンセルしない(D1の状態が中途半端になることを避けるため)。
-    #
-    # queue: maxが必須(レビュー指摘: PR #204 review 4991001083、kaketo113)。
-    # デフォルトのqueue: single(待機は最大1件、後から来たものが待機中の1件を置き換える)
-    # のままだと、実行中に複数のmigrateが連続で到着した場合、待機中の実行が後続に
-    # 置き換えられ、そのmigrate・deployが永久に実行されなくなる。queue: maxで最大100件まで
-    # 待機できるようにし、どのmigrateも必ず(いつかは)実行されることを保証する。
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'develop')
+    strategy:
+      # 片方の環境が失敗しても、もう片方のD1 migrationを途中でキャンセルさせないため
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["production"]' || '["development","staging"]') }}
+    # cancel-in-progressにしないのは、migration中にキャンセルされるとD1が中途半端な状態になるため。
+    # queueをmaxにしないと、待機中の実行が後続に置き換えられて永久にデプロイされなくなる。
     concurrency:
-      group: deploy-cloudflare-workers-migrate-${{ needs.target.outputs.d1_database }}
+      group: deploy-cloudflare-workers-${{ matrix.environment }}
       cancel-in-progress: false
       queue: max
-    name: Apply D1 migrations (${{ needs.target.outputs.d1_database }})
+    name: Deploy (${{ matrix.environment }})
     runs-on: ubuntu-latest
-    # jobs.target(上部)・jobs.deploy(下部)と同じ判定式(先頭コメント参照)。
-    environment: ${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
+    environment: ${{ matrix.environment }}
+    env:
+      WRANGLER_ENV_FLAG: ${{ matrix.environment != 'production' && format('--env {0}', matrix.environment) || '' }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -128,39 +49,23 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: 通知Secretの登録を確認
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm run notifications:check -- ${{ needs.target.outputs.env_flag }}
 
       - name: Apply D1 migrations
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 migrations apply ${{ needs.target.outputs.d1_database }} --remote ${{ needs.target.outputs.env_flag }}
-
-  deploy:
-    needs: [target, migrate]
-    name: Deploy (${{ github.event.workflow_run.head_branch || github.ref_name }})
-    runs-on: ubuntu-latest
-    # jobs.migrate(上部)と同じ判定式(先頭コメント参照)。
-    environment: ${{ (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') && 'production' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') && 'staging' || 'development' }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+          command: d1 migrations apply DB --remote ${{ env.WRANGLER_ENV_FLAG }}
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --minify ${{ needs.target.outputs.env_flag }}
+          command: deploy --minify ${{ env.WRANGLER_ENV_FLAG }}

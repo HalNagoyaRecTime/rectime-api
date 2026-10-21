@@ -33,7 +33,7 @@ const USER_ID_ALLOCATION_MAX_ATTEMPTS = 3;
 type StudentJoinRow = {
   students: typeof students.$inferSelect;
   users: typeof users.$inferSelect;
-  class_rooms: typeof class_rooms.$inferSelect;
+  class_rooms: typeof class_rooms.$inferSelect | null;
   staffs: typeof staffs.$inferSelect | null;
 };
 
@@ -46,10 +46,10 @@ type ReturnedUserRow = {
 type ReturnedStudentRow = {
   student_id: number;
   user_id: number;
-  class_room_id: number;
-  class_room_name: string;
-  team_id: number;
-  attendance_number: number;
+  class_room_id: number | null;
+  class_room_name: string | null;
+  team_id: number | null;
+  attendance_number: number | null;
   student_id_number: string;
 };
 
@@ -59,9 +59,9 @@ function toDomain(row: StudentJoinRow): StudentEntity {
     userId: row.users.id,
     userName: row.users.userName,
     classRoomId: row.students.classRoomId,
-    classRoomCode: row.class_rooms.classCode,
-    classRoomName: row.class_rooms.name,
-    teamId: row.class_rooms.teamId,
+    classRoomCode: row.class_rooms?.classCode ?? null,
+    classRoomName: row.class_rooms?.name ?? null,
+    teamId: row.class_rooms?.teamId ?? null,
     attendanceNumber: row.students.attendanceNumber,
     studentIdNumber: row.students.studentIdNumber,
     isLiveActive: row.users.isLiveActive === 1,
@@ -77,7 +77,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .select()
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
-        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
         .leftJoin(staffs, eq(users.id, staffs.userId))
         .where(eq(students.id, id))
         .get();
@@ -90,7 +90,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .select()
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
-        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
         .leftJoin(staffs, eq(users.id, staffs.userId))
         .where(eq(students.userId, userId))
         .get();
@@ -131,13 +131,13 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .select({ count: sql<number>`count(*)` })
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
-        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
         .leftJoin(staffs, eq(users.id, staffs.userId));
       const rowsQuery = orm
         .select()
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
-        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
         .leftJoin(staffs, eq(users.id, staffs.userId));
       const sortOrder = filter.sortOrder === 'desc' ? desc : asc;
       const sortColumn =
@@ -179,7 +179,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .select()
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
-        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
         .leftJoin(staffs, eq(users.id, staffs.userId))
         .where(eq(students.studentIdNumber, studentNum))
         .get();
@@ -263,7 +263,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .select()
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
-        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
         .leftJoin(staffs, eq(users.id, staffs.userId))
         .where(eq(students.id, created.student_id))
         .get();
@@ -328,7 +328,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .select()
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
-        .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
         .leftJoin(staffs, eq(users.id, staffs.userId))
         .where(eq(students.id, id))
         .get();

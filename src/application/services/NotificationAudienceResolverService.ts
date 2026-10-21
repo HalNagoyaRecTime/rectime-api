@@ -10,13 +10,20 @@ export function createNotificationAudienceResolverService(
 ) {
   return {
     async resolveDueSchedules(
-      now = new Date()
+      now = new Date(),
+      options: { manualOnly?: boolean } = {}
     ): Promise<NotificationAudienceResolverResult> {
       const timestamp = now.toISOString();
-      const candidates = await repository.findDueCandidates(
-        timestamp,
-        NOTIFICATION_AUDIENCE_RESOLVER_SCHEDULE_LIMIT
-      );
+      const candidates = options.manualOnly
+        ? await repository.findDueCandidates(
+            timestamp,
+            NOTIFICATION_AUDIENCE_RESOLVER_SCHEDULE_LIMIT,
+            true
+          )
+        : await repository.findDueCandidates(
+            timestamp,
+            NOTIFICATION_AUDIENCE_RESOLVER_SCHEDULE_LIMIT
+          );
       const result: NotificationAudienceResolverResult = {
         completed_schedules: [],
         retryable_schedule_ids: [],

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createScheduledNotificationService } from '../../../src/application/services/ScheduledNotificationService';
-import type { IFcmService } from '../../../src/application/services/IFcmService';
+import {
+  FcmRequestError,
+  type IFcmService,
+} from '../../../src/application/services/IFcmService';
 import {
   NOTIFICATION_DELIVERY_CANDIDATE_LIMIT,
   NOTIFICATION_DELIVERY_LEASE_TIMEOUT_MS,
@@ -256,6 +259,73 @@ describe('ScheduledNotificationService', () => {
       'UNREGISTERED'
     );
     expect(result).toEqual({ checkedEvents: 3, sent: 2, failed: 1 });
+  });
+
+  it.each([
+    [401, 'UNAUTHENTICATED'],
+    [403, 'PERMISSION_DENIED'],
+    [503, 'UNAVAILABLE'],
+  ])('%i %sは恒久失敗にせず再送可能な状態を残す', async (status, code) => {
+    const {
+      service,
+      notificationScheduleRepository,
+      firebaseTokenRepository,
+      fcmService,
+    } = setup({ schedules: [buildSchedule()] });
+    vi.mocked(fcmService.sendNotificationToToken).mockRejectedValueOnce(
+      new FcmRequestError(status, code, 'FCM送信に失敗')
+    );
+    expect(await service.sendQueuedNotifications([1])).toEqual({
+      checkedEvents: 1,
+      sent: 0,
+      failed: 0,
+    });
+    expect(notificationScheduleRepository.markFailed).not.toHaveBeenCalled();
+    expect(firebaseTokenRepository.deleteById).not.toHaveBeenCalled();
+  });
+
+  it('権限復旧後は同じScheduleを再claimして送信できる', async () => {
+    const { service, notificationScheduleRepository, fcmService } = setup({
+      schedules: [buildSchedule()],
+    });
+    vi.mocked(fcmService.sendNotificationToToken).mockRejectedValueOnce(
+      new FcmRequestError(403, 'PERMISSION_DENIED', '権限不足')
+    );
+    expect(
+      await service.sendQueuedNotifications(
+        [1],
+        new Date('2026-01-01T09:00:00Z')
+      )
+    ).toEqual({ checkedEvents: 1, sent: 0, failed: 0 });
+    expect(
+      await service.sendQueuedNotifications(
+        [1],
+        new Date('2026-01-01T09:07:00Z')
+      )
+    ).toEqual({ checkedEvents: 1, sent: 1, failed: 0 });
+    expect(notificationScheduleRepository.markFailed).not.toHaveBeenCalled();
+    expect(notificationScheduleRepository.markSent).toHaveBeenCalledWith(
+      1,
+      'message-1'
+    );
+  });
+
+  it('403 SENDER_ID_MISMATCHは恒久失敗のままにする', async () => {
+    const { service, notificationScheduleRepository, fcmService } = setup({
+      schedules: [buildSchedule()],
+    });
+    vi.mocked(fcmService.sendNotificationToToken).mockRejectedValueOnce(
+      new FcmRequestError(403, 'SENDER_ID_MISMATCH', 'senderが違います')
+    );
+    expect(await service.sendQueuedNotifications([1])).toEqual({
+      checkedEvents: 1,
+      sent: 0,
+      failed: 1,
+    });
+    expect(notificationScheduleRepository.markFailed).toHaveBeenCalledWith(
+      1,
+      'senderが違います'
+    );
   });
 
   it('無効化済みtokenは送らず予定をfailedにする', async () => {

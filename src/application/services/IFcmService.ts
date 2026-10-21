@@ -14,6 +14,14 @@ export interface FcmNotificationResult {
   messageId: string;
 }
 
+/** OAuth認証に失敗した場合は、設定復旧まで配信を保留する。 */
+export class FcmConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FcmConfigurationError';
+  }
+}
+
 export class FcmRequestError extends Error {
   constructor(
     readonly httpStatus: number,

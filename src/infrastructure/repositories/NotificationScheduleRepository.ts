@@ -11,6 +11,7 @@ import { notificationUtcNow } from '../database/notificationDateTime';
 import {
   firebase_tokens,
   notification_schedules,
+  notification_recipients,
   notifications,
   users,
 } from '../database/schema';
@@ -271,7 +272,16 @@ export function createNotificationScheduleRepository(
     async deleteByFirebaseTokenId(firebaseTokenId) {
       await orm
         .delete(notification_schedules)
-        .where(eq(notification_schedules.firebaseTokenId, firebaseTokenId))
+        .where(
+          and(
+            eq(notification_schedules.firebaseTokenId, firebaseTokenId),
+            sql`NOT EXISTS (
+              SELECT 1
+              FROM ${notification_recipients}
+              WHERE ${notification_recipients.notificationScheduleId} = ${notification_schedules.id}
+            )`
+          )
+        )
         .run();
     },
   };
