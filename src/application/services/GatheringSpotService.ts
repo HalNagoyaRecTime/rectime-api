@@ -59,7 +59,16 @@ export function createGatheringSpotService(
         gatheringSpotId,
         input
       );
-      if (!gatheringSpot) throw new Error('Gathering spot not found');
+      if (!gatheringSpot) {
+        // 版番号を条件にしていた場合、0件更新は削除か版番号の不一致のどちらか。
+        if (
+          input.expected_lock_version !== undefined &&
+          (await gatheringSpotRepository.exists(gatheringSpotId))
+        ) {
+          throw new Error('Gathering spot update conflict');
+        }
+        throw new Error('Gathering spot not found');
+      }
       return toDTO(gatheringSpot);
     },
 

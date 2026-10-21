@@ -116,13 +116,25 @@ export function createGatheringSpotRepository(
     },
 
     async update(gatheringSpotId, input): Promise<GatheringSpotEntity | null> {
+      // 版番号(expected_lock_version)が指定された場合は、取得時点から変更されて
+      // いないこともWHEREで確認する。GETとPUTの間に別操作が挟まっていれば0件更新に
+      // なり、呼び出し側がnullとして受け取る。版番号は更新のたびに必ず1ずつ増える
+      // ため、updated_at（秒単位）では区別できない同じ秒内の更新も検出できる。
       const row = await orm
         .update(gathering_spots)
         .set({
           name: input.gathering_spot_name,
           updatedAt: sql`CURRENT_TIMESTAMP`,
+          lockVersion: sql`${gathering_spots.lockVersion} + 1`,
         })
-        .where(eq(gathering_spots.id, gatheringSpotId))
+        .where(
+          and(
+            eq(gathering_spots.id, gatheringSpotId),
+            input.expected_lock_version === undefined
+              ? undefined
+              : eq(gathering_spots.lockVersion, input.expected_lock_version)
+          )
+        )
         .returning()
         .get();
       return row ? toEntity(row) : null;
@@ -158,7 +170,11 @@ export function createGatheringSpotRepository(
     async replaceImageKey(gatheringSpotId, currentImageKey, imageKey) {
       const result = await orm
         .update(gathering_spots)
-        .set({ imageKey, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .set({
+          imageKey,
+          updatedAt: sql`CURRENT_TIMESTAMP`,
+          lockVersion: sql`${gathering_spots.lockVersion} + 1`,
+        })
         .where(
           and(
             eq(gathering_spots.id, gatheringSpotId),

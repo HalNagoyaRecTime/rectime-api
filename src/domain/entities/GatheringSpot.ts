@@ -27,4 +27,6 @@ export interface GatheringSpotPage {
 
 export interface UpdateGatheringSpotInput {
   gathering_spot_name: string;
+  // 取得時点の lock_version。指定された場合だけ、更新時点で値が変わっていないことを確認する。
+  expected_lock_version?: number;
 }

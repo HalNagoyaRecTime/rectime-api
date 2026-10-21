@@ -126,6 +126,12 @@ export const EventErrors = {
     code: 'GATHERING_SPOT_IN_USE',
     message: '使用中の集合場所は削除できません',
   },
+  GATHERING_SPOT_UPDATE_CONFLICT: {
+    status: 409,
+    code: 'GATHERING_SPOT_UPDATE_CONFLICT',
+    message:
+      '集合場所が他の操作で更新されています。最新の内容を取得してやり直してください',
+  },
   GATHERING_SPOT_LIST_FAILED: {
     status: 500,
     code: 'GATHERING_SPOT_LIST_FAILED',
