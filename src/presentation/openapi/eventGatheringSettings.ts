@@ -58,6 +58,19 @@ export const roundSettingInputSchema = z
       .int(ROUND_RANGE_MESSAGE)
       .min(1, ROUND_RANGE_MESSAGE)
       .max(99, ROUND_RANGE_MESSAGE),
+    start_time: z
+      .string()
+      .regex(
+        /^(?:[01]\d|2[0-3])[0-5]\d$/,
+        'start_timeはHHmm形式で指定してください。'
+      )
+      .nullable()
+      .optional()
+      .openapi({
+        description:
+          'HHmm形式。ラウンド内の全集合に保存する。省略は既存値を維持、nullは未設定へ戻す。',
+        example: '1100',
+      }),
     // Round専用のテーブルは無く、集合予定が1件も無いRoundは保存できないため
     // 空のRoundは受け付けない。
     gatherings: z
@@ -137,8 +150,8 @@ export const eventGatheringSettingsUpdateRoute = createRoute({
     '集合時刻は `HH:mm` のみを受け付け、未設定を表す `99:59` は400になる。',
     '同じRound番号、同じ `gathering_id` がリクエスト内に2回現れた場合も400。',
     '',
-    'レスポンスは保存後の一覧を `round` 昇順、同一Round内は `gathering_time` 昇順、',
-    '同時刻は `gathering_id` 昇順で返す。集合予定が0件なら `rounds: []`。',
+    'レスポンスは `round` 昇順、同一Round内は `gathering_id` 昇順。集合予定が0件なら `rounds: []`。',
+    'start_timeはHHmm形式。省略は既存値を維持、nullは未設定へ戻す。ラウンド内の集合行に同じ値を保存する。',
     '',
     '集合場所を変更しても、作成済みの通知予定(本文に集合場所名を含む)は',
     '再生成しない。通知予定の更新は `PUT /events/{eventId}` の責務とする。',

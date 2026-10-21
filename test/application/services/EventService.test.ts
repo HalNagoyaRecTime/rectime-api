@@ -35,6 +35,7 @@ function buildGathering(
   return {
     round: 1,
     gathering_time: '10:45',
+    round_start_time: null,
     gathering_spot_id: 1,
     gathering_spot_name: '出入口①',
     gathering_spot_image_key: null,
@@ -264,6 +265,7 @@ describe('EventService', () => {
       expect(result.rounds).toEqual([
         {
           round: 1,
+          start_time: null,
           gatherings: [
             {
               gathering_id: 101,
@@ -289,6 +291,7 @@ describe('EventService', () => {
         },
         {
           round: 2,
+          start_time: null,
           gatherings: [
             {
               gathering_id: 103,

@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "wrangler dev --env development --ip 0.0.0.0",
     "deploy": "wrangler deploy --minify",
+    "notifications:check": "node --import tsx .github/scripts/check-notification-settings.mjs",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate:remote": "wrangler d1 migrations apply rectime-api --remote",
     "db:migrate:local": "wrangler d1 migrations apply rectime-api-dev --local --env development",
