@@ -4,18 +4,120 @@ import registrationSql from '../../operations/official-schedule-2026.sql?raw';
 import verificationSql from '../../operations/verify-official-schedule-2026.sql?raw';
 
 const cleanupMigration = '0047_remove_initial_dummy_data.sql';
-const names = [
-  '出席確認①',
-  '開会式',
-  '第一競技「走れ！○人○脚！」',
-  '第二競技「ドッジボール」',
-  '昼休憩＋コスプレ大会',
-  '出席確認②',
-  '第三競技「紙飛行機飛ばし」',
-  '第四競技「学科別対抗リレー」',
-  '出席確認③',
-  '表彰式・閉会式',
-];
+const expectedEvents = [
+  ['出席確認①', '0930', '1000', 7, 53474, 341088, '10:00締切', '10:00締切'],
+  [
+    '開会式',
+    '1000',
+    '1020',
+    10,
+    277958,
+    1489295,
+    '諸注意説明、競技誘導',
+    '諸注意説明、競技誘導',
+  ],
+  [
+    '走れ！○人○脚！',
+    '1030',
+    '1130',
+    376,
+    5091741,
+    840864922,
+    '## 競技詳細\n\n〜ルール〜',
+    '10位:10 失格:0',
+  ],
+  [
+    'ロイヤルドッジ',
+    '1130',
+    '1300',
+    998,
+    17415872,
+    8499407802,
+    '競技詳細\n王様ドッジに近い形式',
+    '1,3,5,7位の得点を順に採用する）',
+  ],
+  [
+    '昼休憩＋コスプレ大会',
+    '1300',
+    '1400',
+    13,
+    224913,
+    1509938,
+    '当日の審査は8チームで実施',
+    '当日の審査は8チームで実施',
+  ],
+  [
+    '出席確認②',
+    '1300',
+    '1330',
+    15,
+    115910,
+    1065918,
+    '13:30締切。FXカウント2',
+    '13:30締切。FXカウント2',
+  ],
+  [
+    '紙飛行機飛ばし',
+    '1400',
+    '1500',
+    708,
+    12393024,
+    4234453446,
+    '## 競技詳細\n\nコート内の助走ゾーン',
+    '6位以下得点なし',
+  ],
+  [
+    '学科別対抗リレー',
+    '1500',
+    '1530',
+    672,
+    9238795,
+    3274536805,
+    '## 競技詳細\n\n～ルール～',
+    '全てのクラスが100点を獲得する)',
+  ],
+  ['出席確認③', '1530', '1540', 7, 53483, 341114, '15:40締切', '15:40締切'],
+  [
+    '表彰式・閉会式',
+    '1540',
+    '1600',
+    10,
+    240879,
+    1260624,
+    '表彰式と閉会式を実施',
+    '表彰式と閉会式を実施',
+  ],
+] as const;
+const names = expectedEvents.map(([name]) => name);
+const expectedVenues = [
+  ['出席確認①', '未定（仮）'],
+  ['開会式', '未定（仮）'],
+  ['走れ！○人○脚！', 'コートC'],
+  ['ロイヤルドッジ', 'メインアリーナ'],
+  ['ロイヤルドッジ', 'サブアリーナ'],
+  ['昼休憩＋コスプレ大会', '未定（仮）'],
+  ['出席確認②', '未定（仮）'],
+  ['紙飛行機飛ばし', 'コートB'],
+  ['学科別対抗リレー', 'コートA'],
+  ['出席確認③', '未定（仮）'],
+  ['表彰式・閉会式', '未定（仮）'],
+] as const;
+const expectedGatherings = [
+  ['走れ！○人○脚！', 1, '10:20', '体育館A'],
+  ['走れ！○人○脚！', 2, '10:45', '体育館A'],
+  ['走れ！○人○脚！', 3, '11:00', '未定（仮）'],
+  ['走れ！○人○脚！', 4, '11:15', '未定（仮）'],
+  ['ロイヤルドッジ', 1, '11:30', '未定（仮）'],
+  ['ロイヤルドッジ', 2, '11:50', '未定（仮）'],
+  ['ロイヤルドッジ', 3, '12:10', '未定（仮）'],
+  ['ロイヤルドッジ', 4, '12:30', '未定（仮）'],
+  ['紙飛行機飛ばし', 1, '14:00', '未定（仮）'],
+  ['紙飛行機飛ばし', 2, '14:15', '未定（仮）'],
+  ['紙飛行機飛ばし', 3, '14:30', '未定（仮）'],
+  ['紙飛行機飛ばし', 4, '14:45', '未定（仮）'],
+  ['学科別対抗リレー', 1, '15:00', '未定（仮）'],
+  ['学科別対抗リレー', 2, '15:15', '未定（仮）'],
+] as const;
 const allTestNames = [...names, '552対象外イベント'];
 const placeholders = allTestNames.map(() => '?').join(', ');
 const queries = registrationSql
@@ -39,47 +141,6 @@ async function rows(sql: string, ...values: Value[]): Promise<Row[]> {
       .bind(...values)
       .all<Row>()
   ).results;
-}
-
-async function insertEvent(
-  name = names[2],
-  start = '1030',
-  end = '1130',
-  rule: string | null = null
-): Promise<number> {
-  const event = await env.DB.prepare(
-    `INSERT INTO events (event_name, start_time, end_time, rule_text)
-     VALUES (?, ?, ?, ?) RETURNING event_id`
-  )
-    .bind(name, start, end, rule)
-    .first<{ event_id: number }>();
-  return event!.event_id;
-}
-
-async function insertSpot(name = '未定（仮）'): Promise<number> {
-  const spot = await env.DB.prepare(
-    'INSERT INTO gathering_spots (gathering_spot_name) VALUES (?) RETURNING gathering_spot_id'
-  )
-    .bind(name)
-    .first<{ gathering_spot_id: number }>();
-  return spot!.gathering_spot_id;
-}
-
-async function insertGathering(
-  eventId: number,
-  spotId: number,
-  round = 1,
-  time = '10:20',
-  start: string | null = '1030'
-): Promise<number> {
-  const gathering = await env.DB.prepare(
-    `INSERT INTO gatherings
-       (event_id, gathering_spot_id, round, gathering_time, round_start_time)
-     VALUES (?, ?, ?, ?, ?) RETURNING gathering_id`
-  )
-    .bind(eventId, spotId, round, time, start)
-    .first<{ gathering_id: number }>();
-  return gathering!.gathering_id;
 }
 
 async function runRegistration() {
@@ -150,9 +211,11 @@ afterEach(async () => {
     ...allTestNames
   );
   await execute(
-    "DELETE FROM gathering_spots WHERE gathering_spot_name IN ('未定（仮）', '552対象外集合場所')"
+    "DELETE FROM gathering_spots WHERE gathering_spot_name IN ('未定（仮）', '体育館A', '552対象外集合場所')"
   );
-  await execute("DELETE FROM venues WHERE venue_name = '552確定済会場'");
+  await execute(
+    "DELETE FROM venues WHERE venue_name IN ('未定（仮）', 'コートA', 'コートB', 'コートC', 'メインアリーナ', 'サブアリーナ', '552対象外会場')"
+  );
   await execute("DELETE FROM users WHERE user_name = '552対象外ユーザー'");
   await execute('DELETE FROM d1_migrations WHERE name = ?', cleanupMigration);
   if (previousHistory) {
@@ -165,36 +228,85 @@ afterEach(async () => {
   }
 });
 
-describe('正式スケジュールと仮Roundの登録SQL', () => {
-  it('10件の名称・時刻・備考と、競技だけに参加者なしの仮Roundを登録する', async () => {
+describe('stagingの正式スケジュール登録SQL', () => {
+  it('10イベント・11実施場所・14 Roundを参加者なしで再現し、再実行しても変わらない', async () => {
     await runRegistration();
+
+    const events = await rows(
+      `WITH RECURSIVE
+       target AS (
+         SELECT * FROM events
+         WHERE event_name IN (${names.map(() => '?').join(', ')})
+       ),
+       chars(event_id, rule_text, pos) AS (
+         SELECT event_id, rule_text, 1 FROM target
+         UNION ALL
+         SELECT event_id, rule_text, pos + 1
+         FROM chars
+         WHERE pos < length(rule_text)
+       ),
+       fingerprints AS (
+         SELECT event_id,
+                SUM(unicode(substr(rule_text, pos, 1))) AS codepoint_sum,
+                SUM(pos * unicode(substr(rule_text, pos, 1))) AS weighted_sum
+         FROM chars
+         GROUP BY event_id
+       )
+       SELECT target.event_name, target.start_time, target.end_time,
+              length(target.rule_text) AS rule_length, target.rule_text,
+              fingerprints.codepoint_sum, fingerprints.weighted_sum
+       FROM target
+       JOIN fingerprints ON fingerprints.event_id = target.event_id
+       ORDER BY target.event_id`,
+      ...names
+    );
+    expect(events).toHaveLength(10);
+    expectedEvents.forEach(
+      (
+        [
+          eventName,
+          startTime,
+          endTime,
+          ruleLength,
+          codepointSum,
+          weightedSum,
+          prefix,
+          suffix,
+        ],
+        index
+      ) => {
+        expect(events[index]).toMatchObject({
+          event_name: eventName,
+          start_time: startTime,
+          end_time: endTime,
+          rule_length: ruleLength,
+          codepoint_sum: codepointSum,
+          weighted_sum: weightedSum,
+        });
+        expect((events[index].rule_text as string).startsWith(prefix)).toBe(
+          true
+        );
+        expect((events[index].rule_text as string).endsWith(suffix)).toBe(true);
+      }
+    );
 
     expect(
       await rows(
-        `SELECT event_name, start_time, end_time, rule_text FROM events
-         WHERE event_name IN (${names.map(() => '?').join(', ')})
-         ORDER BY start_time, event_name`,
+        `SELECT event.event_name, venue.venue_name
+         FROM event_venues AS event_venue
+         JOIN events AS event ON event.event_id = event_venue.event_id
+         JOIN venues AS venue ON venue.venue_id = event_venue.venue_id
+         WHERE event.event_name IN (${names.map(() => '?').join(', ')})
+         ORDER BY event.event_id, event_venue.event_venue_id`,
         ...names
       )
     ).toEqual(
-      [
-        ['出席確認①', '1000', '1000', '10:00締切'],
-        ['開会式', '1000', '1020', '諸注意説明、競技誘導'],
-        ['第一競技「走れ！○人○脚！」', '1030', '1130', null],
-        ['第二競技「ドッジボール」', '1130', '1300', null],
-        ['昼休憩＋コスプレ大会', '1300', '1400', '当日の審査は8チームで実施'],
-        ['出席確認②', '1330', '1330', '13:30締切'],
-        ['第三競技「紙飛行機飛ばし」', '1400', '1500', null],
-        ['第四競技「学科別対抗リレー」', '1500', '1530', null],
-        ['出席確認③', '1540', '1540', '15:40締切'],
-        ['表彰式・閉会式', '1540', '1600', null],
-      ].map(([event_name, start_time, end_time, rule_text]) => ({
+      expectedVenues.map(([event_name, venue_name]) => ({
         event_name,
-        start_time,
-        end_time,
-        rule_text,
+        venue_name,
       }))
     );
+
     expect(
       await rows(
         `SELECT event.event_name, gathering.round, gathering.gathering_time,
@@ -206,38 +318,22 @@ describe('正式スケジュールと仮Roundの登録SQL', () => {
          JOIN gathering_spots AS spot
            ON spot.gathering_spot_id = gathering.gathering_spot_id
          WHERE event.event_name IN (${names.map(() => '?').join(', ')})
-         ORDER BY event.start_time`,
+         ORDER BY event.event_id, gathering.round`,
         ...names
       )
     ).toEqual(
-      [
-        [names[2], '10:20', '1030'],
-        [names[3], '11:20', '1130'],
-        [names[6], '13:50', '1400'],
-        [names[7], '14:50', '1500'],
-      ].map(([event_name, gathering_time, round_start_time]) => ({
-        event_name,
-        round: 1,
-        gathering_time,
-        round_start_time,
-        gathering_spot_name: '未定（仮）',
-        members: 0,
-      }))
+      expectedGatherings.map(
+        ([event_name, round, gathering_time, gathering_spot_name]) => ({
+          event_name,
+          round,
+          gathering_time,
+          round_start_time: null,
+          gathering_spot_name,
+          members: 0,
+        })
+      )
     );
-    expect(
-      await rows(
-        `SELECT * FROM event_venues WHERE event_id IN (
-           SELECT event_id FROM events WHERE event_name IN (${names.map(() => '?').join(', ')})
-         )`,
-        ...names
-      )
-    ).toEqual([]);
-    expect(
-      await rows(
-        "SELECT name FROM sqlite_master WHERE name GLOB '__official_schedule_2026_*'"
-      )
-    ).toEqual([]);
-    const registered = await snapshot();
+
     const verification = await env.DB.batch<Row>(
       verificationSql
         .split(';')
@@ -249,50 +345,38 @@ describe('正式スケジュールと仮Roundの登録SQL', () => {
     expect(
       verification[0].results.every(row => row.registration_status === '正常')
     ).toBe(true);
-    expect(verification[1].results).toHaveLength(4);
-    expect(verification[2].results).toEqual([]);
+    expect(verification[1].results).toHaveLength(11);
+    expect(verification[2].results).toHaveLength(14);
+    expect(verification[3].results).toEqual([]);
+
+    const registered = await snapshot();
     await runRegistration();
     expect(await snapshot()).toEqual(registered);
   });
 
-  it('同名・同時刻の既存イベントと仮Round、対象外データを保持し、不足だけ補う', async () => {
-    const eventId = await insertEvent(
-      undefined,
-      undefined,
-      undefined,
-      '確定済ルール'
-    );
-    const spotId = await insertSpot();
-    await insertGathering(eventId, spotId);
+  it('対象外の既存データを変更しない', async () => {
+    const event = await env.DB.prepare(
+      `INSERT INTO events (event_name, start_time, end_time, rule_text)
+       VALUES ('552対象外イベント', '0800', '0900', '対象外')
+       RETURNING event_id`
+    ).first<{ event_id: number }>();
     const venue = await env.DB.prepare(
-      "INSERT INTO venues (venue_name) VALUES ('552確定済会場') RETURNING venue_id"
+      "INSERT INTO venues (venue_name) VALUES ('552対象外会場') RETURNING venue_id"
     ).first<{ venue_id: number }>();
+    const spot = await env.DB.prepare(
+      "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('552対象外集合場所') RETURNING gathering_spot_id"
+    ).first<{ gathering_spot_id: number }>();
     await execute(
       'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)',
-      eventId,
+      event!.event_id,
       venue!.venue_id
     );
-    const otherId = await insertEvent(
-      '552対象外イベント',
-      '0800',
-      '0900',
-      '対象外'
-    );
-    const otherSpot = await insertSpot('552対象外集合場所');
-    const otherGathering = await insertGathering(
-      otherId,
-      otherSpot,
-      3,
-      '07:50',
-      '0800'
-    );
-    const user = await env.DB.prepare(
-      "INSERT INTO users (user_name) VALUES ('552対象外ユーザー') RETURNING user_id"
-    ).first<{ user_id: number }>();
     await execute(
-      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)',
-      otherGathering,
-      user!.user_id
+      `INSERT INTO gatherings
+         (event_id, gathering_spot_id, round, gathering_time, round_start_time)
+       VALUES (?, ?, 3, '07:50', '0800')`,
+      event!.event_id,
+      spot!.gathering_spot_id
     );
     const before = await snapshot();
 
@@ -301,25 +385,13 @@ describe('正式スケジュールと仮Roundの登録SQL', () => {
     const after = await snapshot();
     for (const table of [
       'events',
-      'gatherings',
-      'gathering_spots',
       'event_venues',
       'venues',
-      'gathering_group_members',
-      'users',
+      'gatherings',
+      'gathering_spots',
     ]) {
       expect(after[table]).toEqual(expect.arrayContaining(before[table]));
     }
-    expect(
-      await rows('SELECT * FROM events WHERE event_id = ?', eventId)
-    ).toEqual(before.events.filter(event => event.event_id === eventId));
-    expect(after.events.length - before.events.length).toBe(9);
-    expect(after.gatherings.length - before.gatherings.length).toBe(3);
-    expect(after.gathering_spots).toEqual(before.gathering_spots);
-    expect(after.event_venues).toEqual(before.event_venues);
-    expect(after.gathering_group_members).toEqual(
-      before.gathering_group_members
-    );
   });
 
   it('削除migrationの履歴がなければ、作業テーブルも残さず停止する', async () => {
@@ -328,71 +400,88 @@ describe('正式スケジュールと仮Roundの登録SQL', () => {
   });
 
   it('同名イベントが複数ある場合は停止する', async () => {
-    await insertEvent();
-    await insertEvent();
+    for (let index = 0; index < 2; index += 1) {
+      await execute(
+        `INSERT INTO events (event_name, start_time, end_time, rule_text)
+         VALUES ('走れ！○人○脚！', '1030', '1130', '不一致')`
+      );
+    }
     await expectRejectedWithoutChanges();
   });
 
   it.each([
-    ['開始時刻', '1000', '1130'],
-    ['終了時刻', '1030', '1200'],
-  ])('同名イベントの%sが異なる場合は停止する', async (_, start, end) => {
-    await insertEvent(names[2], start, end);
-    await expectRejectedWithoutChanges();
-  });
-
-  it('未定（仮）の集合場所が複数あれば停止する', async () => {
-    await insertSpot();
-    await insertSpot();
-    await expectRejectedWithoutChanges();
-  });
-
-  it('競技以外に集合予定がある場合は停止する', async () => {
-    const eventId = await insertEvent(names[1], '1000', '1020');
-    await insertGathering(eventId, await insertSpot());
-    await expectRejectedWithoutChanges();
-  });
-
-  it.each([
-    ['Round番号', 2, '10:20', '1030'],
-    ['集合時刻', 1, '10:10', '1030'],
-    ['開始時刻', 1, '10:20', '1040'],
-    ['未設定の開始時刻', 1, '10:20', null],
-  ])('既存の競技の%sが異なる場合は停止する', async (_, round, time, start) => {
-    const eventId = await insertEvent();
-    await insertGathering(
-      eventId,
-      await insertSpot(),
-      round as number,
-      time as string,
-      start as string | null
+    ['開始時刻', '1000', '1130', '不一致'],
+    ['終了時刻', '1030', '1200', '不一致'],
+    ['ルール', '1030', '1130', '不一致'],
+  ])('既存イベントの%sが異なる場合は停止する', async (_, start, end, rule) => {
+    await execute(
+      `INSERT INTO events (event_name, start_time, end_time, rule_text)
+       VALUES ('走れ！○人○脚！', ?, ?, ?)`,
+      start,
+      end,
+      rule
     );
     await expectRejectedWithoutChanges();
   });
 
-  it('競技に集合予定が複数ある場合は停止する', async () => {
-    const eventId = await insertEvent();
-    const spotId = await insertSpot();
-    await insertGathering(eventId, spotId);
-    await insertGathering(eventId, spotId);
+  it('必要な集合場所が複数ある場合は停止する', async () => {
+    await execute(
+      "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('未定（仮）')"
+    );
+    await execute(
+      "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('未定（仮）')"
+    );
     await expectRejectedWithoutChanges();
   });
 
-  it('競技の集合場所が異なる場合は停止する', async () => {
-    const eventId = await insertEvent();
-    await insertGathering(eventId, await insertSpot('552対象外集合場所'));
+  it('既存イベントに想定外の実施場所がある場合は停止する', async () => {
+    await runRegistration();
+    const event = await env.DB.prepare(
+      "SELECT event_id FROM events WHERE event_name = '走れ！○人○脚！'"
+    ).first<{ event_id: number }>();
+    const venue = await env.DB.prepare(
+      "INSERT INTO venues (venue_name) VALUES ('552対象外会場') RETURNING venue_id"
+    ).first<{ venue_id: number }>();
+    await execute(
+      'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)',
+      event!.event_id,
+      venue!.venue_id
+    );
     await expectRejectedWithoutChanges();
   });
 
-  it('既存の仮Roundに参加者がいる場合は停止する', async () => {
-    const eventId = await insertEvent();
-    const gatheringId = await insertGathering(eventId, await insertSpot());
+  it('既存イベントに想定外のRoundがある場合は停止する', async () => {
+    await runRegistration();
+    const event = await env.DB.prepare(
+      "SELECT event_id FROM events WHERE event_name = '走れ！○人○脚！'"
+    ).first<{ event_id: number }>();
+    const spot = await env.DB.prepare(
+      "SELECT gathering_spot_id FROM gathering_spots WHERE gathering_spot_name = '未定（仮）'"
+    ).first<{ gathering_spot_id: number }>();
+    await execute(
+      `INSERT INTO gatherings
+         (event_id, gathering_spot_id, round, gathering_time, round_start_time)
+       VALUES (?, ?, 5, '11:20', NULL)`,
+      event!.event_id,
+      spot!.gathering_spot_id
+    );
+    await expectRejectedWithoutChanges();
+  });
+
+  it('既存Roundに参加者がいる場合は停止する', async () => {
+    await runRegistration();
+    const gathering = await env.DB.prepare(
+      `SELECT gathering.gathering_id
+       FROM gatherings AS gathering
+       JOIN events AS event ON event.event_id = gathering.event_id
+       WHERE event.event_name = '走れ！○人○脚！' AND gathering.round = 1`
+    ).first<{ gathering_id: number }>();
     const user = await env.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('552対象外ユーザー') RETURNING user_id"
     ).first<{ user_id: number }>();
     await execute(
       'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)',
-      gatheringId,
+      gathering!.gathering_id,
       user!.user_id
     );
     await expectRejectedWithoutChanges();
