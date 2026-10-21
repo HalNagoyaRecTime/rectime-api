@@ -21,8 +21,13 @@ export function createNotificationDeliveryService(deps: {
   firebaseTokenRepository: Pick<IFirebaseTokenRepository, 'deleteById'>;
   notificationDeliveryQueue: INotificationDeliveryQueue;
   fcmService: IFcmService;
+  ensureConfigured?: () => Promise<void>;
 }): INotificationDeliveryService {
-  const { notificationDeliveryRepository, notificationDeliveryQueue } = deps;
+  const {
+    notificationDeliveryRepository,
+    notificationDeliveryQueue,
+    ensureConfigured = async () => {},
+  } = deps;
   const retryService =
     deps.notificationRetryService ?? createNotificationRetryService(deps);
   const failPendingDeliveriesWithoutToken = (scheduleId: number, now: string) =>
@@ -34,6 +39,8 @@ export function createNotificationDeliveryService(deps: {
 
   return {
     async enqueueReadySchedules(now = new Date(), options) {
+      // 配信をclaimする前に検証し、設定不備で未送信データを失敗確定にしない。
+      await ensureConfigured();
       const nowIso = now.toISOString();
       const candidates =
         await notificationDeliveryRepository.findReadySchedules(
@@ -124,6 +131,8 @@ export function createNotificationDeliveryService(deps: {
       const suppliedNow = now;
       const clock = suppliedNow ? () => suppliedNow : () => new Date();
       now = clock();
+      // 配信をclaimする前に検証し、設定不備で未送信データを失敗確定にしない。
+      await ensureConfigured();
       const uniqueScheduleIds = [...new Set(notificationScheduleIds)]
         .filter(id => Number.isSafeInteger(id) && id > 0)
         .slice(0, NOTIFICATION_DELIVERY_MESSAGE_SIZE);

@@ -9,6 +9,7 @@ import {
 } from '../../domain/entities/NotificationDelivery';
 import { IFcmService, isPermanentFcmTokenError } from './IFcmService';
 import { IScheduledNotificationService } from './IScheduledNotificationService';
+import { classifyFcmError } from './FcmErrorPolicy';
 
 const MAX_CONCURRENT_FCM_REQUESTS = 5;
 
@@ -17,16 +18,20 @@ export function createScheduledNotificationService(deps: {
   notificationScheduleRepository: INotificationScheduleRepository;
   notificationDeliveryQueue: INotificationDeliveryQueue;
   fcmService: IFcmService;
+  ensureConfigured?: () => Promise<void>;
 }): IScheduledNotificationService {
   const {
     firebaseTokenRepository,
     notificationScheduleRepository,
     notificationDeliveryQueue,
     fcmService,
+    ensureConfigured = async () => {},
   } = deps;
 
   return {
     async enqueueDueNotifications(now = new Date()) {
+      // 配信をclaimする前に検証し、設定不備で未送信データを失敗確定にしない。
+      await ensureConfigured();
       const dueAt = now.toISOString();
       const staleBefore = new Date(
         now.getTime() - NOTIFICATION_DELIVERY_LEASE_TIMEOUT_MS
@@ -53,6 +58,8 @@ export function createScheduledNotificationService(deps: {
     },
 
     async sendQueuedNotifications(notificationScheduleIds, now = new Date()) {
+      // 配信をclaimする前に検証し、設定不備で未送信データを失敗確定にしない。
+      await ensureConfigured();
       const uniqueScheduleIds = [...new Set(notificationScheduleIds)].slice(
         0,
         NOTIFICATION_DELIVERY_MESSAGE_SIZE
@@ -103,11 +110,19 @@ export function createScheduledNotificationService(deps: {
               },
             });
           } catch (error) {
-            if (shouldDeleteToken(error)) {
+            const invalidToken = shouldDeleteToken(error);
+            if (invalidToken) {
               await firebaseTokenRepository.deleteById(
                 schedule.firebase_token_id
               );
             }
+            // 設定障害・一時障害はsendingを保ち、lease失効後に再送する。
+            const category = classifyFcmError(error);
+            if (
+              !invalidToken &&
+              (category === 'configuration' || category === 'temporary')
+            )
+              return 'deferred' as const;
             await notificationScheduleRepository.markFailed(
               schedule.notification_schedule_id,
               error instanceof Error ? error.message : String(error)

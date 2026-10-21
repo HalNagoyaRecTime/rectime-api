@@ -4,6 +4,8 @@ import type { INotificationDeliveryRepository } from '../../domain/interfaces/re
 import type { INotificationDeliveryQueue } from '../../domain/interfaces/queues/INotificationDeliveryQueue';
 import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
 import { FcmRequestError, type IFcmService } from './IFcmService';
+import { classifyFcmError } from './FcmErrorPolicy';
+export { classifyFcmError } from './FcmErrorPolicy';
 import type {
   INotificationRetryService,
   NotificationDeliveryOutcome,
@@ -15,6 +17,8 @@ import {
   FCM_MAX_ATTEMPTS,
   FCM_PROCESSING_TIMEOUT_SECONDS,
   FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS,
+  FCM_CONFIG_BLOCKED_REASON,
+  FCM_CONFIG_RETRY_DELAY_SECONDS,
 } from '../../domain/entities/NotificationRetryPolicy';
 export {
   FCM_RETRY_OFFSETS_SECONDS,
@@ -22,39 +26,15 @@ export {
   FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS,
 } from '../../domain/entities/NotificationRetryPolicy';
 
-// HTTP v1の一時系Retryは公式表の429 / 500 / 503と対応error statusに限定する。
-// INVALID_ARGUMENTでTokenは削除しない（payload不正でも返り得る）。
-// https://firebase.google.com/docs/cloud-messaging/error-codes
-export function classifyFcmError(
-  error: unknown
-): 'temporary' | 'permanent' | 'unregistered' {
-  if (!(error instanceof FcmRequestError)) return 'temporary';
-  if (error.fcmErrorCode === 'UNREGISTERED') return 'unregistered';
-  if (
-    [
-      'INVALID_ARGUMENT',
-      'SENDER_ID_MISMATCH',
-      'THIRD_PARTY_AUTH_ERROR',
-    ].includes(error.fcmErrorCode ?? '')
-  )
-    return 'permanent';
-  if (
-    [429, 500, 503].includes(error.httpStatus) ||
-    ['QUOTA_EXCEEDED', 'INTERNAL', 'UNAVAILABLE'].includes(
-      error.fcmErrorCode ?? ''
-    )
-  )
-    return 'temporary';
-  return 'permanent';
-}
-
 export function createNotificationRetryService(deps: {
   notificationDeliveryRepository: INotificationDeliveryRepository;
   firebaseTokenRepository: Pick<IFirebaseTokenRepository, 'deleteById'>;
   fcmService: IFcmService;
   notificationDeliveryQueue?: INotificationDeliveryQueue;
+  ensureConfigured?: () => Promise<void>;
 }): INotificationRetryService {
   const repository = deps.notificationDeliveryRepository;
+  const ensureConfigured = deps.ensureConfigured ?? (async () => {});
   const sendClaimedDelivery = async (
     delivery: ClaimedNotificationPushDelivery,
     now = new Date()
@@ -94,6 +74,18 @@ export function createNotificationRetryService(deps: {
         await deps.firebaseTokenRepository.deleteById(
           delivery.firebase_token_id
         );
+      // 認証・権限設定の障害は15分の通常Retry期限を適用しない。
+      if (classification === 'configuration') {
+        return repository.saveRetry(
+          delivery.notification_push_delivery_id,
+          delivery.attempt_count,
+          FCM_CONFIG_BLOCKED_REASON,
+          new Date(
+            now.getTime() + FCM_CONFIG_RETRY_DELAY_SECONDS * 1000
+          ).toISOString(),
+          nowIso
+        );
+      }
       const nextMilestone = FCM_RETRY_OFFSETS_SECONDS.map(
         offset => Date.parse(delivery.first_attempt_at) + offset * 1000
       ).find(milestone => milestone > now.getTime());
@@ -153,6 +145,7 @@ export function createNotificationRetryService(deps: {
   return {
     sendClaimedDelivery,
     async enqueueDueDeliveries(now = new Date()) {
+      await ensureConfigured();
       if (!deps.notificationDeliveryQueue)
         throw new Error('再送Queueが設定されていません');
       const nowIso = now.toISOString();
@@ -186,6 +179,7 @@ export function createNotificationRetryService(deps: {
       return queued;
     },
     async retryDueDeliveries(now, deliveryIds) {
+      await ensureConfigured();
       const suppliedNow = now;
       const clock = suppliedNow ? () => suppliedNow : () => new Date();
       now = clock();

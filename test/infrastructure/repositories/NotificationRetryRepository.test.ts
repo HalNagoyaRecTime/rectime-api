@@ -13,7 +13,11 @@ import {
   FCM_RETRY_OFFSETS_SECONDS,
 } from '../../../src/application/services/NotificationRetryService';
 import { FcmRequestError } from '../../../src/application/services/IFcmService';
-import { FCM_RETRY_WINDOW_SECONDS } from '../../../src/domain/entities/NotificationRetryPolicy';
+import {
+  FCM_RETRY_WINDOW_SECONDS,
+  FCM_CONFIG_BLOCKED_REASON,
+  FCM_CONFIG_RETRY_DELAY_SECONDS,
+} from '../../../src/domain/entities/NotificationRetryPolicy';
 
 function harness(error?: unknown) {
   const sendNotificationToToken = vi.fn(async () => {
@@ -32,6 +36,111 @@ function harness(error?: unknown) {
 }
 describe('Retryとtimeout回収のD1統合', () => {
   beforeEach(clearNotificationFixtures);
+  it('FCM権限403は期限超過後も保留し、1日後の復旧で同じDeliveryを送信する', async () => {
+    const { delivery, scheduleId } = await createDeliveryFixture();
+    const blocked = harness(
+      new FcmRequestError(403, 'PERMISSION_DENIED', 'FCM権限不足')
+    );
+    expect(await blocked.service.sendClaimedDelivery(delivery, NOW)).toBe(
+      'retry_wait'
+    );
+    expect(
+      await getDelivery(delivery.notification_push_delivery_id)
+    ).toMatchObject({
+      status: 'retry_wait',
+      failed_reason: FCM_CONFIG_BLOCKED_REASON,
+      next_retry_at: new Date(
+        NOW.getTime() + FCM_CONFIG_RETRY_DELAY_SECONDS * 1000
+      ).toISOString(),
+    });
+    const afterDay = new Date(NOW.getTime() + 24 * 60 * 60 * 1000);
+    expect(
+      await repository.completeScheduleIfDone(
+        scheduleId,
+        afterDay.toISOString()
+      )
+    ).toBe(false);
+    expect(
+      await repository.retireUnsendableDeliveries(
+        afterDay.toISOString(),
+        NOW.toISOString(),
+        6
+      )
+    ).toEqual([]);
+    const [recovered] = await repository.claimRetryDeliveries(
+      afterDay.toISOString(),
+      NOW.toISOString(),
+      5
+    );
+    expect(recovered).toMatchObject({
+      notification_push_delivery_id: delivery.notification_push_delivery_id,
+      attempt_count: 1,
+      first_attempt_at: afterDay.toISOString(),
+    });
+    expect(
+      await harness().service.sendClaimedDelivery(recovered, afterDay)
+    ).toBe('sent');
+    expect(
+      await getDelivery(delivery.notification_push_delivery_id)
+    ).toMatchObject({ status: 'sent', failed_reason: null });
+    expect(
+      await repository.completeScheduleIfDone(
+        scheduleId,
+        afterDay.toISOString()
+      )
+    ).toBe(true);
+  });
+
+  it('設定障害後の503は通常のRetry期限を新しく開始する', async () => {
+    const { delivery } = await createDeliveryFixture();
+    await harness(
+      new FcmRequestError(403, 'PERMISSION_DENIED', 'IAM障害')
+    ).service.sendClaimedDelivery(delivery, NOW);
+    const afterDay = new Date(NOW.getTime() + 24 * 60 * 60 * 1000);
+    const [recovered] = await repository.claimRetryDeliveries(
+      afterDay.toISOString(),
+      NOW.toISOString(),
+      5
+    );
+    expect(
+      await harness(
+        new FcmRequestError(503, 'UNAVAILABLE', '一時障害')
+      ).service.sendClaimedDelivery(recovered, afterDay)
+    ).toBe('retry_wait');
+    expect(
+      await getDelivery(delivery.notification_push_delivery_id)
+    ).toMatchObject({
+      status: 'retry_wait',
+      failed_reason: '一時障害',
+      first_attempt_at: afterDay.toISOString(),
+      next_retry_at: new Date(afterDay.getTime() + 10_000).toISOString(),
+    });
+  });
+
+  it('設定保留中にStopしたら送信せずstoppedへ遷移する', async () => {
+    const { delivery, scheduleId } = await createDeliveryFixture();
+    await harness(
+      new FcmRequestError(403, 'PERMISSION_DENIED', '権限不足')
+    ).service.sendClaimedDelivery(delivery, NOW);
+    await env.DB.prepare(
+      "UPDATE notification_schedules SET send_status = 'stopped' WHERE notification_schedule_id = ?"
+    )
+      .bind(scheduleId)
+      .run();
+    const afterDay = new Date(NOW.getTime() + 24 * 60 * 60 * 1000);
+    const retried = harness();
+    expect((await retried.service.retryDueDeliveries(afterDay)).claimed).toBe(
+      0
+    );
+    expect(retried.sendNotificationToToken).not.toHaveBeenCalled();
+    expect(
+      await getDelivery(delivery.notification_push_delivery_id)
+    ).toMatchObject({
+      status: 'stopped',
+      next_retry_at: null,
+    });
+  });
+
   it('timeoutの最終試行を再送せず終端し、Scheduleを完了する', async () => {
     const { delivery, scheduleId } = await createDeliveryFixture();
     await env.DB.prepare(

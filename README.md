@@ -112,8 +112,26 @@ cp .dev.vars.example .dev.vars
 | `ALLOWED_ORIGINS` | CORS で許可するフロントエンドの origin（カンマ区切り複数可） |
 | `EVENT_DATE` | 通知配信を許可する開催日（JST、`YYYY-MM-DD`）。未設定・不正な値の場合は配信しない |
 | `JWT_SECRET` | 32 文字以上のランダム文字列 |
+| `FIREBASE_PROJECT_ID` | サービスアカウントJSONの `project_id` |
+| `FIREBASE_CLIENT_EMAIL` | 同JSONの `client_email` |
+| `FIREBASE_PRIVATE_KEY` | 同JSONの `private_key`（PKCS#8 PEM、改行または文字列の `\n`） |
 | `R2_ACCESS_KEY_ID` | 画像の署名付きURLに使う R2 の API トークン（Object Read only）のアクセスキー ID |
 | `R2_SECRET_ACCESS_KEY` | 同じ API トークンのシークレットアクセスキー |
+
+FCM HTTP v1を使います。JSONファイル全体の保存や`GOOGLE_APPLICATION_CREDENTIALS`は不要です。
+ローカルは`.dev.vars`へ、実Workerは上記3項目をそれぞれCloudflare Secretとして登録します。
+例: `npx wrangler secret put FIREBASE_PRIVATE_KEY --env development`。
+設定値をコマンド引数・ログ・Issueへ貼り付けないでください。
+
+実Workerの登録名だけを確認するには`npm run notifications:check -- --env development`を使います。
+stagingは`--env staging`、本番は引数なしです。デプロイWorkflowでもmigrationより前に実行します。
+これは登録名の確認です。配信前に形式を検証してGoogle OAuth tokenを取得し、鍵の署名・サービスアカウント認証を確認します。
+FCMプロジェクトへの送信権限はFCM APIで確認します。設定・認証エラー時は配信の準備・claimを開始せず、未送信行を維持します。claim後に発生したFCM認証・権限エラーも再試行対象に残します。
+Secret修正が反映されたWorkerで次のCron／Queue処理から再開します。既にfailedの履歴を自動再送はしません。
+
+developmentは初期状態でCronが無効、EVENT_DATEもダミーです。
+定期配信テストでは、管理者がテスト日（JST）・Cron・専用Queueを確認してから有効化します。
+この変更でCronの有効化や実環境のSecret変更は行いません。
 
 Web向けのMicrosoft OAuth redirect_uriは環境ごとの固定値をsecretとして持たず、
 実際のリクエストURL(`https://<worker実際のオリジン>/api/v1/auth/microsoft/callback`)
