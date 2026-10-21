@@ -267,6 +267,31 @@ describe('UserStatusRepository', () => {
       expect(await readClassLockVersion(target.classRoomId)).toBe(0);
     });
 
+    it('すでに同じ状態への更新（有効な教員を有効にする）では、担任クラスの lock_version を進めない', async () => {
+      await insertActiveStaff('残る管理者');
+      const target = await insertTeacherClass('担任教員', 'BUMP-5');
+
+      await expect(repo.updateLiveActive(target.userId, true)).resolves.toEqual(
+        {
+          user_id: target.userId,
+          is_live_active: true,
+        }
+      );
+
+      expect(await readClassLockVersion(target.classRoomId)).toBe(0);
+    });
+
+    it('すでに停止中の教員を停止にしても、担任クラスの lock_version は進まない', async () => {
+      await insertActiveStaff('残る管理者');
+      const target = await insertTeacherClass('担任教員', 'BUMP-6');
+      await repo.updateLiveActive(target.userId, false);
+      expect(await readClassLockVersion(target.classRoomId)).toBe(1);
+
+      await repo.updateLiveActive(target.userId, false);
+
+      expect(await readClassLockVersion(target.classRoomId)).toBe(1);
+    });
+
     it('担任ではないUserの更新は、どのクラスの lock_version も進めない', async () => {
       await insertActiveStaff('残る管理者');
       const someClass = await insertClassRoom('BUMP-4', null);
