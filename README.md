@@ -181,6 +181,9 @@ npm run deploy
 [`docs/operations/ios-release-backend-runbook.md`](docs/operations/ios-release-backend-runbook.md)
 を参照する。
 
+iOS向け認証・API疎通の確認結果と残項目は
+[`2026-10-20の検証記録`](docs/verification/ios-api-2026-10-20.md) を参照する。
+
 ### CORS 設定
 
 `ALLOWED_ORIGINS` には API の URL ではなく、API を呼び出すフロントエンドの origin を設定する。
