@@ -351,7 +351,7 @@ apiV1.openapi(
     if (result.success) return;
     if (
       result.error.issues.some(
-        issue => issue.message === 'end_time must be after start_time'
+        issue => issue.message === '終了時刻は開始時刻以降を指定してください。'
       )
     ) {
       return c.json(
@@ -372,7 +372,7 @@ apiV1.openapi(
     if (result.success) return;
     if (
       result.error.issues.some(
-        issue => issue.message === 'end_time must be after start_time'
+        issue => issue.message === '終了時刻は開始時刻以降を指定してください。'
       )
     ) {
       return c.json(

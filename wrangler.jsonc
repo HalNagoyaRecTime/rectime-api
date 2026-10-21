@@ -17,6 +17,8 @@
     // /app/contact のリダイレクト先(Microsoft Forms「アプリお問い合わせ」)。
     // 空・未設定・https以外のときはリダイレクトせず404を返す。
     "CONTACT_FORM_URL": "https://forms.cloud.microsoft/r/LAsntFuQcF",
+    // 2026年度レクリエーションの開催日（JST）。
+    "EVENT_DATE": "2026-11-27",
     "IMAGES_BUCKET_URL": "https://539494518db0c8b96ec2f6fdd30fb990.r2.cloudflarestorage.com/rectime-images",
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で

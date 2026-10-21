@@ -122,11 +122,11 @@ describe('OpenAPI documentation', () => {
       nullable: true,
     });
     expect(document.components.schemas.EventWriteRequest.description).toContain(
-      'start_timeはend_timeより前の時刻を指定する'
+      'start_timeはend_time以前の時刻を指定する'
     );
     expect(
       document.components.schemas.EventUpdateRequest.description
-    ).toContain('start_timeはend_timeより前の時刻を指定する');
+    ).toContain('start_timeはend_time以前の時刻を指定する');
     const venueListParameters = (
       document.paths['/api/v1/venues'].get as {
         parameters?: Array<{
