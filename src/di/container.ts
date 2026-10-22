@@ -91,7 +91,8 @@ import { createUserStatusController } from '../presentation/controllers/UserStat
 import { createAuthProfileService } from '../application/services/AuthProfileService';
 import { createAuthService } from '../application/services/authService';
 import { createLogoutService } from '../application/services/LogoutService';
-import { createKvRefreshSessionRepository } from '../infrastructure/repositories/KvRefreshSessionRepository';
+import { createRefreshSessionRepository } from '../infrastructure/repositories/RefreshSessionRepository';
+import { createAuthStateRepository } from '../infrastructure/repositories/AuthStateRepository';
 import { createAccountDeletionService } from '../application/services/AccountDeletionService';
 import { createNotificationAccountDeletionService } from '../application/services/NotificationAccountDeletionService';
 import { createAuthorizationService } from '../application/services/AuthorizationService';
@@ -171,13 +172,16 @@ export function createDIContainer(env: Env) {
     env.NOTIFICATION_DELIVERY_QUEUE
   );
 
+  const refreshSessionRepository = createRefreshSessionRepository(db);
+  const authStateRepository = createAuthStateRepository(db);
+
   // Services
   const authService = createAuthService(
     userRepository,
     studentRepository,
     teacherRepository,
     env.STUDENT_EMAIL_DOMAIN,
-    env.AUTH_KV,
+    refreshSessionRepository,
     firebaseTokenRepository
   );
   const authProfileService = createAuthProfileService(
@@ -188,7 +192,7 @@ export function createDIContainer(env: Env) {
   );
   const logoutService = createLogoutService(
     firebaseTokenRepository,
-    createKvRefreshSessionRepository(env.AUTH_KV)
+    refreshSessionRepository
   );
   const userStatusService = createUserStatusService(userStatusRepository);
   const authorizationService = createAuthorizationService(userRepository);
@@ -379,6 +383,9 @@ export function createDIContainer(env: Env) {
     notificationScheduleQueryController,
     // requireAuth（ミドルウェア）が直接参照するため、リポジトリのまま公開する
     userStatusRepository,
+    // 認証ルートがstateとセッションを直接読み書きするため、リポジトリのまま公開する
+    authStateRepository,
+    refreshSessionRepository,
     authService,
     authProfileService,
     logoutService,

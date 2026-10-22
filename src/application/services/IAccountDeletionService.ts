@@ -6,7 +6,7 @@ export interface RetryPendingPurgesResult {
 
 export interface IAccountDeletionService {
   // アカウント削除(#265 PR4)。関連データの削除・匿名化を行う。
-  // - Microsoft連携(microsoft_account_links)・AUTH_KVのRefresh Session・
+  // - Microsoft連携(microsoft_account_links)・Refresh Session・
   //   Firebase Token無効化はPR1/PR3(authService.startAccountDeletion)が
   //   既に担当済みのため、ここでは扱わない。
   // - ロール(staffs/teachers)、所属(gathering_group_members)、

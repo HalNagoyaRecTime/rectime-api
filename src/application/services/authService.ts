@@ -1,8 +1,8 @@
-import type { KVNamespace } from '@cloudflare/workers-types';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAuthService, MicrosoftClaims } from './IAuthService';
 import type { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
+import type { IRefreshSessionRepository } from '../../domain/interfaces/repositories/IRefreshSessionRepository';
 import type { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
 import {
   extractStudentIdNumber,
@@ -14,7 +14,7 @@ export function createAuthService(
   studentRepository: IStudentRepository,
   teacherRepository: ITeacherRepository,
   studentEmailDomain: string,
-  authKv: KVNamespace,
+  refreshSessionRepository: Pick<IRefreshSessionRepository, 'deleteByUserId'>,
   firebaseTokenRepository: IFirebaseTokenRepository
 ): IAuthService {
   if (!studentEmailDomain) {
@@ -307,17 +307,8 @@ export function createAuthService(
       //    コメント参照)。
       await userRepository.markAsDeleted(userId);
 
-      // 2. 発行済みの全Refresh Sessionを失効させる。mobile_refresh_by_user
-      //    は1ユーザー1セッション設計(新規ログインのたびに上書きされる)
-      //    のため、これを削除すれば現在・過去を含め有効なセッションが
-      //    存在しない状態になる。
-      const refreshTokenId = await authKv.get(
-        `mobile_refresh_by_user:${userId}`
-      );
-      if (refreshTokenId) {
-        await authKv.delete(`mobile_refresh:${refreshTokenId}`);
-      }
-      await authKv.delete(`mobile_refresh_by_user:${userId}`);
+      // 2. 発行済みの全Refresh Sessionを失効させる。
+      await refreshSessionRepository.deleteByUserId(userId);
 
       // 3. purge完了までPush対象から即時除外する。物理削除は後段の
       //    Account deletion内部処理がLegacy履歴整理後に行う。
