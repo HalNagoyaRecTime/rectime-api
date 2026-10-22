@@ -319,9 +319,9 @@ export function createAuthService(
       }
       await authKv.delete(`mobile_refresh_by_user:${userId}`);
 
-      // 3. purge完了までPush対象から即時除外する。物理削除は後段の
-      //    Account deletion内部処理がLegacy履歴整理後に行う。
-      await firebaseTokenRepository.deactivateByUserId(Number(userId));
+      // 3. Push対象から即時除外するためTokenを物理削除する。v2 Delivery履歴は
+      //    FKのON DELETE SET NULLでToken参照だけを外して保持する。
+      await firebaseTokenRepository.deleteByUserId(Number(userId));
     },
   };
 }

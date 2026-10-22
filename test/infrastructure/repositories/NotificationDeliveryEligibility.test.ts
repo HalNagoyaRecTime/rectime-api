@@ -22,10 +22,6 @@ it('Recipient匿名化後のToken削除失敗でも初回・再送・確保済�
         throw new Error('Token削除失敗');
       },
     },
-    notificationScheduleRepository: {
-      deleteByFirebaseTokenId: async () => {},
-      anonymizeCreatedUserId: async () => {},
-    },
     notificationAccountDeletionRepository:
       createNotificationAccountDeletionRepository(env.DB),
   });

@@ -9,7 +9,7 @@ import { CommonErrors } from './presentation/errors/commonErrors';
 import { EventErrors } from './presentation/errors/eventErrors';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
 import { getContactFormUrl, isDocsEnabled, type Env } from './lib/env';
-import { isEventDate, isValidEventDate } from './lib/eventDate';
+import { isValidEventDate } from './lib/eventDate';
 import { getAllowedOriginRules, isAllowedOrigin } from './lib/allowedOrigins';
 import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
 import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
@@ -108,7 +108,6 @@ import {
   venueImageDeleteRoute,
   venueImagePutRoute,
 } from './presentation/openapi/placeImages';
-import { legacyAdminNotificationUpdateRoute } from './presentation/openapi/notification/legacy/admin';
 import {
   adminNotificationCreateRoute,
   adminNotificationDeleteRoute,
@@ -141,7 +140,6 @@ const app = new OpenAPIHono<{ Bindings: Env }>({
 
 let corsWarnLogged = false;
 let tenantWarnLogged = false;
-let eventDateWarnLogged = false;
 
 app.use('*', (c, next) => {
   const allowedOrigins = c.env.ALLOWED_ORIGINS ?? '';
@@ -586,11 +584,6 @@ apiV1.openapi(staffOnly(adminNotificationDetailRoute), c => {
     .get('container')
     .adminNotificationQueryController.getAdminNotificationById(c);
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
-  return c
-    .get('container')
-    .adminNotificationManagementController.updateAdminNotification(c);
-});
 apiV1.openapi(staffOnly(adminNotificationPatchRoute), c => {
   const notificationId = positivePathParamToNumber(
     c.req.valid('param').notificationId
@@ -768,23 +761,6 @@ export default {
         }
       })()
     );
-
-    if (!isValidEventDate(env.EVENT_DATE)) {
-      if (!eventDateWarnLogged) {
-        console.error(
-          '[CRON] EVENT_DATE must be configured in YYYY-MM-DD format; notification delivery is disabled'
-        );
-        eventDateWarnLogged = true;
-      }
-      return;
-    }
-    if (!isEventDate(env.EVENT_DATE, scheduledAt)) return;
-
-    ctx.waitUntil(
-      container.scheduledNotificationService.enqueueDueNotifications(
-        scheduledAt
-      )
-    );
   },
   async queue(
     batch: MessageBatch<NotificationDeliveryMessage>,
@@ -793,7 +769,6 @@ export default {
     const container = createDIContainer(env);
     await consumeNotificationDeliveryQueue(
       batch,
-      container.scheduledNotificationService,
       container.notificationDeliveryService,
       container.notificationRetryService
     );

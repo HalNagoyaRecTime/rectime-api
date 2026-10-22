@@ -29,20 +29,15 @@ export interface NotificationCreationCommand {
     hash: string;
   } | null;
   now: string;
-  legacy_schedule: {
-    created_user_id: number;
-    importance: number;
-  } | null;
 }
 
 export type AutomaticNotificationCreationCommand = Omit<
   NotificationCreationCommand,
-  'created_by_user_id' | 'scheduled_by_user_id' | 'source' | 'legacy_schedule'
+  'created_by_user_id' | 'scheduled_by_user_id' | 'source'
 > & {
   created_by_user_id: null;
   scheduled_by_user_id: null;
   source: NonNullable<NotificationCreationCommand['source']>;
-  legacy_schedule: null;
   sync_cutoff?: string;
 };
 

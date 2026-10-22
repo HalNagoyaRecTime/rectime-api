@@ -17,10 +17,8 @@ import { createEventRepository } from '../infrastructure/repositories/EventRepos
 import { createClassRoomRepository } from '../infrastructure/repositories/ClassRoomRepository';
 import { createTeamRepository } from '../infrastructure/repositories/TeamRepository';
 import { createFirebaseTokenRepository } from '../infrastructure/repositories/FirebaseTokenRepository';
-import { createNotificationScheduleRepository } from '../infrastructure/repositories/NotificationScheduleRepository';
 import { createNotificationResultQueryRepository } from '../infrastructure/repositories/NotificationResultQueryRepository';
 import { createNotificationAccountDeletionRepository } from '../infrastructure/repositories/NotificationAccountDeletionRepository';
-import { createAdminNotificationRepository } from '../infrastructure/repositories/AdminNotificationRepository';
 import { createAdminNotificationCommandRepository } from '../infrastructure/repositories/AdminNotificationCommandRepository';
 import { createNotificationCreationRepository } from '../infrastructure/repositories/NotificationCreationRepository';
 import { createGatheringNotificationGeneratorRepository } from '../infrastructure/repositories/GatheringNotificationGeneratorRepository';
@@ -28,7 +26,6 @@ import { createNotificationConfigRepository } from '../infrastructure/repositori
 import { createAdminNotificationQueryRepository } from '../infrastructure/repositories/AdminNotificationQueryRepository';
 import { createNotificationAudienceResolverRepository } from '../infrastructure/repositories/NotificationAudienceResolverRepository';
 import { createNotificationDeliveryRepository } from '../infrastructure/repositories/NotificationDeliveryRepository';
-import { createAdminNotificationManagementRepository } from '../infrastructure/repositories/AdminNotificationManagementRepository';
 import { createMobileNotificationRepository } from '../infrastructure/repositories/MobileNotificationRepository';
 import { createGatheringSpotRepository } from '../infrastructure/repositories/GatheringSpotRepository';
 import { createVenueRepository } from '../infrastructure/repositories/VenueRepository';
@@ -43,11 +40,9 @@ import { createClassRoomService } from '../application/services/ClassRoomService
 import { createMasterImportService } from '../application/services/MasterImportService';
 import { createFirebaseTokenService } from '../application/services/FirebaseTokenService';
 import { createFcmService } from '../infrastructure/services/FcmService';
-import { createScheduledNotificationService } from '../application/services/ScheduledNotificationService';
 import { createNotificationResultQueryService } from '../application/services/NotificationResultQueryService';
 import { createNotificationAudienceResolverService } from '../application/services/NotificationAudienceResolverService';
 import { createNotificationDeliveryService } from '../application/services/NotificationDeliveryService';
-import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createAdminNotificationCommandService } from '../application/services/AdminNotificationCommandService';
 import { createGatheringNotificationGeneratorService } from '../application/services/GatheringNotificationGeneratorService';
 import { createNotificationConfigService } from '../application/services/NotificationConfigService';
@@ -66,7 +61,6 @@ import { createEventController } from '../presentation/controllers/EventControll
 import { createClassRoomController } from '../presentation/controllers/ClassRoomController';
 import { createMasterImportController } from '../presentation/controllers/MasterImportController';
 import { createFirebaseTokenController } from '../presentation/controllers/FirebaseTokenController';
-import { createAdminNotificationManagementController } from '../presentation/controllers/AdminNotificationManagementController';
 import { createAdminNotificationCommandController } from '../presentation/controllers/AdminNotificationCommandController';
 import { createAdminNotificationQueryController } from '../presentation/controllers/AdminNotificationQueryController';
 import { createNotificationResultQueryController } from '../presentation/controllers/NotificationResultQueryController';
@@ -133,15 +127,10 @@ export function createDIContainer(env: Env) {
   const classRoomRepository = createClassRoomRepository(db);
   const teamRepository = createTeamRepository(db);
   const firebaseTokenRepository = createFirebaseTokenRepository(db);
-  const notificationScheduleRepository =
-    createNotificationScheduleRepository(db);
   const notificationResultQueryRepository =
     createNotificationResultQueryRepository(db);
   const notificationAccountDeletionRepository =
     createNotificationAccountDeletionRepository(db);
-  const adminNotificationRepository = createAdminNotificationRepository(db);
-  const adminNotificationManagementRepository =
-    createAdminNotificationManagementRepository(db);
   const notificationCreationRepository =
     createNotificationCreationRepository(db);
   const adminNotificationCommandRepository =
@@ -199,7 +188,6 @@ export function createDIContainer(env: Env) {
   const notificationAccountDeletionService =
     createNotificationAccountDeletionService({
       firebaseTokenRepository,
-      notificationScheduleRepository,
       notificationAccountDeletionRepository,
     });
   const accountDeletionService = createAccountDeletionService({
@@ -246,13 +234,6 @@ export function createDIContainer(env: Env) {
     clientEmail: env.FIREBASE_CLIENT_EMAIL,
     privateKey: env.FIREBASE_PRIVATE_KEY,
   });
-  const scheduledNotificationService = createScheduledNotificationService({
-    firebaseTokenRepository,
-    notificationScheduleRepository,
-    notificationDeliveryQueue,
-    fcmService,
-    ensureConfigured: fcmService.ensureConfigured,
-  });
   const notificationAudienceResolverService =
     createNotificationAudienceResolverService(
       notificationAudienceResolverRepository
@@ -272,11 +253,6 @@ export function createDIContainer(env: Env) {
     fcmService,
     ensureConfigured: fcmService.ensureConfigured,
   });
-  const adminNotificationManagementService =
-    createAdminNotificationManagementService(
-      adminNotificationManagementRepository,
-      adminNotificationRepository
-    );
   const adminNotificationQueryService = createAdminNotificationQueryService(
     adminNotificationQueryRepository
   );
@@ -344,10 +320,6 @@ export function createDIContainer(env: Env) {
     createMasterImportController(masterImportService);
   const firebaseTokenController =
     createFirebaseTokenController(firebaseTokenService);
-  const adminNotificationManagementController =
-    createAdminNotificationManagementController(
-      adminNotificationManagementService
-    );
   const adminNotificationCommandController =
     createAdminNotificationCommandController(adminNotificationCommandService);
   const adminNotificationQueryController =
@@ -393,14 +365,12 @@ export function createDIContainer(env: Env) {
     classRoomController,
     masterImportController,
     firebaseTokenController,
-    adminNotificationManagementController,
     adminNotificationQueryService,
     adminNotificationCommandController,
     adminNotificationQueryController,
     notificationResultQueryController,
     notificationConfigController,
     mobileNotificationController,
-    scheduledNotificationService,
     gatheringNotificationGeneratorService,
     notificationAudienceResolverService,
     notificationDeliveryService,

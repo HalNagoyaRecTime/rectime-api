@@ -87,7 +87,6 @@ describe('FirebaseTokenRepository', () => {
       ).resolves.toMatchObject({
         user_id: userId,
         platform: 'android',
-        is_firebase_active: true,
       });
     }
   );
@@ -104,7 +103,6 @@ describe('FirebaseTokenRepository', () => {
     ).resolves.toMatchObject({
       user_id: userId,
       platform: 'ios',
-      is_firebase_active: true,
     });
 
     const stored = await env.DB.prepare(
@@ -194,25 +192,6 @@ describe('FirebaseTokenRepository', () => {
       .first<{ count: number }>();
     expect(count?.count).toBe(1);
   });
-  it('無効化済みTokenの再登録時に有効化する', async () => {
-    const userId = await createUser('Firebaseトークン再登録利用者');
-    await repository.register({
-      userId,
-      platform: 'android',
-      fcmToken: 'token-reactivate',
-    });
-    await repository.deactivateByUserId(userId);
-
-    const reactivated = await repository.register({
-      userId,
-      platform: 'android',
-      fcmToken: 'token-reactivate',
-    });
-
-    expect(reactivated.is_firebase_active).toBe(true);
-    await expect(repository.findActiveTokens()).resolves.toHaveLength(1);
-  });
-
   it('同じTokenを別利用者が登録したら旧Tokenを削除し、Delivery参照をNULLにする', async () => {
     const previousOwnerId = await createUser('Firebase Token旧所有者');
     const newOwnerId = await createUser('Firebase Token新所有者');
@@ -228,9 +207,9 @@ describe('FirebaseTokenRepository', () => {
     if (!notification)
       throw new Error('failed to create handover notification');
     const schedule = await env.DB.prepare(
-      "INSERT INTO notification_schedules (notification_id, firebase_token_id, send_status, send_at) VALUES (?, ?, 'draft', CURRENT_TIMESTAMP) RETURNING notification_schedule_id"
+      "INSERT INTO notification_schedules (notification_id, send_status, send_at) VALUES (?, 'scheduled', CURRENT_TIMESTAMP) RETURNING notification_schedule_id"
     )
-      .bind(notification.notification_id, previous.firebase_token_id)
+      .bind(notification.notification_id)
       .first<{ notification_schedule_id: number }>();
     if (!schedule) throw new Error('failed to create handover schedule');
     const recipient = await env.DB.prepare(
@@ -254,7 +233,6 @@ describe('FirebaseTokenRepository', () => {
 
     expect(current.firebase_token_id).not.toBe(previous.firebase_token_id);
     expect(current.user_id).toBe(newOwnerId);
-    expect(current.is_firebase_active).toBe(true);
     const previousRow = await env.DB.prepare(
       'SELECT user_id FROM firebase_tokens WHERE firebase_token_id = ?'
     )
@@ -268,14 +246,8 @@ describe('FirebaseTokenRepository', () => {
       .bind(delivery.notification_push_delivery_id)
       .first<{ firebase_token_id: number | null }>();
     expect(detachedDelivery).toEqual({ firebase_token_id: null });
-    const detachedSchedule = await env.DB.prepare(
-      'SELECT firebase_token_id FROM notification_schedules WHERE notification_schedule_id = ?'
-    )
-      .bind(schedule.notification_schedule_id)
-      .first<{ firebase_token_id: number | null }>();
-    expect(detachedSchedule).toEqual({ firebase_token_id: null });
 
-    const activeTokens = await repository.findActiveTokens();
+    const activeTokens = await repository.findAllByUserId(newOwnerId);
     expect(activeTokens).toHaveLength(1);
     expect(activeTokens[0].user_id).toBe(newOwnerId);
 
@@ -301,9 +273,9 @@ describe('FirebaseTokenRepository', () => {
     if (!notification)
       throw new Error('failed to create unregistered notification');
     const schedule = await env.DB.prepare(
-      "INSERT INTO notification_schedules (notification_id, firebase_token_id, send_status, send_at) VALUES (?, ?, 'draft', CURRENT_TIMESTAMP) RETURNING notification_schedule_id"
+      "INSERT INTO notification_schedules (notification_id, send_status, send_at) VALUES (?, 'scheduled', CURRENT_TIMESTAMP) RETURNING notification_schedule_id"
     )
-      .bind(notification.notification_id, token.firebase_token_id)
+      .bind(notification.notification_id)
       .first<{ notification_schedule_id: number }>();
     if (!schedule) throw new Error('failed to create unregistered schedule');
     const recipient = await env.DB.prepare(
@@ -326,11 +298,6 @@ describe('FirebaseTokenRepository', () => {
     )
       .bind(token.firebase_token_id)
       .first();
-    const detachedSchedule = await env.DB.prepare(
-      'SELECT firebase_token_id FROM notification_schedules WHERE notification_schedule_id = ?'
-    )
-      .bind(schedule.notification_schedule_id)
-      .first<{ firebase_token_id: number | null }>();
     const detachedDelivery = await env.DB.prepare(
       'SELECT firebase_token_id FROM notification_push_deliveries WHERE notification_push_delivery_id = ?'
     )
@@ -338,7 +305,6 @@ describe('FirebaseTokenRepository', () => {
       .first<{ firebase_token_id: number | null }>();
 
     expect(storedToken).toBeNull();
-    expect(detachedSchedule).toEqual({ firebase_token_id: null });
     expect(detachedDelivery).toEqual({ firebase_token_id: null });
 
     await env.DB.prepare(
@@ -373,7 +339,6 @@ describe('FirebaseTokenRepository', () => {
 
     expect(reregistered.firebase_token_id).not.toBe(previous.firebase_token_id);
     expect(reregistered.user_id).toBe(previousOwnerId);
-    expect(reregistered.is_firebase_active).toBe(true);
     const rowCount = await env.DB.prepare(
       'SELECT COUNT(*) AS count FROM firebase_tokens WHERE user_id = ?'
     )
@@ -424,16 +389,13 @@ describe('FirebaseTokenRepository', () => {
     ]);
 
     const rows = await env.DB.prepare(
-      `SELECT user_id, is_firebase_active
+      `SELECT user_id
        FROM firebase_tokens
        WHERE fcm_token = ?`
     )
       .bind('token-simultaneous')
-      .all<{ user_id: number; is_firebase_active: number }>();
+      .all<{ user_id: number }>();
     expect(rows.results).toHaveLength(1);
-    expect(
-      rows.results.filter(row => row.is_firebase_active === 1)
-    ).toHaveLength(1);
   });
 
   it('存在しないusers.user_idでは登録しない', async () => {
@@ -444,82 +406,6 @@ describe('FirebaseTokenRepository', () => {
         fcmToken: 'token-unknown-user',
       })
     ).rejects.toThrow('User not found');
-  });
-
-  it('有効なTokenのみをfirebase_token_id昇順で返す', async () => {
-    const firstUserId = await createUser('Firebase有効利用者');
-    const secondUserId = await createUser('Firebase無効利用者');
-    await repository.register({
-      userId: firstUserId,
-      platform: 'android',
-      fcmToken: 'token-active',
-    });
-    await repository.register({
-      userId: secondUserId,
-      platform: 'android',
-      fcmToken: 'token-inactive',
-    });
-    await repository.deactivateByUserId(secondUserId);
-
-    const tokens = await repository.findActiveTokens();
-
-    expect(tokens).toHaveLength(1);
-    expect(tokens[0].fcm_token).toBe('token-active');
-  });
-
-  describe('deactivateByUserId', () => {
-    it('指定したuser_idのToken登録を無効化する', async () => {
-      const userId = await createUser('削除対象利用者');
-      await repository.register({
-        userId,
-        platform: 'android',
-        fcmToken: 'token-to-deactivate',
-      });
-
-      await repository.deactivateByUserId(userId);
-
-      const stored = await env.DB.prepare(
-        'SELECT is_firebase_active, updated_at FROM firebase_tokens WHERE user_id = ?'
-      )
-        .bind(userId)
-        .first<{ is_firebase_active: number; updated_at: string }>();
-      expect(stored?.is_firebase_active).toBe(0);
-      expect(stored?.updated_at).toMatch(
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
-      );
-    });
-
-    it('他のuser_idのToken登録には影響しない', async () => {
-      const targetUserId = await createUser('削除対象利用者2');
-      const otherUserId = await createUser('無関係な利用者');
-      await repository.register({
-        userId: targetUserId,
-        platform: 'android',
-        fcmToken: 'token-target',
-      });
-      await repository.register({
-        userId: otherUserId,
-        platform: 'android',
-        fcmToken: 'token-other',
-      });
-
-      await repository.deactivateByUserId(targetUserId);
-
-      const otherStored = await env.DB.prepare(
-        'SELECT is_firebase_active FROM firebase_tokens WHERE user_id = ?'
-      )
-        .bind(otherUserId)
-        .first<{ is_firebase_active: number }>();
-      expect(otherStored?.is_firebase_active).toBe(1);
-    });
-
-    it('Token登録が存在しないuser_idでもエラーにならない', async () => {
-      const userId = await createUser('Token未登録利用者');
-
-      await expect(
-        repository.deactivateByUserId(userId)
-      ).resolves.toBeUndefined();
-    });
   });
 
   describe('findAllByUserId / deleteByUserId', () => {

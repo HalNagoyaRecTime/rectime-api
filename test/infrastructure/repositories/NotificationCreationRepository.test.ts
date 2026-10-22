@@ -824,6 +824,5 @@ function buildAutomaticCommand(
     audiences: [{ type: 'gathering', target_id: gatheringId }],
     source: { type: 'gathering', id: gatheringId, hash: sourceHash },
     now: '2026-10-04T01:00:00.000Z',
-    legacy_schedule: null,
   };
 }

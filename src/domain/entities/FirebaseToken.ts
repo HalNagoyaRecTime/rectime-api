@@ -3,7 +3,6 @@ export interface FirebaseTokenEntity {
   user_id: number;
   platform: FirebasePlatform;
   fcm_token: string;
-  is_firebase_active: number;
   last_seen_at: string;
   created_at: string;
   updated_at: string;
@@ -46,6 +45,5 @@ export interface RegisterFirebaseTokenResult {
   firebase_token_id: number;
   user_id: number;
   platform: FirebasePlatformName;
-  is_firebase_active: boolean;
   last_seen_at: string;
 }

@@ -331,37 +331,20 @@ async function createNotification(
       target_id: target.target_id,
     }))
   );
-  const scheduleInsert = command.legacy_schedule
-    ? db
-        .prepare(
-          `INSERT INTO notification_schedules (
-             created_user_id, scheduled_by_user_id, event_id, notification_id,
-             importance, send_status, send_at, created_at, updated_at
-           ) VALUES (?, ?, NULL, last_insert_rowid(), ?, 'scheduled', ?, ?, ?)
-           RETURNING notification_schedule_id`
-        )
-        .bind(
-          command.legacy_schedule.created_user_id,
-          command.scheduled_by_user_id,
-          command.legacy_schedule.importance,
-          command.send_at,
-          command.now,
-          command.now
-        )
-    : db
-        .prepare(
-          `INSERT INTO notification_schedules (
-             scheduled_by_user_id, notification_id, send_status, send_at,
-             created_at, updated_at
-           ) VALUES (?, last_insert_rowid(), 'scheduled', ?, ?, ?)
-           RETURNING notification_schedule_id`
-        )
-        .bind(
-          command.scheduled_by_user_id,
-          command.send_at,
-          command.now,
-          command.now
-        );
+  const scheduleInsert = db
+    .prepare(
+      `INSERT INTO notification_schedules (
+         scheduled_by_user_id, notification_id, send_status, send_at,
+         created_at, updated_at
+       ) VALUES (?, last_insert_rowid(), 'scheduled', ?, ?, ?)
+       RETURNING notification_schedule_id`
+    )
+    .bind(
+      command.scheduled_by_user_id,
+      command.send_at,
+      command.now,
+      command.now
+    );
 
   let results: D1Result[];
   try {
