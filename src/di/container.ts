@@ -50,6 +50,7 @@ import { createNotificationDeliveryService } from '../application/services/Notif
 import { createAdminNotificationManagementService } from '../application/services/AdminNotificationManagementService';
 import { createAdminNotificationCommandService } from '../application/services/AdminNotificationCommandService';
 import { createGatheringNotificationGeneratorService } from '../application/services/GatheringNotificationGeneratorService';
+import { createGatheringNotificationCleanupService } from '../application/services/GatheringNotificationCleanupService';
 import { createNotificationConfigService } from '../application/services/NotificationConfigService';
 import { createAdminNotificationQueryService } from '../application/services/AdminNotificationQueryService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
@@ -293,6 +294,8 @@ export function createDIContainer(env: Env) {
       notificationCreationRepository,
       env.EVENT_DATE
     );
+  const gatheringNotificationCleanupService =
+    createGatheringNotificationCleanupService(notificationStopService);
   const notificationConfigService = createNotificationConfigService(
     notificationConfigRepository
   );
@@ -328,7 +331,8 @@ export function createDIContainer(env: Env) {
     gatheringSpotRepository,
     eventGatheringSettingsRepository,
     imageUrlSigner,
-    gatheringNotificationGeneratorService
+    gatheringNotificationGeneratorService,
+    gatheringNotificationCleanupService
   );
   const rankingService = createRankingService(teamRepository);
   const teamService = createTeamService(teamRepository);

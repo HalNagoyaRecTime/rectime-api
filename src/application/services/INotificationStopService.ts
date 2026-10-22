@@ -1,6 +1,14 @@
-import type { NotificationStopCommand } from '../../domain/entities/NotificationStop';
+import type {
+  NotificationStopCommand,
+  NotificationStopPolicy,
+  NotificationStopPolicyCommand,
+} from '../../domain/entities/NotificationStop';
 
 export interface INotificationStopService {
+  createStopPolicy(
+    command: NotificationStopPolicyCommand,
+    now?: Date
+  ): NotificationStopPolicy;
   stopSchedule(
     command: NotificationStopCommand,
     now?: Date

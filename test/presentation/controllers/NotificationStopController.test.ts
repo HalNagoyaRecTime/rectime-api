@@ -12,7 +12,15 @@ function harness(error?: Error, actor: number | null = 10) {
     if (error) throw error;
     return { notificationScheduleId: 1, status: 'stopped' as const };
   });
-  const controller = createNotificationStopController({ stopSchedule });
+  const controller = createNotificationStopController({
+    stopSchedule,
+    createStopPolicy: () => ({
+      stopped_by_user_id: null,
+      reason: 'source_deleted',
+      allowed_statuses: ['resolving', 'sending'],
+      now: '2026-10-22T00:00:00.000Z',
+    }),
+  });
   const app = new Hono<{
     Bindings: Env;
     Variables: AuthenticationVariables & AuthVariables & ContainerVariables;
