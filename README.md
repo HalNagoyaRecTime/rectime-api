@@ -35,7 +35,7 @@ npm install
 | プラットフォーム | URI |
 |---|---|
 | Web | `http://localhost:8787/api/v1/auth/microsoft/callback` |
-| モバイル/デスクトップ | `com.rectime.mobile://auth/callback` |
+| モバイル/デスクトップ | `io.github.halnagoyarectime://auth/callback` |
 | モバイル/デスクトップ（Desktopループバック） | `http://localhost/auth/callback` |
 
 DesktopはシステムブラウザとAuthorization Code + PKCEを使う。
@@ -107,7 +107,7 @@ cp .dev.vars.example .dev.vars
 | `MICROSOFT_CERT_THUMBPRINT` | 手順 4 で取得した Base64URL サムプリント |
 | `MICROSOFT_TENANT` | `organizations`（組織アカウント全般）または特定テナント ID |
 | `ALLOWED_MICROSOFT_TENANTS` | 受け付けるテナント ID（カンマ区切り複数可） |
-| `MICROSOFT_MOBILE_REDIRECT_URI` | `com.rectime.mobile://auth/callback` |
+| `MICROSOFT_MOBILE_REDIRECT_URI` | `io.github.halnagoyarectime://auth/callback` |
 | `FRONTEND_URL` | `http://localhost:5173` |
 | `ALLOWED_ORIGINS` | CORS で許可するフロントエンドの origin（カンマ区切り複数可） |
 | `EVENT_DATE` | 通知配信を許可する開催日（JST、`YYYY-MM-DD`）。未設定・不正な値の場合は配信しない |
