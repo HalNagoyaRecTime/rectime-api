@@ -18,7 +18,8 @@ function buildExecutionContext(): {
 }
 
 // index.tsのscheduledハンドラは、通知配信Cron('* * * * *')と日次の
-// 後片付けCron('0 18 * * *', #345)をevent.cronの値で区別する。AccountDeletionService.retryPendingPurges自体の詳細な挙動は
+// 後片付けCron('0 18 * * *', #345)をevent.cronの値で区別する。
+// AccountDeletionService.retryPendingPurges自体の詳細な挙動は
 // AccountDeletionService.test.tsで検証済み。
 afterEach(() => vi.restoreAllMocks());
 

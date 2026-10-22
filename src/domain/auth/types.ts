@@ -61,7 +61,7 @@ export type MicrosoftTokenResult =
 
 // 削除確認Token(deletion_confirmation:{token})の値。一回限り・短期間の
 // 使い捨てで、本人確認済みのuser_idのみを保持する。upsertUserや一般API用
-// Tokenの発行経路とは独立しているため、MobileRefreshEntryとは共有しない。
+// Tokenの発行経路とは独立しているため、RefreshSessionとは共有しない。
 export interface DeletionConfirmationEntry {
   user_id: string;
   created_at: string;
