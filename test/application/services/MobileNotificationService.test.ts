@@ -35,7 +35,7 @@ describe('MobileNotificationService', () => {
       type: 'notification_general',
       title: 'お知らせ',
       body: '本文',
-      scheduledAt: '2026-07-23T09:00:00+09:00',
+      scheduledAt: '2026-07-23T00:00:00.000Z',
     };
     (repository.findByIdForUser as ReturnType<typeof vi.fn>).mockResolvedValue(
       entity
@@ -46,7 +46,7 @@ describe('MobileNotificationService', () => {
       notification_type: 'notification_general',
       title: 'お知らせ',
       body: '本文',
-      scheduled_at: '2026-07-23T09:00:00+09:00',
+      scheduled_at: '2026-07-23T00:00:00.000Z',
     });
     expect(repository.findByIdForUser).toHaveBeenCalledWith(5, 12);
   });
@@ -60,7 +60,7 @@ describe('MobileNotificationService', () => {
           type: 'notification_general',
           title: '競技通知',
           body: '本文',
-          scheduledAt: '2026-07-23T10:15:00+09:00',
+          scheduledAt: '2026-07-23T01:15:00.000Z',
         },
       ],
       total: 1,
@@ -75,7 +75,7 @@ describe('MobileNotificationService', () => {
           notification_type: 'notification_general',
           title: '競技通知',
           body: '本文',
-          scheduled_at: '2026-07-23T10:15:00+09:00',
+          scheduled_at: '2026-07-23T01:15:00.000Z',
         },
       ],
       total: 1,

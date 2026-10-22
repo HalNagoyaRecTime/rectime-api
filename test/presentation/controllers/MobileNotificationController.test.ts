@@ -16,7 +16,7 @@ const notification = {
   notification_type: 'notification_general',
   title: '競技開始のお知らせ',
   body: '競技開始時間が近づいています。',
-  scheduled_at: '2026-07-23T10:15:00+09:00',
+  scheduled_at: '2026-07-23T01:15:00.000Z',
 };
 
 function setup() {

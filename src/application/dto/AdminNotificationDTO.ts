@@ -1,10 +1,11 @@
-import type {
-  NotificationAudienceType,
-  NotificationCreationMethod,
-  NotificationImportance,
-  NotificationScheduleStatus,
-  NotificationSourceType,
-  NotificationStopReason,
+import {
+  DEFAULT_NOTIFICATION_IMPORTANCE,
+  type NotificationAudienceType,
+  type NotificationCreationMethod,
+  type NotificationImportance,
+  type NotificationScheduleStatus,
+  type NotificationSourceType,
+  type NotificationStopReason,
 } from '../../domain/entities/Notification';
 import type {
   AdminNotificationScheduleListItemDTO,
@@ -24,6 +25,10 @@ export interface NotificationContentDetailDTO {
 export interface NotificationContentDTO {
   push: NotificationContentPushDTO;
   detail: NotificationContentDetailDTO;
+}
+
+export interface NotificationContentPushOnlyDTO {
+  push: NotificationContentPushDTO;
 }
 
 export interface NotificationContentPatchDTO {
@@ -125,9 +130,7 @@ export type NotificationPatchResponseDTO = AdminNotificationDetailDTO;
 
 export interface AdminNotificationListItemDTO {
   notificationId: number;
-  content: {
-    push: NotificationContentPushDTO;
-  };
+  content: NotificationContentPushOnlyDTO;
   importance: NotificationImportance;
   creation: NotificationCreationDTO;
   createdAt: string;
@@ -140,7 +143,7 @@ export interface AdminNotificationListResponseDTO {
 
 export interface NotificationConfigDTO {
   importance: {
-    default: Extract<NotificationImportance, 'normal'>;
+    default: typeof DEFAULT_NOTIFICATION_IMPORTANCE;
     options: NotificationImportance[];
   };
 }
