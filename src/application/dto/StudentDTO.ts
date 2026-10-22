@@ -24,6 +24,8 @@ export interface StudentManagementDTO {
     class_code: string;
     class_name: string;
   } | null;
+  updated_at: string;
+  lock_version: number;
 }
 
 export interface StudentWriteDTO {
@@ -31,6 +33,10 @@ export interface StudentWriteDTO {
   class_room_id: number | null;
   attendance_number: number | null;
   student_id_number: string;
+}
+
+export interface StudentUpdateDTO extends StudentWriteDTO {
+  lock_version?: number;
 }
 
 export interface StudentPageDTO {

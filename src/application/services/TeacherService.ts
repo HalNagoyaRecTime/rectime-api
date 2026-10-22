@@ -40,6 +40,8 @@ function toDTO(teacher: TeacherEntity): TeacherDTO {
     is_live_active: teacher.isLiveActive,
     is_staff: teacher.isStaff,
     class_rooms: teacher.classRooms.map(toClassRoomDTO),
+    updated_at: teacher.updatedAt,
+    lock_version: teacher.lockVersion,
   };
 }
 
@@ -166,17 +168,34 @@ export function createTeacherService(
       if (!teacher) {
         throw new Error('Teacher not found');
       }
+      // 取得時点から変わっていれば、他の確認より先に409にする。
+      // 確認後に更新される競合は、update() 側の条件で0件更新になって検出する。
+      if (
+        input.lockVersion !== undefined &&
+        input.lockVersion !== teacher.lockVersion
+      ) {
+        throw new Error('Teacher update conflict');
+      }
       await ensureClassRoomsExist(input.classRoomIds);
       let updated;
       try {
         updated = await teacherRepository.update(id, {
-          ...input,
+          userName: input.userName,
           email: normalizeEmail(input.email),
+          classRoomIds: input.classRoomIds,
+          expectedLockVersion: input.lockVersion,
         });
       } catch (error) {
         rethrowDuplicateEmail(error);
       }
       if (!updated) {
+        // 版番号を条件にしていた場合、0件更新は削除か版番号の不一致のどちらか。
+        if (
+          input.lockVersion !== undefined &&
+          (await teacherRepository.findById(id))
+        ) {
+          throw new Error('Teacher update conflict');
+        }
         throw new Error('Teacher not found');
       }
       return toDTO(updated);

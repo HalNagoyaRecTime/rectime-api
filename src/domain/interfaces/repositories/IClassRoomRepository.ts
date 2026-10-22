@@ -3,6 +3,7 @@ import {
   ClassRoomInput,
   ClassRoomPage,
   ClassRoomSearchFilter,
+  ClassRoomUpdateInput,
 } from '../../entities/ClassRoom';
 
 export interface IClassRoomRepository {
@@ -15,11 +16,11 @@ export interface IClassRoomRepository {
   createMany: (inputs: Omit<ClassRoomInput, 'teamId'>[]) => Promise<void>;
   update: (
     id: number,
-    input: ClassRoomInput
+    input: ClassRoomUpdateInput
   ) => Promise<ClassRoomEntity | null>;
   updateAndCleanupTeam: (
     id: number,
-    input: ClassRoomInput,
+    input: ClassRoomUpdateInput,
     previousTeamId: number
   ) => Promise<ClassRoomEntity | null>;
   delete: (id: number) => Promise<boolean>;

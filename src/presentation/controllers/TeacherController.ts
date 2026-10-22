@@ -125,6 +125,12 @@ export function createTeacherController(teacherService: ITeacherService) {
       ) {
         return errorResponse(c, UserErrors.TEACHER_EMAIL_ALREADY_EXISTS);
       }
+      if (
+        error instanceof Error &&
+        error.message === 'Teacher update conflict'
+      ) {
+        return errorResponse(c, UserErrors.TEACHER_UPDATE_CONFLICT);
+      }
       return errorResponse(c, UserErrors.TEACHER_UPDATE_FAILED);
     }
   };

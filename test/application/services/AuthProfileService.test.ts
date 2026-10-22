@@ -17,6 +17,8 @@ const student: StudentEntity = {
   studentIdNumber: '00123',
   isLiveActive: true,
   isStaff: false,
+  updatedAt: '2026-01-01 00:00:00',
+  lockVersion: 0,
 };
 const teacher: TeacherEntity = {
   teacherId: 9,
@@ -29,6 +31,8 @@ const teacher: TeacherEntity = {
     { classRoomId: 7, classCode: '2-B', className: '2年B組' },
     { classRoomId: 3, classCode: '1-A', className: '1年A組' },
   ],
+  updatedAt: '2026-01-01 00:00:00',
+  lockVersion: 0,
 };
 
 function buildService() {

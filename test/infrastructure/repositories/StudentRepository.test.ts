@@ -5,6 +5,7 @@ import type {
 } from '@cloudflare/workers-types';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createStudentRepository } from '../../../src/infrastructure/repositories/StudentRepository';
+import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import { seedStudents, type SeededData } from '../../fixtures/students';
 
@@ -250,6 +251,24 @@ describe('StudentRepository', () => {
     it('存在しない id の場合は null を返す', async () => {
       expect(await repo.findById(999999)).toBeNull();
     });
+
+    it('students.updated_at を updatedAt として一覧・詳細の両方で返す', async () => {
+      const target = seeded.students[0];
+      const row = await env.DB.prepare(
+        'SELECT updated_at FROM students WHERE student_id = ?'
+      )
+        .bind(target.studentId)
+        .first<{ updated_at: string }>();
+
+      expect((await repo.findById(target.studentId))?.updatedAt).toBe(
+        row?.updated_at
+      );
+      const listed = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
+        item => item.studentId === target.studentId
+      );
+      expect(listed?.updatedAt).toBe(row?.updated_at);
+      expect(listed?.lockVersion).toBe(0);
+    });
   });
 
   describe('findByUserId', () => {
@@ -338,6 +357,83 @@ describe('StudentRepository', () => {
       ).resolves.toBeNull();
     });
 
+    describe('版番号による楽観ロック', () => {
+      async function createStudent(studentIdNumber: string) {
+        const created = await repo.create({
+          displayName: '版番号テスト',
+          classRoomId: seeded.classRoomId,
+          attendanceNumber: 20,
+          studentIdNumber,
+        });
+        return created.studentId;
+      }
+
+      const input = (studentIdNumber: string, displayName: string) => ({
+        displayName,
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 21,
+        studentIdNumber,
+      });
+
+      it('expectedLockVersion が現在の値と一致すれば更新し、lockVersion を1増やす', async () => {
+        const id = await createStudent('LOCK-S1');
+
+        const updated = await repo.update(id, {
+          ...input('LOCK-S1', '更新後'),
+          expectedLockVersion: 0,
+        });
+
+        expect(updated).toMatchObject({
+          userName: '更新後',
+          attendanceNumber: 21,
+          lockVersion: 1,
+        });
+      });
+
+      it('expectedLockVersion が現在の値と異なれば null を返し、users も students も変更しない', async () => {
+        const id = await createStudent('LOCK-S2');
+
+        const updated = await repo.update(id, {
+          ...input('LOCK-S2', '上書きされてはいけない'),
+          expectedLockVersion: 5,
+        });
+
+        expect(updated).toBeNull();
+        await expect(repo.findById(id)).resolves.toMatchObject({
+          userName: '版番号テスト',
+          attendanceNumber: 20,
+          lockVersion: 0,
+        });
+      });
+
+      it('同じ版番号での2回の連続更新は、1回目だけ成功し2回目は競合する（同じ秒内でも）', async () => {
+        const id = await createStudent('LOCK-S3');
+
+        const first = await repo.update(id, {
+          ...input('LOCK-S3', 'Aの更新'),
+          expectedLockVersion: 0,
+        });
+        const second = await repo.update(id, {
+          ...input('LOCK-S3', 'Bの更新'),
+          expectedLockVersion: 0,
+        });
+
+        expect(first).toMatchObject({ userName: 'Aの更新', lockVersion: 1 });
+        expect(second).toBeNull();
+        await expect(repo.findById(id)).resolves.toMatchObject({
+          userName: 'Aの更新',
+        });
+      });
+
+      it('expectedLockVersion を指定しない更新は版番号を確認せず、lockVersion は進む', async () => {
+        const id = await createStudent('LOCK-S4');
+
+        const updated = await repo.update(id, input('LOCK-S4', '更新後'));
+
+        expect(updated).toMatchObject({ userName: '更新後', lockVersion: 1 });
+      });
+    });
+
     it('クラス未所属の学生を作成し、所属情報なしで取得できる', async () => {
       const created = await repo.create({
         displayName: '未所属学生',
@@ -357,6 +453,35 @@ describe('StudentRepository', () => {
         classRoomId: null,
         attendanceNumber: null,
       });
+    });
+  });
+
+  describe('表示名の同期が学生の版に反映される', () => {
+    it('学生を取得したあとに氏名が同期されると、古い版の学生PUTは競合し、新しい氏名が残る', async () => {
+      const target = seeded.students[0];
+      const fetched = await repo.findById(target.studentId);
+
+      await createUserRepository(env.DB).updateUser({
+        userId: String(target.userId),
+        oid: 'oid-sync',
+        tid: 'tid-sync',
+        sub: 'sub-sync',
+        email: 'sync@example.com',
+        displayName: '同期された新しい氏名',
+      });
+
+      const updated = await repo.update(target.studentId, {
+        displayName: fetched!.userName,
+        classRoomId: fetched!.classRoomId,
+        attendanceNumber: fetched!.attendanceNumber,
+        studentIdNumber: fetched!.studentIdNumber,
+        expectedLockVersion: fetched!.lockVersion,
+      });
+
+      expect(updated).toBeNull();
+      expect((await repo.findById(target.studentId))?.userName).toBe(
+        '同期された新しい氏名'
+      );
     });
   });
 
