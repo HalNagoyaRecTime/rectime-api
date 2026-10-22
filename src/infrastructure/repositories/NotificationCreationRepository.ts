@@ -49,6 +49,9 @@ export function createNotificationCreationRepository(
       )
         return { status: 'already_exists' };
       for (let attempt = 0; attempt < AUTOMATIC_SYNC_MAX_ATTEMPTS; attempt++) {
+        if (!(await hasNotificationSource(db, command.source))) {
+          return { status: 'already_exists' };
+        }
         if (await hasStartedSourceSchedule(db, command.source)) {
           return { status: 'already_exists' };
         }
@@ -193,6 +196,20 @@ export function createNotificationCreationRepository(
   };
 }
 
+async function hasNotificationSource(
+  db: D1Database,
+  source: AutomaticNotificationCreationCommand['source']
+): Promise<boolean> {
+  if (source.type === 'gathering') {
+    const row = await db
+      .prepare('SELECT 1 FROM gatherings WHERE gathering_id = ?')
+      .bind(source.id)
+      .first();
+    return row !== null;
+  }
+  return true;
+}
+
 async function createAutomaticNotificationIfSourceAbsent(
   db: D1Database,
   command: AutomaticNotificationCreationCommand
@@ -220,6 +237,12 @@ async function createAutomaticNotificationIfSourceAbsent(
              WHERE source_type = ? AND source_id = ?
                AND notification_type = 'notification_general'
            )
+             AND (
+               ? <> 'gathering'
+               OR EXISTS (
+                 SELECT 1 FROM gatherings g WHERE g.gathering_id = ?
+               )
+             )
            RETURNING notification_id`
         )
         .bind(
@@ -234,6 +257,8 @@ async function createAutomaticNotificationIfSourceAbsent(
           command.source.hash,
           command.now,
           command.now,
+          command.source.type,
+          command.source.id,
           command.source.type,
           command.source.id
         ),

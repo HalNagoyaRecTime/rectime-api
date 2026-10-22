@@ -5,6 +5,8 @@ import type { IEventGatheringSettingsRepository } from '../../../src/domain/inte
 import type { IEventRepository } from '../../../src/domain/interfaces/repositories/IEventRepository';
 import type { IGatheringSpotRepository } from '../../../src/domain/interfaces/repositories/IGatheringSpotRepository';
 import type { IGatheringNotificationGeneratorService } from '../../../src/application/services/GatheringNotificationGeneratorService';
+import type { IGatheringNotificationCleanupService } from '../../../src/application/services/IGatheringNotificationCleanupService';
+import type { GatheringNotificationCleanupPlan } from '../../../src/domain/entities/GatheringNotificationCleanup';
 
 const EVENT_ID = 12;
 
@@ -80,12 +82,30 @@ function setup(
         failed_gathering_ids: [],
       }),
     };
+  const gatheringNotificationCleanupService: IGatheringNotificationCleanupService =
+    {
+      prepareCleanup: vi.fn(
+        (gatheringIds: number[]): GatheringNotificationCleanupPlan | null =>
+          gatheringIds.length > 0
+            ? {
+                gathering_ids: gatheringIds,
+                stop_policy: {
+                  stopped_by_user_id: null,
+                  reason: 'source_deleted',
+                  allowed_statuses: ['resolving', 'sending'],
+                  now: '2026-10-22T00:00:00.000Z',
+                },
+              }
+            : null
+      ),
+    };
   const service = createEventGatheringSettingsService(
     eventRepository,
     gatheringSpotRepository,
     repository,
     { sign: async (key: string) => `https://signed.example/${key}` },
-    gatheringNotificationGeneratorService
+    gatheringNotificationGeneratorService,
+    gatheringNotificationCleanupService
   );
   return {
     service,
@@ -93,6 +113,7 @@ function setup(
     gatheringSpotRepository,
     repository,
     gatheringNotificationGeneratorService,
+    gatheringNotificationCleanupService,
   };
 }
 
@@ -169,19 +190,32 @@ describe('EventGatheringSettingsService', () => {
         ],
       });
 
-      expect(repository.apply).toHaveBeenCalledWith({
-        event_id: EVENT_ID,
-        creates: [
-          {
-            round: 2,
-            round_start_time: null,
-            gathering_time: '11:00',
-            gathering_spot_id: 3,
+      expect(repository.apply).toHaveBeenCalledWith(
+        {
+          event_id: EVENT_ID,
+          creates: [
+            {
+              round: 2,
+              round_start_time: null,
+              gathering_time: '11:00',
+              gathering_spot_id: 3,
+            },
+          ],
+          updates: [],
+          delete_ids: [102],
+        },
+        {
+          notificationCleanup: {
+            gathering_ids: [102],
+            stop_policy: {
+              stopped_by_user_id: null,
+              reason: 'source_deleted',
+              allowed_statuses: ['resolving', 'sending'],
+              now: '2026-10-22T00:00:00.000Z',
+            },
           },
-        ],
-        updates: [],
-        delete_ids: [102],
-      });
+        }
+      );
     });
 
     it('gathering_id のある集合予定はIDを維持して更新する', async () => {
@@ -276,12 +310,25 @@ describe('EventGatheringSettingsService', () => {
         rounds: [],
       });
 
-      expect(repository.apply).toHaveBeenCalledWith({
-        event_id: EVENT_ID,
-        creates: [],
-        updates: [],
-        delete_ids: [102],
-      });
+      expect(repository.apply).toHaveBeenCalledWith(
+        {
+          event_id: EVENT_ID,
+          creates: [],
+          updates: [],
+          delete_ids: [102],
+        },
+        {
+          notificationCleanup: {
+            gathering_ids: [102],
+            stop_policy: {
+              stopped_by_user_id: null,
+              reason: 'source_deleted',
+              allowed_statuses: ['resolving', 'sending'],
+              now: '2026-10-22T00:00:00.000Z',
+            },
+          },
+        }
+      );
     });
   });
 
