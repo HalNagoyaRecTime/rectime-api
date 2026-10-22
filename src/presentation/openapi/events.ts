@@ -91,13 +91,13 @@ type EventWriteRequest = Omit<CreateEventRequestDTO, 'rule_text'> & {
 };
 
 const eventTimeRangeRefinement = {
-  message: 'end_time must be after start_time',
+  message: '終了時刻は開始時刻以降を指定してください。',
   path: ['end_time'],
 };
 const isValidEventTimeRange = (data: {
   start_time: string;
   end_time: string;
-}) => data.start_time < data.end_time;
+}) => data.start_time <= data.end_time;
 
 const eventBaseSchema = z.object({
   event_name: z.string().trim().min(1).max(100),
@@ -110,7 +110,8 @@ const eventBaseSchema = z.object({
 export const eventWriteSchema = eventBaseSchema
   .refine(isValidEventTimeRange, eventTimeRangeRefinement)
   .openapi('EventWriteRequest', {
-    description: 'start_timeはend_timeより前の時刻を指定する。',
+    description:
+      'start_timeはend_time以前の時刻を指定する。同一時刻は締切を表し、区間として扱わない。',
   }) satisfies z.ZodType<EventWriteRequest>;
 
 // notification_enabled等の未知fieldを黙って無視すると「通知を止めたつもりが
@@ -119,7 +120,8 @@ export const eventUpdateSchema = eventBaseSchema
   .strict()
   .refine(isValidEventTimeRange, eventTimeRangeRefinement)
   .openapi('EventUpdateRequest', {
-    description: 'start_timeはend_timeより前の時刻を指定する。',
+    description:
+      'start_timeはend_time以前の時刻を指定する。同一時刻は締切を表し、区間として扱わない。',
   }) satisfies z.ZodType<EventWriteRequest>;
 
 export const eventListRoute = createRoute({

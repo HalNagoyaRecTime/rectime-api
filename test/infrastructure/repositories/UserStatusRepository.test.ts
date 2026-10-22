@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createUserStatusRepository } from '../../../src/infrastructure/repositories/UserStatusRepository';
 import type { IUserStatusRepository } from '../../../src/domain/interfaces/repositories/IUserStatusRepository';
 import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
@@ -192,6 +192,114 @@ describe('UserStatusRepository', () => {
 
       await expect(repo.updateLiveActive(target, false)).resolves.toBeNull();
       await expect(readIsLiveActive(target)).resolves.toBe(1);
+    });
+  });
+
+  describe('担任クラスの更新時刻', () => {
+    // teachers は users を参照するため、他のテストの beforeEach（users の削除）を
+    // 妨げないよう、このdescribeで作った teachers と class_rooms をここで片付ける
+    afterEach(async () => {
+      await env.DB.prepare('DELETE FROM class_rooms').run();
+      await env.DB.prepare('DELETE FROM teachers').run();
+    });
+
+    async function insertTeacherClass(userName: string, classCode: string) {
+      const userId = await insertUser(userName);
+      const teacher = await env.DB.prepare(
+        'INSERT INTO teachers (user_id, email) VALUES (?, ?) RETURNING teacher_id'
+      )
+        .bind(userId, `${classCode}@example.ac.jp`)
+        .first<{ teacher_id: number }>();
+      const classRoom = await insertClassRoom(classCode, teacher!.teacher_id);
+      return { userId, classRoomId: classRoom };
+    }
+
+    async function insertClassRoom(
+      classCode: string,
+      teacherId: number | null
+    ) {
+      const { classRoomId } = await insertClassRoomWithTeam(env.DB, {
+        classCode,
+        className: classCode,
+        teacherId,
+      });
+      return classRoomId;
+    }
+
+    async function readClassLockVersion(classRoomId: number) {
+      const row = await env.DB.prepare(
+        'SELECT lock_version FROM class_rooms WHERE class_room_id = ?'
+      )
+        .bind(classRoomId)
+        .first<{ lock_version: number }>();
+      return row?.lock_version;
+    }
+
+    it('担任の教員を無効化すると、その担任クラスの lock_version だけが進む', async () => {
+      await insertActiveStaff('残る管理者');
+      const target = await insertTeacherClass('担任教員', 'BUMP-1');
+      const otherClass = await insertClassRoom('BUMP-OTHER', null);
+
+      await repo.updateLiveActive(target.userId, false);
+
+      expect(await readClassLockVersion(target.classRoomId)).toBe(1);
+      expect(await readClassLockVersion(otherClass)).toBe(0);
+    });
+
+    it('再有効化でも、担任クラスの lock_version が進む', async () => {
+      await insertActiveStaff('残る管理者');
+      const target = await insertTeacherClass('担任教員', 'BUMP-2');
+      await repo.updateLiveActive(target.userId, false);
+      expect(await readClassLockVersion(target.classRoomId)).toBe(1);
+
+      await repo.updateLiveActive(target.userId, true);
+
+      expect(await readClassLockVersion(target.classRoomId)).toBe(2);
+    });
+
+    it('無効化できなかった場合（他に稼働中のstaffがいない）は、lock_version を進めない', async () => {
+      const target = await insertTeacherClass('担任教員', 'BUMP-3');
+
+      await expect(
+        repo.updateLiveActive(target.userId, false)
+      ).resolves.toBeNull();
+
+      expect(await readClassLockVersion(target.classRoomId)).toBe(0);
+    });
+
+    it('すでに同じ状態への更新（有効な教員を有効にする）では、担任クラスの lock_version を進めない', async () => {
+      await insertActiveStaff('残る管理者');
+      const target = await insertTeacherClass('担任教員', 'BUMP-5');
+
+      await expect(repo.updateLiveActive(target.userId, true)).resolves.toEqual(
+        {
+          user_id: target.userId,
+          is_live_active: true,
+        }
+      );
+
+      expect(await readClassLockVersion(target.classRoomId)).toBe(0);
+    });
+
+    it('すでに停止中の教員を停止にしても、担任クラスの lock_version は進まない', async () => {
+      await insertActiveStaff('残る管理者');
+      const target = await insertTeacherClass('担任教員', 'BUMP-6');
+      await repo.updateLiveActive(target.userId, false);
+      expect(await readClassLockVersion(target.classRoomId)).toBe(1);
+
+      await repo.updateLiveActive(target.userId, false);
+
+      expect(await readClassLockVersion(target.classRoomId)).toBe(1);
+    });
+
+    it('担任ではないUserの更新は、どのクラスの lock_version も進めない', async () => {
+      await insertActiveStaff('残る管理者');
+      const someClass = await insertClassRoom('BUMP-4', null);
+      const nonTeacher = await insertUser('担任ではないUser');
+
+      await repo.updateLiveActive(nonTeacher, false);
+
+      expect(await readClassLockVersion(someClass)).toBe(0);
     });
   });
 

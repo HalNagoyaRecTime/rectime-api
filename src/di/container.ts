@@ -183,7 +183,8 @@ export function createDIContainer(env: Env) {
   const authProfileService = createAuthProfileService(
     userRepository,
     studentRepository,
-    teacherRepository
+    teacherRepository,
+    env.STUDENT_EMAIL_DOMAIN
   );
   const logoutService = createLogoutService(
     firebaseTokenRepository,

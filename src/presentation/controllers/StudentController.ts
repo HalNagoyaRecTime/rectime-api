@@ -6,6 +6,7 @@ import { UserErrors } from '../errors/userErrors';
 import {
   studentIdParams,
   studentListQuery,
+  studentUpdateSchema,
   studentWriteSchema,
 } from '../openapi/students';
 
@@ -87,7 +88,7 @@ export function createStudentController(studentService: IStudentService) {
     if (studentId === null) {
       return errorResponse(c, UserErrors.INVALID_STUDENT_ID);
     }
-    const parsedBody = await parseStudentBody(c);
+    const parsedBody = await parseStudentUpdateBody(c);
     if (!parsedBody.success) return parsedBody.response;
 
     try {
@@ -124,6 +125,22 @@ async function parseStudentBody(c: Context) {
   };
 }
 
+async function parseStudentUpdateBody(c: Context) {
+  const body = await c.req.json().catch(() => undefined);
+  const parsedBody = studentUpdateSchema.safeParse(body);
+  if (parsedBody.success) {
+    return { success: true as const, data: parsedBody.data };
+  }
+  return {
+    success: false as const,
+    response: errorResponse(
+      c,
+      UserErrors.INVALID_STUDENT_REQUEST,
+      parsedBody.error.flatten()
+    ),
+  };
+}
+
 function toStudentErrorResponse(
   c: Context,
   error: unknown,
@@ -139,6 +156,9 @@ function toStudentErrorResponse(
   }
   if (error.message === 'Class room not found') {
     return errorResponse(c, UserErrors.CLASS_ROOM_NOT_FOUND);
+  }
+  if (error.message === 'Student update conflict') {
+    return errorResponse(c, UserErrors.STUDENT_UPDATE_CONFLICT);
   }
   if (
     error.message === 'Student number already exists' ||

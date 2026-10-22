@@ -55,7 +55,7 @@ export default [
     },
   },
   {
-    files: ['.github/scripts/*.mjs'],
+    files: ['.github/scripts/*.mjs', 'scripts/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
@@ -63,6 +63,12 @@ export default [
         console: 'readonly',
         fetch: 'readonly',
         process: 'readonly',
+        URLSearchParams: 'readonly',
+        URL: 'readonly',
+        Response: 'readonly',
+        AbortSignal: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
       },
     },
   },

@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { app } from '../src/index';
 import { signAccessToken } from '../src/infrastructure/auth/jwt';
@@ -15,13 +15,21 @@ const corsTestEnv = {
 // signAccessToken は32バイト以上のシークレットを要求する。
 const JWT_SECRET = 'a'.repeat(32);
 const authEnv = { ...env, JWT_SECRET };
+let contractUserId: number;
+
+beforeAll(async () => {
+  const user = await env.DB.prepare(
+    "INSERT INTO users (user_name) VALUES ('契約テスト') RETURNING user_id"
+  ).first<{ user_id: number }>();
+  contractUserId = user!.user_id;
+});
 
 /** apiV1配下は全ルートが認証必須のため、契約検証にもトークンが要る。 */
 async function bearerHeaders(): Promise<Record<string, string>> {
   const token = await signAccessToken(
     {
-      sub: '1',
-      oid: 'oid-1',
+      sub: String(contractUserId),
+      oid: `contract-user-${contractUserId}`,
       email: 'contract@example.com',
       display_name: '契約テスト',
       client_type: 'web',
@@ -114,11 +122,11 @@ describe('OpenAPI documentation', () => {
       nullable: true,
     });
     expect(document.components.schemas.EventWriteRequest.description).toContain(
-      'start_timeはend_timeより前の時刻を指定する'
+      'start_timeはend_time以前の時刻を指定する'
     );
     expect(
       document.components.schemas.EventUpdateRequest.description
-    ).toContain('start_timeはend_timeより前の時刻を指定する');
+    ).toContain('start_timeはend_time以前の時刻を指定する');
     const venueListParameters = (
       document.paths['/api/v1/venues'].get as {
         parameters?: Array<{
