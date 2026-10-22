@@ -154,7 +154,6 @@ async function restoreCurrentSchema() {
     env.DB.prepare('ALTER TABLE notification_send_logs_backup RENAME TO notification_send_logs'),
     env.DB.prepare('ALTER TABLE firebase_tokens_backup RENAME TO firebase_tokens'),
     env.DB.prepare('CREATE INDEX idx_firebase_tokens_user_id ON firebase_tokens(user_id)'),
-    env.DB.prepare('CREATE INDEX idx_firebase_tokens_active ON firebase_tokens(is_firebase_active)'),
     env.DB.prepare('CREATE INDEX idx_notification_send_logs_event_id ON notification_send_logs(event_id)'),
     env.DB.prepare('CREATE INDEX idx_notification_send_logs_scheduled_for_date ON notification_send_logs(scheduled_for_date)'),
   ]);

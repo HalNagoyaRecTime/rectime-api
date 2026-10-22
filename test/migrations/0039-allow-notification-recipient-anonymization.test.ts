@@ -152,12 +152,11 @@ async function createFixture(): Promise<Fixture> {
 
   const schedule = await env.DB.prepare(
     `INSERT INTO notification_schedules (
-       created_user_id, scheduled_by_user_id, notification_id,
-       send_status, send_at
-     ) VALUES (?, ?, ?, 'scheduled', '2026-09-29T00:00:00.000Z')
+       scheduled_by_user_id, notification_id, send_status, send_at
+     ) VALUES (?, ?, 'scheduled', '2026-09-29T00:00:00.000Z')
      RETURNING notification_schedule_id`
   )
-    .bind(userA.user_id, userA.user_id, notification.notification_id)
+    .bind(userA.user_id, notification.notification_id)
     .first<{ notification_schedule_id: number }>();
   if (!schedule) {
     throw new Error('Migrationテスト用Scheduleの作成に失敗しました');
