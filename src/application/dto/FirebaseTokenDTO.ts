@@ -1,4 +1,6 @@
-export type FirebaseTokenPlatformDTO = 'ios' | 'android';
+import type { FirebasePlatformName } from '../../domain/entities/FirebaseToken';
+
+export type FirebaseTokenPlatformDTO = FirebasePlatformName;
 
 export interface FirebaseTokenRegistrationRequestDTO {
   fcmToken: string;

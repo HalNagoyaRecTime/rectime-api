@@ -6,6 +6,7 @@ import {
   utcDateTimeSchema,
   z,
 } from '../schemas';
+import { firebasePlatformNameSchema } from './commonSchemas';
 import {
   notificationBadRequestResponse,
   notificationUnauthorizedResponse,
@@ -14,7 +15,7 @@ import {
 export const firebaseTokenRegistrationRequestSchema = z
   .object({
     fcmToken: z.string().min(1),
-    platform: z.enum(['ios', 'android']),
+    platform: firebasePlatformNameSchema,
   })
   .strict()
   .openapi('FirebaseTokenRegistrationRequest');
@@ -23,7 +24,7 @@ export const firebaseTokenSchema = z
   .object({
     firebaseTokenId: z.number().int().positive(),
     userId: z.number().int().positive(),
-    platform: z.enum(['ios', 'android']),
+    platform: firebasePlatformNameSchema,
     lastSeenAt: utcDateTimeSchema,
   })
   .strict()

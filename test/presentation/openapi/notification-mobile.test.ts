@@ -10,6 +10,7 @@ import {
   mobileNotificationListQuery,
   mobileNotificationResponseSchema,
 } from '../../../src/presentation/openapi/notification/mobileNotifications';
+import { date, offsetDate } from './notification.fixtures';
 
 describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', () => {
   it('Application DTOとOpenAPI response型が相互代入可能', () => {
@@ -25,7 +26,7 @@ describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', ()
     >();
   });
 
-  it('notification_generalを正本とし、related_eventをResponseに含めない', () => {
+  it('notification_generalとUTC日時だけを正本とし、related_eventをResponseに含めない', () => {
     expect(mobileNotificationResponseSchema.shape).not.toHaveProperty(
       'related_event'
     );
@@ -35,7 +36,7 @@ describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', ()
         notification_type: 'notification_general',
         title: '集合時間変更',
         body: '集合時間が変更になりました。',
-        scheduled_at: '2026-11-07T15:35:00+09:00',
+        scheduled_at: date,
       }).success
     ).toBe(true);
     expect(
@@ -44,7 +45,26 @@ describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', ()
         notification_type: 'manual',
         title: '集合時間変更',
         body: '集合時間が変更になりました。',
-        scheduled_at: '2026-11-07T15:35:00+09:00',
+        scheduled_at: date,
+      }).success
+    ).toBe(false);
+    expect(
+      mobileNotificationResponseSchema.safeParse({
+        notification_id: 108,
+        notification_type: 'notification_general',
+        title: '集合時間変更',
+        body: '集合時間が変更になりました。',
+        scheduled_at: offsetDate,
+      }).success
+    ).toBe(false);
+    expect(
+      mobileNotificationResponseSchema.safeParse({
+        notification_id: 108,
+        notification_type: 'notification_general',
+        title: '集合時間変更',
+        body: '集合時間が変更になりました。',
+        scheduled_at: date,
+        related_event: null,
       }).success
     ).toBe(false);
     expect(

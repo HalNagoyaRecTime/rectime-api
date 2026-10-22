@@ -22,6 +22,14 @@ export const NOTIFICATION_PUSH_DELIVERY_STATUSES = [
 export type NotificationPushDeliveryStatus =
   (typeof NOTIFICATION_PUSH_DELIVERY_STATUSES)[number];
 
+export const NOTIFICATION_RECIPIENT_RESOLUTION_STATUSES = [
+  'pending',
+  'resolved',
+] as const;
+
+export type NotificationRecipientResolutionStatus =
+  (typeof NOTIFICATION_RECIPIENT_RESOLUTION_STATUSES)[number];
+
 export const NOTIFICATION_AUDIENCE_TYPES = [
   'all',
   'class_room',
