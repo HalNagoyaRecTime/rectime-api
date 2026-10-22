@@ -1359,6 +1359,52 @@ describe('POST /auth/refresh', () => {
     expect(await findRefreshSession(body.refresh_token_id)).not.toBeNull();
   });
 
+  it('Microsoftへの問い合わせ中に同じIDが先にローテーションされた場合は401 SESSION_EXPIREDを返す', async () => {
+    const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser();
+    await storeRefreshSession('refresh-1', {
+      ...refreshEntry(userId),
+      client_type: 'web',
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        await createRefreshSessionRepository(workerEnv.DB).rotate(
+          'refresh-1',
+          'refresh-by-other-request',
+          'ms-refresh-other',
+          3600
+        );
+        return new Response(
+          JSON.stringify({
+            access_token: 'graph-access-1',
+            refresh_token: 'ms-refresh-2',
+          })
+        );
+      })
+    );
+
+    const res = await buildApp().request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('SESSION_EXPIRED');
+    expect(
+      (await findRefreshSession('refresh-by-other-request'))?.ms_refresh_token
+    ).toBe('ms-refresh-other');
+  });
+
   it('Microsoftのリフレッシュに失敗した場合は401を返す', async () => {
     const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
     const userId = await insertUser();
