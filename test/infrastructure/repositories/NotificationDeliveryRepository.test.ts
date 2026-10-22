@@ -65,14 +65,13 @@ async function createSchedule(
 async function insertToken(
   userId: number,
   token: string,
-  platform: 1 | 2,
-  active = 1
+  platform: 1 | 2
 ): Promise<number> {
   const row = await env.DB.prepare(
-    `INSERT INTO firebase_tokens (user_id, platform, fcm_token, is_firebase_active)
-     VALUES (?, ?, ?, ?) RETURNING firebase_token_id`
+    `INSERT INTO firebase_tokens (user_id, platform, fcm_token)
+     VALUES (?, ?, ?) RETURNING firebase_token_id`
   )
-    .bind(userId, platform, token, active)
+    .bind(userId, platform, token)
     .first<{ firebase_token_id: number }>();
   if (!row) throw new Error('Delivery用Firebase Tokenを作成できませんでした');
   return row.firebase_token_id;
@@ -465,12 +464,6 @@ describe('NotificationDeliveryRepository and Service', () => {
       'delivery-android-token',
       2
     );
-    const inactiveTokenId = await insertToken(
-      fixture.recipientUserId,
-      'delivery-inactive-token',
-      1,
-      0
-    );
     await resolve(fixture.scheduleId);
     const { service, messages } = createHarness();
 
@@ -501,18 +494,6 @@ describe('NotificationDeliveryRepository and Service', () => {
         fcm_message_id: null,
         sent_at: null,
       },
-      {
-        firebase_token_id: inactiveTokenId,
-        platform: 1,
-        status: 'pending',
-        attempt_count: 0,
-        first_attempt_at: null,
-        last_attempt_at: null,
-        next_retry_at: null,
-        failed_reason: null,
-        fcm_message_id: null,
-        sent_at: null,
-      },
     ]);
 
     await insertToken(fixture.recipientUserId, 'delivery-late-token', 2);
@@ -520,7 +501,7 @@ describe('NotificationDeliveryRepository and Service', () => {
     expect(second.queued_schedule_ids).toEqual([fixture.scheduleId]);
     expect(
       (await deliveryRows(fixture.scheduleId)).map(row => row.firebase_token_id)
-    ).toEqual([iosTokenId, androidTokenId, inactiveTokenId]);
+    ).toEqual([iosTokenId, androidTokenId]);
     expect(messages).toHaveLength(2);
   });
 
@@ -774,20 +755,5 @@ describe('NotificationDeliveryRepository and Service', () => {
     await expect(
       deliveryRepository.claimPendingDeliveries([fixture.scheduleId], NOW, 100)
     ).resolves.toEqual([]);
-  });
-
-  it('is_firebase_activeが0のTokenもv2 Deliveryへ含める', async () => {
-    const fixture = await createSchedule();
-    const tokenId = await insertToken(
-      fixture.recipientUserId,
-      'inactive-legacy-token',
-      1,
-      0
-    );
-    await resolve(fixture.scheduleId);
-    await deliveryRepository.prepareResolvedSchedule(fixture.scheduleId, NOW);
-    const rows = await deliveryRows(fixture.scheduleId);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ firebase_token_id: tokenId });
   });
 });

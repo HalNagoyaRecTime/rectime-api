@@ -156,8 +156,7 @@ describe('管理通知Command  API', () => {
 
     const stored = await workerEnv.DB.prepare(
       `SELECT n.created_by_user_id, n.notification_type, n.importance,
-              s.created_user_id, s.scheduled_by_user_id, s.send_status,
-              s.send_at, s.firebase_token_id
+              s.scheduled_by_user_id, s.send_status, s.send_at
        FROM notifications n
        JOIN notification_schedules s USING (notification_id)
        WHERE n.notification_id = ?`
@@ -170,7 +169,6 @@ describe('管理通知Command  API', () => {
       notification_type: 'notification_general',
       importance: 'normal',
       send_status: 'scheduled',
-      firebase_token_id: null,
     });
     const sendAt = String(stored?.send_at);
     expect(Date.parse(sendAt)).toBeGreaterThan(0);
