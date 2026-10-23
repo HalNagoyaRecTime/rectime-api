@@ -1,11 +1,11 @@
 import { env as workerEnv } from 'cloudflare:workers';
-import type { KVNamespace } from '@cloudflare/workers-types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAuthService } from '../../../src/application/services/authService';
 import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 import { createStudentRepository } from '../../../src/infrastructure/repositories/StudentRepository';
 import { createTeacherRepository } from '../../../src/infrastructure/repositories/TeacherRepository';
 import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
+import { createRefreshSessionRepository } from '../../../src/infrastructure/repositories/RefreshSessionRepository';
 import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
@@ -43,17 +43,8 @@ function buildTeacherRepository(): ITeacherRepository {
   };
 }
 
-function buildAuthKv(): KVNamespace {
-  const store = new Map<string, string>();
-  return {
-    put: vi.fn(async (key: string, value: string) => {
-      store.set(key, value);
-    }),
-    get: vi.fn(async (key: string) => store.get(key) ?? null),
-    delete: vi.fn(async (key: string) => {
-      store.delete(key);
-    }),
-  } as unknown as KVNamespace;
+function buildRefreshSessionRepository() {
+  return { deleteByUserId: vi.fn().mockResolvedValue(undefined) };
 }
 
 function buildClaims(
@@ -135,21 +126,19 @@ describe('createAuthService', () => {
     };
     const studentEmailDomain = 'nhs.hal.ac.jp';
     const teacherRepository = buildTeacherRepository();
-    const authKv = buildAuthKv();
     const firebaseTokenRepository = buildFirebaseTokenRepository();
     const service = createAuthService(
       userRepository,
       studentRepository,
       teacherRepository,
       studentEmailDomain,
-      authKv,
+      buildRefreshSessionRepository(),
       firebaseTokenRepository
     );
     return {
       userRepository,
       studentRepository,
       teacherRepository,
-      authKv,
       firebaseTokenRepository,
       service,
     };
@@ -195,7 +184,7 @@ describe('createAuthService', () => {
         studentRepository,
         teacherRepository,
         '',
-        buildAuthKv(),
+        buildRefreshSessionRepository(),
         buildFirebaseTokenRepository()
       )
     ).toThrow('STUDENT_EMAIL_DOMAIN is not configured');
@@ -1234,20 +1223,18 @@ describe('createAuthService (実DB・TOCTOU再現)', () => {
     const studentRepository = createStudentRepository(workerEnv.DB);
     const teacherRepository = createTeacherRepository(workerEnv.DB);
     const firebaseTokenRepository = createFirebaseTokenRepository(workerEnv.DB);
-    const authKv = buildAuthKv();
     const service = createAuthService(
       userRepository,
       studentRepository,
       teacherRepository,
       'nhs.hal.ac.jp',
-      authKv,
+      createRefreshSessionRepository(workerEnv.DB),
       firebaseTokenRepository
     );
     return {
       userRepository,
       studentRepository,
       firebaseTokenRepository,
-      authKv,
       service,
     };
   }
@@ -1484,26 +1471,32 @@ describe('createAuthService (実DB・startAccountDeletion)', () => {
     const studentRepository = createStudentRepository(workerEnv.DB);
     const teacherRepository = createTeacherRepository(workerEnv.DB);
     const firebaseTokenRepository = createFirebaseTokenRepository(workerEnv.DB);
-    const authKv = buildAuthKv();
+    const refreshSessionRepository = createRefreshSessionRepository(
+      workerEnv.DB
+    );
     const service = createAuthService(
       userRepository,
       studentRepository,
       teacherRepository,
       'nhs.hal.ac.jp',
-      authKv,
+      refreshSessionRepository,
       firebaseTokenRepository
     );
     return {
       userRepository,
       firebaseTokenRepository,
-      authKv,
+      refreshSessionRepository,
       service,
     };
   }
 
   it('DB状態遷移・全Refresh Session失効・Firebase Token無効化を一括で行う', async () => {
-    const { userRepository, firebaseTokenRepository, authKv, service } =
-      buildRealService();
+    const {
+      userRepository,
+      firebaseTokenRepository,
+      refreshSessionRepository,
+      service,
+    } = buildRealService();
 
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
@@ -1519,21 +1512,23 @@ describe('createAuthService (実DB・startAccountDeletion)', () => {
       platform: 'android',
       fcmToken: 'fcm-token-1',
     });
-    await authKv.put(
-      `mobile_refresh:refresh-1`,
-      JSON.stringify({
-        user_id: userId,
-        oid: 'oid-1',
-        tid: 'tid-1',
-        sub: 'sub-1',
-        email: 'tanaka@example.com',
-        display_name: '田中太郎',
-        client_type: 'web',
-        ms_refresh_token: 'ms-refresh-1',
-        created_at: new Date().toISOString(),
-      })
-    );
-    await authKv.put(`mobile_refresh_by_user:${userId}`, 'refresh-1');
+    for (const refreshTokenId of ['refresh-web', 'refresh-mobile']) {
+      await refreshSessionRepository.create(
+        {
+          refresh_token_id: refreshTokenId,
+          user_id: userId,
+          oid: 'oid-1',
+          tid: 'tid-1',
+          sub: 'sub-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+          avatar_updated_at: null,
+          client_type: refreshTokenId === 'refresh-web' ? 'web' : 'mobile',
+          ms_refresh_token: 'ms-refresh-1',
+        },
+        3600
+      );
+    }
 
     await service.startAccountDeletion(userId);
 
@@ -1548,9 +1543,12 @@ describe('createAuthService (実DB・startAccountDeletion)', () => {
       .first();
     expect(linkRow).toBeNull();
 
-    // KV: Refresh Sessionが失効(mobile_refresh/mobile_refresh_by_user共に削除)
-    expect(await authKv.get('mobile_refresh:refresh-1')).toBeNull();
-    expect(await authKv.get(`mobile_refresh_by_user:${userId}`)).toBeNull();
+    await expect(
+      refreshSessionRepository.findById('refresh-web')
+    ).resolves.toBeNull();
+    await expect(
+      refreshSessionRepository.findById('refresh-mobile')
+    ).resolves.toBeNull();
 
     // Firebase Token登録がPush通知対象から除外される
     const tokenRow = await workerEnv.DB.prepare(

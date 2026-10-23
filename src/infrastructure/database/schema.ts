@@ -613,3 +613,37 @@ export const team_scores = sqliteTable('team_scores', {
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const auth_states = sqliteTable('auth_states', {
+  state: text('state').primaryKey(),
+  clientType: text('client_type', { enum: ['web', 'mobile'] }).notNull(),
+  purpose: text('purpose', { enum: ['login', 'account_deletion'] }).notNull(),
+  nonce: text('nonce').notNull(),
+  codeVerifier: text('code_verifier'),
+  desktopRedirectUri: text('desktop_redirect_uri'),
+  frontendOrigin: text('frontend_origin'),
+  createdAt: text('created_at').notNull(),
+  expiresAt: text('expires_at').notNull(),
+});
+
+export const refresh_sessions = sqliteTable(
+  'refresh_sessions',
+  {
+    refreshTokenId: text('refresh_token_id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    clientType: text('client_type', { enum: ['web', 'mobile'] }).notNull(),
+    oid: text('oid').notNull(),
+    tid: text('tid').notNull(),
+    sub: text('sub').notNull(),
+    email: text('email').notNull(),
+    displayName: text('display_name').notNull(),
+    avatarUpdatedAt: text('avatar_updated_at'),
+    msRefreshToken: text('ms_refresh_token').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+  },
+  table => [index('idx_refresh_sessions_user_id').on(table.userId)]
+);
