@@ -27,6 +27,28 @@ function expiresAt(ttlSec: number): string {
   return new Date(Date.now() + ttlSec * 1000).toISOString();
 }
 
+function toRow(
+  session: RefreshSession,
+  ttlSec: number
+): typeof refresh_sessions.$inferInsert {
+  const now = new Date().toISOString();
+  return {
+    refreshTokenId: session.refresh_token_id,
+    userId: Number(session.user_id),
+    clientType: session.client_type,
+    oid: session.oid,
+    tid: session.tid,
+    sub: session.sub,
+    email: session.email,
+    displayName: session.display_name,
+    avatarUpdatedAt: session.avatar_updated_at,
+    msRefreshToken: session.ms_refresh_token,
+    createdAt: now,
+    updatedAt: now,
+    expiresAt: expiresAt(ttlSec),
+  };
+}
+
 export function createRefreshSessionRepository(
   db: D1Database
 ): IRefreshSessionRepository {
@@ -47,22 +69,7 @@ export function createRefreshSessionRepository(
 
   return {
     async create(session, ttlSec) {
-      const now = new Date().toISOString();
-      await orm.insert(refresh_sessions).values({
-        refreshTokenId: session.refresh_token_id,
-        userId: Number(session.user_id),
-        clientType: session.client_type,
-        oid: session.oid,
-        tid: session.tid,
-        sub: session.sub,
-        email: session.email,
-        displayName: session.display_name,
-        avatarUpdatedAt: session.avatar_updated_at,
-        msRefreshToken: session.ms_refresh_token,
-        createdAt: now,
-        updatedAt: now,
-        expiresAt: expiresAt(ttlSec),
-      });
+      await orm.insert(refresh_sessions).values(toRow(session, ttlSec));
     },
 
     async findById(refreshTokenId) {
@@ -78,23 +85,26 @@ export function createRefreshSessionRepository(
 
     findLatestByUserId,
 
-    async rotate(refreshTokenId, nextRefreshTokenId, msRefreshToken, ttlSec) {
-      const rows = await orm
-        .update(refresh_sessions)
-        .set({
-          refreshTokenId: nextRefreshTokenId,
-          msRefreshToken,
-          updatedAt: new Date().toISOString(),
-          expiresAt: expiresAt(ttlSec),
-        })
-        .where(
-          and(eq(refresh_sessions.refreshTokenId, refreshTokenId), notExpired())
-        )
-        .returning({ refreshTokenId: refresh_sessions.refreshTokenId });
-      return rows.length > 0;
+    // 同じIDで同時に更新されても両方を成功させるため、読み取った内容から新しい行を作る。
+    async rotate(session, nextRefreshTokenId, msRefreshToken, ttlSec) {
+      await orm.batch([
+        orm.insert(refresh_sessions).values(
+          toRow(
+            {
+              ...session,
+              refresh_token_id: nextRefreshTokenId,
+              ms_refresh_token: msRefreshToken,
+            },
+            ttlSec
+          )
+        ),
+        orm
+          .delete(refresh_sessions)
+          .where(eq(refresh_sessions.refreshTokenId, session.refresh_token_id)),
+      ]);
     },
 
-    async update(refreshTokenId, changes) {
+    async update(refreshTokenId, changes, ttlSec) {
       await orm
         .update(refresh_sessions)
         .set({
@@ -104,7 +114,7 @@ export function createRefreshSessionRepository(
           ...(changes.avatar_updated_at !== undefined
             ? { avatarUpdatedAt: changes.avatar_updated_at }
             : {}),
-          updatedAt: new Date().toISOString(),
+          expiresAt: expiresAt(ttlSec),
         })
         .where(eq(refresh_sessions.refreshTokenId, refreshTokenId));
     },
