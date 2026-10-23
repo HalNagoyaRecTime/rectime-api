@@ -157,10 +157,13 @@ account.get('/me/photo', async c => {
     return errorResponse(c, AuthErrors.AUTH_REFRESH_UNAVAILABLE);
   }
 
+  const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
   if (tokens.refresh_token) {
-    await refreshSessionRepository.update(refresh.refresh_token_id, {
-      ms_refresh_token: tokens.refresh_token,
-    });
+    await refreshSessionRepository.update(
+      refresh.refresh_token_id,
+      { ms_refresh_token: tokens.refresh_token },
+      refreshTtl
+    );
   }
 
   const photoRes = await fetch(GRAPH_ME_PHOTO_URL, {
@@ -175,11 +178,13 @@ account.get('/me/photo', async c => {
     return errorResponse(c, AuthErrors.PHOTO_FETCH_FAILED);
   }
 
-  if (refresh.avatar_updated_at === null) {
-    await refreshSessionRepository.update(refresh.refresh_token_id, {
-      avatar_updated_at: new Date().toISOString(),
-    });
-  }
+  await refreshSessionRepository.update(
+    refresh.refresh_token_id,
+    {
+      avatar_updated_at: refresh.avatar_updated_at ?? new Date().toISOString(),
+    },
+    refreshTtl
+  );
 
   const contentType = photoRes.headers.get('Content-Type') ?? 'image/jpeg';
   return new Response(photoRes.body, {
@@ -312,15 +317,12 @@ account.post('/refresh', async c => {
 
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
   const nextRefreshTokenId = crypto.randomUUID();
-  const rotated = await refreshSessionRepository.rotate(
-    refresh.refresh_token_id,
+  await refreshSessionRepository.rotate(
+    refresh,
     nextRefreshTokenId,
     tokens.refresh_token,
     refreshTtl
   );
-  if (!rotated) {
-    return errorResponse(c, AuthErrors.SESSION_EXPIRED);
-  }
 
   const jwtTtl = getNumberEnv(c.env.JWT_EXPIRES_SEC, 3600);
   const accessToken = await signAccessToken(
