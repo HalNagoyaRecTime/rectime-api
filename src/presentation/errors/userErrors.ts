@@ -82,6 +82,11 @@ export const UserErrors = {
     message:
       '学生情報が他の操作で更新されています。最新の内容を取得してやり直してください',
   },
+  ATTENDANCE_NUMBER_ALREADY_EXISTS: {
+    status: 409,
+    code: 'ATTENDANCE_NUMBER_ALREADY_EXISTS',
+    message: '同じクラスで同じ出席番号の学生が既に存在します',
+  },
   STUDENT_CREATE_FAILED: {
     status: 500,
     code: 'STUDENT_CREATE_FAILED',
@@ -91,6 +96,11 @@ export const UserErrors = {
     status: 500,
     code: 'STUDENT_UPDATE_FAILED',
     message: '学生の更新に失敗しました',
+  },
+  STUDENT_CLASS_ROOM_UPDATE_FAILED: {
+    status: 500,
+    code: 'STUDENT_CLASS_ROOM_UPDATE_FAILED',
+    message: '学生のクラス所属変更に失敗しました',
   },
   INVALID_TEACHER_ID: {
     status: 400,

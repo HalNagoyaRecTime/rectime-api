@@ -161,7 +161,7 @@ describe('0045_allow_students_without_class_room.sql', () => {
         class_room_id,
         attendance_number,
         student_id_number
-      ) VALUES (?, ?, ?, 1, ?)`
+      ) VALUES (?, ?, ?, 37001, ?)`
     )
       .bind(
         deletedStudentId,
@@ -185,7 +185,7 @@ describe('0045_allow_students_without_class_room.sql', () => {
           class_room_id,
           attendance_number,
           student_id_number
-        ) VALUES (?, ?, 2, ?)
+        ) VALUES (?, ?, 37002, ?)
         RETURNING student_id`
       )
         .bind(nextUserId, classRoomId, '0045-NEXT-SEQUENCE')

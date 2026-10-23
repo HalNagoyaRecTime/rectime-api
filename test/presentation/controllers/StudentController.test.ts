@@ -38,6 +38,7 @@ function setup() {
     getAllStudents: vi.fn(),
     createStudent: vi.fn(),
     updateStudent: vi.fn(),
+    updateStudentClassRoom: vi.fn(),
     getByUserId: vi.fn(),
     validateStudentImport: vi.fn(),
     commitStudentImport: vi.fn(),
@@ -48,6 +49,9 @@ function setup() {
   app.get('/students/:studentId', c => controller.getStudentById(c));
   app.post('/students', c => controller.createStudent(c));
   app.put('/students/:studentId', c => controller.updateStudent(c));
+  app.patch('/students/:studentId/classroom', c =>
+    controller.updateStudentClassRoom(c)
+  );
   return { app, studentService };
 }
 
@@ -334,6 +338,27 @@ describe('StudentController', () => {
       });
     });
 
+    it('同じクラスの出席番号重複は409を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.createStudent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Attendance number already exists'));
+
+      const res = await app.request('/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'ATTENDANCE_NUMBER_ALREADY_EXISTS',
+          message: '同じクラスで同じ出席番号の学生が既に存在します',
+        },
+      });
+    });
+
     it('存在しないクラスは 404 を返す', async () => {
       const { app, studentService } = setup();
       (
@@ -512,6 +537,24 @@ describe('StudentController', () => {
       });
     });
 
+    it('更新時の出席番号重複も409を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.updateStudent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Attendance number already exists'));
+
+      const res = await app.request('/students/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'ATTENDANCE_NUMBER_ALREADY_EXISTS' },
+      });
+    });
+
     it('存在しないクラスは 404 を返す', async () => {
       const { app, studentService } = setup();
       (
@@ -645,6 +688,136 @@ describe('StudentController', () => {
 
       expect(res.status).toBe(400);
       expect(studentService.createStudent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateStudentClassRoom', () => {
+    it('所属・移動を更新して200を返す', async () => {
+      const { app, studentService } = setup();
+      const body = { class_room_id: 2, attendance_number: 8 };
+      (
+        studentService.updateStudentClassRoom as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(
+        buildStudent({
+          attendance_number: 8,
+          class_room: {
+            class_room_id: 2,
+            class_code: '2A',
+            class_name: '2年A組',
+          },
+        })
+      );
+
+      const res = await app.request('/students/1/classroom', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      expect(res.status).toBe(200);
+      expect(studentService.updateStudentClassRoom).toHaveBeenCalledWith(
+        1,
+        body
+      );
+    });
+
+    it('両方nullで未所属化できる', async () => {
+      const { app, studentService } = setup();
+      const body = { class_room_id: null, attendance_number: null };
+      (
+        studentService.updateStudentClassRoom as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(
+        buildStudent({ attendance_number: null, class_room: null })
+      );
+
+      const res = await app.request('/students/1/classroom', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      expect(res.status).toBe(200);
+      expect(studentService.updateStudentClassRoom).toHaveBeenCalledWith(
+        1,
+        body
+      );
+    });
+
+    it.each([
+      { class_room_id: null, attendance_number: 1 },
+      { class_room_id: 1, attendance_number: null },
+    ])('所属情報の片方だけがnullなら400を返す', async body => {
+      const { app, studentService } = setup();
+
+      const res = await app.request('/students/1/classroom', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      expect(res.status).toBe(400);
+      expect(studentService.updateStudentClassRoom).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['Student not found', 404, 'STUDENT_NOT_FOUND'],
+      ['Class room not found', 404, 'CLASS_ROOM_NOT_FOUND'],
+      ['unexpected', 500, 'STUDENT_CLASS_ROOM_UPDATE_FAILED'],
+    ])('%sの場合は対応するエラーを返す', async (message, status, code) => {
+      const { app, studentService } = setup();
+      (
+        studentService.updateStudentClassRoom as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error(message));
+
+      const res = await app.request('/students/1/classroom', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ class_room_id: null, attendance_number: null }),
+      });
+
+      expect(res.status).toBe(status);
+      expect(await res.json()).toMatchObject({ error: { code } });
+    });
+
+    it('同じクラスの出席番号重複は409を返す', async () => {
+      const { app, studentService } = setup();
+      (
+        studentService.updateStudentClassRoom as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Attendance number already exists'));
+
+      const res = await app.request('/students/1/classroom', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ class_room_id: 2, attendance_number: 8 }),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'ATTENDANCE_NUMBER_ALREADY_EXISTS' },
+      });
+    });
+
+    it('DBの出席番号UNIQUE制約違反も409を返す', async () => {
+      const { app, studentService } = setup();
+      const sqliteError = new Error(
+        'UNIQUE constraint failed: students.class_room_id, students.attendance_number'
+      );
+      (
+        studentService.updateStudentClassRoom as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(
+        new Error('D1_ERROR: constraint failed', { cause: sqliteError })
+      );
+
+      const res = await app.request('/students/1/classroom', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ class_room_id: 2, attendance_number: 8 }),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({
+        error: { code: 'ATTENDANCE_NUMBER_ALREADY_EXISTS' },
+      });
     });
   });
 });
