@@ -208,6 +208,50 @@ function findRefreshSession(refreshTokenId: string) {
   return createRefreshSessionRepository(workerEnv.DB).findById(refreshTokenId);
 }
 
+async function setRefreshSessionColumn(
+  refreshTokenId: string,
+  column: 'expires_at' | 'updated_at',
+  value: string
+) {
+  await workerEnv.DB.prepare(
+    `UPDATE refresh_sessions SET ${column} = ? WHERE refresh_token_id = ?`
+  )
+    .bind(value, refreshTokenId)
+    .run();
+}
+
+function requestPhoto(env: Env, token: string) {
+  return buildApp().request(
+    '/me/photo',
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Client-Type': 'mobile',
+      },
+    },
+    env
+  );
+}
+
+function stubPhotoFetch(onTokenRequest: () => Promise<void> = async () => {}) {
+  const fetchMock = vi
+    .fn()
+    .mockImplementationOnce(async () => {
+      await onTokenRequest();
+      return new Response(
+        JSON.stringify({
+          access_token: 'graph-access',
+          refresh_token: 'new-refresh',
+        })
+      );
+    })
+    .mockResolvedValueOnce(
+      new Response('image-data', { headers: { 'Content-Type': 'image/png' } })
+    );
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 function storedRow(refreshTokenId: string) {
   return workerEnv.DB.prepare(
     'SELECT * FROM refresh_sessions WHERE refresh_token_id = ?'
@@ -764,6 +808,81 @@ describe('GET /auth/me/photo', () => {
     });
   });
 
+  it('セッションが無い場合は401 SESSION_EXPIREDを返し、Microsoftへ問い合わせない', async () => {
+    const env = buildEnv();
+    const userId = await insertUser();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await requestPhoto(env, await buildLogoutToken(userId));
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('SESSION_EXPIRED');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('セッションが複数ある場合は、最後にログインまたは更新したセッションを使う', async () => {
+    const env = buildEnv();
+    const userId = await insertUser();
+    await storeRefreshSession('older', {
+      ...refreshEntry(userId),
+      ms_refresh_token: 'ms-older',
+    });
+    await storeRefreshSession('latest', {
+      ...refreshEntry(userId),
+      ms_refresh_token: 'ms-latest',
+    });
+    await setRefreshSessionColumn(
+      'older',
+      'updated_at',
+      '2000-01-01T00:00:00.000Z'
+    );
+    const fetchMock = stubPhotoFetch();
+
+    const res = await requestPhoto(env, await buildLogoutToken(userId));
+
+    expect(res.status).toBe(200);
+    expect(fetchMock.mock.calls[0][1].body).toContain(
+      'refresh_token=ms-latest'
+    );
+    expect((await findRefreshSession('latest'))?.ms_refresh_token).toBe(
+      'new-refresh'
+    );
+    expect((await findRefreshSession('older'))?.ms_refresh_token).toBe(
+      'ms-older'
+    );
+  });
+
+  it('写真の取得中にセッションが削除された場合は、セッションを作り直さない', async () => {
+    const env = buildEnv();
+    const userId = await insertUser();
+    await storeRefreshSession('photo-refresh', refreshEntry(userId));
+    stubPhotoFetch(() =>
+      createRefreshSessionRepository(workerEnv.DB).deleteByUserId(userId)
+    );
+
+    const res = await requestPhoto(env, await buildLogoutToken(userId));
+
+    expect(res.status).toBe(200);
+    expect(await storedRow('photo-refresh')).toBeNull();
+  });
+
+  it('写真の取得ではKVに書き込まない', async () => {
+    const env = buildEnv();
+    const userId = await insertUser();
+    await storeRefreshSession('photo-refresh', refreshEntry(userId));
+    const put = vi.spyOn(env.AUTH_KV, 'put');
+    const remove = vi.spyOn(env.AUTH_KV, 'delete');
+    stubPhotoFetch();
+
+    const res = await requestPhoto(env, await buildLogoutToken(userId));
+
+    expect(res.status).toBe(200);
+    expect(put).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
   it('無効化されたユーザーの場合は401を返し、Microsoftへ問い合わせない (#255)', async () => {
     const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
     const userId = await insertUser(0);
@@ -906,6 +1025,24 @@ describe('POST /auth/logout', () => {
       .bind('logout-foreign-token')
       .first<{ user_id: number }>();
     expect(token?.user_id).toBe(Number(otherUserId));
+  });
+
+  it('refresh_token_idを指定しない場合は、最後にログインまたは更新したセッションだけを削除する', async () => {
+    const userId = await insertUser();
+    const env = buildEnv();
+    await storeRefreshSession('older', refreshEntry(userId));
+    await storeRefreshSession('latest', refreshEntry(userId));
+    await setRefreshSessionColumn(
+      'older',
+      'updated_at',
+      '2000-01-01T00:00:00.000Z'
+    );
+
+    const res = await postLogout(env, userId, {});
+
+    expect(res.status).toBe(200);
+    expect(await findRefreshSession('latest')).toBeNull();
+    expect(await findRefreshSession('older')).not.toBeNull();
   });
 
   it('FCM Tokenやrefresh sessionが無くても繰り返し成功する', async () => {
@@ -1274,6 +1411,79 @@ describe('POST /auth/refresh', () => {
     );
 
     expect(res.status).toBe(401);
+  });
+
+  it('期限切れのrefresh_token_idの場合は401 SESSION_EXPIREDを返し、Microsoftへ問い合わせない', async () => {
+    const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser();
+    await storeRefreshSession('refresh-expired', {
+      ...refreshEntry(userId),
+      client_type: 'web',
+    });
+    await setRefreshSessionColumn(
+      'refresh-expired',
+      'expires_at',
+      '2000-01-01T00:00:00.000Z'
+    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await buildApp().request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-expired' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('SESSION_EXPIRED');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('トークンの更新ではKVに書き込まない', async () => {
+    const env = buildEnv({ MICROSOFT_CLIENT_PRIVATE_KEY: privateKeyPem });
+    const userId = await insertUser();
+    await storeRefreshSession('refresh-1', {
+      ...refreshEntry(userId),
+      client_type: 'web',
+    });
+    const put = vi.spyOn(env.AUTH_KV, 'put');
+    const remove = vi.spyOn(env.AUTH_KV, 'delete');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            access_token: 'graph-access',
+            refresh_token: 'ms-2',
+          })
+        )
+      )
+    );
+
+    const res = await buildApp().request(
+      '/refresh',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'web',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token_id: 'refresh-1' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    expect(put).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
   });
 
   it('mobile向けに発行されたrefresh_token_idをwebから使おうとすると400を返す', async () => {

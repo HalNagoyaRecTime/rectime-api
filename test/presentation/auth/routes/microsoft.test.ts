@@ -148,6 +148,14 @@ async function putAuthState(state: string, entry: PkceEntry) {
   await createAuthStateRepository(workerEnv.DB).create(state, entry, 600);
 }
 
+async function expireAuthState(state: string) {
+  await workerEnv.DB.prepare(
+    "UPDATE auth_states SET expires_at = '2000-01-01T00:00:00.000Z' WHERE state = ?"
+  )
+    .bind(state)
+    .run();
+}
+
 function findAuthState(state: string) {
   return createAuthStateRepository(workerEnv.DB).find(state);
 }
@@ -561,6 +569,32 @@ describe('GET /auth/microsoft/callback', () => {
       `https://app.example.com/auth/callback?code=abc&state=${state}`
     );
   });
+
+  it('期限切れのstateに保存したoriginは使わずFRONTEND_URLへ戻す', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const state = 'state-expired-origin';
+    await putAuthState(state, {
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'login',
+      frontend_origin: 'https://pr-296.recwatch.pages.dev',
+      created_at: new Date().toISOString(),
+    });
+    await expireAuthState(state);
+
+    const res = await buildApp().request(
+      `/callback?code=abc&state=${state}`,
+      {},
+      env
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      `https://app.example.com/auth/callback?code=abc&state=${state}`
+    );
+  });
 });
 
 describe('POST /auth/microsoft/token', () => {
@@ -680,6 +714,35 @@ describe('POST /auth/microsoft/token', () => {
     expect(res.status).toBe(401);
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe('STATE_MISMATCH');
+  });
+
+  it('期限切れのstateの場合は401 STATE_MISMATCHを返し、Microsoftへ問い合わせない', async () => {
+    const env = buildEnv();
+    await putAuthState('state-expired', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
+    await expireAuthState('state-expired');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await buildApp().request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'c', state: 'state-expired' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('STATE_MISMATCH');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('stateのclient_typeとリクエストのclient_typeが異なる場合は400を返す', async () => {
@@ -2198,4 +2261,51 @@ describe('Desktopのループバック認証', () => {
       expect(await findAuthState(state)).toBeNull();
     });
   }
+});
+
+describe('ログインでのKVの書き込み', () => {
+  it('mobileとwebのログイン開始ではKVに書き込まない', async () => {
+    const env = buildEnv();
+
+    const mobile = await buildApp().request(
+      '/login',
+      {
+        headers: {
+          'X-Client-Type': 'mobile',
+          'X-State': generateRandom(32),
+          'X-PKCE-Code-Challenge': generateRandom(32),
+        },
+      },
+      env
+    );
+    const web = await buildApp().request(
+      '/login',
+      { headers: { 'X-Client-Type': 'web' } },
+      env
+    );
+
+    expect(mobile.status).toBe(200);
+    expect(web.status).toBe(302);
+    expect(env.AUTH_KV.put).not.toHaveBeenCalled();
+    expect(env.AUTH_KV.delete).not.toHaveBeenCalled();
+  });
+
+  it('トークン発行ではKVにJWKSのキャッシュ以外を書き込まない', async () => {
+    const env = buildEnv();
+
+    const res = await requestMobileLogin(env, {
+      attemptId: 'kv-writes',
+      oid: 'oid-kv-writes',
+      sub: 'sub-kv-writes',
+      name: '山田花子',
+      email: 'yamada@example.com',
+    });
+
+    expect(res.status).toBe(200);
+    const writtenKeys = vi
+      .mocked(env.AUTH_KV.put)
+      .mock.calls.map(([key]) => key);
+    expect(writtenKeys.every(key => key === 'jwks_cache')).toBe(true);
+    expect(env.AUTH_KV.delete).not.toHaveBeenCalled();
+  });
 });
