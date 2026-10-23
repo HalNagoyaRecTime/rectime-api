@@ -4,11 +4,11 @@ import { insertClassRoomWithTeam } from '../fixtures/classRooms';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0049_release_deleted_student_assignments.sql'
+    item => item.name === '0053_release_deleted_student_assignments.sql'
   );
   if (!migration) {
     throw new Error(
-      '0049_release_deleted_student_assignments.sql is not registered'
+      '0053_release_deleted_student_assignments.sql is not registered'
     );
   }
   return migration.queries;
@@ -16,11 +16,11 @@ const migrationQueries = (() => {
 
 const uniqueConstraintMigrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0050_enforce_unique_student_attendance_number.sql'
+    item => item.name === '0054_enforce_unique_student_attendance_number.sql'
   );
   if (!migration) {
     throw new Error(
-      '0050_enforce_unique_student_attendance_number.sql is not registered'
+      '0054_enforce_unique_student_attendance_number.sql is not registered'
     );
   }
   return migration.queries;
@@ -30,7 +30,7 @@ async function runMigration(): Promise<void> {
   await env.DB.batch(migrationQueries.map(query => env.DB.prepare(query)));
 }
 
-describe('0049_release_deleted_student_assignments.sql', () => {
+describe('0053_release_deleted_student_assignments.sql', () => {
   it('退会済みStudentの所属情報だけを解放し、同じ出席番号を再利用できる', async () => {
     const classRoom = await insertClassRoomWithTeam(env.DB, {
       classCode: '0049-A',

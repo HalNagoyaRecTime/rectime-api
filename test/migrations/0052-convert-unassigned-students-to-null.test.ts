@@ -6,11 +6,11 @@ import { insertClassRoomWithTeam } from '../fixtures/classRooms';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0048_convert_unassigned_students_to_null.sql'
+    item => item.name === '0052_convert_unassigned_students_to_null.sql'
   );
   if (!migration) {
     throw new Error(
-      '0048_convert_unassigned_students_to_null.sql is not registered'
+      '0052_convert_unassigned_students_to_null.sql is not registered'
     );
   }
   return migration.queries;
@@ -29,7 +29,7 @@ async function insertUser(userName: string): Promise<number> {
   return user!.user_id;
 }
 
-describe('0048_convert_unassigned_students_to_null.sql', () => {
+describe('0052_convert_unassigned_students_to_null.sql', () => {
   it('__UNASSIGNED__所属のStudentだけを未所属へ移行する', async () => {
     let createdUnassignedTeamId: number | null = null;
     let unassignedClassRoom = await env.DB.prepare(
