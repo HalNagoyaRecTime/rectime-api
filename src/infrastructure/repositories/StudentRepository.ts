@@ -25,6 +25,7 @@ import { buildProvisionalTeamName } from '../../domain/entities/Team';
 import {
   BulkCreateStudentsInput,
   IStudentRepository,
+  StudentClassRoomAttendanceNumber,
 } from '../../domain/interfaces/repositories/IStudentRepository';
 import { chunkArray } from './chunk';
 import { escapeLikePattern } from '../helpers/escapeLikePattern';
@@ -230,6 +231,55 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       }
 
       return found;
+    },
+
+    async findExistingClassRoomAttendanceNumbers(
+      assignments: StudentClassRoomAttendanceNumber[]
+    ): Promise<StudentClassRoomAttendanceNumber[]> {
+      const uniqueAssignments = Array.from(
+        new Map(
+          assignments.map(assignment => [
+            `${assignment.classCode}\u0000${assignment.attendanceNumber}`,
+            assignment,
+          ])
+        ).values()
+      );
+      const found = new Map<string, StudentClassRoomAttendanceNumber>();
+
+      for (const chunk of chunkArray(
+        uniqueAssignments,
+        Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
+      )) {
+        if (chunk.length === 0) continue;
+        const rows = await orm
+          .select({
+            classCode: class_rooms.classCode,
+            attendanceNumber: students.attendanceNumber,
+          })
+          .from(students)
+          .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+          .where(
+            or(
+              ...chunk.map(assignment =>
+                and(
+                  eq(class_rooms.classCode, assignment.classCode),
+                  eq(students.attendanceNumber, assignment.attendanceNumber)
+                )
+              )
+            )
+          )
+          .all();
+
+        for (const row of rows) {
+          if (row.attendanceNumber === null) continue;
+          found.set(`${row.classCode}\u0000${row.attendanceNumber}`, {
+            classCode: row.classCode,
+            attendanceNumber: row.attendanceNumber,
+          });
+        }
+      }
+
+      return Array.from(found.values());
     },
 
     async create(student: StudentWriteInput): Promise<StudentEntity> {

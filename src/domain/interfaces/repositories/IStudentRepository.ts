@@ -14,6 +14,11 @@ export interface NewStudentWithClassCodeInput {
   studentIdNumber: string;
 }
 
+export interface StudentClassRoomAttendanceNumber {
+  classCode: string;
+  attendanceNumber: number;
+}
+
 export interface BulkCreateStudentsInput {
   newClassRooms: { classCode: string; className: string }[];
   students: NewStudentWithClassCodeInput[];
@@ -31,6 +36,9 @@ export interface IStudentRepository {
   findExistingStudentNumbers: (
     studentNumbers: string[]
   ) => Promise<Set<string>>;
+  findExistingClassRoomAttendanceNumbers: (
+    assignments: StudentClassRoomAttendanceNumber[]
+  ) => Promise<StudentClassRoomAttendanceNumber[]>;
   create: (student: StudentWriteInput) => Promise<StudentEntity>;
   update: (
     id: number,

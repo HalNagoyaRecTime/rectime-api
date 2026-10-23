@@ -64,7 +64,10 @@ export interface StudentImportInput {
 }
 
 export type StudentImportErrorReason =
-  'student_id_number_duplicate_in_file' | 'student_id_number_duplicate_in_db';
+  | 'student_id_number_duplicate_in_file'
+  | 'student_id_number_duplicate_in_db'
+  | 'attendance_number_duplicate_in_file'
+  | 'attendance_number_duplicate_in_db';
 
 export interface StudentImportRowError {
   row_index: number;

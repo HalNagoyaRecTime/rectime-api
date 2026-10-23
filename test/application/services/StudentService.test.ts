@@ -33,6 +33,7 @@ function createRepository(
     findByStudentNum: vi.fn(),
     findByClassRoomAndAttendanceNumber: vi.fn().mockResolvedValue(null),
     findExistingStudentNumbers: vi.fn().mockResolvedValue(new Set()),
+    findExistingClassRoomAttendanceNumbers: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
     update: vi.fn(),
     updateClassRoom: vi.fn(),
@@ -758,6 +759,80 @@ describe('StudentService', () => {
           expect.objectContaining({
             row_index: 1,
             reason: 'student_id_number_duplicate_in_db',
+          }),
+        ],
+      });
+    });
+
+    it('ファイル内で同じクラスの出席番号が重複する行はエラーとして報告する', async () => {
+      const service = createStudentService(
+        createRepository(),
+        createClassRoomRepository()
+      );
+
+      const result = await service.validateStudentImport({
+        rows: [
+          {
+            class_code: '11A',
+            attendance_number: 1,
+            student_id_number: '24031',
+            last_name: '田中',
+            first_name: '太郎',
+          },
+          {
+            class_code: '11A',
+            attendance_number: 1,
+            student_id_number: '24032',
+            last_name: '佐藤',
+            first_name: '花子',
+          },
+        ],
+      });
+
+      expect(result).toEqual({
+        total: 2,
+        success_count: 1,
+        error_count: 1,
+        errors: [
+          expect.objectContaining({
+            row_index: 2,
+            reason: 'attendance_number_duplicate_in_file',
+          }),
+        ],
+      });
+    });
+
+    it('既存DBと同じクラスの出席番号が重複する行はエラーとして報告する', async () => {
+      const repository = createRepository({
+        findExistingClassRoomAttendanceNumbers: vi
+          .fn()
+          .mockResolvedValue([{ classCode: '11A', attendanceNumber: 1 }]),
+      });
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
+
+      const result = await service.validateStudentImport({
+        rows: [
+          {
+            class_code: '11A',
+            attendance_number: 1,
+            student_id_number: '24033',
+            last_name: '既存番号',
+            first_name: '太郎',
+          },
+        ],
+      });
+
+      expect(result).toEqual({
+        total: 1,
+        success_count: 0,
+        error_count: 1,
+        errors: [
+          expect.objectContaining({
+            row_index: 1,
+            reason: 'attendance_number_duplicate_in_db',
           }),
         ],
       });

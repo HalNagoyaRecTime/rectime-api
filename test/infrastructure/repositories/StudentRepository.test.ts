@@ -377,63 +377,70 @@ describe('StudentRepository', () => {
     });
 
     describe('版番号による楽観ロック', () => {
-      async function createStudent(studentIdNumber: string) {
+      async function createStudent(
+        studentIdNumber: string,
+        attendanceNumber: number
+      ) {
         const created = await repo.create({
           displayName: '版番号テスト',
           classRoomId: seeded.classRoomId,
-          attendanceNumber: 20,
+          attendanceNumber,
           studentIdNumber,
         });
         return created.studentId;
       }
 
-      const input = (studentIdNumber: string, displayName: string) => ({
+      const input = (
+        studentIdNumber: string,
+        displayName: string,
+        attendanceNumber: number
+      ) => ({
         displayName,
         classRoomId: seeded.classRoomId,
-        attendanceNumber: 21,
+        attendanceNumber,
         studentIdNumber,
       });
 
       it('expectedLockVersion が現在の値と一致すれば更新し、lockVersion を1増やす', async () => {
-        const id = await createStudent('LOCK-S1');
+        const id = await createStudent('LOCK-S1', 120);
 
         const updated = await repo.update(id, {
-          ...input('LOCK-S1', '更新後'),
+          ...input('LOCK-S1', '更新後', 121),
           expectedLockVersion: 0,
         });
 
         expect(updated).toMatchObject({
           userName: '更新後',
-          attendanceNumber: 21,
+          attendanceNumber: 121,
           lockVersion: 1,
         });
       });
 
       it('expectedLockVersion が現在の値と異なれば null を返し、users も students も変更しない', async () => {
-        const id = await createStudent('LOCK-S2');
+        const id = await createStudent('LOCK-S2', 122);
 
         const updated = await repo.update(id, {
-          ...input('LOCK-S2', '上書きされてはいけない'),
+          ...input('LOCK-S2', '上書きされてはいけない', 123),
           expectedLockVersion: 5,
         });
 
         expect(updated).toBeNull();
         await expect(repo.findById(id)).resolves.toMatchObject({
           userName: '版番号テスト',
-          attendanceNumber: 20,
+          attendanceNumber: 122,
           lockVersion: 0,
         });
       });
 
       it('同じ版番号での2回の連続更新は、1回目だけ成功し2回目は競合する（同じ秒内でも）', async () => {
-        const id = await createStudent('LOCK-S3');
+        const id = await createStudent('LOCK-S3', 124);
 
         const first = await repo.update(id, {
-          ...input('LOCK-S3', 'Aの更新'),
+          ...input('LOCK-S3', 'Aの更新', 125),
           expectedLockVersion: 0,
         });
         const second = await repo.update(id, {
-          ...input('LOCK-S3', 'Bの更新'),
+          ...input('LOCK-S3', 'Bの更新', 126),
           expectedLockVersion: 0,
         });
 
@@ -445,9 +452,9 @@ describe('StudentRepository', () => {
       });
 
       it('expectedLockVersion を指定しない更新は版番号を確認せず、lockVersion は進む', async () => {
-        const id = await createStudent('LOCK-S4');
+        const id = await createStudent('LOCK-S4', 127);
 
-        const updated = await repo.update(id, input('LOCK-S4', '更新後'));
+        const updated = await repo.update(id, input('LOCK-S4', '更新後', 128));
 
         expect(updated).toMatchObject({ userName: '更新後', lockVersion: 1 });
       });
@@ -571,6 +578,37 @@ describe('StudentRepository', () => {
     });
   });
 
+  describe('findExistingClassRoomAttendanceNumbers', () => {
+    it('DBに存在するクラスコードと出席番号の組み合わせだけを返す', async () => {
+      const target = seeded.students[0];
+
+      const existing = await repo.findExistingClassRoomAttendanceNumbers([
+        {
+          classCode: 'TEST-1',
+          attendanceNumber: target.attendanceNumber,
+        },
+        { classCode: 'TEST-1', attendanceNumber: 999 },
+        {
+          classCode: 'TEST-2',
+          attendanceNumber: target.attendanceNumber,
+        },
+      ]);
+
+      expect(existing).toEqual([
+        {
+          classCode: 'TEST-1',
+          attendanceNumber: target.attendanceNumber,
+        },
+      ]);
+    });
+
+    it('候補が空配列の場合は空配列を返す', async () => {
+      await expect(
+        repo.findExistingClassRoomAttendanceNumbers([])
+      ).resolves.toEqual([]);
+    });
+  });
+
   describe('createMany', () => {
     it('usersのRETURNING行が入力と逆順でも学生情報を正しく対応付ける', async () => {
       const reorderedRepo = createStudentRepository(
@@ -680,13 +718,13 @@ describe('StudentRepository', () => {
           {
             displayName: '一括生徒A',
             classCode: 'TEST-1',
-            attendanceNumber: 20,
+            attendanceNumber: 220,
             studentIdNumber: '20000',
           },
           {
             displayName: '一括生徒B',
             classCode: 'TEST-1',
-            attendanceNumber: 21,
+            attendanceNumber: 221,
             studentIdNumber: '20001',
           },
         ],

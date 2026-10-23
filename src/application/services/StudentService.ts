@@ -81,10 +81,15 @@ async function findImportErrors(
   rows: StudentImportRow[],
   studentRepository: IStudentRepository
 ): Promise<StudentImportRowError[]> {
-  const seenInFile = new Set<string>();
+  const seenStudentNumbers = new Set<string>();
+  const seenAssignments = new Set<string>();
   const fileDuplicateRowIndexes = new Set<number>();
   const errors: StudentImportRowError[] = [];
   const numbersToCheck: string[] = [];
+  const assignmentsToCheck: {
+    classCode: string;
+    attendanceNumber: number;
+  }[] = [];
 
   const pushError = (
     rowIndex: number,
@@ -102,17 +107,43 @@ async function findImportErrors(
   };
 
   for (const [rowIndex, row] of rows.entries()) {
-    if (seenInFile.has(row.student_id_number)) {
+    const assignmentKey = `${row.class_code}\u0000${row.attendance_number}`;
+    const hasDuplicateStudentNumber = seenStudentNumbers.has(
+      row.student_id_number
+    );
+    const hasDuplicateAssignment = seenAssignments.has(assignmentKey);
+    seenStudentNumbers.add(row.student_id_number);
+    seenAssignments.add(assignmentKey);
+
+    if (hasDuplicateStudentNumber) {
       fileDuplicateRowIndexes.add(rowIndex);
       pushError(rowIndex, row, 'student_id_number_duplicate_in_file');
       continue;
     }
-    seenInFile.add(row.student_id_number);
+    if (hasDuplicateAssignment) {
+      fileDuplicateRowIndexes.add(rowIndex);
+      pushError(rowIndex, row, 'attendance_number_duplicate_in_file');
+      continue;
+    }
     numbersToCheck.push(row.student_id_number);
+    assignmentsToCheck.push({
+      classCode: row.class_code,
+      attendanceNumber: row.attendance_number,
+    });
   }
 
-  const existingNumbers =
-    await studentRepository.findExistingStudentNumbers(numbersToCheck);
+  const [existingNumbers, existingAssignments] = await Promise.all([
+    studentRepository.findExistingStudentNumbers(numbersToCheck),
+    studentRepository.findExistingClassRoomAttendanceNumbers(
+      assignmentsToCheck
+    ),
+  ]);
+  const existingAssignmentKeys = new Set(
+    existingAssignments.map(
+      assignment =>
+        `${assignment.classCode}\u0000${assignment.attendanceNumber}`
+    )
+  );
 
   for (const [rowIndex, row] of rows.entries()) {
     if (fileDuplicateRowIndexes.has(rowIndex)) {
@@ -120,6 +151,14 @@ async function findImportErrors(
     }
     if (existingNumbers.has(row.student_id_number)) {
       pushError(rowIndex, row, 'student_id_number_duplicate_in_db');
+      continue;
+    }
+    if (
+      existingAssignmentKeys.has(
+        `${row.class_code}\u0000${row.attendance_number}`
+      )
+    ) {
+      pushError(rowIndex, row, 'attendance_number_duplicate_in_db');
     }
   }
 
