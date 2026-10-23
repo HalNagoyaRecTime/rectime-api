@@ -6,11 +6,11 @@ import { insertClassRoomWithTeam } from '../fixtures/classRooms';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0046_convert_unassigned_students_to_null.sql'
+    item => item.name === '0048_convert_unassigned_students_to_null.sql'
   );
   if (!migration) {
     throw new Error(
-      '0046_convert_unassigned_students_to_null.sql is not registered'
+      '0048_convert_unassigned_students_to_null.sql is not registered'
     );
   }
   return migration.queries;
@@ -29,7 +29,7 @@ async function insertUser(userName: string): Promise<number> {
   return user!.user_id;
 }
 
-describe('0046_convert_unassigned_students_to_null.sql', () => {
+describe('0048_convert_unassigned_students_to_null.sql', () => {
   it('__UNASSIGNED__所属のStudentだけを未所属へ移行する', async () => {
     let createdUnassignedTeamId: number | null = null;
     let unassignedClassRoom = await env.DB.prepare(
@@ -46,16 +46,10 @@ describe('0046_convert_unassigned_students_to_null.sql', () => {
       unassignedClassRoom = { class_room_id: created.classRoomId };
     }
 
-    const assignedClassRoom = await env.DB.prepare(
-      `SELECT class_room_id
-       FROM class_rooms
-       WHERE class_room_id <> ?
-       ORDER BY class_room_id
-       LIMIT 1`
-    )
-      .bind(unassignedClassRoom!.class_room_id)
-      .first<{ class_room_id: number }>();
-    expect(assignedClassRoom).not.toBeNull();
+    const assignedClassRoom = await insertClassRoomWithTeam(env.DB, {
+      classCode: '0048-A',
+      className: '0048 Aクラス',
+    });
 
     const unassignedUserId = await insertUser('0046旧未所属Student');
     const assignedUserId = await insertUser('0046所属Student');
@@ -82,7 +76,7 @@ describe('0046_convert_unassigned_students_to_null.sql', () => {
         ) VALUES (?, ?, 38002, ?)`
       ).bind(
         assignedUserId,
-        assignedClassRoom!.class_room_id,
+        assignedClassRoom.classRoomId,
         '0046-ASSIGNED'
       ),
     ]);
@@ -111,7 +105,7 @@ describe('0046_convert_unassigned_students_to_null.sql', () => {
         },
         {
           user_id: assignedUserId,
-          class_room_id: assignedClassRoom!.class_room_id,
+          class_room_id: assignedClassRoom.classRoomId,
           attendance_number: 38002,
         },
       ]);
@@ -128,6 +122,12 @@ describe('0046_convert_unassigned_students_to_null.sql', () => {
         .run();
       await env.DB.prepare('DELETE FROM users WHERE user_id IN (?, ?)')
         .bind(unassignedUserId, assignedUserId)
+        .run();
+      await env.DB.prepare('DELETE FROM class_rooms WHERE class_room_id = ?')
+        .bind(assignedClassRoom.classRoomId)
+        .run();
+      await env.DB.prepare('DELETE FROM teams WHERE team_id = ?')
+        .bind(assignedClassRoom.teamId)
         .run();
       if (createdUnassignedTeamId !== null) {
         await env.DB.prepare('DELETE FROM teams WHERE team_id = ?')

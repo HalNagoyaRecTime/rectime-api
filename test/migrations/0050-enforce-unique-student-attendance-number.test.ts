@@ -4,11 +4,11 @@ import { insertClassRoomWithTeam } from '../fixtures/classRooms';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0047_enforce_unique_student_attendance_number.sql'
+    item => item.name === '0050_enforce_unique_student_attendance_number.sql'
   );
   if (!migration) {
     throw new Error(
-      '0047_enforce_unique_student_attendance_number.sql is not registered'
+      '0050_enforce_unique_student_attendance_number.sql is not registered'
     );
   }
   return migration.queries;
@@ -27,7 +27,7 @@ async function insertUser(userName: string): Promise<number> {
   return user!.user_id;
 }
 
-describe('0047_enforce_unique_student_attendance_number.sql', () => {
+describe('0050_enforce_unique_student_attendance_number.sql', () => {
   it('同じクラスの出席番号重複を拒否し、別クラスと未所属は許可する', async () => {
     const firstClassRoom = await insertClassRoomWithTeam(env.DB, {
       classCode: '0047-A',
@@ -167,7 +167,7 @@ describe('0047_enforce_unique_student_attendance_number.sql', () => {
          WHERE class_room_id IS NOT NULL`
       ).run();
       await env.DB.prepare(
-        'DROP TABLE IF EXISTS __migration_0047_duplicate_guard'
+        'DROP TABLE IF EXISTS __migration_0050_duplicate_guard'
       ).run();
     }
   });

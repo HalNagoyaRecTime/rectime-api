@@ -2,14 +2,14 @@
 -- 未所属Studentは両カラムがNULLのため制約対象外とする。
 -- 既存重複がある場合はデータを自動削除せず、CHECK制約で安全に中断する。
 -- READMEの手順で重複内容を確認・整理してからMigrationを再実行すること。
-DROP TABLE IF EXISTS __migration_0047_duplicate_guard;
+DROP TABLE IF EXISTS __migration_0050_duplicate_guard;
 
-CREATE TABLE __migration_0047_duplicate_guard (
+CREATE TABLE __migration_0050_duplicate_guard (
     duplicate_group_count INTEGER NOT NULL
         CHECK (duplicate_group_count = 0)
 );
 
-INSERT INTO __migration_0047_duplicate_guard (duplicate_group_count)
+INSERT INTO __migration_0050_duplicate_guard (duplicate_group_count)
 SELECT COUNT(*)
 FROM (
     SELECT class_room_id, attendance_number
@@ -19,7 +19,7 @@ FROM (
     HAVING COUNT(*) > 1
 );
 
-DROP TABLE __migration_0047_duplicate_guard;
+DROP TABLE __migration_0050_duplicate_guard;
 
 CREATE UNIQUE INDEX ux_students_class_room_attendance
 ON students (class_room_id, attendance_number)
