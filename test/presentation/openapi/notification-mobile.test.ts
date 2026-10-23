@@ -25,10 +25,7 @@ describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', ()
     >();
   });
 
-  it('notification_generalを正本とし、related_eventをResponseに含めない', () => {
-    expect(mobileNotificationResponseSchema.shape).not.toHaveProperty(
-      'related_event'
-    );
+  it('notification_generalを維持し、関連イベントなしはnullで返す', () => {
     expect(
       mobileNotificationResponseSchema.safeParse({
         notification_id: 108,
@@ -36,6 +33,7 @@ describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', ()
         title: '集合時間変更',
         body: '集合時間が変更になりました。',
         scheduled_at: '2026-11-07T15:35:00+09:00',
+        related_event: null,
       }).success
     ).toBe(true);
     expect(
@@ -45,6 +43,7 @@ describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', ()
         title: '集合時間変更',
         body: '集合時間が変更になりました。',
         scheduled_at: '2026-11-07T15:35:00+09:00',
+        related_event: null,
       }).success
     ).toBe(false);
     expect(
@@ -55,6 +54,38 @@ describe('Mobile通知のApplication DTOとOpenAPI schemaの型パリティ', ()
         offset: 0,
       }).success
     ).toBe(true);
+  });
+
+  it('モバイルのイベントカードが使う関連イベント契約を公開する', () => {
+    const notification = {
+      notification_id: 108,
+      notification_type: 'notification_general',
+      title: '集合時間のお知らせ',
+      body: '集合してください。',
+      scheduled_at: '2026-11-07T15:35:00+09:00',
+      related_event: {
+        event_id: 7,
+        event_name: '大縄跳び',
+        start_time: '1000',
+        end_time: '1100',
+        venues: [{ venue_id: 3, venue_name: '体育館' }],
+      },
+    };
+    expect(mobileNotificationResponseSchema.parse(notification)).toEqual(
+      notification
+    );
+    expect(
+      mobileNotificationResponseSchema.safeParse({
+        ...notification,
+        related_event: undefined,
+      }).success
+    ).toBe(false);
+    expect(
+      mobileNotificationResponseSchema.safeParse({
+        ...notification,
+        related_event: { event_id: 7 },
+      }).success
+    ).toBe(false);
   });
 
   it('空queryでdefaultを適用し、safe integer外のoffsetを拒否する', () => {

@@ -12,6 +12,9 @@ const JWT_SECRET = 'mobile-history-test-secret-32-characters';
 const testEnv: Env = { ...env, JWT_SECRET };
 const userIds: number[] = [];
 const notificationIds: number[] = [];
+const gatheringIds: number[] = [];
+const eventIds: number[] = [];
+const spotIds: number[] = [];
 
 afterEach(async () => {
   for (const id of notificationIds) {
@@ -24,11 +27,31 @@ afterEach(async () => {
       .bind(id)
       .run();
   }
+  for (const id of gatheringIds) {
+    await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
+      .bind(id)
+      .run();
+  }
+  for (const id of eventIds) {
+    await env.DB.prepare('DELETE FROM events WHERE event_id = ?')
+      .bind(id)
+      .run();
+  }
+  for (const id of spotIds) {
+    await env.DB.prepare(
+      'DELETE FROM gathering_spots WHERE gathering_spot_id = ?'
+    )
+      .bind(id)
+      .run();
+  }
   for (const id of userIds) {
     await env.DB.prepare('DELETE FROM users WHERE user_id = ?').bind(id).run();
   }
   userIds.length = 0;
   notificationIds.length = 0;
+  gatheringIds.length = 0;
+  eventIds.length = 0;
+  spotIds.length = 0;
 });
 
 async function createUser(name: string) {
@@ -110,6 +133,7 @@ describe('Mobile通知履歴APIのRecipient基準回帰', () => {
       title: '履歴タイトル',
       body: '履歴本文',
       scheduled_at: '2026-07-23T02:00:00.000Z',
+      related_event: null,
     };
 
     const list = await requestAs(userId, '/api/v1/me/notifications');
@@ -179,6 +203,67 @@ describe('Mobile通知履歴APIのRecipient基準回帰', () => {
         .bind(secondId)
         .first()
     ).toEqual({ notification_type: 'notification_general' });
+  });
+
+  it('実Route・認証・DIで自動通知の関連イベントを返し、生成元削除後も通知を保持する', async () => {
+    const userId = await createUser('自動通知本人');
+    const otherId = await createUser('自動通知他人');
+    const event = await env.DB.prepare(
+      "INSERT INTO events (event_name, start_time, end_time) VALUES ('大縄跳び', '1000', '1100') RETURNING event_id"
+    ).first<{ event_id: number }>();
+    eventIds.push(event!.event_id);
+    const spot = await env.DB.prepare(
+      "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('API関連イベント集合場所') RETURNING gathering_spot_id"
+    ).first<{ gathering_spot_id: number }>();
+    spotIds.push(spot!.gathering_spot_id);
+    const gathering = await env.DB.prepare(
+      'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id'
+    )
+      .bind(event!.event_id, spot!.gathering_spot_id)
+      .first<{ gathering_id: number }>();
+    gatheringIds.push(gathering!.gathering_id);
+    const notificationId = await createNotification(
+      userId,
+      '2026-07-23T00:00:00.000Z'
+    );
+    await env.DB.prepare(
+      "UPDATE notifications SET source_type = 'gathering', source_id = ?, source_hash = 'api-related-event-test' WHERE notification_id = ?"
+    )
+      .bind(gathering!.gathering_id, notificationId)
+      .run();
+    const detailPath = `/api/v1/me/notifications/${notificationId}`;
+    const detail = await requestAs(userId, detailPath);
+    expect(detail.status).toBe(200);
+    const detailBody = await detail.json();
+    expect(detailBody).toMatchObject({
+      notification_id: notificationId,
+      notification_type: 'notification_general',
+      related_event: {
+        event_id: event!.event_id,
+        event_name: '大縄跳び',
+        start_time: '1000',
+        end_time: '1100',
+        venues: [],
+      },
+    });
+    expect(mobileNotificationResponseSchema.safeParse(detailBody).success).toBe(
+      true
+    );
+    const list = await requestAs(userId, '/api/v1/me/notifications');
+    expect(await list.json()).toMatchObject({
+      total: 1,
+      notifications: [detailBody],
+    });
+    expect((await requestAs(otherId, detailPath)).status).toBe(404);
+    await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
+      .bind(gathering!.gathering_id)
+      .run();
+    const afterDelete = await requestAs(userId, detailPath);
+    expect(afterDelete.status).toBe(200);
+    expect(await afterDelete.json()).toMatchObject({
+      notification_id: notificationId,
+      related_event: null,
+    });
   });
 
   it('実RouteでNotification IDのsafe integer境界を検証する', async () => {
