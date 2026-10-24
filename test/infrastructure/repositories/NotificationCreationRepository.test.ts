@@ -68,8 +68,7 @@ describe('NotificationCreationRepository', () => {
     });
 
     const schedule = await env.DB.prepare(
-      `SELECT scheduled_by_user_id, notification_id, send_status, send_at,
-              created_user_id, event_id
+      `SELECT scheduled_by_user_id, notification_id, send_status, send_at
        FROM notification_schedules WHERE notification_schedule_id = ?`
     )
       .bind(outcome.result.notification_schedule_id)
@@ -79,8 +78,6 @@ describe('NotificationCreationRepository', () => {
       notification_id: outcome.result.notification_id,
       send_status: 'scheduled',
       send_at: '2026-10-04T01:00:00.000Z',
-      created_user_id: null,
-      event_id: null,
     });
 
     const counts = await env.DB.prepare(

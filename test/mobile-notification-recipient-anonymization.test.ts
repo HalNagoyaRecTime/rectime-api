@@ -54,9 +54,9 @@ describe('GET /me/notificationsとRecipient匿名化', () => {
       "INSERT INTO notifications (notification_type, push_title, push_body, title, body) VALUES ('notification_general', '匿名化履歴', 'Push本文', '匿名化履歴', '履歴本文') RETURNING notification_id"
     ).first<{ notification_id: number }>();
     const schedule = await workerEnv.DB.prepare(
-      "INSERT INTO notification_schedules (notification_id, firebase_token_id, send_status, send_at) VALUES (?, ?, 'sent', '2026-10-01T10:00:00.000Z') RETURNING notification_schedule_id"
+      "INSERT INTO notification_schedules (notification_id, send_status, send_at) VALUES (?, 'sent', '2026-10-01T10:00:00.000Z') RETURNING notification_schedule_id"
     )
-      .bind(notification!.notification_id, deletedToken!.firebase_token_id)
+      .bind(notification!.notification_id)
       .first<{ notification_schedule_id: number }>();
     const recipient = await workerEnv.DB.prepare(
       'INSERT INTO notification_recipients (notification_schedule_id, user_id, created_at, updated_at) VALUES (?, ?, ?, ?) RETURNING notification_recipient_id'

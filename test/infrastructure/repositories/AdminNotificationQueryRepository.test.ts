@@ -85,10 +85,9 @@ describe('AdminNotificationQueryRepository', () => {
       .run();
 
     const secondSchedule = await env.DB.prepare(
-      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, event_id, notification_id, importance, send_status, send_at, created_at, updated_at) VALUES (?, ?, NULL, ?, 1, 'scheduled', ?, ?, ?) RETURNING notification_schedule_id"
+      "INSERT INTO notification_schedules (scheduled_by_user_id, notification_id, send_status, send_at, created_at, updated_at) VALUES (?, ?, 'scheduled', ?, ?, ?) RETURNING notification_schedule_id"
     )
       .bind(
-        fixture.actorUserId,
         fixture.actorUserId,
         created.notification_id,
         '2026-09-24T11:00:00.000Z',
@@ -232,10 +231,9 @@ describe('AdminNotificationQueryRepository', () => {
       buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
     );
     await env.DB.prepare(
-      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, notification_id, importance, send_status, send_at, created_at, updated_at) VALUES (?, ?, ?, 1, 'scheduled', ?, ?, ?)"
+      "INSERT INTO notification_schedules (scheduled_by_user_id, notification_id, send_status, send_at, created_at, updated_at) VALUES (?, ?, 'scheduled', ?, ?, ?)"
     )
       .bind(
-        fixture.actorUserId,
         fixture.actorUserId,
         mixed.notification_id,
         '2026-09-25T00:00:00+09:00',
@@ -344,10 +342,9 @@ describe('AdminNotificationQueryRepository', () => {
       .run();
 
     const earlierSchedule = await env.DB.prepare(
-      "INSERT INTO notification_schedules (created_user_id, scheduled_by_user_id, notification_id, importance, send_status, send_at, created_at, updated_at) VALUES (?, ?, ?, 1, 'scheduled', ?, ?, ?) RETURNING notification_schedule_id"
+      "INSERT INTO notification_schedules (scheduled_by_user_id, notification_id, send_status, send_at, created_at, updated_at) VALUES (?, ?, 'scheduled', ?, ?, ?) RETURNING notification_schedule_id"
     )
       .bind(
-        fixture.actorUserId,
         fixture.actorUserId,
         created.notification_id,
         '2026-09-24T10:00:00.100Z',
