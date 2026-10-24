@@ -33,6 +33,11 @@ export interface StudentUpdateInput extends StudentWriteInput {
   expectedLockVersion?: number;
 }
 
+export interface StudentClassRoomAssignment {
+  classRoomId: number | null;
+  attendanceNumber: number | null;
+}
+
 export interface StudentSearchFilter {
   search?: string;
   classRoomId?: number;

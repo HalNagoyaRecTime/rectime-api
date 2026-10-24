@@ -4,6 +4,7 @@ import { errorResponse } from '../errors/errorResponse';
 import { CommonErrors } from '../errors/commonErrors';
 import { UserErrors } from '../errors/userErrors';
 import {
+  studentClassRoomAssignmentSchema,
   studentIdParams,
   studentListQuery,
   studentUpdateSchema,
@@ -34,6 +35,15 @@ function isStudentNumberUniqueConstraintError(error: unknown): boolean {
   return (
     message.includes('UNIQUE constraint failed') &&
     message.includes('students.student_id_number')
+  );
+}
+
+function isAttendanceNumberUniqueConstraintError(error: unknown): boolean {
+  const message = getErrorChainMessage(error);
+  return (
+    message.includes('UNIQUE constraint failed') &&
+    message.includes('students.class_room_id') &&
+    message.includes('students.attendance_number')
   );
 }
 
@@ -101,11 +111,41 @@ export function createStudentController(studentService: IStudentService) {
     }
   };
 
+  const updateStudentClassRoom = async (c: Context) => {
+    const studentId = parseStudentId(c.req.param('studentId'));
+    if (studentId === null) {
+      return errorResponse(c, UserErrors.INVALID_STUDENT_ID);
+    }
+    const body = await c.req.json().catch(() => undefined);
+    const parsedBody = studentClassRoomAssignmentSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return errorResponse(
+        c,
+        UserErrors.INVALID_STUDENT_REQUEST,
+        parsedBody.error.flatten()
+      );
+    }
+
+    try {
+      return c.json(
+        await studentService.updateStudentClassRoom(studentId, parsedBody.data),
+        200
+      );
+    } catch (error) {
+      return toStudentErrorResponse(
+        c,
+        error,
+        UserErrors.STUDENT_CLASS_ROOM_UPDATE_FAILED
+      );
+    }
+  };
+
   return {
     getStudentById,
     getAllStudent,
     createStudent,
     updateStudent,
+    updateStudentClassRoom,
   };
 }
 
@@ -147,6 +187,7 @@ function toStudentErrorResponse(
   fallbackError:
     | typeof UserErrors.STUDENT_CREATE_FAILED
     | typeof UserErrors.STUDENT_UPDATE_FAILED
+    | typeof UserErrors.STUDENT_CLASS_ROOM_UPDATE_FAILED
 ) {
   if (!(error instanceof Error)) {
     return errorResponse(c, fallbackError);
@@ -165,6 +206,12 @@ function toStudentErrorResponse(
     isStudentNumberUniqueConstraintError(error)
   ) {
     return errorResponse(c, UserErrors.STUDENT_NUMBER_ALREADY_EXISTS);
+  }
+  if (
+    error.message === 'Attendance number already exists' ||
+    isAttendanceNumberUniqueConstraintError(error)
+  ) {
+    return errorResponse(c, UserErrors.ATTENDANCE_NUMBER_ALREADY_EXISTS);
   }
   return errorResponse(c, fallbackError);
 }

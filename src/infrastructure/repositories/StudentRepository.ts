@@ -16,6 +16,7 @@ import { class_rooms, staffs, students, users } from '../database/schema';
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import type {
   StudentEntity,
+  StudentClassRoomAssignment,
   StudentPage,
   StudentUpdateInput,
   StudentWriteInput,
@@ -24,6 +25,7 @@ import { buildProvisionalTeamName } from '../../domain/entities/Team';
 import {
   BulkCreateStudentsInput,
   IStudentRepository,
+  StudentClassRoomAttendanceNumber,
 } from '../../domain/interfaces/repositories/IStudentRepository';
 import { chunkArray } from './chunk';
 import { escapeLikePattern } from '../helpers/escapeLikePattern';
@@ -190,6 +192,27 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       return result ? toDomain(result) : null;
     },
 
+    async findByClassRoomAndAttendanceNumber(
+      classRoomId: number,
+      attendanceNumber: number
+    ): Promise<StudentEntity | null> {
+      const result = await orm
+        .select()
+        .from(students)
+        .innerJoin(users, eq(students.userId, users.id))
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
+        .where(
+          and(
+            eq(students.classRoomId, classRoomId),
+            eq(students.attendanceNumber, attendanceNumber)
+          )
+        )
+        .get();
+
+      return result ? toDomain(result) : null;
+    },
+
     async findExistingStudentNumbers(
       studentNumbers: string[]
     ): Promise<Set<string>> {
@@ -208,6 +231,55 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       }
 
       return found;
+    },
+
+    async findExistingClassRoomAttendanceNumbers(
+      assignments: StudentClassRoomAttendanceNumber[]
+    ): Promise<StudentClassRoomAttendanceNumber[]> {
+      const uniqueAssignments = Array.from(
+        new Map(
+          assignments.map(assignment => [
+            `${assignment.classCode}\u0000${assignment.attendanceNumber}`,
+            assignment,
+          ])
+        ).values()
+      );
+      const found = new Map<string, StudentClassRoomAttendanceNumber>();
+
+      for (const chunk of chunkArray(
+        uniqueAssignments,
+        Math.floor(D1_MAX_BOUND_PARAMETERS / 2)
+      )) {
+        if (chunk.length === 0) continue;
+        const rows = await orm
+          .select({
+            classCode: class_rooms.classCode,
+            attendanceNumber: students.attendanceNumber,
+          })
+          .from(students)
+          .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+          .where(
+            or(
+              ...chunk.map(assignment =>
+                and(
+                  eq(class_rooms.classCode, assignment.classCode),
+                  eq(students.attendanceNumber, assignment.attendanceNumber)
+                )
+              )
+            )
+          )
+          .all();
+
+        for (const row of rows) {
+          if (row.attendanceNumber === null) continue;
+          found.set(`${row.classCode}\u0000${row.attendanceNumber}`, {
+            classCode: row.classCode,
+            attendanceNumber: row.attendanceNumber,
+          });
+        }
+      }
+
+      return Array.from(found.values());
     },
 
     async create(student: StudentWriteInput): Promise<StudentEntity> {
@@ -362,6 +434,34 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       return result ? toDomain(result) : null;
     },
 
+    async updateClassRoom(
+      id: number,
+      assignment: StudentClassRoomAssignment
+    ): Promise<StudentEntity | null> {
+      const updateResult = await orm
+        .update(students)
+        .set({
+          classRoomId: assignment.classRoomId,
+          attendanceNumber: assignment.attendanceNumber,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(students.id, id))
+        .run();
+      if (updateResult.meta.changes === 0) {
+        return null;
+      }
+
+      const result = await orm
+        .select()
+        .from(students)
+        .innerJoin(users, eq(students.userId, users.id))
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
+        .where(eq(students.id, id))
+        .get();
+      return result ? toDomain(result) : null;
+    },
+
     async createMany(input: BulkCreateStudentsInput): Promise<void> {
       if (input.students.length === 0) {
         return;
@@ -404,15 +504,16 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
     async anonymizeByUserId(userId: number): Promise<boolean> {
       // users.user_nameの匿名化はUserRepository.anonymizeUserがロールの
       // 種類によらず担当する(AccountDeletionService.deleteRelatedDataの
-      // 先頭で呼び出し済み)。ここではstudents固有のカラム
-      // (student_id_number)のみを扱う。
+      // 先頭で呼び出し済み)。ここではstudents固有のカラムを扱う。
       //
-      // class_room_id・attendance_numberは学生本人の個人情報ではないため
-      // 変更しない。student_id_numberはUNIQUE制約付きだが、userIdを含む
-      // ことで他の匿名化済み行と衝突しない値にする。
+      // 退会後に同じクラス・出席番号で再登録できるよう、所属情報も
+      // NULLにして一意制約上の枠を解放する。student_id_numberはUNIQUE
+      // 制約付きだが、userIdを含むことで他の匿名化済み行と衝突しない。
       const result = await orm
         .update(students)
         .set({
+          classRoomId: null,
+          attendanceNumber: null,
           studentIdNumber: `deleted-${userId}`,
           updatedAt: new Date().toISOString(),
           lockVersion: sql`${students.lockVersion} + 1`,
