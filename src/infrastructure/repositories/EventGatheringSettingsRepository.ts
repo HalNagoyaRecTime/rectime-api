@@ -1,27 +1,20 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, asc, count, eq, exists, isNull, sql } from 'drizzle-orm';
-import type { BatchItem } from 'drizzle-orm/batch';
+import { asc, count, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
-import type {
-  EventGatheringChangeSet,
-  EventGatheringEntity,
-} from '../../domain/entities/EventGathering';
+import type { EventGatheringEntity } from '../../domain/entities/EventGathering';
 import type { IEventGatheringSettingsRepository } from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
 import * as schema from '../database/schema';
-import { AUTOMATIC_SYNC_PENDING_REASON } from '../../domain/entities/NotificationCreation';
 import {
   gathering_group_members,
   gathering_spots,
   gatherings,
-  notification_schedules,
-  notifications,
 } from '../database/schema';
+import { applyGatheringSettingsBatch } from './GatheringSettingsBatch';
 
 export function createEventGatheringSettingsRepository(
   db: D1Database
 ): IEventGatheringSettingsRepository {
   const orm = drizzle(db, { schema });
-
   return {
     async findByEventId(eventId: number): Promise<EventGatheringEntity[]> {
       // 参加人数は集合予定ごとに個別に数えず、LEFT JOIN + GROUP BY で
@@ -52,85 +45,8 @@ export function createEventGatheringSettingsRepository(
         .all();
     },
 
-    async apply(
-      changeSet: EventGatheringChangeSet,
-      options: { holdNotificationSyncGatheringIds?: number[] } = {}
-    ): Promise<void> {
-      // 更新・削除は event_id も条件に含める。Application Service が対象Eventの
-      // 集合予定だけを差分に入れる前提だが、他Eventの行を書き換える経路を
-      // DB側でも塞いでおく。
-      const ownedBy = (gatheringId: number) =>
-        and(
-          eq(gatherings.id, gatheringId),
-          eq(gatherings.eventId, changeSet.event_id)
-        );
-
-      // 参加者(gathering_group_members)は消さない。参加者が残っている集合予定の
-      // DELETE は外部キー制約で失敗し、batch 全体が取り消される。
-      const statements: BatchItem<'sqlite'>[] = [
-        ...(options.holdNotificationSyncGatheringIds ?? []).map(gatheringId =>
-          orm
-            .update(notification_schedules)
-            .set({
-              failedReason: AUTOMATIC_SYNC_PENDING_REASON,
-              updatedAt: sql`CURRENT_TIMESTAMP`,
-            })
-            .where(
-              and(
-                eq(notification_schedules.sendStatus, 'scheduled'),
-                isNull(notification_schedules.startedAt),
-                isNull(notification_schedules.scheduledByUserId),
-                exists(
-                  orm
-                    .select({ notificationId: notifications.notificationId })
-                    .from(notifications)
-                    .where(
-                      and(
-                        eq(
-                          notifications.notificationId,
-                          notification_schedules.notificationId
-                        ),
-                        eq(notifications.sourceType, 'gathering'),
-                        eq(notifications.sourceId, gatheringId),
-                        eq(
-                          notifications.createdAt,
-                          notification_schedules.createdAt
-                        )
-                      )
-                    )
-                )
-              )
-            )
-        ),
-        ...changeSet.delete_ids.map(gatheringId =>
-          orm.delete(gatherings).where(ownedBy(gatheringId))
-        ),
-        ...changeSet.updates.map(update =>
-          orm
-            .update(gatherings)
-            .set({
-              round: update.round,
-              roundStartTime: update.round_start_time,
-              gatheringTime: update.gathering_time,
-              gatheringSpotId: update.gathering_spot_id,
-              updatedAt: sql`CURRENT_TIMESTAMP`,
-            })
-            .where(ownedBy(update.gathering_id))
-        ),
-        ...changeSet.creates.map(create =>
-          orm.insert(gatherings).values({
-            eventId: changeSet.event_id,
-            round: create.round,
-            roundStartTime: create.round_start_time,
-            gatheringTime: create.gathering_time,
-            gatheringSpotId: create.gathering_spot_id,
-          })
-        ),
-      ];
-
-      const [first, ...rest] = statements;
-      if (!first) return;
-      await orm.batch([first, ...rest]);
+    async apply(changeSet, options = {}) {
+      await applyGatheringSettingsBatch(orm, changeSet, options);
     },
   };
 }

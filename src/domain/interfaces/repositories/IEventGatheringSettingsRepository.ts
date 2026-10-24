@@ -2,6 +2,12 @@ import type {
   EventGatheringChangeSet,
   EventGatheringEntity,
 } from '../../entities/EventGathering';
+import type { GatheringNotificationCleanupPlan } from '../../entities/GatheringNotificationCleanup';
+
+export interface EventGatheringApplyOptions {
+  holdNotificationSyncGatheringIds?: number[];
+  notificationCleanup?: GatheringNotificationCleanupPlan;
+}
 
 // Event単位で集合予定をまとめて読み書きする契約。
 export interface IEventGatheringSettingsRepository {
@@ -12,8 +18,10 @@ export interface IEventGatheringSettingsRepository {
   // 差分を1つのトランザクションで適用する。いずれかの文が失敗すると
   // 全体が取り消され、中途半端な状態は残らない。
   // 参加者が残っている集合予定の削除は外部キー制約で失敗する。
+  // notificationCleanup を渡した場合、対象Gatheringの削除と同じbatchで
+  // 自動通知の削除・停止も確定する。
   apply(
     changeSet: EventGatheringChangeSet,
-    options?: { holdNotificationSyncGatheringIds?: number[] }
+    options?: EventGatheringApplyOptions
   ): Promise<void>;
 }
