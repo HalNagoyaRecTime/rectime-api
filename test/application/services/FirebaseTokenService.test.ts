@@ -9,14 +9,11 @@ describe('FirebaseTokenService', () => {
       firebase_token_id: 1,
       user_id: 7,
       platform: 'android',
-      is_firebase_active: true,
       last_seen_at: '2026-09-24 01:02:03',
     };
     const repository: IFirebaseTokenRepository = {
       register: vi.fn().mockResolvedValue(result),
-      findActiveTokens: vi.fn(),
       deleteById: vi.fn(),
-      deactivateByUserId: vi.fn(),
       findAllByUserId: vi.fn(),
       deleteByUserIdAndFcmToken: vi.fn().mockResolvedValue(undefined),
       deleteByUserId: vi.fn(),

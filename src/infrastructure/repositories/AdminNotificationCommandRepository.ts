@@ -4,10 +4,7 @@ import type { IAdminNotificationCommandRepository } from '../../domain/interface
 import type { INotificationCreationRepository } from '../../domain/interfaces/repositories/INotificationCreationRepository';
 import { createNotificationCreationRepository } from './NotificationCreationRepository';
 import { areAudienceTargetsAvailable } from './NotificationAudienceUserQuery';
-import type {
-  NotificationImportance,
-  NotificationSourceType,
-} from '../../domain/entities/Notification';
+import type { NotificationSourceType } from '../../domain/entities/Notification';
 
 interface MutationRootRow {
   notification_id: number;
@@ -43,10 +40,6 @@ export function createAdminNotificationCommandRepository(
         audiences: command.audiences,
         source: null,
         now: command.now,
-        legacy_schedule: {
-          created_user_id: command.actor_user_id,
-          importance: importanceToSchedule(command.importance),
-        },
       });
       if (outcome.status === 'already_exists') {
         throw new Error('手動通知の作成で予期しない重複が発生しました');
@@ -127,30 +120,6 @@ export function createAdminNotificationCommandRepository(
           )
           .bind(...bindings),
       ];
-
-      if (command.importance !== undefined) {
-        statements.push(
-          db
-            .prepare(
-              `UPDATE notification_schedules
-               SET importance = ?, updated_at = ?
-               WHERE notification_id = ?
-                 AND started_at IS NULL
-                 ${scheduleUnstartedGuard}
-                 AND EXISTS (
-                   SELECT 1 FROM notifications n
-                   WHERE n.notification_id = ?
-                     AND n.notification_type = 'notification_general'
-                 )`
-            )
-            .bind(
-              importanceToSchedule(command.importance),
-              command.updated_at,
-              command.notification_id,
-              command.notification_id
-            )
-        );
-      }
 
       if (command.schedule?.send_at !== undefined) {
         statements.push(
@@ -310,16 +279,6 @@ function buildUnstartedSchedulesGuard(
   )`;
 }
 
-function importanceToSchedule(importance: NotificationImportance): number {
-  switch (importance) {
-    case 'low':
-      return 1;
-    case 'normal':
-      return 2;
-    case 'high':
-      return 3;
-  }
-}
 function addAssignment(
   assignments: string[],
   bindings: unknown[],

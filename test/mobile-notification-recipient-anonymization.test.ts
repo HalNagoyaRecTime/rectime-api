@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createNotificationAccountDeletionService } from '../src/application/services/NotificationAccountDeletionService';
 import { createFirebaseTokenRepository } from '../src/infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationAccountDeletionRepository } from '../src/infrastructure/repositories/NotificationAccountDeletionRepository';
-import { createNotificationScheduleRepository } from '../src/infrastructure/repositories/NotificationScheduleRepository';
 import { signAccessToken } from '../src/infrastructure/auth/jwt';
 import { app } from '../src/index';
 import type { Env } from '../src/lib/env';
@@ -80,9 +79,6 @@ describe('GET /me/notificationsとRecipient匿名化', () => {
 
     await createNotificationAccountDeletionService({
       firebaseTokenRepository: createFirebaseTokenRepository(workerEnv.DB),
-      notificationScheduleRepository: createNotificationScheduleRepository(
-        workerEnv.DB
-      ),
       notificationAccountDeletionRepository:
         createNotificationAccountDeletionRepository(workerEnv.DB),
     }).purgeUserNotificationData(deletedUser!.user_id);

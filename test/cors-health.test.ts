@@ -252,7 +252,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(71);
+    expect(documentedOperations).toHaveLength(70);
     expect(document.paths['/api/v1/gatherings']).toBeUndefined();
     const schedulePath =
       document.paths[
@@ -534,7 +534,6 @@ describe('通知予定管理APIの廃止', () => {
     ['GET', '/api/v1/admin/notifications'],
     ['POST', '/api/v1/admin/notifications'],
     ['GET', '/api/v1/admin/notifications/1'],
-    ['PUT', '/api/v1/admin/notifications/1'],
     ['DELETE', '/api/v1/admin/notifications/1'],
     ['GET', '/api/v1/me/notifications'],
     ['GET', '/api/v1/me/notifications/1'],

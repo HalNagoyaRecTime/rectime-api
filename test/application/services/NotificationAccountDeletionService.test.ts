@@ -13,14 +13,6 @@ describe('NotificationAccountDeletionService', () => {
         order.push('deleteTokens');
       }),
     };
-    const notificationScheduleRepository = {
-      deleteByFirebaseTokenId: vi.fn(async () => {
-        order.push('deleteLegacySchedules');
-      }),
-      anonymizeCreatedUserId: vi.fn(async () => {
-        order.push('anonymizeActors');
-      }),
-    };
     const notificationAccountDeletionRepository = {
       deleteDirectUserAudiencesByUserId: vi.fn(async () => {
         order.push('deleteAudiences');
@@ -34,7 +26,6 @@ describe('NotificationAccountDeletionService', () => {
     };
     const service = createNotificationAccountDeletionService({
       firebaseTokenRepository,
-      notificationScheduleRepository,
       notificationAccountDeletionRepository,
     });
 
@@ -45,10 +36,7 @@ describe('NotificationAccountDeletionService', () => {
       'findTokens',
       'deleteAudiences',
       'anonymizeRecipients',
-      'deleteLegacySchedules',
-      'deleteLegacySchedules',
       'deleteTokens',
-      'anonymizeActors',
       'anonymizeV2Actors',
     ]);
     expect(
@@ -61,10 +49,6 @@ describe('NotificationAccountDeletionService', () => {
       findAllByUserId: vi.fn().mockResolvedValue([]),
       deleteByUserId: vi.fn(),
     };
-    const notificationScheduleRepository = {
-      deleteByFirebaseTokenId: vi.fn(),
-      anonymizeCreatedUserId: vi.fn().mockResolvedValue(undefined),
-    };
     const notificationAccountDeletionRepository = {
       deleteDirectUserAudiencesByUserId: vi.fn().mockResolvedValue(undefined),
       anonymizeRecipientsByUserId: vi.fn().mockResolvedValue(undefined),
@@ -72,7 +56,6 @@ describe('NotificationAccountDeletionService', () => {
     };
     const service = createNotificationAccountDeletionService({
       firebaseTokenRepository,
-      notificationScheduleRepository,
       notificationAccountDeletionRepository,
     });
 
