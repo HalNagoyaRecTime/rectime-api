@@ -3,19 +3,19 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
-    item => item.name === '0052_cleanup_legacy_notification_schema.sql'
+    item => item.name === '0055_cleanup_legacy_notification_schema.sql'
   );
   if (!migration) {
     throw new Error(
-      '0052_cleanup_legacy_notification_schema.sql is not registered'
+      '0055_cleanup_legacy_notification_schema.sql is not registered'
     );
   }
   return migration.queries;
 })();
 
-const testPrefix = '0052通知スキーマ整理テスト';
+const testPrefix = '0055通知スキーマ整理テスト';
 
-// 0052適用時点の旧列を、0052適用後の現行スキーマへ復元する。
+// 0055適用時点の旧列を、0055適用後の現行スキーマへ復元する。
 async function addLegacyColumns(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare(
@@ -43,7 +43,7 @@ async function runMigration(): Promise<void> {
   await env.DB.batch(migrationQueries.map(query => env.DB.prepare(query)));
 }
 
-describe('0052_cleanup_legacy_notification_schema.sql', () => {
+describe('0055_cleanup_legacy_notification_schema.sql', () => {
   beforeAll(addLegacyColumns);
 
   it('旧Scheduleと無効Tokenを削除し、v2のSchedule・Token・Deliveryを保持する', async () => {
@@ -72,12 +72,12 @@ describe('0052_cleanup_legacy_notification_schema.sql', () => {
       env.DB.prepare(
         `INSERT INTO firebase_tokens (
            firebase_token_id, user_id, platform, fcm_token, is_firebase_active
-         ) VALUES (?, ?, 1, '0052-active-token', 1)`
+         ) VALUES (?, ?, 1, '0055-active-token', 1)`
       ).bind(activeTokenId, userId),
       env.DB.prepare(
         `INSERT INTO firebase_tokens (
            firebase_token_id, user_id, platform, fcm_token, is_firebase_active
-         ) VALUES (?, ?, 2, '0052-inactive-token', 0)`
+         ) VALUES (?, ?, 2, '0055-inactive-token', 0)`
       ).bind(inactiveTokenId, userId),
       env.DB.prepare(
         `INSERT INTO notification_schedules (
