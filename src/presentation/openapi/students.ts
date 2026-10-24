@@ -31,6 +31,8 @@ export const studentResponseSchema = z
         class_name: z.string(),
       })
       .nullable(),
+    updated_at: z.string(),
+    lock_version: z.number().int(),
   })
   .openapi('Student');
 
@@ -80,23 +82,47 @@ export const studentListQuery = z
       : { isLiveActive: isLiveActive === 'true' }),
   }));
 
+const studentWriteFields = {
+  display_name: z.string().trim().min(1).max(100),
+  class_room_id: z.number().int().positive().nullable(),
+  attendance_number: z.number().int().positive().nullable(),
+  student_id_number: z.string().trim().min(1).max(100),
+};
+
+// クラスと出席番号は、両方が null か、両方に値があるかのどちらか。
+const hasConsistentAssignment = (value: {
+  class_room_id: number | null;
+  attendance_number: number | null;
+}) => (value.class_room_id === null) === (value.attendance_number === null);
+
+const inconsistentAssignmentMessage =
+  'class_room_id and attendance_number must both be null or both have values';
+
 export const studentWriteSchema = z
-  .object({
-    display_name: z.string().trim().min(1).max(100),
-    class_room_id: z.number().int().positive().nullable(),
-    attendance_number: z.number().int().positive().nullable(),
-    student_id_number: z.string().trim().min(1).max(100),
-  })
+  .object(studentWriteFields)
   .strict()
-  .refine(
-    value =>
-      (value.class_room_id === null) === (value.attendance_number === null),
-    {
-      message:
-        'class_room_id and attendance_number must both be null or both have values',
-    }
-  )
+  .refine(hasConsistentAssignment, { message: inconsistentAssignmentMessage })
   .openapi('StudentWriteRequest');
+
+export const studentClassRoomAssignmentSchema = z
+  .union([
+    z
+      .object({
+        class_room_id: z.number().int().positive(),
+        attendance_number: z.number().int().positive(),
+      })
+      .strict(),
+    z
+      .object({
+        class_room_id: z.null(),
+        attendance_number: z.null(),
+      })
+      .strict(),
+  ])
+  .openapi('StudentClassRoomAssignmentRequest', {
+    description:
+      'class_room_idとattendance_numberは両方に値を指定するか、両方をnullにする。',
+  });
 
 export const studentListRoute = createRoute({
   method: 'get',
@@ -131,6 +157,21 @@ export const studentDetailRoute = createRoute({
   },
 });
 
+// 登録用のスキーマに extend() で項目を足すと、OpenAPI では allOf で合成され、基底側の
+// additionalProperties: false が lock_version を拒否する仕様になってしまう。
+// そのため、項目の定義と検証ルールを共有し、新しいオブジェクトとして定義する。
+export const studentUpdateSchema = z
+  .object({
+    ...studentWriteFields,
+    lock_version: z.number().int().min(0).optional().openapi({
+      description:
+        '取得時点の `lock_version`。指定すると、取得後に変更されていた場合は409を返す。',
+    }),
+  })
+  .strict()
+  .refine(hasConsistentAssignment, { message: inconsistentAssignmentMessage })
+  .openapi('StudentUpdateRequest');
+
 export const studentCreateRoute = createRoute({
   method: 'post',
   path: '/students',
@@ -163,12 +204,38 @@ export const studentUpdateRoute = createRoute({
   request: {
     params: studentIdParams,
     body: {
-      content: { 'application/json': { schema: studentWriteSchema } },
+      content: { 'application/json': { schema: studentUpdateSchema } },
       required: true,
     },
   },
   responses: {
     200: jsonResponse(studentResponseSchema, '更新した学生'),
+    400: badRequestResponse,
+    401: unauthorizedResponse,
+    403: forbiddenResponse,
+    404: notFoundResponse,
+    409: conflictResponse,
+    500: internalServerErrorResponse,
+  },
+});
+
+export const studentClassRoomUpdateRoute = createRoute({
+  method: 'patch',
+  path: '/students/{studentId}/classroom',
+  tags: ['Students'],
+  summary: '学生のクラス所属を変更する',
+  security: bearerAuth,
+  request: {
+    params: studentIdParams,
+    body: {
+      content: {
+        'application/json': { schema: studentClassRoomAssignmentSchema },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: jsonResponse(studentResponseSchema, '所属変更後の学生'),
     400: badRequestResponse,
     401: unauthorizedResponse,
     403: forbiddenResponse,

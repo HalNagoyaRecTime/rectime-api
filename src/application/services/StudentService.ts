@@ -1,5 +1,6 @@
 import {
   StudentDTO,
+  StudentClassRoomAssignmentDTO,
   StudentManagementDTO,
   StudentImportCommitResult,
   StudentImportErrorReason,
@@ -8,11 +9,13 @@ import {
   StudentImportRowError,
   StudentImportValidationResult,
   StudentPageDTO,
+  StudentUpdateDTO,
   StudentWriteDTO,
 } from '../dto/StudentDTO';
 import type {
   StudentEntity,
   StudentSearchFilter,
+  StudentUpdateInput,
   StudentWriteInput,
 } from '../../domain/entities/Student';
 import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
@@ -53,6 +56,8 @@ function toManagementDTO(student: StudentEntity): StudentManagementDTO {
             class_code: student.classRoomCode,
             class_name: student.classRoomName,
           },
+    updated_at: student.updatedAt,
+    lock_version: student.lockVersion,
   };
 }
 
@@ -65,14 +70,26 @@ function toDomainWriteInput(student: StudentWriteDTO): StudentWriteInput {
   };
 }
 
+function toDomainUpdateInput(student: StudentUpdateDTO): StudentUpdateInput {
+  return {
+    ...toDomainWriteInput(student),
+    expectedLockVersion: student.lock_version,
+  };
+}
+
 async function findImportErrors(
   rows: StudentImportRow[],
   studentRepository: IStudentRepository
 ): Promise<StudentImportRowError[]> {
-  const seenInFile = new Set<string>();
+  const seenStudentNumbers = new Set<string>();
+  const seenAssignments = new Set<string>();
   const fileDuplicateRowIndexes = new Set<number>();
   const errors: StudentImportRowError[] = [];
   const numbersToCheck: string[] = [];
+  const assignmentsToCheck: {
+    classCode: string;
+    attendanceNumber: number;
+  }[] = [];
 
   const pushError = (
     rowIndex: number,
@@ -90,17 +107,43 @@ async function findImportErrors(
   };
 
   for (const [rowIndex, row] of rows.entries()) {
-    if (seenInFile.has(row.student_id_number)) {
+    const assignmentKey = `${row.class_code}\u0000${row.attendance_number}`;
+    const hasDuplicateStudentNumber = seenStudentNumbers.has(
+      row.student_id_number
+    );
+    const hasDuplicateAssignment = seenAssignments.has(assignmentKey);
+    seenStudentNumbers.add(row.student_id_number);
+    seenAssignments.add(assignmentKey);
+
+    if (hasDuplicateStudentNumber) {
       fileDuplicateRowIndexes.add(rowIndex);
       pushError(rowIndex, row, 'student_id_number_duplicate_in_file');
       continue;
     }
-    seenInFile.add(row.student_id_number);
+    if (hasDuplicateAssignment) {
+      fileDuplicateRowIndexes.add(rowIndex);
+      pushError(rowIndex, row, 'attendance_number_duplicate_in_file');
+      continue;
+    }
     numbersToCheck.push(row.student_id_number);
+    assignmentsToCheck.push({
+      classCode: row.class_code,
+      attendanceNumber: row.attendance_number,
+    });
   }
 
-  const existingNumbers =
-    await studentRepository.findExistingStudentNumbers(numbersToCheck);
+  const [existingNumbers, existingAssignments] = await Promise.all([
+    studentRepository.findExistingStudentNumbers(numbersToCheck),
+    studentRepository.findExistingClassRoomAttendanceNumbers(
+      assignmentsToCheck
+    ),
+  ]);
+  const existingAssignmentKeys = new Set(
+    existingAssignments.map(
+      assignment =>
+        `${assignment.classCode}\u0000${assignment.attendanceNumber}`
+    )
+  );
 
   for (const [rowIndex, row] of rows.entries()) {
     if (fileDuplicateRowIndexes.has(rowIndex)) {
@@ -108,6 +151,14 @@ async function findImportErrors(
     }
     if (existingNumbers.has(row.student_id_number)) {
       pushError(rowIndex, row, 'student_id_number_duplicate_in_db');
+      continue;
+    }
+    if (
+      existingAssignmentKeys.has(
+        `${row.class_code}\u0000${row.attendance_number}`
+      )
+    ) {
+      pushError(rowIndex, row, 'attendance_number_duplicate_in_db');
     }
   }
 
@@ -154,17 +205,29 @@ export function createStudentService(
       const input = toDomainWriteInput(student);
       await ensureClassRoomExists(input.classRoomId);
       await ensureStudentNumberAvailable(input.studentIdNumber);
+      await ensureAttendanceNumberAvailable(
+        input.classRoomId,
+        input.attendanceNumber
+      );
       return toManagementDTO(await studentRepository.create(input));
     },
 
     async updateStudent(
       id: number,
-      student: StudentWriteDTO
+      student: StudentUpdateDTO
     ): Promise<StudentManagementDTO> {
-      const input = toDomainWriteInput(student);
+      const input = toDomainUpdateInput(student);
       const existing = await studentRepository.findById(id);
       if (!existing) {
         throw new Error('Student not found');
+      }
+      // 取得時点から変わっていれば、他の確認より先に409にする。
+      // 確認後に更新される競合は、update() 側の条件で0件更新になって検出する。
+      if (
+        input.expectedLockVersion !== undefined &&
+        input.expectedLockVersion !== existing.lockVersion
+      ) {
+        throw new Error('Student update conflict');
       }
 
       await ensureClassRoomExists(input.classRoomId);
@@ -174,8 +237,44 @@ export function createStudentService(
       if (duplicate && duplicate.studentId !== id) {
         throw new Error('Student number already exists');
       }
+      await ensureAttendanceNumberAvailable(
+        input.classRoomId,
+        input.attendanceNumber,
+        id
+      );
 
       const updated = await studentRepository.update(id, input);
+      if (!updated) {
+        // 版番号を条件にしていた場合、0件更新は削除か版番号の不一致のどちらか。
+        if (
+          input.expectedLockVersion !== undefined &&
+          (await studentRepository.findById(id))
+        ) {
+          throw new Error('Student update conflict');
+        }
+        throw new Error('Student not found');
+      }
+      return toManagementDTO(updated);
+    },
+
+    async updateStudentClassRoom(
+      id: number,
+      assignment: StudentClassRoomAssignmentDTO
+    ): Promise<StudentManagementDTO> {
+      if (!(await studentRepository.findById(id))) {
+        throw new Error('Student not found');
+      }
+      await ensureClassRoomExists(assignment.class_room_id);
+      await ensureAttendanceNumberAvailable(
+        assignment.class_room_id,
+        assignment.attendance_number,
+        id
+      );
+
+      const updated = await studentRepository.updateClassRoom(id, {
+        classRoomId: assignment.class_room_id,
+        attendanceNumber: assignment.attendance_number,
+      });
       if (!updated) {
         throw new Error('Student not found');
       }
@@ -251,6 +350,23 @@ export function createStudentService(
   ): Promise<void> {
     if (await studentRepository.findByStudentNum(studentNumber)) {
       throw new Error('Student number already exists');
+    }
+  }
+
+  async function ensureAttendanceNumberAvailable(
+    classRoomId: number | null,
+    attendanceNumber: number | null,
+    currentStudentId?: number
+  ): Promise<void> {
+    if (classRoomId === null || attendanceNumber === null) {
+      return;
+    }
+    const occupied = await studentRepository.findByClassRoomAndAttendanceNumber(
+      classRoomId,
+      attendanceNumber
+    );
+    if (occupied && occupied.studentId !== currentStudentId) {
+      throw new Error('Attendance number already exists');
     }
   }
 }

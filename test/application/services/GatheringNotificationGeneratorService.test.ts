@@ -72,7 +72,6 @@ describe('GatheringNotificationGeneratorService', () => {
         hash: await createGatheringTimeSourceHash('10:45'),
       },
       now: '2026-11-08T01:00:00.000Z',
-      legacy_schedule: null,
     });
   });
 

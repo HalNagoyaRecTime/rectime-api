@@ -64,6 +64,7 @@ function buildStudentService(
     getAllStudents: vi.fn(),
     createStudent: vi.fn(),
     updateStudent: vi.fn(),
+    updateStudentClassRoom: vi.fn(),
     validateStudentImport: vi.fn(),
     commitStudentImport: vi.fn(),
     ...overrides,

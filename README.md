@@ -153,6 +153,18 @@ MIIEvQIBADA...（秘密鍵の内容）
 npm run db:migrate:local
 ```
 
+`0054_enforce_unique_student_attendance_number.sql`が
+`duplicate_group_count = 0`のCHECK制約で停止した場合は、次のSQLで既存の重複を確認する。
+対象Studentを勝手に削除せず、正しい所属・出席番号を確認して整理したあとにMigrationを再実行する。
+
+```sql
+SELECT class_room_id, attendance_number, GROUP_CONCAT(student_id) AS student_ids
+FROM students
+WHERE class_room_id IS NOT NULL
+GROUP BY class_room_id, attendance_number
+HAVING COUNT(*) > 1;
+```
+
 ### 7. Cloudflare へのログイン
 
 ローカルでも画像は Cloudflare 上の `rectime-images-dev` バケットを使うため、チームのアカウントにログインしておく。
@@ -198,6 +210,9 @@ npm run deploy
 運用時の監視、Smoke Test、障害切り分け、Rollback手順は
 [`docs/operations/ios-release-backend-runbook.md`](docs/operations/ios-release-backend-runbook.md)
 を参照する。
+
+iOS向け認証・API疎通の確認結果と残項目は
+[`2026-10-20の検証記録`](docs/verification/ios-api-2026-10-20.md) を参照する。
 
 ### CORS 設定
 
@@ -273,3 +288,27 @@ major更新はこの月次workflowの対象外とし、別途事前検証して�
 ### イベント一覧の開催日
 
 `GET /api/v1/events` はトップレベルの `event_date` に既存の `EVENT_DATE`（JST、`YYYY-MM-DD`）を返します。未設定または不正な日付は `null` です。開催日を設定できていなくてもイベント一覧は取得でき、イベント本文・ページング・認証は変わりません。通知配信の開催日と同じ設定を参照し、別の設定値やDB列は追加しません。モバイルのライブアクティビティでの利用は後続対応です。
+
+## ローカルCronの自動実行
+
+通常の `npm run dev` は従来どおりCronなしで起動する。Cronを自動実行したい場合だけ `npm run dev:cron` またはIntelliJの `run dev with cron` を明示的に選ぶ。
+
+**注意:** `dev:cron` はローカルDBに配信予定がありFirebase資格情報が設定されていると、実端末へFCMを送信する場合がある。開発用データ・資格情報でのみ実行する。
+
+`wrangler.jsonc` のトップレベル `triggers.crons` をUTCで再現する。
+現在の毎分通知と日次のアカウント削除の後片付けを共通で扱う。
+発火時刻の計算は開発依存の `cron`、Workerの起動・ホットリロード・DB・Queueは固定版Wrangler CLI (`wrangler dev --test-scheduled`) が担当する。
+非安定のWrangler JavaScript APIには依存せず、固定版Wrangler 4.103.0の `--test-scheduled` が公開する `/__scheduled` 経由で既存の `scheduled()` を実行する。Wrangler更新時は公式パスの互換性を結合テストで確認する。
+development環境のリソースと `.dev.vars` を使い、ローカルDBの保存先は通常起動と同じ。
+Cron付きの開発サーバーとScheduledテスト入口は `127.0.0.1` にのみバインドし、LAN上の別端末から発火させない。
+実FCMによる端末の受信も必要な場合は、誤配信のないローカル通知予定を用意する。
+
+Cron付き起動のポート変更は `npm run dev:cron -- --port 8788 --inspector-port 9231`。通常起動では従来どおり `npm run dev -- --port 8788` などWranglerのオプションを指定できる。
+Cron設定を変更した場合は再起動する。Ctrl+Cで新しい発火を止め、実行中のScheduled処理を待って停止する。
+
+5項目Cron式に対応し、数値の曜日はCloudflareの日曜=1〜土曜=7を変換する。
+Quartz固有のL/W/#等は非対応で、使用時は起動エラーになる。
+Cloudflareによる実際の発火・分散実行の確認は、専用のデプロイ環境で行う。
+
+`npm run test:local-cron` でCron式の変換と実Scheduled→Queue→KV経路を検証する。
+`npm test` とは別のCI Jobで実行し、通常のテストやpre-pushを遅くしない。Wranglerのバージョンを更新するときは、必ずこの結合テストも実行する。

@@ -71,7 +71,6 @@ export function createGatheringNotificationGeneratorService(
             hash: sourceHash,
           },
           now: timestamp,
-          legacy_schedule: null,
           ...(syncCutoff ? { sync_cutoff: syncCutoff } : {}),
         });
       lastOutcome = outcome.status;

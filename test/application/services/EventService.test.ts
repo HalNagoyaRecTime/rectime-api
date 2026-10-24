@@ -546,7 +546,36 @@ describe('EventService', () => {
       expect(repository.update).not.toHaveBeenCalled();
     });
 
-    it('開始時刻が終了時刻以降の場合は更新せずエラーを投げる', async () => {
+    it('開始と終了が同じ時刻の締切を更新できる', async () => {
+      const deadline = buildEventWithVenues({
+        event_name: '出席確認',
+        start_time: '0910',
+        end_time: '0910',
+      });
+      const repository = createRepository({
+        exists: vi.fn().mockResolvedValue(true),
+        update: vi.fn().mockResolvedValue(deadline),
+      });
+
+      await expect(
+        createService(repository).updateEvent(1, {
+          event_name: '出席確認',
+          rule_text: null,
+          venue_ids: [3],
+          start_time: '0910',
+          end_time: '0910',
+        })
+      ).resolves.toEqual(deadline);
+      expect(repository.update).toHaveBeenCalledWith(1, {
+        name: '出席確認',
+        ruleText: null,
+        venueIds: [3],
+        startTime: '0910',
+        endTime: '0910',
+      });
+    });
+
+    it('開始時刻が終了時刻より後の場合は更新せずエラーを投げる', async () => {
       const repository = createRepository({ update: vi.fn() });
 
       await expect(
@@ -557,7 +586,7 @@ describe('EventService', () => {
           start_time: '0930',
           end_time: '0900',
         })
-      ).rejects.toThrow('end_time must be after start_time');
+      ).rejects.toThrow('終了時刻は開始時刻以降を指定してください。');
       expect(repository.update).not.toHaveBeenCalled();
     });
   });

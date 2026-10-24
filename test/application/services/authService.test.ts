@@ -18,9 +18,7 @@ import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 function buildFirebaseTokenRepository(): IFirebaseTokenRepository {
   return {
     register: vi.fn(),
-    findActiveTokens: vi.fn(),
     deleteById: vi.fn(),
-    deactivateByUserId: vi.fn(),
     findAllByUserId: vi.fn().mockResolvedValue([]),
     deleteByUserIdAndFcmToken: vi.fn().mockResolvedValue(undefined),
     deleteByUserId: vi.fn(),
@@ -94,6 +92,8 @@ function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
     studentIdNumber: '50000',
     isLiveActive: true,
     isStaff: false,
+    updatedAt: '2026-01-01 00:00:00',
+    lockVersion: 0,
     ...overrides,
   };
 }
@@ -124,9 +124,12 @@ describe('createAuthService', () => {
         offset: 0,
       }),
       findByStudentNum: vi.fn(),
+      findByClassRoomAndAttendanceNumber: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateClassRoom: vi.fn(),
       findExistingStudentNumbers: vi.fn(),
+      findExistingClassRoomAttendanceNumbers: vi.fn(),
       createMany: vi.fn(),
       findByUserId: vi.fn(),
       anonymizeByUserId: vi.fn(),
@@ -178,9 +181,12 @@ describe('createAuthService', () => {
         offset: 0,
       }),
       findByStudentNum: vi.fn(),
+      findByClassRoomAndAttendanceNumber: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateClassRoom: vi.fn(),
       findExistingStudentNumbers: vi.fn(),
+      findExistingClassRoomAttendanceNumbers: vi.fn(),
       createMany: vi.fn(),
       findByUserId: vi.fn(),
       anonymizeByUserId: vi.fn(),
@@ -1499,7 +1505,7 @@ describe('createAuthService (実DB・startAccountDeletion)', () => {
     };
   }
 
-  it('DB状態遷移・全Refresh Session失効・Firebase Token無効化を一括で行う', async () => {
+  it('DB状態遷移・全Refresh Session失効・Firebase Token削除を一括で行う', async () => {
     const { userRepository, firebaseTokenRepository, authKv, service } =
       buildRealService();
 
@@ -1550,13 +1556,13 @@ describe('createAuthService (実DB・startAccountDeletion)', () => {
     expect(await authKv.get('mobile_refresh:refresh-1')).toBeNull();
     expect(await authKv.get(`mobile_refresh_by_user:${userId}`)).toBeNull();
 
-    // Firebase Token登録がPush通知対象から除外される
+    // Firebase Token登録が物理削除される
     const tokenRow = await workerEnv.DB.prepare(
-      'SELECT is_firebase_active FROM firebase_tokens WHERE user_id = ?'
+      'SELECT firebase_token_id FROM firebase_tokens WHERE user_id = ?'
     )
       .bind(user!.user_id)
-      .first<{ is_firebase_active: number }>();
-    expect(tokenRow?.is_firebase_active).toBe(0);
+      .first();
+    expect(tokenRow).toBeNull();
   });
 
   it('Refresh Sessionが存在しないユーザーでも冪等に成功する', async () => {

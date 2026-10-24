@@ -5,7 +5,7 @@ import {
   events,
   gatherings,
   gathering_group_members,
-  notification_schedules,
+  notification_audiences,
 } from '../database/schema';
 
 import { D1Database } from '@cloudflare/workers-types';
@@ -300,9 +300,14 @@ export function createEventRepository(db: D1Database): IEventRepository {
           .where(eq(gatherings.eventId, id))
           .get(),
         orm
-          .select({ id: notification_schedules.id })
-          .from(notification_schedules)
-          .where(eq(notification_schedules.eventId, id))
+          .select({ id: notification_audiences.id })
+          .from(notification_audiences)
+          .where(
+            and(
+              eq(notification_audiences.audienceType, 'event'),
+              eq(notification_audiences.targetId, id)
+            )
+          )
           .get(),
       ]);
       return Boolean(gathering || schedule);

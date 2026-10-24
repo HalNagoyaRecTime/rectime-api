@@ -24,6 +24,8 @@ export interface StudentManagementDTO {
     class_code: string;
     class_name: string;
   } | null;
+  updated_at: string;
+  lock_version: number;
 }
 
 export interface StudentWriteDTO {
@@ -31,6 +33,15 @@ export interface StudentWriteDTO {
   class_room_id: number | null;
   attendance_number: number | null;
   student_id_number: string;
+}
+
+export interface StudentUpdateDTO extends StudentWriteDTO {
+  lock_version?: number;
+}
+
+export interface StudentClassRoomAssignmentDTO {
+  class_room_id: number | null;
+  attendance_number: number | null;
 }
 
 export interface StudentPageDTO {
@@ -53,7 +64,10 @@ export interface StudentImportInput {
 }
 
 export type StudentImportErrorReason =
-  'student_id_number_duplicate_in_file' | 'student_id_number_duplicate_in_db';
+  | 'student_id_number_duplicate_in_file'
+  | 'student_id_number_duplicate_in_db'
+  | 'attendance_number_duplicate_in_file'
+  | 'attendance_number_duplicate_in_db';
 
 export interface StudentImportRowError {
   row_index: number;

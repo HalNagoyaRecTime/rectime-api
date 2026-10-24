@@ -19,7 +19,7 @@ export const EventErrors = {
   INVALID_EVENT_TIME_RANGE: {
     status: 400,
     code: 'INVALID_EVENT_TIME_RANGE',
-    message: '終了時刻は開始時刻より後に設定してください',
+    message: '終了時刻は開始時刻以降に設定してください',
   },
   EVENT_NOT_FOUND: {
     status: 404,

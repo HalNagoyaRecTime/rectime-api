@@ -5,6 +5,7 @@ import type {
 } from '@cloudflare/workers-types';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createStudentRepository } from '../../../src/infrastructure/repositories/StudentRepository';
+import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import { seedStudents, type SeededData } from '../../fixtures/students';
 
@@ -250,6 +251,24 @@ describe('StudentRepository', () => {
     it('存在しない id の場合は null を返す', async () => {
       expect(await repo.findById(999999)).toBeNull();
     });
+
+    it('students.updated_at を updatedAt として一覧・詳細の両方で返す', async () => {
+      const target = seeded.students[0];
+      const row = await env.DB.prepare(
+        'SELECT updated_at FROM students WHERE student_id = ?'
+      )
+        .bind(target.studentId)
+        .first<{ updated_at: string }>();
+
+      expect((await repo.findById(target.studentId))?.updatedAt).toBe(
+        row?.updated_at
+      );
+      const listed = (await repo.findAll({ limit: 100, offset: 0 })).items.find(
+        item => item.studentId === target.studentId
+      );
+      expect(listed?.updatedAt).toBe(row?.updated_at);
+      expect(listed?.lockVersion).toBe(0);
+    });
   });
 
   describe('findByUserId', () => {
@@ -289,6 +308,25 @@ describe('StudentRepository', () => {
 
     it('存在しない学籍番号の場合は null を返す', async () => {
       expect(await repo.findByStudentNum('00000')).toBeNull();
+    });
+  });
+
+  describe('findByClassRoomAndAttendanceNumber', () => {
+    it('クラスと出席番号で学生を取得できる', async () => {
+      const target = seeded.students[0];
+
+      await expect(
+        repo.findByClassRoomAndAttendanceNumber(
+          target.classRoomId,
+          target.attendanceNumber
+        )
+      ).resolves.toMatchObject({ studentId: target.studentId });
+    });
+
+    it('該当する学生がいない場合はnullを返す', async () => {
+      await expect(
+        repo.findByClassRoomAndAttendanceNumber(seeded.classRoomId, 999)
+      ).resolves.toBeNull();
     });
   });
 
@@ -338,6 +376,90 @@ describe('StudentRepository', () => {
       ).resolves.toBeNull();
     });
 
+    describe('版番号による楽観ロック', () => {
+      async function createStudent(
+        studentIdNumber: string,
+        attendanceNumber: number
+      ) {
+        const created = await repo.create({
+          displayName: '版番号テスト',
+          classRoomId: seeded.classRoomId,
+          attendanceNumber,
+          studentIdNumber,
+        });
+        return created.studentId;
+      }
+
+      const input = (
+        studentIdNumber: string,
+        displayName: string,
+        attendanceNumber: number
+      ) => ({
+        displayName,
+        classRoomId: seeded.classRoomId,
+        attendanceNumber,
+        studentIdNumber,
+      });
+
+      it('expectedLockVersion が現在の値と一致すれば更新し、lockVersion を1増やす', async () => {
+        const id = await createStudent('LOCK-S1', 120);
+
+        const updated = await repo.update(id, {
+          ...input('LOCK-S1', '更新後', 121),
+          expectedLockVersion: 0,
+        });
+
+        expect(updated).toMatchObject({
+          userName: '更新後',
+          attendanceNumber: 121,
+          lockVersion: 1,
+        });
+      });
+
+      it('expectedLockVersion が現在の値と異なれば null を返し、users も students も変更しない', async () => {
+        const id = await createStudent('LOCK-S2', 122);
+
+        const updated = await repo.update(id, {
+          ...input('LOCK-S2', '上書きされてはいけない', 123),
+          expectedLockVersion: 5,
+        });
+
+        expect(updated).toBeNull();
+        await expect(repo.findById(id)).resolves.toMatchObject({
+          userName: '版番号テスト',
+          attendanceNumber: 122,
+          lockVersion: 0,
+        });
+      });
+
+      it('同じ版番号での2回の連続更新は、1回目だけ成功し2回目は競合する（同じ秒内でも）', async () => {
+        const id = await createStudent('LOCK-S3', 124);
+
+        const first = await repo.update(id, {
+          ...input('LOCK-S3', 'Aの更新', 125),
+          expectedLockVersion: 0,
+        });
+        const second = await repo.update(id, {
+          ...input('LOCK-S3', 'Bの更新', 126),
+          expectedLockVersion: 0,
+        });
+
+        expect(first).toMatchObject({ userName: 'Aの更新', lockVersion: 1 });
+        expect(second).toBeNull();
+        await expect(repo.findById(id)).resolves.toMatchObject({
+          userName: 'Aの更新',
+        });
+      });
+
+      it('expectedLockVersion を指定しない更新は版番号を確認せず、lockVersion は進む', async () => {
+        const id = await createStudent('LOCK-S4', 127);
+
+        const updated = await repo.update(id, input('LOCK-S4', '更新後', 128));
+
+        expect(updated).toMatchObject({ userName: '更新後', lockVersion: 1 });
+      });
+    });
+
     it('クラス未所属の学生を作成し、所属情報なしで取得できる', async () => {
       const created = await repo.create({
         displayName: '未所属学生',
@@ -357,6 +479,76 @@ describe('StudentRepository', () => {
         classRoomId: null,
         attendanceNumber: null,
       });
+    });
+  });
+
+  describe('表示名の同期が学生の版に反映される', () => {
+    it('学生を取得したあとに氏名が同期されると、古い版の学生PUTは競合し、新しい氏名が残る', async () => {
+      const target = seeded.students[0];
+      const fetched = await repo.findById(target.studentId);
+
+      await createUserRepository(env.DB).updateUser({
+        userId: String(target.userId),
+        oid: 'oid-sync',
+        tid: 'tid-sync',
+        sub: 'sub-sync',
+        email: 'sync@example.com',
+        displayName: '同期された新しい氏名',
+      });
+
+      const updated = await repo.update(target.studentId, {
+        displayName: fetched!.userName,
+        classRoomId: fetched!.classRoomId,
+        attendanceNumber: fetched!.attendanceNumber,
+        studentIdNumber: fetched!.studentIdNumber,
+        expectedLockVersion: fetched!.lockVersion,
+      });
+
+      expect(updated).toBeNull();
+      expect((await repo.findById(target.studentId))?.userName).toBe(
+        '同期された新しい氏名'
+      );
+    });
+  });
+
+  describe('updateClassRoom', () => {
+    it('所属変更と未所属化ができる', async () => {
+      const target = seeded.students[0];
+      try {
+        const moved = await repo.updateClassRoom(target.studentId, {
+          classRoomId: seeded.secondClassRoomId,
+          attendanceNumber: 20,
+        });
+        expect(moved).toMatchObject({
+          classRoomId: seeded.secondClassRoomId,
+          attendanceNumber: 20,
+        });
+
+        const unassigned = await repo.updateClassRoom(target.studentId, {
+          classRoomId: null,
+          attendanceNumber: null,
+        });
+        expect(unassigned).toMatchObject({
+          classRoomId: null,
+          classRoomCode: null,
+          classRoomName: null,
+          attendanceNumber: null,
+        });
+      } finally {
+        await repo.updateClassRoom(target.studentId, {
+          classRoomId: target.classRoomId,
+          attendanceNumber: target.attendanceNumber,
+        });
+      }
+    });
+
+    it('存在しないStudentはnullを返す', async () => {
+      await expect(
+        repo.updateClassRoom(999999, {
+          classRoomId: null,
+          attendanceNumber: null,
+        })
+      ).resolves.toBeNull();
     });
   });
 
@@ -383,6 +575,37 @@ describe('StudentRepository', () => {
 
     it('候補が空配列の場合は空集合を返す', async () => {
       expect(await repo.findExistingStudentNumbers([])).toEqual(new Set());
+    });
+  });
+
+  describe('findExistingClassRoomAttendanceNumbers', () => {
+    it('DBに存在するクラスコードと出席番号の組み合わせだけを返す', async () => {
+      const target = seeded.students[0];
+
+      const existing = await repo.findExistingClassRoomAttendanceNumbers([
+        {
+          classCode: 'TEST-1',
+          attendanceNumber: target.attendanceNumber,
+        },
+        { classCode: 'TEST-1', attendanceNumber: 999 },
+        {
+          classCode: 'TEST-2',
+          attendanceNumber: target.attendanceNumber,
+        },
+      ]);
+
+      expect(existing).toEqual([
+        {
+          classCode: 'TEST-1',
+          attendanceNumber: target.attendanceNumber,
+        },
+      ]);
+    });
+
+    it('候補が空配列の場合は空配列を返す', async () => {
+      await expect(
+        repo.findExistingClassRoomAttendanceNumbers([])
+      ).resolves.toEqual([]);
     });
   });
 
@@ -495,13 +718,13 @@ describe('StudentRepository', () => {
           {
             displayName: '一括生徒A',
             classCode: 'TEST-1',
-            attendanceNumber: 20,
+            attendanceNumber: 220,
             studentIdNumber: '20000',
           },
           {
             displayName: '一括生徒B',
             classCode: 'TEST-1',
-            attendanceNumber: 21,
+            attendanceNumber: 221,
             studentIdNumber: '20001',
           },
         ],
@@ -838,7 +1061,7 @@ describe('StudentRepository', () => {
   });
 
   describe('anonymizeByUserId', () => {
-    it('student_id_numberをプレースホルダに書き換え、行は残す(user_nameはUserRepository.anonymizeUserの責務)', async () => {
+    it('student_id_numberをプレースホルダに書き換え、所属情報を解放して行は残す(user_nameはUserRepository.anonymizeUserの責務)', async () => {
       const classRoomId = seeded.students[0].classRoomId;
       const user = await env.DB.prepare(
         "INSERT INTO users (user_name) VALUES ('匿名化対象太郎') RETURNING user_id"
@@ -854,8 +1077,8 @@ describe('StudentRepository', () => {
       const result = await repo.findById(student!.student_id);
       expect(result).toMatchObject({
         studentIdNumber: `deleted-${user!.user_id}`,
-        classRoomId,
-        attendanceNumber: 99,
+        classRoomId: null,
+        attendanceNumber: null,
       });
       // user_nameの匿名化はUserRepository.anonymizeUserの責務であり、
       // StudentRepository.anonymizeByUserIdはstudents固有のカラムのみを

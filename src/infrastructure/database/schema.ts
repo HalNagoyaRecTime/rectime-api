@@ -30,6 +30,7 @@ export const class_rooms = sqliteTable(
     updatedAt: text('updated_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
+    lockVersion: integer('lock_version').notNull().default(0),
   },
   table => [
     uniqueIndex('uq_class_rooms_class_code').on(table.classCode),
@@ -94,12 +95,16 @@ export const students = sqliteTable(
     updatedAt: text('updated_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
+    lockVersion: integer('lock_version').notNull().default(0),
   },
   table => [
     index('idx_students_class_room_id_user_id').on(
       table.classRoomId,
       table.userId
     ),
+    uniqueIndex('ux_students_class_room_attendance')
+      .on(table.classRoomId, table.attendanceNumber)
+      .where(sql`${table.classRoomId} IS NOT NULL`),
     check(
       'ck_students_class_room_attendance_pair',
       sql`(${table.classRoomId} IS NULL AND ${table.attendanceNumber} IS NULL)
@@ -142,6 +147,7 @@ export const teachers = sqliteTable(
     updatedAt: text('updated_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
+    lockVersion: integer('lock_version').notNull().default(0),
   },
   table => [uniqueIndex('uq_teachers_email').on(table.email)]
 );

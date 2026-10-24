@@ -144,8 +144,8 @@ export function createEventService(
       return toEventDTO(created, await signVenueImageUrls([created]));
     },
     async updateEvent(id: number, event: UpdateEventRequestDTO) {
-      if (event.start_time >= event.end_time) {
-        throw new Error('end_time must be after start_time');
+      if (event.start_time > event.end_time) {
+        throw new Error('終了時刻は開始時刻以降を指定してください。');
       }
       if (!(await eventRepository.exists(id))) {
         throw new Error('Event not found');

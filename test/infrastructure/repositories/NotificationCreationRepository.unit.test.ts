@@ -61,6 +61,5 @@ function buildAutomaticCommand(): NotificationCreationCommand {
     audiences: [{ type: 'gathering', target_id: 51 }],
     source: { type: 'gathering', id: 51, hash: 'hash-10-45' },
     now: '2026-10-04T01:00:00.000Z',
-    legacy_schedule: null,
   };
 }

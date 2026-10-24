@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+import { insertClassRoomWithTeam } from '../fixtures/classRooms';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
@@ -24,6 +25,34 @@ async function insertUser(userName: string): Promise<number> {
     .bind(userName)
     .first<{ user_id: number }>();
   return user!.user_id;
+}
+
+async function insertAssignedStudent(): Promise<{
+  student_id: number;
+  class_room_id: number;
+  attendance_number: number;
+}> {
+  const { classRoomId } = await insertClassRoomWithTeam(env.DB, {
+    classCode: '0045-KEEP',
+    className: '0045所属保持確認',
+  });
+  const userId = await insertUser('0045所属保持Student');
+  const student = await env.DB.prepare(
+    `INSERT INTO students (
+      user_id,
+      class_room_id,
+      attendance_number,
+      student_id_number
+    ) VALUES (?, ?, 1, '0045-ASSIGNED')
+    RETURNING student_id, class_room_id, attendance_number`
+  )
+    .bind(userId, classRoomId)
+    .first<{
+      student_id: number;
+      class_room_id: number;
+      attendance_number: number;
+    }>();
+  return student!;
 }
 
 describe('0045_allow_students_without_class_room.sql', () => {
@@ -84,17 +113,22 @@ describe('0045_allow_students_without_class_room.sql', () => {
   });
 
   it('既存の所属Studentとindexを維持する', async () => {
+    const expectedStudent = await insertAssignedStudent();
+
+    await runMigration();
+
     const existingStudent = await env.DB.prepare(
       `SELECT student_id, class_room_id, attendance_number
        FROM students
-       WHERE class_room_id IS NOT NULL
-       LIMIT 1`
-    ).first<{
-      student_id: number;
-      class_room_id: number;
-      attendance_number: number;
-    }>();
-    expect(existingStudent).not.toBeNull();
+       WHERE student_id = ?`
+    )
+      .bind(expectedStudent.student_id)
+      .first<{
+        student_id: number;
+        class_room_id: number;
+        attendance_number: number;
+      }>();
+    expect(existingStudent).toEqual(expectedStudent);
 
     const indexes = await env.DB.prepare('PRAGMA index_list(students)').all<{
       name: string;
@@ -109,10 +143,10 @@ describe('0045_allow_students_without_class_room.sql', () => {
   });
 
   it('テーブル再作成後もAUTOINCREMENTの履歴を維持する', async () => {
-    const classRoom = await env.DB.prepare(
-      'SELECT class_room_id FROM class_rooms ORDER BY class_room_id LIMIT 1'
-    ).first<{ class_room_id: number }>();
-    expect(classRoom).not.toBeNull();
+    const { classRoomId } = await insertClassRoomWithTeam(env.DB, {
+      classCode: '0045-SEQUENCE',
+      className: '0045連番確認',
+    });
 
     const maxStudent = await env.DB.prepare(
       'SELECT COALESCE(MAX(student_id), 0) AS max_id FROM students'
@@ -127,12 +161,12 @@ describe('0045_allow_students_without_class_room.sql', () => {
         class_room_id,
         attendance_number,
         student_id_number
-      ) VALUES (?, ?, ?, 1, ?)`
+      ) VALUES (?, ?, ?, 37001, ?)`
     )
       .bind(
         deletedStudentId,
         deletedUserId,
-        classRoom!.class_room_id,
+        classRoomId,
         '0045-DELETED-SEQUENCE'
       )
       .run();
@@ -151,14 +185,10 @@ describe('0045_allow_students_without_class_room.sql', () => {
           class_room_id,
           attendance_number,
           student_id_number
-        ) VALUES (?, ?, 2, ?)
+        ) VALUES (?, ?, 37002, ?)
         RETURNING student_id`
       )
-        .bind(
-          nextUserId,
-          classRoom!.class_room_id,
-          '0045-NEXT-SEQUENCE'
-        )
+        .bind(nextUserId, classRoomId, '0045-NEXT-SEQUENCE')
         .first<{ student_id: number }>();
 
       expect(inserted?.student_id).toBe(deletedStudentId + 1);

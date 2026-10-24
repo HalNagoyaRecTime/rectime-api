@@ -17,6 +17,8 @@ function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
     studentIdNumber: '10000',
     isLiveActive: true,
     isStaff: false,
+    updatedAt: '2026-01-01 00:00:00',
+    lockVersion: 0,
     ...overrides,
   };
 }
@@ -29,9 +31,12 @@ function createRepository(
     findByUserId: vi.fn(),
     findAll: vi.fn(),
     findByStudentNum: vi.fn(),
+    findByClassRoomAndAttendanceNumber: vi.fn().mockResolvedValue(null),
     findExistingStudentNumbers: vi.fn().mockResolvedValue(new Set()),
+    findExistingClassRoomAttendanceNumbers: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
     update: vi.fn(),
+    updateClassRoom: vi.fn(),
     createMany: vi.fn(),
     anonymizeByUserId: vi.fn(),
     ...overrides,
@@ -87,6 +92,8 @@ describe('StudentService', () => {
           class_code: '1A',
           class_name: student.classRoomName,
         },
+        updated_at: student.updatedAt,
+        lock_version: student.lockVersion,
       });
       expect(repository.findById).toHaveBeenCalledWith(1);
     });
@@ -321,6 +328,29 @@ describe('StudentService', () => {
         })
       ).rejects.toThrow('Student number already exists');
     });
+
+    it('同じクラスで重複する出席番号は拒否する', async () => {
+      const repository = createRepository({
+        findByStudentNum: vi.fn().mockResolvedValue(null),
+        findByClassRoomAndAttendanceNumber: vi
+          .fn()
+          .mockResolvedValue(buildStudent()),
+      });
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
+
+      await expect(
+        service.createStudent({
+          display_name: '新規学生',
+          class_room_id: 100,
+          attendance_number: 5,
+          student_id_number: '10001',
+        })
+      ).rejects.toThrow('Attendance number already exists');
+      expect(repository.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateStudent', () => {
@@ -351,6 +381,282 @@ describe('StudentService', () => {
         attendanceNumber: 5,
         studentIdNumber: '10000',
       });
+    });
+
+    describe('版番号による楽観ロック', () => {
+      const input = {
+        display_name: '更新後学生',
+        class_room_id: 100,
+        attendance_number: 5,
+        student_id_number: '10000',
+      };
+
+      it('lock_version が取得時点と異なれば、他の確認より先に409用エラーにする', async () => {
+        const repository = createRepository({
+          findById: vi.fn().mockResolvedValue(buildStudent({ lockVersion: 2 })),
+          findByStudentNum: vi.fn(),
+          update: vi.fn(),
+        });
+        const service = createStudentService(
+          repository,
+          createClassRoomRepository()
+        );
+
+        await expect(
+          service.updateStudent(1, {
+            ...input,
+            lock_version: 1,
+          })
+        ).rejects.toThrow('Student update conflict');
+        expect(repository.findByStudentNum).not.toHaveBeenCalled();
+        expect(repository.update).not.toHaveBeenCalled();
+      });
+
+      it('lock_version が一致すれば、expectedLockVersion を付けて update を呼ぶ', async () => {
+        const repository = createRepository({
+          findById: vi.fn().mockResolvedValue(buildStudent({ lockVersion: 1 })),
+          findByStudentNum: vi.fn().mockResolvedValue(null),
+          update: vi.fn().mockResolvedValue(buildStudent({ lockVersion: 3 })),
+        });
+        const service = createStudentService(
+          repository,
+          createClassRoomRepository()
+        );
+
+        const result = await service.updateStudent(1, {
+          ...input,
+          lock_version: 1,
+        });
+
+        expect(repository.update).toHaveBeenCalledWith(1, {
+          displayName: '更新後学生',
+          classRoomId: 100,
+          attendanceNumber: 5,
+          studentIdNumber: '10000',
+          expectedLockVersion: 1,
+        });
+        expect(result.lock_version).toBe(3);
+      });
+
+      it('確認後に更新された競合（update が null）は、学生が残っていれば409用エラーにする', async () => {
+        const repository = createRepository({
+          findById: vi.fn().mockResolvedValue(buildStudent({ lockVersion: 1 })),
+          findByStudentNum: vi.fn().mockResolvedValue(null),
+          update: vi.fn().mockResolvedValue(null),
+        });
+        const service = createStudentService(
+          repository,
+          createClassRoomRepository()
+        );
+
+        await expect(
+          service.updateStudent(1, {
+            ...input,
+            lock_version: 1,
+          })
+        ).rejects.toThrow('Student update conflict');
+      });
+
+      it('確認後に削除された競合（update が null）は、404用エラーにする', async () => {
+        const repository = createRepository({
+          findById: vi
+            .fn()
+            .mockResolvedValueOnce(buildStudent({ lockVersion: 1 }))
+            .mockResolvedValueOnce(null),
+          findByStudentNum: vi.fn().mockResolvedValue(null),
+          update: vi.fn().mockResolvedValue(null),
+        });
+        const service = createStudentService(
+          repository,
+          createClassRoomRepository()
+        );
+
+        await expect(
+          service.updateStudent(1, {
+            ...input,
+            lock_version: 1,
+          })
+        ).rejects.toThrow('Student not found');
+      });
+
+      it('lock_version を指定せず update が null なら、再確認せず404用エラーにする', async () => {
+        const repository = createRepository({
+          findById: vi.fn().mockResolvedValue(buildStudent()),
+          findByStudentNum: vi.fn().mockResolvedValue(null),
+          update: vi.fn().mockResolvedValue(null),
+        });
+        const service = createStudentService(
+          repository,
+          createClassRoomRepository()
+        );
+
+        await expect(service.updateStudent(1, input)).rejects.toThrow(
+          'Student not found'
+        );
+        expect(repository.findById).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('自分以外が同じクラスで使用中の出席番号は拒否する', async () => {
+      const existing = buildStudent();
+      const repository = createRepository({
+        findById: vi.fn().mockResolvedValue(existing),
+        findByStudentNum: vi.fn().mockResolvedValue(existing),
+        findByClassRoomAndAttendanceNumber: vi
+          .fn()
+          .mockResolvedValue(buildStudent({ studentId: 2 })),
+      });
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
+
+      await expect(
+        service.updateStudent(1, {
+          display_name: '更新学生',
+          class_room_id: 100,
+          attendance_number: 5,
+          student_id_number: '10000',
+        })
+      ).rejects.toThrow('Attendance number already exists');
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('自分が使用中の出席番号はそのまま更新できる', async () => {
+      const existing = buildStudent();
+      const repository = createRepository({
+        findById: vi.fn().mockResolvedValue(existing),
+        findByStudentNum: vi.fn().mockResolvedValue(existing),
+        findByClassRoomAndAttendanceNumber: vi.fn().mockResolvedValue(existing),
+        update: vi.fn().mockResolvedValue(existing),
+      });
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
+
+      await expect(
+        service.updateStudent(1, {
+          display_name: '田中太郎',
+          class_room_id: 100,
+          attendance_number: 5,
+          student_id_number: '10000',
+        })
+      ).resolves.toMatchObject({ student_id: 1 });
+    });
+  });
+
+  describe('updateStudentClassRoom', () => {
+    it('Studentの所属クラスと出席番号を更新する', async () => {
+      const existing = buildStudent();
+      const updated = buildStudent({
+        classRoomId: 200,
+        classRoomCode: '2A',
+        classRoomName: '2年A組',
+        attendanceNumber: 8,
+      });
+      const repository = createRepository({
+        findById: vi.fn().mockResolvedValue(existing),
+        updateClassRoom: vi.fn().mockResolvedValue(updated),
+      });
+      const classRoomRepository = createClassRoomRepository();
+      const service = createStudentService(repository, classRoomRepository);
+
+      await expect(
+        service.updateStudentClassRoom(1, {
+          class_room_id: 200,
+          attendance_number: 8,
+        })
+      ).resolves.toMatchObject({
+        class_room: { class_room_id: 200 },
+        attendance_number: 8,
+      });
+      expect(classRoomRepository.findById).toHaveBeenCalledWith(200);
+      expect(repository.updateClassRoom).toHaveBeenCalledWith(1, {
+        classRoomId: 200,
+        attendanceNumber: 8,
+      });
+    });
+
+    it('未所属化ではクラス存在確認を行わない', async () => {
+      const existing = buildStudent();
+      const unassigned = buildStudent({
+        classRoomId: null,
+        classRoomCode: null,
+        classRoomName: null,
+        attendanceNumber: null,
+      });
+      const repository = createRepository({
+        findById: vi.fn().mockResolvedValue(existing),
+        updateClassRoom: vi.fn().mockResolvedValue(unassigned),
+      });
+      const classRoomRepository = createClassRoomRepository();
+      const service = createStudentService(repository, classRoomRepository);
+
+      await expect(
+        service.updateStudentClassRoom(1, {
+          class_room_id: null,
+          attendance_number: null,
+        })
+      ).resolves.toMatchObject({ class_room: null, attendance_number: null });
+      expect(classRoomRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('Studentが存在しない場合は404用エラーにする', async () => {
+      const repository = createRepository({
+        findById: vi.fn().mockResolvedValue(null),
+      });
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
+
+      await expect(
+        service.updateStudentClassRoom(999, {
+          class_room_id: null,
+          attendance_number: null,
+        })
+      ).rejects.toThrow('Student not found');
+    });
+
+    it('移動先クラスが存在しない場合は404用エラーにする', async () => {
+      const repository = createRepository({
+        findById: vi.fn().mockResolvedValue(buildStudent()),
+      });
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository({
+          findById: vi.fn().mockResolvedValue(null),
+        })
+      );
+
+      await expect(
+        service.updateStudentClassRoom(1, {
+          class_room_id: 999,
+          attendance_number: 1,
+        })
+      ).rejects.toThrow('Class room not found');
+    });
+
+    it('移動先クラスで使用中の出席番号は拒否する', async () => {
+      const repository = createRepository({
+        findById: vi.fn().mockResolvedValue(buildStudent()),
+        findByClassRoomAndAttendanceNumber: vi
+          .fn()
+          .mockResolvedValue(buildStudent({ studentId: 2 })),
+      });
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
+
+      await expect(
+        service.updateStudentClassRoom(1, {
+          class_room_id: 200,
+          attendance_number: 8,
+        })
+      ).rejects.toThrow('Attendance number already exists');
+      expect(repository.updateClassRoom).not.toHaveBeenCalled();
     });
   });
 
@@ -453,6 +759,80 @@ describe('StudentService', () => {
           expect.objectContaining({
             row_index: 1,
             reason: 'student_id_number_duplicate_in_db',
+          }),
+        ],
+      });
+    });
+
+    it('ファイル内で同じクラスの出席番号が重複する行はエラーとして報告する', async () => {
+      const service = createStudentService(
+        createRepository(),
+        createClassRoomRepository()
+      );
+
+      const result = await service.validateStudentImport({
+        rows: [
+          {
+            class_code: '11A',
+            attendance_number: 1,
+            student_id_number: '24031',
+            last_name: '田中',
+            first_name: '太郎',
+          },
+          {
+            class_code: '11A',
+            attendance_number: 1,
+            student_id_number: '24032',
+            last_name: '佐藤',
+            first_name: '花子',
+          },
+        ],
+      });
+
+      expect(result).toEqual({
+        total: 2,
+        success_count: 1,
+        error_count: 1,
+        errors: [
+          expect.objectContaining({
+            row_index: 2,
+            reason: 'attendance_number_duplicate_in_file',
+          }),
+        ],
+      });
+    });
+
+    it('既存DBと同じクラスの出席番号が重複する行はエラーとして報告する', async () => {
+      const repository = createRepository({
+        findExistingClassRoomAttendanceNumbers: vi
+          .fn()
+          .mockResolvedValue([{ classCode: '11A', attendanceNumber: 1 }]),
+      });
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
+
+      const result = await service.validateStudentImport({
+        rows: [
+          {
+            class_code: '11A',
+            attendance_number: 1,
+            student_id_number: '24033',
+            last_name: '既存番号',
+            first_name: '太郎',
+          },
+        ],
+      });
+
+      expect(result).toEqual({
+        total: 1,
+        success_count: 0,
+        error_count: 1,
+        errors: [
+          expect.objectContaining({
+            row_index: 1,
+            reason: 'attendance_number_duplicate_in_db',
           }),
         ],
       });

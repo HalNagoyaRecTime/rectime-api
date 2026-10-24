@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { app } from '../src/index';
 import { signAccessToken } from '../src/infrastructure/auth/jwt';
@@ -15,13 +15,21 @@ const corsTestEnv = {
 // signAccessToken は32バイト以上のシークレットを要求する。
 const JWT_SECRET = 'a'.repeat(32);
 const authEnv = { ...env, JWT_SECRET };
+let contractUserId: number;
+
+beforeAll(async () => {
+  const user = await env.DB.prepare(
+    "INSERT INTO users (user_name) VALUES ('契約テスト') RETURNING user_id"
+  ).first<{ user_id: number }>();
+  contractUserId = user!.user_id;
+});
 
 /** apiV1配下は全ルートが認証必須のため、契約検証にもトークンが要る。 */
 async function bearerHeaders(): Promise<Record<string, string>> {
   const token = await signAccessToken(
     {
-      sub: '1',
-      oid: 'oid-1',
+      sub: String(contractUserId),
+      oid: `contract-user-${contractUserId}`,
       email: 'contract@example.com',
       display_name: '契約テスト',
       client_type: 'web',
@@ -97,6 +105,7 @@ describe('OpenAPI documentation', () => {
       '/api/v1/staffs/{staffId}',
       '/api/v1/students',
       '/api/v1/students/{studentId}',
+      '/api/v1/students/{studentId}/classroom',
       '/api/v1/teachers',
       '/api/v1/teachers/{teacherId}',
       '/api/v1/teams',
@@ -114,11 +123,11 @@ describe('OpenAPI documentation', () => {
       nullable: true,
     });
     expect(document.components.schemas.EventWriteRequest.description).toContain(
-      'start_timeはend_timeより前の時刻を指定する'
+      'start_timeはend_time以前の時刻を指定する'
     );
     expect(
       document.components.schemas.EventUpdateRequest.description
-    ).toContain('start_timeはend_timeより前の時刻を指定する');
+    ).toContain('start_timeはend_time以前の時刻を指定する');
     const venueListParameters = (
       document.paths['/api/v1/venues'].get as {
         parameters?: Array<{
@@ -275,6 +284,13 @@ describe('OpenAPI documentation', () => {
       '500',
     ]);
     expect(
+      document.paths['/api/v1/students/{studentId}/classroom']
+    ).toHaveProperty('patch');
+    const studentClassRoomUpdate = document.paths[
+      '/api/v1/students/{studentId}/classroom'
+    ].patch as { responses: Record<string, unknown> };
+    expect(studentClassRoomUpdate.responses).toHaveProperty('409');
+    expect(
       document.paths['/api/v1/admin/notifications/{notificationId}']
     ).toHaveProperty('patch');
     expect(document.components.schemas).not.toHaveProperty(
@@ -323,6 +339,9 @@ describe('OpenAPI documentation', () => {
     expect(document.paths['/api/v1/students'].get?.security).toEqual([
       { Bearer: [] },
     ]);
+    expect(
+      document.paths['/api/v1/students/{studentId}/classroom'].patch?.security
+    ).toEqual([{ Bearer: [] }]);
     expect(
       document.paths['/api/v1/admin/users/{userId}'].patch?.security
     ).toEqual([{ Bearer: [] }]);
@@ -515,7 +534,6 @@ describe('通知予定管理APIの廃止', () => {
     ['GET', '/api/v1/admin/notifications'],
     ['POST', '/api/v1/admin/notifications'],
     ['GET', '/api/v1/admin/notifications/1'],
-    ['PUT', '/api/v1/admin/notifications/1'],
     ['DELETE', '/api/v1/admin/notifications/1'],
     ['GET', '/api/v1/me/notifications'],
     ['GET', '/api/v1/me/notifications/1'],
