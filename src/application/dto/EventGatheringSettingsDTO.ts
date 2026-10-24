@@ -14,6 +14,8 @@ export interface RoundSettingInputDTO {
 
 export interface EventGatheringSettingsRequestDTO {
   rounds: RoundSettingInputDTO[];
+  // 取得時点のEventの lock_version。指定すると、取得後に変更されていた場合は409になる。
+  lock_version?: number;
 }
 
 // 保存後の正規化済みレスポンス。Event詳細の読み取りでも同じ形を返せるよう、
@@ -39,5 +41,7 @@ export interface RoundSettingDTO {
 
 export interface EventGatheringSettingsDTO {
   event_id: number;
+  // 保存後のEventの lock_version。次の保存や PUT /events/{eventId} に送り返す。
+  lock_version: number;
   rounds: RoundSettingDTO[];
 }

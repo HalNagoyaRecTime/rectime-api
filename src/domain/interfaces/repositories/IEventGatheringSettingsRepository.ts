@@ -12,8 +12,17 @@ export interface IEventGatheringSettingsRepository {
   // 差分を1つのトランザクションで適用する。いずれかの文が失敗すると
   // 全体が取り消され、中途半端な状態は残らない。
   // 参加者が残っている集合予定の削除は外部キー制約で失敗する。
+  //
+  // 変更があれば、対象Eventの lock_version も進める。変更が無い場合は何も書かず、
+  // 版も進めない。
+  // expectedLockVersion を指定した場合は、Eventの版が取得時点と一致するときだけ
+  // 適用する。一致しなければ何も書かず false を返す（Eventが存在しない場合も
+  // false）。それ以外は true。
   apply(
     changeSet: EventGatheringChangeSet,
-    options?: { holdNotificationSyncGatheringIds?: number[] }
-  ): Promise<void>;
+    options?: {
+      holdNotificationSyncGatheringIds?: number[];
+      expectedLockVersion?: number;
+    }
+  ): Promise<boolean>;
 }

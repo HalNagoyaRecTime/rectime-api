@@ -13,6 +13,7 @@ const SERVICE_ERRORS = {
   'Gathering not found': EventErrors.GATHERING_NOT_FOUND,
   'Gathering spot not found': EventErrors.GATHERING_SPOT_NOT_FOUND,
   'Gathering in use': EventErrors.GATHERING_IN_USE,
+  'Event update conflict': EventErrors.EVENT_UPDATE_CONFLICT,
 } as const;
 
 export function createEventGatheringSettingsController(
@@ -38,6 +39,7 @@ export function createEventGatheringSettingsController(
       const result = await service.saveEventGatheringSettings({
         event_id: eventId,
         rounds: parsedBody.data.rounds,
+        lock_version: parsedBody.data.lock_version,
       });
       return c.json(result, 200);
     } catch (error) {

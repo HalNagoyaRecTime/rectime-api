@@ -339,4 +339,157 @@ describe('EventGatheringSettingsRepository', () => {
       expect(member?.n).toBe(1);
     });
   });
+
+  describe('apply の楽観ロック', () => {
+    async function readLockVersion(eventId: number): Promise<number> {
+      const row = await env.DB.prepare(
+        'SELECT lock_version FROM events WHERE event_id = ?'
+      )
+        .bind(eventId)
+        .first<{ lock_version: number }>();
+      return row!.lock_version;
+    }
+
+    it('変更があればeventsの lock_version を1進め、true を返す', async () => {
+      const eventId = await insertEvent('ロック進行');
+      const spotId = await insertSpot('ロック進行場所');
+
+      const applied = await repository.apply({
+        event_id: eventId,
+        creates: [
+          { round: 1, gathering_time: '10:00', gathering_spot_id: spotId },
+        ],
+        updates: [],
+        delete_ids: [],
+      });
+
+      expect(applied).toBe(true);
+      expect(await readLockVersion(eventId)).toBe(1);
+    });
+
+    it('変更が無い保存は何も書かず、版も進めない', async () => {
+      const eventId = await insertEvent('ロック無変更');
+
+      const applied = await repository.apply(
+        { event_id: eventId, creates: [], updates: [], delete_ids: [] },
+        { expectedLockVersion: 0 }
+      );
+
+      expect(applied).toBe(true);
+      expect(await readLockVersion(eventId)).toBe(0);
+    });
+
+    it('取得時点の版を指定して一致すれば、適用して版を進める', async () => {
+      const eventId = await insertEvent('ロック一致');
+      const spotId = await insertSpot('ロック一致場所');
+      const target = await insertGathering(eventId, spotId, 1, '10:00');
+
+      const applied = await repository.apply(
+        {
+          event_id: eventId,
+          creates: [],
+          updates: [
+            {
+              gathering_id: target,
+              round: 1,
+              gathering_time: '10:30',
+              gathering_spot_id: spotId,
+            },
+          ],
+          delete_ids: [],
+        },
+        { expectedLockVersion: 0 }
+      );
+
+      expect(applied).toBe(true);
+      expect(await readGatherings(eventId)).toMatchObject([
+        { gathering_id: target, gathering_time: '10:30' },
+      ]);
+      expect(await readLockVersion(eventId)).toBe(1);
+    });
+
+    it('版が違えば false を返し、作成・更新・削除のどれも行わず、版も進めない', async () => {
+      const eventId = await insertEvent('ロック不一致');
+      const spotId = await insertSpot('ロック不一致場所');
+      const toUpdate = await insertGathering(eventId, spotId, 1, '10:00');
+      const toDelete = await insertGathering(eventId, spotId, 1, '10:30');
+      // 別の操作が先に保存した状態にする（版が 0 → 1）
+      await env.DB.prepare(
+        'UPDATE events SET lock_version = 1 WHERE event_id = ?'
+      )
+        .bind(eventId)
+        .run();
+
+      const applied = await repository.apply(
+        {
+          event_id: eventId,
+          creates: [
+            { round: 2, gathering_time: '11:00', gathering_spot_id: spotId },
+          ],
+          updates: [
+            {
+              gathering_id: toUpdate,
+              round: 1,
+              gathering_time: '10:15',
+              gathering_spot_id: spotId,
+            },
+          ],
+          delete_ids: [toDelete],
+        },
+        { expectedLockVersion: 0 }
+      );
+
+      expect(applied).toBe(false);
+      // 更新されておらず、削除もされておらず、作成もされていない
+      expect(await readGatherings(eventId)).toMatchObject([
+        { gathering_id: toUpdate, round: 1, gathering_time: '10:00' },
+        { gathering_id: toDelete, round: 1, gathering_time: '10:30' },
+      ]);
+      expect(await readGatherings(eventId)).toHaveLength(2);
+      expect(await readLockVersion(eventId)).toBe(1);
+    });
+
+    it('同じ版から続けて保存しても、2回目は false になる', async () => {
+      const eventId = await insertEvent('ロック連続');
+      const spotId = await insertSpot('ロック連続場所');
+      const changeSet = {
+        event_id: eventId,
+        creates: [
+          { round: 1, gathering_time: '10:00', gathering_spot_id: spotId },
+        ],
+        updates: [],
+        delete_ids: [],
+      };
+
+      const first = await repository.apply(changeSet, {
+        expectedLockVersion: 0,
+      });
+      const second = await repository.apply(changeSet, {
+        expectedLockVersion: 0,
+      });
+
+      expect(first).toBe(true);
+      expect(second).toBe(false);
+      // 1回目の作成だけが残る
+      expect(await readGatherings(eventId)).toHaveLength(1);
+    });
+
+    it('版を指定しない従来の保存も、eventsの版を進める', async () => {
+      const eventId = await insertEvent('ロック未指定');
+      const spotId = await insertSpot('ロック未指定場所');
+      const changeSet = {
+        event_id: eventId,
+        creates: [
+          { round: 1, gathering_time: '10:00', gathering_spot_id: spotId },
+        ],
+        updates: [],
+        delete_ids: [],
+      };
+
+      await repository.apply(changeSet);
+      await repository.apply(changeSet);
+
+      expect(await readLockVersion(eventId)).toBe(2);
+    });
+  });
 });

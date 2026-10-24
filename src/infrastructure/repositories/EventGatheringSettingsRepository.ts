@@ -1,6 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { and, asc, count, eq, exists, isNull, sql } from 'drizzle-orm';
-import type { BatchItem } from 'drizzle-orm/batch';
 import { drizzle } from 'drizzle-orm/d1';
 import type {
   EventGatheringChangeSet,
@@ -10,12 +9,18 @@ import type { IEventGatheringSettingsRepository } from '../../domain/interfaces/
 import * as schema from '../database/schema';
 import { AUTOMATIC_SYNC_PENDING_REASON } from '../../domain/entities/NotificationCreation';
 import {
+  events,
   gathering_group_members,
   gathering_spots,
   gatherings,
   notification_schedules,
   notifications,
 } from '../database/schema';
+
+// drizzle のクエリ(update / delete)も手書きのSQLも、toSQL() でSQLと値に変換できる。
+interface SqlStatement {
+  toSQL(): { sql: string; params: unknown[] };
+}
 
 export function createEventGatheringSettingsRepository(
   db: D1Database
@@ -54,8 +59,34 @@ export function createEventGatheringSettingsRepository(
 
     async apply(
       changeSet: EventGatheringChangeSet,
-      options: { holdNotificationSyncGatheringIds?: number[] } = {}
-    ): Promise<void> {
+      options: {
+        holdNotificationSyncGatheringIds?: number[];
+        expectedLockVersion?: number;
+      } = {}
+    ): Promise<boolean> {
+      // 変更が無い保存は何も書かず、eventsの版も進めない。
+      if (
+        changeSet.delete_ids.length === 0 &&
+        changeSet.updates.length === 0 &&
+        changeSet.creates.length === 0
+      ) {
+        return true;
+      }
+
+      // 版番号(expectedLockVersion)が指定された場合は、集合予定を書き換える全ての文を
+      // 「eventsの版が取得時点のまま」のときだけ作用させる。最後に置くeventsの
+      // 更新(版を進める)を先に置くと、その時点で版が進み、後続の文の条件が外れる。
+      // 版が一致しないときは全ての文が0件になり、最後のeventsの更新も0件になる。
+      // 呼び出し側はfalseを受け取り、何も書かれていない。
+      const expected = options.expectedLockVersion;
+      const versionMatches =
+        expected === undefined
+          ? undefined
+          : sql`EXISTS (
+              SELECT 1 FROM events
+              WHERE event_id = ${changeSet.event_id} AND lock_version = ${expected}
+            )`;
+
       // 更新・削除は event_id も条件に含める。Application Service が対象Eventの
       // 集合予定だけを差分に入れる前提だが、他Eventの行を書き換える経路を
       // DB側でも塞いでおく。
@@ -65,9 +96,19 @@ export function createEventGatheringSettingsRepository(
           eq(gatherings.eventId, changeSet.event_id)
         );
 
+      // INSERT ... VALUES には条件を付けられないため、SELECT ... WHERE の形にする。
+      // drizzle の batch は生SQLを受け付けないので、他の文もSQLへ変換して
+      // db.batch でまとめて実行する。
+      const versionMatchesText =
+        expected === undefined
+          ? '1 = 1'
+          : 'EXISTS (SELECT 1 FROM events WHERE event_id = ? AND lock_version = ?)';
+      const versionMatchesParams =
+        expected === undefined ? [] : [changeSet.event_id, expected];
+
       // 参加者(gathering_group_members)は消さない。参加者が残っている集合予定の
       // DELETE は外部キー制約で失敗し、batch 全体が取り消される。
-      const statements: BatchItem<'sqlite'>[] = [
+      const statements: SqlStatement[] = [
         ...(options.holdNotificationSyncGatheringIds ?? []).map(gatheringId =>
           orm
             .update(notification_schedules)
@@ -77,6 +118,7 @@ export function createEventGatheringSettingsRepository(
             })
             .where(
               and(
+                versionMatches,
                 eq(notification_schedules.sendStatus, 'scheduled'),
                 isNull(notification_schedules.startedAt),
                 isNull(notification_schedules.scheduledByUserId),
@@ -103,7 +145,9 @@ export function createEventGatheringSettingsRepository(
             )
         ),
         ...changeSet.delete_ids.map(gatheringId =>
-          orm.delete(gatherings).where(ownedBy(gatheringId))
+          orm
+            .delete(gatherings)
+            .where(and(ownedBy(gatheringId), versionMatches))
         ),
         ...changeSet.updates.map(update =>
           orm
@@ -115,22 +159,51 @@ export function createEventGatheringSettingsRepository(
               gatheringSpotId: update.gathering_spot_id,
               updatedAt: sql`CURRENT_TIMESTAMP`,
             })
-            .where(ownedBy(update.gathering_id))
+            .where(and(ownedBy(update.gathering_id), versionMatches))
         ),
-        ...changeSet.creates.map(create =>
-          orm.insert(gatherings).values({
-            eventId: changeSet.event_id,
-            round: create.round,
-            roundStartTime: create.round_start_time,
-            gatheringTime: create.gathering_time,
-            gatheringSpotId: create.gathering_spot_id,
+        ...changeSet.creates.map((create): SqlStatement => ({
+          toSQL: () => ({
+            sql: `INSERT INTO gatherings
+                      (event_id, round, round_start_time, gathering_time, gathering_spot_id)
+                    SELECT ?, ?, ?, ?, ?
+                    WHERE ${versionMatchesText}`,
+            params: [
+              changeSet.event_id,
+              create.round,
+              create.round_start_time ?? null,
+              create.gathering_time,
+              create.gathering_spot_id,
+              ...versionMatchesParams,
+            ],
+          }),
+        })),
+        // 集合設定の保存でもeventsの版を進める。PUT /events/{id} と版を共有するため、
+        // 保存後に古い版で送られた一方は409になる。必ず最後に置く。
+        orm
+          .update(events)
+          .set({
+            updatedAt: sql`CURRENT_TIMESTAMP`,
+            lockVersion: sql`${events.lockVersion} + 1`,
           })
-        ),
+          .where(
+            and(
+              eq(events.id, changeSet.event_id),
+              expected === undefined
+                ? undefined
+                : eq(events.lockVersion, expected)
+            )
+          )
+          .returning({ id: events.id }),
       ];
 
-      const [first, ...rest] = statements;
-      if (!first) return;
-      await orm.batch([first, ...rest]);
+      const results = await db.batch<{ event_id: number }>(
+        statements.map(statement => {
+          const { sql: text, params } = statement.toSQL();
+          return db.prepare(text).bind(...params);
+        })
+      );
+      // 最後のeventsの更新が0件なら、版が一致しなかった(またはEventが無い)。
+      return (results[results.length - 1]?.results.length ?? 0) > 0;
     },
   };
 }
