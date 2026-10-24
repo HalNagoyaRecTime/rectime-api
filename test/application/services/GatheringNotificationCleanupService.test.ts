@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createGatheringNotificationCleanupService } from '../../../src/application/services/GatheringNotificationCleanupService';
+import { GATHERING_NOTIFICATION_CLEANUP_POLICY } from '../../../src/domain/entities/GatheringNotificationCleanup';
 
 describe('GatheringNotificationCleanupService', () => {
   const service = createGatheringNotificationCleanupService();
@@ -23,6 +24,7 @@ describe('GatheringNotificationCleanupService', () => {
         allowed_statuses: ['resolving', 'sending'],
         now: '2026-10-22T09:00:00.000Z',
       },
+      cleanup_policy: GATHERING_NOTIFICATION_CLEANUP_POLICY,
     });
   });
 });

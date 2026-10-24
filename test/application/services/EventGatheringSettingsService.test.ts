@@ -6,7 +6,10 @@ import type { IEventRepository } from '../../../src/domain/interfaces/repositori
 import type { IGatheringSpotRepository } from '../../../src/domain/interfaces/repositories/IGatheringSpotRepository';
 import type { IGatheringNotificationGeneratorService } from '../../../src/application/services/GatheringNotificationGeneratorService';
 import type { IGatheringNotificationCleanupService } from '../../../src/application/services/IGatheringNotificationCleanupService';
-import type { GatheringNotificationCleanupPlan } from '../../../src/domain/entities/GatheringNotificationCleanup';
+import {
+  GATHERING_NOTIFICATION_CLEANUP_POLICY,
+  type GatheringNotificationCleanupPlan,
+} from '../../../src/domain/entities/GatheringNotificationCleanup';
 
 const EVENT_ID = 12;
 
@@ -95,6 +98,7 @@ function setup(
                   allowed_statuses: ['resolving', 'sending'],
                   now: '2026-10-22T00:00:00.000Z',
                 },
+                cleanup_policy: GATHERING_NOTIFICATION_CLEANUP_POLICY,
               }
             : null
       ),
@@ -213,6 +217,7 @@ describe('EventGatheringSettingsService', () => {
               allowed_statuses: ['resolving', 'sending'],
               now: '2026-10-22T00:00:00.000Z',
             },
+            cleanup_policy: GATHERING_NOTIFICATION_CLEANUP_POLICY,
           },
         }
       );
@@ -326,6 +331,7 @@ describe('EventGatheringSettingsService', () => {
               allowed_statuses: ['resolving', 'sending'],
               now: '2026-10-22T00:00:00.000Z',
             },
+            cleanup_policy: GATHERING_NOTIFICATION_CLEANUP_POLICY,
           },
         }
       );

@@ -1,3 +1,4 @@
+import { GATHERING_NOTIFICATION_CLEANUP_POLICY } from '../../domain/entities/GatheringNotificationCleanup';
 import { buildNotificationStopPolicy } from '../../domain/entities/notificationStopPolicy';
 import type { IGatheringNotificationCleanupService } from './IGatheringNotificationCleanupService';
 
@@ -20,6 +21,8 @@ export function createGatheringNotificationCleanupService(): IGatheringNotificat
           { reason: 'source_deleted' },
           now
         ),
+        // 削除・停止の対象StatusはDomain policyで固定する。
+        cleanup_policy: GATHERING_NOTIFICATION_CLEANUP_POLICY,
       };
     },
   };
