@@ -60,7 +60,10 @@ export interface CreateEventRequestDTO {
  * PUT /events/:eventId のリクエスト本文。
  * Event本体の項目だけを受け付け、Notification固有fieldは含まない(#388)。
  */
-export type UpdateEventRequestDTO = CreateEventRequestDTO;
+export interface UpdateEventRequestDTO extends CreateEventRequestDTO {
+  /** 取得時点の lock_version。指定すると、取得後に変更されていた場合は409になる。 */
+  lock_version?: number;
+}
 
 /** GET /events のレスポンス本文。 */
 export interface EventListResponseDTO {

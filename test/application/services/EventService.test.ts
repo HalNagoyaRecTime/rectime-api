@@ -459,6 +459,69 @@ describe('EventService', () => {
       ).rejects.toThrow('Event not found');
     });
 
+    describe('楽観ロック', () => {
+      const request = {
+        event_name: '開会式',
+        rule_text: null,
+        venue_ids: [3],
+        start_time: '0900',
+        end_time: '0930',
+      };
+
+      it('lock_version をDomain入力型の expectedLockVersion としてRepositoryへ渡す', async () => {
+        const repository = createRepository({
+          exists: vi.fn().mockResolvedValue(true),
+          update: vi.fn().mockResolvedValue(buildEventWithVenues()),
+        });
+
+        await createService(repository).updateEvent(1, {
+          ...request,
+          lock_version: 4,
+        });
+
+        expect(repository.update).toHaveBeenCalledWith(1, {
+          name: '開会式',
+          ruleText: null,
+          venueIds: [3],
+          startTime: '0900',
+          endTime: '0930',
+          expectedLockVersion: 4,
+        });
+      });
+
+      it('lock_version を指定した更新が0件で、イベントが残っていればEvent update conflictを投げる', async () => {
+        const repository = createRepository({
+          exists: vi.fn().mockResolvedValue(true),
+          update: vi.fn().mockResolvedValue(null),
+        });
+
+        await expect(
+          createService(repository).updateEvent(1, {
+            ...request,
+            lock_version: 4,
+          })
+        ).rejects.toThrow('Event update conflict');
+      });
+
+      it('lock_version を指定した更新が0件で、イベントも無ければEvent not foundを投げる', async () => {
+        // 存在確認（1回目）は通り、更新の直前に削除された場合
+        const repository = createRepository({
+          exists: vi
+            .fn()
+            .mockResolvedValueOnce(true)
+            .mockResolvedValueOnce(false),
+          update: vi.fn().mockResolvedValue(null),
+        });
+
+        await expect(
+          createService(repository).updateEvent(1, {
+            ...request,
+            lock_version: 4,
+          })
+        ).rejects.toThrow('Event not found');
+      });
+    });
+
     it('存在しないイベントに存在しない実施場所を指定した場合はEvent not foundを投げる', async () => {
       const repository = createRepository({
         exists: vi.fn().mockResolvedValue(false),

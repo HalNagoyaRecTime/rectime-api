@@ -375,6 +375,161 @@ describe('EventRepository', () => {
       }
     });
 
+    describe('楽観ロック', () => {
+      const venueIdsOf = async (eventId: number) =>
+        (
+          await env.DB.prepare(
+            'SELECT venue_id FROM event_venues WHERE event_id = ? ORDER BY venue_id'
+          )
+            .bind(eventId)
+            .all<{ venue_id: number }>()
+        ).results.map(row => row.venue_id);
+
+      it('作成直後の lock_version は 0 で、更新のたびに 1 ずつ増える', async () => {
+        const { venueIds, cleanup } = await createVenues([
+          'ロック連番用体育館',
+        ]);
+        const created = await repo.create({
+          name: 'ロック連番用イベント',
+          ruleText: null,
+          venueIds,
+          startTime: '0900',
+          endTime: '0930',
+        });
+
+        try {
+          expect(created.lock_version).toBe(0);
+          const input = {
+            name: 'ロック連番用イベント',
+            ruleText: null,
+            venueIds,
+            startTime: '0900',
+            endTime: '0930',
+          };
+          const first = await repo.update(created.event_id, input);
+          const second = await repo.update(created.event_id, input);
+
+          expect(first?.lock_version).toBe(1);
+          expect(second?.lock_version).toBe(2);
+        } finally {
+          await deleteEvent(created.event_id);
+          await cleanup();
+        }
+      });
+
+      it('取得時点の lock_version が一致すれば、本体も実施場所も更新して版を進める', async () => {
+        const { venueIds, cleanup } = await createVenues([
+          'ロック一致用第1体育館',
+          'ロック一致用グラウンド',
+        ]);
+        const created = await repo.create({
+          name: 'ロック一致用イベント',
+          ruleText: null,
+          venueIds: [venueIds[0]],
+          startTime: '0900',
+          endTime: '0930',
+        });
+
+        try {
+          const updated = await repo.update(created.event_id, {
+            name: 'ロック一致後',
+            ruleText: null,
+            venueIds: [venueIds[1]],
+            startTime: '1000',
+            endTime: '1030',
+            expectedLockVersion: created.lock_version,
+          });
+
+          expect(updated).toMatchObject({
+            event_name: 'ロック一致後',
+            lock_version: created.lock_version + 1,
+          });
+          expect(await venueIdsOf(created.event_id)).toEqual([venueIds[1]]);
+        } finally {
+          await deleteEvent(created.event_id);
+          await cleanup();
+        }
+      });
+
+      it('lock_version が違えば null を返し、本体も実施場所の付け替えも一切行わない', async () => {
+        const { venueIds, cleanup } = await createVenues([
+          'ロック不一致用第1体育館',
+          'ロック不一致用グラウンド',
+        ]);
+        const created = await repo.create({
+          name: 'ロック不一致用イベント',
+          ruleText: null,
+          venueIds: [venueIds[0]],
+          startTime: '0900',
+          endTime: '0930',
+        });
+        // 別の操作が先に保存した状態にする（版が 0 → 1）
+        await repo.update(created.event_id, {
+          name: 'ロック不一致用イベント別操作',
+          ruleText: null,
+          venueIds: [venueIds[0]],
+          startTime: '0900',
+          endTime: '0930',
+        });
+
+        try {
+          const result = await repo.update(created.event_id, {
+            name: '古い版の名前',
+            ruleText: null,
+            venueIds: [venueIds[1]],
+            startTime: '1100',
+            endTime: '1130',
+            expectedLockVersion: created.lock_version,
+          });
+
+          expect(result).toBeNull();
+          // 実施場所は付け替わっていない（削除も追加もされていない）
+          expect(await venueIdsOf(created.event_id)).toEqual([venueIds[0]]);
+          const stored = await repo.findById(created.event_id);
+          expect(stored).toMatchObject({
+            event_name: 'ロック不一致用イベント別操作',
+            start_time: '0900',
+            lock_version: 1,
+          });
+        } finally {
+          await deleteEvent(created.event_id);
+          await cleanup();
+        }
+      });
+
+      it('同じ版から続けて更新しても、2回目は null になる（同じ秒内でも検出できる）', async () => {
+        const { venueIds, cleanup } = await createVenues([
+          'ロック連続用体育館',
+        ]);
+        const created = await repo.create({
+          name: 'ロック連続用イベント',
+          ruleText: null,
+          venueIds,
+          startTime: '0900',
+          endTime: '0930',
+        });
+
+        try {
+          const input = {
+            name: 'ロック連続用イベント',
+            ruleText: null,
+            venueIds,
+            startTime: '0900',
+            endTime: '0930',
+            expectedLockVersion: created.lock_version,
+          };
+          const first = await repo.update(created.event_id, input);
+          const second = await repo.update(created.event_id, input);
+
+          expect(first).not.toBeNull();
+          expect(second).toBeNull();
+        } finally {
+          await deleteEvent(created.event_id);
+          await cleanup();
+        }
+      });
+    });
+
     it('存在しないidの場合はnullを返し、紐づけも作らない', async () => {
       const { venueIds, cleanup } = await createVenues(['update不在用体育館']);
 

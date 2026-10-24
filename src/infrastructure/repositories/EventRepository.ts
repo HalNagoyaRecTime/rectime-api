@@ -14,6 +14,7 @@ import type {
   ParticipatingEventEntity,
   EventListOptions,
   EventWithGatheringSummaryEntity,
+  EventUpdateInput,
   EventWithVenuesEntity,
   EventWriteInput,
   GatheringSummaryEntity,
@@ -218,10 +219,43 @@ export function createEventRepository(db: D1Database): IEventRepository {
 
     async update(
       id: number,
-      event: EventWriteInput
+      event: EventUpdateInput
     ): Promise<EventWithVenuesEntity | null> {
       const venueIdsJson = JSON.stringify(event.venueIds);
-      const [updated] = await db.batch<{ event_id: number }>([
+      // 版番号(expectedLockVersion)が指定された場合は、取得時点から変更されて
+      // いないことを確認する。版番号は更新のたびに必ず1ずつ増えるため、
+      // updated_at（秒単位）では区別できない同じ秒内の更新も検出できる。
+      //
+      // 実施場所の付け替え(event_venues)とeventsの更新は同じbatchで行う。版が
+      // 一致しないときにevent_venuesだけが書き換わらないよう、次の順序にしている。
+      //   1. event_venues の2文は、eventsの版が一致する行があるときだけ作用する
+      //   2. eventsの更新(版を進める)は最後に置く
+      // eventsの更新を先に置くと、その時点で版が進み、後続の文の「版が一致する」
+      // 条件が外れてしまう。不一致のときは3文とも0件になり、呼び出し側はnullを
+      // 受け取る。
+      const expected = event.expectedLockVersion ?? null;
+      const versionMatches = `EXISTS (
+               SELECT 1 FROM events
+               WHERE event_id = ? AND (? IS NULL OR lock_version = ?)
+             )`;
+      const results = await db.batch<{ event_id: number }>([
+        db
+          .prepare(
+            `DELETE FROM event_venues
+             WHERE event_id = ?
+               AND venue_id NOT IN (SELECT value FROM json_each(?))
+               AND ${versionMatches}`
+          )
+          .bind(id, venueIdsJson, id, expected, expected),
+        db
+          .prepare(
+            `INSERT INTO event_venues (event_id, venue_id)
+             SELECT ?, value
+             FROM json_each(?)
+             WHERE ${versionMatches}
+             ON CONFLICT (event_id, venue_id) DO NOTHING`
+          )
+          .bind(id, venueIdsJson, id, expected, expected),
         db
           .prepare(
             `UPDATE events
@@ -229,29 +263,23 @@ export function createEventRepository(db: D1Database): IEventRepository {
                  rule_text = ?,
                  start_time = ?,
                  end_time = ?,
-                 updated_at = CURRENT_TIMESTAMP
+                 updated_at = CURRENT_TIMESTAMP,
+                 lock_version = lock_version + 1
              WHERE event_id = ?
+               AND (? IS NULL OR lock_version = ?)
              RETURNING event_id`
           )
-          .bind(event.name, event.ruleText, event.startTime, event.endTime, id),
-        db
-          .prepare(
-            `DELETE FROM event_venues
-             WHERE event_id = ?
-               AND venue_id NOT IN (SELECT value FROM json_each(?))`
-          )
-          .bind(id, venueIdsJson),
-        db
-          .prepare(
-            `INSERT INTO event_venues (event_id, venue_id)
-             SELECT ?, value
-             FROM json_each(?)
-             WHERE EXISTS (SELECT 1 FROM events WHERE event_id = ?)
-             ON CONFLICT (event_id, venue_id) DO NOTHING`
-          )
-          .bind(id, venueIdsJson, id),
+          .bind(
+            event.name,
+            event.ruleText,
+            event.startTime,
+            event.endTime,
+            id,
+            expected,
+            expected
+          ),
       ]);
-      if (!updated?.results.length) return null;
+      if (!results[2]?.results.length) return null;
       return findEventWithVenues(id);
     },
 
