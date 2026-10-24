@@ -271,7 +271,7 @@ export function createDIContainer(env: Env) {
       env.EVENT_DATE
     );
   const gatheringNotificationCleanupService =
-    createGatheringNotificationCleanupService(notificationStopService);
+    createGatheringNotificationCleanupService();
   const notificationConfigService = createNotificationConfigService(
     notificationConfigRepository
   );
