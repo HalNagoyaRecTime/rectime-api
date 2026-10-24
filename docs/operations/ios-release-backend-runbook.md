@@ -121,7 +121,33 @@ curl --fail-with-body --silent --show-error \
 {"status":"ok"}
 ```
 
-### 6.2 認証API
+### 6.2 読み取り専用の自動Smoke Test
+
+Node.js 22で`BACKEND_SMOKE_BASE_URL`へ対象環境のoriginを指定し、実行する。
+接続先は本書の環境一覧と照合する。Tokenを引数や環境変数へ直接書かない。
+
+```shell
+npm run backend:smoke
+```
+
+Tokenなしでは`/health`、未認証401、合成無効Tokenの401だけ確認する。
+結果は`result: partial`、`authenticated: not_run`となる。終了コード0でも、認証済みAPIや運用準備全体の完了を意味しない。
+
+実際のiOSログインで取得したTokenを、Repository外の読み取り権限を制限した一時ファイルへ保存した場合だけ、
+`BACKEND_SMOKE_TOKEN_FILE`にそのパスを指定して再実行する。Token取得のためにログ出力を追加しない。
+ファイルは確認後に破棄する。iOSアプリ上での確認は引き続き必要。
+
+- 認証済み確認: `auth/me`、`events`、`me/events`、`me/notifications`のGET。
+- 対象はHTTPS originのみ。ローカル検証ではloopbackへのHTTPも許可する。
+- リダイレクトは追跡しない。各リクエストは10秒でTimeoutにする。
+- 出力は固定の確認名、path、HTTP Status、判定のみ。Token、個人情報、応答本文、例外本文は出力しない。
+- 終了コード: 0は実行した確認が成功、1は通信・Status・JSONの確認失敗、2は接続先またはTokenファイルの設定不備。
+- 成功してもD1 Migration適用済み、FCM配信成功、障害対応手順全体の完了は保証しない。
+
+スクリプト自体は`npm run backend:smoke:test`で検証する。実施結果は
+[2026-10-21のstaging確認記録](../verification/backend-operations-2026-10-21.md)を参照する。
+
+### 6.3 認証API
 
 iOSでMicrosoftログイン後、Token値を画面やログへ出力せずに以下を確認する。
 
@@ -130,7 +156,7 @@ iOSでMicrosoftログイン後、Token値を画面やログへ出力せずに以
 3. App再起動後もSessionが復元できる。
 4. Logout後は同じ認証必須APIが`401`になる。
 
-### 6.3 代表API
+### 6.4 代表API
 
 Bearer Tokenを画面とShell履歴へ残さないよう、以下のコマンドで一時的に読み込む。入力後にEnterを押してもTokenは表示されない。
 
