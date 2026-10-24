@@ -1,10 +1,12 @@
 import { markdownBodySchema } from '../markdown';
+import { FIREBASE_PLATFORM_NAMES } from '../../../domain/entities/FirebaseToken';
 import {
   NOTIFICATION_AUDIENCE_TYPES,
   NOTIFICATION_CREATION_METHODS,
   NOTIFICATION_DELIVERY_TYPES,
   NOTIFICATION_IMPORTANCE_LEVELS,
   NOTIFICATION_PUSH_DELIVERY_STATUSES,
+  NOTIFICATION_RECIPIENT_RESOLUTION_STATUSES,
   NOTIFICATION_SCHEDULE_STATUSES,
   NOTIFICATION_SOURCE_TYPES,
   NOTIFICATION_STOP_REASONS,
@@ -34,6 +36,10 @@ export const notificationImportanceSchema = z
 export const notificationTypeSchema = z
   .enum(NOTIFICATION_TYPES)
   .openapi('NotificationType');
+
+export const firebasePlatformNameSchema = z
+  .enum(FIREBASE_PLATFORM_NAMES)
+  .openapi('FirebasePlatformName');
 
 export const notificationSourceTypeSchema = z
   .enum(NOTIFICATION_SOURCE_TYPES)
@@ -193,7 +199,7 @@ export const notificationStopSchema = z
 
 export const notificationRecipientResolutionSchema = z
   .object({
-    status: z.enum(['pending', 'resolved']),
+    status: z.enum(NOTIFICATION_RECIPIENT_RESOLUTION_STATUSES),
     resolvedCount: z.number().int().nonnegative(),
   })
   .strict()
@@ -216,21 +222,7 @@ export const notificationScheduleAudienceSchema = notificationAudienceSchema
   .strict()
   .openapi('NotificationScheduleAudience');
 
-export const notificationScheduleSummarySchema = z
-  .object({
-    notificationScheduleId: z.number().int().positive(),
-    sendAt: utcDateTimeSchema,
-    status: notificationStatusSchemas.schedule,
-    stop: notificationStopSchema.nullable(),
-    scheduledBy: notificationUserReferenceSchema.nullable(),
-    createdAt: utcDateTimeSchema,
-    audience: notificationScheduleAudienceSchema,
-    recipientPushSummary: notificationRecipientPushSummarySchema,
-  })
-  .strict()
-  .openapi('NotificationScheduleSummary');
-
-export const adminNotificationScheduleListItemSchema = z
+const notificationScheduleSummaryFieldsSchema = z
   .object({
     notificationScheduleId: z.number().int().positive(),
     sendAt: utcDateTimeSchema,
@@ -240,10 +232,22 @@ export const adminNotificationScheduleListItemSchema = z
     audience: notificationScheduleAudienceSchema,
     recipientPushSummary: notificationRecipientPushSummarySchema,
   })
-  .strict()
-  .openapi('AdminNotificationScheduleListItem');
+  .strict();
 
-export const notificationScheduleListItemSchema = z
+export const adminNotificationScheduleListItemSchema =
+  notificationScheduleSummaryFieldsSchema.openapi(
+    'AdminNotificationScheduleListItem'
+  );
+
+export const notificationScheduleSummarySchema =
+  notificationScheduleSummaryFieldsSchema
+    .extend({
+      stop: notificationStopSchema.nullable(),
+    })
+    .strict()
+    .openapi('NotificationScheduleSummary');
+
+const notificationScheduleFieldsSchema = z
   .object({
     notificationId: z.number().int().positive(),
     notificationScheduleId: z.number().int().positive(),
@@ -258,8 +262,10 @@ export const notificationScheduleListItemSchema = z
     stop: notificationStopSchema.nullable(),
     creation: notificationCreationSchema,
   })
-  .strict()
-  .openapi('NotificationScheduleListItem');
+  .strict();
+
+export const notificationScheduleListItemSchema =
+  notificationScheduleFieldsSchema.openapi('NotificationScheduleListItem');
 
 export const notificationAudienceProgressSchema = z
   .object({
@@ -272,7 +278,7 @@ export const notificationAudienceProgressSchema = z
 export const notificationRecipientProgressSchema = z
   .object({
     count: z.number().int().nonnegative(),
-    status: z.enum(['pending', 'resolved']),
+    status: z.enum(NOTIFICATION_RECIPIENT_RESOLUTION_STATUSES),
   })
   .strict()
   .openapi('NotificationRecipientProgress');
@@ -290,20 +296,8 @@ export const notificationDeliveryProgressSchema = z
   .strict()
   .openapi('NotificationDeliveryProgress');
 
-export const notificationScheduleDetailSchema = z
-  .object({
-    notificationId: z.number().int().positive(),
-    notificationScheduleId: z.number().int().positive(),
-    content: notificationContentPushOnlySchema,
-    importance: notificationImportanceSchema,
-    sendAt: utcDateTimeSchema,
-    status: notificationStatusSchemas.schedule,
-    failureReason: z
-      .string()
-      .nullable()
-      .describe('Scheduleがfailedの場合の失敗理由'),
-    stop: notificationStopSchema.nullable(),
-    creation: notificationCreationSchema,
+export const notificationScheduleDetailSchema = notificationScheduleFieldsSchema
+  .extend({
     audienceProgress: notificationAudienceProgressSchema,
     recipientProgress: notificationRecipientProgressSchema,
     deliveryProgress: notificationDeliveryProgressSchema,
@@ -316,7 +310,7 @@ export const notificationPushDeliveryDetailSchema = z
     notificationPushDeliveryId: z.number().int().positive(),
     notificationRecipientId: z.number().int().positive(),
     firebaseTokenId: z.number().int().positive().nullable(),
-    platform: z.enum(['ios', 'android']),
+    platform: firebasePlatformNameSchema,
     status: notificationStatusSchemas.pushDelivery,
     attemptCount: z.number().int().nonnegative(),
     firstAttemptAt: utcDateTimeSchema.nullable(),
@@ -332,7 +326,7 @@ export const notificationPushDeliveryDetailSchema = z
 export const notificationRecipientResultDeliverySchema = z
   .object({
     notificationPushDeliveryId: z.number().int().positive(),
-    platform: z.enum(['ios', 'android']),
+    platform: firebasePlatformNameSchema,
     status: notificationStatusSchemas.pushDelivery,
     attemptCount: z.number().int().nonnegative(),
     lastAttemptAt: utcDateTimeSchema.nullable(),

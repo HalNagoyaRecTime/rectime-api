@@ -1,5 +1,6 @@
 import { markdownBodySchema } from '../markdown';
 import { createRoute } from '@hono/zod-openapi';
+import { DEFAULT_NOTIFICATION_IMPORTANCE } from '../../../domain/entities/Notification';
 import {
   bearerAuth,
   internalServerErrorResponse,
@@ -23,6 +24,7 @@ import {
 import {
   adminNotificationScheduleListItemSchema,
   notificationAudienceInputSchema,
+  notificationContentPushOnlySchema,
   notificationContentSchema,
   notificationCreationSchema,
   notificationDateRangeQuery,
@@ -33,7 +35,7 @@ import {
 export const adminNotificationListItemSchema = z
   .object({
     notificationId: z.number().int().positive(),
-    content: z.object({ push: notificationContentSchema.shape.push }).strict(),
+    content: notificationContentPushOnlySchema,
     importance: notificationImportanceSchema,
     creation: notificationCreationSchema,
     createdAt: utcDateTimeSchema,
@@ -133,7 +135,7 @@ export const notificationConfigResponseSchema = z
   .object({
     importance: z
       .object({
-        default: z.literal('normal'),
+        default: z.literal(DEFAULT_NOTIFICATION_IMPORTANCE),
         options: z.array(notificationImportanceSchema),
       })
       .strict(),
