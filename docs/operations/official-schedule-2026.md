@@ -49,7 +49,7 @@
 stagingでは `round_start_time` は全14件とも未設定のため、本番でも `NULL` にする。
 stagingにある検証用ユーザーの参加者割当は本番へコピーしない。
 
-開催日は **2026年11月27日（金）**。本番用 `wrangler.jsonc` の `EVENT_DATE` に
+開催日は **2026年11月27日（金）**。本番用 `wrangler-nagoya.jsonc` の `EVENT_DATE` に
 `2026-11-27` を設定する。developmentとstagingは検証用の日付を維持する。
 
 ## 既存データがある場合

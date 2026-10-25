@@ -25,12 +25,12 @@ jobs:
         # environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["production"]' || '["development","staging"]') }}
         include: ${{ fromJSON(
           github.event_name == 'workflow_dispatch' &&
-          '[{"environment":"production","region":"nagoya","config":"wrangler-nagoya.jsonc"},
-          {"environment":"production","region":"tokyo","config":"wrangler-tokyo.jsonc"},
-          {"environment":"production","region":"osaka","config":"wrangler-osaka.jsonc"}]' ||
-          '[{"environment":"staging","region":"nagoya","config":"wrangler-nagoya.jsonc"},
-          {"environment":"staging","region":"tokyo","config":"wrangler-tokyo.jsonc"},
-          {"environment":"staging","region":"osaka","config":"wrangler-osaka.jsonc"}]'
+          '[{"environment":"production","region":"nagoya","config":"wrangler-nagoya.jsonc","account":"NAGOYA"},
+          {"environment":"production","region":"tokyo","config":"wrangler-tokyo.jsonc","account":"TOKYO"},
+          {"environment":"production","region":"osaka","config":"wrangler-osaka.jsonc","account":"OSAKA"}]' ||
+          '[{"environment":"staging","region":"nagoya","config":"wrangler-nagoya.jsonc","account":"NAGOYA"},
+          {"environment":"staging","region":"tokyo","config":"wrangler-tokyo.jsonc","account":"TOKYO"},
+          {"environment":"staging","region":"osaka","config":"wrangler-osaka.jsonc","account":"OSAKA"}]'
           ) }} 
 
     # cancel-in-progressにしないのは、migration中にキャンセルされるとD1が中途半端な状態になるため。
@@ -44,6 +44,8 @@ jobs:
     environment: ${{ matrix.environment }}
     env:
       WRANGLER_ENV_FLAG: ${{ matrix.environment != 'production' && format('--env {0}', matrix.environment) || '' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets[format('CLOUDFLARE_API_TOKEN_{0}', matrix.account)] }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets[format('CLOUDFLARE_ACCOUNT_ID_{0}', matrix.account)] }}
 
     steps:
       - name: Checkout code
@@ -62,20 +64,20 @@ jobs:
 
       - name: 通知Secretの登録を確認
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ env.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
         run: npm run notifications:check -- ${{ needs.target.outputs.env_flag }}
 
       - name: Apply D1 migrations
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 migrations apply DB --remote --config ${{ matrix.config }} ${{ env.WRANGLER_ENV_FLAG }}
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --minify --config ${{ matrix.config }} ${{ env.WRANGLER_ENV_FLAG }}

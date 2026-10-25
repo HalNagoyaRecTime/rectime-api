@@ -32,7 +32,7 @@ iOSリリース時に、認証・主要API・D1・デプロイで問題が発生
 
 - プレビュー専用の保存領域を新規作成しない
 - 障害時に不足するPreview BindingをDashboardで応急追加しない
-- 障害調査時は、環境一覧と`wrangler.jsonc`、`.github/workflows/deploy.yml`が一致していることを確認する
+- 障害調査時は、環境一覧と`wrangler-nagoya.jsonc`、`.github/workflows/deploy.yml`が一致していることを確認する
 
 ## 4. 権限と担当
 
@@ -59,7 +59,7 @@ iOSリリース時に、認証・主要API・D1・デプロイで問題が発生
 
 1. 対象Commit SHAとリリース担当者を記録する。
 2. CIの`format:check`、`lint`、`type-check`、`test`が成功していることを確認する。
-3. Deploy Workflowの対象branch、Worker、D1が想定どおりであり、本Runbookの環境一覧と`wrangler.jsonc`、`.github/workflows/deploy.yml`が一致していることを確認する。
+3. Deploy Workflowの対象branch、Worker、D1が想定どおりであり、本Runbookの環境一覧と`wrangler-nagoya.jsonc`、`.github/workflows/deploy.yml`が一致していることを確認する。
 4. 未解決のBlocking Issueがないことを確認する。
 
 ### 5.2 Secretと環境変数
@@ -320,7 +320,7 @@ npx wrangler d1 time-travel restore rectime-api --bookmark "<BOOKMARK>"
 
 - [ ] 対象Commit SHAと担当者を記録した
 - [ ] CIがすべて成功している
-- [ ] 本Runbookの環境一覧が`wrangler.jsonc`と`.github/workflows/deploy.yml`に一致している
+- [ ] 本Runbookの環境一覧が`wrangler-nagoya.jsonc`と`.github/workflows/deploy.yml`に一致している
 - [ ] Deploy対象Worker／D1を確認した
 - [ ] 未適用Migrationを確認した
 - [ ] production D1のTime Travel bookmarkを記録した

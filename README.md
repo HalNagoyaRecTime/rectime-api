@@ -256,7 +256,7 @@ VITE_BACKEND_BASE_URL=https://rectime-api.rectime-project.workers.dev
 
 - `pre-commit`: `lint-staged` による変更ファイルの ESLint/Prettier
 - `pre-push`: 全体Typecheckと、`origin/develop` の差分に影響するVitestのみ実行する
-  - `package.json`、`package-lock.json`、`tsconfig*.json`、Vitest/Vite設定、`wrangler.jsonc`、`migrations/**`変更時は、pre-pushがGitの差分を判定して全テストを実行する
+  - `package.json`、`package-lock.json`、`tsconfig*.json`、Vitest/Vite設定、`wrangler-nagoya.jsonc`、`migrations/**`変更時は、pre-pushがGitの差分を判定して全テストを実行する
   - `origin/develop` が見つからない場合は全テストへフォールバックする
   - Stacked PRでも`origin/develop`を基準にするため、実際のPR差分より検査範囲が広がる、または親PRの変更を打ち消すケースでは差分を正確に検出できない場合がある
   - 関連テストは現在チェックアウト中のHEADを基準に選択するため、別ref指定や複数refのpushでは実際のpush対象と完全一致しない場合がある
@@ -295,7 +295,7 @@ major更新はこの月次workflowの対象外とし、別途事前検証して�
 
 **注意:** `dev:cron` はローカルDBに配信予定がありFirebase資格情報が設定されていると、実端末へFCMを送信する場合がある。開発用データ・資格情報でのみ実行する。
 
-`wrangler.jsonc` のトップレベル `triggers.crons` をUTCで再現する。
+`wrangler-nagoya.jsonc` のトップレベル `triggers.crons` をUTCで再現する。
 現在の毎分通知と日次のアカウント削除の後片付けを共通で扱う。
 発火時刻の計算は開発依存の `cron`、Workerの起動・ホットリロード・DB・Queueは固定版Wrangler CLI (`wrangler dev --test-scheduled`) が担当する。
 非安定のWrangler JavaScript APIには依存せず、固定版Wrangler 4.103.0の `--test-scheduled` が公開する `/__scheduled` 経由で既存の `scheduled()` を実行する。Wrangler更新時は公式パスの互換性を結合テストで確認する。
