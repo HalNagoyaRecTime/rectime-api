@@ -1,4 +1,5 @@
 import { createRoute } from '@hono/zod-openapi';
+import { NOTIFICATION_SCHEDULE_STATUSES } from '../../../domain/entities/Notification';
 import {
   bearerAuth,
   internalServerErrorResponse,
@@ -50,7 +51,7 @@ export const notificationScheduleResultsResponseSchema = z
 export const notificationStopResponseSchema = z
   .object({
     notificationScheduleId: z.number().int().positive(),
-    status: z.literal('stopped'),
+    status: z.literal(NOTIFICATION_SCHEDULE_STATUSES[5]),
   })
   .strict()
   .openapi('NotificationStopResponse');
