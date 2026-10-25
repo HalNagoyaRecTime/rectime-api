@@ -22,14 +22,24 @@ jobs:
       # 片方の環境が失敗しても、もう片方のD1 migrationを途中でキャンセルさせないため
       fail-fast: false
       matrix:
-        environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["production"]' || '["development","staging"]') }}
+        # environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["production"]' || '["development","staging"]') }}
+        include: ${{ fromJSON(
+          github.event_name == 'workflow_dispatch' &&
+          '[{"environment":"production","region":"nagoya","config":"wrangler-nagoya.jsonc"},
+          {"environment":"production","region":"tokyo","config":"wrangler-tokyo.jsonc"},
+          {"environment":"production","region":"osaka","config":"wrangler-osaka.jsonc"}]' ||
+          '[{"environment":"staging","region":"nagoya","config":"wrangler-nagoya.jsonc"},
+          {"environment":"staging","region":"tokyo","config":"wrangler-tokyo.jsonc"},
+          {"environment":"staging","region":"osaka","config":"wrangler-osaka.jsonc"}]'
+          ) }} 
+
     # cancel-in-progressにしないのは、migration中にキャンセルされるとD1が中途半端な状態になるため。
     # queueをmaxにしないと、待機中の実行が後続に置き換えられて永久にデプロイされなくなる。
     concurrency:
-      group: deploy-cloudflare-workers-${{ matrix.environment }}
+      group: deploy-cloudflare-workers-${{ matrix.environment }}-${{ matrix.region }}
       cancel-in-progress: false
       queue: max
-    name: Deploy (${{ matrix.environment }})
+    name: Deploy (${{ matrix.environment }})-${{ matrix.region }}
     runs-on: ubuntu-latest
     environment: ${{ matrix.environment }}
     env:
@@ -61,11 +71,11 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 migrations apply DB --remote ${{ env.WRANGLER_ENV_FLAG }}
+          command: d1 migrations apply DB --remote --config ${{ matrix.config }} ${{ env.WRANGLER_ENV_FLAG }}
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --minify ${{ env.WRANGLER_ENV_FLAG }}
+          command: deploy --minify --config ${{ matrix.config }} ${{ env.WRANGLER_ENV_FLAG }}
