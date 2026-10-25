@@ -9,7 +9,7 @@ import {
   gathering_spots,
   gatherings,
 } from '../database/schema';
-import { applyGatheringSettingsBatch } from './GatheringSettingsBatch';
+import { buildEventGatheringStatements } from './EventGatheringStatements';
 
 export function createEventGatheringSettingsRepository(
   db: D1Database
@@ -45,8 +45,9 @@ export function createEventGatheringSettingsRepository(
         .all();
     },
 
-    async apply(changeSet, options = {}) {
-      await applyGatheringSettingsBatch(orm, changeSet, options);
+    async apply(changeSet) {
+      const [first, ...rest] = buildEventGatheringStatements(orm, changeSet);
+      if (first) await orm.batch([first, ...rest]);
     },
   };
 }

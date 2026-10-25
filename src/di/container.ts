@@ -31,6 +31,7 @@ import { createGatheringSpotRepository } from '../infrastructure/repositories/Ga
 import { createVenueRepository } from '../infrastructure/repositories/VenueRepository';
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createEventGatheringSettingsRepository } from '../infrastructure/repositories/EventGatheringSettingsRepository';
+import { createGatheringSettingsTransaction } from '../infrastructure/transactions/GatheringSettingsTransaction';
 import { createNotificationDeliveryQueue } from '../infrastructure/queues/NotificationDeliveryQueue';
 import { createStudentService } from '../application/services/StudentService';
 import { createStaffService } from '../application/services/StaffService';
@@ -157,6 +158,7 @@ export function createDIContainer(env: Env) {
     createGatheringNotificationGeneratorRepository(db);
   const eventGatheringSettingsRepository =
     createEventGatheringSettingsRepository(db);
+  const gatheringSettingsTransaction = createGatheringSettingsTransaction(db);
   const notificationDeliveryQueue = createNotificationDeliveryQueue(
     env.NOTIFICATION_DELIVERY_QUEUE
   );
@@ -308,7 +310,8 @@ export function createDIContainer(env: Env) {
     eventGatheringSettingsRepository,
     imageUrlSigner,
     gatheringNotificationGeneratorService,
-    gatheringNotificationCleanupService
+    gatheringNotificationCleanupService,
+    gatheringSettingsTransaction
   );
   const rankingService = createRankingService(teamRepository);
   const teamService = createTeamService(teamRepository);

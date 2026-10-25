@@ -1,7 +1,6 @@
 import { and, eq, exists, inArray, isNull, notExists, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
-import type { EventGatheringChangeSet } from '../../domain/entities/EventGathering';
-import type { EventGatheringApplyOptions } from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
+import type { GatheringNotificationChanges } from '../../domain/interfaces/transactions/IGatheringSettingsTransaction';
 import { AUTOMATIC_SYNC_PENDING_REASON } from '../../domain/entities/NotificationCreation';
 import {
   gatherings,
@@ -16,8 +15,8 @@ import type * as schema from '../database/schema';
 // 通知の同期保留・削除・停止SQLを構築する。ここではbatchを実行しない。
 export function buildGatheringNotificationStatements(
   orm: DrizzleD1Database<typeof schema>,
-  changeSet: EventGatheringChangeSet,
-  options: EventGatheringApplyOptions
+  eventId: number,
+  options: GatheringNotificationChanges
 ): BatchItem<'sqlite'>[] {
   const notificationCleanup = options.notificationCleanup;
   const cleanupStatements: BatchItem<'sqlite'>[] = [];
@@ -31,7 +30,7 @@ export function buildGatheringNotificationStatements(
         .from(gatherings)
         .where(
           and(
-            eq(gatherings.eventId, changeSet.event_id),
+            eq(gatherings.eventId, eventId),
             inArray(gatherings.id, notificationCleanup.gathering_ids)
           )
         );

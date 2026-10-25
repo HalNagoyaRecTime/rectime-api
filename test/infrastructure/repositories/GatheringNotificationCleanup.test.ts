@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createEventGatheringSettingsRepository } from '../../../src/infrastructure/repositories/EventGatheringSettingsRepository';
+import { createGatheringSettingsTransaction } from '../../../src/infrastructure/transactions/GatheringSettingsTransaction';
 import { createGatheringNotificationGeneratorRepository } from '../../../src/infrastructure/repositories/GatheringNotificationGeneratorRepository';
 import { createNotificationAudienceResolverRepository } from '../../../src/infrastructure/repositories/NotificationAudienceResolverRepository';
 import { createNotificationCreationRepository } from '../../../src/infrastructure/repositories/NotificationCreationRepository';
@@ -21,7 +21,7 @@ interface ScheduleOptions {
 }
 
 describe('GatheringNotificationCleanup', () => {
-  const repository = createEventGatheringSettingsRepository(env.DB);
+  const transaction = createGatheringSettingsTransaction(env.DB);
 
   beforeEach(clearNotificationFixtures);
 
@@ -134,7 +134,7 @@ describe('GatheringNotificationCleanup', () => {
   }
 
   function applyDeletion(eventId: number, gatheringId: number) {
-    return repository.apply(
+    return transaction.apply(
       {
         event_id: eventId,
         creates: [],

@@ -4,10 +4,11 @@ import type {
   EventGatheringUpdateInput,
   EventGatheringWriteInput,
 } from '../../domain/entities/EventGathering';
+import type { IEventGatheringSettingsRepository } from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
 import type {
-  EventGatheringApplyOptions,
-  IEventGatheringSettingsRepository,
-} from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
+  GatheringNotificationChanges,
+  IGatheringSettingsTransaction,
+} from '../../domain/interfaces/transactions/IGatheringSettingsTransaction';
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 import type { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
 import type { IGatheringNotificationGeneratorService } from './GatheringNotificationGeneratorService';
@@ -76,7 +77,8 @@ export function createEventGatheringSettingsService(
   eventGatheringSettingsRepository: IEventGatheringSettingsRepository,
   imageUrlSigner: IImageUrlSigner,
   gatheringNotificationGeneratorService: IGatheringNotificationGeneratorService,
-  gatheringNotificationCleanupService: IGatheringNotificationCleanupService
+  gatheringNotificationCleanupService: IGatheringNotificationCleanupService,
+  gatheringSettingsTransaction: IGatheringSettingsTransaction
 ): IEventGatheringSettingsService {
   const ensureGatheringSpotsExist = async (gatheringSpotIds: number[]) => {
     const existing =
@@ -162,20 +164,24 @@ export function createEventGatheringSettingsService(
         gatheringNotificationCleanupService.prepareCleanup(
           changeSet.delete_ids
         );
-      const applyOptions: EventGatheringApplyOptions = {};
+      const notificationChanges: GatheringNotificationChanges = {};
       if (changedGatheringTimeIds.length > 0) {
-        applyOptions.holdNotificationSyncGatheringIds = changedGatheringTimeIds;
+        notificationChanges.holdNotificationSyncGatheringIds =
+          changedGatheringTimeIds;
       }
       if (notificationCleanup) {
-        applyOptions.notificationCleanup = notificationCleanup;
+        notificationChanges.notificationCleanup = notificationCleanup;
       }
 
       try {
         // Gathering更新・削除と通知cleanupを同一batchで確定する。
-        if (Object.keys(applyOptions).length > 0) {
-          await eventGatheringSettingsRepository.apply(changeSet, applyOptions);
+        if (Object.keys(notificationChanges).length > 0) {
+          await gatheringSettingsTransaction.apply(
+            changeSet,
+            notificationChanges
+          );
         } else {
-          await eventGatheringSettingsRepository.apply(changeSet);
+          await gatheringSettingsTransaction.apply(changeSet);
         }
       } catch (error) {
         // 事前確認と保存の間に状態が変わると外部キー制約で失敗する。
