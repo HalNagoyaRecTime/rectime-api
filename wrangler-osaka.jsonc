@@ -24,7 +24,7 @@
     "CONTACT_FORM_URL": "https://forms.cloud.microsoft/r/LAsntFuQcF",
     // 2026年度レクリエーションの開催日（JST）。
     "EVENT_DATE": "2026-11-27",
-    "IMAGES_BUCKET_URL": "https://539494518db0c8b96ec2f6fdd30fb990.r2.cloudflarestorage.com/rectime-images",
+    "IMAGES_BUCKET_URL": "https://546f423d60ab785b8a2e7c176bf1e196.r2.cloudflarestorage.com/rectime-images",
   },
   // 本番Workerは workers.dev の既定URL(rectime-api.rectime-project.workers.dev)で
   // 公開されている(README.md参照)。カスタムドメイン/routesは未設定のため、
@@ -140,7 +140,7 @@
         // 500になる(#204レビュー指摘)。本番相当の検証環境だが、実イベント日付に
         // 追随させる必要はないため固定のダミー値を使う。
         "EVENT_DATE": "2026-01-01",
-        "IMAGES_BUCKET_URL": "https://539494518db0c8b96ec2f6fdd30fb990.r2.cloudflarestorage.com/rectime-images-staging",
+        "IMAGES_BUCKET_URL": "https://546f423d60ab785b8a2e7c176bf1e196.r2.cloudflarestorage.com/rectime-images-staging",
       },
       "secrets": {
         "required": [
