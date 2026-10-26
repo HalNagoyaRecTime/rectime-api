@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { and, asc, count, eq, inArray, sql, SQL } from 'drizzle-orm';
 import * as schema from '../database/schema';
 import {
+  event_venues,
   events,
   gatherings,
   gathering_group_members,
@@ -20,7 +21,7 @@ import type {
   GatheringSummaryEntity,
 } from '../../domain/entities/Event';
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
-import { findVenuesByEventIds } from './eventVenues';
+import { groupVenuesByEventId, selectEventVenues } from './eventVenues';
 
 // 集合時刻が未設定であることを表すsentinel値。gatherings.gathering_timeのデフォルト。
 const UNSET_GATHERING_TIME = '99:59';
@@ -44,16 +45,9 @@ function toEntity(row: typeof events.$inferSelect): EventEntity {
   };
 }
 
-async function findGatheringSummaries(
-  orm: ReturnType<typeof drizzle>,
-  eventIds: number[]
-): Promise<Map<number, GatheringSummaryEntity>> {
-  const summaries = new Map<number, GatheringSummaryEntity>();
-  if (eventIds.length === 0) {
-    return summaries;
-  }
-
-  const rows = await orm
+// 集合の概要の取得クエリ。実行せず、競技本体・実施場所と同じbatchで実行する。
+function selectGatheringSummaries(orm: ReturnType<typeof drizzle>, where: SQL) {
+  return orm
     .select({
       eventId: gatherings.eventId,
       gatheringCount: count(),
@@ -63,10 +57,19 @@ async function findGatheringSummaries(
       >`MIN(CASE WHEN ${gatherings.gatheringTime} != ${UNSET_GATHERING_TIME} THEN ${gatherings.gatheringTime} END)`,
     })
     .from(gatherings)
-    .where(inArray(gatherings.eventId, eventIds))
-    .groupBy(gatherings.eventId)
-    .all();
+    .where(where)
+    .groupBy(gatherings.eventId);
+}
 
+function toGatheringSummaries(
+  rows: {
+    eventId: number;
+    gatheringCount: number;
+    configuredGatheringCount: number;
+    firstGatheringTime: string | null;
+  }[]
+): Map<number, GatheringSummaryEntity> {
+  const summaries = new Map<number, GatheringSummaryEntity>();
   for (const row of rows) {
     summaries.set(row.eventId, {
       gathering_count: row.gatheringCount,
@@ -80,15 +83,21 @@ async function findGatheringSummaries(
 export function createEventRepository(db: D1Database): IEventRepository {
   const orm = drizzle(db, { schema });
 
+  // 本体と実施場所は同じbatchで読む。batchは1つのトランザクションとして実行されるため、
+  // 返す lock_version と実施場所は同じ時点の内容になる。
   const findEventWithVenues = async (
     id: number
   ): Promise<EventWithVenuesEntity | null> => {
-    const [result, venuesByEventId] = await Promise.all([
-      orm.select().from(events).where(eq(events.id, id)).get(),
-      findVenuesByEventIds(orm, [id]),
+    const [eventRows, venueRows] = await orm.batch([
+      orm.select().from(events).where(eq(events.id, id)),
+      selectEventVenues(orm, eq(event_venues.eventId, id)),
     ]);
+    const result = eventRows[0];
     if (!result) return null;
-    return { ...toEntity(result), venues: venuesByEventId.get(id) ?? [] };
+    return {
+      ...toEntity(result),
+      venues: groupVenuesByEventId(venueRows).get(id) ?? [],
+    };
   };
 
   return {
@@ -111,31 +120,55 @@ export function createEventRepository(db: D1Database): IEventRepository {
       }
       const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-      let query = orm
-        .select()
-        .from(events)
-        .where(where)
-        .orderBy(asc(events.startTime))
-        .$dynamic();
+      // 同じ並び・同じ件数の範囲を、本体の取得と、実施場所・集合の概要の絞り込みで
+      // 使う。同じ並びになるよう、start_timeが同じ競技はevent_idで並べる。
+      const listed = <
+        Q extends {
+          limit: (limit: number) => Q;
+          offset: (offset: number) => Q;
+        },
+      >(
+        query: Q
+      ): Q => {
+        let paged = query;
+        if (options.limit !== undefined) {
+          paged = paged.limit(options.limit);
+        }
+        if (options.offset) {
+          paged = paged.offset(options.offset);
+        }
+        return paged;
+      };
+      const listedIds = () =>
+        listed(
+          orm
+            .select({ id: events.id })
+            .from(events)
+            .where(where)
+            .orderBy(asc(events.startTime), asc(events.id))
+            .$dynamic()
+        );
 
-      if (options.limit !== undefined) {
-        query = query.limit(options.limit);
-      }
-      if (options.offset) {
-        query = query.offset(options.offset);
-      }
-
-      const [rows, totalResult] = await Promise.all([
-        query.all(),
-        orm.select({ total: count() }).from(events).where(where).get(),
+      // 本体・件数・集合の概要・実施場所を同じbatchで読む。別々に読むと、間に更新が
+      // 挟まったときに、返す lock_version と実施場所が別の時点の内容になる。
+      const [rows, totalRows, summaryRows, venueRows] = await orm.batch([
+        listed(
+          orm
+            .select()
+            .from(events)
+            .where(where)
+            .orderBy(asc(events.startTime), asc(events.id))
+            .$dynamic()
+        ),
+        orm.select({ total: count() }).from(events).where(where),
+        selectGatheringSummaries(orm, inArray(gatherings.eventId, listedIds())),
+        selectEventVenues(orm, inArray(event_venues.eventId, listedIds())),
       ]);
 
       const eventEntities = rows.map(toEntity);
-      const eventIds = eventEntities.map(event => event.event_id);
-      const [summaries, venuesByEventId] = await Promise.all([
-        findGatheringSummaries(orm, eventIds),
-        findVenuesByEventIds(orm, eventIds),
-      ]);
+      const summaries = toGatheringSummaries(summaryRows);
+      const venuesByEventId = groupVenuesByEventId(venueRows);
+      const totalResult = totalRows[0];
 
       return {
         events: eventEntities.map(event => ({

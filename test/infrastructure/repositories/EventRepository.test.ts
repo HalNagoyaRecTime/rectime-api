@@ -555,6 +555,132 @@ describe('EventRepository', () => {
     });
   });
 
+  // 本体と実施場所を別々に読むと、間に更新が挟まったときに「更新後の lock_version と
+  // 更新前の実施場所」が返り、そのレスポンスをPUTすると直前の実施場所の変更を
+  // 古い値で上書きできてしまう。読み取りが全て1回のbatchに含まれていることで、
+  // 返す内容が同じ時点のものになることを固定する。
+  describe('読み取りの整合性', () => {
+    // batchの呼び出し回数と、batchの外で単独に実行された問い合わせの回数を数える。
+    function spyOnD1(db: D1Database) {
+      const stats = { batches: 0, standalone: 0 };
+      const originals = new WeakMap<object, D1PreparedStatement>();
+      const wrap = (statement: D1PreparedStatement): D1PreparedStatement => {
+        const wrapped = new Proxy(statement, {
+          get(target, prop) {
+            if (prop === 'bind') {
+              return (...values: unknown[]) => wrap(target.bind(...values));
+            }
+            if (
+              prop === 'all' ||
+              prop === 'first' ||
+              prop === 'run' ||
+              prop === 'raw'
+            ) {
+              return (...args: unknown[]) => {
+                stats.standalone += 1;
+                return Reflect.apply(Reflect.get(target, prop), target, args);
+              };
+            }
+            const value = Reflect.get(target, prop);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+        });
+        originals.set(wrapped, statement);
+        return wrapped;
+      };
+      const spy = new Proxy(db, {
+        get(target, prop) {
+          if (prop === 'prepare') {
+            return (query: string) => wrap(target.prepare(query));
+          }
+          if (prop === 'batch') {
+            return (statements: D1PreparedStatement[]) => {
+              stats.batches += 1;
+              // D1には、包む前の実体を渡す。
+              return target.batch(statements.map(s => originals.get(s) ?? s));
+            };
+          }
+          const value = Reflect.get(target, prop);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      return { spy, stats };
+    }
+
+    it('findWithVenuesById は本体と実施場所を1回のbatchで読む', async () => {
+      const { spy, stats } = spyOnD1(env.DB);
+
+      await createEventRepository(spy).findWithVenuesById(
+        seeded.events[0].eventId
+      );
+
+      expect(stats.batches).toBe(1);
+      // batchの外で実行した問い合わせが無い
+      expect(stats.standalone).toBe(0);
+    });
+
+    it('findAll は本体・件数・集合の概要・実施場所を1回のbatchで読む', async () => {
+      const { spy, stats } = spyOnD1(env.DB);
+
+      await createEventRepository(spy).findAll({ limit: 2 });
+
+      expect(stats.batches).toBe(1);
+      expect(stats.standalone).toBe(0);
+    });
+
+    it('create と update が返す内容も、書き込みと読み取りのどちらもbatchで行う', async () => {
+      const { venueIds, cleanup } = await createVenues(['整合性用体育館']);
+      const { spy, stats } = spyOnD1(env.DB);
+      const spied = createEventRepository(spy);
+      let eventId: number | undefined;
+
+      try {
+        const input = {
+          name: '整合性用イベント',
+          ruleText: null,
+          venueIds,
+          startTime: '0900',
+          endTime: '0930',
+        };
+        const created = await spied.create(input);
+        eventId = created.event_id;
+        await spied.update(created.event_id, input);
+
+        // 作成のbatch・読み取りのbatch・更新のbatch・読み取りのbatch
+        expect(stats.batches).toBe(4);
+        expect(stats.standalone).toBe(0);
+      } finally {
+        await deleteEvent(eventId);
+        await cleanup();
+      }
+    });
+
+    it('findAll のページ指定で、実施場所はそのページの競技にだけ付く', async () => {
+      const all = (await repo.findAll({})).events;
+      expect(all.length).toBeGreaterThanOrEqual(3);
+      const [first, second] = all;
+      const firstVenues = await linkVenues(first.event_id, ['整合性用A']);
+      const secondVenues = await linkVenues(second.event_id, ['整合性用B']);
+
+      try {
+        const firstPage = (await repo.findAll({ limit: 1 })).events;
+        const secondPage = (await repo.findAll({ limit: 1, offset: 1 })).events;
+
+        expect(firstPage.map(e => e.event_id)).toEqual([first.event_id]);
+        expect(firstPage[0].venues.map(v => v.venue_id)).toEqual(
+          firstVenues.venueIds
+        );
+        expect(secondPage.map(e => e.event_id)).toEqual([second.event_id]);
+        expect(secondPage[0].venues.map(v => v.venue_id)).toEqual(
+          secondVenues.venueIds
+        );
+      } finally {
+        await firstVenues.cleanup();
+        await secondVenues.cleanup();
+      }
+    });
+  });
+
   describe('findByParticipantUserId', () => {
     it('ユーザーが集合に参加しているイベントだけを返す', async () => {
       const target = seeded.events[0];
