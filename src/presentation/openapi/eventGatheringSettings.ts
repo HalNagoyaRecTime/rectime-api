@@ -86,6 +86,15 @@ export const roundSettingInputSchema = z
 export const eventGatheringSettingsWriteSchema = z
   .object({
     rounds: z.array(roundSettingInputSchema),
+    lock_version: z
+      .number()
+      .int('lock_version must be a non-negative integer')
+      .min(0, 'lock_version must be a non-negative integer')
+      .optional()
+      .openapi({
+        description:
+          '取得時点のEventの `lock_version`。指定すると、取得後にEventが変更されていた場合は409を返す。',
+      }),
   })
   .superRefine((value, ctx) => {
     const seenRounds = new Set<number>();
@@ -119,6 +128,10 @@ export const eventGatheringSettingsWriteSchema = z
 export const eventGatheringSettingsResponseSchema = z
   .object({
     event_id: z.number().int(),
+    lock_version: z.number().int().min(0).openapi({
+      description:
+        '保存後のEventの `lock_version`。次の保存や `PUT /events/{eventId}` に送り返す。',
+    }),
     rounds: z.array(roundSettingResponseSchema),
   })
   .openapi(
@@ -155,8 +168,11 @@ export const eventGatheringSettingsUpdateRoute = createRoute({
     '',
     '集合場所を変更しても、作成済みの通知予定(本文に集合場所名を含む)は',
     '再生成しない。通知予定の更新は `PUT /events/{eventId}` の責務とする。',
-    '同時更新を検出する楽観ロックは本APIには未導入で、後から保存した内容で',
-    '上書きされる。',
+    '`lock_version` を指定すると、取得後にEventが変更されていた場合は409',
+    '`EVENT_UPDATE_CONFLICT` を返し、何も保存しない。',
+    'この版は `PUT /events/{eventId}` と共有しており、集合設定を保存すると進む',
+    '(変更が無い保存では進まない)。保存後の値はレスポンスの `lock_version` で返す。',
+    '指定しない場合は検証せず、後から保存した内容で上書きされる。',
   ].join('\n'),
   security: bearerAuth,
   request: {

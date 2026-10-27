@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 import {
   venueIdParams,
   venueListQuery,
+  venueUpdateSchema,
   venueWriteSchema,
 } from '../openapi/venues';
 import { positivePathParamToNumber } from '../openapi/schemas';
@@ -79,7 +80,7 @@ export function createVenueController(venueService: IVenueService) {
     }
 
     const body = await c.req.json().catch(() => undefined);
-    const parsedBody = venueWriteSchema.safeParse(body);
+    const parsedBody = venueUpdateSchema.safeParse(body);
     if (!parsedBody.success) {
       return errorResponse(
         c,
@@ -92,11 +93,15 @@ export function createVenueController(venueService: IVenueService) {
     try {
       const venue = await venueService.updateVenue(venueId, {
         venue_name: request.venueName,
+        expected_lock_version: request.lockVersion,
       });
       return c.json(venue, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Venue not found') {
         return errorResponse(c, EventErrors.VENUE_NOT_FOUND);
+      }
+      if (error instanceof Error && error.message === 'Venue update conflict') {
+        return errorResponse(c, EventErrors.VENUE_UPDATE_CONFLICT);
       }
       if (
         error instanceof Error &&

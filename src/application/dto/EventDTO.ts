@@ -10,6 +10,7 @@ export interface EventDTO {
   end_time: string;
   created_at: string;
   updated_at: string;
+  lock_version: number;
 }
 
 /** イベントに紐づく実施場所。venue_id昇順で返す。 */
@@ -59,7 +60,10 @@ export interface CreateEventRequestDTO {
  * PUT /events/:eventId のリクエスト本文。
  * Event本体の項目だけを受け付け、Notification固有fieldは含まない(#388)。
  */
-export type UpdateEventRequestDTO = CreateEventRequestDTO;
+export interface UpdateEventRequestDTO extends CreateEventRequestDTO {
+  /** 取得時点の lock_version。指定すると、取得後に変更されていた場合は409になる。 */
+  lock_version?: number;
+}
 
 /** GET /events のレスポンス本文。 */
 export interface EventListResponseDTO {

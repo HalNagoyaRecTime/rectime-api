@@ -190,6 +190,7 @@ describe('GET /api/v1/events/:eventId', () => {
       ],
       created_at: expect.any(String),
       updated_at: expect.any(String),
+      lock_version: 0,
     });
   });
 

@@ -31,6 +31,12 @@ export const EventErrors = {
     code: 'EVENT_IN_USE',
     message: '使用中の競技は削除できません',
   },
+  EVENT_UPDATE_CONFLICT: {
+    status: 409,
+    code: 'EVENT_UPDATE_CONFLICT',
+    message:
+      '競技が他の操作で更新されています。最新の内容を取得してやり直してください',
+  },
   EVENT_LIST_FAILED: {
     status: 500,
     code: 'EVENT_LIST_FAILED',
@@ -126,6 +132,12 @@ export const EventErrors = {
     code: 'GATHERING_SPOT_IN_USE',
     message: '使用中の集合場所は削除できません',
   },
+  GATHERING_SPOT_UPDATE_CONFLICT: {
+    status: 409,
+    code: 'GATHERING_SPOT_UPDATE_CONFLICT',
+    message:
+      '集合場所が他の操作で更新されています。最新の内容を取得してやり直してください',
+  },
   GATHERING_SPOT_LIST_FAILED: {
     status: 500,
     code: 'GATHERING_SPOT_LIST_FAILED',
@@ -175,6 +187,12 @@ export const EventErrors = {
     status: 409,
     code: 'VENUE_IN_USE',
     message: '競技から参照されている実施場所は削除できません',
+  },
+  VENUE_UPDATE_CONFLICT: {
+    status: 409,
+    code: 'VENUE_UPDATE_CONFLICT',
+    message:
+      '実施場所が他の操作で更新されています。最新の内容を取得してやり直してください',
   },
   VENUE_LIST_FAILED: {
     status: 500,

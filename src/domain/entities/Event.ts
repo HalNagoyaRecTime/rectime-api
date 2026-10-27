@@ -12,6 +12,7 @@ export interface EventEntity {
   end_time: string; // JSTのHHMM形式（例: "1745"）
   created_at: string;
   updated_at: string;
+  lock_version: number;
 }
 
 /**
@@ -24,6 +25,12 @@ export interface EventWriteInput {
   venueIds: number[];
   startTime: string;
   endTime: string;
+}
+
+/** 更新時にRepositoryへ渡すドメイン内部の値。 */
+export interface EventUpdateInput extends EventWriteInput {
+  // 取得時点の lock_version。指定された場合だけ、更新時点で値が変わっていないことを確認する。
+  expectedLockVersion?: number;
 }
 
 /** Repositoryでイベント一覧を取得する際の内部条件。 */

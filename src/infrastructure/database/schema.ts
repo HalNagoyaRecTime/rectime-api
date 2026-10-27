@@ -164,6 +164,7 @@ export const events = sqliteTable('events', {
   updatedAt: text('updated_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
+  lockVersion: integer('lock_version').notNull().default(0),
 });
 
 export const venues = sqliteTable(
@@ -178,6 +179,7 @@ export const venues = sqliteTable(
     updatedAt: text('updated_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
+    lockVersion: integer('lock_version').notNull().default(0),
   },
   table => [uniqueIndex('uq_venues_venue_name').on(table.name)]
 );
@@ -241,6 +243,7 @@ export const gathering_spots = sqliteTable('gathering_spots', {
   updatedAt: text('updated_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
+  lockVersion: integer('lock_version').notNull().default(0),
 });
 
 export const gathering_group_members = sqliteTable(

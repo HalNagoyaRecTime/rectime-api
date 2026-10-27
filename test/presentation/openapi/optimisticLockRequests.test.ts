@@ -49,4 +49,33 @@ describe('更新リクエストのOpenAPIスキーマ', () => {
     expect(update.properties).toHaveProperty('lockVersion');
     expect(update.required).not.toContain('lockVersion');
   });
+
+  it.each([
+    ['VenueWriteRequest', 'VenueUpdateRequest', 'lockVersion'],
+    ['GatheringSpotWriteRequest', 'GatheringSpotUpdateRequest', 'lockVersion'],
+    ['EventWriteRequest', 'EventUpdateRequest', 'lock_version'],
+  ])(
+    '%s に版番号を足した %s は、allOf を使わず1つのオブジェクトとして出力され、版番号は任意になる',
+    async (writeName, updateName, field) => {
+      const schemas = await loadSchemas();
+      const write = schemas[writeName];
+      const update = schemas[updateName];
+
+      expect(update.allOf).toBeUndefined();
+      expect(Object.keys(update.properties ?? {}).sort()).toEqual(
+        [...Object.keys(write.properties ?? {}), field].sort()
+      );
+      expect(update.required).toEqual(write.required);
+      expect(update.required ?? []).not.toContain(field);
+      // 作成側のスキーマに版番号を漏らさない
+      expect(write.properties).not.toHaveProperty(field);
+    }
+  );
+
+  it('集合設定の保存リクエストは lock_version を任意の項目として持つ', async () => {
+    const write = (await loadSchemas()).EventGatheringSettingsWriteRequest;
+
+    expect(write.properties).toHaveProperty('lock_version');
+    expect(write.required).not.toContain('lock_version');
+  });
 });

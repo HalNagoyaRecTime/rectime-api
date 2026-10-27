@@ -115,7 +115,7 @@ describe('EventGatheringSettingsRepository notification sync transaction', () =>
         },
         { holdNotificationSyncGatheringIds: [fixture.gatheringId] }
       )
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(true);
 
     const persisted = await env.DB.prepare(
       `SELECT g.gathering_time, s.failed_reason
@@ -192,6 +192,55 @@ describe('EventGatheringSettingsRepository notification sync transaction', () =>
         notification_schedule_id: fixture.scheduleId,
       }),
     ]);
+  });
+
+  it('版が一致しなければ自動Scheduleも保留しない', async () => {
+    const fixture = await createScheduleFixture(
+      '通知同期ロック不一致テスト',
+      'sync-lock-mismatch-test'
+    );
+    // 別の操作が先に保存した状態にする（版が 0 → 1）
+    await env.DB.prepare(
+      'UPDATE events SET lock_version = 1 WHERE event_id = ?'
+    )
+      .bind(fixture.eventId)
+      .run();
+
+    await expect(
+      createEventGatheringSettingsRepository(env.DB).apply(
+        {
+          event_id: fixture.eventId,
+          creates: [],
+          updates: [
+            {
+              gathering_id: fixture.gatheringId,
+              round: 1,
+              gathering_time: '11:00',
+              gathering_spot_id: fixture.spotId,
+            },
+          ],
+          delete_ids: [],
+        },
+        {
+          holdNotificationSyncGatheringIds: [fixture.gatheringId],
+          expectedLockVersion: 0,
+        }
+      )
+    ).resolves.toBe(false);
+
+    const unchanged = await env.DB.prepare(
+      `SELECT g.gathering_time, s.failed_reason
+       FROM gatherings g
+       JOIN notifications n ON n.source_id = g.gathering_id AND n.source_type = 'gathering'
+       JOIN notification_schedules s ON s.notification_id = n.notification_id
+       WHERE g.gathering_id = ? AND s.notification_schedule_id = ?`
+    )
+      .bind(fixture.gatheringId, fixture.scheduleId)
+      .first<{ gathering_time: string; failed_reason: string | null }>();
+    expect(unchanged).toEqual({
+      gathering_time: '10:45',
+      failed_reason: null,
+    });
   });
 
   it('設定更新のbatchが失敗したら自動Scheduleの保留もrollbackする', async () => {
