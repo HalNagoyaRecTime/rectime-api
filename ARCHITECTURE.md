@@ -103,3 +103,10 @@ flowchart LR
 - Schema変更時は`migrations/`に新しいSQL fileを追加する。
 - 適用済みのmigrationは変更しない。
 - HTTPの入力処理と業務ルールは書かない。
+
+## 集合予定と通知の一括保存
+
+- `IEventGatheringSettingsRepository`は集合予定だけを読み書きし、通知の停止条件やcleanup入力を持たない。
+- 集合予定の変更に通知の保留・削除・停止が伴う場合、Application Serviceは`IGatheringSettingsTransaction`を利用する。
+- Infrastructureの`GatheringSettingsTransaction`が集合予定と通知のSQLを1回のD1 batchにまとめ、失敗時は全体をロールバックする。
+- 通知生成は保存確定後に行い、一時失敗は既存の定期reconciliationで回復する。

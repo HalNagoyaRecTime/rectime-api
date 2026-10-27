@@ -2,9 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { createEventGatheringSettingsService } from '../../../src/application/services/EventGatheringSettingsService';
 import type { EventGatheringEntity } from '../../../src/domain/entities/EventGathering';
 import type { IEventGatheringSettingsRepository } from '../../../src/domain/interfaces/repositories/IEventGatheringSettingsRepository';
+import type { IGatheringSettingsTransaction } from '../../../src/domain/interfaces/transactions/IGatheringSettingsTransaction';
 import type { IEventRepository } from '../../../src/domain/interfaces/repositories/IEventRepository';
 import type { IGatheringSpotRepository } from '../../../src/domain/interfaces/repositories/IGatheringSpotRepository';
 import type { IGatheringNotificationGeneratorService } from '../../../src/application/services/GatheringNotificationGeneratorService';
+import type { IGatheringNotificationCleanupService } from '../../../src/application/services/IGatheringNotificationCleanupService';
+import {
+  GATHERING_NOTIFICATION_CLEANUP_POLICY,
+  type GatheringNotificationCleanupPlan,
+} from '../../../src/domain/entities/GatheringNotificationCleanup';
 
 const EVENT_ID = 12;
 
@@ -68,6 +74,9 @@ function setup(
   const repository: IEventGatheringSettingsRepository = {
     // 1回目は差分計算用、2回目は保存後のレスポンス用
     findByEventId: vi.fn().mockResolvedValue(current),
+    apply: vi.fn(),
+  };
+  const transaction: IGatheringSettingsTransaction = {
     apply: options.applyError
       ? vi.fn().mockRejectedValue(options.applyError)
       : vi.fn().mockResolvedValue(undefined),
@@ -80,19 +89,41 @@ function setup(
         failed_gathering_ids: [],
       }),
     };
+  const gatheringNotificationCleanupService: IGatheringNotificationCleanupService =
+    {
+      prepareCleanup: vi.fn(
+        (gatheringIds: number[]): GatheringNotificationCleanupPlan | null =>
+          gatheringIds.length > 0
+            ? {
+                gathering_ids: gatheringIds,
+                stop_policy: {
+                  stopped_by_user_id: null,
+                  reason: 'source_deleted',
+                  allowed_statuses: ['resolving', 'sending'],
+                  now: '2026-10-22T00:00:00.000Z',
+                },
+                cleanup_policy: GATHERING_NOTIFICATION_CLEANUP_POLICY,
+              }
+            : null
+      ),
+    };
   const service = createEventGatheringSettingsService(
     eventRepository,
     gatheringSpotRepository,
     repository,
     { sign: async (key: string) => `https://signed.example/${key}` },
-    gatheringNotificationGeneratorService
+    gatheringNotificationGeneratorService,
+    gatheringNotificationCleanupService,
+    transaction
   );
   return {
     service,
     eventRepository,
     gatheringSpotRepository,
     repository,
+    transaction,
     gatheringNotificationGeneratorService,
+    gatheringNotificationCleanupService,
   };
 }
 
@@ -102,8 +133,12 @@ describe('EventGatheringSettingsService', () => {
       ...gathering,
       gathering_spot_image_key: `gathering-spots/${gathering.gathering_spot_id}/image.png`,
     }));
-    const { service, repository, gatheringNotificationGeneratorService } =
-      setup({ current });
+    const {
+      service,
+      repository,
+      gatheringNotificationGeneratorService,
+      transaction,
+    } = setup({ current });
     vi.mocked(
       gatheringNotificationGeneratorService.generate
     ).mockRejectedValueOnce(new Error('通知生成の一時障害'));
@@ -123,7 +158,8 @@ describe('EventGatheringSettingsService', () => {
         },
       ],
     });
-    expect(repository.apply).toHaveBeenCalledWith(
+    expect(repository.apply).not.toHaveBeenCalled();
+    expect(transaction.apply).toHaveBeenCalledWith(
       {
         event_id: EVENT_ID,
         creates: [],
@@ -155,7 +191,7 @@ describe('EventGatheringSettingsService', () => {
 
   describe('差分の組み立て', () => {
     it('gathering_id の無い集合予定は作成、リクエストに無い既存は削除に振り分ける', async () => {
-      const { service, repository } = setup({
+      const { service, transaction } = setup({
         current: [existing[1]],
       });
 
@@ -169,23 +205,37 @@ describe('EventGatheringSettingsService', () => {
         ],
       });
 
-      expect(repository.apply).toHaveBeenCalledWith({
-        event_id: EVENT_ID,
-        creates: [
-          {
-            round: 2,
-            round_start_time: null,
-            gathering_time: '11:00',
-            gathering_spot_id: 3,
+      expect(transaction.apply).toHaveBeenCalledWith(
+        {
+          event_id: EVENT_ID,
+          creates: [
+            {
+              round: 2,
+              round_start_time: null,
+              gathering_time: '11:00',
+              gathering_spot_id: 3,
+            },
+          ],
+          updates: [],
+          delete_ids: [102],
+        },
+        {
+          notificationCleanup: {
+            gathering_ids: [102],
+            stop_policy: {
+              stopped_by_user_id: null,
+              reason: 'source_deleted',
+              allowed_statuses: ['resolving', 'sending'],
+              now: '2026-10-22T00:00:00.000Z',
+            },
+            cleanup_policy: GATHERING_NOTIFICATION_CLEANUP_POLICY,
           },
-        ],
-        updates: [],
-        delete_ids: [102],
-      });
+        }
+      );
     });
 
     it('gathering_id のある集合予定はIDを維持して更新する', async () => {
-      const { service, repository } = setup();
+      const { service, transaction } = setup();
 
       await service.saveEventGatheringSettings({
         event_id: EVENT_ID,
@@ -208,7 +258,7 @@ describe('EventGatheringSettingsService', () => {
         ],
       });
 
-      expect(repository.apply).toHaveBeenCalledWith(
+      expect(transaction.apply).toHaveBeenCalledWith(
         {
           event_id: EVENT_ID,
           creates: [],
@@ -236,7 +286,7 @@ describe('EventGatheringSettingsService', () => {
 
     // 変更のない行まで更新すると updated_at だけが進む。
     it('内容が変わらない集合予定は更新に含めない', async () => {
-      const { service, repository } = setup();
+      const { service, transaction } = setup();
 
       await service.saveEventGatheringSettings({
         event_id: EVENT_ID,
@@ -260,7 +310,7 @@ describe('EventGatheringSettingsService', () => {
         ],
       });
 
-      expect(repository.apply).toHaveBeenCalledWith({
+      expect(transaction.apply).toHaveBeenCalledWith({
         event_id: EVENT_ID,
         creates: [],
         updates: [],
@@ -269,25 +319,39 @@ describe('EventGatheringSettingsService', () => {
     });
 
     it('rounds が空なら参加者のいない既存をすべて削除する', async () => {
-      const { service, repository } = setup({ current: [existing[1]] });
+      const { service, transaction } = setup({ current: [existing[1]] });
 
       await service.saveEventGatheringSettings({
         event_id: EVENT_ID,
         rounds: [],
       });
 
-      expect(repository.apply).toHaveBeenCalledWith({
-        event_id: EVENT_ID,
-        creates: [],
-        updates: [],
-        delete_ids: [102],
-      });
+      expect(transaction.apply).toHaveBeenCalledWith(
+        {
+          event_id: EVENT_ID,
+          creates: [],
+          updates: [],
+          delete_ids: [102],
+        },
+        {
+          notificationCleanup: {
+            gathering_ids: [102],
+            stop_policy: {
+              stopped_by_user_id: null,
+              reason: 'source_deleted',
+              allowed_statuses: ['resolving', 'sending'],
+              now: '2026-10-22T00:00:00.000Z',
+            },
+            cleanup_policy: GATHERING_NOTIFICATION_CLEANUP_POLICY,
+          },
+        }
+      );
     });
   });
 
   describe('保存前の検証', () => {
     it('Eventが存在しない場合は何もせず Event not found', async () => {
-      const { service, repository, gatheringSpotRepository } = setup({
+      const { service, gatheringSpotRepository, transaction } = setup({
         eventExists: false,
       });
 
@@ -295,11 +359,11 @@ describe('EventGatheringSettingsService', () => {
         service.saveEventGatheringSettings({ event_id: EVENT_ID, rounds: [] })
       ).rejects.toThrow('Event not found');
       expect(gatheringSpotRepository.findExistingIds).not.toHaveBeenCalled();
-      expect(repository.apply).not.toHaveBeenCalled();
+      expect(transaction.apply).not.toHaveBeenCalled();
     });
 
     it('対象Event配下に無い gathering_id は Gathering not found', async () => {
-      const { service, repository } = setup();
+      const { service, transaction } = setup();
 
       await expect(
         service.saveEventGatheringSettings({
@@ -318,11 +382,11 @@ describe('EventGatheringSettingsService', () => {
           ],
         })
       ).rejects.toThrow('Gathering not found');
-      expect(repository.apply).not.toHaveBeenCalled();
+      expect(transaction.apply).not.toHaveBeenCalled();
     });
 
     it('存在しない集合場所を含む場合は Gathering spot not found', async () => {
-      const { service, repository, gatheringSpotRepository } = setup({
+      const { service, gatheringSpotRepository, transaction } = setup({
         existingSpotIds: [1],
       });
 
@@ -348,11 +412,11 @@ describe('EventGatheringSettingsService', () => {
       expect(gatheringSpotRepository.findExistingIds).toHaveBeenCalledWith([
         1, 9,
       ]);
-      expect(repository.apply).not.toHaveBeenCalled();
+      expect(transaction.apply).not.toHaveBeenCalled();
     });
 
     it('参加者が残っている集合予定がリクエストから外れていたら Gathering in use', async () => {
-      const { service, repository } = setup();
+      const { service, transaction } = setup();
 
       await expect(
         service.saveEventGatheringSettings({
@@ -371,7 +435,7 @@ describe('EventGatheringSettingsService', () => {
           ],
         })
       ).rejects.toThrow('Gathering in use');
-      expect(repository.apply).not.toHaveBeenCalled();
+      expect(transaction.apply).not.toHaveBeenCalled();
     });
   });
 
@@ -463,7 +527,7 @@ describe('EventGatheringSettingsService', () => {
       ...gathering,
       round_start_time: '1100',
     }));
-    const { service, repository } = setup({ current });
+    const { service, transaction } = setup({ current });
     const gatherings = current.map(g => ({
       gathering_id: g.gathering_id,
       gathering_time: g.gathering_time,
@@ -473,14 +537,14 @@ describe('EventGatheringSettingsService', () => {
       event_id: EVENT_ID,
       rounds: [{ round: 1, gatherings }],
     });
-    expect(vi.mocked(repository.apply).mock.calls[0][0].updates).toEqual([]);
+    expect(vi.mocked(transaction.apply).mock.calls[0][0].updates).toEqual([]);
     await service.saveEventGatheringSettings({
       event_id: EVENT_ID,
       rounds: [{ round: 1, start_time: '1130', gatherings }],
     });
     expect(
       vi
-        .mocked(repository.apply)
+        .mocked(transaction.apply)
         .mock.calls[1][0].updates.map(g => g.round_start_time)
     ).toEqual(['1130', '1130']);
     await service.saveEventGatheringSettings({
@@ -489,7 +553,7 @@ describe('EventGatheringSettingsService', () => {
     });
     expect(
       vi
-        .mocked(repository.apply)
+        .mocked(transaction.apply)
         .mock.calls[2][0].updates.map(g => g.round_start_time)
     ).toEqual([null, null]);
   });
@@ -652,8 +716,12 @@ describe('EventGatheringSettingsService', () => {
     });
 
     it('一部の通知生成が失敗しても集合設定保存は成功し、残りのGeneratorも実行する', async () => {
-      const { service, repository, gatheringNotificationGeneratorService } =
-        setup();
+      const {
+        service,
+        repository,
+        gatheringNotificationGeneratorService,
+        transaction,
+      } = setup();
       const updated = existing.map(gathering =>
         gathering.gathering_id === 101
           ? { ...gathering, gathering_time: '10:46' }
@@ -716,7 +784,7 @@ describe('EventGatheringSettingsService', () => {
         ],
       });
 
-      expect(repository.apply).toHaveBeenCalledTimes(1);
+      expect(transaction.apply).toHaveBeenCalledTimes(1);
       expect(
         gatheringNotificationGeneratorService.generate
       ).toHaveBeenCalledTimes(2);
@@ -737,7 +805,7 @@ describe('開始時刻省略時のラウンド整合性', () => {
       member_count: 0,
       round_start_time: '0900',
     }));
-    const { service, repository } = setup({ current });
+    const { service, transaction } = setup({ current });
     await service.saveEventGatheringSettings({
       event_id: EVENT_ID,
       rounds: [
@@ -755,7 +823,7 @@ describe('開始時刻省略時のラウンド整合性', () => {
       ],
     });
     expect(
-      vi.mocked(repository.apply).mock.calls[0][0].creates[0].round_start_time
+      vi.mocked(transaction.apply).mock.calls[0][0].creates[0].round_start_time
     ).toBe('0900');
   });
   it.each([null, '1100'])(
@@ -765,7 +833,7 @@ describe('開始時刻省略時のラウンド整合性', () => {
         { ...existing[0], member_count: 0, round_start_time: '0900' },
         { ...existing[1], round: 2, round_start_time: destination },
       ];
-      const { service, repository } = setup({ current });
+      const { service, transaction } = setup({ current });
       await service.saveEventGatheringSettings({
         event_id: EVENT_ID,
         rounds: [
@@ -779,7 +847,7 @@ describe('開始時刻省略時のラウンド整合性', () => {
           },
         ],
       });
-      expect(vi.mocked(repository.apply).mock.calls[0][0].updates).toEqual([
+      expect(vi.mocked(transaction.apply).mock.calls[0][0].updates).toEqual([
         expect.objectContaining({
           gathering_id: 101,
           round: 2,

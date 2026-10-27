@@ -31,6 +31,7 @@ import { createGatheringSpotRepository } from '../infrastructure/repositories/Ga
 import { createVenueRepository } from '../infrastructure/repositories/VenueRepository';
 import { createGatheringGroupMemberRepository } from '../infrastructure/repositories/GatheringGroupMemberRepository';
 import { createEventGatheringSettingsRepository } from '../infrastructure/repositories/EventGatheringSettingsRepository';
+import { createGatheringSettingsTransaction } from '../infrastructure/transactions/GatheringSettingsTransaction';
 import { createNotificationDeliveryQueue } from '../infrastructure/queues/NotificationDeliveryQueue';
 import { createStudentService } from '../application/services/StudentService';
 import { createStaffService } from '../application/services/StaffService';
@@ -45,6 +46,7 @@ import { createNotificationAudienceResolverService } from '../application/servic
 import { createNotificationDeliveryService } from '../application/services/NotificationDeliveryService';
 import { createAdminNotificationCommandService } from '../application/services/AdminNotificationCommandService';
 import { createGatheringNotificationGeneratorService } from '../application/services/GatheringNotificationGeneratorService';
+import { createGatheringNotificationCleanupService } from '../application/services/GatheringNotificationCleanupService';
 import { createNotificationConfigService } from '../application/services/NotificationConfigService';
 import { createAdminNotificationQueryService } from '../application/services/AdminNotificationQueryService';
 import { createMobileNotificationService } from '../application/services/MobileNotificationService';
@@ -156,6 +158,7 @@ export function createDIContainer(env: Env) {
     createGatheringNotificationGeneratorRepository(db);
   const eventGatheringSettingsRepository =
     createEventGatheringSettingsRepository(db);
+  const gatheringSettingsTransaction = createGatheringSettingsTransaction(db);
   const notificationDeliveryQueue = createNotificationDeliveryQueue(
     env.NOTIFICATION_DELIVERY_QUEUE
   );
@@ -269,6 +272,8 @@ export function createDIContainer(env: Env) {
       notificationCreationRepository,
       env.EVENT_DATE
     );
+  const gatheringNotificationCleanupService =
+    createGatheringNotificationCleanupService();
   const notificationConfigService = createNotificationConfigService(
     notificationConfigRepository
   );
@@ -304,7 +309,9 @@ export function createDIContainer(env: Env) {
     gatheringSpotRepository,
     eventGatheringSettingsRepository,
     imageUrlSigner,
-    gatheringNotificationGeneratorService
+    gatheringNotificationGeneratorService,
+    gatheringNotificationCleanupService,
+    gatheringSettingsTransaction
   );
   const rankingService = createRankingService(teamRepository);
   const teamService = createTeamService(teamRepository);

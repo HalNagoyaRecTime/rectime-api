@@ -5,7 +5,7 @@ import type { INotificationCreationRepository } from '../../../src/domain/interf
 import { createGatheringNotificationGeneratorService } from '../../../src/application/services/GatheringNotificationGeneratorService';
 import { createNotificationCreationRepository } from '../../../src/infrastructure/repositories/NotificationCreationRepository';
 import { createNotificationAudienceResolverRepository } from '../../../src/infrastructure/repositories/NotificationAudienceResolverRepository';
-import { createEventGatheringSettingsRepository } from '../../../src/infrastructure/repositories/EventGatheringSettingsRepository';
+import { createGatheringSettingsTransaction } from '../../../src/infrastructure/transactions/GatheringSettingsTransaction';
 import { createGatheringNotificationGeneratorRepository } from '../../../src/infrastructure/repositories/GatheringNotificationGeneratorRepository';
 
 describe('EventGatheringSettingsRepository notification sync transaction', () => {
@@ -97,9 +97,9 @@ describe('EventGatheringSettingsRepository notification sync transaction', () =>
       '通知同期保留テスト',
       'sync-test'
     );
-    const repository = createEventGatheringSettingsRepository(env.DB);
+    const transaction = createGatheringSettingsTransaction(env.DB);
     await expect(
-      repository.apply(
+      transaction.apply(
         {
           event_id: fixture.eventId,
           creates: [],
@@ -201,7 +201,7 @@ describe('EventGatheringSettingsRepository notification sync transaction', () =>
     );
 
     await expect(
-      createEventGatheringSettingsRepository(env.DB).apply(
+      createGatheringSettingsTransaction(env.DB).apply(
         {
           event_id: fixture.eventId,
           creates: [],
