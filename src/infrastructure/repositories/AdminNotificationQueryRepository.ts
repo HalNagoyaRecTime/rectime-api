@@ -15,7 +15,10 @@ import {
   type NotificationSourceType,
   type NotificationStopReason,
 } from '../../domain/entities/Notification';
-import type { IAdminNotificationQueryRepository } from '../../domain/interfaces/repositories/IAdminNotificationQueryRepository';
+import type {
+  AdminNotificationQueryResultWithPagination,
+  IAdminNotificationQueryRepository,
+} from '../../domain/interfaces/repositories/IAdminNotificationQueryRepository';
 
 interface NotificationRow {
   notification_id: number;
@@ -108,16 +111,13 @@ export function createAdminNotificationQueryRepository(
   db: D1Database
 ): IAdminNotificationQueryRepository {
   return {
-    async findAll(options) {
-      const scopedScheduleIds = `
-        SELECT scoped_schedule.notification_schedule_id
-        FROM notification_schedules scoped_schedule
-        INNER JOIN notifications scoped_notification
-          ON scoped_notification.notification_id = scoped_schedule.notification_id
-        WHERE scoped_notification.notification_type = 'notification_general'
-          AND julianday(scoped_schedule.send_at) >= julianday(?)
-          AND julianday(scoped_schedule.send_at) <= julianday(?)
-      `;
+    async findAll(
+      options
+    ): Promise<AdminNotificationQueryResultWithPagination> {
+      const page = options.page ?? 1;
+      const limit = options.limit ?? 50;
+      const offset = (page - 1) * limit;
+
       const notificationScope = `n.notification_type = 'notification_general' AND EXISTS (
         SELECT 1
         FROM notification_schedules scoped_schedule
@@ -125,13 +125,62 @@ export function createAdminNotificationQueryRepository(
           AND julianday(scoped_schedule.send_at) >= julianday(?)
           AND julianday(scoped_schedule.send_at) <= julianday(?)
       )`;
-      const scheduleScope = `ns.notification_schedule_id IN (
-        ${scopedScheduleIds}
-      )`;
-      const audienceScope = `na.notification_schedule_id IN (
-        ${scopedScheduleIds}
-      )`;
       const notificationBindings = [options.from, options.to];
+
+      // 総件数を先に取得
+      const countResult = await db
+        .prepare(
+          `SELECT COUNT(DISTINCT n.notification_id) AS total_count
+             FROM notifications n
+             WHERE ${notificationScope}`
+        )
+        .bind(...notificationBindings)
+        .first<{ total_count: number }>();
+
+      const totalCount = countResult?.total_count ?? 0;
+      const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+
+      // ページ対象の通知IDのみ取得
+      const pageIdsResult = await db
+        .prepare(
+          `SELECT n.notification_id
+             FROM notifications n
+             WHERE ${notificationScope}
+             ORDER BY datetime(n.created_at) DESC, n.notification_id DESC
+             LIMIT ? OFFSET ?`
+        )
+        .bind(...notificationBindings, limit, offset)
+        .all<{ notification_id: number }>();
+
+      const pageIds = pageIdsResult.results.map(r => r.notification_id);
+
+      // 対象通知の詳細情報を取得
+      if (pageIds.length === 0) {
+        return {
+          items: [],
+          pagination: { page, limit, totalCount, totalPages },
+        };
+      }
+
+      const placeholders = pageIds.map(() => '?').join(',');
+      const pageIdsBindings = [...pageIds];
+
+      const pageScopedScheduleIds = `
+        SELECT scoped_schedule.notification_schedule_id
+        FROM notification_schedules scoped_schedule
+        INNER JOIN notifications scoped_notification
+          ON scoped_notification.notification_id = scoped_schedule.notification_id
+        WHERE scoped_notification.notification_id IN (${placeholders})
+          AND julianday(scoped_schedule.send_at) >= julianday(?)
+          AND julianday(scoped_schedule.send_at) <= julianday(?)
+      `;
+      const pageScheduleScope = `ns.notification_schedule_id IN (
+        ${pageScopedScheduleIds}
+      )`;
+      const pageAudienceScope = `na.notification_schedule_id IN (
+        ${pageScopedScheduleIds}
+      )`;
+      const pageBindings = [...pageIdsBindings, options.from, options.to];
 
       const [
         notificationResult,
@@ -150,10 +199,10 @@ export function createAdminNotificationQueryRepository(
                 AND source_gathering.gathering_id = n.source_id
                LEFT JOIN gathering_spots source_spot
                  ON source_spot.gathering_spot_id = source_gathering.gathering_spot_id
-               WHERE ${notificationScope}
+               WHERE n.notification_id IN (${placeholders})
                ORDER BY datetime(n.created_at) DESC, n.notification_id DESC`
           )
-          .bind(...notificationBindings),
+          .bind(...pageIdsBindings),
         db
           .prepare(
             `SELECT ${scheduleSelection}
@@ -162,10 +211,10 @@ export function createAdminNotificationQueryRepository(
                  ON scheduled_by.user_id = ns.scheduled_by_user_id
                LEFT JOIN users stopped_by
                  ON stopped_by.user_id = ns.stopped_by_user_id
-               WHERE ${scheduleScope}
+               WHERE ${pageScheduleScope}
                ORDER BY ns.notification_id, julianday(ns.send_at), ns.notification_schedule_id`
           )
-          .bind(...notificationBindings),
+          .bind(...pageBindings),
         db
           .prepare(
             `SELECT ${audienceSelection}
@@ -184,10 +233,10 @@ export function createAdminNotificationQueryRepository(
                LEFT JOIN users audience_user
                  ON na.audience_type = 'user'
                 AND audience_user.user_id = na.target_id
-               WHERE ${audienceScope}
+               WHERE ${pageAudienceScope}
                ORDER BY na.notification_schedule_id, na.notification_audience_id`
           )
-          .bind(...notificationBindings),
+          .bind(...pageBindings),
         db
           .prepare(
             `SELECT nr.notification_schedule_id,
@@ -211,19 +260,24 @@ export function createAdminNotificationQueryRepository(
                       ) THEN 1 ELSE 0 END) AS no_push_target_count
                FROM notification_recipients nr
                WHERE nr.notification_schedule_id IN (
-                 ${scopedScheduleIds}
+                 ${pageScopedScheduleIds}
                )
                GROUP BY nr.notification_schedule_id`
           )
-          .bind(...notificationBindings),
+          .bind(...pageBindings),
       ]);
 
-      return assembleResults(
+      const items = assembleResults(
         notificationResult.results as unknown as NotificationRow[],
         scheduleResult.results as unknown as ScheduleRow[],
         audienceResult.results as unknown as AudienceRow[],
         summaryResult.results as unknown as RecipientSummaryRow[]
       );
+
+      return {
+        items,
+        pagination: { page, limit, totalCount, totalPages },
+      };
     },
 
     async findById(notificationId) {

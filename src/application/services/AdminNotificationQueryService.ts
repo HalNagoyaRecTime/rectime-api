@@ -1,9 +1,10 @@
 import type {
   AdminNotificationDetailDTO,
   AdminNotificationListItemDTO,
+  AdminNotificationListResponseDTO,
+  AdminNotificationPaginationDTO,
   NotificationAudienceDTO,
   NotificationCreationDTO,
-  NotificationDateRangeQueryDTO,
   NotificationUserReferenceDTO,
 } from '../dto/AdminNotificationDTO';
 import type {
@@ -28,8 +29,17 @@ export function createAdminNotificationQueryService(
         query.from && query.to
           ? { from: query.from, to: query.to }
           : getDefaultDateRange(now());
-      const notifications = await repository.findAll(dateRange);
-      return { items: notifications.map(toListItem) };
+      const result = await repository.findAll({
+        from: dateRange.from,
+        to: dateRange.to,
+        page: query.page,
+        limit: query.limit,
+      });
+      const response: AdminNotificationListResponseDTO = {
+        items: result.items.map(toListItem),
+        pagination: toPagination(result.pagination),
+      };
+      return response;
     },
 
     async getAdminNotificationById(notificationId) {
@@ -39,9 +49,21 @@ export function createAdminNotificationQueryService(
   };
 }
 
-function getDefaultDateRange(
-  now: Date
-): Required<NotificationDateRangeQueryDTO> {
+function toPagination(pagination: {
+  page: number;
+  limit: number;
+  totalCount: number;
+  totalPages: number;
+}): AdminNotificationPaginationDTO {
+  return {
+    page: pagination.page,
+    limit: pagination.limit,
+    totalCount: pagination.totalCount,
+    totalPages: pagination.totalPages,
+  };
+}
+
+function getDefaultDateRange(now: Date): { from: string; to: string } {
   const date = new Date(now.getTime() + JST_OFFSET_MS)
     .toISOString()
     .slice(0, 10);

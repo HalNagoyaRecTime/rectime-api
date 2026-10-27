@@ -43,7 +43,10 @@ function buildRepository(
   overrides: Partial<IAdminNotificationQueryRepository> = {}
 ): IAdminNotificationQueryRepository {
   return {
-    findAll: vi.fn().mockResolvedValue([manualResult]),
+    findAll: vi.fn().mockResolvedValue({
+      items: [manualResult],
+      pagination: { page: 1, limit: 50, totalCount: 1, totalPages: 1 },
+    }),
     findById: vi.fn().mockResolvedValue(manualResult),
     ...overrides,
   };
@@ -95,10 +98,13 @@ describe('AdminNotificationQueryService', () => {
           ],
         },
       ],
+      pagination: { page: 1, limit: 50, totalCount: 1, totalPages: 1 },
     });
     expect(repository.findAll).toHaveBeenCalledWith({
       from: '2026-09-25T00:00:00.000Z',
       to: '2026-09-25T23:59:59.999Z',
+      page: undefined,
+      limit: undefined,
     });
   });
 
@@ -114,6 +120,8 @@ describe('AdminNotificationQueryService', () => {
     expect(repository.findAll).toHaveBeenCalledWith({
       from: '2026-07-23T00:00:00.000+09:00',
       to: '2026-07-23T23:59:59.999+09:00',
+      page: undefined,
+      limit: undefined,
     });
     expect(result).not.toHaveProperty('appliedRange');
   });
