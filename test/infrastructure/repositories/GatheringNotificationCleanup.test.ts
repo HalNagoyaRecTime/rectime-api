@@ -6,6 +6,10 @@ import { createNotificationAudienceResolverRepository } from '../../../src/infra
 import { createNotificationCreationRepository } from '../../../src/infrastructure/repositories/NotificationCreationRepository';
 import { createNotificationDeliveryRepository } from '../../../src/infrastructure/repositories/NotificationDeliveryRepository';
 import { createGatheringNotificationGeneratorService } from '../../../src/application/services/GatheringNotificationGeneratorService';
+import {
+  GATHERING_NOTIFICATION_CLEANUP_POLICY,
+  type GatheringNotificationCleanupPolicy,
+} from '../../../src/domain/entities/GatheringNotificationCleanup';
 import { clearNotificationFixtures } from '../../notificationDeliveryFixtures';
 
 const NOW = '2026-10-22T09:00:00.000Z';
@@ -133,7 +137,11 @@ describe('GatheringNotificationCleanup', () => {
     return row!.notification_push_delivery_id;
   }
 
-  function applyDeletion(eventId: number, gatheringId: number) {
+  function applyDeletion(
+    eventId: number,
+    gatheringId: number,
+    cleanupPolicy: GatheringNotificationCleanupPolicy = GATHERING_NOTIFICATION_CLEANUP_POLICY
+  ) {
     return transaction.apply(
       {
         event_id: eventId,
@@ -150,6 +158,7 @@ describe('GatheringNotificationCleanup', () => {
             allowed_statuses: ['resolving', 'sending'],
             now: NOW,
           },
+          cleanup_policy: cleanupPolicy,
         },
       }
     );
@@ -196,6 +205,36 @@ describe('GatheringNotificationCleanup', () => {
         NOW
       )
     ).resolves.toBe(false);
+  });
+
+  it('scheduledを残すpolicyを拒否し、Gatheringと通知を変更しない', async () => {
+    const { eventId, gatheringId } = await createGatheringFixture();
+    const { scheduleId } = await createAutomaticNotification(
+      gatheringId,
+      '不正policy',
+      { status: 'scheduled' }
+    );
+    await expect(
+      applyDeletion(eventId, gatheringId, {
+        ...GATHERING_NOTIFICATION_CLEANUP_POLICY,
+        schedule: {
+          ...GATHERING_NOTIFICATION_CLEANUP_POLICY.schedule,
+          delete_statuses: [],
+        },
+      })
+    ).rejects.toThrow('通知cleanup policy');
+    await expect(
+      env.DB.prepare('SELECT 1 FROM gatherings WHERE gathering_id = ?')
+        .bind(gatheringId)
+        .first()
+    ).resolves.not.toBeNull();
+    await expect(
+      env.DB.prepare(
+        'SELECT send_status FROM notification_schedules WHERE notification_schedule_id = ?'
+      )
+        .bind(scheduleId)
+        .first()
+    ).resolves.toEqual({ send_status: 'scheduled' });
   });
 
   it('配信中のScheduleをsource_deletedで停止し、送信待ちDeliveryだけ止める', async () => {
@@ -411,55 +450,58 @@ describe('GatheringNotificationCleanup', () => {
     expect(count?.count).toBe(0);
   });
 
-  it('cleanup後はAudience ResolverとDeliveryの対象にならない', async () => {
-    const { eventId, gatheringId } = await createGatheringFixture();
-    const { scheduleId } = await createAutomaticNotification(
-      gatheringId,
-      '停止後',
-      {
-        status: 'sending',
-        startedAt: NOW,
-        recipientsResolvedAt: NOW,
-      }
-    );
-    const recipientId = await createRecipient(scheduleId);
-    const pendingDeliveryId = await createDelivery(recipientId, 'pending');
+  it.each(['scheduled', 'resolving', 'sending'] as const)(
+    'cleanup後の%sはResolver・送信・Retryの対象にならない',
+    async status => {
+      const { eventId, gatheringId } = await createGatheringFixture();
+      const { scheduleId } = await createAutomaticNotification(
+        gatheringId,
+        '停止後',
+        {
+          status,
+          startedAt: status === 'scheduled' ? null : NOW,
+          recipientsResolvedAt: status === 'sending' ? NOW : null,
+        }
+      );
+      const recipientId = await createRecipient(scheduleId);
+      const pendingDeliveryId = await createDelivery(recipientId, 'pending');
 
-    await applyDeletion(eventId, gatheringId);
+      await applyDeletion(eventId, gatheringId);
 
-    const resolverRepository = createNotificationAudienceResolverRepository(
-      env.DB
-    );
-    const resolverCandidates = await resolverRepository.findDueCandidates(
-      NOW,
-      100
-    );
-    expect(
-      resolverCandidates.some(
-        candidate => candidate.notification_schedule_id === scheduleId
-      )
-    ).toBe(false);
-    await expect(
-      resolverRepository.claimScheduled(scheduleId, NOW)
-    ).resolves.toBe(false);
+      const resolverRepository = createNotificationAudienceResolverRepository(
+        env.DB
+      );
+      const resolverCandidates = await resolverRepository.findDueCandidates(
+        NOW,
+        100
+      );
+      expect(
+        resolverCandidates.some(
+          candidate => candidate.notification_schedule_id === scheduleId
+        )
+      ).toBe(false);
+      await expect(
+        resolverRepository.claimScheduled(scheduleId, NOW)
+      ).resolves.toBe(false);
 
-    const deliveryRepository = createNotificationDeliveryRepository(env.DB);
-    const deliveryCandidates = await deliveryRepository.findReadySchedules(
-      NOW,
-      100
-    );
-    expect(
-      deliveryCandidates.some(
-        candidate => candidate.notification_schedule_id === scheduleId
-      )
-    ).toBe(false);
-    await expect(
-      deliveryRepository.claimPendingDeliveries([scheduleId], NOW, 100)
-    ).resolves.toEqual([]);
-    await expect(
-      deliveryRepository.claimRetryDeliveries(NOW, NOW, 100, [
-        pendingDeliveryId,
-      ])
-    ).resolves.toEqual([]);
-  });
+      const deliveryRepository = createNotificationDeliveryRepository(env.DB);
+      const deliveryCandidates = await deliveryRepository.findReadySchedules(
+        NOW,
+        100
+      );
+      expect(
+        deliveryCandidates.some(
+          candidate => candidate.notification_schedule_id === scheduleId
+        )
+      ).toBe(false);
+      await expect(
+        deliveryRepository.claimPendingDeliveries([scheduleId], NOW, 100)
+      ).resolves.toEqual([]);
+      await expect(
+        deliveryRepository.claimRetryDeliveries(NOW, NOW, 100, [
+          pendingDeliveryId,
+        ])
+      ).resolves.toEqual([]);
+    }
+  );
 });

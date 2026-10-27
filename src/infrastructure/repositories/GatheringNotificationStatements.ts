@@ -1,3 +1,4 @@
+import { assertGatheringNotificationCleanupPolicy } from '../../domain/entities/gatheringNotificationCleanupPolicy';
 import { and, eq, exists, inArray, isNull, notExists, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import type { GatheringNotificationChanges } from '../../domain/interfaces/transactions/IGatheringSettingsTransaction';
@@ -20,7 +21,9 @@ export function buildGatheringNotificationStatements(
   const notificationCleanup = options.notificationCleanup;
   const cleanupStatements: BatchItem<'sqlite'>[] = [];
   if (notificationCleanup && notificationCleanup.gathering_ids.length > 0) {
+    assertGatheringNotificationCleanupPolicy(notificationCleanup);
     const stopPolicy = notificationCleanup.stop_policy;
+    const cleanupPolicy = notificationCleanup.cleanup_policy;
     // cleanup対象も event_id で限定する。delete_ids に他EventのIDが混ざっても、
     // そのEventの通知を削除・停止しない。
     const ownedGatheringIds = () =>
@@ -40,17 +43,26 @@ export function buildGatheringNotificationStatements(
         .from(notifications)
         .where(
           and(
-            eq(notifications.sourceType, 'gathering'),
+            eq(
+              notifications.sourceType,
+              cleanupPolicy.notification.source_type
+            ),
             inArray(notifications.sourceId, ownedGatheringIds()),
-            eq(notifications.notificationType, 'notification_general')
+            eq(
+              notifications.notificationType,
+              cleanupPolicy.notification.notification_type
+            )
           )
         );
 
     const sourceNotificationCondition = () =>
       and(
-        eq(notifications.sourceType, 'gathering'),
+        eq(notifications.sourceType, cleanupPolicy.notification.source_type),
         inArray(notifications.sourceId, ownedGatheringIds()),
-        eq(notifications.notificationType, 'notification_general')
+        eq(
+          notifications.notificationType,
+          cleanupPolicy.notification.notification_type
+        )
       );
 
     cleanupStatements.push(
@@ -69,8 +81,13 @@ export function buildGatheringNotificationStatements(
               notification_schedules.notificationId,
               sourceNotificationIds()
             ),
-            eq(notification_schedules.sendStatus, 'scheduled'),
-            isNull(notification_schedules.startedAt)
+            inArray(
+              notification_schedules.sendStatus,
+              cleanupPolicy.schedule.delete_statuses
+            ),
+            cleanupPolicy.schedule.delete_only_unstarted
+              ? isNull(notification_schedules.startedAt)
+              : undefined
           )
         ),
       // Scheduleが残っていないNotificationだけ削除する。
