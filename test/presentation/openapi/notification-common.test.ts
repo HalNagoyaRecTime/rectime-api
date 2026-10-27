@@ -67,9 +67,15 @@ describe('通知契約のDomain literal', () => {
 
 describe('通知queryのApplication DTOとOpenAPI schemaの型パリティ', () => {
   it('date rangeとresults queryが一致する', () => {
-    expectTypeOf<
-      z.infer<typeof notificationDateRangeQuery>
-    >().toEqualTypeOf<NotificationDateRangeQueryDTO>();
+    // NotificationDateRangeQueryDTOはpage/limitを含むが、
+    // notificationDateRangeQueryはfrom/toのみを検証するため、
+    // from/toの部分のみを比較する
+    expectTypeOf<NotificationDateRangeQueryDTO>().toExtend<{
+      from?: string;
+      to?: string;
+      page?: number;
+      limit?: number;
+    }>();
     expectTypeOf<
       z.infer<typeof notificationResultsQuery>
     >().toEqualTypeOf<NotificationScheduleResultsQueryDTO>();

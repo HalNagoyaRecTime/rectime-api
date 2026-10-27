@@ -3,7 +3,9 @@ import { createRoute } from '@hono/zod-openapi';
 import { DEFAULT_NOTIFICATION_IMPORTANCE } from '../../../domain/entities/Notification';
 import {
   bearerAuth,
+  digitsOnlyInteger,
   internalServerErrorResponse,
+  isoDateTimeSchema,
   jsonResponse,
   noContentResponse,
   positivePathParam,
@@ -27,7 +29,6 @@ import {
   notificationContentPushOnlySchema,
   notificationContentSchema,
   notificationCreationSchema,
-  notificationDateRangeQuery,
   notificationDeliveryInputSchema,
   notificationImportanceSchema,
   notificationScheduleSummarySchema,
@@ -57,9 +58,20 @@ export const adminNotificationDetailSchema = z
   .strict()
   .openapi('AdminNotificationDetail');
 
+export const adminNotificationPaginationSchema = z
+  .object({
+    page: z.number().int().positive(),
+    limit: z.number().int().positive(),
+    totalCount: z.number().int().nonnegative(),
+    totalPages: z.number().int().nonnegative(),
+  })
+  .strict()
+  .openapi('AdminNotificationPagination');
+
 export const adminNotificationListResponseSchema = z
   .object({
     items: z.array(adminNotificationListItemSchema),
+    pagination: adminNotificationPaginationSchema,
   })
   .strict()
   .openapi('AdminNotificationList');
@@ -157,13 +169,42 @@ export const adminNotificationIdParams = z.object({
   notificationId: positivePathParam('notificationId', '通知ID'),
 });
 
+export const adminNotificationListQuerySchema = z
+  .object({
+    from: isoDateTimeSchema.optional(),
+    to: isoDateTimeSchema.optional(),
+    page: digitsOnlyInteger(1, Number.MAX_SAFE_INTEGER, 1).optional(),
+    limit: digitsOnlyInteger(1, 100, 50).optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if ((value.from === undefined) !== (value.to === undefined)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'fromとtoはセットで指定してください',
+      });
+    }
+    if (
+      value.from !== undefined &&
+      value.to !== undefined &&
+      Date.parse(value.from) > Date.parse(value.to)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'fromはto以前の日時を指定してください',
+        path: ['from'],
+      });
+    }
+  })
+  .openapi('AdminNotificationListQuery');
+
 export const adminNotificationListRoute = createRoute({
   method: 'get',
   path: '/admin/notifications',
   tags: ['Admin notifications'],
   summary: '通知一覧を取得する',
   security: bearerAuth,
-  request: { query: notificationDateRangeQuery },
+  request: { query: adminNotificationListQuerySchema },
   responses: {
     200: jsonResponse(adminNotificationListResponseSchema, '通知一覧'),
     400: notificationBadRequestResponse,

@@ -46,8 +46,20 @@ export function createAdminNotificationQueryController(
       );
     }
 
+    const pageParam = c.req.query('page');
+    const limitParam = c.req.query('limit');
+    const page = pageParam !== undefined ? Number(pageParam) : undefined;
+    const limit = limitParam !== undefined ? Number(limitParam) : undefined;
+
     try {
-      return c.json(await service.getAdminNotifications(parsedQuery.data), 200);
+      return c.json(
+        await service.getAdminNotifications({
+          ...parsedQuery.data,
+          page,
+          limit,
+        }),
+        200
+      );
     } catch {
       return errorResponse(c, LIST_INTERNAL_ERROR);
     }
