@@ -6,6 +6,15 @@ export interface MobileNotificationEntity {
   title: string;
   body: string;
   scheduledAt: string;
+  relatedEvent: MobileNotificationRelatedEvent | null;
+}
+
+export interface MobileNotificationRelatedEvent {
+  id: number;
+  name: string;
+  startTime: string;
+  endTime: string;
+  venues: Array<{ id: number; name: string }>;
 }
 
 export interface MobileNotificationListOptions {

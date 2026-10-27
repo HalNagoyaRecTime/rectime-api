@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMobileNotificationService } from '../../../src/application/services/MobileNotificationService';
+import type { MobileNotificationEntity } from '../../../src/domain/entities/MobileNotification';
 import type { IMobileNotificationRepository } from '../../../src/domain/interfaces/repositories/IMobileNotificationRepository';
 
 describe('MobileNotificationService', () => {
@@ -36,6 +37,7 @@ describe('MobileNotificationService', () => {
       title: 'お知らせ',
       body: '本文',
       scheduledAt: '2026-07-23T00:00:00.000Z',
+      relatedEvent: null,
     };
     (repository.findByIdForUser as ReturnType<typeof vi.fn>).mockResolvedValue(
       entity
@@ -47,6 +49,7 @@ describe('MobileNotificationService', () => {
       title: 'お知らせ',
       body: '本文',
       scheduled_at: '2026-07-23T00:00:00.000Z',
+      related_event: null,
     });
     expect(repository.findByIdForUser).toHaveBeenCalledWith(5, 12);
   });
@@ -61,6 +64,7 @@ describe('MobileNotificationService', () => {
           title: '競技通知',
           body: '本文',
           scheduledAt: '2026-07-23T01:15:00.000Z',
+          relatedEvent: null,
         },
       ],
       total: 1,
@@ -76,6 +80,7 @@ describe('MobileNotificationService', () => {
           title: '競技通知',
           body: '本文',
           scheduled_at: '2026-07-23T01:15:00.000Z',
+          related_event: null,
         },
       ],
       total: 1,
@@ -87,6 +92,43 @@ describe('MobileNotificationService', () => {
       limit: 50,
       offset: 0,
     });
+  });
+
+  it('一覧・詳細で関連イベントを同じHTTP契約へ変換する', async () => {
+    const { repository, service } = setup();
+    const entity: MobileNotificationEntity = {
+      id: 5,
+      type: 'notification_general',
+      title: '集合時間のお知らせ',
+      body: '集合してください。',
+      scheduledAt: '2026-07-23T01:15:00.000Z',
+      relatedEvent: {
+        id: 7,
+        name: '大縄跳び',
+        startTime: '1030',
+        endTime: '1100',
+        venues: [{ id: 3, name: '体育館' }],
+      },
+    };
+    vi.mocked(repository.findByIdForUser).mockResolvedValue(entity);
+    vi.mocked(repository.findAllForUser).mockResolvedValue({
+      notifications: [entity],
+      total: 1,
+    });
+    const expected = {
+      event_id: 7,
+      event_name: '大縄跳び',
+      start_time: '1030',
+      end_time: '1100',
+      venues: [{ venue_id: 3, venue_name: '体育館' }],
+    };
+    expect((await service.getNotificationById(5, 12)).related_event).toEqual(
+      expected
+    );
+    expect(
+      (await service.getNotifications(12, { limit: 50, offset: 0 }))
+        .notifications[0].related_event
+    ).toEqual(expected);
   });
 
   it('本人宛てではない通知は存在しないものとして扱う', async () => {
