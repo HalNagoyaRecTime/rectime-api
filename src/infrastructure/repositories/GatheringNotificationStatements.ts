@@ -6,11 +6,10 @@ import {
   gatherings,
   notifications,
   notification_schedules,
-  notification_recipients,
-  notification_push_deliveries,
 } from '../database/schema';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import type * as schema from '../database/schema';
+import { buildNotificationStopStatements } from './NotificationStopStatements';
 
 // 通知の同期保留・削除・停止SQLを構築する。ここではbatchを実行しない。
 export function buildGatheringNotificationStatements(
@@ -55,74 +54,12 @@ export function buildGatheringNotificationStatements(
       );
 
     cleanupStatements.push(
-      // 配信開始済みのScheduleは履歴を残し、source_deletedで停止する。
-      orm
-        .update(notification_schedules)
-        .set({
-          sendStatus: 'stopped',
-          stoppedAt: stopPolicy.now,
-          stoppedByUserId: stopPolicy.stopped_by_user_id,
-          reason: stopPolicy.reason,
-          updatedAt: stopPolicy.now,
-        })
-        .where(
-          and(
-            inArray(
-              notification_schedules.notificationId,
-              sourceNotificationIds()
-            ),
-            inArray(
-              notification_schedules.sendStatus,
-              stopPolicy.allowed_statuses
-            )
-          )
-        ),
-      // 送信待ちのDeliveryだけ止める。sendingはFCM応答保存まで保持する。
-      orm
-        .update(notification_push_deliveries)
-        .set({
-          status: 'stopped',
-          nextRetryAt: null,
-          updatedAt: stopPolicy.now,
-        })
-        .where(
-          and(
-            inArray(notification_push_deliveries.status, [
-              'pending',
-              'retry_wait',
-            ]),
-            exists(
-              orm
-                .select({ recipientId: notification_recipients.id })
-                .from(notification_recipients)
-                .innerJoin(
-                  notification_schedules,
-                  eq(
-                    notification_schedules.id,
-                    notification_recipients.notificationScheduleId
-                  )
-                )
-                .innerJoin(
-                  notifications,
-                  eq(
-                    notifications.notificationId,
-                    notification_schedules.notificationId
-                  )
-                )
-                .where(
-                  and(
-                    eq(
-                      notification_recipients.id,
-                      notification_push_deliveries.notificationRecipientId
-                    ),
-                    eq(notification_schedules.sendStatus, 'stopped'),
-                    eq(notification_schedules.reason, stopPolicy.reason),
-                    sourceNotificationCondition()
-                  )
-                )
-            )
-          )
-        ),
+      // 配信開始済みScheduleと未送信Deliveryは公開Stopと同じSQLで停止する。
+      ...buildNotificationStopStatements(
+        orm,
+        stopPolicy,
+        inArray(notification_schedules.notificationId, sourceNotificationIds())
+      ),
       // 未開始のScheduleはAudience/Recipient/Deliveryごと削除する。
       orm
         .delete(notification_schedules)
