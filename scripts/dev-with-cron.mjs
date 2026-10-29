@@ -59,7 +59,7 @@ async function awaitReady(port, child, getOutput) {
 }
 
 export async function startLocalCronWorker({
-  config = 'wrangler.jsonc',
+  config = 'wrangler-nagoya.jsonc',
   port = 8787,
   inspectorPort = 9230,
   persist,
@@ -187,7 +187,7 @@ if (
 ) {
   const { values } = parseArgs({
     options: {
-      config: { type: 'string', default: 'wrangler.jsonc' },
+      config: { type: 'string', default: 'wrangler-nagoya.jsonc' },
       port: { type: 'string', default: '8787' },
       'inspector-port': { type: 'string', default: '9230' },
     },

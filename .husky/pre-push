@@ -41,7 +41,7 @@ if git rev-parse --verify origin/develop >/dev/null 2>&1; then
   # VitestのforceRerunTriggersに依存せず、Gitの差分から全テストが必要な変更を判定する。
   while IFS= read -r changed_file; do
     case "$changed_file" in
-      package.json|*/package.json|package-lock.json|*/package-lock.json|tsconfig*.json|*/tsconfig*.json|vitest.config.*|*/vitest.config.*|vite.config.*|*/vite.config.*|wrangler.jsonc|*/wrangler.jsonc|migrations/*|*/migrations/*)
+      package.json|*/package.json|package-lock.json|*/package-lock.json|tsconfig*.json|*/tsconfig*.json|vitest.config.*|*/vitest.config.*|vite.config.*|*/vite.config.*|wrangler-nagoya.jsonc|*/wrangler-nagoya.jsonc|migrations/*|*/migrations/*)
         broad_change=1
         break
         ;;

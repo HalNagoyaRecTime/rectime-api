@@ -96,7 +96,7 @@ jobs:
         run: npm ci
 
       - name: Wrangler bundleをdry runで検証
-        run: npm exec -- wrangler deploy --dry-run --env development --outdir .wrangler/dependency-validation
+        run: npm exec -- wrangler deploy --dry-run --env development --outdir .wrangler/dependency-validation --config wrangler-nagoya.jsonc
 
   migration-check:
     # developを取り込むPR(develop→main、develop→develop-v2)は、developへのPRで
