@@ -73,6 +73,8 @@ export interface NotificationAudienceDTO {
 export interface NotificationDateRangeQueryDTO {
   from?: string;
   to?: string;
+  page?: number;
+  limit?: number;
 }
 
 export type NotificationDeliveryInputDTO =
@@ -137,8 +139,16 @@ export interface AdminNotificationListItemDTO {
   schedules: AdminNotificationScheduleListItemDTO[];
 }
 
+export interface AdminNotificationPaginationDTO {
+  page: number;
+  limit: number;
+  totalCount: number;
+  totalPages: number;
+}
+
 export interface AdminNotificationListResponseDTO {
   items: AdminNotificationListItemDTO[];
+  pagination: AdminNotificationPaginationDTO;
 }
 
 export interface NotificationConfigDTO {

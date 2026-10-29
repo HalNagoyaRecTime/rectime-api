@@ -77,4 +77,6 @@ export interface AdminNotificationQueryResult {
 export interface AdminNotificationQueryOptions {
   from: string;
   to: string;
+  page?: number;
+  limit?: number;
 }

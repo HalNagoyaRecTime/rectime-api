@@ -31,7 +31,7 @@ import {
 } from './notification.fixtures';
 
 describe('管理通知のResponse schema', () => {
-  it('管理通知一覧はitemsと軽量contentだけを返す', () => {
+  it('管理通知一覧はitems、paginationと軽量contentだけを返す', () => {
     expect(
       adminNotificationListResponseSchema.safeParse({
         items: [
@@ -44,6 +44,7 @@ describe('管理通知のResponse schema', () => {
             schedules: [adminListSchedule],
           },
         ],
+        pagination: { page: 1, limit: 50, totalCount: 1, totalPages: 1 },
       }).success
     ).toBe(true);
     expect(
@@ -66,6 +67,7 @@ describe('管理通知のResponse schema', () => {
             schedules: [],
           },
         ],
+        pagination: { page: 1, limit: 50, totalCount: 1, totalPages: 1 },
       }).success
     ).toBe(false);
   });

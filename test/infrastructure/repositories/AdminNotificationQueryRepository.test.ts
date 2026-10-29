@@ -258,17 +258,22 @@ describe('AdminNotificationQueryRepository', () => {
         to: '2026-09-24T23:59:59+09:00',
       });
 
-      expect(listed.map(notification => notification.notification_id)).toEqual([
+      expect(listed.items.map(n => n.notification_id)).toEqual([
         mixed.notification_id,
         startBoundary.notification_id,
       ]);
-      expect(listed[0]?.schedules).toHaveLength(1);
-      expect(listed[0]?.schedules[0]?.send_at).toBe('2026-09-24T10:00:00.000Z');
-      expect(listed[1]?.schedules[0]?.send_at).toBe(
+      expect(listed.items[0]?.schedules).toHaveLength(1);
+      expect(listed.items[0]?.schedules[0]?.send_at).toBe(
+        '2026-09-24T10:00:00.000Z'
+      );
+      expect(listed.items[1]?.schedules[0]?.send_at).toBe(
         '2026-09-24T00:00:00+09:00'
       );
       expect(batchSpy).toHaveBeenCalledTimes(1);
       expect(batchSpy.mock.calls[0]?.[0]).toHaveLength(4);
+      expect(listed.pagination.totalCount).toBe(2);
+      expect(listed.pagination.page).toBe(1);
+      expect(listed.pagination.limit).toBe(50);
     } finally {
       batchSpy.mockRestore();
     }
@@ -297,7 +302,7 @@ describe('AdminNotificationQueryRepository', () => {
       to: '2026-09-24T10:00:00.100Z',
     });
 
-    expect(listed.map(notification => notification.notification_id)).toEqual([
+    expect(listed.items.map(n => n.notification_id)).toEqual([
       included.notification_id,
     ]);
   });
@@ -325,7 +330,7 @@ describe('AdminNotificationQueryRepository', () => {
       to: '2026-09-24T11:00:00.000Z',
     });
 
-    expect(listed.map(notification => notification.notification_id)).toEqual([
+    expect(listed.items.map(n => n.notification_id)).toEqual([
       included.notification_id,
     ]);
   });
@@ -369,7 +374,7 @@ describe('AdminNotificationQueryRepository', () => {
       to: '2026-09-24T10:00:00.999Z',
     });
     expect(
-      listed[0]?.schedules.map(schedule => schedule.notification_schedule_id)
+      listed.items[0]?.schedules.map(s => s.notification_schedule_id)
     ).toEqual(expectedScheduleIds);
   });
 
