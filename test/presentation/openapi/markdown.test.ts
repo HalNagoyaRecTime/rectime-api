@@ -42,3 +42,35 @@ describe('Markdown本文の空白契約', () => {
     expect(markdownBodySchema.safeParse(body).success).toBe(false);
   });
 });
+
+describe('イベントルールの文字数上限', () => {
+  const base = {
+    event_name: '競技',
+    venue_ids: [1],
+    start_time: '0900',
+    end_time: '1000',
+  };
+  const schemas = [
+    ['作成', eventWriteSchema],
+    ['更新', eventUpdateSchema],
+  ] as const;
+
+  it.each(schemas)('%sで2000文字のルールを受け付ける', (_, schema) => {
+    expect(
+      schema.safeParse({ ...base, rule_text: 'あ'.repeat(2000) }).success
+    ).toBe(true);
+  });
+  it.each(schemas)(
+    '%sで改行を含む2000文字のルールを受け付ける',
+    (_, schema) => {
+      expect(
+        schema.safeParse({ ...base, rule_text: 'あ\n'.repeat(1000) }).success
+      ).toBe(true);
+    }
+  );
+  it.each(schemas)('%sで2001文字のルールは拒否する', (_, schema) => {
+    expect(
+      schema.safeParse({ ...base, rule_text: 'あ'.repeat(2001) }).success
+    ).toBe(false);
+  });
+});

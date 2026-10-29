@@ -101,7 +101,7 @@ const isValidEventTimeRange = (data: {
 
 const eventBaseSchema = z.object({
   event_name: z.string().trim().min(1).max(100),
-  rule_text: z.string().max(1000).nullable().optional(),
+  rule_text: z.string().max(2000).nullable().optional(),
   venue_ids: venueIdsSchema,
   start_time: hhmmSchema,
   end_time: hhmmSchema,
