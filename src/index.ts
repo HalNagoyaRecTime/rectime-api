@@ -12,6 +12,7 @@ import { getContactFormUrl, isDocsEnabled, type Env } from './lib/env';
 import { isValidEventDate } from './lib/eventDate';
 import { getAllowedOriginRules, isAllowedOrigin } from './lib/allowedOrigins';
 import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
+import { CAMPUSES, parseCampus } from './domain/auth/campus';
 import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
 import {
   diContainerMiddleware,
@@ -141,6 +142,7 @@ const app = new OpenAPIHono<{ Bindings: Env }>({
 
 let corsWarnLogged = false;
 let tenantWarnLogged = false;
+let campusWarnLogged = false;
 
 app.use('*', (c, next) => {
   const allowedOrigins = c.env.ALLOWED_ORIGINS ?? '';
@@ -182,6 +184,20 @@ app.use('*', (c, next) => {
         '" but ALLOWED_MICROSOFT_TENANTS is not set — all auth requests will be rejected with INVALID_ID_TOKEN'
     );
     tenantWarnLogged = true;
+  }
+  return next();
+});
+
+app.use('*', (c, next) => {
+  if (parseCampus(c.env.CAMPUS_CODE) === null && !campusWarnLogged) {
+    console.warn(
+      '[CAMPUS] CAMPUS_CODE is "' +
+        (c.env.CAMPUS_CODE ?? '') +
+        '" but must be one of ' +
+        CAMPUSES.join(', ') +
+        ' — this Worker cannot tell which campus it serves'
+    );
+    campusWarnLogged = true;
   }
   return next();
 });
