@@ -21,8 +21,6 @@ import {
   getStoredFrontendOrigin,
 } from '../frontendOrigin';
 import {
-  type PkceEntry,
-  type MobileRefreshEntry,
   type DeletionConfirmationEntry,
   ACCOUNT_PHOTO_PATH,
 } from '../../../domain/auth/types';
@@ -35,6 +33,7 @@ import { CommonErrors } from '../../errors/commonErrors';
 import { errorResponse } from '../../errors/errorResponse';
 
 const DELETION_CONFIRMATION_TTL_SEC = 600;
+const AUTH_STATE_TTL_SEC = 600;
 
 const microsoft = new Hono<{
   Bindings: Bindings;
@@ -71,15 +70,9 @@ microsoft.get('/login', async c => {
       return errorResponse(c, AuthErrors.INVALID_REQUEST);
     }
 
-    const pkceKey = `pkce:${state}`;
-    const existingPkce = await c.env.AUTH_KV.get(pkceKey);
-    if (existingPkce) {
-      return errorResponse(c, AuthErrors.STATE_ALREADY_EXISTS);
-    }
-
-    await c.env.AUTH_KV.put(
-      pkceKey,
-      JSON.stringify({
+    const created = await c.get('container').authStateRepository.create(
+      state,
+      {
         nonce,
         client_type: 'mobile',
         purpose: 'login',
@@ -87,9 +80,12 @@ microsoft.get('/login', async c => {
           ? { desktop_redirect_uri: desktopRedirectUri }
           : {}),
         created_at: new Date().toISOString(),
-      } satisfies PkceEntry),
-      { expirationTtl: 600 }
+      },
+      AUTH_STATE_TTL_SEC
     );
+    if (!created) {
+      return errorResponse(c, AuthErrors.STATE_ALREADY_EXISTS);
+    }
 
     return c.json({
       auth_url: buildMicrosoftAuthorizeUrl(
@@ -107,17 +103,17 @@ microsoft.get('/login', async c => {
   const codeChallenge = await generateCodeChallenge(codeVerifier);
   const frontendOrigin = getAllowedFrontendOrigin(c);
 
-  await c.env.AUTH_KV.put(
-    `pkce:${state}`,
-    JSON.stringify({
+  await c.get('container').authStateRepository.create(
+    state,
+    {
       code_verifier: codeVerifier,
       nonce,
       client_type: 'web',
       purpose: 'login',
       ...(frontendOrigin ? { frontend_origin: frontendOrigin } : {}),
       created_at: new Date().toISOString(),
-    } satisfies PkceEntry),
-    { expirationTtl: 600 }
+    },
+    AUTH_STATE_TTL_SEC
   );
 
   return c.redirect(
@@ -134,7 +130,7 @@ microsoft.get('/login', async c => {
 
 // GET /auth/microsoft/delete-login
 // アカウント削除確認専用のMicrosoft再認証を開始する。/login と同じ
-// PKCE/state発行の仕組みを使うが、KVのpurposeを'account_deletion'にする
+// PKCE/state発行の仕組みを使うが、stateのpurposeを'account_deletion'にする
 // ことで、/delete-token側がupsertUserや一般API用Tokenの発行に進まない
 // ようにする。
 microsoft.get('/delete-login', async c => {
@@ -166,15 +162,9 @@ microsoft.get('/delete-login', async c => {
       return errorResponse(c, AuthErrors.INVALID_REQUEST);
     }
 
-    const pkceKey = `pkce:${state}`;
-    const existingPkce = await c.env.AUTH_KV.get(pkceKey);
-    if (existingPkce) {
-      return errorResponse(c, AuthErrors.STATE_ALREADY_EXISTS);
-    }
-
-    await c.env.AUTH_KV.put(
-      pkceKey,
-      JSON.stringify({
+    const created = await c.get('container').authStateRepository.create(
+      state,
+      {
         nonce,
         client_type: 'mobile',
         purpose: 'account_deletion',
@@ -182,9 +172,12 @@ microsoft.get('/delete-login', async c => {
           ? { desktop_redirect_uri: desktopRedirectUri }
           : {}),
         created_at: new Date().toISOString(),
-      } satisfies PkceEntry),
-      { expirationTtl: 600 }
+      },
+      AUTH_STATE_TTL_SEC
     );
+    if (!created) {
+      return errorResponse(c, AuthErrors.STATE_ALREADY_EXISTS);
+    }
 
     return c.json({
       // prompt=login で資格情報の再入力を強制する(削除確認フローの目的は
@@ -206,17 +199,17 @@ microsoft.get('/delete-login', async c => {
   const codeChallenge = await generateCodeChallenge(codeVerifier);
   const frontendOrigin = getAllowedFrontendOrigin(c);
 
-  await c.env.AUTH_KV.put(
-    `pkce:${state}`,
-    JSON.stringify({
+  await c.get('container').authStateRepository.create(
+    state,
+    {
       code_verifier: codeVerifier,
       nonce,
       client_type: 'web',
       purpose: 'account_deletion',
       ...(frontendOrigin ? { frontend_origin: frontendOrigin } : {}),
       created_at: new Date().toISOString(),
-    } satisfies PkceEntry),
-    { expirationTtl: 600 }
+    },
+    AUTH_STATE_TTL_SEC
   );
 
   // Refererから検証済みoriginをstateに保存し、callbackで同じoriginへ戻す。
@@ -266,7 +259,7 @@ microsoft.get('/callback', async c => {
 // rectime-api 自身のアクセストークンを発行する。
 // - mobile: code_verifier はクライアントが生成し、ボディで送信する。
 // - web: code_verifier は /auth/microsoft/login 時にサーバー側で生成・
-//   KV 保存済みのものを使うため、ボディでは code/state のみを要求する。
+//   保存済みのものを使うため、ボディでは code/state のみを要求する。
 microsoft.post('/token', async c => {
   const clientType = getClientType(c);
   if (clientType !== 'mobile' && clientType !== 'web') {
@@ -299,25 +292,18 @@ microsoft.post('/token', async c => {
     return errorResponse(c, AuthErrors.INVALID_REQUEST);
   }
 
-  const pkceRaw = await c.env.AUTH_KV.get(`pkce:${body.state}`);
-  if (!pkceRaw) {
+  const pkce = await c.get('container').authStateRepository.consume(body.state);
+  if (!pkce) {
     return errorResponse(c, AuthErrors.STATE_MISMATCH);
   }
-
-  await c.env.AUTH_KV.delete(`pkce:${body.state}`);
-  const pkce = JSON.parse(pkceRaw) as PkceEntry;
 
   if (pkce.client_type !== clientType) {
     return errorResponse(c, AuthErrors.INVALID_STATE_CLIENT_TYPE);
   }
 
-  if (pkce.purpose && pkce.purpose !== 'login') {
+  if (pkce.purpose !== 'login') {
     // /delete-login で発行された state がこちらに紛れ込んだ場合、
     // upsertUserや一般API用Tokenの発行に進んでしまうため拒否する。
-    // purposeが未設定の場合はpurpose導入前(デプロイ境界をまたいで
-    // Microsoft認証中だった)の通常ログインとして扱い、拒否しない。
-    // 削除確認フロー側は必ずpurpose: 'account_deletion'を書き込むため、
-    // 削除用のstateがここに紛れ込むことはない。
     return errorResponse(c, AuthErrors.INVALID_STATE_PURPOSE);
   }
 
@@ -417,37 +403,29 @@ microsoft.post('/token', async c => {
   }
 
   // プロフィール(学生情報・種別・担当クラス)の取得は、生きたMicrosoft
-  // リフレッシュトークンをKVへ書き込む前に、すべて検知したいため、副作用より
+  // リフレッシュトークンを保存する前に、すべて検知したいため、副作用より
   // 先にawaitする。
-  const { authProfileService } = c.get('container');
+  const { authProfileService, refreshSessionRepository } = c.get('container');
   const profile = await authProfileService.getProfile(user);
 
   const refreshTokenId = crypto.randomUUID();
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
 
-  // mobile_refresh KV は mobile/web 共通で使う。Microsoft の refresh_token を
-  // sub 単位で保持し、/auth/me/photo からの Graph アクセストークン取得に使う。
-  await c.env.AUTH_KV.put(
-    `mobile_refresh:${refreshTokenId}`,
-    JSON.stringify({
+  await refreshSessionRepository.create(
+    {
+      refresh_token_id: refreshTokenId,
       user_id: user.id,
       oid: user.oid,
       tid: user.tid,
       sub: user.sub,
       email: user.email,
       display_name: user.display_name,
-      avatar_url: ACCOUNT_PHOTO_PATH,
       avatar_updated_at: null,
       client_type: clientType,
       ms_refresh_token: tokens.refresh_token,
-      created_at: new Date().toISOString(),
-    } satisfies MobileRefreshEntry),
-    { expirationTtl: refreshTtl }
+    },
+    refreshTtl
   );
-
-  await c.env.AUTH_KV.put(`mobile_refresh_by_user:${user.id}`, refreshTokenId, {
-    expirationTtl: refreshTtl,
-  });
 
   const jwtTtl = getNumberEnv(c.env.JWT_EXPIRES_SEC, 3600);
   const accessToken = await signAccessToken(
@@ -511,13 +489,10 @@ microsoft.post('/delete-token', async c => {
     return errorResponse(c, AuthErrors.INVALID_REQUEST);
   }
 
-  const pkceRaw = await c.env.AUTH_KV.get(`pkce:${body.state}`);
-  if (!pkceRaw) {
+  const pkce = await c.get('container').authStateRepository.consume(body.state);
+  if (!pkce) {
     return errorResponse(c, AuthErrors.STATE_MISMATCH);
   }
-
-  await c.env.AUTH_KV.delete(`pkce:${body.state}`);
-  const pkce = JSON.parse(pkceRaw) as PkceEntry;
 
   if (pkce.client_type !== clientType) {
     return errorResponse(c, AuthErrors.INVALID_STATE_CLIENT_TYPE);

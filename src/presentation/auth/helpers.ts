@@ -10,11 +10,6 @@ import {
   exchangeMicrosoftToken as infraExchangeToken,
   refreshMicrosoftAccessToken as infraRefreshToken,
 } from '../../infrastructure/auth/microsoftClient';
-import { createUserRepository } from '../../infrastructure/repositories/UserRepository';
-import { createStudentRepository } from '../../infrastructure/repositories/StudentRepository';
-import { createTeacherRepository } from '../../infrastructure/repositories/TeacherRepository';
-import { createFirebaseTokenRepository } from '../../infrastructure/repositories/FirebaseTokenRepository';
-import { createAuthService } from '../../application/services/authService';
 
 export type AppContext = Context<{
   Bindings: Bindings;
@@ -128,17 +123,5 @@ export async function upsertUser(
   c: AppContext,
   claims: IdTokenClaims
 ): Promise<AppUser> {
-  const userRepository = createUserRepository(c.env.DB);
-  const studentRepository = createStudentRepository(c.env.DB);
-  const teacherRepository = createTeacherRepository(c.env.DB);
-  const firebaseTokenRepository = createFirebaseTokenRepository(c.env.DB);
-  const authService = createAuthService(
-    userRepository,
-    studentRepository,
-    teacherRepository,
-    c.env.STUDENT_EMAIL_DOMAIN,
-    c.env.AUTH_KV,
-    firebaseTokenRepository
-  );
-  return authService.upsertUser(claims);
+  return c.get('container').authService.upsertUser(claims);
 }
