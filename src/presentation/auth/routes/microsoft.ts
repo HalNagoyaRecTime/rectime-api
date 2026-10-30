@@ -30,6 +30,7 @@ import { AuthErrors } from '../../errors/authErrors';
 import { microsoftTokenError } from '../../errors/microsoftTokenError';
 import { isDesktopRedirectUri } from '../desktopRedirect';
 import { exchangeMicrosoftAuthorizationCode } from '../microsoftCodeExchange';
+import { resolveCampusFromEmail } from '../../../domain/auth/campus';
 import { CommonErrors } from '../../errors/commonErrors';
 import { errorResponse } from '../../errors/errorResponse';
 
@@ -360,6 +361,40 @@ microsoft.post('/token', async c => {
     token_type: 'Bearer',
     expires_in: jwtTtl,
     user: profile,
+  });
+});
+
+// POST /auth/microsoft/resolve-campus
+// 名古屋校のWorkerでmobileがログイン後の所属校を判定するために呼ぶ。
+// - request: /token(mobile)と同じ { code, state, code_verifier }。
+//   X-Client-Type: mobile のみ許可し、stateのpurposeは'login'。
+// - response 200: { campus, ms_refresh_token }(Cache-Control: no-store)。
+//   id_token・access_tokenは返さない。
+// - error: /tokenと同じAuthErrorsを返す(新しいエラーコードは追加しない)。
+// - DB書き込みはauth_statesの消費のみ。upsertUser・users・refresh_sessions
+//   への書き込みやrectime-apiのToken発行は行わない。
+microsoft.post('/resolve-campus', async c => {
+  const exchanged = await exchangeMicrosoftAuthorizationCode(c, {
+    allowedClientTypes: ['mobile'],
+    purpose: 'login',
+    requireRefreshToken: true,
+  });
+  if (!exchanged.ok) {
+    return exchanged.response;
+  }
+  const { tokens, claims } = exchanged;
+
+  // upsertUserと同じ規則: preferred_usernameが空白でなければそれを、
+  // そうでなければemailを使う。
+  const email = [claims.preferred_username, claims.email].find(
+    (value): value is string =>
+      typeof value === 'string' && value.trim().length > 0
+  );
+
+  c.header('Cache-Control', 'no-store');
+  return c.json({
+    campus: resolveCampusFromEmail(email),
+    ms_refresh_token: tokens.refresh_token,
   });
 });
 
