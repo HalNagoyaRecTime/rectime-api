@@ -14,7 +14,6 @@ import {
 } from '../helpers';
 import { rejectInactiveUser } from '../rejectInactiveUser';
 import {
-  type MobileRefreshEntry,
   type DeletionConfirmationEntry,
   ACCOUNT_PHOTO_PATH,
 } from '../../../domain/auth/types';
@@ -129,23 +128,11 @@ account.get('/me/photo', async c => {
   const rejected = await rejectInactiveUser(c, claims.sub);
   if (rejected) return rejected;
 
-  // mobile_refresh KV は mobile/web 共通で使う。Microsoft の refresh_token を
-  // sub 単位で保持している(POST /auth/microsoft/token 参照)。
-  const refreshTokenId = await c.env.AUTH_KV.get(
-    `mobile_refresh_by_user:${claims.sub}`
-  );
-  if (!refreshTokenId) {
+  const { refreshSessionRepository } = c.get('container');
+  const refresh = await refreshSessionRepository.findLatestByUserId(claims.sub);
+  if (!refresh) {
     return errorResponse(c, AuthErrors.SESSION_EXPIRED);
   }
-
-  const refreshRaw = await c.env.AUTH_KV.get(
-    `mobile_refresh:${refreshTokenId}`
-  );
-  if (!refreshRaw) {
-    return errorResponse(c, AuthErrors.SESSION_EXPIRED);
-  }
-
-  const refresh = JSON.parse(refreshRaw) as MobileRefreshEntry;
 
   const result = await refreshMicrosoftAccessToken(
     c,
@@ -172,13 +159,10 @@ account.get('/me/photo', async c => {
 
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
   if (tokens.refresh_token) {
-    await c.env.AUTH_KV.put(
-      `mobile_refresh:${refreshTokenId}`,
-      JSON.stringify({
-        ...refresh,
-        ms_refresh_token: tokens.refresh_token,
-      } satisfies MobileRefreshEntry),
-      { expirationTtl: refreshTtl }
+    await refreshSessionRepository.update(
+      refresh.refresh_token_id,
+      { ms_refresh_token: tokens.refresh_token },
+      refreshTtl
     );
   }
 
@@ -194,16 +178,12 @@ account.get('/me/photo', async c => {
     return errorResponse(c, AuthErrors.PHOTO_FETCH_FAILED);
   }
 
-  const avatarUpdatedAt = refresh.avatar_updated_at ?? new Date().toISOString();
-  await c.env.AUTH_KV.put(
-    `mobile_refresh:${refreshTokenId}`,
-    JSON.stringify({
-      ...refresh,
-      ms_refresh_token: tokens.refresh_token ?? refresh.ms_refresh_token,
-      avatar_url: ACCOUNT_PHOTO_PATH,
-      avatar_updated_at: avatarUpdatedAt,
-    } satisfies MobileRefreshEntry),
-    { expirationTtl: refreshTtl }
+  await refreshSessionRepository.update(
+    refresh.refresh_token_id,
+    {
+      avatar_updated_at: refresh.avatar_updated_at ?? new Date().toISOString(),
+    },
+    refreshTtl
   );
 
   const contentType = photoRes.headers.get('Content-Type') ?? 'image/jpeg';
@@ -261,7 +241,7 @@ account.post('/logout', async c => {
 // mobile/web共通: refresh_token_id を使ってrectime-apiのアクセストークンを
 // 再発行する。refresh_token_id はローテーションし、レスポンスの
 // client_type は要求元(X-Client-Type)に合わせる。
-// 上流の一時障害は503、設定・不明エラーは500とし、更新用KVを変更しない。
+// 上流の一時障害は503、設定・不明エラーは500とし、セッションを変更しない。
 // REFRESH_TOKEN_EXPIREDはMicrosoftがHTTP 400で再認証を要求した場合だけ返す。
 account.post('/refresh', async c => {
   const clientType = getClientType(c);
@@ -280,13 +260,13 @@ account.post('/refresh', async c => {
     return errorResponse(c, AuthErrors.INVALID_REQUEST);
   }
 
-  const refreshKey = `mobile_refresh:${body.refresh_token_id}`;
-  const refreshRaw = await c.env.AUTH_KV.get(refreshKey);
-  if (!refreshRaw) {
+  const { refreshSessionRepository } = c.get('container');
+  const refresh = await refreshSessionRepository.findById(
+    body.refresh_token_id
+  );
+  if (!refresh) {
     return errorResponse(c, AuthErrors.SESSION_EXPIRED);
   }
-
-  const refresh = JSON.parse(refreshRaw) as MobileRefreshEntry;
   if (refresh.client_type !== clientType) {
     // refresh_token_id は発行時のクライアント種別に紐づく。異なる
     // X-Client-Type で再発行しようとした場合は拒否し、なりすましで
@@ -306,7 +286,7 @@ account.post('/refresh', async c => {
 
   // 無効化されたユーザーの再発行を断る(#255)。deletion_status(本人による削除)
   // とis_live_active(管理者による無効化)は独立した軸のため、両方を確認する。
-  // 塞がないとmobile_refreshのTTLが再発行のたびに振り直され、無効化後も
+  // 塞がないとセッションの有効期限が再発行のたびに振り直され、無効化後も
   // 延び続けてしまう。
   // エントリは削除しない: 一時的な無効化なので、再度有効化されたときに
   // 元のTTLが切れるまでは同じセッションを再開できるようにする。
@@ -337,23 +317,12 @@ account.post('/refresh', async c => {
 
   const refreshTtl = getNumberEnv(c.env.MOBILE_REFRESH_EXPIRES_SEC, 7776000);
   const nextRefreshTokenId = crypto.randomUUID();
-  await c.env.AUTH_KV.put(
-    `mobile_refresh:${nextRefreshTokenId}`,
-    JSON.stringify({
-      ...refresh,
-      ms_refresh_token: tokens.refresh_token,
-      updated_at: new Date().toISOString(),
-    } satisfies MobileRefreshEntry),
-    { expirationTtl: refreshTtl }
-  );
-  await c.env.AUTH_KV.put(
-    `mobile_refresh_by_user:${refresh.user_id}`,
+  await refreshSessionRepository.rotate(
+    refresh,
     nextRefreshTokenId,
-    {
-      expirationTtl: refreshTtl,
-    }
+    tokens.refresh_token,
+    refreshTtl
   );
-  await c.env.AUTH_KV.delete(refreshKey);
 
   const jwtTtl = getNumberEnv(c.env.JWT_EXPIRES_SEC, 3600);
   const accessToken = await signAccessToken(
@@ -362,8 +331,8 @@ account.post('/refresh', async c => {
       oid: refresh.oid,
       email: refresh.email,
       display_name: refresh.display_name,
-      avatar_url: refresh.avatar_url ?? ACCOUNT_PHOTO_PATH,
-      avatar_updated_at: refresh.avatar_updated_at ?? null,
+      avatar_url: ACCOUNT_PHOTO_PATH,
+      avatar_updated_at: refresh.avatar_updated_at,
       client_type: clientType,
     },
     c.env.JWT_SECRET,

@@ -18,7 +18,6 @@ import { toBase64URL } from '../../../../src/infrastructure/auth/base64url';
 import type { Env } from '../../../../src/lib/env';
 import type {
   PkceEntry,
-  MobileRefreshEntry,
   DeletionConfirmationEntry,
 } from '../../../../src/domain/auth/types';
 import {
@@ -27,6 +26,8 @@ import {
 } from '../../../../src/presentation/middleware/diContainer';
 import { insertClassRoomWithTeam } from '../../../fixtures/classRooms';
 import { createUserRepository } from '../../../../src/infrastructure/repositories/UserRepository';
+import { createAuthStateRepository } from '../../../../src/infrastructure/repositories/AuthStateRepository';
+import { createRefreshSessionRepository } from '../../../../src/infrastructure/repositories/RefreshSessionRepository';
 
 const JWT_SECRET = 'a'.repeat(32);
 const KID = 'test-kid';
@@ -85,6 +86,8 @@ afterEach(() => {
 });
 
 beforeEach(async () => {
+  await workerEnv.DB.prepare('DELETE FROM auth_states').run();
+  await workerEnv.DB.prepare('DELETE FROM refresh_sessions').run();
   await workerEnv.DB.prepare('DELETE FROM gathering_group_members').run();
   await workerEnv.DB.prepare('DELETE FROM notification_schedules').run();
   await workerEnv.DB.prepare('DELETE FROM gatherings').run();
@@ -141,6 +144,33 @@ function createMockKv(): KVNamespace {
   } as unknown as KVNamespace;
 }
 
+async function putAuthState(state: string, entry: PkceEntry) {
+  await createAuthStateRepository(workerEnv.DB).create(state, entry, 600);
+}
+
+async function expireAuthState(state: string) {
+  await workerEnv.DB.prepare(
+    "UPDATE auth_states SET expires_at = '2000-01-01T00:00:00.000Z' WHERE state = ?"
+  )
+    .bind(state)
+    .run();
+}
+
+function findAuthState(state: string) {
+  return createAuthStateRepository(workerEnv.DB).find(state);
+}
+
+function findRefreshSession(refreshTokenId: string) {
+  return createRefreshSessionRepository(workerEnv.DB).findById(refreshTokenId);
+}
+
+async function countRefreshSessions() {
+  const row = await workerEnv.DB.prepare(
+    'SELECT COUNT(*) AS count FROM refresh_sessions'
+  ).first<{ count: number }>();
+  return row?.count;
+}
+
 function buildApp() {
   const app = new Hono<{ Bindings: Env }>();
   app.use('*', diContainerMiddleware);
@@ -149,8 +179,8 @@ function buildApp() {
 }
 
 // プロフィール取得(authProfileService.getProfile)がD1の一時障害等で失敗する
-// ケースを再現するためのapp。KV書き込みより前にこの失敗を検知できていれば、
-// mobile_refresh系のKVエントリは作られないはず。
+// ケースを再現するためのapp。Refresh Sessionの保存より前にこの失敗を検知できていれば、
+// Refresh Sessionは保存されないはず。
 function buildAppWithFailingStudentLookup() {
   const app = new Hono<{ Bindings: Env; Variables: ContainerVariables }>();
   app.use('*', diContainerMiddleware);
@@ -235,16 +265,13 @@ async function requestMicrosoftLogin(
     exp: now + 3600,
     iat: now - 10,
   });
-  await env.AUTH_KV.put(
-    `pkce:${state}`,
-    JSON.stringify({
-      ...(clientType === 'web' ? { code_verifier: codeVerifier } : {}),
-      nonce,
-      client_type: clientType,
-      purpose: 'login',
-      created_at: new Date().toISOString(),
-    } satisfies PkceEntry)
-  );
+  await putAuthState(state, {
+    ...(clientType === 'web' ? { code_verifier: codeVerifier } : {}),
+    nonce,
+    client_type: clientType,
+    purpose: 'login',
+    created_at: new Date().toISOString(),
+  });
   stubMicrosoftFetch(idToken);
 
   return buildApp().request(
@@ -297,7 +324,12 @@ describe('GET /auth/microsoft/login', () => {
   it('mobileは同じstateで開始済みの場合は400を返す', async () => {
     const env = buildEnv();
     const state = generateRandom(32);
-    await env.AUTH_KV.put(`pkce:${state}`, JSON.stringify({ nonce: 'n' }));
+    await putAuthState(state, {
+      nonce: 'n',
+      client_type: 'mobile',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     const app = buildApp();
 
     const res = await app.request(
@@ -314,7 +346,7 @@ describe('GET /auth/microsoft/login', () => {
     expect(res.status).toBe(400);
   });
 
-  it('mobileは有効なパラメータでauth_urlを返しKVにclient_type: mobileで保存する', async () => {
+  it('mobileは有効なパラメータでauth_urlを返しstateをclient_type: mobileで保存する', async () => {
     const env = buildEnv();
     const state = generateRandom(32);
     const codeChallenge = generateRandom(32);
@@ -339,14 +371,12 @@ describe('GET /auth/microsoft/login', () => {
       encodeURIComponent(env.MICROSOFT_MOBILE_REDIRECT_URI)
     );
 
-    const stored = JSON.parse(
-      (await env.AUTH_KV.get(`pkce:${state}`)) as string
-    ) as PkceEntry;
+    const stored = (await findAuthState(state)) as PkceEntry;
     expect(stored.client_type).toBe('mobile');
     expect(stored.code_verifier).toBeUndefined();
   });
 
-  it('webはMicrosoftへ302リダイレクトし、KVにcode_verifier付きでclient_type: webを保存する', async () => {
+  it('webはMicrosoftへ302リダイレクトし、code_verifier付き・client_type: webでstateを保存する', async () => {
     const env = buildEnv();
     const app = buildApp();
 
@@ -365,9 +395,7 @@ describe('GET /auth/microsoft/login', () => {
     expect(new URL(location).searchParams.get('prompt')).toBe('select_account');
 
     const state = new URL(location).searchParams.get('state') as string;
-    const stored = JSON.parse(
-      (await env.AUTH_KV.get(`pkce:${state}`)) as string
-    ) as PkceEntry;
+    const stored = (await findAuthState(state)) as PkceEntry;
     expect(stored.client_type).toBe('web');
     expect(stored.code_verifier).toBeTruthy();
   });
@@ -394,9 +422,7 @@ describe('GET /auth/microsoft/login origin', () => {
     const state = new URL(res.headers.get('Location') ?? '').searchParams.get(
       'state'
     ) as string;
-    const stored = JSON.parse(
-      (await env.AUTH_KV.get(`pkce:${state}`)) as string
-    ) as PkceEntry;
+    const stored = (await findAuthState(state)) as PkceEntry;
     expect(stored.frontend_origin).toBe('https://pr-296.recwatch.pages.dev');
   });
 
@@ -420,9 +446,7 @@ describe('GET /auth/microsoft/login origin', () => {
     const state = new URL(res.headers.get('Location') ?? '').searchParams.get(
       'state'
     ) as string;
-    const stored = JSON.parse(
-      (await env.AUTH_KV.get(`pkce:${state}`)) as string
-    ) as PkceEntry;
+    const stored = (await findAuthState(state)) as PkceEntry;
     expect(stored.frontend_origin).toBeUndefined();
   });
 });
@@ -480,16 +504,13 @@ describe('GET /auth/microsoft/callback', () => {
       ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
     });
     const state = 'state-preview';
-    await env.AUTH_KV.put(
-      `pkce:${state}`,
-      JSON.stringify({
-        nonce: 'nonce-1',
-        client_type: 'web',
-        purpose: 'login',
-        frontend_origin: 'https://pr-296.recwatch.pages.dev',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState(state, {
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'login',
+      frontend_origin: 'https://pr-296.recwatch.pages.dev',
+      created_at: new Date().toISOString(),
+    });
     const app = buildApp();
 
     const res = await app.request(`/callback?code=abc&state=${state}`, {}, env);
@@ -498,7 +519,7 @@ describe('GET /auth/microsoft/callback', () => {
     expect(res.headers.get('Location')).toBe(
       `https://pr-296.recwatch.pages.dev/auth/callback?code=abc&state=${state}`
     );
-    expect(await env.AUTH_KV.get(`pkce:${state}`)).toBeTruthy();
+    expect(await findAuthState(state)).toBeTruthy();
   });
 
   it('Microsoftのerror時も有効なstateのoriginを復元してcallbackへ中継する', async () => {
@@ -506,16 +527,13 @@ describe('GET /auth/microsoft/callback', () => {
       ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
     });
     const state = 'state-preview-error';
-    await env.AUTH_KV.put(
-      `pkce:${state}`,
-      JSON.stringify({
-        nonce: 'nonce-1',
-        client_type: 'web',
-        purpose: 'login',
-        frontend_origin: 'https://pr-296.recwatch.pages.dev',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState(state, {
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'login',
+      frontend_origin: 'https://pr-296.recwatch.pages.dev',
+      created_at: new Date().toISOString(),
+    });
     const app = buildApp();
 
     const res = await app.request(
@@ -535,19 +553,42 @@ describe('GET /auth/microsoft/callback', () => {
       ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
     });
     const state = 'state-untrusted-origin';
-    await env.AUTH_KV.put(
-      `pkce:${state}`,
-      JSON.stringify({
-        nonce: 'nonce-1',
-        client_type: 'web',
-        purpose: 'login',
-        frontend_origin: 'https://evil.example',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState(state, {
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'login',
+      frontend_origin: 'https://evil.example',
+      created_at: new Date().toISOString(),
+    });
     const app = buildApp();
 
     const res = await app.request(`/callback?code=abc&state=${state}`, {}, env);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      `https://app.example.com/auth/callback?code=abc&state=${state}`
+    );
+  });
+
+  it('期限切れのstateに保存したoriginは使わずFRONTEND_URLへ戻す', async () => {
+    const env = buildEnv({
+      ALLOWED_ORIGINS: 'https://*.recwatch.pages.dev',
+    });
+    const state = 'state-expired-origin';
+    await putAuthState(state, {
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'login',
+      frontend_origin: 'https://pr-296.recwatch.pages.dev',
+      created_at: new Date().toISOString(),
+    });
+    await expireAuthState(state);
+
+    const res = await buildApp().request(
+      `/callback?code=abc&state=${state}`,
+      {},
+      env
+    );
 
     expect(res.status).toBe(302);
     expect(res.headers.get('Location')).toBe(
@@ -575,17 +616,13 @@ describe('POST /auth/microsoft/token', () => {
         'HTTP %s / %jは%sを返しセッションを発行しない',
         async (status, payload, expectedStatus, code) => {
           const env = buildEnv();
-          await env.AUTH_KV.put(
-            'pkce:provider-error',
-            JSON.stringify({
-              code_verifier: generateRandom(32),
-              nonce: 'nonce',
-              client_type: 'web',
-              purpose: endpoint === 'token' ? 'login' : 'account_deletion',
-              created_at: new Date().toISOString(),
-            } satisfies PkceEntry)
-          );
-          vi.mocked(env.AUTH_KV.put).mockClear();
+          await putAuthState('provider-error', {
+            code_verifier: generateRandom(32),
+            nonce: 'nonce',
+            client_type: 'web',
+            purpose: endpoint === 'token' ? 'login' : 'account_deletion',
+            created_at: new Date().toISOString(),
+          });
           const fetchMock = vi
             .fn()
             .mockResolvedValue(
@@ -608,7 +645,7 @@ describe('POST /auth/microsoft/token', () => {
           expect(await res.json()).toEqual({
             error: { code, message: expect.any(String) },
           });
-          expect(env.AUTH_KV.put).not.toHaveBeenCalled();
+          expect(await countRefreshSessions()).toBe(0);
           expect(fetchMock).toHaveBeenCalledTimes(1);
         }
       );
@@ -679,17 +716,43 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.error?.code).toBe('STATE_MISMATCH');
   });
 
+  it('期限切れのstateの場合は401 STATE_MISMATCHを返し、Microsoftへ問い合わせない', async () => {
+    const env = buildEnv();
+    await putAuthState('state-expired', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
+    await expireAuthState('state-expired');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await buildApp().request(
+      '/token',
+      {
+        method: 'POST',
+        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'c', state: 'state-expired' }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('STATE_MISMATCH');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('stateのclient_typeとリクエストのclient_typeが異なる場合は400を返す', async () => {
     const env = buildEnv();
-    await env.AUTH_KV.put(
-      'pkce:state-1',
-      JSON.stringify({
-        nonce: 'n',
-        client_type: 'mobile',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-1', {
+      nonce: 'n',
+      client_type: 'mobile',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     const app = buildApp();
 
     const res = await app.request(
@@ -708,15 +771,12 @@ describe('POST /auth/microsoft/token', () => {
 
   it('webでpkceエントリにcode_verifierが保存されていない場合は401 CODE_VERIFIER_MISSINGを返す', async () => {
     const env = buildEnv();
-    await env.AUTH_KV.put(
-      'pkce:state-1',
-      JSON.stringify({
-        nonce: 'n',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-1', {
+      nonce: 'n',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     const app = buildApp();
 
     const res = await app.request(
@@ -764,16 +824,13 @@ describe('POST /auth/microsoft/token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-1',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-1', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     const fetchMock = stubMicrosoftFetch(idToken);
     const app = buildApp();
 
@@ -820,84 +877,12 @@ describe('POST /auth/microsoft/token', () => {
     expect(claims.client_type).toBe('web');
     expect(claims.sub).toBe(body.user.id);
 
-    const refreshRaw = await env.AUTH_KV.get(
-      `mobile_refresh:${body.refresh_token_id}`
-    );
-    expect(refreshRaw).toBeTruthy();
-    const refreshEntry = JSON.parse(refreshRaw as string) as MobileRefreshEntry;
-    expect(refreshEntry.ms_refresh_token).toBe('ms-refresh-token');
-    expect(refreshEntry.client_type).toBe('web');
+    const session = await findRefreshSession(body.refresh_token_id);
+    expect(session?.ms_refresh_token).toBe('ms-refresh-token');
+    expect(session?.client_type).toBe('web');
 
     // stateは使い切りで再利用できない
-    expect(await env.AUTH_KV.get('pkce:state-1')).toBeNull();
-  });
-
-  it('purposeフィールドを含まない(purpose導入前に保存された)stateでも通常ログインとして成功する', async () => {
-    // API更新の直前にMicrosoftログイン画面を開いた利用者が、認証中に
-    // デプロイをまたいで戻ってきた場合を再現する。KV上のPkceEntryには
-    // purposeフィールドが存在しない(JSON.stringifyでpurposeキー自体が
-    // 無い状態)。この場合を新コードのpurposeチェックがINVALID_STATE_
-    // PURPOSEとして拒否してしまうと、正当な通常ログインができなくなる。
-    //
-    // Web経由のログインはstaff権限が必須(#288)なため、既にstaff登録
-    // 済みの既存ユーザーの2回目ログインとして再現する(検証したいのは
-    // purposeフィールドの有無による挙動であり、初回/再ログインの違いは
-    // 本質ではない)。
-    const env = buildEnv();
-    const existingUser = await workerEnv.DB.prepare(
-      "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
-    ).first<{ user_id: number }>();
-    await workerEnv.DB.prepare('INSERT INTO staffs (user_id) VALUES (?)')
-      .bind(existingUser!.user_id)
-      .run();
-    await workerEnv.DB.prepare(
-      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-legacy-1', 'tid-1')"
-    )
-      .bind(existingUser!.user_id)
-      .run();
-
-    const now = Math.floor(Date.now() / 1000);
-    const idToken = await signIdToken({
-      sub: 'sub-legacy-1',
-      oid: 'oid-legacy-1',
-      tid: 'tid-1',
-      name: '田中太郎',
-      preferred_username: 'tanaka@example.com',
-      nonce: 'nonce-legacy-1',
-      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
-      aud: CLIENT_ID,
-      exp: now + 3600,
-      iat: now - 10,
-    });
-    await env.AUTH_KV.put(
-      'pkce:state-legacy-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-legacy-1',
-        client_type: 'web',
-        created_at: new Date().toISOString(),
-        // purposeを意図的に含めない(デプロイ境界をまたいだ場合の再現)
-      })
-    );
-    stubMicrosoftFetch(idToken);
-    const app = buildApp();
-
-    const res = await app.request(
-      '/token',
-      {
-        method: 'POST',
-        headers: { 'X-Client-Type': 'web', 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code: 'auth-code-legacy-1',
-          state: 'state-legacy-1',
-        }),
-      },
-      env
-    );
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { access_token: string };
-    expect(body.access_token).toBeTruthy();
+    expect(await findAuthState('state-1')).toBeNull();
   });
 
   it('purposeがaccount_deletion(/delete-loginで発行されたstate)の場合は400 INVALID_STATE_PURPOSEを返す', async () => {
@@ -905,16 +890,13 @@ describe('POST /auth/microsoft/token', () => {
     // テスト済み。逆方向として、削除確認フロー用に発行されたstateが
     // 通常ログインの/tokenに渡された場合も拒否されることを確認する。
     const env = buildEnv();
-    await env.AUTH_KV.put(
-      'pkce:state-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-1',
-        client_type: 'web',
-        purpose: 'account_deletion',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-1', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'account_deletion',
+      created_at: new Date().toISOString(),
+    });
     const app = buildApp();
 
     const res = await app.request(
@@ -947,15 +929,12 @@ describe('POST /auth/microsoft/token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-2',
-      JSON.stringify({
-        nonce: 'nonce-2',
-        client_type: 'mobile',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-2', {
+      nonce: 'nonce-2',
+      client_type: 'mobile',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
     const app = buildApp();
 
@@ -989,25 +968,19 @@ describe('POST /auth/microsoft/token', () => {
     );
     expect(claims.client_type).toBe('mobile');
 
-    const refreshRaw = await env.AUTH_KV.get(
-      `mobile_refresh:${body.refresh_token_id}`
-    );
-    const refreshEntry = JSON.parse(refreshRaw as string) as MobileRefreshEntry;
-    expect(refreshEntry.client_type).toBe('mobile');
+    const session = await findRefreshSession(body.refresh_token_id);
+    expect(session?.client_type).toBe('mobile');
   });
 
   it('Microsoftとのトークン交換に失敗した場合は401を返す', async () => {
     const env = buildEnv();
-    await env.AUTH_KV.put(
-      'pkce:state-3',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-3',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-3', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-3',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -1072,16 +1045,13 @@ describe('POST /auth/microsoft/token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-1',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-1', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
     const app = buildApp();
 
@@ -1126,16 +1096,13 @@ describe('POST /auth/microsoft/token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-1',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-1', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
     const app = buildApp();
 
@@ -1186,16 +1153,13 @@ describe('POST /auth/microsoft/token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-student-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-student-1',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-student-1', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-student-1',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
     const app = buildApp();
 
@@ -1233,7 +1197,7 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.user.attendance_number).toBe(2);
   });
 
-  it('生徒情報取得に失敗した場合、mobile_refresh系のKVエントリを書き込まずエラーにする', async () => {
+  it('生徒情報取得に失敗した場合、Refresh Sessionを保存せずエラーにする', async () => {
     const env = buildEnv();
 
     const user = await workerEnv.DB.prepare(
@@ -1261,16 +1225,13 @@ describe('POST /auth/microsoft/token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-student-lookup-failure',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-student-lookup-failure',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-student-lookup-failure', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-student-lookup-failure',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
     const app = buildAppWithFailingStudentLookup();
 
@@ -1288,11 +1249,7 @@ describe('POST /auth/microsoft/token', () => {
     );
 
     expect(res.status).toBe(500);
-    expect(
-      Array.from((env.AUTH_KV.put as ReturnType<typeof vi.fn>).mock.calls).some(
-        ([key]) => typeof key === 'string' && key.startsWith('mobile_refresh')
-      )
-    ).toBe(false);
+    expect(await countRefreshSessions()).toBe(0);
   });
 
   it('事前登録済み教員はmobile初回ログインとwebログインで同じuser_id・担当クラスを維持する', async () => {
@@ -1580,16 +1537,13 @@ describe('POST /auth/microsoft/token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-student-2',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-student-2',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-student-2', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-student-2',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
     const app = buildApp();
 
@@ -1627,16 +1581,13 @@ describe('POST /auth/microsoft/token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-teacher-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-teacher-1',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-teacher-1', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-teacher-1',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
     const app = buildApp();
 
@@ -1688,16 +1639,13 @@ describe('POST /auth/microsoft/token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-teacher-2',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-teacher-2',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-teacher-2', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-teacher-2',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
     const app = buildApp();
 
@@ -1734,16 +1682,13 @@ describe('POST /auth/microsoft/token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-staff-error-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-staff-error-1',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-staff-error-1', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-staff-error-1',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
 
     // buildApp()はroute登録が先に固まってしまい、後から追加した
@@ -1827,15 +1772,12 @@ describe('POST /auth/microsoft/token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-deleted-student-1',
-      JSON.stringify({
-        nonce: 'nonce-deleted-student-1',
-        client_type: 'mobile',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-deleted-student-1', {
+      nonce: 'nonce-deleted-student-1',
+      client_type: 'mobile',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
     const app = buildApp();
 
@@ -1898,16 +1840,13 @@ describe('POST /auth/microsoft/token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-pending-student-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-pending-student-1',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-pending-student-1', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-pending-student-1',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
     const app = buildApp();
 
@@ -1938,7 +1877,7 @@ describe('POST /auth/microsoft/token', () => {
 });
 
 describe('GET /auth/microsoft/delete-login', () => {
-  it('webはMicrosoftへ302リダイレクトし、KVにpurpose: account_deletionで保存する', async () => {
+  it('webはMicrosoftへ302リダイレクトし、stateをpurpose: account_deletionで保存する', async () => {
     const env = buildEnv();
     const app = buildApp();
 
@@ -1953,9 +1892,7 @@ describe('GET /auth/microsoft/delete-login', () => {
     expect(new URL(location).searchParams.get('prompt')).toBe('login');
 
     const state = new URL(location).searchParams.get('state') as string;
-    const stored = JSON.parse(
-      (await env.AUTH_KV.get(`pkce:${state}`)) as string
-    ) as PkceEntry;
+    const stored = (await findAuthState(state)) as PkceEntry;
     expect(stored.client_type).toBe('web');
     expect(stored.purpose).toBe('account_deletion');
     expect(stored.code_verifier).toBeTruthy();
@@ -1981,12 +1918,10 @@ describe('GET /auth/microsoft/delete-login', () => {
     const state = new URL(res.headers.get('Location') ?? '').searchParams.get(
       'state'
     ) as string;
-    const stored = JSON.parse(
-      (await env.AUTH_KV.get(`pkce:${state}`)) as string
-    ) as PkceEntry;
+    const stored = (await findAuthState(state)) as PkceEntry;
     expect(stored.frontend_origin).toBe('https://pr-296.recwatch.pages.dev');
   });
-  it('mobileは有効なパラメータでauth_urlを返しKVにpurpose: account_deletionで保存し、prompt=loginを含むauth_urlを返す', async () => {
+  it('mobileは有効なパラメータでauth_urlを返しstateをpurpose: account_deletionで保存し、prompt=loginを含むauth_urlを返す', async () => {
     const env = buildEnv();
     const state = generateRandom(32);
     const codeChallenge = generateRandom(32);
@@ -2008,9 +1943,7 @@ describe('GET /auth/microsoft/delete-login', () => {
     const body = (await res.json()) as { auth_url: string };
     expect(new URL(body.auth_url).searchParams.get('prompt')).toBe('login');
 
-    const stored = JSON.parse(
-      (await env.AUTH_KV.get(`pkce:${state}`)) as string
-    ) as PkceEntry;
+    const stored = (await findAuthState(state)) as PkceEntry;
     expect(stored.client_type).toBe('mobile');
     expect(stored.purpose).toBe('account_deletion');
   });
@@ -2019,16 +1952,13 @@ describe('GET /auth/microsoft/delete-login', () => {
 describe('POST /auth/microsoft/delete-token', () => {
   it('purposeがlogin(通常/loginで発行されたstate)の場合は400 INVALID_STATE_PURPOSEを返す', async () => {
     const env = buildEnv();
-    await env.AUTH_KV.put(
-      'pkce:state-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-1',
-        client_type: 'web',
-        purpose: 'login',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-1', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
     const app = buildApp();
 
     const res = await app.request(
@@ -2061,16 +1991,13 @@ describe('POST /auth/microsoft/delete-token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-1',
-        client_type: 'web',
-        purpose: 'account_deletion',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-1', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'account_deletion',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
     const app = buildApp();
 
@@ -2119,16 +2046,13 @@ describe('POST /auth/microsoft/delete-token', () => {
       exp: now + 3600,
       iat: now - 10,
     });
-    await env.AUTH_KV.put(
-      'pkce:state-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-1',
-        client_type: 'web',
-        purpose: 'account_deletion',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-1', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'account_deletion',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(idToken);
     const app = buildApp();
 
@@ -2158,26 +2082,18 @@ describe('POST /auth/microsoft/delete-token', () => {
     ) as DeletionConfirmationEntry;
     expect(stored.user_id).toBe(String(user!.user_id));
 
-    // /delete-tokenはstateを消費するが、mobile_refresh/mobile_refresh_by_userは
-    // 発行しない(一般API用Tokenの発行経路に入らない)。
-    const mobileRefreshByUser = await env.AUTH_KV.get(
-      `mobile_refresh_by_user:${user!.user_id}`
-    );
-    expect(mobileRefreshByUser).toBeNull();
+    expect(await countRefreshSessions()).toBe(0);
   });
 
-  it('stateは一度使うとKVから削除され、同じstateでの再利用はできない', async () => {
+  it('stateは一度使うと削除され、同じstateでの再利用はできない', async () => {
     const env = buildEnv();
-    await env.AUTH_KV.put(
-      'pkce:state-1',
-      JSON.stringify({
-        code_verifier: generateRandom(32),
-        nonce: 'nonce-1',
-        client_type: 'web',
-        purpose: 'account_deletion',
-        created_at: new Date().toISOString(),
-      } satisfies PkceEntry)
-    );
+    await putAuthState('state-1', {
+      code_verifier: generateRandom(32),
+      nonce: 'nonce-1',
+      client_type: 'web',
+      purpose: 'account_deletion',
+      created_at: new Date().toISOString(),
+    });
     stubMicrosoftFetch(
       await signIdToken({
         sub: 'sub-1',
@@ -2241,9 +2157,7 @@ describe('Desktopのループバック認証', () => {
       expect(new URL(body.auth_url).searchParams.get('redirect_uri')).toBe(
         redirectUri
       );
-      const stored = JSON.parse(
-        (await env.AUTH_KV.get(`pkce:${state}`)) as string
-      ) as PkceEntry;
+      const stored = (await findAuthState(state)) as PkceEntry;
       expect(stored.desktop_redirect_uri).toBe(redirectUri);
     });
 
@@ -2275,7 +2189,7 @@ describe('Desktopのループバック認証', () => {
         env
       );
       expect(response.status).toBe(400);
-      expect(await env.AUTH_KV.get(`pkce:${state}`)).toBeNull();
+      expect(await findAuthState(state)).toBeNull();
     });
   }
 
@@ -2344,7 +2258,54 @@ describe('Desktopのループバック認証', () => {
       expect(sent?.get('redirect_uri')).toBe(redirectUri);
       expect(sent?.get('code_verifier')).toBe(verifier);
       expect(sent?.has('client_assertion')).toBe(false);
-      expect(await env.AUTH_KV.get(`pkce:${state}`)).toBeNull();
+      expect(await findAuthState(state)).toBeNull();
     });
   }
+});
+
+describe('ログインでのKVの書き込み', () => {
+  it('mobileとwebのログイン開始ではKVに書き込まない', async () => {
+    const env = buildEnv();
+
+    const mobile = await buildApp().request(
+      '/login',
+      {
+        headers: {
+          'X-Client-Type': 'mobile',
+          'X-State': generateRandom(32),
+          'X-PKCE-Code-Challenge': generateRandom(32),
+        },
+      },
+      env
+    );
+    const web = await buildApp().request(
+      '/login',
+      { headers: { 'X-Client-Type': 'web' } },
+      env
+    );
+
+    expect(mobile.status).toBe(200);
+    expect(web.status).toBe(302);
+    expect(env.AUTH_KV.put).not.toHaveBeenCalled();
+    expect(env.AUTH_KV.delete).not.toHaveBeenCalled();
+  });
+
+  it('トークン発行ではKVにJWKSのキャッシュ以外を書き込まない', async () => {
+    const env = buildEnv();
+
+    const res = await requestMobileLogin(env, {
+      attemptId: 'kv-writes',
+      oid: 'oid-kv-writes',
+      sub: 'sub-kv-writes',
+      name: '山田花子',
+      email: 'yamada@example.com',
+    });
+
+    expect(res.status).toBe(200);
+    const writtenKeys = vi
+      .mocked(env.AUTH_KV.put)
+      .mock.calls.map(([key]) => key);
+    expect(writtenKeys.every(key => key === 'jwks_cache')).toBe(true);
+    expect(env.AUTH_KV.delete).not.toHaveBeenCalled();
+  });
 });
