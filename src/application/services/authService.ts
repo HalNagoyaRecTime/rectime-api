@@ -7,6 +7,7 @@ import type { ITeacherRepository } from '../../domain/interfaces/repositories/IT
 import {
   extractStudentIdNumber,
   normalizeMicrosoftEmail,
+  pickMicrosoftEmailClaim,
 } from '../../domain/auth/email';
 
 export function createAuthService(
@@ -28,12 +29,7 @@ export function createAuthService(
         typeof claims.preferred_username === 'string'
           ? claims.preferred_username
           : '';
-      const emailClaim = typeof claims.email === 'string' ? claims.email : '';
-      const email = preferredUsername.trim()
-        ? preferredUsername
-        : emailClaim.trim()
-          ? emailClaim
-          : '';
+      const email = pickMicrosoftEmailClaim(claims) ?? '';
       const claimName =
         typeof claims.name === 'string' ? claims.name : undefined;
       const displayName = claimName ?? email;

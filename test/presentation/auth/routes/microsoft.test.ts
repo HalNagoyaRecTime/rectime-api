@@ -2555,4 +2555,40 @@ describe('POST /auth/microsoft/resolve-campus', () => {
 
     await expectErrorCode(res, 400, 'INVALID_STATE_PURPOSE');
   });
+
+  it.each([
+    ['code_verifierが無い', undefined],
+    ['code_verifierが短すぎる', 'a'.repeat(42)],
+    ['code_verifierがbase64urlでない', '+'.repeat(43)],
+  ])(
+    '%smobileは400 INVALID_REQUESTを返し、stateを消費しない',
+    async (_label, codeVerifier) => {
+      await putLoginState();
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await buildApp().request(
+        '/resolve-campus',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Client-Type': 'mobile',
+          },
+          body: JSON.stringify({
+            code: 'auth-code-rc',
+            state: STATE,
+            ...(codeVerifier === undefined
+              ? {}
+              : { code_verifier: codeVerifier }),
+          }),
+        },
+        buildEnv()
+      );
+
+      await expectErrorCode(res, 400, 'INVALID_REQUEST');
+      expect(await findAuthState(STATE)).not.toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
 });
