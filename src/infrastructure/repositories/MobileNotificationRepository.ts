@@ -1,5 +1,13 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { and, asc, count, desc, eq, exists, inArray } from 'drizzle-orm';
+import {
+  type SQL,
+  and,
+  asc,
+  countDistinct,
+  desc,
+  eq,
+  inArray,
+} from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type {
   MobileNotificationEntity,
@@ -89,22 +97,31 @@ export function createMobileNotificationRepository(
         )
       );
 
+  const v2HistoryOnly = eq(
+    notifications.notificationType,
+    'notification_general'
+  );
+
+  // notificationsを起点にすると本人宛てでない通知まで1件ずつ確かめることになり、
+  // 読み取り行数が通知の総数に比例するため、本人のRecipientを起点にする。
+  const mine = (userId: number) =>
+    and(eq(notification_recipients.userId, userId), v2HistoryOnly);
+
   // 本人Recipientがある最新Scheduleを選び、一覧・詳細をNotification単位で揃える。
-  const historyQuery = (userId: number) =>
+  const historyQuery = (userId: number, condition?: SQL) =>
     orm
       .select(selection)
-      .from(notifications)
+      .from(notification_recipients)
       .innerJoin(
         notification_schedules,
         eq(
           notification_schedules.id,
-          recipientSchedules(userId)
-            .orderBy(
-              desc(notification_schedules.sendAt),
-              desc(notification_schedules.id)
-            )
-            .limit(1)
+          notification_recipients.notificationScheduleId
         )
+      )
+      .innerJoin(
+        notifications,
+        eq(notifications.notificationId, notification_schedules.notificationId)
       )
       .leftJoin(
         gatherings,
@@ -113,12 +130,22 @@ export function createMobileNotificationRepository(
           eq(notifications.sourceId, gatherings.id)
         )
       )
-      .leftJoin(events, eq(gatherings.eventId, events.id));
-
-  const v2HistoryOnly = eq(
-    notifications.notificationType,
-    'notification_general'
-  );
+      .leftJoin(events, eq(gatherings.eventId, events.id))
+      .where(
+        and(
+          mine(userId),
+          eq(
+            notification_schedules.id,
+            recipientSchedules(userId)
+              .orderBy(
+                desc(notification_schedules.sendAt),
+                desc(notification_schedules.id)
+              )
+              .limit(1)
+          ),
+          condition
+        )
+      );
 
   // 会場を履歴QueryへJOINせず、ページ確定後に一括取得して件数・順序を維持する。
   async function withRelatedEvents(
@@ -160,7 +187,6 @@ export function createMobileNotificationRepository(
     ): Promise<MobileNotificationListResult> {
       const [rows, totalResult] = await Promise.all([
         historyQuery(options.userId)
-          .where(v2HistoryOnly)
           .orderBy(
             desc(notification_schedules.sendAt),
             desc(notification_schedules.id)
@@ -169,9 +195,23 @@ export function createMobileNotificationRepository(
           .offset(options.offset)
           .all(),
         orm
-          .select({ total: count() })
-          .from(notifications)
-          .where(and(v2HistoryOnly, exists(recipientSchedules(options.userId))))
+          .select({ total: countDistinct(notifications.notificationId) })
+          .from(notification_recipients)
+          .innerJoin(
+            notification_schedules,
+            eq(
+              notification_schedules.id,
+              notification_recipients.notificationScheduleId
+            )
+          )
+          .innerJoin(
+            notifications,
+            eq(
+              notifications.notificationId,
+              notification_schedules.notificationId
+            )
+          )
+          .where(mine(options.userId))
           .get(),
       ]);
 
@@ -182,11 +222,10 @@ export function createMobileNotificationRepository(
     },
 
     async findByIdForUser(notificationId, userId) {
-      const row = await historyQuery(userId)
-        .where(
-          and(eq(notifications.notificationId, notificationId), v2HistoryOnly)
-        )
-        .get();
+      const row = await historyQuery(
+        userId,
+        eq(notifications.notificationId, notificationId)
+      ).get();
 
       return row
         ? (await withRelatedEvents([row as MobileNotificationRow]))[0]
