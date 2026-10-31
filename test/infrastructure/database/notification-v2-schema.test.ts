@@ -276,6 +276,7 @@ describe('通知v2のDB Schema', () => {
     ).all<{ name: string }>();
     expect(deliveryIndexes.results.map(index => index.name)).toEqual(
       expect.arrayContaining([
+        'idx_notification_push_deliveries_recipient_id',
         'idx_notification_push_deliveries_firebase_token_id',
         'idx_notification_push_deliveries_retry',
       ])
