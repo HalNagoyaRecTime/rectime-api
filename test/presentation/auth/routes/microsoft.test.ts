@@ -2309,3 +2309,286 @@ describe('ログインでのKVの書き込み', () => {
     expect(env.AUTH_KV.delete).not.toHaveBeenCalled();
   });
 });
+
+describe('POST /auth/microsoft/resolve-campus', () => {
+  const STATE = 'resolve-state';
+
+  async function countRows(table: 'users' | 'refresh_sessions') {
+    const row = await workerEnv.DB.prepare(
+      `SELECT COUNT(*) AS count FROM ${table}`
+    ).first<{ count: number }>();
+    return row?.count;
+  }
+
+  async function signLoginIdToken(claims: Record<string, unknown> = {}) {
+    const now = Math.floor(Date.now() / 1000);
+    return signIdToken({
+      sub: 'sub-rc',
+      oid: 'oid-rc',
+      tid: 'tid-1',
+      name: '山田花子',
+      nonce: 'nonce-rc',
+      iss: 'https://login.microsoftonline.com/tid-1/v2.0',
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+      ...claims,
+    });
+  }
+
+  async function putLoginState(overrides: Partial<PkceEntry> = {}) {
+    await putAuthState(STATE, {
+      nonce: 'nonce-rc',
+      client_type: 'mobile',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+      ...overrides,
+    });
+  }
+
+  function requestResolveCampus(
+    env: Env,
+    headers: Record<string, string> = { 'X-Client-Type': 'mobile' }
+  ) {
+    return buildApp().request(
+      '/resolve-campus',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({
+          code: 'auth-code-rc',
+          state: STATE,
+          code_verifier: generateRandom(32),
+        }),
+      },
+      env
+    );
+  }
+
+  async function expectErrorCode(res: Response, status: number, code: string) {
+    expect(res.status).toBe(status);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe(code);
+  }
+
+  it('preferred_usernameのドメインから学校を判定し、ms_refresh_tokenをno-storeで返す', async () => {
+    await putLoginState();
+    stubMicrosoftFetch(
+      await signLoginIdToken({ preferred_username: 'taro@ohs.hal.ac.jp' })
+    );
+
+    const res = await requestResolveCampus(buildEnv());
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    expect(await res.json()).toEqual({
+      campus: 'OSAKA',
+      ms_refresh_token: 'ms-refresh-token',
+    });
+    expect(await findAuthState(STATE)).toBeNull();
+  });
+
+  it('preferred_usernameが無い場合はemailから学校を判定する', async () => {
+    await putLoginState();
+    stubMicrosoftFetch(await signLoginIdToken({ email: 'taro@ths.hal.ac.jp' }));
+
+    const res = await requestResolveCampus(buildEnv());
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { campus: string };
+    expect(body.campus).toBe('TOKYO');
+  });
+
+  it('preferred_usernameが空白の場合もemailへフォールバックする', async () => {
+    await putLoginState();
+    stubMicrosoftFetch(
+      await signLoginIdToken({
+        preferred_username: '  ',
+        email: 'taro@oh.hal.ac.jp',
+      })
+    );
+
+    const res = await requestResolveCampus(buildEnv());
+
+    const body = (await res.json()) as { campus: string };
+    expect(body.campus).toBe('OSAKA');
+  });
+
+  it('未知のドメインやメール無しはNAGOYAになる', async () => {
+    await putLoginState();
+    stubMicrosoftFetch(
+      await signLoginIdToken({ preferred_username: 'guest@example.com' })
+    );
+    const unknown = await requestResolveCampus(buildEnv());
+    expect(((await unknown.json()) as { campus: string }).campus).toBe(
+      'NAGOYA'
+    );
+
+    await putLoginState();
+    stubMicrosoftFetch(await signLoginIdToken());
+    const none = await requestResolveCampus(buildEnv());
+    expect(((await none.json()) as { campus: string }).campus).toBe('NAGOYA');
+  });
+
+  it('レスポンスにid_token・access_tokenを含めない', async () => {
+    await putLoginState();
+    stubMicrosoftFetch(
+      await signLoginIdToken({ preferred_username: 'taro@nhs.hal.ac.jp' })
+    );
+
+    const res = await requestResolveCampus(buildEnv());
+
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(['campus', 'ms_refresh_token']);
+    expect(body).not.toHaveProperty('id_token');
+    expect(body).not.toHaveProperty('access_token');
+  });
+
+  it('成功してもusersとrefresh_sessionsを増やさない', async () => {
+    await putLoginState();
+    stubMicrosoftFetch(
+      await signLoginIdToken({ preferred_username: 'taro@ohs.hal.ac.jp' })
+    );
+    const usersBefore = await countRows('users');
+    const sessionsBefore = await countRows('refresh_sessions');
+
+    const res = await requestResolveCampus(buildEnv());
+
+    expect(res.status).toBe(200);
+    expect(await countRows('users')).toBe(usersBefore);
+    expect(await countRows('refresh_sessions')).toBe(sessionsBefore);
+  });
+
+  it('存在しないstateの場合は401 STATE_MISMATCHを返す', async () => {
+    const res = await requestResolveCampus(buildEnv());
+    await expectErrorCode(res, 401, 'STATE_MISMATCH');
+  });
+
+  it('期限切れのstateの場合は401 STATE_MISMATCHを返し、Microsoftへ問い合わせない', async () => {
+    await putLoginState();
+    await expireAuthState(STATE);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await requestResolveCampus(buildEnv());
+
+    await expectErrorCode(res, 401, 'STATE_MISMATCH');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['web', { 'X-Client-Type': 'web' }],
+    ['未指定', {}],
+  ])(
+    'X-Client-Typeが%sの場合は400 INVALID_CLIENT_TYPEを返す',
+    async (_label, headers) => {
+      await putLoginState();
+
+      const res = await requestResolveCampus(buildEnv(), headers);
+
+      await expectErrorCode(res, 400, 'INVALID_CLIENT_TYPE');
+      expect(await findAuthState(STATE)).not.toBeNull();
+    }
+  );
+
+  it('Microsoftとのトークン交換に失敗した場合は/tokenと同じ401 TOKEN_EXCHANGE_FAILEDを返す', async () => {
+    await putLoginState();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'invalid_grant' }), {
+          status: 400,
+        })
+      )
+    );
+
+    const res = await requestResolveCampus(buildEnv());
+
+    await expectErrorCode(res, 401, 'TOKEN_EXCHANGE_FAILED');
+  });
+
+  it('refresh_tokenが返されない場合は503 AUTH_PROVIDER_UNAVAILABLEを返す', async () => {
+    await putLoginState();
+    const idToken = await signLoginIdToken({
+      preferred_username: 'taro@ohs.hal.ac.jp',
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/discovery/v2.0/keys')) {
+          return new Response(JSON.stringify({ keys: [idTokenJwk] }), {
+            status: 200,
+          });
+        }
+        return new Response(
+          JSON.stringify({ id_token: idToken, access_token: 'ms-access' }),
+          { status: 200 }
+        );
+      })
+    );
+
+    const res = await requestResolveCampus(buildEnv());
+
+    await expectErrorCode(res, 503, 'AUTH_PROVIDER_UNAVAILABLE');
+  });
+
+  it('id_tokenの検証に失敗した場合は401 INVALID_ID_TOKENを返す', async () => {
+    await putLoginState();
+    // nonceがstateと一致しないid_token
+    stubMicrosoftFetch(
+      await signLoginIdToken({
+        preferred_username: 'taro@ohs.hal.ac.jp',
+        nonce: 'other-nonce',
+      })
+    );
+
+    const res = await requestResolveCampus(buildEnv());
+
+    await expectErrorCode(res, 401, 'INVALID_ID_TOKEN');
+  });
+
+  it('purposeがlogin以外のstateの場合は400 INVALID_STATE_PURPOSEを返す', async () => {
+    await putLoginState({ purpose: 'account_deletion' });
+
+    const res = await requestResolveCampus(buildEnv());
+
+    await expectErrorCode(res, 400, 'INVALID_STATE_PURPOSE');
+  });
+
+  it.each([
+    ['code_verifierが無い', undefined],
+    ['code_verifierが短すぎる', 'a'.repeat(42)],
+    ['code_verifierがbase64urlでない', '+'.repeat(43)],
+  ])(
+    '%smobileは400 INVALID_REQUESTを返し、stateを消費しない',
+    async (_label, codeVerifier) => {
+      await putLoginState();
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await buildApp().request(
+        '/resolve-campus',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Client-Type': 'mobile',
+          },
+          body: JSON.stringify({
+            code: 'auth-code-rc',
+            state: STATE,
+            ...(codeVerifier === undefined
+              ? {}
+              : { code_verifier: codeVerifier }),
+          }),
+        },
+        buildEnv()
+      );
+
+      await expectErrorCode(res, 400, 'INVALID_REQUEST');
+      expect(await findAuthState(STATE)).not.toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
+});
