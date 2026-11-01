@@ -1,6 +1,9 @@
 import { markdownBodySchema } from '../markdown';
 import { createRoute } from '@hono/zod-openapi';
-import { DEFAULT_NOTIFICATION_IMPORTANCE } from '../../../domain/entities/Notification';
+import {
+  DEFAULT_NOTIFICATION_IMPORTANCE,
+  NOTIFICATION_SCHEDULE_STATUSES,
+} from '../../../domain/entities/Notification';
 import {
   bearerAuth,
   digitsOnlyInteger,
@@ -175,9 +178,65 @@ export const adminNotificationListQuerySchema = z
     to: isoDateTimeSchema.optional(),
     page: digitsOnlyInteger(1, Number.MAX_SAFE_INTEGER, 1).optional(),
     limit: digitsOnlyInteger(1, 100, 50).optional(),
+    search: z.string().trim().optional(),
+    status: z.enum(NOTIFICATION_SCHEDULE_STATUSES).optional(),
+    creationMethod: z.enum(['manual', 'automatic']).optional(),
+    filterFrom: isoDateTimeSchema.optional(),
+    filterTo: isoDateTimeSchema.optional(),
+    sortBy: z
+      .enum([
+        'notificationId',
+        'title',
+        'audience',
+        'sendAt',
+        'creator',
+        'status',
+      ])
+      .optional(),
+    sortDirection: z.enum(['asc', 'desc']).optional(),
+    referenceTime: isoDateTimeSchema.optional(),
   })
   .strict()
   .superRefine((value, context) => {
+    if (
+      value.page === undefined &&
+      value.limit === undefined &&
+      (value.search ||
+        value.status ||
+        value.creationMethod ||
+        value.filterFrom ||
+        value.filterTo ||
+        value.sortBy ||
+        value.sortDirection ||
+        value.referenceTime)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '絞り込み・並べ替えにはpageまたはlimitを指定してください',
+      });
+    }
+    if ((value.sortBy === undefined) !== (value.sortDirection === undefined)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'sortByとsortDirectionはセットで指定してください',
+      });
+    }
+    if (value.referenceTime && !value.sortBy) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'referenceTimeにはsortByを指定してください',
+      });
+    }
+    if (
+      value.filterFrom &&
+      value.filterTo &&
+      Date.parse(value.filterFrom) > Date.parse(value.filterTo)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'filterFromはfilterTo以前の日時を指定してください',
+      });
+    }
     if ((value.from === undefined) !== (value.to === undefined)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

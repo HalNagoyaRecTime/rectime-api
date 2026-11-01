@@ -75,6 +75,15 @@ export interface NotificationDateRangeQueryDTO {
   to?: string;
   page?: number;
   limit?: number;
+  search?: string;
+  status?: NotificationScheduleStatus;
+  creationMethod?: NotificationCreationMethod;
+  filterFrom?: string;
+  filterTo?: string;
+  sortBy?:
+    'notificationId' | 'title' | 'audience' | 'sendAt' | 'creator' | 'status';
+  sortDirection?: 'asc' | 'desc';
+  referenceTime?: string;
 }
 
 export type NotificationDeliveryInputDTO =

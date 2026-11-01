@@ -34,6 +34,20 @@ export function createAdminNotificationQueryService(
         to: dateRange.to,
         page: query.page,
         limit: query.limit,
+        ...(query.search ? { search: query.search } : {}),
+        ...(query.status ? { status: query.status } : {}),
+        ...(query.creationMethod
+          ? { creationMethod: query.creationMethod }
+          : {}),
+        ...(query.filterFrom ? { filterFrom: query.filterFrom } : {}),
+        ...(query.filterTo ? { filterTo: query.filterTo } : {}),
+        ...(query.sortBy
+          ? {
+              sortBy: query.sortBy,
+              sortDirection: query.sortDirection,
+              now: query.referenceTime ?? now().toISOString(),
+            }
+          : {}),
       });
       const response: AdminNotificationListResponseDTO = {
         items: result.items.map(toListItem),

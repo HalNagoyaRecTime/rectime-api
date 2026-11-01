@@ -60,6 +60,17 @@ describe('AdminNotificationQueryController', () => {
     ['/admin/notifications?limit=0', 'limitが0'],
     ['/admin/notifications?limit=10000', 'limit超過'],
     ['/admin/notifications?limit=abc', 'limitが数値以外'],
+    ['/admin/notifications?search=test', 'ページ指定のない絞り込み'],
+    ['/admin/notifications?page=1&status=unknown', '不正な状態'],
+    ['/admin/notifications?page=1&sortBy=title', '方向のない並べ替え'],
+    [
+      '/admin/notifications?page=1&referenceTime=2026-01-01T00%3A00%3A00Z',
+      '並べ替えのない基準時刻',
+    ],
+    [
+      '/admin/notifications?page=1&sortBy=unknown&sortDirection=asc',
+      '不正な並べ替え',
+    ],
     ['/admin/notifications?from=2026-09-24T00%3A00%3A00Z', 'fromだけ'],
     ['/admin/notifications?to=2026-09-24T23%3A59%3A59Z', 'toだけ'],
     [
@@ -85,6 +96,22 @@ describe('AdminNotificationQueryController', () => {
     expect(service.getAdminNotifications).toHaveBeenCalledWith({
       page: 2,
       limit: 25,
+    });
+  });
+
+  it('絞り込みと並べ替えを検証してServiceに渡す', async () => {
+    const { service, request } = setup();
+    const response = await request(
+      '/admin/notifications?page=1&search=needle&status=failed&creationMethod=manual&sortBy=title&sortDirection=asc'
+    );
+    expect(response.status).toBe(200);
+    expect(service.getAdminNotifications).toHaveBeenCalledWith({
+      page: 1,
+      search: 'needle',
+      status: 'failed',
+      creationMethod: 'manual',
+      sortBy: 'title',
+      sortDirection: 'asc',
     });
   });
 

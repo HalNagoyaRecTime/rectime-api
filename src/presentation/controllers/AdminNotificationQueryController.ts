@@ -39,6 +39,14 @@ export function createAdminNotificationQueryController(
       to: c.req.query('to'),
       page: c.req.query('page'),
       limit: c.req.query('limit'),
+      search: c.req.query('search'),
+      status: c.req.query('status'),
+      creationMethod: c.req.query('creationMethod'),
+      filterFrom: c.req.query('filterFrom'),
+      filterTo: c.req.query('filterTo'),
+      sortBy: c.req.query('sortBy'),
+      sortDirection: c.req.query('sortDirection'),
+      referenceTime: c.req.query('referenceTime'),
     });
     if (!parsedQuery.success) {
       return errorResponse(
