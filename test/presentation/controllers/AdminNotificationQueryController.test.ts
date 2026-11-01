@@ -56,6 +56,10 @@ describe('AdminNotificationQueryController', () => {
   });
 
   it.each([
+    ['/admin/notifications?page=-1', '負のページ'],
+    ['/admin/notifications?limit=0', 'limitが0'],
+    ['/admin/notifications?limit=10000', 'limit超過'],
+    ['/admin/notifications?limit=abc', 'limitが数値以外'],
     ['/admin/notifications?from=2026-09-24T00%3A00%3A00Z', 'fromだけ'],
     ['/admin/notifications?to=2026-09-24T23%3A59%3A59Z', 'toだけ'],
     [
@@ -72,6 +76,16 @@ describe('AdminNotificationQueryController', () => {
       error: { code: 'VALIDATION_ERROR' },
     });
     expect(service.getAdminNotifications).not.toHaveBeenCalled();
+  });
+
+  it('ページ条件を数値としてServiceに渡す', async () => {
+    const { service, request } = setup();
+    const response = await request('/admin/notifications?page=2&limit=25');
+    expect(response.status).toBe(200);
+    expect(service.getAdminNotifications).toHaveBeenCalledWith({
+      page: 2,
+      limit: 25,
+    });
   });
 
   it('詳細を返し、存在しない通知を404にする', async () => {

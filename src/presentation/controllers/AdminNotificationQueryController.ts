@@ -9,7 +9,7 @@ import { errorResponse } from '../errors/errorResponse';
 import { NotificationContractErrors } from '../errors/notificationContractErrors';
 import {
   adminNotificationIdParams,
-  notificationDateRangeQuery,
+  adminNotificationListQuerySchema,
 } from '../openapi/notification';
 import { positivePathParamToNumber } from '../openapi/schemas';
 
@@ -34,9 +34,11 @@ export function createAdminNotificationQueryController(
   service: IAdminNotificationQueryService
 ) {
   const getAdminNotifications = async (c: AdminNotificationQueryContext) => {
-    const parsedQuery = notificationDateRangeQuery.safeParse({
+    const parsedQuery = adminNotificationListQuerySchema.safeParse({
       from: c.req.query('from'),
       to: c.req.query('to'),
+      page: c.req.query('page'),
+      limit: c.req.query('limit'),
     });
     if (!parsedQuery.success) {
       return errorResponse(
@@ -46,20 +48,8 @@ export function createAdminNotificationQueryController(
       );
     }
 
-    const pageParam = c.req.query('page');
-    const limitParam = c.req.query('limit');
-    const page = pageParam !== undefined ? Number(pageParam) : undefined;
-    const limit = limitParam !== undefined ? Number(limitParam) : undefined;
-
     try {
-      return c.json(
-        await service.getAdminNotifications({
-          ...parsedQuery.data,
-          page,
-          limit,
-        }),
-        200
-      );
+      return c.json(await service.getAdminNotifications(parsedQuery.data), 200);
     } catch {
       return errorResponse(c, LIST_INTERNAL_ERROR);
     }
