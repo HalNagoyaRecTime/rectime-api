@@ -33,6 +33,28 @@ describe('AdminNotificationQueryRepository', () => {
     ]);
   });
 
+  it('ページ指定なしは51件すべて返し、指定時はページ単位で返す', async () => {
+    const fixture = await createFixture();
+    for (let index = 0; index < 51; index++) {
+      await commandRepository.create(
+        buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+      );
+    }
+    const range = {
+      from: '0001-01-01T00:00:00.000Z',
+      to: '9999-12-31T23:59:59.999Z',
+    };
+    const legacy = await repository.findAll(range);
+    const first = await repository.findAll({ ...range, page: 1, limit: 50 });
+    const second = await repository.findAll({ ...range, page: 2, limit: 50 });
+    expect(legacy.items).toHaveLength(51);
+    expect(first.items).toHaveLength(50);
+    expect(second.items).toHaveLength(1);
+    expect(
+      [...first.items, ...second.items].map(item => item.notification_id)
+    ).toEqual(legacy.items.map(item => item.notification_id));
+  });
+
   it('manual Notification detailを取得する', async () => {
     const fixture = await createFixture();
     const created = await commandRepository.create(
@@ -273,7 +295,7 @@ describe('AdminNotificationQueryRepository', () => {
       expect(batchSpy.mock.calls[0]?.[0]).toHaveLength(4);
       expect(listed.pagination.totalCount).toBe(2);
       expect(listed.pagination.page).toBe(1);
-      expect(listed.pagination.limit).toBe(50);
+      expect(listed.pagination.limit).toBe(2);
     } finally {
       batchSpy.mockRestore();
     }

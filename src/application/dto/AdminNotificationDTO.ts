@@ -148,7 +148,7 @@ export interface AdminNotificationPaginationDTO {
 
 export interface AdminNotificationListResponseDTO {
   items: AdminNotificationListItemDTO[];
-  pagination: AdminNotificationPaginationDTO;
+  pagination?: AdminNotificationPaginationDTO;
 }
 
 export interface NotificationConfigDTO {

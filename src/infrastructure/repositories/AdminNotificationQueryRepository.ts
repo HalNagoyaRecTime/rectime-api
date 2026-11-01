@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type {
   AdminNotificationQueryAudienceItem,
+  AdminNotificationQueryOptions,
   AdminNotificationQueryResult,
   AdminNotificationQuerySchedule,
   AdminNotificationQueryUserReference,
@@ -110,10 +111,137 @@ const audienceSelection = `
 export function createAdminNotificationQueryRepository(
   db: D1Database
 ): IAdminNotificationQueryRepository {
+  const findAllUnpaged = async (options: AdminNotificationQueryOptions) => {
+    const scopedScheduleIds = `
+        SELECT scoped_schedule.notification_schedule_id
+        FROM notification_schedules scoped_schedule
+        INNER JOIN notifications scoped_notification
+          ON scoped_notification.notification_id = scoped_schedule.notification_id
+        WHERE scoped_notification.notification_type = 'notification_general'
+          AND julianday(scoped_schedule.send_at) >= julianday(?)
+          AND julianday(scoped_schedule.send_at) <= julianday(?)
+      `;
+    const notificationScope = `n.notification_type = 'notification_general' AND EXISTS (
+        SELECT 1
+        FROM notification_schedules scoped_schedule
+        WHERE scoped_schedule.notification_id = n.notification_id
+          AND julianday(scoped_schedule.send_at) >= julianday(?)
+          AND julianday(scoped_schedule.send_at) <= julianday(?)
+      )`;
+    const scheduleScope = `ns.notification_schedule_id IN (
+        ${scopedScheduleIds}
+      )`;
+    const audienceScope = `na.notification_schedule_id IN (
+        ${scopedScheduleIds}
+      )`;
+    const notificationBindings = [options.from, options.to];
+
+    const [notificationResult, scheduleResult, audienceResult, summaryResult] =
+      await db.batch([
+        db
+          .prepare(
+            `SELECT ${notificationSelection}
+               FROM notifications n
+               LEFT JOIN users creator
+                 ON creator.user_id = n.created_by_user_id
+               LEFT JOIN gatherings source_gathering
+                 ON n.source_type = 'gathering'
+                AND source_gathering.gathering_id = n.source_id
+               LEFT JOIN gathering_spots source_spot
+                 ON source_spot.gathering_spot_id = source_gathering.gathering_spot_id
+               WHERE ${notificationScope}
+               ORDER BY datetime(n.created_at) DESC, n.notification_id DESC`
+          )
+          .bind(...notificationBindings),
+        db
+          .prepare(
+            `SELECT ${scheduleSelection}
+               FROM notification_schedules ns
+               LEFT JOIN users scheduled_by
+                 ON scheduled_by.user_id = ns.scheduled_by_user_id
+               LEFT JOIN users stopped_by
+                 ON stopped_by.user_id = ns.stopped_by_user_id
+               WHERE ${scheduleScope}
+               ORDER BY ns.notification_id, julianday(ns.send_at), ns.notification_schedule_id`
+          )
+          .bind(...notificationBindings),
+        db
+          .prepare(
+            `SELECT ${audienceSelection}
+               FROM notification_audiences na
+               LEFT JOIN class_rooms cr
+                 ON na.audience_type = 'class_room'
+                AND cr.class_room_id = na.target_id
+               LEFT JOIN gatherings g
+                 ON na.audience_type = 'gathering'
+                AND g.gathering_id = na.target_id
+               LEFT JOIN gathering_spots gs
+                 ON gs.gathering_spot_id = g.gathering_spot_id
+               LEFT JOIN events e
+                 ON na.audience_type = 'event'
+                AND e.event_id = na.target_id
+               LEFT JOIN users audience_user
+                 ON na.audience_type = 'user'
+                AND audience_user.user_id = na.target_id
+               WHERE ${audienceScope}
+               ORDER BY na.notification_schedule_id, na.notification_audience_id`
+          )
+          .bind(...notificationBindings),
+        db
+          .prepare(
+            `SELECT nr.notification_schedule_id,
+                      COUNT(*) AS total_count,
+                      SUM(CASE WHEN EXISTS (
+                        SELECT 1 FROM notification_push_deliveries sent_delivery
+                        WHERE sent_delivery.notification_recipient_id = nr.notification_recipient_id
+                          AND sent_delivery.status = 'sent'
+                      ) THEN 1 ELSE 0 END) AS success_count,
+                      SUM(CASE WHEN EXISTS (
+                        SELECT 1 FROM notification_push_deliveries any_delivery
+                        WHERE any_delivery.notification_recipient_id = nr.notification_recipient_id
+                      ) AND NOT EXISTS (
+                        SELECT 1 FROM notification_push_deliveries sent_delivery
+                        WHERE sent_delivery.notification_recipient_id = nr.notification_recipient_id
+                          AND sent_delivery.status = 'sent'
+                      ) THEN 1 ELSE 0 END) AS failed_count,
+                      SUM(CASE WHEN NOT EXISTS (
+                        SELECT 1 FROM notification_push_deliveries any_delivery
+                        WHERE any_delivery.notification_recipient_id = nr.notification_recipient_id
+                      ) THEN 1 ELSE 0 END) AS no_push_target_count
+               FROM notification_recipients nr
+               WHERE nr.notification_schedule_id IN (
+                 ${scopedScheduleIds}
+               )
+               GROUP BY nr.notification_schedule_id`
+          )
+          .bind(...notificationBindings),
+      ]);
+
+    return assembleResults(
+      notificationResult.results as unknown as NotificationRow[],
+      scheduleResult.results as unknown as ScheduleRow[],
+      audienceResult.results as unknown as AudienceRow[],
+      summaryResult.results as unknown as RecipientSummaryRow[]
+    );
+  };
+
   return {
     async findAll(
       options
     ): Promise<AdminNotificationQueryResultWithPagination> {
+      if (options.page === undefined && options.limit === undefined) {
+        const items = await findAllUnpaged(options);
+        return {
+          items,
+          pagination: {
+            page: 1,
+            limit: Math.max(1, items.length),
+            totalCount: items.length,
+            totalPages: 1,
+          },
+        };
+      }
+
       const page = options.page ?? 1;
       const limit = options.limit ?? 50;
       const offset = (page - 1) * limit;

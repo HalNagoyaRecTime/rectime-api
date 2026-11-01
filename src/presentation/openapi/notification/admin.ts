@@ -71,7 +71,7 @@ export const adminNotificationPaginationSchema = z
 export const adminNotificationListResponseSchema = z
   .object({
     items: z.array(adminNotificationListItemSchema),
-    pagination: adminNotificationPaginationSchema,
+    pagination: adminNotificationPaginationSchema.optional(),
   })
   .strict()
   .openapi('AdminNotificationList');

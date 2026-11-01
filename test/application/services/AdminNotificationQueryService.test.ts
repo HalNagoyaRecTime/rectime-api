@@ -98,7 +98,6 @@ describe('AdminNotificationQueryService', () => {
           ],
         },
       ],
-      pagination: { page: 1, limit: 50, totalCount: 1, totalPages: 1 },
     });
     expect(repository.findAll).toHaveBeenCalledWith({
       from: '2026-09-25T00:00:00.000Z',
@@ -124,6 +123,18 @@ describe('AdminNotificationQueryService', () => {
       limit: undefined,
     });
     expect(result).not.toHaveProperty('appliedRange');
+    expect(result).not.toHaveProperty('pagination');
+  });
+
+  it('ページ指定時にページ情報を返す', async () => {
+    const service = createAdminNotificationQueryService(buildRepository());
+    const result = await service.getAdminNotifications({ page: 1, limit: 50 });
+    expect(result.pagination).toEqual({
+      page: 1,
+      limit: 50,
+      totalCount: 1,
+      totalPages: 1,
+    });
   });
 
   it('詳細はdetail本文とstop情報を含める', async () => {

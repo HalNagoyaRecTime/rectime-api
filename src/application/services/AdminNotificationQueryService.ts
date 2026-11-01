@@ -37,7 +37,9 @@ export function createAdminNotificationQueryService(
       });
       const response: AdminNotificationListResponseDTO = {
         items: result.items.map(toListItem),
-        pagination: toPagination(result.pagination),
+        ...(query.page !== undefined || query.limit !== undefined
+          ? { pagination: toPagination(result.pagination) }
+          : {}),
       };
       return response;
     },
