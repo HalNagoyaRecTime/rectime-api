@@ -35,7 +35,7 @@ const teacher: TeacherEntity = {
   lockVersion: 0,
 };
 
-function buildService() {
+function buildService(studentEmailDomain = 'nhs.hal.ac.jp') {
   const getUserCategories = vi.fn().mockResolvedValue({
     is_student: false,
     is_staff: false,
@@ -51,7 +51,7 @@ function buildService() {
       { getUserCategories },
       { findByUserId: findStudent },
       { findByUserId: findTeacher },
-      'nhs.hal.ac.jp'
+      studentEmailDomain
     ),
   };
 }
@@ -173,6 +173,49 @@ describe('AuthProfileService', () => {
         student_id_number: null,
         is_student: false,
         student_profile_missing: true,
+      });
+    });
+
+    describe.each([
+      ['大阪', 'ohs.hal.ac.jp', 'ohs00123@ohs.hal.ac.jp'],
+      ['東京', 'ths.hal.ac.jp', 'ths00123@ths.hal.ac.jp'],
+    ])('%s校の学生情報未連携判定', (_, domain, email) => {
+      it('学生情報がなければtrueを返す', async () => {
+        const { service } = buildService(domain);
+
+        expect(await service.getProfile({ ...identity, email })).toMatchObject({
+          student_id_number: null,
+          is_student: false,
+          student_profile_missing: true,
+        });
+      });
+
+      it('学生情報があればfalseを返す', async () => {
+        const { service, findStudent, getUserCategories } =
+          buildService(domain);
+        findStudent.mockResolvedValue(student);
+        getUserCategories.mockResolvedValue({
+          is_student: true,
+          is_staff: false,
+          is_teacher: false,
+        });
+
+        expect(await service.getProfile({ ...identity, email })).toMatchObject({
+          student_id_number: '00123',
+          is_student: true,
+          student_profile_missing: false,
+        });
+      });
+
+      it('接頭辞が学校と一致しなければfalseを返す', async () => {
+        const { service } = buildService(domain);
+
+        expect(
+          await service.getProfile({
+            ...identity,
+            email: `nhs00123@${domain}`,
+          })
+        ).toMatchObject({ student_profile_missing: false });
       });
     });
 
