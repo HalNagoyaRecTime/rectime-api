@@ -160,7 +160,7 @@ export function createAuthService(
       // ID Token側も同じ形に揃える。氏名は表示用途に限り、職員番号などが
       // 含まれていても本人確認には使わない。
       // preferred_usernameはMicrosoftのサインイン用アドレスであり、
-      // 連絡先用途のemail claimにはフォールバックしない。また、nhs+数字の
+      // 連絡先用途のemail claimにはフォールバックしない。また、学校の接頭辞+数字の
       // 学生形式は、DBに該当学生がまだいなくても教員として扱わない。
       if (normalizedTeacherEmail && !studentIdNumber) {
         const teacher =
