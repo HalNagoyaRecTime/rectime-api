@@ -131,7 +131,7 @@ describe('配信状況を返す管理用クエリのD1読み取り行数', () =>
     });
 
     expect(
-      notifications[0]?.schedules[0]?.recipient_push_summary
+      notifications.items[0]?.schedules[0]?.recipient_push_summary
     ).toMatchObject({
       total_count: TARGET_RECIPIENTS,
       success_count: TARGET_RECIPIENTS / 2,
