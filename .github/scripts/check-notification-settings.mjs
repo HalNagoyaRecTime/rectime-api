@@ -2,18 +2,22 @@ import { execFileSync } from 'node:child_process';
 import { FCM_SETTING_NAMES } from '../../src/infrastructure/services/FcmConfiguration.ts';
 
 // Secretの値は取得せず、デプロイ対象Workerの登録名だけを検証する。
+const usage =
+  '引数は --config <path> [--env development または --env staging] を指定してください。本番の--envは省略します。';
 const args = process.argv.slice(2);
+if (args[0] !== '--config' || typeof args[1] !== 'string') {
+  throw new Error(usage);
+}
+const rest = args.slice(2);
 if (
-  args.length !== 0 &&
+  rest.length !== 0 &&
   !(
-    args.length === 2 &&
-    args[0] === '--env' &&
-    ['development', 'staging'].includes(args[1])
+    rest.length === 2 &&
+    rest[0] === '--env' &&
+    ['development', 'staging'].includes(rest[1])
   )
 ) {
-  throw new Error(
-    '引数は --env development または --env staging を指定してください。本番は引数なしです。'
-  );
+  throw new Error(usage);
 }
 let names;
 try {

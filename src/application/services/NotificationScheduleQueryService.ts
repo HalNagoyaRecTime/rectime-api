@@ -1,4 +1,3 @@
-import type { NotificationDateRangeQueryDTO } from '../dto/AdminNotificationDTO';
 import type {
   NotificationScheduleDetailDTO,
   NotificationScheduleListItemDTO,
@@ -34,9 +33,7 @@ export function createNotificationScheduleQueryService(
   };
 }
 
-function getDefaultDateRange(
-  now: Date
-): Required<NotificationDateRangeQueryDTO> {
+function getDefaultDateRange(now: Date): { from: string; to: string } {
   const date = new Date(now.getTime() + JST_OFFSET_MS)
     .toISOString()
     .slice(0, 10);

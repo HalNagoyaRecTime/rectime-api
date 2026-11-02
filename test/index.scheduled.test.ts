@@ -17,9 +17,9 @@ function buildExecutionContext(): {
   return { ctx, waitUntilPromises };
 }
 
-// index.tsのscheduledハンドラは、通知配信Cron('* * * * *')とアカウント
-// 削除の後片付け再実行Cron('0 18 * * *', #345)をevent.cronの値で
-// 区別する。AccountDeletionService.retryPendingPurges自体の詳細な挙動は
+// index.tsのscheduledハンドラは、通知配信Cron('* * * * *')と日次の
+// 後片付けCron('0 18 * * *', #345)をevent.cronの値で区別する。
+// AccountDeletionService.retryPendingPurges自体の詳細な挙動は
 // AccountDeletionService.test.tsで検証済み。
 afterEach(() => vi.restoreAllMocks());
 
@@ -35,6 +35,8 @@ describe('scheduled handler', () => {
       .spyOn(container, 'createDIContainer')
       .mockReturnValue({
         accountDeletionService: { retryPendingPurges },
+        authStateRepository: { deleteExpired: vi.fn() },
+        refreshSessionRepository: { deleteExpired: vi.fn() },
       } as unknown as ReturnType<typeof container.createDIContainer>);
 
     const { ctx, waitUntilPromises } = buildExecutionContext();
@@ -49,6 +51,32 @@ describe('scheduled handler', () => {
 
     expect(retryPendingPurges).toHaveBeenCalledWith(100);
     createDIContainerSpy.mockRestore();
+  });
+
+  it('日次Cronで期限切れのstateとRefresh Sessionを削除する', async () => {
+    const container = await import('../src/di/container');
+    const deleteExpiredStates = vi.fn().mockResolvedValue(undefined);
+    const deleteExpiredSessions = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(container, 'createDIContainer').mockReturnValue({
+      accountDeletionService: {
+        retryPendingPurges: vi.fn().mockResolvedValue(undefined),
+      },
+      authStateRepository: { deleteExpired: deleteExpiredStates },
+      refreshSessionRepository: { deleteExpired: deleteExpiredSessions },
+    } as unknown as ReturnType<typeof container.createDIContainer>);
+
+    const { ctx, waitUntilPromises } = buildExecutionContext();
+    const event = {
+      cron: '0 18 * * *',
+      scheduledTime: Date.parse('2026-11-07T18:00:00Z'),
+      noRetry: () => {},
+    } as unknown as ScheduledEvent;
+
+    await worker.scheduled(event, workerEnv, ctx);
+    await Promise.all(waitUntilPromises);
+
+    expect(deleteExpiredStates).toHaveBeenCalledOnce();
+    expect(deleteExpiredSessions).toHaveBeenCalledOnce();
   });
 
   it('EVENT_DATE未設定ではautomatic再同期をせずmanual v2だけResolverする', async () => {

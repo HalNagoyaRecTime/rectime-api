@@ -5,9 +5,14 @@ import type {
   EventGatheringWriteInput,
 } from '../../domain/entities/EventGathering';
 import type { IEventGatheringSettingsRepository } from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
+import type {
+  GatheringNotificationChanges,
+  IGatheringSettingsTransaction,
+} from '../../domain/interfaces/transactions/IGatheringSettingsTransaction';
 import type { IEventRepository } from '../../domain/interfaces/repositories/IEventRepository';
 import type { IGatheringSpotRepository } from '../../domain/interfaces/repositories/IGatheringSpotRepository';
 import type { IGatheringNotificationGeneratorService } from './GatheringNotificationGeneratorService';
+import type { IGatheringNotificationCleanupService } from './IGatheringNotificationCleanupService';
 import type {
   EventGatheringSettingsDTO,
   RoundSettingInputDTO,
@@ -71,7 +76,9 @@ export function createEventGatheringSettingsService(
   gatheringSpotRepository: IGatheringSpotRepository,
   eventGatheringSettingsRepository: IEventGatheringSettingsRepository,
   imageUrlSigner: IImageUrlSigner,
-  gatheringNotificationGeneratorService: IGatheringNotificationGeneratorService
+  gatheringNotificationGeneratorService: IGatheringNotificationGeneratorService,
+  gatheringNotificationCleanupService: IGatheringNotificationCleanupService,
+  gatheringSettingsTransaction: IGatheringSettingsTransaction
 ): IEventGatheringSettingsService {
   const ensureGatheringSpotsExist = async (gatheringSpotIds: number[]) => {
     const existing =
@@ -161,27 +168,29 @@ export function createEventGatheringSettingsService(
             update.gathering_time
         )
         .map(update => update.gathering_id);
+      const notificationCleanup =
+        gatheringNotificationCleanupService.prepareCleanup(
+          changeSet.delete_ids
+        );
+      const notificationChanges: GatheringNotificationChanges = {};
+      if (changedGatheringTimeIds.length > 0) {
+        notificationChanges.holdNotificationSyncGatheringIds =
+          changedGatheringTimeIds;
+      }
+      if (notificationCleanup) {
+        notificationChanges.notificationCleanup = notificationCleanup;
+      }
 
-      // 指定の無い項目は渡さない。従来どおり、何も指定しなければ引数は changeSet だけ。
-      const applyOptions = {
-        ...(changedGatheringTimeIds.length > 0 && {
-          holdNotificationSyncGatheringIds: changedGatheringTimeIds,
-        }),
-        ...(command.lock_version !== undefined && {
-          expectedLockVersion: command.lock_version,
-        }),
-      };
-
-      let applied: boolean;
       try {
-        // Gathering更新と旧automatic Scheduleの保留を同一batchで確定する。
-        applied =
-          Object.keys(applyOptions).length > 0
-            ? await eventGatheringSettingsRepository.apply(
-                changeSet,
-                applyOptions
-              )
-            : await eventGatheringSettingsRepository.apply(changeSet);
+        // Gathering更新・削除と通知cleanupを同一batchで確定する。
+        if (Object.keys(notificationChanges).length > 0) {
+          await gatheringSettingsTransaction.apply(
+            changeSet,
+            notificationChanges
+          );
+        } else {
+          await gatheringSettingsTransaction.apply(changeSet);
+        }
       } catch (error) {
         // 事前確認と保存の間に状態が変わると外部キー制約で失敗する。
         // Eventや集合場所が消えていたのか、削除対象に参加者が加わったのかを
@@ -192,13 +201,6 @@ export function createEventGatheringSettingsService(
         }
         await ensureGatheringSpotsExist(gatheringSpotIds);
         throw new Error('Gathering in use');
-      }
-      if (!applied) {
-        // 何も書かれていない。Eventが消えたのか、版が変わったのかを切り分ける。
-        if (!(await eventRepository.exists(command.event_id))) {
-          throw new Error('Event not found');
-        }
-        throw new Error('Event update conflict');
       }
 
       const savedEvent = await eventRepository.findById(command.event_id);

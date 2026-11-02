@@ -54,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Smoke Testスクリプトを検証
+        run: npm run backend:smoke:test
+
       - name: Run tests
         run: npm test
 
@@ -93,7 +96,7 @@ jobs:
         run: npm ci
 
       - name: Wrangler bundleをdry runで検証
-        run: npm exec -- wrangler deploy --dry-run --env development --outdir .wrangler/dependency-validation
+        run: npm exec -- wrangler deploy --dry-run --env development --outdir .wrangler/dependency-validation --config wrangler-nagoya.jsonc
 
   migration-check:
     # developを取り込むPR(develop→main、develop→develop-v2)は、developへのPRで

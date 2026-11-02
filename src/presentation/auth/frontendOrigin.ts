@@ -36,19 +36,8 @@ export async function getStoredFrontendOrigin(
   }
 
   try {
-    const raw = await c.env.AUTH_KV.get(`pkce:${state}`);
-    if (!raw) {
-      return null;
-    }
-
-    const entry = JSON.parse(raw) as {
-      client_type?: unknown;
-      frontend_origin?: unknown;
-    };
-    if (
-      entry.client_type !== 'web' ||
-      typeof entry.frontend_origin !== 'string'
-    ) {
+    const entry = await c.get('container').authStateRepository.find(state);
+    if (entry?.client_type !== 'web' || entry.frontend_origin === undefined) {
       return null;
     }
 

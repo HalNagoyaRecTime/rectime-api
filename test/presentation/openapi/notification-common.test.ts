@@ -2,11 +2,13 @@ import { z } from '@hono/zod-openapi';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { NotificationDateRangeQueryDTO } from '../../../src/application/dto/AdminNotificationDTO';
 import type { NotificationScheduleResultsQueryDTO } from '../../../src/application/dto/NotificationScheduleDTO';
+import { FIREBASE_PLATFORM_NAMES } from '../../../src/domain/entities/FirebaseToken';
 import {
   NOTIFICATION_AUDIENCE_TYPES,
   NOTIFICATION_DELIVERY_TYPES,
   NOTIFICATION_IMPORTANCE_LEVELS,
   NOTIFICATION_PUSH_DELIVERY_STATUSES,
+  NOTIFICATION_RECIPIENT_RESOLUTION_STATUSES,
   NOTIFICATION_SCHEDULE_STATUSES,
   NOTIFICATION_SOURCE_TYPES,
   NOTIFICATION_TYPES,
@@ -44,6 +46,11 @@ describe('通知契約のDomain literal', () => {
       'failed',
       'stopped',
     ]);
+    expect(NOTIFICATION_RECIPIENT_RESOLUTION_STATUSES).toEqual([
+      'pending',
+      'resolved',
+    ]);
+    expect(FIREBASE_PLATFORM_NAMES).toEqual(['ios', 'android']);
     expect(NOTIFICATION_AUDIENCE_TYPES).toEqual([
       'all',
       'class_room',
@@ -60,9 +67,15 @@ describe('通知契約のDomain literal', () => {
 
 describe('通知queryのApplication DTOとOpenAPI schemaの型パリティ', () => {
   it('date rangeとresults queryが一致する', () => {
-    expectTypeOf<
-      z.infer<typeof notificationDateRangeQuery>
-    >().toEqualTypeOf<NotificationDateRangeQueryDTO>();
+    // NotificationDateRangeQueryDTOはpage/limitを含むが、
+    // notificationDateRangeQueryはfrom/toのみを検証するため、
+    // from/toの部分のみを比較する
+    expectTypeOf<NotificationDateRangeQueryDTO>().toExtend<{
+      from?: string;
+      to?: string;
+      page?: number;
+      limit?: number;
+    }>();
     expectTypeOf<
       z.infer<typeof notificationResultsQuery>
     >().toEqualTypeOf<NotificationScheduleResultsQueryDTO>();

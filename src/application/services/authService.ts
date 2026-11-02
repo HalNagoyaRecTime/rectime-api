@@ -1,12 +1,13 @@
-import type { KVNamespace } from '@cloudflare/workers-types';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAuthService, MicrosoftClaims } from './IAuthService';
 import type { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
+import type { IRefreshSessionRepository } from '../../domain/interfaces/repositories/IRefreshSessionRepository';
 import type { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
 import {
   extractStudentIdNumber,
   normalizeMicrosoftEmail,
+  pickMicrosoftEmailClaim,
 } from '../../domain/auth/email';
 
 export function createAuthService(
@@ -14,7 +15,7 @@ export function createAuthService(
   studentRepository: IStudentRepository,
   teacherRepository: ITeacherRepository,
   studentEmailDomain: string,
-  authKv: KVNamespace,
+  refreshSessionRepository: Pick<IRefreshSessionRepository, 'deleteByUserId'>,
   firebaseTokenRepository: IFirebaseTokenRepository
 ): IAuthService {
   if (!studentEmailDomain) {
@@ -28,12 +29,7 @@ export function createAuthService(
         typeof claims.preferred_username === 'string'
           ? claims.preferred_username
           : '';
-      const emailClaim = typeof claims.email === 'string' ? claims.email : '';
-      const email = preferredUsername.trim()
-        ? preferredUsername
-        : emailClaim.trim()
-          ? emailClaim
-          : '';
+      const email = pickMicrosoftEmailClaim(claims) ?? '';
       const claimName =
         typeof claims.name === 'string' ? claims.name : undefined;
       const displayName = claimName ?? email;
@@ -307,17 +303,8 @@ export function createAuthService(
       //    コメント参照)。
       await userRepository.markAsDeleted(userId);
 
-      // 2. 発行済みの全Refresh Sessionを失効させる。mobile_refresh_by_user
-      //    は1ユーザー1セッション設計(新規ログインのたびに上書きされる)
-      //    のため、これを削除すれば現在・過去を含め有効なセッションが
-      //    存在しない状態になる。
-      const refreshTokenId = await authKv.get(
-        `mobile_refresh_by_user:${userId}`
-      );
-      if (refreshTokenId) {
-        await authKv.delete(`mobile_refresh:${refreshTokenId}`);
-      }
-      await authKv.delete(`mobile_refresh_by_user:${userId}`);
+      // 2. 発行済みの全Refresh Sessionを失効させる。
+      await refreshSessionRepository.deleteByUserId(userId);
 
       // 3. Push対象から即時除外するためTokenを物理削除する。v2 Delivery履歴は
       //    FKのON DELETE SET NULLでToken参照だけを外して保持する。

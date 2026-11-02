@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
@@ -342,14 +342,13 @@ async function insertFixtures(): Promise<void> {
   await execute(
     `INSERT INTO notification_schedules
      (notification_schedule_id, created_user_id, scheduled_by_user_id,
-      event_id, notification_id, firebase_token_id, send_status, send_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'scheduled', '2099-10-21T00:00:00.000Z')`,
+      event_id, notification_id, send_status, send_at)
+     VALUES (?, ?, ?, ?, ?, 'scheduled', '2099-10-21T00:00:00.000Z')`,
     regular.schedule,
     regular.user,
     regular.user,
     regular.event,
-    regular.notification,
-    regular.token
+    regular.notification
   );
   await execute(
     `INSERT INTO notification_audiences
@@ -378,6 +377,18 @@ async function insertFixtures(): Promise<void> {
 }
 
 describe('0047_remove_initial_dummy_data.sql', () => {
+  beforeAll(async () => {
+    // 0047適用時点の旧Schedule列を、0052適用後の現行スキーマへ復元する。
+    await env.DB.batch([
+      env.DB.prepare(
+        'ALTER TABLE notification_schedules ADD COLUMN created_user_id INTEGER'
+      ),
+      env.DB.prepare(
+        'ALTER TABLE notification_schedules ADD COLUMN event_id INTEGER'
+      ),
+    ]);
+  });
+
   beforeEach(async () => {
     await cleanFixtures();
     await insertFixtures();

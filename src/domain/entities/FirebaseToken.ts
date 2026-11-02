@@ -11,7 +11,9 @@ export interface FirebaseTokenEntity {
 /** 1: iOS、2: Android */
 export type FirebasePlatform = 1 | 2;
 
-export type FirebasePlatformName = 'ios' | 'android';
+export const FIREBASE_PLATFORM_NAMES = ['ios', 'android'] as const;
+
+export type FirebasePlatformName = (typeof FIREBASE_PLATFORM_NAMES)[number];
 
 const PLATFORM_CODE_BY_NAME = {
   ios: 1,

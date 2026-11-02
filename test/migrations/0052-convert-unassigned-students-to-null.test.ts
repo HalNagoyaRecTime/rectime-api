@@ -153,8 +153,8 @@ describe('0052_convert_unassigned_students_to_null.sql', () => {
     ).first<{ notification_id: number }>();
     const schedule = await env.DB.prepare(
       `INSERT INTO notification_schedules (
-         notification_id, importance, send_status, send_at
-       ) VALUES (?, 2, 'scheduled', '2026-10-31T00:00:00.000Z')
+         notification_id, send_status, send_at
+       ) VALUES (?, 'scheduled', '2026-10-31T00:00:00.000Z')
        RETURNING notification_schedule_id`
     )
       .bind(notification!.notification_id)

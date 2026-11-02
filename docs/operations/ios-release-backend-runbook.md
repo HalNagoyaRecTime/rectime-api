@@ -32,7 +32,7 @@ iOSリリース時に、認証・主要API・D1・デプロイで問題が発生
 
 - プレビュー専用の保存領域を新規作成しない
 - 障害時に不足するPreview BindingをDashboardで応急追加しない
-- 障害調査時は、環境一覧と`wrangler.jsonc`、`.github/workflows/deploy.yml`が一致していることを確認する
+- 障害調査時は、環境一覧と`wrangler-nagoya.jsonc`、`.github/workflows/deploy.yml`が一致していることを確認する
 
 ## 4. 権限と担当
 
@@ -59,7 +59,7 @@ iOSリリース時に、認証・主要API・D1・デプロイで問題が発生
 
 1. 対象Commit SHAとリリース担当者を記録する。
 2. CIの`format:check`、`lint`、`type-check`、`test`が成功していることを確認する。
-3. Deploy Workflowの対象branch、Worker、D1が想定どおりであり、本Runbookの環境一覧と`wrangler.jsonc`、`.github/workflows/deploy.yml`が一致していることを確認する。
+3. Deploy Workflowの対象branch、Worker、D1が想定どおりであり、本Runbookの環境一覧と`wrangler-nagoya.jsonc`、`.github/workflows/deploy.yml`が一致していることを確認する。
 4. 未解決のBlocking Issueがないことを確認する。
 
 ### 5.2 Secretと環境変数
@@ -121,7 +121,33 @@ curl --fail-with-body --silent --show-error \
 {"status":"ok"}
 ```
 
-### 6.2 認証API
+### 6.2 読み取り専用の自動Smoke Test
+
+Node.js 22で`BACKEND_SMOKE_BASE_URL`へ対象環境のoriginを指定し、実行する。
+接続先は本書の環境一覧と照合する。Tokenを引数や環境変数へ直接書かない。
+
+```shell
+npm run backend:smoke
+```
+
+Tokenなしでは`/health`、未認証401、合成無効Tokenの401だけ確認する。
+結果は`result: partial`、`authenticated: not_run`となる。終了コード0でも、認証済みAPIや運用準備全体の完了を意味しない。
+
+実際のiOSログインで取得したTokenを、Repository外の読み取り権限を制限した一時ファイルへ保存した場合だけ、
+`BACKEND_SMOKE_TOKEN_FILE`にそのパスを指定して再実行する。Token取得のためにログ出力を追加しない。
+ファイルは確認後に破棄する。iOSアプリ上での確認は引き続き必要。
+
+- 認証済み確認: `auth/me`、`events`、`me/events`、`me/notifications`のGET。
+- 対象はHTTPS originのみ。ローカル検証ではloopbackへのHTTPも許可する。
+- リダイレクトは追跡しない。各リクエストは10秒でTimeoutにする。
+- 出力は固定の確認名、path、HTTP Status、判定のみ。Token、個人情報、応答本文、例外本文は出力しない。
+- 終了コード: 0は実行した確認が成功、1は通信・Status・JSONの確認失敗、2は接続先またはTokenファイルの設定不備。
+- 成功してもD1 Migration適用済み、FCM配信成功、障害対応手順全体の完了は保証しない。
+
+スクリプト自体は`npm run backend:smoke:test`で検証する。実施結果は
+[2026-10-21のstaging確認記録](../verification/backend-operations-2026-10-21.md)を参照する。
+
+### 6.3 認証API
 
 iOSでMicrosoftログイン後、Token値を画面やログへ出力せずに以下を確認する。
 
@@ -130,7 +156,7 @@ iOSでMicrosoftログイン後、Token値を画面やログへ出力せずに以
 3. App再起動後もSessionが復元できる。
 4. Logout後は同じ認証必須APIが`401`になる。
 
-### 6.3 代表API
+### 6.4 代表API
 
 Bearer Tokenを画面とShell履歴へ残さないよう、以下のコマンドで一時的に読み込む。入力後にEnterを押してもTokenは表示されない。
 
@@ -185,7 +211,7 @@ npx wrangler tail rectime-api --format pretty
 
 #### 認証更新の一時障害と失効の区別（API #509）
 
-| `/auth/refresh` の結果 | 判断 | 更新用KV |
+| `/auth/refresh` の結果 | 判断 | Refresh Session |
 | --- | --- | --- |
 | `503 AUTH_REFRESH_UNAVAILABLE` | Microsoftの429/5xx、通信失敗、10秒タイムアウト、不正な応答。次回の通信で再試行する | Refresh ID・トークン・TTLを変更しない |
 | `500 AUTH_PROVIDER_ERROR` | 証明書・クライアント設定、不明な上流エラー。サーバー側を調査する | 同上 |
@@ -198,7 +224,7 @@ Access Tokenの期限検証と、成功時のRefresh IDローテーション・T
 写真用トークン更新も同じ分類を使用する。ログイン・削除確認の一時障害は`503 AUTH_PROVIDER_UNAVAILABLE`になる。
 
 モバイル #305 のマージ・配布条件は、**API #509 の修正を先に対象環境へデプロイすること**。
-デプロイ後、development／stagingで上流503を模擬し、503応答・旧KVの維持・同じRefresh IDによる復旧を確認する。
+デプロイ後、development／stagingで上流503を模擬し、503応答・Refresh Sessionの維持・同じRefresh IDによる復旧を確認する。
 旧APIが一時障害を`401 REFRESH_TOKEN_EXPIRED`へ変換する間は、モバイル側だけでは本当の失効と区別できない。
 
 上流コードの意味は[Microsoftのトークンエンドポイント仕様](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow#refresh-the-access-token)を参照する。
@@ -294,7 +320,7 @@ npx wrangler d1 time-travel restore rectime-api --bookmark "<BOOKMARK>"
 
 - [ ] 対象Commit SHAと担当者を記録した
 - [ ] CIがすべて成功している
-- [ ] 本Runbookの環境一覧が`wrangler.jsonc`と`.github/workflows/deploy.yml`に一致している
+- [ ] 本Runbookの環境一覧が`wrangler-nagoya.jsonc`と`.github/workflows/deploy.yml`に一致している
 - [ ] Deploy対象Worker／D1を確認した
 - [ ] 未適用Migrationを確認した
 - [ ] production D1のTime Travel bookmarkを記録した

@@ -1,3 +1,16 @@
+// Microsoftのclaimsからメールアドレスを選ぶ。
+// preferred_usernameが空白でなければそれを、そうでなければemailを返す。
+// どちらも使えない場合はundefined。値はtrimせずそのまま返す。
+export function pickMicrosoftEmailClaim(claims: {
+  preferred_username?: unknown;
+  email?: unknown;
+}): string | undefined {
+  return [claims.preferred_username, claims.email].find(
+    (value): value is string =>
+      typeof value === 'string' && value.trim().length > 0
+  );
+}
+
 export function normalizeMicrosoftEmail(email: string): string | null {
   const normalized = email.trim().toLowerCase();
   const parts = normalized.split('@');

@@ -142,6 +142,7 @@ describe('MobileNotificationRepository', () => {
         title: '通知',
         body: '通知本文',
         scheduledAt: oldTime,
+        relatedEvent: null,
       });
       expect(await repository.findByIdForUser(notificationId, userId)).toEqual(
         list.notifications[0]
@@ -272,6 +273,106 @@ describe('MobileNotificationRepository', () => {
       notifications: [],
       total: 3,
     });
+  });
+
+  it('自動通知の生成元から現在のイベント・会場を取得し、複数会場でもページングを維持する', async () => {
+    const userId = await createUser();
+    const event = await env.DB.prepare(
+      "INSERT INTO events (event_name, start_time, end_time) VALUES ('大縄跳び', '1000', '1100') RETURNING event_id"
+    ).first<{ event_id: number }>();
+    const spot = await env.DB.prepare(
+      "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('関連イベントテスト集合場所') RETURNING gathering_spot_id"
+    ).first<{ gathering_spot_id: number }>();
+    const gathering = await env.DB.prepare(
+      'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id'
+    )
+      .bind(event!.event_id, spot!.gathering_spot_id)
+      .first<{ gathering_id: number }>();
+    const firstVenue = await env.DB.prepare(
+      "INSERT INTO venues (venue_name) VALUES ('体育館') RETURNING venue_id"
+    ).first<{ venue_id: number }>();
+    const secondVenue = await env.DB.prepare(
+      "INSERT INTO venues (venue_name) VALUES ('運動場') RETURNING venue_id"
+    ).first<{ venue_id: number }>();
+    // 登録順ではなくvenue_id昇順で表示する。
+    for (const venueId of [secondVenue!.venue_id, firstVenue!.venue_id]) {
+      await env.DB.prepare(
+        'INSERT INTO event_venues (event_id, venue_id) VALUES (?, ?)'
+      )
+        .bind(event!.event_id, venueId)
+        .run();
+    }
+    const notificationId = await createNotification('自動通知');
+    await env.DB.prepare(
+      "UPDATE notifications SET source_type = 'gathering', source_id = ?, source_hash = 'related-event-test' WHERE notification_id = ?"
+    )
+      .bind(gathering!.gathering_id, notificationId)
+      .run();
+    await createRecipient(await createSchedule(notificationId), userId);
+    await createRecipient(
+      await createSchedule(notificationId, { sendAt: newTime }),
+      userId
+    );
+    const manualId = await createNotification('通常通知');
+    const manualScheduleId = await createSchedule(manualId);
+    await createRecipient(manualScheduleId, userId);
+    // Audienceが集合でも、手動通知を自動通知と誤判定しない。
+    await env.DB.prepare(
+      "INSERT INTO notification_audiences (notification_schedule_id, audience_type, target_id) VALUES (?, 'gathering', ?)"
+    )
+      .bind(manualScheduleId, gathering!.gathering_id)
+      .run();
+    const expected = {
+      id: event!.event_id,
+      name: '大縄跳び',
+      startTime: '1000',
+      endTime: '1100',
+      venues: [
+        { id: firstVenue!.venue_id, name: '体育館' },
+        { id: secondVenue!.venue_id, name: '運動場' },
+      ],
+    };
+    expect(
+      (await listForUser(userId, 1)).notifications[0].relatedEvent
+    ).toEqual(expected);
+    expect(await listForUser(userId, 1)).toMatchObject({
+      total: 2,
+      notifications: [{ id: notificationId, scheduledAt: newTime }],
+    });
+    expect((await listForUser(userId, 1, 1)).notifications).toMatchObject([
+      { id: manualId, relatedEvent: null },
+    ]);
+    expect(
+      (await repository.findByIdForUser(notificationId, userId))?.relatedEvent
+    ).toEqual(expected);
+    expect(
+      await repository.findByIdForUser(notificationId, await createUser('他人'))
+    ).toBeNull();
+
+    await env.DB.prepare(
+      "UPDATE events SET event_name = '変更後', start_time = '1010' WHERE event_id = ?"
+    )
+      .bind(event!.event_id)
+      .run();
+    await env.DB.prepare('DELETE FROM event_venues WHERE event_id = ?')
+      .bind(event!.event_id)
+      .run();
+    expect(
+      (await repository.findByIdForUser(notificationId, userId))?.relatedEvent
+    ).toEqual({ ...expected, name: '変更後', startTime: '1010', venues: [] });
+
+    await env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?')
+      .bind(gathering!.gathering_id)
+      .run();
+    // 生成元が消えても通知本文・履歴を失わない。
+    expect(
+      (await repository.findByIdForUser(notificationId, userId))?.relatedEvent
+    ).toBeNull();
+    expect((await listForUser(userId)).notifications[0]).toMatchObject({
+      id: notificationId,
+      relatedEvent: null,
+    });
+    expect((await listForUser(userId)).total).toBe(2);
   });
 
   it('User削除でRecipientを匿名化しDelivery履歴を維持する', async () => {

@@ -68,8 +68,7 @@ describe('NotificationCreationRepository', () => {
     });
 
     const schedule = await env.DB.prepare(
-      `SELECT scheduled_by_user_id, notification_id, send_status, send_at,
-              created_user_id, event_id
+      `SELECT scheduled_by_user_id, notification_id, send_status, send_at
        FROM notification_schedules WHERE notification_schedule_id = ?`
     )
       .bind(outcome.result.notification_schedule_id)
@@ -79,8 +78,6 @@ describe('NotificationCreationRepository', () => {
       notification_id: outcome.result.notification_id,
       send_status: 'scheduled',
       send_at: '2026-10-04T01:00:00.000Z',
-      created_user_id: null,
-      event_id: null,
     });
 
     const counts = await env.DB.prepare(
@@ -803,6 +800,30 @@ describe('NotificationCreationRepository', () => {
         notification_schedule_id: row!.notification_schedule_id,
       }),
     ]);
+  });
+
+  it('Gathering削除後のGenerator再実行ではNotificationを作らない', async () => {
+    const fixture = await createFixture();
+    await env.DB.batch([
+      env.DB.prepare(
+        'DELETE FROM gathering_group_members WHERE gathering_id = ?'
+      ).bind(fixture.gatheringId),
+      env.DB.prepare('DELETE FROM gatherings WHERE gathering_id = ?').bind(
+        fixture.gatheringId
+      ),
+    ]);
+
+    const outcome = await repository.createOrUpdateAutomatic(
+      buildAutomaticCommand(fixture.gatheringId, 'after-delete')
+    );
+
+    expect(outcome).toEqual({ status: 'already_exists' });
+    const count = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM notifications WHERE source_type = 'gathering' AND source_id = ?"
+    )
+      .bind(fixture.gatheringId)
+      .first<{ count: number }>();
+    expect(count?.count).toBe(0);
   });
 });
 

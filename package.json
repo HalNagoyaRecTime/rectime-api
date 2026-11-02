@@ -27,6 +27,8 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
+    "backend:smoke": "node .github/scripts/backend-smoke.mjs",
+    "backend:smoke:test": "node --test .github/scripts/backend-smoke.node-test.mjs",
     "dev:cron": "node scripts/dev-with-cron.mjs",
     "test:local-cron": "node --test scripts/local-cron.node-test.mjs"
   },

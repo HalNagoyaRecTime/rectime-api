@@ -13,6 +13,9 @@
     // DOCS_ENABLED は本番では意図的に設定しない。設定しない限り
     // /openapi.json と /docs は404になる(src/index.ts の requireDocsEnabled)。
     // API仕様・内部エラーコード・DB形状のヒントを無認証で公開しないため。
+    // このWorkerの学校コード(NAGOYA / OSAKA / TOKYO)。三校で同じソースを動かすため、
+    // 学校ごとに違う値はコードに書かずここで持つ。varsは環境ごとに継承されないため各環境にも書く。
+    "CAMPUS_CODE": "NAGOYA",
     "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
     // /app/contact のリダイレクト先(Microsoft Forms「アプリお問い合わせ」)。
     // 空・未設定・https以外のときはリダイレクトせず404を返す。
@@ -130,6 +133,7 @@
         "HOST": "0.0.0.0",
         "ALLOWED_ORIGINS": "http://localhost:5173,https://recwatch.pages.dev,https://*.recwatch.pages.dev",
         "DOCS_ENABLED": "true",
+        "CAMPUS_CODE": "NAGOYA",
         "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
         // /app/contact のリダイレクト先(Microsoft Forms「アプリお問い合わせ」)。
         // 空・未設定・https以外のときはリダイレクトせず404を返す。
@@ -158,7 +162,7 @@
       },
       // triggersはトップレベルから継承されるため、明示しないと本番同様の毎分cronが
       // development(旧env.previewが明示的に無効化していた分)でも有効になってしまう。
-      // stagingと同様、まずは無効で始める。
+      // まずは無効で始める。
       "triggers": {
         "crons": [],
       },
@@ -249,6 +253,7 @@
         "SESSION_EXPIRES_SEC": "86400",
         "JWT_EXPIRES_SEC": "3600",
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
+        "CAMPUS_CODE": "NAGOYA",
         "STUDENT_EMAIL_DOMAIN": "nhs.hal.ac.jp",
         "CONTACT_FORM_URL": "https://forms.cloud.microsoft/r/LAsntFuQcF",
         // 通知配信を許可する開催日(YYYY-MM-DD)。未設定だと更新系エンドポイントが
@@ -269,9 +274,9 @@
           "R2_SECRET_ACCESS_KEY",
         ],
       },
-      // 本番相当のcronを検証したくなった時点で有効化を検討する。まずは無効で始める。
+      // アカウント削除の後片付け(0 18 * * *)は通知の検証に要らないため入れない。
       "triggers": {
-        "crons": [],
+        "crons": ["* * * * *"],
       },
       "kv_namespaces": [
         {

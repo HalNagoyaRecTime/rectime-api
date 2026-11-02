@@ -115,9 +115,11 @@ describe('通知v2のDB Schema', () => {
         }),
       ])
     );
-    expect(scheduleColumns.results.map(column => column.name)).toEqual(
+    const scheduleColumnNames = scheduleColumns.results.map(
+      column => column.name
+    );
+    expect(scheduleColumnNames).toEqual(
       expect.arrayContaining([
-        'firebase_token_id',
         'scheduled_by_user_id',
         'recipients_resolved_at',
         'started_at',
@@ -127,6 +129,7 @@ describe('通知v2のDB Schema', () => {
         'reason',
       ])
     );
+    expect(scheduleColumnNames).not.toContain('firebase_token_id');
 
     const tables = await env.DB.prepare(
       `SELECT name FROM sqlite_master
@@ -273,6 +276,7 @@ describe('通知v2のDB Schema', () => {
     ).all<{ name: string }>();
     expect(deliveryIndexes.results.map(index => index.name)).toEqual(
       expect.arrayContaining([
+        'idx_notification_push_deliveries_recipient_id',
         'idx_notification_push_deliveries_firebase_token_id',
         'idx_notification_push_deliveries_retry',
       ])

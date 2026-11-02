@@ -325,14 +325,13 @@ describe('AdminNotificationCommandRepository', () => {
       importance: 'normal',
     });
     const schedule = await env.DB.prepare(
-      `SELECT send_at, importance FROM notification_schedules
+      `SELECT send_at FROM notification_schedules
        WHERE notification_schedule_id = ?`
     )
       .bind(created.notification_schedule_id)
       .first<Record<string, unknown>>();
     expect(schedule).toEqual({
       send_at: '2026-09-25T10:00:00.000Z',
-      importance: 2,
     });
     const audiences = await env.DB.prepare(
       `SELECT audience_type, target_id FROM notification_audiences
@@ -353,13 +352,12 @@ describe('AdminNotificationCommandRepository', () => {
     );
     const secondSchedule = await env.DB.prepare(
       `INSERT INTO notification_schedules (
-         created_user_id, scheduled_by_user_id, event_id, notification_id,
-         importance, send_status, send_at, created_at, updated_at
-       ) VALUES (?, ?, NULL, ?, 1, 'scheduled', ?, ?, ?)
+         scheduled_by_user_id, notification_id, send_status, send_at,
+         created_at, updated_at
+       ) VALUES (?, ?, 'scheduled', ?, ?, ?)
        RETURNING notification_schedule_id`
     )
       .bind(
-        fixture.actorUserId,
         fixture.actorUserId,
         created.notification_id,
         '2026-09-26T10:00:00.000Z',

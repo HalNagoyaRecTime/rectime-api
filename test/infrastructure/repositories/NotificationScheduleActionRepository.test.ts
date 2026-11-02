@@ -102,18 +102,12 @@ describe('Schedule再送と取消のD1統合', () => {
     )
       .bind(f.userId, `schedule-action-token-${f.scheduleId}`)
       .run();
-    const event = await env.DB.prepare(
-      "INSERT INTO events (event_name,start_time,end_time) VALUES ('Legacy field test','0900','1000') RETURNING event_id"
-    ).first<{ event_id: number }>();
-    if (!event)
-      throw new Error('Legacy field test用Eventを作成できませんでした');
     await env.DB.prepare(
       `UPDATE notification_schedules
-       SET created_user_id = ?, event_id = ?, importance = 3,
-           failed_reason = 'legacy failure', fcm_message_id = 'legacy-message'
+       SET failed_reason = 'legacy failure'
        WHERE notification_schedule_id = ?`
     )
-      .bind(f.userId, event.event_id, f.scheduleId)
+      .bind(f.scheduleId)
       .run();
     const newUser = await env.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('再送時に追加されたUser') RETURNING user_id"
@@ -135,8 +129,7 @@ describe('Schedule再送と取消のD1統合', () => {
     const row = await env.DB.prepare(
       `SELECT send_at,send_status,started_at,scheduled_by_user_id,notification_id,
               recipients_resolved_at,completed_at,stopped_at,stopped_by_user_id,reason,
-              created_at,updated_at,created_user_id,event_id,importance,firebase_token_id,
-              failed_reason,fcm_message_id
+              created_at,updated_at,failed_reason
        FROM notification_schedules WHERE notification_schedule_id = ?`
     )
       .bind(result.notificationScheduleId)
@@ -154,12 +147,7 @@ describe('Schedule再送と取消のD1統合', () => {
       reason: null,
       created_at: NOW.toISOString(),
       updated_at: NOW.toISOString(),
-      created_user_id: null,
-      event_id: null,
-      importance: 2,
-      firebase_token_id: null,
       failed_reason: null,
-      fcm_message_id: null,
     });
     const audience = await env.DB.prepare(
       'SELECT audience_type,target_id,resolved_at FROM notification_audiences WHERE notification_schedule_id = ? ORDER BY notification_audience_id'

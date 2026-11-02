@@ -16,7 +16,7 @@ export default defineConfig(async () => {
     plugins: [
       cloudflareTest({
         wrangler: {
-          configPath: './wrangler.jsonc',
+          configPath: './wrangler-nagoya.jsonc',
           environment: 'development',
         },
         remoteBindings: false,

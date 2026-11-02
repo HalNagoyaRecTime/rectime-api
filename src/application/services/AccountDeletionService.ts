@@ -98,7 +98,7 @@ export function createAccountDeletionService(deps: {
       userRepository.anonymizeUser(userId)
     );
 
-    // Microsoft連携・AUTH_KVのRefresh Session・Firebase Tokenの無効化は
+    // Microsoft連携・Refresh Session・Firebase Tokenの無効化は
     // authService.startAccountDeletion(#265 PR1/PR3)が既に担当済み。
     // ここでは以下のみ処理する。各ステップは対象が無ければ何もしない
     // (冪等)ため、途中で失敗しても同じuserIdで安全に再実行できる。

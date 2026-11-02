@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 const migrationQueries = (() => {
   const migration = env.TEST_MIGRATIONS.find(
@@ -27,6 +27,30 @@ async function runMigration(): Promise<void> {
   await env.DB.batch(migrationQueries.map(query => env.DB.prepare(query)));
 }
 
+async function addLegacyColumns(): Promise<void> {
+  // 0036適用時点の旧列を、0052適用後の現行スキーマへ復元する。
+  await env.DB.batch([
+    env.DB.prepare(
+      'ALTER TABLE firebase_tokens ADD COLUMN is_firebase_active INTEGER NOT NULL DEFAULT 1'
+    ),
+    env.DB.prepare(
+      'ALTER TABLE notification_schedules ADD COLUMN created_user_id INTEGER'
+    ),
+    env.DB.prepare(
+      'ALTER TABLE notification_schedules ADD COLUMN event_id INTEGER'
+    ),
+    env.DB.prepare(
+      'ALTER TABLE notification_schedules ADD COLUMN firebase_token_id INTEGER'
+    ),
+    env.DB.prepare(
+      'ALTER TABLE notification_schedules ADD COLUMN importance INTEGER NOT NULL DEFAULT 2'
+    ),
+    env.DB.prepare(
+      'ALTER TABLE notification_schedules ADD COLUMN fcm_message_id TEXT'
+    ),
+  ]);
+}
+
 async function snapshot() {
   const result: Record<string, unknown[]> = {};
   for (const table of tables) {
@@ -47,6 +71,8 @@ async function snapshot() {
 }
 
 describe('0036_normalize_notification_datetime.sql の再実行', () => {
+  beforeAll(addLegacyColumns);
+
   afterEach(async () => {
     await env.DB.prepare(
       `DELETE FROM notification_schedules
