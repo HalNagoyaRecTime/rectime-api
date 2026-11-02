@@ -252,8 +252,11 @@ describe('NotificationScheduleQueryRepository', () => {
       reason: 'manual',
       stopped_by: { user_id: schedulerId, user_name: '停止操作staff' },
     });
-    expect(listed[0]).not.toHaveProperty('audience_progress');
-    expect(listed[0]).not.toHaveProperty('delivery_progress');
+    for (const schedule of listed) {
+      expect(schedule).toEqual(
+        await repository.findById(schedule.notification_schedule_id)
+      );
+    }
 
     const sending = await repository.findById(sendingScheduleId);
     expect(sending).toMatchObject({
@@ -307,6 +310,117 @@ describe('NotificationScheduleQueryRepository', () => {
     await repository.findById(sendingScheduleId);
     expect(detailSpy).toHaveBeenCalledTimes(1);
     detailSpy.mockRestore();
+  });
+
+  it('一覧の各Scheduleに、そのScheduleだけの進み具合を詳細と同じ値で返す', async () => {
+    const notificationId = await createNotification({
+      creatorId: null,
+      createdAt: '2026-07-22T23:00:00.000Z',
+    });
+    const sendingScheduleId = await createSchedule({
+      notificationId,
+      status: 'sending',
+      sendAt: '2026-07-23T01:00:00.000Z',
+    });
+    const completedScheduleId = await createSchedule({
+      notificationId,
+      status: 'completed',
+      sendAt: '2026-07-23T02:00:00.000Z',
+      recipientsResolvedAt: '2026-07-23T02:00:00.000Z',
+    });
+    const outOfRangeScheduleId = await createSchedule({
+      notificationId,
+      status: 'completed',
+      sendAt: '2026-07-24T01:00:00.000Z',
+      recipientsResolvedAt: '2026-07-24T01:00:00.000Z',
+    });
+
+    async function addRecipientsWithDeliveries(
+      scheduleId: number,
+      statuses: string[]
+    ) {
+      for (const status of statuses) {
+        const userId = await createUser(`受信者${scheduleId}-${status}`);
+        const tokenId = await addToken(userId, `token-${scheduleId}-${status}`);
+        const recipientId = await addRecipient(scheduleId, userId);
+        await addDelivery(recipientId, tokenId, status);
+      }
+    }
+    await addRecipientsWithDeliveries(sendingScheduleId, [
+      'sent',
+      'pending',
+      'sending',
+      'retry_wait',
+    ]);
+    await addRecipientsWithDeliveries(completedScheduleId, [
+      'sent',
+      'failed',
+      'stopped',
+    ]);
+    await addRecipientsWithDeliveries(outOfRangeScheduleId, ['sent']);
+    await addRecipient(
+      sendingScheduleId,
+      await createUser('配信先の無い受信者')
+    );
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO notification_audiences
+           (notification_schedule_id, audience_type)
+         VALUES (?, 'all')`
+      ).bind(sendingScheduleId),
+      env.DB.prepare(
+        `INSERT INTO notification_audiences
+           (notification_schedule_id, audience_type, resolved_at)
+         VALUES (?, 'all', '2026-07-23T02:00:00.000Z')`
+      ).bind(completedScheduleId),
+      env.DB.prepare(
+        `INSERT INTO notification_audiences
+           (notification_schedule_id, audience_type, resolved_at)
+         VALUES (?, 'all', '2026-07-24T01:00:00.000Z')`
+      ).bind(outOfRangeScheduleId),
+    ]);
+
+    const listed = await repository.findAll({
+      from: '2026-07-23T00:00:00Z',
+      to: '2026-07-23T23:59:59Z',
+    });
+
+    expect(listed).toMatchObject([
+      {
+        notification_schedule_id: sendingScheduleId,
+        audience_progress: { total_count: 1, resolved_count: 0 },
+        recipient_progress: { count: 5, status: 'pending' },
+        delivery_progress: {
+          total_count: 4,
+          pending_count: 1,
+          sending_count: 1,
+          retry_wait_count: 1,
+          sent_count: 1,
+          failed_count: 0,
+          stopped_count: 0,
+        },
+      },
+      {
+        notification_schedule_id: completedScheduleId,
+        audience_progress: { total_count: 1, resolved_count: 1 },
+        recipient_progress: { count: 3, status: 'resolved' },
+        delivery_progress: {
+          total_count: 3,
+          pending_count: 0,
+          sending_count: 0,
+          retry_wait_count: 0,
+          sent_count: 1,
+          failed_count: 1,
+          stopped_count: 1,
+        },
+      },
+    ]);
+    expect(listed).toHaveLength(2);
+    for (const schedule of listed) {
+      expect(schedule).toEqual(
+        await repository.findById(schedule.notification_schedule_id)
+      );
+    }
   });
 
   it('存在しないScheduleをnullで返す', async () => {

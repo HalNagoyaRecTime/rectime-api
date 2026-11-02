@@ -31,7 +31,7 @@ export type NotificationScheduleQueryCreation =
       };
     };
 
-export interface NotificationScheduleQueryListItem {
+export interface NotificationScheduleQueryBase {
   notification_id: number;
   notification_schedule_id: number;
   push_title: string;
@@ -48,7 +48,7 @@ export interface NotificationScheduleQueryListItem {
   creation: NotificationScheduleQueryCreation;
 }
 
-export interface NotificationScheduleQueryDetail extends NotificationScheduleQueryListItem {
+export interface NotificationScheduleQueryDetail extends NotificationScheduleQueryBase {
   audience_progress: {
     total_count: number;
     resolved_count: number;

@@ -121,6 +121,9 @@ describe('管理用通知スケジュール照会APIの認可と入力検証', (
                 status === 'failed'
                   ? NOTIFICATION_AUDIENCE_USER_DELETED_REASON
                   : null,
+              audienceProgress: expect.any(Object),
+              recipientProgress: expect.any(Object),
+              deliveryProgress: expect.any(Object),
             }),
           ]),
         });

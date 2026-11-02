@@ -1,13 +1,12 @@
 import type {
   NotificationScheduleQueryDetail,
-  NotificationScheduleQueryListItem,
   NotificationScheduleQueryOptions,
 } from '../../entities/NotificationScheduleQuery';
 
 export interface INotificationScheduleQueryRepository {
   findAll(
     options: NotificationScheduleQueryOptions
-  ): Promise<NotificationScheduleQueryListItem[]>;
+  ): Promise<NotificationScheduleQueryDetail[]>;
   findById(
     notificationScheduleId: number
   ): Promise<NotificationScheduleQueryDetail | null>;

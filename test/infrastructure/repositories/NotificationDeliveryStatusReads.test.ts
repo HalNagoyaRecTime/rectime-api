@@ -10,6 +10,9 @@ const TARGET_RECIPIENTS = 50;
 const OTHER_RECIPIENTS = 1000;
 const MAX_ROWS_READ_PER_RECIPIENT = 20;
 const MAX_ROWS_READ = TARGET_RECIPIENTS * MAX_ROWS_READ_PER_RECIPIENT;
+const OTHER_SCHEDULES = 100;
+const MAX_ROWS_READ_PER_OTHER_SCHEDULE = 2;
+const OTHER_AUDIENCES = 300;
 
 interface ReadCountingStatement {
   statement: D1PreparedStatement;
@@ -168,6 +171,64 @@ describe('配信状況を返す管理用クエリのD1読み取り行数', () =>
       failed_count: TARGET_RECIPIENTS,
     });
     expect(rowsRead()).toBeLessThan(MAX_ROWS_READ);
+  });
+
+  it('予約の一覧は、期間外の予約・受信者・Audienceが多くても期間外の予約1件あたり数行しか読まない', async () => {
+    const notification = await env.DB.prepare(
+      `INSERT INTO notifications (
+         push_title, push_body, notification_type, title, body, importance
+       ) VALUES ('一覧', '本文', 'notification_general', '一覧', '本文', 'normal')
+       RETURNING notification_id`
+    ).first<{ notification_id: number }>();
+    if (!notification) throw new Error('Notificationの作成に失敗しました');
+    const listedSchedule = await env.DB.prepare(
+      `INSERT INTO notification_schedules (notification_id, send_status, send_at)
+       VALUES (?, 'completed', '2026-07-23T01:00:00.000Z')
+       RETURNING notification_schedule_id`
+    )
+      .bind(notification.notification_id)
+      .first<{ notification_schedule_id: number }>();
+    if (!listedSchedule) throw new Error('Scheduleの作成に失敗しました');
+    const otherSchedule = await env.DB.prepare(
+      `INSERT INTO notification_schedules (notification_id, send_status, send_at)
+       VALUES (?, 'completed', '2026-07-24T01:00:00.000Z')
+       RETURNING notification_schedule_id`
+    )
+      .bind(notification.notification_id)
+      .first<{ notification_schedule_id: number }>();
+    if (!otherSchedule) throw new Error('Scheduleの作成に失敗しました');
+    await env.DB.batch([
+      env.DB.prepare(
+        `WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < ?)
+         INSERT INTO notification_audiences
+           (notification_schedule_id, audience_type, target_id)
+         SELECT ?, 'user', n FROM seq`
+      ).bind(OTHER_AUDIENCES, otherSchedule.notification_schedule_id),
+      env.DB.prepare(
+        `WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < ?)
+         INSERT INTO notification_schedules (notification_id, send_status, send_at)
+         SELECT ?, 'completed', '2026-07-25T01:00:00.000Z' FROM seq`
+      ).bind(OTHER_SCHEDULES, notification.notification_id),
+    ]);
+    const { db, rowsRead } = createReadCountingDb();
+
+    const schedules = await createNotificationScheduleQueryRepository(
+      db
+    ).findAll({
+      from: '2026-07-23T00:00:00.000Z',
+      to: '2026-07-23T23:59:59.999Z',
+    });
+
+    expect(schedules).toMatchObject([
+      {
+        notification_schedule_id: listedSchedule.notification_schedule_id,
+        audience_progress: { total_count: 0 },
+        recipient_progress: { count: 0 },
+      },
+    ]);
+    expect(rowsRead()).toBeLessThan(
+      OTHER_SCHEDULES * MAX_ROWS_READ_PER_OTHER_SCHEDULE
+    );
   });
 
   it('予約の受信者ごとの結果は、他の通知の配信が多くてもその予約の受信者数に比例した行数しか読まない', async () => {

@@ -247,26 +247,6 @@ export const notificationScheduleSummarySchema =
     .strict()
     .openapi('NotificationScheduleSummary');
 
-const notificationScheduleFieldsSchema = z
-  .object({
-    notificationId: z.number().int().positive(),
-    notificationScheduleId: z.number().int().positive(),
-    content: notificationContentPushOnlySchema,
-    importance: notificationImportanceSchema,
-    sendAt: utcDateTimeSchema,
-    status: notificationStatusSchemas.schedule,
-    failureReason: z
-      .string()
-      .nullable()
-      .describe('Scheduleがfailedの場合の失敗理由'),
-    stop: notificationStopSchema.nullable(),
-    creation: notificationCreationSchema,
-  })
-  .strict();
-
-export const notificationScheduleListItemSchema =
-  notificationScheduleFieldsSchema.openapi('NotificationScheduleListItem');
-
 export const notificationAudienceProgressSchema = z
   .object({
     totalCount: z.number().int().nonnegative(),
@@ -296,8 +276,20 @@ export const notificationDeliveryProgressSchema = z
   .strict()
   .openapi('NotificationDeliveryProgress');
 
-export const notificationScheduleDetailSchema = notificationScheduleFieldsSchema
-  .extend({
+export const notificationScheduleDetailSchema = z
+  .object({
+    notificationId: z.number().int().positive(),
+    notificationScheduleId: z.number().int().positive(),
+    content: notificationContentPushOnlySchema,
+    importance: notificationImportanceSchema,
+    sendAt: utcDateTimeSchema,
+    status: notificationStatusSchemas.schedule,
+    failureReason: z
+      .string()
+      .nullable()
+      .describe('Scheduleがfailedの場合の失敗理由'),
+    stop: notificationStopSchema.nullable(),
+    creation: notificationCreationSchema,
     audienceProgress: notificationAudienceProgressSchema,
     recipientProgress: notificationRecipientProgressSchema,
     deliveryProgress: notificationDeliveryProgressSchema,

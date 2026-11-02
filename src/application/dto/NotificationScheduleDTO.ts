@@ -58,8 +58,6 @@ export interface NotificationScheduleBaseDTO {
   creation: NotificationCreationDTO;
 }
 
-export type NotificationScheduleListItemDTO = NotificationScheduleBaseDTO;
-
 export interface NotificationAudienceProgressDTO {
   totalCount: number;
   resolvedCount: number;
@@ -137,7 +135,7 @@ export interface NotificationScheduleResultsResponseDTO {
 }
 
 export interface NotificationScheduleListResponseDTO {
-  items: NotificationScheduleListItemDTO[];
+  items: NotificationScheduleDetailDTO[];
 }
 
 export interface NotificationResendRequestDTO {

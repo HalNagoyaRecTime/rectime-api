@@ -39,7 +39,7 @@ function createRepository(): INotificationScheduleQueryRepository {
 }
 
 describe('NotificationScheduleQueryService', () => {
-  it('一覧は軽量なSchedule items shapeを返し、期間をRepositoryへ渡す', async () => {
+  it('一覧は各Scheduleの進み具合を含めて返し、期間をRepositoryへ渡す', async () => {
     const repository = createRepository();
     const service = createNotificationScheduleQueryService(repository);
 
@@ -68,11 +68,20 @@ describe('NotificationScheduleQueryService', () => {
             user: null,
             source: { type: 'gathering', id: 51, label: null },
           },
+          audienceProgress: { totalCount: 3, resolvedCount: 2 },
+          recipientProgress: { count: 2, status: 'pending' },
+          deliveryProgress: {
+            totalCount: 4,
+            pendingCount: 0,
+            sendingCount: 0,
+            retryWaitCount: 1,
+            sentCount: 1,
+            failedCount: 1,
+            stoppedCount: 1,
+          },
         },
       ],
     });
-    expect(result.items[0]).not.toHaveProperty('audienceProgress');
-    expect(result.items[0]).not.toHaveProperty('deliveryProgress');
   });
 
   it('未指定期間には当日のJST範囲を使い、response metadataを追加しない', async () => {

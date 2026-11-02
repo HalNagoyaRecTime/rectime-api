@@ -23,14 +23,13 @@ import {
   notificationRecipientResultSchema,
   notificationResultsQuery,
   notificationScheduleDetailSchema,
-  notificationScheduleListItemSchema,
   notificationScheduleResultsPaginationSchema,
 } from './commonSchemas';
 import { notificationCreateResponseSchema } from './admin';
 
 export const notificationScheduleListResponseSchema = z
   .object({
-    items: z.array(notificationScheduleListItemSchema),
+    items: z.array(notificationScheduleDetailSchema),
   })
   .strict()
   .openapi('NotificationScheduleList');

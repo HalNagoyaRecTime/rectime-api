@@ -25,7 +25,6 @@ import type {
   NotificationRecipientResultDeliveryDTO,
   NotificationResendResponseDTO,
   NotificationScheduleAudienceDTO,
-  NotificationScheduleListItemDTO,
   NotificationScheduleResultsPaginationDTO,
   NotificationScheduleSummaryDTO,
 } from '../../../src/application/dto/NotificationScheduleDTO';
@@ -52,7 +51,6 @@ import {
   notificationRecipientResolutionSchema,
   notificationRecipientResultDeliverySchema,
   notificationScheduleAudienceSchema,
-  notificationScheduleListItemSchema,
   notificationScheduleResultsPaginationSchema,
   notificationScheduleSummarySchema,
   notificationStopSchema,
@@ -118,9 +116,6 @@ describe('通知契約のApplication DTOとOpenAPI schemaの全体パリティ',
     expectTypeOf<
       z.infer<typeof adminNotificationScheduleListItemSchema>
     >().toEqualTypeOf<AdminNotificationScheduleListItemDTO>();
-    expectTypeOf<
-      z.infer<typeof notificationScheduleListItemSchema>
-    >().toEqualTypeOf<NotificationScheduleListItemDTO>();
     expectTypeOf<
       z.infer<typeof notificationAudienceProgressSchema>
     >().toEqualTypeOf<NotificationAudienceProgressDTO>();

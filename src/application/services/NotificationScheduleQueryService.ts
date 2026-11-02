@@ -1,11 +1,11 @@
 import type {
+  NotificationScheduleBaseDTO,
   NotificationScheduleDetailDTO,
-  NotificationScheduleListItemDTO,
 } from '../dto/NotificationScheduleDTO';
 import type {
+  NotificationScheduleQueryBase,
   NotificationScheduleQueryCreation,
   NotificationScheduleQueryDetail,
-  NotificationScheduleQueryListItem,
 } from '../../domain/entities/NotificationScheduleQuery';
 import type { INotificationScheduleQueryRepository } from '../../domain/interfaces/repositories/INotificationScheduleQueryRepository';
 import type { INotificationScheduleQueryService } from './INotificationScheduleQueryService';
@@ -23,7 +23,7 @@ export function createNotificationScheduleQueryService(
           ? { from: query.from, to: query.to }
           : getDefaultDateRange(now());
       const schedules = await repository.findAll(range);
-      return { items: schedules.map(toListItem) };
+      return { items: schedules.map(toDetail) };
     },
 
     async getNotificationScheduleById(notificationScheduleId) {
@@ -43,9 +43,9 @@ function getDefaultDateRange(now: Date): { from: string; to: string } {
   };
 }
 
-function toListItem(
-  schedule: NotificationScheduleQueryListItem
-): NotificationScheduleListItemDTO {
+function toBase(
+  schedule: NotificationScheduleQueryBase
+): NotificationScheduleBaseDTO {
   return {
     notificationId: schedule.notification_id,
     notificationScheduleId: schedule.notification_schedule_id,
@@ -72,7 +72,7 @@ function toDetail(
   schedule: NotificationScheduleQueryDetail
 ): NotificationScheduleDetailDTO {
   return {
-    ...toListItem(schedule),
+    ...toBase(schedule),
     audienceProgress: {
       totalCount: schedule.audience_progress.total_count,
       resolvedCount: schedule.audience_progress.resolved_count,
@@ -95,7 +95,7 @@ function toDetail(
 
 function toCreation(
   creation: NotificationScheduleQueryCreation
-): NotificationScheduleListItemDTO['creation'] {
+): NotificationScheduleBaseDTO['creation'] {
   return creation.method === 'manual'
     ? {
         method: 'manual',
