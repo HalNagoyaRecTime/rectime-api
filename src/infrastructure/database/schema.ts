@@ -535,6 +535,9 @@ export const notification_push_deliveries = sqliteTable(
     uniqueIndex('uq_notification_push_deliveries_recipient_token')
       .on(table.notificationRecipientId, table.firebaseTokenId)
       .where(sql`${table.firebaseTokenId} IS NOT NULL`),
+    index('idx_notification_push_deliveries_recipient_id').on(
+      table.notificationRecipientId
+    ),
     index('idx_notification_push_deliveries_firebase_token_id').on(
       table.firebaseTokenId
     ),
