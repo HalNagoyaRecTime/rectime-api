@@ -17,6 +17,7 @@ interface ScheduleResultsRow {
   notification_recipient_id: number | null;
   user_id: number | null;
   user_name: string | null;
+  recipient_created_at: string | null;
   notification_push_delivery_id: number | null;
   platform: number | null;
   status: string | null;
@@ -50,18 +51,27 @@ const scheduleResultsSql = [
   '  WHERE ns.notification_schedule_id = ?',
   '),',
   'visible_recipients AS (',
-  '  SELECT nr.notification_recipient_id, nr.user_id',
+  '  SELECT nr.notification_recipient_id, nr.user_id, nr.created_at',
   '  FROM notification_recipients nr',
+  '  INNER JOIN users search_user ON search_user.user_id = nr.user_id',
   '  INNER JOIN target_schedule ts',
   '    ON ts.notification_schedule_id = nr.notification_schedule_id',
   '  WHERE nr.user_id IS NOT NULL',
+  "    AND (? = '' OR instr(lower(search_user.user_name), lower(?)) > 0 OR instr(CAST(nr.user_id AS TEXT), ?) > 0)",
+  "    AND (? = '' OR ? = CASE",
+  "      WHEN NOT EXISTS (SELECT 1 FROM notification_push_deliveries x WHERE x.notification_recipient_id = nr.notification_recipient_id) THEN 'no_target'",
+  "      WHEN EXISTS (SELECT 1 FROM notification_push_deliveries x WHERE x.notification_recipient_id = nr.notification_recipient_id AND x.status IN ('pending','sending','retry_wait')) THEN 'processing'",
+  "      WHEN NOT EXISTS (SELECT 1 FROM notification_push_deliveries x WHERE x.notification_recipient_id = nr.notification_recipient_id AND x.status <> 'sent') THEN 'success'",
+  "      WHEN EXISTS (SELECT 1 FROM notification_push_deliveries x WHERE x.notification_recipient_id = nr.notification_recipient_id AND x.status = 'sent') AND EXISTS (SELECT 1 FROM notification_push_deliveries x WHERE x.notification_recipient_id = nr.notification_recipient_id AND x.status = 'failed') THEN 'partial'",
+  "      WHEN EXISTS (SELECT 1 FROM notification_push_deliveries x WHERE x.notification_recipient_id = nr.notification_recipient_id AND x.status = 'failed') THEN 'failed'",
+  "      ELSE 'stopped' END)",
   '),',
   'recipient_totals AS (',
   '  SELECT COUNT(*) AS total_count',
   '  FROM visible_recipients',
   '),',
   'paged_recipients AS (',
-  '  SELECT notification_recipient_id, user_id',
+  '  SELECT notification_recipient_id, user_id, created_at',
   '  FROM visible_recipients',
   '  ORDER BY notification_recipient_id',
   '  LIMIT ? OFFSET ?',
@@ -70,6 +80,7 @@ const scheduleResultsSql = [
   '       (SELECT total_count FROM recipient_totals) AS total_count,',
   '       pr.notification_recipient_id,',
   '       pr.user_id,',
+  '       pr.created_at AS recipient_created_at,',
   '       u.user_name,',
   '       d.notification_push_delivery_id,',
   '       d.platform,',
@@ -113,6 +124,11 @@ export function createNotificationResultQueryRepository(
         .prepare(scheduleResultsSql)
         .bind(
           notificationScheduleId,
+          options.search?.trim() ?? '',
+          options.search?.trim() ?? '',
+          options.search?.trim().replace(/^#/, '') ?? '',
+          options.status ?? '',
+          options.status ?? '',
           options.limit,
           (options.page - 1) * options.limit
         )
@@ -128,7 +144,8 @@ export function createNotificationResultQueryRepository(
         if (
           row.notification_recipient_id === null ||
           row.user_id === null ||
-          row.user_name === null
+          row.user_name === null ||
+          row.recipient_created_at === null
         ) {
           continue;
         }
@@ -136,6 +153,7 @@ export function createNotificationResultQueryRepository(
         if (!recipient) {
           recipient = {
             notification_recipient_id: row.notification_recipient_id,
+            created_at: row.recipient_created_at,
             user_id: row.user_id,
             user_name: row.user_name,
             deliveries: [],

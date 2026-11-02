@@ -4,6 +4,9 @@ import type { FirebasePlatform } from './FirebaseToken';
 export interface NotificationResultQueryOptions {
   page: number;
   limit: number;
+  search?: string;
+  status?:
+    'success' | 'partial' | 'failed' | 'processing' | 'stopped' | 'no_target';
 }
 
 export interface NotificationResultDelivery {
@@ -17,6 +20,7 @@ export interface NotificationResultDelivery {
 
 export interface NotificationRecipientResult {
   notification_recipient_id: number;
+  created_at: string;
   user_id: number;
   user_name: string;
   deliveries: NotificationResultDelivery[];

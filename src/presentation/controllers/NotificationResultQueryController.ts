@@ -39,6 +39,9 @@ export function createNotificationResultQueryController(
     const parsedQuery = notificationResultsQuery.safeParse({
       page: c.req.query('page'),
       limit: c.req.query('limit'),
+      search: c.req.query('search'),
+      status: c.req.query('status'),
+      includeRegisteredAt: c.req.query('includeRegisteredAt'),
     });
     if (!parsedParams.success || !parsedQuery.success) {
       const error = !parsedParams.success
