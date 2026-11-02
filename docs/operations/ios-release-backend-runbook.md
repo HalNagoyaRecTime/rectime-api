@@ -211,7 +211,7 @@ npx wrangler tail rectime-api --format pretty
 
 #### 認証更新の一時障害と失効の区別（API #509）
 
-| `/auth/refresh` の結果 | 判断 | 更新用KV |
+| `/auth/refresh` の結果 | 判断 | Refresh Session |
 | --- | --- | --- |
 | `503 AUTH_REFRESH_UNAVAILABLE` | Microsoftの429/5xx、通信失敗、10秒タイムアウト、不正な応答。次回の通信で再試行する | Refresh ID・トークン・TTLを変更しない |
 | `500 AUTH_PROVIDER_ERROR` | 証明書・クライアント設定、不明な上流エラー。サーバー側を調査する | 同上 |
@@ -224,7 +224,7 @@ Access Tokenの期限検証と、成功時のRefresh IDローテーション・T
 写真用トークン更新も同じ分類を使用する。ログイン・削除確認の一時障害は`503 AUTH_PROVIDER_UNAVAILABLE`になる。
 
 モバイル #305 のマージ・配布条件は、**API #509 の修正を先に対象環境へデプロイすること**。
-デプロイ後、development／stagingで上流503を模擬し、503応答・旧KVの維持・同じRefresh IDによる復旧を確認する。
+デプロイ後、development／stagingで上流503を模擬し、503応答・Refresh Sessionの維持・同じRefresh IDによる復旧を確認する。
 旧APIが一時障害を`401 REFRESH_TOKEN_EXPIRED`へ変換する間は、モバイル側だけでは本当の失効と区別できない。
 
 上流コードの意味は[Microsoftのトークンエンドポイント仕様](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow#refresh-the-access-token)を参照する。

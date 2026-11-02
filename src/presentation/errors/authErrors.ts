@@ -68,6 +68,11 @@ export const AuthErrors = {
     message:
       'このアカウントは削除処理中または削除済みのため、ログインできません',
   },
+  WRONG_CAMPUS: {
+    status: 409,
+    code: 'WRONG_CAMPUS',
+    message: 'このアカウントは別の学校に所属しています',
+  },
   INVALID_STATE_PURPOSE: {
     status: 400,
     code: 'INVALID_STATE_PURPOSE',

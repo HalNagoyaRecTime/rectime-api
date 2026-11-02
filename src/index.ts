@@ -12,6 +12,7 @@ import { getContactFormUrl, isDocsEnabled, type Env } from './lib/env';
 import { isValidEventDate } from './lib/eventDate';
 import { getAllowedOriginRules, isAllowedOrigin } from './lib/allowedOrigins';
 import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
+import { CAMPUSES, parseCampus } from './domain/auth/campus';
 import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
 import {
   diContainerMiddleware,
@@ -141,6 +142,7 @@ const app = new OpenAPIHono<{ Bindings: Env }>({
 
 let corsWarnLogged = false;
 let tenantWarnLogged = false;
+let campusWarnLogged = false;
 
 app.use('*', (c, next) => {
   const allowedOrigins = c.env.ALLOWED_ORIGINS ?? '';
@@ -182,6 +184,20 @@ app.use('*', (c, next) => {
         '" but ALLOWED_MICROSOFT_TENANTS is not set — all auth requests will be rejected with INVALID_ID_TOKEN'
     );
     tenantWarnLogged = true;
+  }
+  return next();
+});
+
+app.use('*', (c, next) => {
+  if (parseCampus(c.env.CAMPUS_CODE) === null && !campusWarnLogged) {
+    console.warn(
+      '[CAMPUS] CAMPUS_CODE is "' +
+        (c.env.CAMPUS_CODE ?? '') +
+        '" but must be one of ' +
+        CAMPUSES.join(', ') +
+        ' — this Worker cannot tell which campus it serves'
+    );
+    campusWarnLogged = true;
   }
   return next();
 });
@@ -674,10 +690,10 @@ app.get(
 
 export { app };
 
-// アカウント削除の後片付け再実行(#345)専用Cron式。通知配信Cron
-// ('* * * * *')とはevent.cronの値で区別する。EVENT_DATE判定には
-// 依存させない(削除の後片付けは開催日に関係なく毎日実行したいため)。
-const ACCOUNT_DELETION_PURGE_RETRY_CRON = '0 18 * * *';
+// アカウント削除の後片付け再実行(#345)と期限切れ認証情報の削除を行う日次Cron式。
+// 通知配信Cron('* * * * *')とはevent.cronの値で区別する。EVENT_DATE判定には
+// 依存させない(後片付けは開催日に関係なく毎日実行したいため)。
+const DAILY_MAINTENANCE_CRON = '0 18 * * *';
 // 1回のCron実行で処理する上限件数。冪等な再実行のため、上限を超えた
 // 残りは翌日以降のCronで拾われる。
 const ACCOUNT_DELETION_PURGE_RETRY_LIMIT = 100;
@@ -685,13 +701,15 @@ const ACCOUNT_DELETION_PURGE_RETRY_LIMIT = 100;
 export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    if (event.cron === ACCOUNT_DELETION_PURGE_RETRY_CRON) {
+    if (event.cron === DAILY_MAINTENANCE_CRON) {
       const container = createDIContainer(env);
       ctx.waitUntil(
         container.accountDeletionService.retryPendingPurges(
           ACCOUNT_DELETION_PURGE_RETRY_LIMIT
         )
       );
+      ctx.waitUntil(container.authStateRepository.deleteExpired());
+      ctx.waitUntil(container.refreshSessionRepository.deleteExpired());
       return;
     }
 

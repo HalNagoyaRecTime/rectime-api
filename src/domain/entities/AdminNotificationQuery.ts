@@ -77,4 +77,15 @@ export interface AdminNotificationQueryResult {
 export interface AdminNotificationQueryOptions {
   from: string;
   to: string;
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: NotificationScheduleStatus;
+  creationMethod?: 'manual' | 'automatic';
+  filterFrom?: string;
+  filterTo?: string;
+  sortBy?:
+    'notificationId' | 'title' | 'audience' | 'sendAt' | 'creator' | 'status';
+  sortDirection?: 'asc' | 'desc';
+  now?: string;
 }

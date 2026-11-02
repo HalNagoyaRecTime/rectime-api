@@ -106,7 +106,7 @@ async function signToken(
   let signatureB64 = toBase64URL(new Uint8Array(signature));
   if (options.tamperSignature) {
     signatureB64 =
-      signatureB64.slice(0, -1) + (signatureB64.endsWith('a') ? 'b' : 'a');
+      (signatureB64.startsWith('A') ? 'B' : 'A') + signatureB64.slice(1);
   }
   return `${data}.${signatureB64}`;
 }
@@ -212,6 +212,38 @@ describe('verifyIdToken', () => {
 
     await expect(
       verifyIdToken(token, kv, CLIENT_ID, NONCE, TENANT)
+    ).rejects.toThrow('INVALID_ID_TOKEN');
+  });
+
+  it('nonce を指定した場合、nonce の無いトークンは INVALID_ID_TOKEN を投げる', async () => {
+    stubJwksFetch();
+    const kv = createMockKv();
+    const token = await signToken(buildClaims({ nonce: undefined }));
+
+    await expect(
+      verifyIdToken(token, kv, CLIENT_ID, NONCE, TENANT)
+    ).rejects.toThrow('INVALID_ID_TOKEN');
+  });
+
+  it('nonce に null を渡した場合、nonce の無いトークンも受け付ける', async () => {
+    stubJwksFetch();
+    const kv = createMockKv();
+    const token = await signToken(buildClaims({ nonce: undefined }));
+
+    const result = await verifyIdToken(token, kv, CLIENT_ID, null, TENANT);
+
+    expect(result.sub).toBe('sub-1');
+  });
+
+  it('nonce に null を渡しても、aud が一致しない場合は INVALID_ID_TOKEN を投げる', async () => {
+    stubJwksFetch();
+    const kv = createMockKv();
+    const token = await signToken(
+      buildClaims({ nonce: undefined, aud: 'other-client' })
+    );
+
+    await expect(
+      verifyIdToken(token, kv, CLIENT_ID, null, TENANT)
     ).rejects.toThrow('INVALID_ID_TOKEN');
   });
 

@@ -61,27 +61,25 @@ export type MicrosoftTokenResult =
 
 // 削除確認Token(deletion_confirmation:{token})の値。一回限り・短期間の
 // 使い捨てで、本人確認済みのuser_idのみを保持する。upsertUserや一般API用
-// Tokenの発行経路とは独立しているため、MobileRefreshEntryとは共有しない。
+// Tokenの発行経路とは独立しているため、RefreshSessionとは共有しない。
 export interface DeletionConfirmationEntry {
   user_id: string;
   created_at: string;
 }
 
-export interface MobileRefreshEntry {
+export interface RefreshSession {
+  refresh_token_id: string;
   user_id: string;
   oid: string;
   tid: string;
   sub: string;
   email: string;
   display_name: string;
-  avatar_url?: string | null;
-  avatar_updated_at?: string | null;
+  avatar_updated_at: string | null;
   // 発行時のクライアント種別。/auth/refresh でリクエストヘッダーの
   // X-Client-Type と一致するか検証するために保持する（なりすまし防止）。
   client_type: ClientType;
   ms_refresh_token: string;
-  created_at: string;
-  updated_at?: string;
 }
 
 export interface MicrosoftClaims {
