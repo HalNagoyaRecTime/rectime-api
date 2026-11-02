@@ -1,7 +1,14 @@
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Hono } from 'hono';
 import { createAdminNotificationCommandRepository } from '../../../src/infrastructure/repositories/AdminNotificationCommandRepository';
 import { createAdminNotificationQueryRepository } from '../../../src/infrastructure/repositories/AdminNotificationQueryRepository';
+import { createAdminNotificationQueryService } from '../../../src/application/services/AdminNotificationQueryService';
+import { createAdminNotificationQueryController } from '../../../src/presentation/controllers/AdminNotificationQueryController';
+import type { Env } from '../../../src/lib/env';
+import type { ContainerVariables } from '../../../src/presentation/middleware/diContainer';
+import type { AuthenticationVariables } from '../../../src/presentation/middleware/bearerAuthentication';
+import type { AuthVariables } from '../../../src/presentation/middleware/requireAuth';
 import {
   buildCommand,
   createFixture,
@@ -30,6 +37,166 @@ describe('AdminNotificationQueryRepository', () => {
       env.DB.prepare('DELETE FROM teachers'),
       env.DB.prepare('DELETE FROM events'),
       env.DB.prepare('DELETE FROM users'),
+    ]);
+  });
+
+  it('ページ指定なしは51件すべて返し、指定時はページ単位で返す', async () => {
+    const fixture = await createFixture();
+    for (let index = 0; index < 51; index++) {
+      await commandRepository.create(
+        buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+      );
+    }
+    const range = {
+      from: '0001-01-01T00:00:00.000Z',
+      to: '9999-12-31T23:59:59.999Z',
+    };
+    const legacy = await repository.findAll(range);
+    const first = await repository.findAll({ ...range, page: 1, limit: 50 });
+    const second = await repository.findAll({ ...range, page: 2, limit: 50 });
+    expect(legacy.items).toHaveLength(51);
+    expect(first.items).toHaveLength(50);
+    expect(second.items).toHaveLength(1);
+    expect(
+      [...first.items, ...second.items].map(item => item.notification_id)
+    ).toEqual(legacy.items.map(item => item.notification_id));
+
+    const service = createAdminNotificationQueryService(repository);
+    const oldResponse = await service.getAdminNotifications(range);
+    const firstResponse = await service.getAdminNotifications({
+      ...range,
+      page: 1,
+      limit: 50,
+    });
+    const secondResponse = await service.getAdminNotifications({
+      ...range,
+      page: 2,
+      limit: 50,
+    });
+    expect(Object.keys(oldResponse)).toEqual(['items']);
+    expect(oldResponse.items).toHaveLength(51);
+    expect(firstResponse.pagination?.totalCount).toBe(51);
+    expect(
+      [...firstResponse.items, ...secondResponse.items].map(
+        item => item.notificationId
+      )
+    ).toEqual(oldResponse.items.map(item => item.notificationId));
+
+    const oldest = legacy.items.at(-1);
+    if (!oldest) throw new Error('通知がありません');
+    await env.DB.prepare(
+      "UPDATE notifications SET push_title = 'Éclair 2 needle' WHERE notification_id = ?"
+    )
+      .bind(oldest.notification_id)
+      .run();
+    await env.DB.prepare(
+      "UPDATE notification_schedules SET send_status = 'failed', send_at = '2027-01-02T00:00:00.000Z' WHERE notification_id = ?"
+    )
+      .bind(oldest.notification_id)
+      .run();
+    const filtered = await repository.findAll({
+      ...range,
+      page: 1,
+      limit: 50,
+      search: 'needle',
+      status: 'failed',
+      creationMethod: 'manual',
+      filterFrom: '2027-01-01T00:00:00.000Z',
+      filterTo: '2027-01-31T23:59:59.999Z',
+    });
+    expect(filtered.pagination.totalCount).toBe(1);
+    expect(filtered.items.map(item => item.notification_id)).toEqual([
+      oldest.notification_id,
+    ]);
+
+    const sorted = await repository.findAll({
+      ...range,
+      page: 1,
+      limit: 50,
+      sortBy: 'title',
+      sortDirection: 'asc',
+      now: '2026-09-24T09:00:00.000Z',
+    });
+    expect(sorted.pagination.totalCount).toBe(51);
+    expect(sorted.items[0]?.notification_id).toBe(oldest.notification_id);
+    const another = legacy.items[0];
+    if (!another) throw new Error('通知がありません');
+    await env.DB.prepare(
+      "UPDATE notifications SET push_title = 'Éclair 10' WHERE notification_id = ?"
+    )
+      .bind(another.notification_id)
+      .run();
+    const unicode = await repository.findAll({
+      ...range,
+      page: 1,
+      limit: 50,
+      search: 'éCLAIR',
+      sortBy: 'title',
+      sortDirection: 'asc',
+      now: '2026-09-24T09:00:00.000Z',
+    });
+    expect(unicode.pagination.totalCount).toBe(2);
+    expect(unicode.items.map(item => item.notification_id)).toEqual([
+      oldest.notification_id,
+      another.notification_id,
+    ]);
+
+    const controller = createAdminNotificationQueryController(service);
+    const app = new Hono<{
+      Bindings: Env;
+      Variables: ContainerVariables & AuthVariables & AuthenticationVariables;
+    }>();
+    app.get('/admin/notifications', c => controller.getAdminNotifications(c));
+    const legacyHttpResponse = await app.request(
+      `/admin/notifications?${new URLSearchParams(range).toString()}`,
+      {},
+      {} as Env
+    );
+    const legacyHttpBody = (await legacyHttpResponse.json()) as {
+      items: unknown[];
+    };
+    expect(legacyHttpResponse.status).toBe(200);
+    expect(Object.keys(legacyHttpBody)).toEqual(['items']);
+    expect(legacyHttpBody.items).toHaveLength(51);
+    const pagedParams = new URLSearchParams({
+      ...range,
+      page: '2',
+      limit: '50',
+    });
+    const pagedHttpResponse = await app.request(
+      `/admin/notifications?${pagedParams.toString()}`,
+      {},
+      {} as Env
+    );
+    const pagedHttpBody = (await pagedHttpResponse.json()) as {
+      items: unknown[];
+      pagination: { totalCount: number };
+    };
+    expect(pagedHttpResponse.status).toBe(200);
+    expect(pagedHttpBody.items).toHaveLength(1);
+    expect(pagedHttpBody.pagination.totalCount).toBe(51);
+    const params = new URLSearchParams({
+      ...range,
+      page: '1',
+      limit: '50',
+      search: 'éCLAIR',
+      sortBy: 'title',
+      sortDirection: 'asc',
+    });
+    const httpResponse = await app.request(
+      `/admin/notifications?${params.toString()}`,
+      {},
+      {} as Env
+    );
+    expect(httpResponse.status).toBe(200);
+    const httpBody = (await httpResponse.json()) as {
+      items: { notificationId: number }[];
+      pagination: { totalCount: number };
+    };
+    expect(httpBody.pagination.totalCount).toBe(2);
+    expect(httpBody.items.map(item => item.notificationId)).toEqual([
+      oldest.notification_id,
+      another.notification_id,
     ]);
   });
 
@@ -70,6 +237,115 @@ describe('AdminNotificationQueryRepository', () => {
         },
       ],
     });
+  });
+
+  it('対象、作成方法、配信状態と日時をページング前に判定し、各列で並べる', async () => {
+    const fixture = await createFixture();
+    const first = await commandRepository.create(
+      buildCommand(fixture.actorUserId, [
+        { type: 'class_room', target_id: fixture.classRoomId },
+      ])
+    );
+    const second = await commandRepository.create(
+      buildCommand(fixture.actorUserId, [{ type: 'all', target_id: null }])
+    );
+    const automatic = await commandRepository.create(
+      buildCommand(fixture.actorUserId, [
+        { type: 'gathering', target_id: fixture.gatheringId },
+      ])
+    );
+    await env.DB.prepare(
+      "UPDATE notifications SET source_type='gathering', source_id=?, source_hash='source-test' WHERE notification_id=?"
+    )
+      .bind(fixture.gatheringId, automatic.notification_id)
+      .run();
+    await env.DB.prepare(
+      "UPDATE notification_schedules SET send_status='failed', send_at='2026-09-25T00:00:00.000Z' WHERE notification_schedule_id=?"
+    )
+      .bind(second.notification_schedule_id)
+      .run();
+    const range = {
+      from: '0001-01-01T00:00:00.000Z',
+      to: '9999-12-31T23:59:59.999Z',
+      page: 1,
+      limit: 50,
+      now: '2026-09-24T00:00:00.000Z',
+    };
+    const audience = await repository.findAll({
+      ...range,
+      search: '通知Command 1組',
+    });
+    expect(audience.items.map(item => item.notification_id)).toEqual([
+      first.notification_id,
+    ]);
+    const auto = await repository.findAll({
+      ...range,
+      creationMethod: 'automatic',
+    });
+    expect(auto.items.map(item => item.notification_id)).toEqual([
+      automatic.notification_id,
+    ]);
+    const failed = await repository.findAll({
+      ...range,
+      status: 'failed',
+      filterFrom: '2026-09-25T00:00:00.000Z',
+      filterTo: '2026-09-25T23:59:59.999Z',
+    });
+    expect(failed.items.map(item => item.notification_id)).toEqual([
+      second.notification_id,
+    ]);
+    const disjoint = await repository.findAll({
+      ...range,
+      status: 'failed',
+      filterTo: '2026-09-24T23:59:59.999Z',
+    });
+    expect(disjoint.items).toEqual([]);
+    for (const sortBy of [
+      'notificationId',
+      'title',
+      'audience',
+      'sendAt',
+      'creator',
+      'status',
+    ] as const) {
+      const page = await repository.findAll({
+        ...range,
+        limit: 2,
+        sortBy,
+        sortDirection: 'asc',
+      });
+      const next = await repository.findAll({
+        ...range,
+        page: 2,
+        limit: 2,
+        sortBy,
+        sortDirection: 'asc',
+      });
+      expect(page.pagination.totalCount).toBe(3);
+      expect(
+        new Set(
+          [...page.items, ...next.items].map(item => item.notification_id)
+        ).size
+      ).toBe(3);
+    }
+    const byStatus = await repository.findAll({
+      ...range,
+      sortBy: 'status',
+      sortDirection: 'asc',
+    });
+    expect(byStatus.items[0]?.notification_id).toBe(second.notification_id);
+    const byTime = await repository.findAll({
+      ...range,
+      sortBy: 'sendAt',
+      sortDirection: 'desc',
+    });
+    expect(byTime.items[0]?.notification_id).toBe(second.notification_id);
+    const byAudience = await repository.findAll({
+      ...range,
+      sortBy: 'audience',
+      sortDirection: 'asc',
+    });
+    expect(byAudience.items[0]?.notification_id).toBe(second.notification_id);
   });
   it('詳細でRecipient単位集計とSource labelを返し、Audienceを一括取得する', async () => {
     const fixture = await createFixture();
@@ -258,17 +534,22 @@ describe('AdminNotificationQueryRepository', () => {
         to: '2026-09-24T23:59:59+09:00',
       });
 
-      expect(listed.map(notification => notification.notification_id)).toEqual([
+      expect(listed.items.map(n => n.notification_id)).toEqual([
         mixed.notification_id,
         startBoundary.notification_id,
       ]);
-      expect(listed[0]?.schedules).toHaveLength(1);
-      expect(listed[0]?.schedules[0]?.send_at).toBe('2026-09-24T10:00:00.000Z');
-      expect(listed[1]?.schedules[0]?.send_at).toBe(
+      expect(listed.items[0]?.schedules).toHaveLength(1);
+      expect(listed.items[0]?.schedules[0]?.send_at).toBe(
+        '2026-09-24T10:00:00.000Z'
+      );
+      expect(listed.items[1]?.schedules[0]?.send_at).toBe(
         '2026-09-24T00:00:00+09:00'
       );
       expect(batchSpy).toHaveBeenCalledTimes(1);
       expect(batchSpy.mock.calls[0]?.[0]).toHaveLength(4);
+      expect(listed.pagination.totalCount).toBe(2);
+      expect(listed.pagination.page).toBe(1);
+      expect(listed.pagination.limit).toBe(2);
     } finally {
       batchSpy.mockRestore();
     }
@@ -297,7 +578,7 @@ describe('AdminNotificationQueryRepository', () => {
       to: '2026-09-24T10:00:00.100Z',
     });
 
-    expect(listed.map(notification => notification.notification_id)).toEqual([
+    expect(listed.items.map(n => n.notification_id)).toEqual([
       included.notification_id,
     ]);
   });
@@ -325,7 +606,7 @@ describe('AdminNotificationQueryRepository', () => {
       to: '2026-09-24T11:00:00.000Z',
     });
 
-    expect(listed.map(notification => notification.notification_id)).toEqual([
+    expect(listed.items.map(n => n.notification_id)).toEqual([
       included.notification_id,
     ]);
   });
@@ -369,7 +650,7 @@ describe('AdminNotificationQueryRepository', () => {
       to: '2026-09-24T10:00:00.999Z',
     });
     expect(
-      listed[0]?.schedules.map(schedule => schedule.notification_schedule_id)
+      listed.items[0]?.schedules.map(s => s.notification_schedule_id)
     ).toEqual(expectedScheduleIds);
   });
 
