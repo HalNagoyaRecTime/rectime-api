@@ -17,7 +17,7 @@ export interface IdTokenClaims {
   preferred_username?: string;
   email?: string;
   name: string;
-  nonce: string;
+  nonce?: string;
   iss: string;
   aud: string;
   exp: number;
@@ -75,7 +75,7 @@ export async function verifyIdToken(
   idToken: string,
   kv: KVNamespace,
   clientId: string,
-  nonce: string,
+  nonce: string | null,
   microsoftTenant: string,
   allowedMicrosoftTenants?: string
 ): Promise<IdTokenClaims> {
@@ -150,7 +150,8 @@ export async function verifyIdToken(
       throw new Error('INVALID_ID_TOKEN');
     }
   }
-  if (payload.nonce !== nonce) throw new Error('INVALID_ID_TOKEN');
+  if (nonce !== null && payload.nonce !== nonce)
+    throw new Error('INVALID_ID_TOKEN');
 
   return payload;
 }
