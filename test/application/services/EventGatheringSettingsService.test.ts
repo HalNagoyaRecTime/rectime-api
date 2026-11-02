@@ -381,7 +381,7 @@ describe('EventGatheringSettingsService', () => {
     ];
 
     it('取得時点と版が違えば何も確認・保存せず Event update conflict', async () => {
-      const { service, repository, eventRepository, gatheringSpotRepository } =
+      const { service, transaction, eventRepository, gatheringSpotRepository } =
         setup();
       vi.mocked(eventRepository.findById).mockResolvedValue({
         event_id: EVENT_ID,
@@ -402,11 +402,11 @@ describe('EventGatheringSettingsService', () => {
         })
       ).rejects.toThrow('Event update conflict');
       expect(gatheringSpotRepository.findExistingIds).not.toHaveBeenCalled();
-      expect(repository.apply).not.toHaveBeenCalled();
+      expect(transaction.apply).not.toHaveBeenCalled();
     });
 
-    it('版が一致すれば expectedLockVersion を付けて保存する', async () => {
-      const { service, repository } = setup();
+    it('版が一致すれば expectedLockVersion を付けて、取引で保存する', async () => {
+      const { service, transaction } = setup();
 
       await service.saveEventGatheringSettings({
         event_id: EVENT_ID,
@@ -414,26 +414,59 @@ describe('EventGatheringSettingsService', () => {
         lock_version: 0,
       });
 
-      expect(repository.apply).toHaveBeenCalledWith(expect.anything(), {
-        holdNotificationSyncGatheringIds: [101],
-        expectedLockVersion: 0,
+      expect(transaction.apply).toHaveBeenCalledWith(
+        expect.anything(),
+        { holdNotificationSyncGatheringIds: [101] },
+        { expectedLockVersion: 0 }
+      );
+    });
+
+    it('版を指定した保存でも、削除する集合の通知cleanupは同じ取引に渡す', async () => {
+      const { service, transaction } = setup();
+
+      await service.saveEventGatheringSettings({
+        event_id: EVENT_ID,
+        // 102（参加者なし）をリクエストから外して削除する
+        rounds: [
+          {
+            round: 1,
+            gatherings: [
+              {
+                gathering_id: 101,
+                gathering_time: '10:45',
+                gathering_spot_id: 1,
+              },
+            ],
+          },
+        ],
+        lock_version: 0,
       });
+
+      expect(transaction.apply).toHaveBeenCalledWith(
+        expect.objectContaining({ delete_ids: [102] }),
+        expect.objectContaining({
+          notificationCleanup: expect.objectContaining({
+            gathering_ids: [102],
+          }),
+        }),
+        { expectedLockVersion: 0 }
+      );
     });
 
     it('版を指定しない保存は、版を確認せず従来どおり changeSet だけで保存する', async () => {
-      const { service, repository } = setup();
+      const { service, transaction } = setup();
 
       await service.saveEventGatheringSettings({
         event_id: EVENT_ID,
         rounds: unchangedRounds,
       });
 
-      expect(repository.apply).toHaveBeenCalledWith(expect.anything());
+      expect(transaction.apply).toHaveBeenCalledWith(expect.anything());
     });
 
-    it('確認後に版が変わって保存が0件なら、Eventが残っていれば Event update conflict', async () => {
-      const { service, repository } = setup();
-      vi.mocked(repository.apply).mockResolvedValue(false);
+    it('確認後に版が変わって保存されなければ、Eventが残っていれば Event update conflict', async () => {
+      const { service, transaction } = setup();
+      vi.mocked(transaction.apply).mockResolvedValue(false);
 
       await expect(
         service.saveEventGatheringSettings({
@@ -444,9 +477,9 @@ describe('EventGatheringSettingsService', () => {
       ).rejects.toThrow('Event update conflict');
     });
 
-    it('確認後にEventが消えて保存が0件なら Event not found', async () => {
-      const { service, repository, eventRepository } = setup();
-      vi.mocked(repository.apply).mockResolvedValue(false);
+    it('確認後にEventが消えて保存されなければ Event not found', async () => {
+      const { service, transaction, eventRepository } = setup();
+      vi.mocked(transaction.apply).mockResolvedValue(false);
       vi.mocked(eventRepository.exists)
         .mockResolvedValueOnce(true)
         .mockResolvedValueOnce(false);

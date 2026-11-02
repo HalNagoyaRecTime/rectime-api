@@ -140,7 +140,7 @@ export function createEventGatheringSettingsService(
         throw new Error('Event not found');
       }
       // 取得時点から変わっていれば、集合場所の存在確認などより先に409にする。
-      // 確認後に更新される競合は、apply() 側のWHEREで0件になって検出する。
+      // 確認後に更新される競合は、取引の先頭の版の確認で検出する。
       if (command.lock_version !== undefined) {
         const event = await eventRepository.findById(command.event_id);
         if (event && event.lock_version !== command.lock_version) {
@@ -181,15 +181,23 @@ export function createEventGatheringSettingsService(
         notificationChanges.notificationCleanup = notificationCleanup;
       }
 
+      let applied: boolean;
       try {
         // Gathering更新・削除と通知cleanupを同一batchで確定する。
-        if (Object.keys(notificationChanges).length > 0) {
-          await gatheringSettingsTransaction.apply(
+        // 版が指定されたときは、版が一致しなければ、通知を含めて何も書かれない。
+        if (command.lock_version !== undefined) {
+          applied = await gatheringSettingsTransaction.apply(
+            changeSet,
+            notificationChanges,
+            { expectedLockVersion: command.lock_version }
+          );
+        } else if (Object.keys(notificationChanges).length > 0) {
+          applied = await gatheringSettingsTransaction.apply(
             changeSet,
             notificationChanges
           );
         } else {
-          await gatheringSettingsTransaction.apply(changeSet);
+          applied = await gatheringSettingsTransaction.apply(changeSet);
         }
       } catch (error) {
         // 事前確認と保存の間に状態が変わると外部キー制約で失敗する。
@@ -201,6 +209,13 @@ export function createEventGatheringSettingsService(
         }
         await ensureGatheringSpotsExist(gatheringSpotIds);
         throw new Error('Gathering in use');
+      }
+      if (!applied) {
+        // 何も書かれていない。Eventが消えたのか、版が変わったのかを切り分ける。
+        if (!(await eventRepository.exists(command.event_id))) {
+          throw new Error('Event not found');
+        }
+        throw new Error('Event update conflict');
       }
 
       const savedEvent = await eventRepository.findById(command.event_id);
