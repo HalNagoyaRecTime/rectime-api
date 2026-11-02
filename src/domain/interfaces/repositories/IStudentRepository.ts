@@ -19,6 +19,12 @@ export interface StudentClassRoomAttendanceNumber {
   attendanceNumber: number;
 }
 
+export interface ExistingStudent {
+  studentId: number;
+  userId: number;
+  isLiveActive: boolean;
+}
+
 export interface BulkCreateStudentsInput {
   newClassRooms: { classCode: string; className: string }[];
   students: NewStudentWithClassCodeInput[];
@@ -33,9 +39,9 @@ export interface IStudentRepository {
     classRoomId: number,
     attendanceNumber: number
   ) => Promise<StudentEntity | null>;
-  findExistingStudentNumbers: (
+  findExistingStudentsByNumbers: (
     studentNumbers: string[]
-  ) => Promise<Set<string>>;
+  ) => Promise<Map<string, ExistingStudent>>;
   findExistingClassRoomAttendanceNumbers: (
     assignments: StudentClassRoomAttendanceNumber[]
   ) => Promise<StudentClassRoomAttendanceNumber[]>;

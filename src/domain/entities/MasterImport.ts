@@ -1,6 +1,25 @@
 export type MasterImportType = 'students' | 'classrooms' | 'teachers';
 export type MasterImportStatus = 'validated' | 'committed';
 
+export const MASTER_IMPORT_EXCLUSION_REASONS = [
+  'student_already_registered',
+  'student_already_registered_inactive',
+] as const;
+
+export type MasterImportExclusionReason =
+  (typeof MASTER_IMPORT_EXCLUSION_REASONS)[number];
+
+export interface MasterImportExcludedRow {
+  row_index: number;
+  class_code: string;
+  attendance_number: number;
+  student_id_number: string;
+  display_name: string;
+  student_id: number;
+  user_id: number;
+  reason: MasterImportExclusionReason;
+}
+
 export interface MasterImportCommittedResult {
   imported: number;
   error_count: number;
@@ -17,6 +36,8 @@ export interface MasterImportSession {
   success_count: number;
   error_count: number;
   errors: unknown[];
+  excluded_count: number;
+  excluded: MasterImportExcludedRow[];
   rows: unknown[];
   created_at: string;
   updated_at?: string;

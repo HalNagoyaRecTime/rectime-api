@@ -79,6 +79,8 @@ function toDTO(
     success_count: session.success_count,
     error_count: session.error_count,
     errors: session.errors,
+    excluded_count: session.excluded_count,
+    excluded: session.excluded,
     rows: session.rows.slice(offset, offset + limit),
     rows_total: session.rows.length,
     rows_limit: limit,
@@ -167,6 +169,7 @@ export function createMasterImportService(
       );
 
       const validation = await validateByType(input.type, rows);
+      const excluded = 'excluded' in validation ? validation.excluded : [];
 
       const now = new Date().toISOString();
 
@@ -180,6 +183,8 @@ export function createMasterImportService(
         success_count: validation.success_count,
         error_count: validation.error_count,
         errors: validation.errors,
+        excluded_count: excluded.length,
+        excluded,
         rows,
         created_at: now,
         updated_at: now,

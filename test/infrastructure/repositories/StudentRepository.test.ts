@@ -552,8 +552,8 @@ describe('StudentRepository', () => {
     });
   });
 
-  describe('findExistingStudentNumbers', () => {
-    it('2,000件の候補から、DBに実在する学籍番号だけをチャンク境界をまたいでもまとめて返す', async () => {
+  describe('findExistingStudentsByNumbers', () => {
+    it('2,000件の候補から、DBに実在する学籍番号ごとの学生ID・ユーザーID・有効かどうかを、チャンク境界をまたいでもまとめて返す', async () => {
       const candidates = Array.from(
         { length: 2000 },
         (_, i) => `9${String(i).padStart(4, '0')}`
@@ -562,19 +562,40 @@ describe('StudentRepository', () => {
       candidates[150] = seeded.students[1].studentIdNumber;
       candidates[1999] = seeded.students[2].studentIdNumber;
 
-      const existing = await repo.findExistingStudentNumbers(candidates);
+      const existing = await repo.findExistingStudentsByNumbers(candidates);
 
       expect(existing).toEqual(
-        new Set([
-          seeded.students[0].studentIdNumber,
-          seeded.students[1].studentIdNumber,
-          seeded.students[2].studentIdNumber,
+        new Map([
+          [
+            seeded.students[0].studentIdNumber,
+            {
+              studentId: seeded.students[0].studentId,
+              userId: seeded.students[0].userId,
+              isLiveActive: true,
+            },
+          ],
+          [
+            seeded.students[1].studentIdNumber,
+            {
+              studentId: seeded.students[1].studentId,
+              userId: seeded.students[1].userId,
+              isLiveActive: false,
+            },
+          ],
+          [
+            seeded.students[2].studentIdNumber,
+            {
+              studentId: seeded.students[2].studentId,
+              userId: seeded.students[2].userId,
+              isLiveActive: true,
+            },
+          ],
         ])
       );
     });
 
-    it('候補が空配列の場合は空集合を返す', async () => {
-      expect(await repo.findExistingStudentNumbers([])).toEqual(new Set());
+    it('候補が空配列の場合は空のMapを返す', async () => {
+      expect(await repo.findExistingStudentsByNumbers([])).toEqual(new Map());
     });
   });
 

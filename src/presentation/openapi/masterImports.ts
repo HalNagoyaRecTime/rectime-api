@@ -1,4 +1,5 @@
 import { createRoute } from '@hono/zod-openapi';
+import { MASTER_IMPORT_EXCLUSION_REASONS } from '../../domain/entities/MasterImport';
 import { MasterImportErrors } from '../errors/masterImportErrors';
 import {
   badRequestResponse,
@@ -23,6 +24,31 @@ export const masterImportCommittedResultSchema = z
   })
   .openapi('MasterImportCommittedResult');
 
+export const masterImportExcludedRowSchema = z
+  .object({
+    row_index: z
+      .number()
+      .int()
+      .openapi({ description: 'ファイルのデータ行を1から数えた行番号' }),
+    class_code: z.string(),
+    attendance_number: z.number().int(),
+    student_id_number: z.string(),
+    display_name: z.string(),
+    student_id: z
+      .number()
+      .int()
+      .openapi({ description: '同じ学籍番号で登録済みの学生のID' }),
+    user_id: z.number().int().openapi({
+      description:
+        '登録済みの学生のユーザーID。無効化済みの学生は PATCH /admin/users/{userId} で is_live_active を true にすると有効化できる',
+    }),
+    reason: z.enum(MASTER_IMPORT_EXCLUSION_REASONS).openapi({
+      description:
+        'student_already_registered: 登録済みの学生。student_already_registered_inactive: 登録済みだが無効化されている学生',
+    }),
+  })
+  .openapi('MasterImportExcludedRow');
+
 export const masterImportSessionSchema = z
   .object({
     validated_file_id: z.string(),
@@ -30,14 +56,22 @@ export const masterImportSessionSchema = z
     status: z.enum(['validated', 'committed']),
     file_name: z.string(),
     total: z.number().int(),
-    success_count: z.number().int(),
+    success_count: z.number().int().openapi({
+      description: '登録する行の数。エラーの行と除外する行は含まない',
+    }),
     error_count: z.number().int(),
     errors: z.array(z.unknown()),
+    excluded_count: z.number().int().openapi({
+      description:
+        '既に登録済みの学籍番号のため、登録せずに除外する行の数。学生の取込以外は常に0',
+    }),
+    excluded: z.array(masterImportExcludedRowSchema),
     rows: z.array(z.unknown()),
     rows_total: z.number().int(),
     rows_limit: z.number().int(),
     rows_offset: z.number().int(),
     created_at: z.string(),
+    expires_at: z.string(),
     committed_result: masterImportCommittedResultSchema.nullable(),
   })
   .openapi('MasterImportSession');

@@ -18,6 +18,7 @@ import type {
   StudentUpdateInput,
   StudentWriteInput,
 } from '../../domain/entities/Student';
+import type { MasterImportExcludedRow } from '../../domain/entities/MasterImport';
 import { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 import { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import { IStudentService } from './IStudentService';
@@ -77,33 +78,38 @@ function toDomainUpdateInput(student: StudentUpdateDTO): StudentUpdateInput {
   };
 }
 
-async function findImportErrors(
+async function inspectImportRows(
   rows: StudentImportRow[],
   studentRepository: IStudentRepository
-): Promise<StudentImportRowError[]> {
+): Promise<{
+  errors: StudentImportRowError[];
+  excluded: MasterImportExcludedRow[];
+}> {
   const seenStudentNumbers = new Set<string>();
   const seenAssignments = new Set<string>();
   const fileDuplicateRowIndexes = new Set<number>();
   const errors: StudentImportRowError[] = [];
+  const excluded: MasterImportExcludedRow[] = [];
   const numbersToCheck: string[] = [];
   const assignmentsToCheck: {
     classCode: string;
     attendanceNumber: number;
   }[] = [];
 
+  const describeRow = (rowIndex: number, row: StudentImportRow) => ({
+    row_index: rowIndex + 1,
+    class_code: row.class_code,
+    attendance_number: row.attendance_number,
+    student_id_number: row.student_id_number,
+    display_name: `${row.last_name}${row.first_name}`,
+  });
+
   const pushError = (
     rowIndex: number,
     row: StudentImportRow,
     reason: StudentImportErrorReason
   ) => {
-    errors.push({
-      row_index: rowIndex + 1,
-      class_code: row.class_code,
-      attendance_number: row.attendance_number,
-      student_id_number: row.student_id_number,
-      display_name: `${row.last_name}${row.first_name}`,
-      reason,
-    });
+    errors.push({ ...describeRow(rowIndex, row), reason });
   };
 
   for (const [rowIndex, row] of rows.entries()) {
@@ -132,8 +138,8 @@ async function findImportErrors(
     });
   }
 
-  const [existingNumbers, existingAssignments] = await Promise.all([
-    studentRepository.findExistingStudentNumbers(numbersToCheck),
+  const [existingStudents, existingAssignments] = await Promise.all([
+    studentRepository.findExistingStudentsByNumbers(numbersToCheck),
     studentRepository.findExistingClassRoomAttendanceNumbers(
       assignmentsToCheck
     ),
@@ -149,8 +155,16 @@ async function findImportErrors(
     if (fileDuplicateRowIndexes.has(rowIndex)) {
       continue;
     }
-    if (existingNumbers.has(row.student_id_number)) {
-      pushError(rowIndex, row, 'student_id_number_duplicate_in_db');
+    const existing = existingStudents.get(row.student_id_number);
+    if (existing) {
+      excluded.push({
+        ...describeRow(rowIndex, row),
+        student_id: existing.studentId,
+        user_id: existing.userId,
+        reason: existing.isLiveActive
+          ? 'student_already_registered'
+          : 'student_already_registered_inactive',
+      });
       continue;
     }
     if (
@@ -163,7 +177,7 @@ async function findImportErrors(
   }
 
   errors.sort((a, b) => a.row_index - b.row_index);
-  return errors;
+  return { errors, excluded };
 }
 
 export function createStudentService(
@@ -284,19 +298,27 @@ export function createStudentService(
     async validateStudentImport(
       input: StudentImportInput
     ): Promise<StudentImportValidationResult> {
-      const errors = await findImportErrors(input.rows, studentRepository);
+      const { errors, excluded } = await inspectImportRows(
+        input.rows,
+        studentRepository
+      );
       return {
         total: input.rows.length,
-        success_count: input.rows.length - errors.length,
+        success_count: input.rows.length - errors.length - excluded.length,
         error_count: errors.length,
         errors,
+        excluded_count: excluded.length,
+        excluded,
       };
     },
 
     async commitStudentImport(
       input: StudentImportInput
     ): Promise<StudentImportCommitResult> {
-      const errors = await findImportErrors(input.rows, studentRepository);
+      const { errors, excluded } = await inspectImportRows(
+        input.rows,
+        studentRepository
+      );
       if (errors.length > 0) {
         return {
           total: input.rows.length,
@@ -306,8 +328,14 @@ export function createStudentService(
         };
       }
 
+      const excludedRowIndexes = new Set(
+        excluded.map(row => row.row_index - 1)
+      );
+      const rowsToImport = input.rows.filter(
+        (_, rowIndex) => !excludedRowIndexes.has(rowIndex)
+      );
       const uniqueClassCodes = Array.from(
-        new Set(input.rows.map(row => row.class_code))
+        new Set(rowsToImport.map(row => row.class_code))
       );
       const existingClassCodes =
         await classRoomRepository.findExistingClassCodes(uniqueClassCodes);
@@ -317,7 +345,7 @@ export function createStudentService(
 
       await studentRepository.createMany({
         newClassRooms,
-        students: input.rows.map(row => ({
+        students: rowsToImport.map(row => ({
           displayName: `${row.last_name}${row.first_name}`,
           classCode: row.class_code,
           attendanceNumber: row.attendance_number,
@@ -327,7 +355,7 @@ export function createStudentService(
 
       return {
         total: input.rows.length,
-        imported: input.rows.length,
+        imported: rowsToImport.length,
         error_count: 0,
         errors: [],
       };

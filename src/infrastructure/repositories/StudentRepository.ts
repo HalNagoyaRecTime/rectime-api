@@ -24,6 +24,7 @@ import type {
 import { buildProvisionalTeamName } from '../../domain/entities/Team';
 import {
   BulkCreateStudentsInput,
+  ExistingStudent,
   IStudentRepository,
   StudentClassRoomAttendanceNumber,
 } from '../../domain/interfaces/repositories/IStudentRepository';
@@ -213,20 +214,30 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       return result ? toDomain(result) : null;
     },
 
-    async findExistingStudentNumbers(
+    async findExistingStudentsByNumbers(
       studentNumbers: string[]
-    ): Promise<Set<string>> {
+    ): Promise<Map<string, ExistingStudent>> {
       const unique = Array.from(new Set(studentNumbers));
-      const found = new Set<string>();
+      const found = new Map<string, ExistingStudent>();
 
       for (const chunk of chunkArray(unique, D1_MAX_BOUND_PARAMETERS)) {
         const rows = await orm
-          .select({ studentIdNumber: students.studentIdNumber })
+          .select({
+            studentId: students.id,
+            userId: students.userId,
+            studentIdNumber: students.studentIdNumber,
+            isLiveActive: users.isLiveActive,
+          })
           .from(students)
+          .innerJoin(users, eq(students.userId, users.id))
           .where(inArray(students.studentIdNumber, chunk))
           .all();
         for (const row of rows) {
-          found.add(row.studentIdNumber);
+          found.set(row.studentIdNumber, {
+            studentId: row.studentId,
+            userId: row.userId,
+            isLiveActive: row.isLiveActive === 1,
+          });
         }
       }
 

@@ -418,6 +418,103 @@ describe('MasterImportService', () => {
       });
     });
 
+    it('除外する行があってもエラーが無ければ確定でき、除外した行は取得時にも返す', async () => {
+      const kv = createFakeKv();
+      const excluded = [
+        {
+          row_index: 1,
+          class_code: '11A',
+          attendance_number: 1,
+          student_id_number: '10001',
+          display_name: '山田太郎',
+          student_id: 7,
+          user_id: 70,
+          reason: 'student_already_registered',
+        },
+      ];
+      const validateStudentImport = vi.fn().mockResolvedValue({
+        total: 2,
+        success_count: 1,
+        error_count: 0,
+        errors: [],
+        excluded_count: 1,
+        excluded,
+      });
+      const commitStudentImport = vi.fn().mockResolvedValue({
+        total: 2,
+        imported: 1,
+        error_count: 0,
+        errors: [],
+      });
+      const service = createMasterImportService(
+        kv,
+        createFakeCommitLock(),
+        buildStudentService({ validateStudentImport, commitStudentImport }),
+        buildClassRoomService(),
+        buildTeacherService()
+      );
+      const file = csvFile(
+        'class_code,attendance_number,student_id_number,last_name,first_name\n11A,1,10001,山田,太郎\n11A,2,10002,佐藤,花子\n',
+        's.csv'
+      );
+      const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
+        type: 'students',
+        file,
+        fileName: 's.csv',
+      });
+
+      const fetched = await service.getImport(
+        created.validated_file_id,
+        { offset: 0, limit: 100 },
+        OWNER_USER_ID
+      );
+      const outcome = await service.commitImport(
+        created.validated_file_id,
+        OWNER_USER_ID
+      );
+
+      expect(created).toMatchObject({ excluded_count: 1, excluded });
+      expect(fetched).toMatchObject({
+        success_count: 1,
+        excluded_count: 1,
+        excluded,
+      });
+      expect(outcome).toMatchObject({
+        status: 'committed',
+        session: { committed_result: { imported: 1 } },
+      });
+    });
+
+    it('学生以外の取込では、除外する行は常に空になる', async () => {
+      const service = createMasterImportService(
+        createFakeKv(),
+        createFakeCommitLock(),
+        buildStudentService(),
+        buildClassRoomService(),
+        buildTeacherService({
+          validateTeacherImport: vi.fn().mockResolvedValue({
+            total: 1,
+            success_count: 1,
+            error_count: 0,
+            errors: [],
+          }),
+        })
+      );
+
+      const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
+        type: 'teachers',
+        file: csvFile(
+          'last_name,first_name,email\n田中,太郎,tanaka@example.ac.jp\n',
+          't.csv'
+        ),
+        fileName: 't.csv',
+      });
+
+      expect(created).toMatchObject({ excluded_count: 0, excluded: [] });
+    });
+
     it('エラー行がある場合はhas_errorsを返し、確定処理を呼ばない', async () => {
       const kv = createFakeKv();
       const validateTeacherImport = vi.fn().mockResolvedValue({
@@ -669,7 +766,7 @@ describe('MasterImportService', () => {
           errors: [
             {
               row_index: 0,
-              reason: 'student_id_number_duplicate_in_db',
+              reason: 'attendance_number_duplicate_in_db',
             },
           ],
         })
@@ -711,7 +808,7 @@ describe('MasterImportService', () => {
         expect(outcome.session.error_count).toBe(1);
         expect(outcome.session.errors).toEqual([
           expect.objectContaining({
-            reason: 'student_id_number_duplicate_in_db',
+            reason: 'attendance_number_duplicate_in_db',
           }),
         ]);
       }
