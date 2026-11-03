@@ -106,7 +106,9 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
     async findAll(filter = {}): Promise<StudentPage> {
       const limit = filter.limit ?? 50;
       const offset = filter.offset ?? 0;
-      const conditions = [];
+      // 退会後も履歴保持のためstudents行は残るが、管理・選択対象には含めない。
+      // isLiveActiveは管理上の一時停止を表す別軸のため、all指定でもこの条件は維持する。
+      const conditions = [eq(users.deletionStatus, 'active')];
       if (filter.search) {
         const escapedPattern = `%${escapeLikePattern(filter.search)}%`;
         conditions.push(
@@ -130,8 +132,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
           filter.isStaff ? isNotNull(staffs.id) : isNull(staffs.id)
         );
       }
-      const whereClause =
-        conditions.length > 0 ? and(...conditions) : undefined;
+      const whereClause = and(...conditions);
       const countQuery = orm
         .select({ count: sql<number>`count(*)` })
         .from(students)
@@ -162,8 +163,9 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
                       ? users.isLiveActive
                       : students.id;
       const [countResult, results] = await Promise.all([
-        (whereClause ? countQuery.where(whereClause) : countQuery).get(),
-        (whereClause ? rowsQuery.where(whereClause) : rowsQuery)
+        countQuery.where(whereClause).get(),
+        rowsQuery
+          .where(whereClause)
           .orderBy(sortOrder(sortColumn), asc(students.id))
           .limit(limit)
           .offset(offset)
