@@ -40,11 +40,11 @@ export const masterImportExcludedRowSchema = z
       .openapi({ description: '同じ学籍番号で登録済みの学生のID' }),
     user_id: z.number().int().openapi({
       description:
-        '登録済みの学生のユーザーID。無効化済みの学生は PATCH /admin/users/{userId} で is_live_active を true にすると有効化できる',
+        '登録済みの学生のユーザーID。student_already_registered_inactive の学生は PATCH /admin/users/{userId} で is_live_active を true にすると有効化できる。student_account_deleted の学生は有効化できない',
     }),
     reason: z.enum(MASTER_IMPORT_EXCLUSION_REASONS).openapi({
       description:
-        'student_already_registered: 登録済みの学生。student_already_registered_inactive: 登録済みだが無効化されている学生',
+        'student_already_registered: 登録済みの学生。student_already_registered_inactive: 登録済みだが無効化されている学生。student_account_deleted: 退会手続き中または退会済みの学生。退会の後片付けが終わると学籍番号が空き、取り込み直すと新規として登録できる',
     }),
   })
   .openapi('MasterImportExcludedRow');

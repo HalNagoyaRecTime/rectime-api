@@ -93,4 +93,5 @@ export interface StudentImportCommitResult {
   imported: number;
   error_count: number;
   errors: StudentImportRowError[];
+  excluded: MasterImportExcludedRow[];
 }

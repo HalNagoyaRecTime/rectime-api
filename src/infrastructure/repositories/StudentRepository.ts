@@ -229,6 +229,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
             userId: students.userId,
             studentIdNumber: students.studentIdNumber,
             isLiveActive: users.isLiveActive,
+            deletionStatus: users.deletionStatus,
           })
           .from(students)
           .innerJoin(users, eq(students.userId, users.id))
@@ -239,6 +240,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
             studentId: row.studentId,
             userId: row.userId,
             isLiveActive: row.isLiveActive === 1,
+            isDeleted: row.deletionStatus !== 'active',
           });
         }
       }

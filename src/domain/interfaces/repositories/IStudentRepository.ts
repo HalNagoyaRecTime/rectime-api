@@ -23,6 +23,7 @@ export interface ExistingStudent {
   studentId: number;
   userId: number;
   isLiveActive: boolean;
+  isDeleted: boolean;
 }
 
 export interface BulkCreateStudentsInput {

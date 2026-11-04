@@ -4,6 +4,7 @@ export type MasterImportStatus = 'validated' | 'committed';
 export const MASTER_IMPORT_EXCLUSION_REASONS = [
   'student_already_registered',
   'student_already_registered_inactive',
+  'student_account_deleted',
 ] as const;
 
 export type MasterImportExclusionReason =
@@ -36,8 +37,8 @@ export interface MasterImportSession {
   success_count: number;
   error_count: number;
   errors: unknown[];
-  excluded_count: number;
-  excluded: MasterImportExcludedRow[];
+  excluded_count?: number;
+  excluded?: MasterImportExcludedRow[];
   rows: unknown[];
   created_at: string;
   updated_at?: string;

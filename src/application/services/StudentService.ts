@@ -161,9 +161,11 @@ async function inspectImportRows(
         ...describeRow(rowIndex, row),
         student_id: existing.studentId,
         user_id: existing.userId,
-        reason: existing.isLiveActive
-          ? 'student_already_registered'
-          : 'student_already_registered_inactive',
+        reason: existing.isDeleted
+          ? 'student_account_deleted'
+          : existing.isLiveActive
+            ? 'student_already_registered'
+            : 'student_already_registered_inactive',
       });
       continue;
     }
@@ -325,6 +327,7 @@ export function createStudentService(
           imported: 0,
           error_count: errors.length,
           errors,
+          excluded,
         };
       }
 
@@ -358,6 +361,7 @@ export function createStudentService(
         imported: rowsToImport.length,
         error_count: 0,
         errors: [],
+        excluded,
       };
     },
   };

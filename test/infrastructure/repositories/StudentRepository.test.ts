@@ -641,6 +641,45 @@ describe('StudentRepository', () => {
   });
 
   describe('findExistingStudentsByNumbers', () => {
+    it.each(['deletion_pending', 'deleted'] as const)(
+      '退会状態が%sの学生は、退会済みとして返す',
+      async deletionStatus => {
+        const studentIdNumber = `EXISTING-${deletionStatus}`;
+        const user = await env.DB.prepare(
+          `INSERT INTO users (user_name, deletion_status)
+           VALUES ('退会確認', ?)
+           RETURNING user_id`
+        )
+          .bind(deletionStatus)
+          .first<{ user_id: number }>();
+        if (!user) throw new Error('テスト用Userを作成できませんでした');
+
+        try {
+          await env.DB.prepare(
+            'INSERT INTO students (user_id, student_id_number) VALUES (?, ?)'
+          )
+            .bind(user.user_id, studentIdNumber)
+            .run();
+
+          const found = await repo.findExistingStudentsByNumbers([
+            studentIdNumber,
+          ]);
+
+          expect(found.get(studentIdNumber)).toMatchObject({
+            userId: user.user_id,
+            isDeleted: true,
+          });
+        } finally {
+          await env.DB.prepare('DELETE FROM students WHERE user_id = ?')
+            .bind(user.user_id)
+            .run();
+          await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+            .bind(user.user_id)
+            .run();
+        }
+      }
+    );
+
     it('2,000件の候補から、DBに実在する学籍番号ごとの学生ID・ユーザーID・有効かどうかを、チャンク境界をまたいでもまとめて返す', async () => {
       const candidates = Array.from(
         { length: 2000 },
@@ -660,6 +699,7 @@ describe('StudentRepository', () => {
               studentId: seeded.students[0].studentId,
               userId: seeded.students[0].userId,
               isLiveActive: true,
+              isDeleted: false,
             },
           ],
           [
@@ -668,6 +708,7 @@ describe('StudentRepository', () => {
               studentId: seeded.students[1].studentId,
               userId: seeded.students[1].userId,
               isLiveActive: false,
+              isDeleted: false,
             },
           ],
           [
@@ -676,6 +717,7 @@ describe('StudentRepository', () => {
               studentId: seeded.students[2].studentId,
               userId: seeded.students[2].userId,
               isLiveActive: true,
+              isDeleted: false,
             },
           ],
         ])

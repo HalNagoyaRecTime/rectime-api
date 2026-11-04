@@ -223,6 +223,43 @@ describe('MasterImportService', () => {
       ).resolves.toBeNull();
     });
 
+    it('excludedが無い旧形式のセッションは、除外する行が無いものとして返す', async () => {
+      const kv = createFakeKv();
+      await kv.put(
+        'master-import:legacy-2',
+        JSON.stringify({
+          validated_file_id: 'legacy-2',
+          create_user_id: OWNER_USER_ID,
+          type: 'students',
+          status: 'validated',
+          file_name: 's.csv',
+          total: 0,
+          success_count: 0,
+          error_count: 0,
+          errors: [],
+          rows: [],
+          created_at: '2026-08-20T00:00:00.000Z',
+          updated_at: '2026-08-20T00:00:00.000Z',
+          committed_result: null,
+        })
+      );
+      const service = createMasterImportService(
+        kv,
+        createFakeCommitLock(),
+        buildStudentService(),
+        buildClassRoomService(),
+        buildTeacherService()
+      );
+
+      const session = await service.getImport(
+        'legacy-2',
+        { offset: 0, limit: 10 },
+        OWNER_USER_ID
+      );
+
+      expect(session).toMatchObject({ excluded_count: 0, excluded: [] });
+    });
+
     // デプロイ直後は、updated_atを持たない旧形式のセッションがKVに残りうる
     it('updated_atが無い旧形式のセッションはcreated_atを基準に算出する', async () => {
       const kv = createFakeKv();
@@ -483,6 +520,128 @@ describe('MasterImportService', () => {
       expect(outcome).toMatchObject({
         status: 'committed',
         session: { committed_result: { imported: 1 } },
+      });
+    });
+
+    it('確定の時点で除外する行が増えていれば、確定後のセッションの件数と除外した行もそれに合わせる', async () => {
+      const kv = createFakeKv();
+      const excludedAtCommit = {
+        row_index: 1,
+        class_code: '11A',
+        attendance_number: 1,
+        student_id_number: '10001',
+        display_name: '山田太郎',
+        student_id: 7,
+        user_id: 70,
+        reason: 'student_already_registered',
+      };
+      const service = createMasterImportService(
+        kv,
+        createFakeCommitLock(),
+        buildStudentService({
+          validateStudentImport: vi.fn().mockResolvedValue({
+            total: 2,
+            success_count: 2,
+            error_count: 0,
+            errors: [],
+            excluded_count: 0,
+            excluded: [],
+          }),
+          commitStudentImport: vi.fn().mockResolvedValue({
+            total: 2,
+            imported: 1,
+            error_count: 0,
+            errors: [],
+            excluded: [excludedAtCommit],
+          }),
+        }),
+        buildClassRoomService(),
+        buildTeacherService()
+      );
+      const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
+        type: 'students',
+        file: csvFile(
+          'class_code,attendance_number,student_id_number,last_name,first_name\n11A,1,10001,山田,太郎\n11A,2,10002,佐藤,花子\n',
+          's.csv'
+        ),
+        fileName: 's.csv',
+      });
+
+      await service.commitImport(created.validated_file_id, OWNER_USER_ID);
+      const fetched = await service.getImport(
+        created.validated_file_id,
+        { offset: 0, limit: 100 },
+        OWNER_USER_ID
+      );
+
+      expect(fetched).toMatchObject({
+        success_count: 1,
+        excluded_count: 1,
+        excluded: [excludedAtCommit],
+        committed_result: { imported: 1 },
+      });
+    });
+
+    it('確定の時点でエラーが見つかった場合も、返す件数と除外した行は確定の時点のものにする', async () => {
+      const excludedAtCommit = {
+        row_index: 1,
+        class_code: '11A',
+        attendance_number: 1,
+        student_id_number: '10001',
+        display_name: '山田太郎',
+        student_id: 7,
+        user_id: 70,
+        reason: 'student_already_registered',
+      };
+      const service = createMasterImportService(
+        createFakeKv(),
+        createFakeCommitLock(),
+        buildStudentService({
+          validateStudentImport: vi.fn().mockResolvedValue({
+            total: 3,
+            success_count: 3,
+            error_count: 0,
+            errors: [],
+            excluded_count: 0,
+            excluded: [],
+          }),
+          commitStudentImport: vi.fn().mockResolvedValue({
+            total: 3,
+            imported: 0,
+            error_count: 1,
+            errors: [
+              { row_index: 2, reason: 'attendance_number_duplicate_in_db' },
+            ],
+            excluded: [excludedAtCommit],
+          }),
+        }),
+        buildClassRoomService(),
+        buildTeacherService()
+      );
+      const created = await service.createImport({
+        createUserId: OWNER_USER_ID,
+        type: 'students',
+        file: csvFile(
+          'class_code,attendance_number,student_id_number,last_name,first_name\n11A,1,10001,山田,太郎\n11A,2,10002,佐藤,花子\n11A,3,10003,鈴木,一郎\n',
+          's.csv'
+        ),
+        fileName: 's.csv',
+      });
+
+      const outcome = await service.commitImport(
+        created.validated_file_id,
+        OWNER_USER_ID
+      );
+
+      expect(outcome).toMatchObject({
+        status: 'has_errors',
+        session: {
+          success_count: 1,
+          error_count: 1,
+          excluded_count: 1,
+          excluded: [excludedAtCommit],
+        },
       });
     });
 

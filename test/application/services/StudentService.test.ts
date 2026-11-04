@@ -985,6 +985,7 @@ describe('StudentService', () => {
         imported: 2,
         error_count: 0,
         errors: [],
+        excluded: [],
       });
       expect(createMany).toHaveBeenCalledTimes(1);
       expect(createMany).toHaveBeenCalledWith({
@@ -1032,6 +1033,7 @@ describe('StudentService', () => {
         imported: 1,
         error_count: 0,
         errors: [],
+        excluded: [],
       });
       expect(createMany).toHaveBeenCalledWith({
         newClassRooms: [{ classCode: '99Z', className: '99Z' }],
@@ -1119,6 +1121,7 @@ describe('StudentService', () => {
             reason: 'student_id_number_duplicate_in_file',
           }),
         ],
+        excluded: [],
       });
       expect(createMany).not.toHaveBeenCalled();
     });
@@ -1164,6 +1167,13 @@ describe('StudentService', () => {
         imported: 1,
         error_count: 0,
         errors: [],
+        excluded: [
+          expect.objectContaining({
+            row_index: 1,
+            student_id: 7,
+            reason: 'student_already_registered',
+          }),
+        ],
       });
       expect(createMany).toHaveBeenCalledWith({
         newClassRooms: [],
@@ -1212,6 +1222,13 @@ describe('StudentService', () => {
         imported: 0,
         error_count: 0,
         errors: [],
+        excluded: [
+          expect.objectContaining({
+            row_index: 1,
+            student_id: 7,
+            reason: 'student_already_registered',
+          }),
+        ],
       });
       expect(createMany).toHaveBeenCalledWith({
         newClassRooms: [],

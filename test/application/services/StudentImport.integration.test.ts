@@ -92,11 +92,12 @@ describe('学生の取込で既に登録されている学生を除外する', (
         },
       ],
     });
-    expect(commit).toEqual({
+    expect(commit).toMatchObject({
       total: 13,
       imported: 12,
       error_count: 0,
       errors: [],
+      excluded: [{ student_id: existing.studentId }],
     });
     expect(await countStudents()).toBe(studentCountBefore + 12);
     for (const row of newStudentRows(12)) {
@@ -136,6 +137,71 @@ describe('学生の取込で既に登録されている学生を除外する', (
     expect(commit.imported).toBe(1);
     expect(before?.is_live_active).toBe(0);
     expect(await findStudentByNumber(inactive.studentIdNumber)).toEqual(before);
+  });
+
+  it.each([
+    ['有効', 0],
+    ['無効化済み', 1],
+  ] as const)(
+    '退会の後片付けが終わっていない学生は、%sでも退会済みの理由で除外し、新規作成もしない',
+    async (_label, index) => {
+      const deleted = seeded.students[index];
+      await env.DB.prepare(
+        "UPDATE users SET deletion_status = 'deleted' WHERE user_id = ?"
+      )
+        .bind(deleted.userId)
+        .run();
+      const rows = [
+        {
+          class_code: 'TEST-1',
+          attendance_number: 20,
+          student_id_number: deleted.studentIdNumber,
+          last_name: '退会',
+          first_name: '学生',
+        },
+        ...newStudentRows(1),
+      ];
+      const before = await findStudentByNumber(deleted.studentIdNumber);
+
+      const validation = await service().validateStudentImport({ rows });
+      const commit = await service().commitStudentImport({ rows });
+
+      expect(validation.excluded).toEqual([
+        expect.objectContaining({
+          student_id: deleted.studentId,
+          reason: 'student_account_deleted',
+        }),
+      ]);
+      expect(commit.imported).toBe(1);
+      expect(await findStudentByNumber(deleted.studentIdNumber)).toEqual(
+        before
+      );
+    }
+  );
+
+  it('検証のあとに登録された学生は、確定の結果で除外した行として返す', async () => {
+    const rows = newStudentRows(2);
+    const validation = await service().validateStudentImport({ rows });
+    await createStudentRepository(env.DB).create({
+      displayName: '先に登録',
+      classRoomId: seeded.classRoomId,
+      attendanceNumber: 40,
+      studentIdNumber: rows[0].student_id_number,
+    });
+
+    const commit = await service().commitStudentImport({ rows });
+
+    expect(validation.excluded_count).toBe(0);
+    expect(commit).toMatchObject({
+      imported: 1,
+      excluded: [
+        {
+          row_index: 1,
+          student_id_number: rows[0].student_id_number,
+          reason: 'student_already_registered',
+        },
+      ],
+    });
   });
 
   it('除外する行にしか出てこないクラス記号では、クラスを作らない', async () => {
