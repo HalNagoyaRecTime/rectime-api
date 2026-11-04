@@ -86,4 +86,9 @@ export const TeamErrors = {
     code: 'TEAM_HAS_SCORES',
     message: 'チームに得点が登録されているため削除できません',
   },
+  TEAM_DETACH_NAME_CONFLICT: {
+    status: 409,
+    code: 'TEAM_DETACH_NAME_CONFLICT',
+    message: '単独編成へ戻すチーム名が既に使われているため削除できません',
+  },
 } as const satisfies Record<string, ApiErrorDefinition>;

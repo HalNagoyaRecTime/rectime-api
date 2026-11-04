@@ -362,14 +362,44 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     },
 
     async delete(teamId: number): Promise<boolean> {
-      await db
-        .prepare('UPDATE teams SET team_name = ? WHERE team_id = ?')
-        .bind(`__deleting_team_${teamId}__`, teamId)
-        .run();
-
-      await detachRemovedClassRooms(teamId, []);
-      const statements = buildCleanupEmptyTeamStatements(db, teamId);
-      const results = await db.batch(statements);
+      const deletingName = `__deleting_team_${crypto.randomUUID()}__`;
+      // 得点の確認から単独編成への移動、削除までを同じbatchで確定する。
+      // 一時名への変更に成功した場合だけ後続を実行し、失敗時は全体を戻す。
+      // 所属クラスもbatch内で取得し、事前取得との間の所属変更を取りこぼさない。
+      const results = await db.batch([
+        db
+          .prepare(
+            `UPDATE teams SET team_name = ?
+             WHERE team_id = ?
+               AND NOT EXISTS (
+                 SELECT 1 FROM team_scores WHERE team_id = ? AND scores != 0
+               )`
+          )
+          .bind(deletingName, teamId, teamId),
+        db
+          .prepare(
+            `INSERT INTO teams (team_name)
+             SELECT class_name || '(' || class_code || ')'
+             FROM class_rooms
+             WHERE team_id = ?
+               AND EXISTS (SELECT 1 FROM teams WHERE team_id = ? AND team_name = ?)`
+          )
+          .bind(teamId, teamId, deletingName),
+        db
+          .prepare(
+            `UPDATE class_rooms
+             SET team_id = (
+                   SELECT t.team_id FROM teams t
+                   WHERE t.team_name = class_rooms.class_name || '(' || class_rooms.class_code || ')'
+                 ),
+                 updated_at = CURRENT_TIMESTAMP,
+                 lock_version = lock_version + 1
+             WHERE team_id = ?
+               AND EXISTS (SELECT 1 FROM teams WHERE team_id = ? AND team_name = ?)`
+          )
+          .bind(teamId, teamId, deletingName),
+        ...buildCleanupEmptyTeamStatements(db, teamId),
+      ]);
       const teamDeleteResult = results[results.length - 1];
       return (teamDeleteResult.meta.changes ?? 0) > 0;
     },
