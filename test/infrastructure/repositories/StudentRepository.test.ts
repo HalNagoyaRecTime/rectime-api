@@ -109,6 +109,94 @@ describe('StudentRepository', () => {
       ]);
     });
 
+    it('退会処理中・退会済みの学生をtotalとページング対象から除外する', async () => {
+      const usersToCreate = [
+        {
+          userName: '一覧除外確認-稼働中',
+          isLiveActive: 1,
+          deletionStatus: 'active',
+          studentNumber: 'LIST-FILTER-ACTIVE',
+        },
+        {
+          userName: '一覧除外確認-停止中',
+          isLiveActive: 0,
+          deletionStatus: 'active',
+          studentNumber: 'LIST-FILTER-INACTIVE',
+        },
+        {
+          userName: '一覧除外確認-削除処理中',
+          isLiveActive: 1,
+          deletionStatus: 'deletion_pending',
+          studentNumber: 'LIST-FILTER-PENDING',
+        },
+        {
+          userName: '一覧除外確認-削除済み',
+          isLiveActive: 1,
+          deletionStatus: 'deleted',
+          studentNumber: 'LIST-FILTER-DELETED',
+        },
+      ] as const;
+      const userIds: number[] = [];
+
+      try {
+        for (const userToCreate of usersToCreate) {
+          const user = await env.DB.prepare(
+            `INSERT INTO users (user_name, is_live_active, deletion_status)
+             VALUES (?, ?, ?)
+             RETURNING user_id`
+          )
+            .bind(
+              userToCreate.userName,
+              userToCreate.isLiveActive,
+              userToCreate.deletionStatus
+            )
+            .first<{ user_id: number }>();
+          if (!user) throw new Error('テスト用Userを作成できませんでした');
+          userIds.push(user.user_id);
+          await env.DB.prepare(
+            'INSERT INTO students (user_id, student_id_number) VALUES (?, ?)'
+          )
+            .bind(user.user_id, userToCreate.studentNumber)
+            .run();
+        }
+
+        const allActiveStatuses = await repo.findAll({
+          search: '一覧除外確認',
+          sortBy: 'studentId',
+          limit: 1,
+          offset: 1,
+        });
+
+        expect(allActiveStatuses.total).toBe(2);
+        expect(
+          allActiveStatuses.items.map(student => student.studentIdNumber)
+        ).toEqual(['LIST-FILTER-INACTIVE']);
+
+        const liveActiveStatuses = await repo.findAll({
+          search: '一覧除外確認',
+          isLiveActive: true,
+        });
+        expect(liveActiveStatuses.total).toBe(1);
+        expect(
+          liveActiveStatuses.items.map(student => student.studentIdNumber)
+        ).toEqual(['LIST-FILTER-ACTIVE']);
+      } finally {
+        if (userIds.length > 0) {
+          const placeholders = userIds.map(() => '?').join(', ');
+          await env.DB.prepare(
+            `DELETE FROM students WHERE user_id IN (${placeholders})`
+          )
+            .bind(...userIds)
+            .run();
+          await env.DB.prepare(
+            `DELETE FROM users WHERE user_id IN (${placeholders})`
+          )
+            .bind(...userIds)
+            .run();
+        }
+      }
+    });
+
     it.each([
       'studentId',
       'studentIdNumber',

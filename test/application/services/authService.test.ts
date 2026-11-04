@@ -90,7 +90,7 @@ function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
 }
 
 describe('createAuthService', () => {
-  function setup() {
+  function setup(studentEmailDomain = 'nhs.hal.ac.jp') {
     const userRepository: IUserRepository = {
       exists: vi.fn(),
       isStaff: vi.fn(),
@@ -125,7 +125,6 @@ describe('createAuthService', () => {
       findByUserId: vi.fn(),
       anonymizeByUserId: vi.fn(),
     };
-    const studentEmailDomain = 'nhs.hal.ac.jp';
     const teacherRepository = buildTeacherRepository();
     const firebaseTokenRepository = buildFirebaseTokenRepository();
     const service = createAuthService(
@@ -951,6 +950,51 @@ describe('createAuthService', () => {
         display_name: '田中太郎',
       });
     });
+
+    it.each([
+      ['大阪', 'ohs.hal.ac.jp', 'ohs00123@ohs.hal.ac.jp'],
+      ['東京', 'ths.hal.ac.jp', 'ths00123@ths.hal.ac.jp'],
+    ])(
+      '%s校のメールから先頭ゼロを保持して登録済み学生へ紐付ける',
+      async (_, domain, email) => {
+        const {
+          userRepository,
+          studentRepository,
+          teacherRepository,
+          service,
+        } = setup(domain);
+        vi.mocked(
+          userRepository.findUserIdByMicrosoftAccount
+        ).mockResolvedValue(null);
+        vi.mocked(studentRepository.findByStudentNum).mockResolvedValue(
+          buildStudent({ studentIdNumber: '00123' })
+        );
+
+        const result = await service.upsertUser(
+          buildClaims({ preferred_username: email })
+        );
+
+        expect(studentRepository.findByStudentNum).toHaveBeenCalledWith(
+          '00123'
+        );
+        expect(userRepository.linkMicrosoftAccount).toHaveBeenCalledWith({
+          userId: '100',
+          oid: 'oid-1',
+          tid: 'tid-1',
+        });
+        expect(result).toMatchObject({
+          id: '100',
+          email,
+          display_name: '田中太郎',
+        });
+        expect(
+          userRepository.createUserWithMicrosoftLink
+        ).not.toHaveBeenCalled();
+        expect(
+          teacherRepository.findMicrosoftLinkCandidateByEmail
+        ).not.toHaveBeenCalled();
+      }
+    );
 
     it('学籍番号で見つかった学生のdeletion_statusがdeletion_pendingの場合、ACCOUNT_DELETION_PENDINGを投げてlinkMicrosoftAccountを呼ばない', async () => {
       const { userRepository, studentRepository, service } = setup();

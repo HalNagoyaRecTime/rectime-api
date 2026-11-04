@@ -129,6 +129,8 @@ export const studentListRoute = createRoute({
   path: '/students',
   tags: ['Students'],
   summary: '学生一覧を取得する',
+  description:
+    '退会状態がactiveの学生だけを返す。isLiveActive=allでも退会処理中・退会済みの学生は含めない。',
   security: bearerAuth,
   request: { query: studentListQuery },
   responses: {
