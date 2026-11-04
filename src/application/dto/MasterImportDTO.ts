@@ -1,5 +1,6 @@
 import type {
   MasterImportCommittedResult,
+  MasterImportExcludedRow,
   MasterImportStatus,
   MasterImportType,
 } from '../../domain/entities/MasterImport';
@@ -13,6 +14,8 @@ export interface MasterImportSessionDTO {
   success_count: number;
   error_count: number;
   errors: unknown[];
+  excluded_count: number;
+  excluded: MasterImportExcludedRow[];
   rows: unknown[];
   rows_total: number;
   rows_limit: number;
