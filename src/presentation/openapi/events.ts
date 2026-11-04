@@ -4,6 +4,7 @@ import type {
   EventDetailDTO,
   MyEventDTO,
   GetEventsRequestDTO,
+  UpdateEventRequestDTO,
 } from '../../application/dto/EventDTO';
 import { eventVenueListResponseSchema, venueIdsSchema } from './eventVenues';
 import { roundSettingResponseSchema } from './gatheringRounds';
@@ -33,6 +34,10 @@ export const eventResponseSchema = z
     end_time: hhmmSchema,
     created_at: z.string(),
     updated_at: z.string(),
+    lock_version: z.number().int().min(0).openapi({
+      description:
+        '更新の競合を検出するための版番号。更新のたびに1ずつ増える。更新時に `lock_version` として送り返す。',
+    }),
   })
   .openapi('Event');
 
@@ -117,12 +122,20 @@ export const eventWriteSchema = eventBaseSchema
 // notification_enabled等の未知fieldを黙って無視すると「通知を止めたつもりが
 // 実は止まっていない」事故につながるため、PUTはstrictで未知fieldを拒否する(#388)。
 export const eventUpdateSchema = eventBaseSchema
+  .extend({
+    lock_version: z.number().int().min(0).optional().openapi({
+      description:
+        '取得時点の `lock_version`。指定すると、取得後に変更されていた場合は409を返す。',
+    }),
+  })
   .strict()
   .refine(isValidEventTimeRange, eventTimeRangeRefinement)
   .openapi('EventUpdateRequest', {
     description:
       'start_timeはend_time以前の時刻を指定する。同一時刻は締切を表し、区間として扱わない。',
-  }) satisfies z.ZodType<EventWriteRequest>;
+  }) satisfies z.ZodType<
+  EventWriteRequest & Pick<UpdateEventRequestDTO, 'lock_version'>
+>;
 
 export const eventListRoute = createRoute({
   method: 'get',
@@ -191,6 +204,8 @@ export const eventUpdateRoute = createRoute({
   path: '/events/{eventId}',
   tags: ['Events'],
   summary: 'イベントを更新する',
+  description:
+    '`lock_version` を指定すると、取得後にイベントが変更されていた場合は409を返す。集合設定の保存でもこの版が進むため、集合設定を保存した後に古い値で送ると409になる。',
   security: bearerAuth,
   request: {
     params: eventIdParams,
@@ -205,6 +220,7 @@ export const eventUpdateRoute = createRoute({
     401: unauthorizedResponse,
     403: forbiddenResponse,
     404: notFoundResponse,
+    409: conflictResponse,
     500: internalServerErrorResponse,
   },
 });

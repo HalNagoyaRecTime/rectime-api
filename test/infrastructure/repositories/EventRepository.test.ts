@@ -375,6 +375,161 @@ describe('EventRepository', () => {
       }
     });
 
+    describe('楽観ロック', () => {
+      const venueIdsOf = async (eventId: number) =>
+        (
+          await env.DB.prepare(
+            'SELECT venue_id FROM event_venues WHERE event_id = ? ORDER BY venue_id'
+          )
+            .bind(eventId)
+            .all<{ venue_id: number }>()
+        ).results.map(row => row.venue_id);
+
+      it('作成直後の lock_version は 0 で、更新のたびに 1 ずつ増える', async () => {
+        const { venueIds, cleanup } = await createVenues([
+          'ロック連番用体育館',
+        ]);
+        const created = await repo.create({
+          name: 'ロック連番用イベント',
+          ruleText: null,
+          venueIds,
+          startTime: '0900',
+          endTime: '0930',
+        });
+
+        try {
+          expect(created.lock_version).toBe(0);
+          const input = {
+            name: 'ロック連番用イベント',
+            ruleText: null,
+            venueIds,
+            startTime: '0900',
+            endTime: '0930',
+          };
+          const first = await repo.update(created.event_id, input);
+          const second = await repo.update(created.event_id, input);
+
+          expect(first?.lock_version).toBe(1);
+          expect(second?.lock_version).toBe(2);
+        } finally {
+          await deleteEvent(created.event_id);
+          await cleanup();
+        }
+      });
+
+      it('取得時点の lock_version が一致すれば、本体も実施場所も更新して版を進める', async () => {
+        const { venueIds, cleanup } = await createVenues([
+          'ロック一致用第1体育館',
+          'ロック一致用グラウンド',
+        ]);
+        const created = await repo.create({
+          name: 'ロック一致用イベント',
+          ruleText: null,
+          venueIds: [venueIds[0]],
+          startTime: '0900',
+          endTime: '0930',
+        });
+
+        try {
+          const updated = await repo.update(created.event_id, {
+            name: 'ロック一致後',
+            ruleText: null,
+            venueIds: [venueIds[1]],
+            startTime: '1000',
+            endTime: '1030',
+            expectedLockVersion: created.lock_version,
+          });
+
+          expect(updated).toMatchObject({
+            event_name: 'ロック一致後',
+            lock_version: created.lock_version + 1,
+          });
+          expect(await venueIdsOf(created.event_id)).toEqual([venueIds[1]]);
+        } finally {
+          await deleteEvent(created.event_id);
+          await cleanup();
+        }
+      });
+
+      it('lock_version が違えば null を返し、本体も実施場所の付け替えも一切行わない', async () => {
+        const { venueIds, cleanup } = await createVenues([
+          'ロック不一致用第1体育館',
+          'ロック不一致用グラウンド',
+        ]);
+        const created = await repo.create({
+          name: 'ロック不一致用イベント',
+          ruleText: null,
+          venueIds: [venueIds[0]],
+          startTime: '0900',
+          endTime: '0930',
+        });
+        // 別の操作が先に保存した状態にする（版が 0 → 1）
+        await repo.update(created.event_id, {
+          name: 'ロック不一致用イベント別操作',
+          ruleText: null,
+          venueIds: [venueIds[0]],
+          startTime: '0900',
+          endTime: '0930',
+        });
+
+        try {
+          const result = await repo.update(created.event_id, {
+            name: '古い版の名前',
+            ruleText: null,
+            venueIds: [venueIds[1]],
+            startTime: '1100',
+            endTime: '1130',
+            expectedLockVersion: created.lock_version,
+          });
+
+          expect(result).toBeNull();
+          // 実施場所は付け替わっていない（削除も追加もされていない）
+          expect(await venueIdsOf(created.event_id)).toEqual([venueIds[0]]);
+          const stored = await repo.findById(created.event_id);
+          expect(stored).toMatchObject({
+            event_name: 'ロック不一致用イベント別操作',
+            start_time: '0900',
+            lock_version: 1,
+          });
+        } finally {
+          await deleteEvent(created.event_id);
+          await cleanup();
+        }
+      });
+
+      it('同じ版から続けて更新しても、2回目は null になる（同じ秒内でも検出できる）', async () => {
+        const { venueIds, cleanup } = await createVenues([
+          'ロック連続用体育館',
+        ]);
+        const created = await repo.create({
+          name: 'ロック連続用イベント',
+          ruleText: null,
+          venueIds,
+          startTime: '0900',
+          endTime: '0930',
+        });
+
+        try {
+          const input = {
+            name: 'ロック連続用イベント',
+            ruleText: null,
+            venueIds,
+            startTime: '0900',
+            endTime: '0930',
+            expectedLockVersion: created.lock_version,
+          };
+          const first = await repo.update(created.event_id, input);
+          const second = await repo.update(created.event_id, input);
+
+          expect(first).not.toBeNull();
+          expect(second).toBeNull();
+        } finally {
+          await deleteEvent(created.event_id);
+          await cleanup();
+        }
+      });
+    });
+
     it('存在しないidの場合はnullを返し、紐づけも作らない', async () => {
       const { venueIds, cleanup } = await createVenues(['update不在用体育館']);
 
@@ -396,6 +551,132 @@ describe('EventRepository', () => {
         expect(row?.count).toBe(0);
       } finally {
         await cleanup();
+      }
+    });
+  });
+
+  // 本体と実施場所を別々に読むと、間に更新が挟まったときに「更新後の lock_version と
+  // 更新前の実施場所」が返り、そのレスポンスをPUTすると直前の実施場所の変更を
+  // 古い値で上書きできてしまう。読み取りが全て1回のbatchに含まれていることで、
+  // 返す内容が同じ時点のものになることを固定する。
+  describe('読み取りの整合性', () => {
+    // batchの呼び出し回数と、batchの外で単独に実行された問い合わせの回数を数える。
+    function spyOnD1(db: D1Database) {
+      const stats = { batches: 0, standalone: 0 };
+      const originals = new WeakMap<object, D1PreparedStatement>();
+      const wrap = (statement: D1PreparedStatement): D1PreparedStatement => {
+        const wrapped = new Proxy(statement, {
+          get(target, prop) {
+            if (prop === 'bind') {
+              return (...values: unknown[]) => wrap(target.bind(...values));
+            }
+            if (
+              prop === 'all' ||
+              prop === 'first' ||
+              prop === 'run' ||
+              prop === 'raw'
+            ) {
+              return (...args: unknown[]) => {
+                stats.standalone += 1;
+                return Reflect.apply(Reflect.get(target, prop), target, args);
+              };
+            }
+            const value = Reflect.get(target, prop);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+        });
+        originals.set(wrapped, statement);
+        return wrapped;
+      };
+      const spy = new Proxy(db, {
+        get(target, prop) {
+          if (prop === 'prepare') {
+            return (query: string) => wrap(target.prepare(query));
+          }
+          if (prop === 'batch') {
+            return (statements: D1PreparedStatement[]) => {
+              stats.batches += 1;
+              // D1には、包む前の実体を渡す。
+              return target.batch(statements.map(s => originals.get(s) ?? s));
+            };
+          }
+          const value = Reflect.get(target, prop);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      return { spy, stats };
+    }
+
+    it('findWithVenuesById は本体と実施場所を1回のbatchで読む', async () => {
+      const { spy, stats } = spyOnD1(env.DB);
+
+      await createEventRepository(spy).findWithVenuesById(
+        seeded.events[0].eventId
+      );
+
+      expect(stats.batches).toBe(1);
+      // batchの外で実行した問い合わせが無い
+      expect(stats.standalone).toBe(0);
+    });
+
+    it('findAll は本体・件数・集合の概要・実施場所を1回のbatchで読む', async () => {
+      const { spy, stats } = spyOnD1(env.DB);
+
+      await createEventRepository(spy).findAll({ limit: 2 });
+
+      expect(stats.batches).toBe(1);
+      expect(stats.standalone).toBe(0);
+    });
+
+    it('create と update が返す内容も、書き込みと読み取りのどちらもbatchで行う', async () => {
+      const { venueIds, cleanup } = await createVenues(['整合性用体育館']);
+      const { spy, stats } = spyOnD1(env.DB);
+      const spied = createEventRepository(spy);
+      let eventId: number | undefined;
+
+      try {
+        const input = {
+          name: '整合性用イベント',
+          ruleText: null,
+          venueIds,
+          startTime: '0900',
+          endTime: '0930',
+        };
+        const created = await spied.create(input);
+        eventId = created.event_id;
+        await spied.update(created.event_id, input);
+
+        // 作成のbatch・読み取りのbatch・更新のbatch・読み取りのbatch
+        expect(stats.batches).toBe(4);
+        expect(stats.standalone).toBe(0);
+      } finally {
+        await deleteEvent(eventId);
+        await cleanup();
+      }
+    });
+
+    it('findAll のページ指定で、実施場所はそのページの競技にだけ付く', async () => {
+      const all = (await repo.findAll({})).events;
+      expect(all.length).toBeGreaterThanOrEqual(3);
+      const [first, second] = all;
+      const firstVenues = await linkVenues(first.event_id, ['整合性用A']);
+      const secondVenues = await linkVenues(second.event_id, ['整合性用B']);
+
+      try {
+        const firstPage = (await repo.findAll({ limit: 1 })).events;
+        const secondPage = (await repo.findAll({ limit: 1, offset: 1 })).events;
+
+        expect(firstPage.map(e => e.event_id)).toEqual([first.event_id]);
+        expect(firstPage[0].venues.map(v => v.venue_id)).toEqual(
+          firstVenues.venueIds
+        );
+        expect(secondPage.map(e => e.event_id)).toEqual([second.event_id]);
+        expect(secondPage[0].venues.map(v => v.venue_id)).toEqual(
+          secondVenues.venueIds
+        );
+      } finally {
+        await firstVenues.cleanup();
+        await secondVenues.cleanup();
       }
     });
   });

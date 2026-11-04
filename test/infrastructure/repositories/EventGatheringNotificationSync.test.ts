@@ -115,7 +115,7 @@ describe('EventGatheringSettingsRepository notification sync transaction', () =>
         },
         { holdNotificationSyncGatheringIds: [fixture.gatheringId] }
       )
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(true);
 
     const persisted = await env.DB.prepare(
       `SELECT g.gathering_time, s.failed_reason

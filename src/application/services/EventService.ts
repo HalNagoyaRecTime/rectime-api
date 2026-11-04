@@ -1,6 +1,7 @@
 import { isValidEventDate } from '../../lib/eventDate';
 import type {
   EventListOptions,
+  EventUpdateInput,
   EventWithGatheringSummaryEntity,
   EventWithVenuesEntity,
   EventWriteInput,
@@ -38,6 +39,7 @@ function toEventDTO(
     end_time: event.end_time,
     created_at: event.created_at,
     updated_at: event.updated_at,
+    lock_version: event.lock_version,
   };
 }
 
@@ -63,6 +65,13 @@ function toEventWriteInput(event: CreateEventRequestDTO): EventWriteInput {
     venueIds: event.venue_ids,
     startTime: event.start_time,
     endTime: event.end_time,
+  };
+}
+
+function toEventUpdateInput(event: UpdateEventRequestDTO): EventUpdateInput {
+  return {
+    ...toEventWriteInput(event),
+    expectedLockVersion: event.lock_version,
   };
 }
 
@@ -143,9 +152,16 @@ export function createEventService(
       }
       await ensureVenuesExist(venueRepository, event.venue_ids);
       const updated = await saveWithVenues(() =>
-        eventRepository.update(id, toEventWriteInput(event))
+        eventRepository.update(id, toEventUpdateInput(event))
       );
       if (!updated) {
+        // 版番号を条件にしていた場合、0件更新は削除か版番号の不一致のどちらか。
+        if (
+          event.lock_version !== undefined &&
+          (await eventRepository.exists(id))
+        ) {
+          throw new Error('Event update conflict');
+        }
         throw new Error('Event not found');
       }
       return toEventDTO(updated, await signVenueImageUrls([updated]));

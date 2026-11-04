@@ -138,6 +138,60 @@ describe('VenueController', () => {
     });
   });
 
+  it('lockVersion を expected_lock_version としてServiceへ渡す', async () => {
+    const { app, venueService } = setup();
+    mocked(venueService.updateVenue).mockResolvedValue({ venue_id: 1 });
+
+    const response = await app.request('/venues/1', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ venueName: '第2体育館', lockVersion: 4 }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(venueService.updateVenue).toHaveBeenCalledWith(1, {
+      venue_name: '第2体育館',
+      expected_lock_version: 4,
+    });
+  });
+
+  it.each([-1, 1.5, '3'])(
+    'lockVersion が不正な値(%j)なら400を返す',
+    async lockVersion => {
+      const { app, venueService } = setup();
+
+      const response = await app.request('/venues/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ venueName: '第2体育館', lockVersion }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'INVALID_VENUE_REQUEST' },
+      });
+      expect(venueService.updateVenue).not.toHaveBeenCalled();
+    }
+  );
+
+  it('取得後に更新されていれば409を返す', async () => {
+    const { app, venueService } = setup();
+    mocked(venueService.updateVenue).mockRejectedValue(
+      new Error('Venue update conflict')
+    );
+
+    const response = await app.request('/venues/1', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ venueName: '第2体育館', lockVersion: 0 }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'VENUE_UPDATE_CONFLICT' },
+    });
+  });
+
   it('IDが不正なら400を返す', async () => {
     const { app, venueService } = setup();
 

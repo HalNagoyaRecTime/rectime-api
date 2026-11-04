@@ -70,6 +70,37 @@ describe('EventGatheringSettingsController', () => {
     });
   });
 
+  it('lock_version をそのままServiceへ渡す', async () => {
+    const { service, request } = setup();
+
+    const response = await request('/events/12/gatherings', {
+      ...validBody,
+      lock_version: 4,
+    });
+
+    expect(response.status).toBe(200);
+    expect(service.saveEventGatheringSettings).toHaveBeenCalledWith({
+      event_id: 12,
+      rounds: validBody.rounds,
+      lock_version: 4,
+    });
+  });
+
+  it.each([-1, 1.5, '3'])(
+    'lock_version が不正な値(%j)なら400を返し、保存しない',
+    async lockVersion => {
+      const { service, request } = setup();
+
+      const response = await request('/events/12/gatherings', {
+        ...validBody,
+        lock_version: lockVersion,
+      });
+
+      expect(response.status).toBe(400);
+      expect(service.saveEventGatheringSettings).not.toHaveBeenCalled();
+    }
+  );
+
   it.each(['0000', '2359', null])(
     '開始時刻%sを保存できる',
     async start_time => {
@@ -317,6 +348,12 @@ describe('EventGatheringSettingsController', () => {
       409,
       'GATHERING_IN_USE',
       '参加者がいる集合グループは削除できません',
+    ],
+    [
+      'Event update conflict',
+      409,
+      'EVENT_UPDATE_CONFLICT',
+      '競技が他の操作で更新されています。最新の内容を取得してやり直してください',
     ],
   ])(
     'サービスが %s を投げた場合は %s を返す',

@@ -6,6 +6,7 @@ import type {
 export interface SaveEventGatheringSettingsCommand {
   event_id: number;
   rounds: RoundSettingInputDTO[];
+  lock_version?: number;
 }
 
 export interface IEventGatheringSettingsService {
@@ -15,6 +16,7 @@ export interface IEventGatheringSettingsService {
   //   'Gathering not found'      gathering_id が対象Event配下に存在しない
   //   'Gathering spot not found' 集合場所が存在しない
   //   'Gathering in use'         参加者が残っている集合予定を削除しようとした
+  //   'Event update conflict'    lock_version を指定し、取得後にEventが変更されていた
   saveEventGatheringSettings(
     command: SaveEventGatheringSettingsCommand
   ): Promise<EventGatheringSettingsDTO>;

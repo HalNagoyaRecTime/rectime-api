@@ -184,6 +184,9 @@ function updateEventError(c: Context, error: unknown) {
   if (error instanceof Error && error.message === 'Event not found') {
     return errorResponse(c, EventErrors.EVENT_NOT_FOUND);
   }
+  if (error instanceof Error && error.message === 'Event update conflict') {
+    return errorResponse(c, EventErrors.EVENT_UPDATE_CONFLICT);
+  }
   return errorResponse(c, EventErrors.EVENT_UPDATE_FAILED);
 }
 

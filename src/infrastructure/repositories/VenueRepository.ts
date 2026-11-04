@@ -17,6 +17,7 @@ function toEntity(row: typeof venues.$inferSelect): VenueEntity {
     image_key: row.imageKey,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
+    lock_version: row.lockVersion,
   };
 }
 
@@ -89,10 +90,25 @@ export function createVenueRepository(db: D1Database): IVenueRepository {
     },
 
     async update(venueId, input): Promise<VenueEntity | null> {
+      // 版番号(expected_lock_version)が指定された場合は、取得時点から変更されて
+      // いないこともWHEREで確認する。GETとPUTの間に別操作が挟まっていれば0件更新に
+      // なり、呼び出し側がnullとして受け取る。版番号は更新のたびに必ず1ずつ増える
+      // ため、updated_at（秒単位）では区別できない同じ秒内の更新も検出できる。
       const row = await orm
         .update(venues)
-        .set({ name: input.venue_name, updatedAt: sql`CURRENT_TIMESTAMP` })
-        .where(eq(venues.id, venueId))
+        .set({
+          name: input.venue_name,
+          updatedAt: sql`CURRENT_TIMESTAMP`,
+          lockVersion: sql`${venues.lockVersion} + 1`,
+        })
+        .where(
+          and(
+            eq(venues.id, venueId),
+            input.expected_lock_version === undefined
+              ? undefined
+              : eq(venues.lockVersion, input.expected_lock_version)
+          )
+        )
         .returning()
         .get();
       return row ? toEntity(row) : null;
@@ -128,7 +144,11 @@ export function createVenueRepository(db: D1Database): IVenueRepository {
     async replaceImageKey(venueId, currentImageKey, imageKey) {
       const result = await orm
         .update(venues)
-        .set({ imageKey, updatedAt: sql`CURRENT_TIMESTAMP` })
+        .set({
+          imageKey,
+          updatedAt: sql`CURRENT_TIMESTAMP`,
+          lockVersion: sql`${venues.lockVersion} + 1`,
+        })
         .where(
           and(
             eq(venues.id, venueId),

@@ -22,8 +22,9 @@ const imageUrlOf = (imageKey: string | null) =>
 
 describe('buildEventGatheringSettings', () => {
   it('集合予定が無ければ rounds は空配列になる', () => {
-    expect(buildEventGatheringSettings(12, [], imageUrlOf)).toEqual({
+    expect(buildEventGatheringSettings(12, [], imageUrlOf, 3)).toEqual({
       event_id: 12,
+      lock_version: 3,
       rounds: [],
     });
   });
@@ -36,7 +37,8 @@ describe('buildEventGatheringSettings', () => {
         gathering({ gathering_id: 2, round: 1, gathering_time: '10:30' }),
         gathering({ gathering_id: 3, round: 3, gathering_time: '09:00' }),
       ],
-      imageUrlOf
+      imageUrlOf,
+      0
     );
 
     expect(result.rounds.map(round => round.round)).toEqual([1, 3]);
@@ -60,7 +62,8 @@ describe('buildEventGatheringSettings', () => {
           member_count: 16,
         }),
       ],
-      imageUrlOf
+      imageUrlOf,
+      0
     );
 
     expect(result.rounds[0].gatherings[0]).toEqual({
@@ -83,7 +86,8 @@ describe('buildEventGatheringSettings', () => {
         gathering({ gathering_id: 3, round_start_time: '1100' }),
         gathering({ gathering_id: 4, round: 2, round_start_time: null }),
       ],
-      imageUrlOf
+      imageUrlOf,
+      0
     );
     expect(result.rounds.map(round => round.start_time)).toEqual([
       '1100',

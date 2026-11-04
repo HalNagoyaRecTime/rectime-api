@@ -65,10 +65,12 @@ export function buildRoundSettings(
 export function buildEventGatheringSettings(
   eventId: number,
   gatherings: EventGatheringEntity[],
-  imageUrlOf: ImageUrlOf
+  imageUrlOf: ImageUrlOf,
+  lockVersion: number
 ): EventGatheringSettingsDTO {
   return {
     event_id: eventId,
+    lock_version: lockVersion,
     rounds: buildRoundSettings(gatherings, imageUrlOf),
   };
 }

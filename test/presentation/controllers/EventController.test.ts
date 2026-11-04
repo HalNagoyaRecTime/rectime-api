@@ -16,6 +16,7 @@ function buildEvent(
     end_time: '0950',
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
+    lock_version: 0,
     ...overrides,
   };
 }
@@ -506,6 +507,84 @@ describe('EventController', () => {
       });
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual(event);
+    });
+
+    it('lock_version をそのままServiceへ渡す', async () => {
+      const { app, eventService } = setup();
+      (eventService.updateEvent as ReturnType<typeof vi.fn>).mockResolvedValue(
+        buildEvent()
+      );
+
+      const response = await app.request('/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue_ids: [2],
+          start_time: '0930',
+          end_time: '0950',
+          lock_version: 4,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(eventService.updateEvent).toHaveBeenCalledWith(1, {
+        event_name: '徒競走',
+        rule_text: null,
+        venue_ids: [2],
+        start_time: '0930',
+        end_time: '0950',
+        lock_version: 4,
+      });
+    });
+
+    it.each([-1, 1.5, '3'])(
+      'lock_version が不正な値(%j)なら400を返し、Serviceを呼ばない',
+      async lockVersion => {
+        const { app, eventService } = setup();
+
+        const response = await app.request('/events/1', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event_name: '徒競走',
+            rule_text: null,
+            venue_ids: [2],
+            start_time: '0930',
+            end_time: '0950',
+            lock_version: lockVersion,
+          }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(eventService.updateEvent).not.toHaveBeenCalled();
+      }
+    );
+
+    it('取得後に更新されていれば409を返す', async () => {
+      const { app, eventService } = setup();
+      (eventService.updateEvent as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Event update conflict')
+      );
+
+      const response = await app.request('/events/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: '徒競走',
+          rule_text: null,
+          venue_ids: [2],
+          start_time: '0930',
+          end_time: '0950',
+          lock_version: 0,
+        }),
+      });
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'EVENT_UPDATE_CONFLICT' },
+      });
     });
 
     it('notification_enabledを含むRequestは400を返し、Serviceを呼ばない(#388)', async () => {

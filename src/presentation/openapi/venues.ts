@@ -29,6 +29,10 @@ export const venueResponseSchema = z
     }),
     created_at: timestampSchema,
     updated_at: timestampSchema,
+    lock_version: z.number().int().min(0).openapi({
+      description:
+        '更新の競合を検出するための版番号。更新のたびに1ずつ増える。更新時に `lockVersion` として送り返す。',
+    }),
   })
   .openapi('Venue');
 
@@ -58,6 +62,18 @@ export const venueWriteSchema = z
     venueName: z.string().trim().min(1),
   })
   .openapi('VenueWriteRequest') satisfies z.ZodType<UpdateVenueRequestDTO>;
+
+// 登録済みのスキーマを extend() すると、OpenAPI では allOf で合成される。
+// 項目だけを引き継ぎ、新しいオブジェクトとして定義する。
+export const venueUpdateSchema = z
+  .object({
+    ...venueWriteSchema.shape,
+    lockVersion: z.number().int().min(0).optional().openapi({
+      description:
+        '取得時点の `lock_version`。指定すると、取得後に変更されていた場合は409を返す。',
+    }),
+  })
+  .openapi('VenueUpdateRequest') satisfies z.ZodType<UpdateVenueRequestDTO>;
 
 export const venueListQuery = z.object({
   limit: z.coerce
@@ -132,11 +148,13 @@ export const venueUpdateRoute = createRoute({
   path: '/venues/{venueId}',
   tags: ['Venues'],
   summary: '実施場所を更新する',
+  description:
+    '`lockVersion` を指定すると、取得後に実施場所が変更されていた場合は409を返す。',
   security: bearerAuth,
   request: {
     params: venueIdParams,
     body: {
-      content: { 'application/json': { schema: venueWriteSchema } },
+      content: { 'application/json': { schema: venueUpdateSchema } },
       required: true,
     },
   },
