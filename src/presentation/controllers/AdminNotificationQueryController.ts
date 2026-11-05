@@ -9,7 +9,7 @@ import { errorResponse } from '../errors/errorResponse';
 import { NotificationContractErrors } from '../errors/notificationContractErrors';
 import {
   adminNotificationIdParams,
-  notificationDateRangeQuery,
+  adminNotificationListQuerySchema,
 } from '../openapi/notification';
 import { positivePathParamToNumber } from '../openapi/schemas';
 
@@ -34,9 +34,19 @@ export function createAdminNotificationQueryController(
   service: IAdminNotificationQueryService
 ) {
   const getAdminNotifications = async (c: AdminNotificationQueryContext) => {
-    const parsedQuery = notificationDateRangeQuery.safeParse({
+    const parsedQuery = adminNotificationListQuerySchema.safeParse({
       from: c.req.query('from'),
       to: c.req.query('to'),
+      page: c.req.query('page'),
+      limit: c.req.query('limit'),
+      search: c.req.query('search'),
+      status: c.req.query('status'),
+      creationMethod: c.req.query('creationMethod'),
+      filterFrom: c.req.query('filterFrom'),
+      filterTo: c.req.query('filterTo'),
+      sortBy: c.req.query('sortBy'),
+      sortDirection: c.req.query('sortDirection'),
+      referenceTime: c.req.query('referenceTime'),
     });
     if (!parsedQuery.success) {
       return errorResponse(

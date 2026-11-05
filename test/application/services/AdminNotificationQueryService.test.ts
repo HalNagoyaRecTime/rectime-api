@@ -43,7 +43,10 @@ function buildRepository(
   overrides: Partial<IAdminNotificationQueryRepository> = {}
 ): IAdminNotificationQueryRepository {
   return {
-    findAll: vi.fn().mockResolvedValue([manualResult]),
+    findAll: vi.fn().mockResolvedValue({
+      items: [manualResult],
+      pagination: { page: 1, limit: 50, totalCount: 1, totalPages: 1 },
+    }),
     findById: vi.fn().mockResolvedValue(manualResult),
     ...overrides,
   };
@@ -99,6 +102,8 @@ describe('AdminNotificationQueryService', () => {
     expect(repository.findAll).toHaveBeenCalledWith({
       from: '2026-09-25T00:00:00.000Z',
       to: '2026-09-25T23:59:59.999Z',
+      page: undefined,
+      limit: undefined,
     });
   });
 
@@ -114,8 +119,55 @@ describe('AdminNotificationQueryService', () => {
     expect(repository.findAll).toHaveBeenCalledWith({
       from: '2026-07-23T00:00:00.000+09:00',
       to: '2026-07-23T23:59:59.999+09:00',
+      page: undefined,
+      limit: undefined,
     });
     expect(result).not.toHaveProperty('appliedRange');
+    expect(result).not.toHaveProperty('pagination');
+  });
+
+  it('ページ指定時にページ情報を返す', async () => {
+    const service = createAdminNotificationQueryService(buildRepository());
+    const result = await service.getAdminNotifications({ page: 1, limit: 50 });
+    expect(result.pagination).toEqual({
+      page: 1,
+      limit: 50,
+      totalCount: 1,
+      totalPages: 1,
+    });
+  });
+
+  it('検索・絞り込み・並べ替えと表示基準時刻をRepositoryに渡す', async () => {
+    const repository = buildRepository();
+    const service = createAdminNotificationQueryService(repository);
+    await service.getAdminNotifications({
+      from: '2026-01-01T00:00:00.000Z',
+      to: '2026-12-31T23:59:59.999Z',
+      page: 2,
+      limit: 50,
+      search: '会場',
+      status: 'failed',
+      creationMethod: 'manual',
+      filterFrom: '2026-09-01T00:00:00.000Z',
+      filterTo: '2026-09-30T23:59:59.999Z',
+      sortBy: 'sendAt',
+      sortDirection: 'asc',
+      referenceTime: '2026-09-24T10:00:00.000Z',
+    });
+    expect(repository.findAll).toHaveBeenCalledWith({
+      from: '2026-01-01T00:00:00.000Z',
+      to: '2026-12-31T23:59:59.999Z',
+      page: 2,
+      limit: 50,
+      search: '会場',
+      status: 'failed',
+      creationMethod: 'manual',
+      filterFrom: '2026-09-01T00:00:00.000Z',
+      filterTo: '2026-09-30T23:59:59.999Z',
+      sortBy: 'sendAt',
+      sortDirection: 'asc',
+      now: '2026-09-24T10:00:00.000Z',
+    });
   });
 
   it('詳細はdetail本文とstop情報を含める', async () => {

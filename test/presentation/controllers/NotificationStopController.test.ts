@@ -12,7 +12,9 @@ function harness(error?: Error, actor: number | null = 10) {
     if (error) throw error;
     return { notificationScheduleId: 1, status: 'stopped' as const };
   });
-  const controller = createNotificationStopController({ stopSchedule });
+  const controller = createNotificationStopController({
+    stopSchedule,
+  });
   const app = new Hono<{
     Bindings: Env;
     Variables: AuthenticationVariables & AuthVariables & ContainerVariables;

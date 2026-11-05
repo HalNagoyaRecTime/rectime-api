@@ -122,6 +122,112 @@ describe('Gathering master repositories', () => {
     ).resolves.toBeNull();
   });
 
+  describe('集合場所の更新の楽観ロック', () => {
+    it('作成直後の lock_version は 0 で、更新のたびに 1 ずつ増える', async () => {
+      const spot = await gatheringSpotRepository.create('体育館前');
+      gatheringSpotIds.push(spot.gathering_spot_id);
+      expect(spot.lock_version).toBe(0);
+
+      const first = await gatheringSpotRepository.update(
+        spot.gathering_spot_id,
+        { gathering_spot_name: '正門前' }
+      );
+      const second = await gatheringSpotRepository.update(
+        spot.gathering_spot_id,
+        { gathering_spot_name: '裏門前' }
+      );
+
+      expect(first?.lock_version).toBe(1);
+      expect(second?.lock_version).toBe(2);
+    });
+
+    it('取得時点の lock_version を指定すると、一致すれば更新して版を進める', async () => {
+      const spot = await gatheringSpotRepository.create('体育館前');
+      gatheringSpotIds.push(spot.gathering_spot_id);
+
+      const updated = await gatheringSpotRepository.update(
+        spot.gathering_spot_id,
+        {
+          gathering_spot_name: '正門前',
+          expected_lock_version: spot.lock_version,
+        }
+      );
+
+      expect(updated).toMatchObject({
+        gathering_spot_name: '正門前',
+        lock_version: spot.lock_version + 1,
+      });
+    });
+
+    it('lock_version が取得時点と違えば更新せず null を返す', async () => {
+      const spot = await gatheringSpotRepository.create('体育館前');
+      gatheringSpotIds.push(spot.gathering_spot_id);
+      await gatheringSpotRepository.update(spot.gathering_spot_id, {
+        gathering_spot_name: '別操作の名前',
+      });
+
+      const result = await gatheringSpotRepository.update(
+        spot.gathering_spot_id,
+        {
+          gathering_spot_name: '古い版の名前',
+          expected_lock_version: spot.lock_version,
+        }
+      );
+
+      expect(result).toBeNull();
+      const stored = (await gatheringSpotRepository.findAll()).find(
+        found => found.gathering_spot_id === spot.gathering_spot_id
+      );
+      expect(stored).toMatchObject({
+        gathering_spot_name: '別操作の名前',
+        lock_version: 1,
+      });
+    });
+
+    it('同じ版から続けて更新しても、2回目は null になる（同じ秒内でも検出できる）', async () => {
+      const spot = await gatheringSpotRepository.create('体育館前');
+      gatheringSpotIds.push(spot.gathering_spot_id);
+
+      const first = await gatheringSpotRepository.update(
+        spot.gathering_spot_id,
+        {
+          gathering_spot_name: '連続1',
+          expected_lock_version: spot.lock_version,
+        }
+      );
+      const second = await gatheringSpotRepository.update(
+        spot.gathering_spot_id,
+        {
+          gathering_spot_name: '連続2',
+          expected_lock_version: spot.lock_version,
+        }
+      );
+
+      expect(first).not.toBeNull();
+      expect(second).toBeNull();
+    });
+
+    it('画像キーの差し替えでも lock_version が進む', async () => {
+      const spot = await gatheringSpotRepository.create('体育館前');
+      gatheringSpotIds.push(spot.gathering_spot_id);
+
+      await gatheringSpotRepository.replaceImageKey(
+        spot.gathering_spot_id,
+        null,
+        'gathering-spots/1/a.png'
+      );
+
+      const stale = await gatheringSpotRepository.update(
+        spot.gathering_spot_id,
+        {
+          gathering_spot_name: '画像差し替え後',
+          expected_lock_version: spot.lock_version,
+        }
+      );
+      expect(stale).toBeNull();
+    });
+  });
+
   it('集合場所の存在を確認できる', async () => {
     const spot = await gatheringSpotRepository.create('体育館前');
     gatheringSpotIds.push(spot.gathering_spot_id);

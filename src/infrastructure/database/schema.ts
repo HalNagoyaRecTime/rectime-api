@@ -30,6 +30,7 @@ export const class_rooms = sqliteTable(
     updatedAt: text('updated_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
+    lockVersion: integer('lock_version').notNull().default(0),
   },
   table => [
     uniqueIndex('uq_class_rooms_class_code').on(table.classCode),
@@ -85,10 +86,8 @@ export const students = sqliteTable(
       .notNull()
       .references(() => users.id)
       .unique(),
-    classRoomId: integer('class_room_id')
-      .notNull()
-      .references(() => class_rooms.id),
-    attendanceNumber: integer('attendance_number').notNull(),
+    classRoomId: integer('class_room_id').references(() => class_rooms.id),
+    attendanceNumber: integer('attendance_number'),
     studentIdNumber: text('student_id_number').notNull().unique(),
     createdAt: text('created_at')
       .notNull()
@@ -96,11 +95,20 @@ export const students = sqliteTable(
     updatedAt: text('updated_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
+    lockVersion: integer('lock_version').notNull().default(0),
   },
   table => [
     index('idx_students_class_room_id_user_id').on(
       table.classRoomId,
       table.userId
+    ),
+    uniqueIndex('ux_students_class_room_attendance')
+      .on(table.classRoomId, table.attendanceNumber)
+      .where(sql`${table.classRoomId} IS NOT NULL`),
+    check(
+      'ck_students_class_room_attendance_pair',
+      sql`(${table.classRoomId} IS NULL AND ${table.attendanceNumber} IS NULL)
+        OR (${table.classRoomId} IS NOT NULL AND ${table.attendanceNumber} IS NOT NULL)`
     ),
   ]
 );
@@ -139,6 +147,7 @@ export const teachers = sqliteTable(
     updatedAt: text('updated_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
+    lockVersion: integer('lock_version').notNull().default(0),
   },
   table => [uniqueIndex('uq_teachers_email').on(table.email)]
 );
@@ -155,6 +164,7 @@ export const events = sqliteTable('events', {
   updatedAt: text('updated_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
+  lockVersion: integer('lock_version').notNull().default(0),
 });
 
 export const venues = sqliteTable(
@@ -169,6 +179,7 @@ export const venues = sqliteTable(
     updatedAt: text('updated_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
+    lockVersion: integer('lock_version').notNull().default(0),
   },
   table => [uniqueIndex('uq_venues_venue_name').on(table.name)]
 );
@@ -207,6 +218,7 @@ export const gatherings = sqliteTable(
       .notNull()
       .references(() => gathering_spots.id),
     gatheringTime: text('gathering_time').notNull().default('99:59'),
+    roundStartTime: text('round_start_time'),
     round: integer('round').notNull().default(99),
     createdAt: text('created_at')
       .notNull()
@@ -231,6 +243,7 @@ export const gathering_spots = sqliteTable('gathering_spots', {
   updatedAt: text('updated_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
+  lockVersion: integer('lock_version').notNull().default(0),
 });
 
 export const gathering_group_members = sqliteTable(
@@ -329,8 +342,6 @@ export const firebase_tokens = sqliteTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     platform: integer('platform').notNull(),
     fcmToken: text('fcm_token').notNull(),
-    // 1利用者N端末を実現するための旧active flagは#460で整理する。
-    isFirebaseActive: integer('is_firebase_active').notNull().default(1),
     lastSeenAt: text('last_seen_at').notNull().default(notificationUtcIsoNow()),
     createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
     updatedAt: text('updated_at').notNull().default(notificationUtcIsoNow()),
@@ -339,7 +350,6 @@ export const firebase_tokens = sqliteTable(
     check('ck_firebase_tokens_platform', sql`${table.platform} IN (1, 2)`),
     index('idx_firebase_tokens_user_id').on(table.userId),
     uniqueIndex('uq_firebase_tokens_fcm_token').on(table.fcmToken),
-    index('idx_firebase_tokens_active').on(table.isFirebaseActive),
   ]
 );
 
@@ -349,28 +359,14 @@ export const notification_schedules = sqliteTable(
     id: integer('notification_schedule_id').primaryKey({
       autoIncrement: true,
     }),
-    createdUserId: integer('created_user_id').references(() => users.id, {
-      onDelete: 'set null',
-    }),
     scheduledByUserId: integer('scheduled_by_user_id').references(
       () => users.id,
       { onDelete: 'set null' }
     ),
-    eventId: integer('event_id').references(() => events.id, {
-      onDelete: 'set null',
-    }),
     notificationId: integer('notification_id')
       .notNull()
       .references(() => notifications.notificationId),
-    firebaseTokenId: integer('firebase_token_id').references(
-      () => firebase_tokens.firebaseTokenId,
-      {
-        onDelete: 'set null',
-      }
-    ),
-    importance: integer('importance').notNull().default(2),
     sendStatus: text('send_status').notNull(),
-    fcmMessageId: text('fcm_message_id'),
     failedReason: text('failed_reason'),
     sendAt: text('send_at').notNull(),
     recipientsResolvedAt: text('recipients_resolved_at'),
@@ -386,12 +382,8 @@ export const notification_schedules = sqliteTable(
   },
   table => [
     index('idx_notification_schedules_due').on(table.sendStatus, table.sendAt),
-    index('idx_notification_schedules_event_id').on(table.eventId),
     index('idx_notification_schedules_notification_id').on(
       table.notificationId
-    ),
-    index('idx_notification_schedules_firebase_token_id').on(
-      table.firebaseTokenId
     ),
   ]
 );
@@ -498,6 +490,7 @@ export const notification_recipients = sqliteTable(
       onDelete: 'set null',
     }),
     createdAt: text('created_at').notNull().default(notificationUtcIsoNow()),
+    updatedAt: text('updated_at'),
   },
   table => [
     uniqueIndex('uq_notification_recipients_schedule_user').on(
@@ -545,6 +538,9 @@ export const notification_push_deliveries = sqliteTable(
     uniqueIndex('uq_notification_push_deliveries_recipient_token')
       .on(table.notificationRecipientId, table.firebaseTokenId)
       .where(sql`${table.firebaseTokenId} IS NOT NULL`),
+    index('idx_notification_push_deliveries_recipient_id').on(
+      table.notificationRecipientId
+    ),
     index('idx_notification_push_deliveries_firebase_token_id').on(
       table.firebaseTokenId
     ),
@@ -605,3 +601,37 @@ export const team_scores = sqliteTable('team_scores', {
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const auth_states = sqliteTable('auth_states', {
+  state: text('state').primaryKey(),
+  clientType: text('client_type', { enum: ['web', 'mobile'] }).notNull(),
+  purpose: text('purpose', { enum: ['login', 'account_deletion'] }).notNull(),
+  nonce: text('nonce').notNull(),
+  codeVerifier: text('code_verifier'),
+  desktopRedirectUri: text('desktop_redirect_uri'),
+  frontendOrigin: text('frontend_origin'),
+  createdAt: text('created_at').notNull(),
+  expiresAt: text('expires_at').notNull(),
+});
+
+export const refresh_sessions = sqliteTable(
+  'refresh_sessions',
+  {
+    refreshTokenId: text('refresh_token_id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    clientType: text('client_type', { enum: ['web', 'mobile'] }).notNull(),
+    oid: text('oid').notNull(),
+    tid: text('tid').notNull(),
+    sub: text('sub').notNull(),
+    email: text('email').notNull(),
+    displayName: text('display_name').notNull(),
+    avatarUpdatedAt: text('avatar_updated_at'),
+    msRefreshToken: text('ms_refresh_token').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+  },
+  table => [index('idx_refresh_sessions_user_id').on(table.userId)]
+);

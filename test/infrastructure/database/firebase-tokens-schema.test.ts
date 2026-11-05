@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it } from 'vitest';
 
 // firebase_tokens は通知v2で1利用者複数端末モデルへ移行した。
-// 旧active flagは#460までのexpand互換用に残すが、fcm_tokenは完全UNIQUEとする。
+// 旧active flagは廃止し、fcm_tokenは完全UNIQUEとする。
 describe('firebase_tokens テーブルの制約', () => {
   afterEach(async () => {
     await env.DB.prepare(
@@ -23,24 +23,20 @@ describe('firebase_tokens テーブルの制約', () => {
     return row.user_id;
   }
 
-  async function insertToken(
-    userId: number,
-    fcmToken: string,
-    isActive: number
-  ): Promise<void> {
+  async function insertToken(userId: number, fcmToken: string): Promise<void> {
     await env.DB.prepare(
-      `INSERT INTO firebase_tokens (user_id, platform, fcm_token, is_firebase_active)
-       VALUES (?, 2, ?, ?)`
+      `INSERT INTO firebase_tokens (user_id, platform, fcm_token)
+       VALUES (?, 2, ?)`
     )
-      .bind(userId, fcmToken, isActive)
+      .bind(userId, fcmToken)
       .run();
   }
 
   it('同じ user_id で複数Tokenを登録できる', async () => {
     const userId = await createTestUser('Firebaseスキーマテスト1利用者1行');
-    await insertToken(userId, 'schema-token-first', 1);
+    await insertToken(userId, 'schema-token-first');
 
-    await insertToken(userId, 'schema-token-second', 1);
+    await insertToken(userId, 'schema-token-second');
     const rows = await env.DB.prepare(
       'SELECT COUNT(*) AS count FROM firebase_tokens WHERE user_id = ?'
     )
@@ -49,22 +45,22 @@ describe('firebase_tokens テーブルの制約', () => {
     expect(rows?.count).toBe(2);
   });
 
-  it('同じ fcm_token はactive/inactiveに関係なく1つしか作れない', async () => {
-    const inactiveOwnerId = await createTestUser(
-      'Firebaseスキーマテストinactive所有者'
+  it('同じ fcm_token は1つしか作れない', async () => {
+    const firstOwnerId = await createTestUser(
+      'Firebaseスキーマテストfcm_token所有者1'
     );
-    const activeOwnerId = await createTestUser(
-      'Firebaseスキーマテストactive所有者'
+    const secondOwnerId = await createTestUser(
+      'Firebaseスキーマテストfcm_token所有者2'
     );
 
-    await insertToken(inactiveOwnerId, 'schema-token-shared-inactive', 0);
+    await insertToken(firstOwnerId, 'schema-token-shared-first');
     await expect(
-      insertToken(activeOwnerId, 'schema-token-shared-inactive', 1)
+      insertToken(secondOwnerId, 'schema-token-shared-first')
     ).rejects.toThrow();
 
-    await insertToken(activeOwnerId, 'schema-token-shared-active', 1);
+    await insertToken(secondOwnerId, 'schema-token-shared-second');
     await expect(
-      insertToken(inactiveOwnerId, 'schema-token-shared-active', 0)
+      insertToken(firstOwnerId, 'schema-token-shared-second')
     ).rejects.toThrow();
   });
   it('platformは1または2だけを許可する', async () => {
@@ -88,17 +84,13 @@ describe('firebase_tokens テーブルの制約', () => {
     ).rejects.toThrow();
   });
 
-  it('notification_schedules から firebase_tokens を参照できる', async () => {
+  it('notification_schedules は firebase_tokens を参照しない', async () => {
     const foreignKeys = await env.DB.prepare(
       'PRAGMA foreign_key_list(notification_schedules)'
     ).all<{ table: string; from: string; to: string }>();
 
-    expect(foreignKeys.results).toContainEqual(
-      expect.objectContaining({
-        table: 'firebase_tokens',
-        from: 'firebase_token_id',
-        to: 'firebase_token_id',
-      })
+    expect(foreignKeys.results).not.toContainEqual(
+      expect.objectContaining({ table: 'firebase_tokens' })
     );
   });
 });

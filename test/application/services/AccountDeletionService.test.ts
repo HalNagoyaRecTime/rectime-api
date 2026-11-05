@@ -33,9 +33,12 @@ function buildDeps() {
       offset: 0,
     }),
     findByStudentNum: vi.fn(),
-    findExistingStudentNumbers: vi.fn(),
+    findByClassRoomAndAttendanceNumber: vi.fn(),
+    findExistingStudentsByNumbers: vi.fn(),
+    findExistingClassRoomAttendanceNumbers: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateClassRoom: vi.fn(),
     createMany: vi.fn(),
     anonymizeByUserId: vi.fn().mockResolvedValue(true),
   };

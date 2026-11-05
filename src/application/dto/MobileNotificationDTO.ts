@@ -6,6 +6,15 @@ export interface MobileNotificationDTO {
   title: string;
   body: string;
   scheduled_at: string;
+  related_event: MobileNotificationRelatedEventDTO | null;
+}
+
+export interface MobileNotificationRelatedEventDTO {
+  event_id: number;
+  event_name: string;
+  start_time: string;
+  end_time: string;
+  venues: Array<{ venue_id: number; venue_name: string }>;
 }
 
 export interface GetMobileNotificationsRequestDTO {

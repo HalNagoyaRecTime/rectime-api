@@ -10,6 +10,18 @@ function toDTO(notification: MobileNotificationEntity): MobileNotificationDTO {
     title: notification.title,
     body: notification.body,
     scheduled_at: notification.scheduledAt,
+    related_event: notification.relatedEvent
+      ? {
+          event_id: notification.relatedEvent.id,
+          event_name: notification.relatedEvent.name,
+          start_time: notification.relatedEvent.startTime,
+          end_time: notification.relatedEvent.endTime,
+          venues: notification.relatedEvent.venues.map(venue => ({
+            venue_id: venue.id,
+            venue_name: venue.name,
+          })),
+        }
+      : null,
   };
 }
 

@@ -76,6 +76,17 @@ export const UserErrors = {
     code: 'STUDENT_NUMBER_ALREADY_EXISTS',
     message: '同じ学籍番号の学生が既に存在します',
   },
+  STUDENT_UPDATE_CONFLICT: {
+    status: 409,
+    code: 'STUDENT_UPDATE_CONFLICT',
+    message:
+      '学生情報が他の操作で更新されています。最新の内容を取得してやり直してください',
+  },
+  ATTENDANCE_NUMBER_ALREADY_EXISTS: {
+    status: 409,
+    code: 'ATTENDANCE_NUMBER_ALREADY_EXISTS',
+    message: '同じクラスで同じ出席番号の学生が既に存在します',
+  },
   STUDENT_CREATE_FAILED: {
     status: 500,
     code: 'STUDENT_CREATE_FAILED',
@@ -85,6 +96,11 @@ export const UserErrors = {
     status: 500,
     code: 'STUDENT_UPDATE_FAILED',
     message: '学生の更新に失敗しました',
+  },
+  STUDENT_CLASS_ROOM_UPDATE_FAILED: {
+    status: 500,
+    code: 'STUDENT_CLASS_ROOM_UPDATE_FAILED',
+    message: '学生のクラス所属変更に失敗しました',
   },
   INVALID_TEACHER_ID: {
     status: 400,
@@ -121,6 +137,12 @@ export const UserErrors = {
     code: 'TEACHER_EMAIL_ALREADY_EXISTS',
     message: 'このメールアドレスは既に別の教員に登録されています',
   },
+  TEACHER_UPDATE_CONFLICT: {
+    status: 409,
+    code: 'TEACHER_UPDATE_CONFLICT',
+    message:
+      '教員情報が他の操作で更新されています。最新の内容を取得してやり直してください',
+  },
   TEACHER_CREATE_FAILED: {
     status: 500,
     code: 'TEACHER_CREATE_FAILED',
@@ -155,6 +177,12 @@ export const UserErrors = {
     status: 409,
     code: 'CLASS_ROOM_REFERENCED_BY_STUDENTS',
     message: '学生が所属しているクラスは削除できません',
+  },
+  CLASS_ROOM_UPDATE_CONFLICT: {
+    status: 409,
+    code: 'CLASS_ROOM_UPDATE_CONFLICT',
+    message:
+      'クラス情報が他の操作で更新されています。最新の内容を取得してやり直してください',
   },
   CLASS_ROOM_LIST_FAILED: {
     status: 500,

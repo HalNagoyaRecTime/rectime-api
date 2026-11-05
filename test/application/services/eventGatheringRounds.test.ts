@@ -8,6 +8,7 @@ function gathering(
   return {
     round: 1,
     gathering_time: '10:00',
+    round_start_time: null,
     gathering_spot_id: 1,
     gathering_spot_name: '出入口①',
     gathering_spot_image_key: null,
@@ -21,8 +22,9 @@ const imageUrlOf = (imageKey: string | null) =>
 
 describe('buildEventGatheringSettings', () => {
   it('集合予定が無ければ rounds は空配列になる', () => {
-    expect(buildEventGatheringSettings(12, [], imageUrlOf)).toEqual({
+    expect(buildEventGatheringSettings(12, [], imageUrlOf, 3)).toEqual({
       event_id: 12,
+      lock_version: 3,
       rounds: [],
     });
   });
@@ -35,7 +37,8 @@ describe('buildEventGatheringSettings', () => {
         gathering({ gathering_id: 2, round: 1, gathering_time: '10:30' }),
         gathering({ gathering_id: 3, round: 3, gathering_time: '09:00' }),
       ],
-      imageUrlOf
+      imageUrlOf,
+      0
     );
 
     expect(result.rounds.map(round => round.round)).toEqual([1, 3]);
@@ -59,7 +62,8 @@ describe('buildEventGatheringSettings', () => {
           member_count: 16,
         }),
       ],
-      imageUrlOf
+      imageUrlOf,
+      0
     );
 
     expect(result.rounds[0].gatherings[0]).toEqual({
@@ -72,5 +76,22 @@ describe('buildEventGatheringSettings', () => {
       },
       member_count: 16,
     });
+  });
+  it('開始時刻はnullを飛ばし、最小の集合IDの値を採用する', () => {
+    const result = buildEventGatheringSettings(
+      12,
+      [
+        gathering({ gathering_id: 1, round_start_time: null }),
+        gathering({ gathering_id: 9, round_start_time: '0900' }),
+        gathering({ gathering_id: 3, round_start_time: '1100' }),
+        gathering({ gathering_id: 4, round: 2, round_start_time: null }),
+      ],
+      imageUrlOf,
+      0
+    );
+    expect(result.rounds.map(round => round.start_time)).toEqual([
+      '1100',
+      null,
+    ]);
   });
 });

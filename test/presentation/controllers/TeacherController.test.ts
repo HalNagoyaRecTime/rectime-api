@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createTeacherController } from '../../../src/presentation/controllers/TeacherController';
 import type { ITeacherService } from '../../../src/application/services/ITeacherService';
 import type { TeacherDTO } from '../../../src/application/dto/TeacherDTO';
+import { UserErrors } from '../../../src/presentation/errors/userErrors';
 import {
   teacherListQuery,
   teacherListRoute,
@@ -17,6 +18,8 @@ function buildTeacher(overrides: Partial<TeacherDTO> = {}): TeacherDTO {
     is_live_active: true,
     is_staff: false,
     class_rooms: [],
+    updated_at: '2026-01-01 00:00:00',
+    lock_version: 0,
     ...overrides,
   };
 }
@@ -448,6 +451,77 @@ describe('TeacherController', () => {
           message: '教員一覧の取得に失敗しました',
         },
       });
+    });
+  });
+
+  describe('updateTeacher（版番号による楽観ロック）', () => {
+    const validBody = {
+      userName: '更新済み先生',
+      email: 'koushin@example.ac.jp',
+      classRoomIds: [1, 2],
+    };
+
+    it('版番号付きのリクエストをそのままサービスへ渡す', async () => {
+      const { app, teacherService } = setup();
+      const updated = buildTeacher({ lock_version: 2 });
+      (
+        teacherService.updateTeacher as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(updated);
+
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...validBody,
+          lockVersion: 1,
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(teacherService.updateTeacher).toHaveBeenCalledWith(1, {
+        ...validBody,
+        lockVersion: 1,
+      });
+      expect(await res.json()).toMatchObject({
+        lock_version: 2,
+      });
+    });
+
+    it('版番号の不一致は 409 を返す', async () => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.updateTeacher as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('Teacher update conflict'));
+
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...validBody,
+          lockVersion: 1,
+        }),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'TEACHER_UPDATE_CONFLICT',
+          message: UserErrors.TEACHER_UPDATE_CONFLICT.message,
+        },
+      });
+    });
+
+    it('lockVersion が負の値の更新は 400 を返す', async () => {
+      const { app, teacherService } = setup();
+
+      const res = await app.request('/teachers/1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...validBody, lockVersion: -1 }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(teacherService.updateTeacher).not.toHaveBeenCalled();
     });
   });
 

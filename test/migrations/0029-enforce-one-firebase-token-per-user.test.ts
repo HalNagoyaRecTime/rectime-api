@@ -93,19 +93,10 @@ async function restoreCurrentSchema() {
         ON firebase_tokens(fcm_token)`
     ),
     env.DB.prepare(
-      'CREATE INDEX idx_firebase_tokens_active ON firebase_tokens(is_firebase_active)'
-    ),
-    env.DB.prepare(
       'CREATE INDEX idx_notification_schedules_due ON notification_schedules(send_status, send_at)'
     ),
     env.DB.prepare(
-      'CREATE INDEX idx_notification_schedules_event_id ON notification_schedules(event_id)'
-    ),
-    env.DB.prepare(
       'CREATE INDEX idx_notification_schedules_notification_id ON notification_schedules(notification_id)'
-    ),
-    env.DB.prepare(
-      'CREATE INDEX idx_notification_schedules_firebase_token_id ON notification_schedules(firebase_token_id)'
     ),
   ]);
 }

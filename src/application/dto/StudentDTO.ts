@@ -1,12 +1,14 @@
+import type { MasterImportExcludedRow } from '../../domain/entities/MasterImport';
+
 export interface StudentDTO {
   student_id: number;
   user_id: number;
   display_name: string;
-  class_room_id: number;
-  class_code: string;
-  class_room_name: string;
-  team_id: number;
-  attendance_number: number;
+  class_room_id: number | null;
+  class_code: string | null;
+  class_room_name: string | null;
+  team_id: number | null;
+  attendance_number: number | null;
   student_id_number: string;
   is_live_active: boolean;
 }
@@ -16,21 +18,32 @@ export interface StudentManagementDTO {
   user_id: number;
   display_name: string;
   student_id_number: string;
-  attendance_number: number;
+  attendance_number: number | null;
   is_live_active: boolean;
   is_staff: boolean;
   class_room: {
     class_room_id: number;
     class_code: string;
     class_name: string;
-  };
+  } | null;
+  updated_at: string;
+  lock_version: number;
 }
 
 export interface StudentWriteDTO {
   display_name: string;
-  class_room_id: number;
-  attendance_number: number;
+  class_room_id: number | null;
+  attendance_number: number | null;
   student_id_number: string;
+}
+
+export interface StudentUpdateDTO extends StudentWriteDTO {
+  lock_version?: number;
+}
+
+export interface StudentClassRoomAssignmentDTO {
+  class_room_id: number | null;
+  attendance_number: number | null;
 }
 
 export interface StudentPageDTO {
@@ -53,7 +66,9 @@ export interface StudentImportInput {
 }
 
 export type StudentImportErrorReason =
-  'student_id_number_duplicate_in_file' | 'student_id_number_duplicate_in_db';
+  | 'student_id_number_duplicate_in_file'
+  | 'attendance_number_duplicate_in_file'
+  | 'attendance_number_duplicate_in_db';
 
 export interface StudentImportRowError {
   row_index: number;
@@ -69,6 +84,8 @@ export interface StudentImportValidationResult {
   success_count: number;
   error_count: number;
   errors: StudentImportRowError[];
+  excluded_count: number;
+  excluded: MasterImportExcludedRow[];
 }
 
 export interface StudentImportCommitResult {
@@ -76,4 +93,5 @@ export interface StudentImportCommitResult {
   imported: number;
   error_count: number;
   errors: StudentImportRowError[];
+  excluded: MasterImportExcludedRow[];
 }

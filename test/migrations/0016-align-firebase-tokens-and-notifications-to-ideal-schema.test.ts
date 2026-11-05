@@ -196,9 +196,6 @@ async function restoreCurrentSchema() {
       'CREATE INDEX idx_notification_send_logs_scheduled_for_date ON notification_send_logs(scheduled_for_date)'
     ),
     env.DB.prepare('CREATE INDEX idx_firebase_tokens_user_id ON firebase_tokens(user_id)'),
-    env.DB.prepare(
-      'CREATE INDEX idx_firebase_tokens_active ON firebase_tokens(is_firebase_active)'
-    ),
   ]);
 }
 

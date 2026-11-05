@@ -18,6 +18,7 @@ describe('Gathering master services', () => {
       image_key: 'gathering-spots/1/a.png',
       created_at: '2026-01-01 00:00:00',
       updated_at: '2026-01-01 00:00:00',
+      lock_version: 3,
     };
     const expected = {
       gathering_spot_id: 1,
@@ -25,6 +26,7 @@ describe('Gathering master services', () => {
       image_url: 'https://signed.example/gathering-spots/1/a.png',
       created_at: '2026-01-01 00:00:00',
       updated_at: '2026-01-01 00:00:00',
+      lock_version: 3,
     };
     const repository: IGatheringSpotRepository = {
       exists: vi.fn(),
@@ -85,6 +87,68 @@ describe('Gathering master services', () => {
       updated_at: '2026-01-02 00:00:00',
     });
     expect(repository.update).toHaveBeenCalledWith(1, input);
+  });
+
+  describe('集合場所の更新の楽観ロック', () => {
+    const setup = (overrides: Partial<IGatheringSpotRepository>) => {
+      const repository: IGatheringSpotRepository = {
+        exists: vi.fn(),
+        findExistingIds: vi.fn(),
+        findAll: vi.fn(),
+        findPage: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn().mockResolvedValue(null),
+        delete: vi.fn(),
+        hasGatherings: vi.fn(),
+        findImageKey: vi.fn(),
+        replaceImageKey: vi.fn(),
+        ...overrides,
+      };
+      return {
+        repository,
+        service: createGatheringSpotService(
+          repository,
+          deleteUnusedImage,
+          imageUrlSigner
+        ),
+      };
+    };
+
+    it('lock_version を指定した更新が0件で、行が残っていれば競合として扱う', async () => {
+      const { repository, service } = setup({
+        exists: vi.fn().mockResolvedValue(true),
+      });
+
+      await expect(
+        service.updateGatheringSpot(1, {
+          gathering_spot_name: '正門前',
+          expected_lock_version: 2,
+        })
+      ).rejects.toThrow('Gathering spot update conflict');
+      expect(repository.exists).toHaveBeenCalledWith(1);
+    });
+
+    it('lock_version を指定した更新が0件で、行も無ければ見つからないとして扱う', async () => {
+      const { service } = setup({
+        exists: vi.fn().mockResolvedValue(false),
+      });
+
+      await expect(
+        service.updateGatheringSpot(1, {
+          gathering_spot_name: '正門前',
+          expected_lock_version: 2,
+        })
+      ).rejects.toThrow('Gathering spot not found');
+    });
+
+    it('lock_version を指定しない更新は、0件でも行の有無を確認せず見つからないとして扱う', async () => {
+      const { repository, service } = setup({});
+
+      await expect(
+        service.updateGatheringSpot(1, { gathering_spot_name: '正門前' })
+      ).rejects.toThrow('Gathering spot not found');
+      expect(repository.exists).not.toHaveBeenCalled();
+    });
   });
 
   it('集合場所の更新対象が存在しない場合はエラーにする', async () => {

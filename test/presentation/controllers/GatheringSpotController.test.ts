@@ -116,4 +116,66 @@ describe('GatheringSpotController', () => {
       gathering_spot_name: '第2集合場所',
     });
   });
+
+  it('lockVersion を expected_lock_version としてServiceへ渡す', async () => {
+    const { app, gatheringSpotService } = setup();
+    mocked(gatheringSpotService.updateGatheringSpot).mockResolvedValue({
+      gathering_spot_id: 7,
+    });
+
+    const response = await app.request('/gathering-spots/7', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gatheringSpotName: '第2集合場所',
+        lockVersion: 4,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(gatheringSpotService.updateGatheringSpot).toHaveBeenCalledWith(7, {
+      gathering_spot_name: '第2集合場所',
+      expected_lock_version: 4,
+    });
+  });
+
+  it.each([-1, 1.5, '3'])(
+    'lockVersion が不正な値(%j)なら400を返す',
+    async lockVersion => {
+      const { app, gatheringSpotService } = setup();
+
+      const response = await app.request('/gathering-spots/7', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gatheringSpotName: '第2集合場所', lockVersion }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'INVALID_GATHERING_SPOT_REQUEST' },
+      });
+      expect(gatheringSpotService.updateGatheringSpot).not.toHaveBeenCalled();
+    }
+  );
+
+  it('取得後に更新されていれば409を返す', async () => {
+    const { app, gatheringSpotService } = setup();
+    mocked(gatheringSpotService.updateGatheringSpot).mockRejectedValue(
+      new Error('Gathering spot update conflict')
+    );
+
+    const response = await app.request('/gathering-spots/7', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gatheringSpotName: '第2集合場所',
+        lockVersion: 0,
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'GATHERING_SPOT_UPDATE_CONFLICT' },
+    });
+  });
 });

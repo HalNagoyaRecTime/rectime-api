@@ -19,6 +19,7 @@ function buildEvent(overrides: Partial<EventEntity> = {}): EventEntity {
     end_time: '0930',
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
+    lock_version: 0,
     ...overrides,
   };
 }
@@ -35,6 +36,7 @@ function buildGathering(
   return {
     round: 1,
     gathering_time: '10:45',
+    round_start_time: null,
     gathering_spot_id: 1,
     gathering_spot_name: '出入口①',
     gathering_spot_image_key: null,
@@ -264,6 +266,7 @@ describe('EventService', () => {
       expect(result.rounds).toEqual([
         {
           round: 1,
+          start_time: null,
           gatherings: [
             {
               gathering_id: 101,
@@ -289,6 +292,7 @@ describe('EventService', () => {
         },
         {
           round: 2,
+          start_time: null,
           gatherings: [
             {
               gathering_id: 103,
@@ -455,6 +459,69 @@ describe('EventService', () => {
       ).rejects.toThrow('Event not found');
     });
 
+    describe('楽観ロック', () => {
+      const request = {
+        event_name: '開会式',
+        rule_text: null,
+        venue_ids: [3],
+        start_time: '0900',
+        end_time: '0930',
+      };
+
+      it('lock_version をDomain入力型の expectedLockVersion としてRepositoryへ渡す', async () => {
+        const repository = createRepository({
+          exists: vi.fn().mockResolvedValue(true),
+          update: vi.fn().mockResolvedValue(buildEventWithVenues()),
+        });
+
+        await createService(repository).updateEvent(1, {
+          ...request,
+          lock_version: 4,
+        });
+
+        expect(repository.update).toHaveBeenCalledWith(1, {
+          name: '開会式',
+          ruleText: null,
+          venueIds: [3],
+          startTime: '0900',
+          endTime: '0930',
+          expectedLockVersion: 4,
+        });
+      });
+
+      it('lock_version を指定した更新が0件で、イベントが残っていればEvent update conflictを投げる', async () => {
+        const repository = createRepository({
+          exists: vi.fn().mockResolvedValue(true),
+          update: vi.fn().mockResolvedValue(null),
+        });
+
+        await expect(
+          createService(repository).updateEvent(1, {
+            ...request,
+            lock_version: 4,
+          })
+        ).rejects.toThrow('Event update conflict');
+      });
+
+      it('lock_version を指定した更新が0件で、イベントも無ければEvent not foundを投げる', async () => {
+        // 存在確認（1回目）は通り、更新の直前に削除された場合
+        const repository = createRepository({
+          exists: vi
+            .fn()
+            .mockResolvedValueOnce(true)
+            .mockResolvedValueOnce(false),
+          update: vi.fn().mockResolvedValue(null),
+        });
+
+        await expect(
+          createService(repository).updateEvent(1, {
+            ...request,
+            lock_version: 4,
+          })
+        ).rejects.toThrow('Event not found');
+      });
+    });
+
     it('存在しないイベントに存在しない実施場所を指定した場合はEvent not foundを投げる', async () => {
       const repository = createRepository({
         exists: vi.fn().mockResolvedValue(false),
@@ -479,7 +546,36 @@ describe('EventService', () => {
       expect(repository.update).not.toHaveBeenCalled();
     });
 
-    it('開始時刻が終了時刻以降の場合は更新せずエラーを投げる', async () => {
+    it('開始と終了が同じ時刻の締切を更新できる', async () => {
+      const deadline = buildEventWithVenues({
+        event_name: '出席確認',
+        start_time: '0910',
+        end_time: '0910',
+      });
+      const repository = createRepository({
+        exists: vi.fn().mockResolvedValue(true),
+        update: vi.fn().mockResolvedValue(deadline),
+      });
+
+      await expect(
+        createService(repository).updateEvent(1, {
+          event_name: '出席確認',
+          rule_text: null,
+          venue_ids: [3],
+          start_time: '0910',
+          end_time: '0910',
+        })
+      ).resolves.toEqual(deadline);
+      expect(repository.update).toHaveBeenCalledWith(1, {
+        name: '出席確認',
+        ruleText: null,
+        venueIds: [3],
+        startTime: '0910',
+        endTime: '0910',
+      });
+    });
+
+    it('開始時刻が終了時刻より後の場合は更新せずエラーを投げる', async () => {
       const repository = createRepository({ update: vi.fn() });
 
       await expect(
@@ -490,7 +586,7 @@ describe('EventService', () => {
           start_time: '0930',
           end_time: '0900',
         })
-      ).rejects.toThrow('end_time must be after start_time');
+      ).rejects.toThrow('終了時刻は開始時刻以降を指定してください。');
       expect(repository.update).not.toHaveBeenCalled();
     });
   });

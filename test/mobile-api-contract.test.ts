@@ -77,7 +77,14 @@ describe('mobile API contract', () => {
     ],
     [
       'MobileNotification',
-      ['notification_id', 'notification_type', 'title', 'body', 'scheduled_at'],
+      [
+        'notification_id',
+        'notification_type',
+        'title',
+        'body',
+        'scheduled_at',
+        'related_event',
+      ],
     ],
     ['MobileNotificationList', ['notifications', 'total', 'limit', 'offset']],
   ])('documents the %s response contract fields', (schemaName, fields) => {

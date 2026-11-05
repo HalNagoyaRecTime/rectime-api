@@ -2,14 +2,16 @@ export interface StudentEntity {
   studentId: number;
   userId: number;
   userName: string;
-  classRoomId: number;
-  classRoomCode: string;
-  classRoomName: string;
-  teamId: number;
-  attendanceNumber: number;
+  classRoomId: number | null;
+  classRoomCode: string | null;
+  classRoomName: string | null;
+  teamId: number | null;
+  attendanceNumber: number | null;
   studentIdNumber: string;
   isLiveActive: boolean;
   isStaff: boolean;
+  updatedAt: string;
+  lockVersion: number;
 }
 
 export interface StudentPage {
@@ -21,9 +23,19 @@ export interface StudentPage {
 
 export interface StudentWriteInput {
   displayName: string;
-  classRoomId: number;
-  attendanceNumber: number;
+  classRoomId: number | null;
+  attendanceNumber: number | null;
   studentIdNumber: string;
+}
+
+export interface StudentUpdateInput extends StudentWriteInput {
+  // 取得時点の lockVersion。指定された場合だけ、更新時点で値が変わっていないことを確認する。
+  expectedLockVersion?: number;
+}
+
+export interface StudentClassRoomAssignment {
+  classRoomId: number | null;
+  attendanceNumber: number | null;
 }
 
 export interface StudentSearchFilter {

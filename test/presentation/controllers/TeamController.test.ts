@@ -318,6 +318,42 @@ describe('TeamController', () => {
   });
 
   describe('deleteTeam', () => {
+    it('単独編成名が競合する場合は削除できない理由を409で返す', async () => {
+      const { app, teamService } = setup();
+      vi.mocked(teamService.deleteTeam).mockRejectedValue(
+        new Error(
+          'D1_ERROR: UNIQUE constraint failed: teams.team_name: SQLITE_CONSTRAINT'
+        )
+      );
+
+      const response = await app.request('/teams/1', { method: 'DELETE' });
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({
+        error: {
+          code: 'TEAM_DETACH_NAME_CONFLICT',
+          message: '単独編成へ戻すチーム名が既に使われているため削除できません',
+        },
+      });
+    });
+
+    it('DBエラーの場合は内部情報を含めず500を返す', async () => {
+      const { app, teamService } = setup();
+      vi.mocked(teamService.deleteTeam).mockRejectedValue(
+        new Error('内部DBエラー')
+      );
+
+      const response = await app.request('/teams/1', { method: 'DELETE' });
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({
+        error: {
+          code: 'TEAM_DELETE_FAILED',
+          message: 'チームの削除に失敗しました',
+        },
+      });
+    });
+
     it('チームを削除して204を返す', async () => {
       const { app, teamService } = setup();
       (teamService.deleteTeam as ReturnType<typeof vi.fn>).mockResolvedValue(

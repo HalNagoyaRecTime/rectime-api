@@ -1,4 +1,5 @@
 import { ACCOUNT_PHOTO_PATH } from '../../domain/auth/types';
+import { isStudentEmail } from '../../domain/auth/email';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 import type { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
@@ -7,7 +8,8 @@ import type { IAuthProfileService } from './IAuthProfileService';
 export function createAuthProfileService(
   userRepository: Pick<IUserRepository, 'getUserCategories'>,
   studentRepository: Pick<IStudentRepository, 'findByUserId'>,
-  teacherRepository: Pick<ITeacherRepository, 'findByUserId'>
+  teacherRepository: Pick<ITeacherRepository, 'findByUserId'>,
+  studentEmailDomain: string
 ): IAuthProfileService {
   return {
     async getProfile(identity) {
@@ -32,6 +34,10 @@ export function createAuthProfileService(
         class_room_id: student?.classRoomId ?? null,
         team_id: student?.teamId ?? null,
         attendance_number: student?.attendanceNumber ?? null,
+        // 学生メールでログインしたのに学生情報がひも付いていない(学生登録漏れ)状態。
+        // 学生メール形式以外(教員・職員など)は常にfalse。
+        student_profile_missing:
+          !student && isStudentEmail(identity.email, studentEmailDomain),
         ...categories,
         ...(teacher
           ? {

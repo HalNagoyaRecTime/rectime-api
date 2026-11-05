@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type {
   AdminNotificationQueryAudienceItem,
+  AdminNotificationQueryOptions,
   AdminNotificationQueryResult,
   AdminNotificationQuerySchedule,
   AdminNotificationQueryUserReference,
@@ -15,7 +16,10 @@ import {
   type NotificationSourceType,
   type NotificationStopReason,
 } from '../../domain/entities/Notification';
-import type { IAdminNotificationQueryRepository } from '../../domain/interfaces/repositories/IAdminNotificationQueryRepository';
+import type {
+  AdminNotificationQueryResultWithPagination,
+  IAdminNotificationQueryRepository,
+} from '../../domain/interfaces/repositories/IAdminNotificationQueryRepository';
 
 interface NotificationRow {
   notification_id: number;
@@ -107,9 +111,8 @@ const audienceSelection = `
 export function createAdminNotificationQueryRepository(
   db: D1Database
 ): IAdminNotificationQueryRepository {
-  return {
-    async findAll(options) {
-      const scopedScheduleIds = `
+  const findAllUnpaged = async (options: AdminNotificationQueryOptions) => {
+    const scopedScheduleIds = `
         SELECT scoped_schedule.notification_schedule_id
         FROM notification_schedules scoped_schedule
         INNER JOIN notifications scoped_notification
@@ -118,27 +121,23 @@ export function createAdminNotificationQueryRepository(
           AND julianday(scoped_schedule.send_at) >= julianday(?)
           AND julianday(scoped_schedule.send_at) <= julianday(?)
       `;
-      const notificationScope = `n.notification_type = 'notification_general' AND EXISTS (
+    const notificationScope = `n.notification_type = 'notification_general' AND EXISTS (
         SELECT 1
         FROM notification_schedules scoped_schedule
         WHERE scoped_schedule.notification_id = n.notification_id
           AND julianday(scoped_schedule.send_at) >= julianday(?)
           AND julianday(scoped_schedule.send_at) <= julianday(?)
       )`;
-      const scheduleScope = `ns.notification_schedule_id IN (
+    const scheduleScope = `ns.notification_schedule_id IN (
         ${scopedScheduleIds}
       )`;
-      const audienceScope = `na.notification_schedule_id IN (
+    const audienceScope = `na.notification_schedule_id IN (
         ${scopedScheduleIds}
       )`;
-      const notificationBindings = [options.from, options.to];
+    const notificationBindings = [options.from, options.to];
 
-      const [
-        notificationResult,
-        scheduleResult,
-        audienceResult,
-        summaryResult,
-      ] = await db.batch([
+    const [notificationResult, scheduleResult, audienceResult, summaryResult] =
+      await db.batch([
         db
           .prepare(
             `SELECT ${notificationSelection}
@@ -218,12 +217,336 @@ export function createAdminNotificationQueryRepository(
           .bind(...notificationBindings),
       ]);
 
-      return assembleResults(
+    return assembleResults(
+      notificationResult.results as unknown as NotificationRow[],
+      scheduleResult.results as unknown as ScheduleRow[],
+      audienceResult.results as unknown as AudienceRow[],
+      summaryResult.results as unknown as RecipientSummaryRow[]
+    );
+  };
+
+  return {
+    async findAll(
+      options
+    ): Promise<AdminNotificationQueryResultWithPagination> {
+      if (options.page === undefined && options.limit === undefined) {
+        const items = await findAllUnpaged(options);
+        return {
+          items,
+          pagination: {
+            page: 1,
+            limit: Math.max(1, items.length),
+            totalCount: items.length,
+            totalPages: 1,
+          },
+        };
+      }
+
+      const page = options.page ?? 1;
+      const limit = options.limit ?? 50;
+      const offset = (page - 1) * limit;
+
+      const scopeParts = [
+        `n.notification_type = 'notification_general' AND EXISTS (
+        SELECT 1
+        FROM notification_schedules scoped_schedule
+        WHERE scoped_schedule.notification_id = n.notification_id
+          AND julianday(scoped_schedule.send_at) >= julianday(?)
+          AND julianday(scoped_schedule.send_at) <= julianday(?)
+      )`,
+      ];
+      const notificationBindings: string[] = [options.from, options.to];
+
+      if (options.creationMethod) {
+        scopeParts.push(
+          options.creationMethod === 'manual'
+            ? 'n.source_type IS NULL'
+            : 'n.source_type IS NOT NULL'
+        );
+      }
+      const scheduleConditions = [
+        'julianday(filtered.send_at) >= julianday(?)',
+        'julianday(filtered.send_at) <= julianday(?)',
+      ];
+      const scheduleBindings = [options.from, options.to];
+      if (options.status) {
+        scheduleConditions.push('filtered.send_status = ?');
+        scheduleBindings.push(options.status);
+      }
+      if (options.filterFrom) {
+        scheduleConditions.push('julianday(filtered.send_at) >= julianday(?)');
+        scheduleBindings.push(options.filterFrom);
+      }
+      if (options.filterTo) {
+        scheduleConditions.push('julianday(filtered.send_at) <= julianday(?)');
+        scheduleBindings.push(options.filterTo);
+      }
+      if (options.status || options.filterFrom || options.filterTo) {
+        scopeParts.push(
+          `EXISTS (SELECT 1 FROM notification_schedules filtered WHERE filtered.notification_id = n.notification_id AND ${scheduleConditions.join(' AND ')})`
+        );
+        notificationBindings.push(...scheduleBindings);
+      }
+
+      const searchText = `CAST(n.notification_id AS TEXT) || ' #' || CAST(n.notification_id AS TEXT) || ' ' || n.push_title || ' ' || n.push_body || ' ' ||
+        CASE WHEN n.source_type IS NULL THEN COALESCE(creator.user_name, '') ELSE COALESCE(source_spot.gathering_spot_name, '') END || ' ' ||
+        COALESCE((SELECT group_concat(label, ' ') FROM (SELECT CASE a.audience_type WHEN 'class_room' THEN cr.class_name WHEN 'gathering' THEN gs.gathering_spot_name WHEN 'event' THEN e.event_name WHEN 'user' THEN u.user_name ELSE '' END AS label
+          FROM notification_schedules s JOIN notification_audiences a ON a.notification_schedule_id=s.notification_schedule_id
+          LEFT JOIN class_rooms cr ON a.audience_type='class_room' AND cr.class_room_id=a.target_id
+          LEFT JOIN gatherings g ON a.audience_type='gathering' AND g.gathering_id=a.target_id
+          LEFT JOIN gathering_spots gs ON gs.gathering_spot_id=g.gathering_spot_id
+          LEFT JOIN events e ON a.audience_type='event' AND e.event_id=a.target_id
+          LEFT JOIN users u ON a.audience_type='user' AND u.user_id=a.target_id
+          WHERE s.notification_id=n.notification_id AND julianday(s.send_at)>=julianday(?) AND julianday(s.send_at)<=julianday(?)
+          ORDER BY julianday(s.send_at), s.notification_schedule_id, a.notification_audience_id)), '')`;
+      const searchWords = (options.search ?? '')
+        .trim()
+        .toLocaleLowerCase('ja')
+        .split(/\s+/u)
+        .filter(Boolean);
+      const notificationScope = scopeParts.join(' AND ');
+
+      // 総件数を先に取得
+      const needsCandidates =
+        searchWords.length > 0 || options.sortBy !== undefined;
+      const countResult = needsCandidates
+        ? null
+        : await db
+            .prepare(
+              `SELECT COUNT(DISTINCT n.notification_id) AS total_count
+             FROM notifications n
+             WHERE ${notificationScope}`
+            )
+            .bind(...notificationBindings)
+            .first<{ total_count: number }>();
+
+      let totalCount = countResult?.total_count ?? 0;
+
+      // ページ対象の通知IDのみ取得
+      const representative = `(SELECT filtered.notification_schedule_id FROM notification_schedules filtered
+        WHERE filtered.notification_id=n.notification_id AND ${scheduleConditions.join(' AND ')}
+        ORDER BY CASE WHEN julianday(filtered.send_at)>=julianday(?) THEN 0 ELSE 1 END,
+        CASE WHEN julianday(filtered.send_at)>=julianday(?) THEN julianday(filtered.send_at) ELSE -julianday(filtered.send_at) END,
+        filtered.notification_schedule_id LIMIT 1)`;
+      const sortExpressions: Record<
+        NonNullable<AdminNotificationQueryOptions['sortBy']>,
+        string
+      > = {
+        notificationId: 'n.notification_id',
+        title: 'n.push_title COLLATE NOCASE',
+        sendAt: 'rep.send_at',
+        status: 'rep.send_status COLLATE NOCASE',
+        creator: `CASE WHEN n.source_type IS NULL THEN COALESCE(creator.user_name,'') ELSE COALESCE(source_spot.gathering_spot_name,'') END COLLATE NOCASE`,
+        audience: `COALESCE((SELECT group_concat(label, '、') FROM (SELECT CASE a.audience_type WHEN 'all' THEN 'all' WHEN 'class_room' THEN COALESCE(cr.class_name,'') WHEN 'gathering' THEN COALESCE(gs.gathering_spot_name,'') WHEN 'event' THEN COALESCE(e.event_name,'') WHEN 'user' THEN COALESCE(u.user_name,'') ELSE '' END AS label FROM notification_audiences a
+          LEFT JOIN class_rooms cr ON a.audience_type='class_room' AND cr.class_room_id=a.target_id
+          LEFT JOIN gatherings g ON a.audience_type='gathering' AND g.gathering_id=a.target_id
+          LEFT JOIN gathering_spots gs ON gs.gathering_spot_id=g.gathering_spot_id
+          LEFT JOIN events e ON a.audience_type='event' AND e.event_id=a.target_id
+          LEFT JOIN users u ON a.audience_type='user' AND u.user_id=a.target_id
+          WHERE a.notification_schedule_id=rep.notification_schedule_id ORDER BY a.notification_audience_id)),'') COLLATE NOCASE`,
+      };
+      const sortExpression = options.sortBy
+        ? sortExpressions[options.sortBy]
+        : 'datetime(n.created_at)';
+      const referenceTime = options.now ?? new Date().toISOString();
+      const sortBindings = [...scheduleBindings, referenceTime, referenceTime];
+      const selection = `
+             FROM notifications n
+             LEFT JOIN users creator ON creator.user_id=n.created_by_user_id
+             LEFT JOIN gatherings source_gathering ON n.source_type='gathering' AND source_gathering.gathering_id=n.source_id
+             LEFT JOIN gathering_spots source_spot ON source_spot.gathering_spot_id=source_gathering.gathering_spot_id
+             LEFT JOIN notification_schedules rep ON rep.notification_schedule_id=${representative}
+             WHERE ${notificationScope}`;
+      let pageIds: number[];
+      if (needsCandidates) {
+        // SQLiteのlower/照合順序は日本語の大小文字・数値を含む文字列で
+        // 画面のIntl.Collatorと異なるため、IDと判定に必要な文字列だけを取得する。
+        const searchSelection =
+          searchWords.length > 0 ? `, ${searchText} AS search_value` : '';
+        const sortSelection = options.sortBy
+          ? `, ${sortExpression} AS sort_value`
+          : '';
+        const candidates = await db
+          .prepare(
+            `SELECT n.notification_id${searchSelection}${sortSelection} ${selection}
+          ORDER BY datetime(n.created_at) DESC, n.notification_id DESC`
+          )
+          .bind(
+            ...(searchWords.length > 0 ? [options.from, options.to] : []),
+            ...sortBindings,
+            ...notificationBindings
+          )
+          .all<{
+            notification_id: number;
+            search_value?: string;
+            sort_value?: string | number | null;
+          }>();
+        const matched = candidates.results.filter(row => {
+          const text = (row.search_value ?? '').toLocaleLowerCase('ja');
+          return searchWords.every(word => text.includes(word));
+        });
+        totalCount = matched.length;
+        if (options.sortBy) {
+          const collator = new Intl.Collator('ja', {
+            numeric: true,
+            sensitivity: 'base',
+          });
+          const sign = options.sortDirection === 'desc' ? -1 : 1;
+          matched.sort(
+            (left, right) =>
+              sign *
+              collator.compare(
+                String(left.sort_value ?? ''),
+                String(right.sort_value ?? '')
+              )
+          );
+        }
+        pageIds = matched
+          .slice(offset, offset + limit)
+          .map(row => row.notification_id);
+      } else {
+        const pageIdsResult = await db
+          .prepare(
+            `SELECT n.notification_id FROM notifications n WHERE ${notificationScope}
+          ORDER BY datetime(n.created_at) DESC, n.notification_id DESC LIMIT ? OFFSET ?`
+          )
+          .bind(...notificationBindings, limit, offset)
+          .all<{ notification_id: number }>();
+        pageIds = pageIdsResult.results.map(row => row.notification_id);
+      }
+      const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+
+      // 対象通知の詳細情報を取得
+      if (pageIds.length === 0) {
+        return {
+          items: [],
+          pagination: { page, limit, totalCount, totalPages },
+        };
+      }
+
+      const placeholders = pageIds.map(() => '?').join(',');
+      const pageIdsBindings = [...pageIds];
+
+      const pageScopedScheduleIds = `
+        SELECT scoped_schedule.notification_schedule_id
+        FROM notification_schedules scoped_schedule
+        INNER JOIN notifications scoped_notification
+          ON scoped_notification.notification_id = scoped_schedule.notification_id
+        WHERE scoped_notification.notification_id IN (${placeholders})
+          AND julianday(scoped_schedule.send_at) >= julianday(?)
+          AND julianday(scoped_schedule.send_at) <= julianday(?)
+      `;
+      const pageScheduleScope = `ns.notification_schedule_id IN (
+        ${pageScopedScheduleIds}
+      )`;
+      const pageAudienceScope = `na.notification_schedule_id IN (
+        ${pageScopedScheduleIds}
+      )`;
+      const pageBindings = [...pageIdsBindings, options.from, options.to];
+
+      const [
+        notificationResult,
+        scheduleResult,
+        audienceResult,
+        summaryResult,
+      ] = await db.batch([
+        db
+          .prepare(
+            `SELECT ${notificationSelection}
+               FROM notifications n
+               LEFT JOIN users creator
+                 ON creator.user_id = n.created_by_user_id
+               LEFT JOIN gatherings source_gathering
+                 ON n.source_type = 'gathering'
+                AND source_gathering.gathering_id = n.source_id
+               LEFT JOIN gathering_spots source_spot
+                 ON source_spot.gathering_spot_id = source_gathering.gathering_spot_id
+               WHERE n.notification_id IN (${placeholders})
+               ORDER BY datetime(n.created_at) DESC, n.notification_id DESC`
+          )
+          .bind(...pageIdsBindings),
+        db
+          .prepare(
+            `SELECT ${scheduleSelection}
+               FROM notification_schedules ns
+               LEFT JOIN users scheduled_by
+                 ON scheduled_by.user_id = ns.scheduled_by_user_id
+               LEFT JOIN users stopped_by
+                 ON stopped_by.user_id = ns.stopped_by_user_id
+               WHERE ${pageScheduleScope}
+               ORDER BY ns.notification_id, julianday(ns.send_at), ns.notification_schedule_id`
+          )
+          .bind(...pageBindings),
+        db
+          .prepare(
+            `SELECT ${audienceSelection}
+               FROM notification_audiences na
+               LEFT JOIN class_rooms cr
+                 ON na.audience_type = 'class_room'
+                AND cr.class_room_id = na.target_id
+               LEFT JOIN gatherings g
+                 ON na.audience_type = 'gathering'
+                AND g.gathering_id = na.target_id
+               LEFT JOIN gathering_spots gs
+                 ON gs.gathering_spot_id = g.gathering_spot_id
+               LEFT JOIN events e
+                 ON na.audience_type = 'event'
+                AND e.event_id = na.target_id
+               LEFT JOIN users audience_user
+                 ON na.audience_type = 'user'
+                AND audience_user.user_id = na.target_id
+               WHERE ${pageAudienceScope}
+               ORDER BY na.notification_schedule_id, na.notification_audience_id`
+          )
+          .bind(...pageBindings),
+        db
+          .prepare(
+            `SELECT nr.notification_schedule_id,
+                      COUNT(*) AS total_count,
+                      SUM(CASE WHEN EXISTS (
+                        SELECT 1 FROM notification_push_deliveries sent_delivery
+                        WHERE sent_delivery.notification_recipient_id = nr.notification_recipient_id
+                          AND sent_delivery.status = 'sent'
+                      ) THEN 1 ELSE 0 END) AS success_count,
+                      SUM(CASE WHEN EXISTS (
+                        SELECT 1 FROM notification_push_deliveries any_delivery
+                        WHERE any_delivery.notification_recipient_id = nr.notification_recipient_id
+                      ) AND NOT EXISTS (
+                        SELECT 1 FROM notification_push_deliveries sent_delivery
+                        WHERE sent_delivery.notification_recipient_id = nr.notification_recipient_id
+                          AND sent_delivery.status = 'sent'
+                      ) THEN 1 ELSE 0 END) AS failed_count,
+                      SUM(CASE WHEN NOT EXISTS (
+                        SELECT 1 FROM notification_push_deliveries any_delivery
+                        WHERE any_delivery.notification_recipient_id = nr.notification_recipient_id
+                      ) THEN 1 ELSE 0 END) AS no_push_target_count
+               FROM notification_recipients nr
+               WHERE nr.notification_schedule_id IN (
+                 ${pageScopedScheduleIds}
+               )
+               GROUP BY nr.notification_schedule_id`
+          )
+          .bind(...pageBindings),
+      ]);
+
+      const items = assembleResults(
         notificationResult.results as unknown as NotificationRow[],
         scheduleResult.results as unknown as ScheduleRow[],
         audienceResult.results as unknown as AudienceRow[],
         summaryResult.results as unknown as RecipientSummaryRow[]
       );
+
+      const positions = new Map(pageIds.map((id, index) => [id, index]));
+      items.sort(
+        (left, right) =>
+          (positions.get(left.notification_id) ?? 0) -
+          (positions.get(right.notification_id) ?? 0)
+      );
+
+      return {
+        items,
+        pagination: { page, limit, totalCount, totalPages },
+      };
     },
 
     async findById(notificationId) {

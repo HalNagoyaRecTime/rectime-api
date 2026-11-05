@@ -18,7 +18,6 @@ type FirebaseTokenRegistrationRow = {
   firebase_token_id: number;
   user_id: number;
   platform: number;
-  is_firebase_active: number;
   last_seen_at: string;
 };
 
@@ -34,7 +33,6 @@ function toFirebaseTokenEntity(
     user_id: row.userId,
     platform: row.platform as FirebasePlatform,
     fcm_token: row.fcmToken,
-    is_firebase_active: row.isFirebaseActive,
     last_seen_at: row.lastSeenAt,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
@@ -76,7 +74,6 @@ export function createFirebaseTokenRepository(
               `
             UPDATE firebase_tokens
             SET platform = ?,
-                is_firebase_active = 1,
                 last_seen_at = ?,
                 updated_at = ?
             WHERE user_id = ?
@@ -85,7 +82,6 @@ export function createFirebaseTokenRepository(
               firebase_token_id,
               user_id,
               platform,
-              is_firebase_active,
               last_seen_at
           `
             )
@@ -97,12 +93,11 @@ export function createFirebaseTokenRepository(
               user_id,
               platform,
               fcm_token,
-              is_firebase_active,
               last_seen_at,
               created_at,
               updated_at
             )
-            SELECT user_id, ?, ?, 1, ?, ?, ?
+            SELECT user_id, ?, ?, ?, ?, ?
             FROM users
             WHERE user_id = ?
               AND NOT EXISTS (
@@ -115,7 +110,6 @@ export function createFirebaseTokenRepository(
               firebase_token_id,
               user_id,
               platform,
-              is_firebase_active,
               last_seen_at
           `
             )
@@ -146,36 +140,15 @@ export function createFirebaseTokenRepository(
         firebase_token_id: registeredToken.firebase_token_id,
         user_id: registeredToken.user_id,
         platform: firebasePlatformToName(registeredToken.platform),
-        is_firebase_active: registeredToken.is_firebase_active === 1,
         last_seen_at: registeredToken.last_seen_at,
       };
     },
 
-    async findActiveTokens(): Promise<FirebaseTokenEntity[]> {
-      const tokens = await orm
-        .select()
-        .from(firebase_tokens)
-        .where(eq(firebase_tokens.isFirebaseActive, 1))
-        .orderBy(asc(firebase_tokens.firebaseTokenId))
-        .all();
-
-      return tokens.map(toFirebaseTokenEntity);
-    },
-
-    // FKのON DELETE SET NULLにより、Legacy予定とv2配信履歴はToken参照を失う。
+    // FKのON DELETE SET NULLにより、v2配信履歴はToken参照を失う。
     async deleteById(firebaseTokenId: number): Promise<void> {
       await orm
         .delete(firebase_tokens)
         .where(eq(firebase_tokens.firebaseTokenId, firebaseTokenId))
-        .run();
-    },
-
-    async deactivateByUserId(userId: number): Promise<void> {
-      const now = notificationUtcNow();
-      await orm
-        .update(firebase_tokens)
-        .set({ isFirebaseActive: 0, updatedAt: now })
-        .where(eq(firebase_tokens.userId, userId))
         .run();
     },
 

@@ -27,6 +27,8 @@ function buildSession(
     success_count: 1,
     error_count: 0,
     errors: [],
+    excluded_count: 0,
+    excluded: [],
     rows: [],
     created_at: '2026-08-18T00:00:00.000Z',
     committed_result: null,

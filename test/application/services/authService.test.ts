@@ -1,11 +1,11 @@
 import { env as workerEnv } from 'cloudflare:workers';
-import type { KVNamespace } from '@cloudflare/workers-types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAuthService } from '../../../src/application/services/authService';
 import { createUserRepository } from '../../../src/infrastructure/repositories/UserRepository';
 import { createStudentRepository } from '../../../src/infrastructure/repositories/StudentRepository';
 import { createTeacherRepository } from '../../../src/infrastructure/repositories/TeacherRepository';
 import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
+import { createRefreshSessionRepository } from '../../../src/infrastructure/repositories/RefreshSessionRepository';
 import type { IUserRepository } from '../../../src/domain/interfaces/repositories/IUserRepository';
 import type { IStudentRepository } from '../../../src/domain/interfaces/repositories/IStudentRepository';
 import type { ITeacherRepository } from '../../../src/domain/interfaces/repositories/ITeacherRepository';
@@ -18,9 +18,7 @@ import { insertClassRoomWithTeam } from '../../fixtures/classRooms';
 function buildFirebaseTokenRepository(): IFirebaseTokenRepository {
   return {
     register: vi.fn(),
-    findActiveTokens: vi.fn(),
     deleteById: vi.fn(),
-    deactivateByUserId: vi.fn(),
     findAllByUserId: vi.fn().mockResolvedValue([]),
     deleteByUserIdAndFcmToken: vi.fn().mockResolvedValue(undefined),
     deleteByUserId: vi.fn(),
@@ -43,17 +41,8 @@ function buildTeacherRepository(): ITeacherRepository {
   };
 }
 
-function buildAuthKv(): KVNamespace {
-  const store = new Map<string, string>();
-  return {
-    put: vi.fn(async (key: string, value: string) => {
-      store.set(key, value);
-    }),
-    get: vi.fn(async (key: string) => store.get(key) ?? null),
-    delete: vi.fn(async (key: string) => {
-      store.delete(key);
-    }),
-  } as unknown as KVNamespace;
+function buildRefreshSessionRepository() {
+  return { deleteByUserId: vi.fn().mockResolvedValue(undefined) };
 }
 
 function buildClaims(
@@ -94,12 +83,14 @@ function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
     studentIdNumber: '50000',
     isLiveActive: true,
     isStaff: false,
+    updatedAt: '2026-01-01 00:00:00',
+    lockVersion: 0,
     ...overrides,
   };
 }
 
 describe('createAuthService', () => {
-  function setup() {
+  function setup(studentEmailDomain = 'nhs.hal.ac.jp') {
     const userRepository: IUserRepository = {
       exists: vi.fn(),
       isStaff: vi.fn(),
@@ -124,30 +115,30 @@ describe('createAuthService', () => {
         offset: 0,
       }),
       findByStudentNum: vi.fn(),
+      findByClassRoomAndAttendanceNumber: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-      findExistingStudentNumbers: vi.fn(),
+      updateClassRoom: vi.fn(),
+      findExistingStudentsByNumbers: vi.fn(),
+      findExistingClassRoomAttendanceNumbers: vi.fn(),
       createMany: vi.fn(),
       findByUserId: vi.fn(),
       anonymizeByUserId: vi.fn(),
     };
-    const studentEmailDomain = 'nhs.hal.ac.jp';
     const teacherRepository = buildTeacherRepository();
-    const authKv = buildAuthKv();
     const firebaseTokenRepository = buildFirebaseTokenRepository();
     const service = createAuthService(
       userRepository,
       studentRepository,
       teacherRepository,
       studentEmailDomain,
-      authKv,
+      buildRefreshSessionRepository(),
       firebaseTokenRepository
     );
     return {
       userRepository,
       studentRepository,
       teacherRepository,
-      authKv,
       firebaseTokenRepository,
       service,
     };
@@ -178,9 +169,12 @@ describe('createAuthService', () => {
         offset: 0,
       }),
       findByStudentNum: vi.fn(),
+      findByClassRoomAndAttendanceNumber: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-      findExistingStudentNumbers: vi.fn(),
+      updateClassRoom: vi.fn(),
+      findExistingStudentsByNumbers: vi.fn(),
+      findExistingClassRoomAttendanceNumbers: vi.fn(),
       createMany: vi.fn(),
       findByUserId: vi.fn(),
       anonymizeByUserId: vi.fn(),
@@ -193,7 +187,7 @@ describe('createAuthService', () => {
         studentRepository,
         teacherRepository,
         '',
-        buildAuthKv(),
+        buildRefreshSessionRepository(),
         buildFirebaseTokenRepository()
       )
     ).toThrow('STUDENT_EMAIL_DOMAIN is not configured');
@@ -957,6 +951,51 @@ describe('createAuthService', () => {
       });
     });
 
+    it.each([
+      ['大阪', 'ohs.hal.ac.jp', 'ohs00123@ohs.hal.ac.jp'],
+      ['東京', 'ths.hal.ac.jp', 'ths00123@ths.hal.ac.jp'],
+    ])(
+      '%s校のメールから先頭ゼロを保持して登録済み学生へ紐付ける',
+      async (_, domain, email) => {
+        const {
+          userRepository,
+          studentRepository,
+          teacherRepository,
+          service,
+        } = setup(domain);
+        vi.mocked(
+          userRepository.findUserIdByMicrosoftAccount
+        ).mockResolvedValue(null);
+        vi.mocked(studentRepository.findByStudentNum).mockResolvedValue(
+          buildStudent({ studentIdNumber: '00123' })
+        );
+
+        const result = await service.upsertUser(
+          buildClaims({ preferred_username: email })
+        );
+
+        expect(studentRepository.findByStudentNum).toHaveBeenCalledWith(
+          '00123'
+        );
+        expect(userRepository.linkMicrosoftAccount).toHaveBeenCalledWith({
+          userId: '100',
+          oid: 'oid-1',
+          tid: 'tid-1',
+        });
+        expect(result).toMatchObject({
+          id: '100',
+          email,
+          display_name: '田中太郎',
+        });
+        expect(
+          userRepository.createUserWithMicrosoftLink
+        ).not.toHaveBeenCalled();
+        expect(
+          teacherRepository.findMicrosoftLinkCandidateByEmail
+        ).not.toHaveBeenCalled();
+      }
+    );
+
     it('学籍番号で見つかった学生のdeletion_statusがdeletion_pendingの場合、ACCOUNT_DELETION_PENDINGを投げてlinkMicrosoftAccountを呼ばない', async () => {
       const { userRepository, studentRepository, service } = setup();
       const claims = buildClaims({
@@ -1232,20 +1271,18 @@ describe('createAuthService (実DB・TOCTOU再現)', () => {
     const studentRepository = createStudentRepository(workerEnv.DB);
     const teacherRepository = createTeacherRepository(workerEnv.DB);
     const firebaseTokenRepository = createFirebaseTokenRepository(workerEnv.DB);
-    const authKv = buildAuthKv();
     const service = createAuthService(
       userRepository,
       studentRepository,
       teacherRepository,
       'nhs.hal.ac.jp',
-      authKv,
+      createRefreshSessionRepository(workerEnv.DB),
       firebaseTokenRepository
     );
     return {
       userRepository,
       studentRepository,
       firebaseTokenRepository,
-      authKv,
       service,
     };
   }
@@ -1482,26 +1519,32 @@ describe('createAuthService (実DB・startAccountDeletion)', () => {
     const studentRepository = createStudentRepository(workerEnv.DB);
     const teacherRepository = createTeacherRepository(workerEnv.DB);
     const firebaseTokenRepository = createFirebaseTokenRepository(workerEnv.DB);
-    const authKv = buildAuthKv();
+    const refreshSessionRepository = createRefreshSessionRepository(
+      workerEnv.DB
+    );
     const service = createAuthService(
       userRepository,
       studentRepository,
       teacherRepository,
       'nhs.hal.ac.jp',
-      authKv,
+      refreshSessionRepository,
       firebaseTokenRepository
     );
     return {
       userRepository,
       firebaseTokenRepository,
-      authKv,
+      refreshSessionRepository,
       service,
     };
   }
 
-  it('DB状態遷移・全Refresh Session失効・Firebase Token無効化を一括で行う', async () => {
-    const { userRepository, firebaseTokenRepository, authKv, service } =
-      buildRealService();
+  it('DB状態遷移・全Refresh Session失効・Firebase Token削除を一括で行う', async () => {
+    const {
+      userRepository,
+      firebaseTokenRepository,
+      refreshSessionRepository,
+      service,
+    } = buildRealService();
 
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
@@ -1517,21 +1560,23 @@ describe('createAuthService (実DB・startAccountDeletion)', () => {
       platform: 'android',
       fcmToken: 'fcm-token-1',
     });
-    await authKv.put(
-      `mobile_refresh:refresh-1`,
-      JSON.stringify({
-        user_id: userId,
-        oid: 'oid-1',
-        tid: 'tid-1',
-        sub: 'sub-1',
-        email: 'tanaka@example.com',
-        display_name: '田中太郎',
-        client_type: 'web',
-        ms_refresh_token: 'ms-refresh-1',
-        created_at: new Date().toISOString(),
-      })
-    );
-    await authKv.put(`mobile_refresh_by_user:${userId}`, 'refresh-1');
+    for (const refreshTokenId of ['refresh-web', 'refresh-mobile']) {
+      await refreshSessionRepository.create(
+        {
+          refresh_token_id: refreshTokenId,
+          user_id: userId,
+          oid: 'oid-1',
+          tid: 'tid-1',
+          sub: 'sub-1',
+          email: 'tanaka@example.com',
+          display_name: '田中太郎',
+          avatar_updated_at: null,
+          client_type: refreshTokenId === 'refresh-web' ? 'web' : 'mobile',
+          ms_refresh_token: 'ms-refresh-1',
+        },
+        3600
+      );
+    }
 
     await service.startAccountDeletion(userId);
 
@@ -1546,17 +1591,20 @@ describe('createAuthService (実DB・startAccountDeletion)', () => {
       .first();
     expect(linkRow).toBeNull();
 
-    // KV: Refresh Sessionが失効(mobile_refresh/mobile_refresh_by_user共に削除)
-    expect(await authKv.get('mobile_refresh:refresh-1')).toBeNull();
-    expect(await authKv.get(`mobile_refresh_by_user:${userId}`)).toBeNull();
+    await expect(
+      refreshSessionRepository.findById('refresh-web')
+    ).resolves.toBeNull();
+    await expect(
+      refreshSessionRepository.findById('refresh-mobile')
+    ).resolves.toBeNull();
 
-    // Firebase Token登録がPush通知対象から除外される
+    // Firebase Token登録が物理削除される
     const tokenRow = await workerEnv.DB.prepare(
-      'SELECT is_firebase_active FROM firebase_tokens WHERE user_id = ?'
+      'SELECT firebase_token_id FROM firebase_tokens WHERE user_id = ?'
     )
       .bind(user!.user_id)
-      .first<{ is_firebase_active: number }>();
-    expect(tokenRow?.is_firebase_active).toBe(0);
+      .first();
+    expect(tokenRow).toBeNull();
   });
 
   it('Refresh Sessionが存在しないユーザーでも冪等に成功する', async () => {

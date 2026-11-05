@@ -1,11 +1,13 @@
+import type { FirebasePlatformName } from '../../domain/entities/FirebaseToken';
 import type {
   NotificationImportance,
   NotificationPushDeliveryStatus,
+  NotificationRecipientResolutionStatus,
   NotificationScheduleStatus,
 } from '../../domain/entities/Notification';
 import type {
   NotificationAudienceDTO,
-  NotificationContentPushDTO,
+  NotificationContentPushOnlyDTO,
   NotificationCreationDTO,
   NotificationDeliveryInputDTO,
   NotificationScheduleStopDTO,
@@ -13,7 +15,7 @@ import type {
 } from './AdminNotificationDTO';
 
 export interface NotificationRecipientResolutionDTO {
-  status: 'pending' | 'resolved';
+  status: NotificationRecipientResolutionStatus;
   resolvedCount: number;
 }
 
@@ -39,20 +41,15 @@ export interface NotificationScheduleSummaryDTO {
   recipientPushSummary: NotificationRecipientPushSummaryDTO;
 }
 
-export interface AdminNotificationScheduleListItemDTO {
-  notificationScheduleId: number;
-  sendAt: string;
-  status: NotificationScheduleStatus;
-  scheduledBy: NotificationUserReferenceDTO | null;
-  createdAt: string;
-  audience: NotificationScheduleAudienceDTO;
-  recipientPushSummary: NotificationRecipientPushSummaryDTO;
-}
+export type AdminNotificationScheduleListItemDTO = Omit<
+  NotificationScheduleSummaryDTO,
+  'stop'
+>;
 
-export interface NotificationScheduleListItemDTO {
+export interface NotificationScheduleBaseDTO {
   notificationId: number;
   notificationScheduleId: number;
-  content: { push: NotificationContentPushDTO };
+  content: NotificationContentPushOnlyDTO;
   importance: NotificationImportance;
   sendAt: string;
   status: NotificationScheduleStatus;
@@ -61,6 +58,8 @@ export interface NotificationScheduleListItemDTO {
   creation: NotificationCreationDTO;
 }
 
+export type NotificationScheduleListItemDTO = NotificationScheduleBaseDTO;
+
 export interface NotificationAudienceProgressDTO {
   totalCount: number;
   resolvedCount: number;
@@ -68,7 +67,7 @@ export interface NotificationAudienceProgressDTO {
 
 export interface NotificationRecipientProgressDTO {
   count: number;
-  status: 'pending' | 'resolved';
+  status: NotificationRecipientResolutionStatus;
 }
 
 export interface NotificationDeliveryProgressDTO {
@@ -81,16 +80,7 @@ export interface NotificationDeliveryProgressDTO {
   stoppedCount: number;
 }
 
-export interface NotificationScheduleDetailDTO {
-  notificationId: number;
-  notificationScheduleId: number;
-  content: { push: NotificationContentPushDTO };
-  importance: NotificationImportance;
-  sendAt: string;
-  status: NotificationScheduleStatus;
-  failureReason: string | null;
-  stop: NotificationScheduleStopDTO | null;
-  creation: NotificationCreationDTO;
+export interface NotificationScheduleDetailDTO extends NotificationScheduleBaseDTO {
   audienceProgress: NotificationAudienceProgressDTO;
   recipientProgress: NotificationRecipientProgressDTO;
   deliveryProgress: NotificationDeliveryProgressDTO;
@@ -100,7 +90,7 @@ export interface NotificationPushDeliveryDetailDTO {
   notificationPushDeliveryId: number;
   notificationRecipientId: number;
   firebaseTokenId: number | null;
-  platform: 'ios' | 'android';
+  platform: FirebasePlatformName;
   status: NotificationPushDeliveryStatus;
   attemptCount: number;
   firstAttemptAt: string | null;
@@ -113,7 +103,7 @@ export interface NotificationPushDeliveryDetailDTO {
 
 export interface NotificationRecipientResultDeliveryDTO {
   notificationPushDeliveryId: number;
-  platform: 'ios' | 'android';
+  platform: FirebasePlatformName;
   status: NotificationPushDeliveryStatus;
   attemptCount: number;
   lastAttemptAt: string | null;

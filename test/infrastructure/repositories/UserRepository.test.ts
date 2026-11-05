@@ -436,6 +436,117 @@ describe('UserRepository', () => {
       expect(row).toMatchObject({ user_name: '田中花子' });
     });
 
+    describe('学生・教員の lock_version', () => {
+      async function insertPerson(name: string) {
+        const classRoom = await insertClassRoomWithTeam(env.DB, {
+          classCode: `LV-${name}`,
+          className: `lv-${name}`,
+        });
+        const studentUser = await env.DB.prepare(
+          'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
+        )
+          .bind(name)
+          .first<{ user_id: number }>();
+        await env.DB.prepare(
+          "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, 'LV-0001')"
+        )
+          .bind(studentUser!.user_id, classRoom.classRoomId)
+          .run();
+        const teacherUser = await env.DB.prepare(
+          'INSERT INTO users (user_name) VALUES (?) RETURNING user_id'
+        )
+          .bind(name)
+          .first<{ user_id: number }>();
+        await env.DB.prepare(
+          "INSERT INTO teachers (user_id, email) VALUES (?, 'lv@example.ac.jp')"
+        )
+          .bind(teacherUser!.user_id)
+          .run();
+        return {
+          studentUserId: studentUser!.user_id,
+          teacherUserId: teacherUser!.user_id,
+        };
+      }
+
+      async function locks(studentUserId: number, teacherUserId: number) {
+        const student = await env.DB.prepare(
+          'SELECT lock_version FROM students WHERE user_id = ?'
+        )
+          .bind(studentUserId)
+          .first<{ lock_version: number }>();
+        const teacher = await env.DB.prepare(
+          'SELECT lock_version FROM teachers WHERE user_id = ?'
+        )
+          .bind(teacherUserId)
+          .first<{ lock_version: number }>();
+        return {
+          student: student?.lock_version,
+          teacher: teacher?.lock_version,
+        };
+      }
+
+      const params = (userId: number, displayName: string) => ({
+        userId: String(userId),
+        oid: 'oid-lv',
+        tid: 'tid-lv',
+        sub: 'sub-lv',
+        email: 'lv@example.com',
+        displayName,
+      });
+
+      it('名前が変わると、その人の学生・教員の lock_version が進む', async () => {
+        const ids = await insertPerson('同期前の氏名');
+
+        await repo.updateUser(params(ids.studentUserId, '同期後の氏名'));
+        await repo.updateUser(params(ids.teacherUserId, '同期後の氏名'));
+
+        expect(await locks(ids.studentUserId, ids.teacherUserId)).toEqual({
+          student: 1,
+          teacher: 1,
+        });
+      });
+
+      it('名前が変わらない同期（毎回のログイン）では、lock_version は進まない', async () => {
+        const ids = await insertPerson('変わらない氏名');
+
+        await repo.updateUser(params(ids.studentUserId, '変わらない氏名'));
+        await repo.updateUser(params(ids.teacherUserId, '変わらない氏名'));
+
+        expect(await locks(ids.studentUserId, ids.teacherUserId)).toEqual({
+          student: 0,
+          teacher: 0,
+        });
+      });
+
+      it('退会処理中のユーザーは名前が更新されないため、lock_version も進まない', async () => {
+        const ids = await insertPerson('退会処理中の氏名');
+        await env.DB.prepare(
+          "UPDATE users SET deletion_status = 'deletion_pending' WHERE user_id = ?"
+        )
+          .bind(ids.studentUserId)
+          .run();
+
+        await expect(
+          repo.updateUser(params(ids.studentUserId, '別の氏名'))
+        ).resolves.toBeNull();
+
+        expect(await locks(ids.studentUserId, ids.teacherUserId)).toEqual({
+          student: 0,
+          teacher: 0,
+        });
+      });
+
+      it('匿名化で名前が変わるときも、lock_version が進む', async () => {
+        const ids = await insertPerson('匿名化前の氏名');
+
+        await repo.anonymizeUser(String(ids.studentUserId));
+
+        expect(
+          (await locks(ids.studentUserId, ids.teacherUserId)).student
+        ).toBe(1);
+      });
+    });
+
     it('存在しない userId の場合は null を返す', async () => {
       await expect(
         repo.updateUser({

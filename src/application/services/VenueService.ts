@@ -30,6 +30,7 @@ function toVenueDTO(venue: VenueEntity, imageUrlOf: ImageUrlOf): VenueDTO {
     image_url: imageUrlOf(venue.image_key),
     created_at: venue.created_at,
     updated_at: venue.updated_at,
+    lock_version: venue.lock_version,
   };
 }
 
@@ -78,7 +79,18 @@ export function createVenueService(
         }
         throw error;
       }
-      if (!venue) throw new Error('Venue not found');
+      if (!venue) {
+        // 版番号を条件にしていた場合、0件更新は削除か版番号の不一致のどちらか。
+        // 行の有無は、IVenueRepository にメソッドを足さず findImageKey で確かめる
+        // （行があれば画像が無くても非nullを返す）。
+        if (
+          input.expected_lock_version !== undefined &&
+          (await venueRepository.findImageKey(venueId))
+        ) {
+          throw new Error('Venue update conflict');
+        }
+        throw new Error('Venue not found');
+      }
       return toDTO(venue);
     },
 

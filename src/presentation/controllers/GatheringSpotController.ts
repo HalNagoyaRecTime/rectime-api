@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 import {
   gatheringSpotIdParams,
   gatheringSpotListQuery,
+  gatheringSpotUpdateSchema,
   gatheringSpotWriteSchema,
 } from '../openapi/gatherings';
 import { positivePathParamToNumber } from '../openapi/schemas';
@@ -80,7 +81,7 @@ export function createGatheringSpotController(
     }
 
     const body = await c.req.json().catch(() => undefined);
-    const parsedBody = gatheringSpotWriteSchema.safeParse(body);
+    const parsedBody = gatheringSpotUpdateSchema.safeParse(body);
     if (!parsedBody.success) {
       return errorResponse(
         c,
@@ -93,7 +94,10 @@ export function createGatheringSpotController(
     try {
       const gatheringSpot = await gatheringSpotService.updateGatheringSpot(
         gatheringSpotId,
-        { gathering_spot_name: request.gatheringSpotName }
+        {
+          gathering_spot_name: request.gatheringSpotName,
+          expected_lock_version: request.lockVersion,
+        }
       );
       return c.json(gatheringSpot, 200);
     } catch (error) {
@@ -102,6 +106,12 @@ export function createGatheringSpotController(
         error.message === 'Gathering spot not found'
       ) {
         return errorResponse(c, EventErrors.GATHERING_SPOT_NOT_FOUND);
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'Gathering spot update conflict'
+      ) {
+        return errorResponse(c, EventErrors.GATHERING_SPOT_UPDATE_CONFLICT);
       }
       return errorResponse(c, EventErrors.GATHERING_SPOT_UPDATE_FAILED);
     }

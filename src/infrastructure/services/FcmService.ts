@@ -1,8 +1,15 @@
 import {
+  normalizeFirebaseConfig,
+  validateFirebaseConfig,
+  importFirebasePrivateKey,
+  type FirebaseConfig,
+} from './FcmConfiguration';
+import {
   IFcmService,
   FcmNotificationInput,
   FcmNotificationResult,
   FcmRequestError,
+  FcmConfigurationError,
 } from '../../application/services/IFcmService';
 import type { FirebasePlatformName } from '../../domain/entities/FirebaseToken';
 
@@ -10,12 +17,6 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 3600;
 const ACCESS_TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
-
-type FirebaseConfig = {
-  projectId: string;
-  clientEmail: string;
-  privateKey: string;
-};
 
 type CachedAccessToken = {
   value: string;
@@ -29,11 +30,14 @@ type AccessTokenCacheEntry = {
 
 const accessTokenCache = new Map<string, AccessTokenCacheEntry>();
 
-export function createFcmService(config: FirebaseConfig): IFcmService {
-  const cacheKey = `${config.projectId}:${config.clientEmail}`;
+export function createFcmService(input: FirebaseConfig): IFcmService & {
+  ensureConfigured(): Promise<void>;
+} {
+  const config = normalizeFirebaseConfig(input);
+  const cacheKey = createAccessTokenCacheKey(config);
 
   const getAccessToken = async (): Promise<string> => {
-    const cacheEntry = getAccessTokenCacheEntry(cacheKey);
+    const cacheEntry = getAccessTokenCacheEntry(await cacheKey);
 
     if (cacheEntry.token && Date.now() < cacheEntry.token.refreshAt) {
       return cacheEntry.token.value;
@@ -53,10 +57,18 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
     return (await cacheEntry.request).value;
   };
 
+  let configurationCheck: Promise<void> | undefined;
+  const ensureConfigured = async () => {
+    await (configurationCheck ??= validateFirebaseConfig(config));
+    // Signing and exchanging the JWT verifies the key and service account
+    // before delivery records are claimed. The send path reuses this token.
+    await getAccessToken();
+  };
+
   const sendNotificationToToken = async (
     input: FcmNotificationInput
   ): Promise<FcmNotificationResult> => {
-    validateFirebaseCredentials(config);
+    await ensureConfigured();
 
     const accessToken = await getAccessToken();
     const response = await fetch(
@@ -112,6 +124,7 @@ export function createFcmService(config: FirebaseConfig): IFcmService {
 
   return {
     sendNotificationToToken,
+    ensureConfigured,
   };
 }
 
@@ -194,18 +207,15 @@ function getAccessTokenCacheEntry(cacheKey: string): AccessTokenCacheEntry {
   return created;
 }
 
-function validateFirebaseCredentials(config: FirebaseConfig) {
-  const missingKeys = [
-    ['FIREBASE_PROJECT_ID', config.projectId],
-    ['FIREBASE_CLIENT_EMAIL', config.clientEmail],
-    ['FIREBASE_PRIVATE_KEY', config.privateKey],
-  ]
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
-
-  if (missingKeys.length > 0) {
-    throw new Error(`Missing Cloudflare Secrets: ${missingKeys.join(', ')}`);
-  }
+async function createAccessTokenCacheKey(
+  config: FirebaseConfig
+): Promise<string> {
+  const credential = new TextEncoder().encode(config.privateKey);
+  const digest = await crypto.subtle.digest('SHA-256', credential);
+  const fingerprint = Array.from(new Uint8Array(digest), byte =>
+    byte.toString(16).padStart(2, '0')
+  ).join('');
+  return `${config.projectId}:${config.clientEmail}:${fingerprint}`;
 }
 
 async function createAccessToken(
@@ -235,8 +245,15 @@ async function createAccessToken(
   const tokenBody = await response.json();
 
   if (!response.ok) {
-    throw new Error(
-      `Google OAuth token request failed: ${JSON.stringify(tokenBody)}`
+    const errorCode =
+      tokenBody &&
+      typeof tokenBody === 'object' &&
+      'error' in tokenBody &&
+      typeof tokenBody.error === 'string'
+        ? tokenBody.error
+        : 'unknown';
+    throw new FcmConfigurationError(
+      `Google OAuth token request failed: HTTP ${response.status} (${errorCode})`
     );
   }
 
@@ -244,9 +261,12 @@ async function createAccessToken(
     !tokenBody ||
     typeof tokenBody !== 'object' ||
     !('access_token' in tokenBody) ||
-    typeof tokenBody.access_token !== 'string'
+    typeof tokenBody.access_token !== 'string' ||
+    tokenBody.access_token.length === 0
   ) {
-    throw new Error('Google OAuth token response did not include access_token');
+    throw new FcmConfigurationError(
+      'Google OAuth token response did not include access_token'
+    );
   }
 
   const expiresInSeconds =
@@ -286,7 +306,7 @@ async function createSignedJwt(options: {
   const encodedHeader = base64UrlEncodeJson(header);
   const encodedPayload = base64UrlEncodeJson(payload);
   const unsignedToken = `${encodedHeader}.${encodedPayload}`;
-  const privateKey = await importPrivateKey(options.privateKey);
+  const privateKey = await importFirebasePrivateKey(options.privateKey);
   const signature = await crypto.subtle.sign(
     'RSASSA-PKCS1-v1_5',
     privateKey,
@@ -294,25 +314,6 @@ async function createSignedJwt(options: {
   );
 
   return `${unsignedToken}.${base64UrlEncodeBytes(new Uint8Array(signature))}`;
-}
-
-async function importPrivateKey(privateKey: string): Promise<CryptoKey> {
-  const normalizedPrivateKey = privateKey.replace(/\\n/g, '\n');
-  const pemContents = normalizedPrivateKey
-    .replace('-----BEGIN PRIVATE KEY-----', '')
-    .replace('-----END PRIVATE KEY-----', '')
-    .replace(/\s/g, '');
-
-  return crypto.subtle.importKey(
-    'pkcs8',
-    base64ToArrayBuffer(pemContents),
-    {
-      name: 'RSASSA-PKCS1-v1_5',
-      hash: 'SHA-256',
-    },
-    false,
-    ['sign']
-  );
 }
 
 function base64UrlEncodeJson(value: unknown): string {
@@ -329,15 +330,4 @@ function base64UrlEncodeBytes(bytes: Uint8Array): string {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/, '');
-}
-
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-
-  for (let i = 0; i < binaryString.length; i += 1) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
-  return bytes.buffer;
 }

@@ -14,6 +14,41 @@ import {
 export function createUserRepository(db: D1Database): IUserRepository {
   const orm = drizzle(db, { schema });
 
+  // 学生・教員の更新(PUT)が置き換える氏名は users.user_name にある。名前が実際に
+  // 変わるときは、その人の students / teachers の版番号も進め、取得済みの古い氏名の
+  // PUT が、同期された新しい名前を黙って元に戻さないようにする。
+  // 名前の差は users の更新後には比較できないため、この更新を users の更新より前に置く。
+  // onlyActive が true のときは、users の更新と同じく deletion_status = 'active' の場合だけ進める。
+  const bumpPersonVersions = (
+    userId: number,
+    newName: string,
+    now: string,
+    onlyActive: boolean
+  ) => {
+    const nameChanges = sql`EXISTS (
+      SELECT 1 FROM ${users}
+      WHERE ${users.id} = ${userId}
+        AND ${users.userName} <> ${newName}
+        ${onlyActive ? sql`AND ${users.deletionStatus} = 'active'` : sql``}
+    )`;
+    return [
+      orm
+        .update(students)
+        .set({
+          updatedAt: now,
+          lockVersion: sql`${students.lockVersion} + 1`,
+        })
+        .where(and(eq(students.userId, userId), nameChanges)),
+      orm
+        .update(teachers)
+        .set({
+          updatedAt: now,
+          lockVersion: sql`${teachers.lockVersion} + 1`,
+        })
+        .where(and(eq(teachers.userId, userId), nameChanges)),
+    ] as const;
+  };
+
   return {
     async exists(userId) {
       return Boolean(
@@ -217,14 +252,20 @@ export function createUserRepository(db: D1Database): IUserRepository {
       // 既にdeleted/deletion_pendingになっている可能性がある(TOCTOU)。
       // 条件をUPDATE自体に含めることで、その場合は0件更新となり
       // 更新されない(＝古いuser_nameのまま)ことを保証する。
-      const user = await orm
-        .update(users)
-        .set({ userName: displayName, updatedAt: now })
-        .where(
-          and(eq(users.id, Number(userId)), eq(users.deletionStatus, 'active'))
-        )
-        .returning({ id: users.id })
-        .get();
+      const [, , updatedRows] = await orm.batch([
+        ...bumpPersonVersions(Number(userId), displayName, now, true),
+        orm
+          .update(users)
+          .set({ userName: displayName, updatedAt: now })
+          .where(
+            and(
+              eq(users.id, Number(userId)),
+              eq(users.deletionStatus, 'active')
+            )
+          )
+          .returning({ id: users.id }),
+      ]);
+      const user = updatedRows[0];
 
       if (!user) return null;
       return { id: userId, oid, tid, sub, email, display_name: displayName };
@@ -304,15 +345,17 @@ export function createUserRepository(db: D1Database): IUserRepository {
     },
 
     async anonymizeUser(userId) {
-      const result = await orm
-        .update(users)
-        .set({
-          userName: '削除済みユーザー',
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(users.id, Number(userId)))
-        .run();
-      return result.meta.changes > 0;
+      const now = new Date().toISOString();
+      const anonymizedName = '削除済みユーザー';
+      const [, , updatedRows] = await orm.batch([
+        ...bumpPersonVersions(Number(userId), anonymizedName, now, false),
+        orm
+          .update(users)
+          .set({ userName: anonymizedName, updatedAt: now })
+          .where(eq(users.id, Number(userId)))
+          .returning({ id: users.id }),
+      ]);
+      return updatedRows.length > 0;
     },
 
     async findPendingPurgeUserIds(limit) {

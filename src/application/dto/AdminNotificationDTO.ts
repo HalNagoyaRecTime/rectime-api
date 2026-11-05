@@ -1,10 +1,11 @@
-import type {
-  NotificationAudienceType,
-  NotificationCreationMethod,
-  NotificationImportance,
-  NotificationScheduleStatus,
-  NotificationSourceType,
-  NotificationStopReason,
+import {
+  DEFAULT_NOTIFICATION_IMPORTANCE,
+  type NotificationAudienceType,
+  type NotificationCreationMethod,
+  type NotificationImportance,
+  type NotificationScheduleStatus,
+  type NotificationSourceType,
+  type NotificationStopReason,
 } from '../../domain/entities/Notification';
 import type {
   AdminNotificationScheduleListItemDTO,
@@ -24,6 +25,10 @@ export interface NotificationContentDetailDTO {
 export interface NotificationContentDTO {
   push: NotificationContentPushDTO;
   detail: NotificationContentDetailDTO;
+}
+
+export interface NotificationContentPushOnlyDTO {
+  push: NotificationContentPushDTO;
 }
 
 export interface NotificationContentPatchDTO {
@@ -68,6 +73,17 @@ export interface NotificationAudienceDTO {
 export interface NotificationDateRangeQueryDTO {
   from?: string;
   to?: string;
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: NotificationScheduleStatus;
+  creationMethod?: NotificationCreationMethod;
+  filterFrom?: string;
+  filterTo?: string;
+  sortBy?:
+    'notificationId' | 'title' | 'audience' | 'sendAt' | 'creator' | 'status';
+  sortDirection?: 'asc' | 'desc';
+  referenceTime?: string;
 }
 
 export type NotificationDeliveryInputDTO =
@@ -125,22 +141,28 @@ export type NotificationPatchResponseDTO = AdminNotificationDetailDTO;
 
 export interface AdminNotificationListItemDTO {
   notificationId: number;
-  content: {
-    push: NotificationContentPushDTO;
-  };
+  content: NotificationContentPushOnlyDTO;
   importance: NotificationImportance;
   creation: NotificationCreationDTO;
   createdAt: string;
   schedules: AdminNotificationScheduleListItemDTO[];
 }
 
+export interface AdminNotificationPaginationDTO {
+  page: number;
+  limit: number;
+  totalCount: number;
+  totalPages: number;
+}
+
 export interface AdminNotificationListResponseDTO {
   items: AdminNotificationListItemDTO[];
+  pagination?: AdminNotificationPaginationDTO;
 }
 
 export interface NotificationConfigDTO {
   importance: {
-    default: Extract<NotificationImportance, 'normal'>;
+    default: typeof DEFAULT_NOTIFICATION_IMPORTANCE;
     options: NotificationImportance[];
   };
 }

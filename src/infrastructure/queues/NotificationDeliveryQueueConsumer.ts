@@ -1,7 +1,6 @@
 import type { MessageBatch } from '@cloudflare/workers-types';
 import type { INotificationRetryService } from '../../application/services/INotificationRetryService';
 import type { INotificationDeliveryService } from '../../application/services/INotificationDeliveryService';
-import type { IScheduledNotificationService } from '../../application/services/IScheduledNotificationService';
 import {
   NOTIFICATION_DELIVERY_MESSAGE_SIZE,
   NOTIFICATION_DELIVERY_RETRY_DELAY_SECONDS,
@@ -10,7 +9,6 @@ import {
 
 export async function consumeNotificationDeliveryQueue(
   batch: MessageBatch<NotificationDeliveryMessage>,
-  legacyService: IScheduledNotificationService,
   notificationDeliveryService: INotificationDeliveryService,
   retryService?: INotificationRetryService
 ): Promise<void> {
@@ -33,36 +31,9 @@ export async function consumeNotificationDeliveryQueue(
         message.ack();
         continue;
       }
-      const [legacyResult, deliveryResult] = await Promise.allSettled([
-        Promise.resolve().then(() =>
-          legacyService.sendQueuedNotifications(
-            message.body.notificationScheduleIds
-          )
-        ),
-        Promise.resolve().then(() =>
-          notificationDeliveryService.sendQueuedNotifications(
-            message.body.notificationScheduleIds
-          )
-        ),
-      ]);
-      if (
-        legacyResult.status === 'rejected' ||
-        deliveryResult.status === 'rejected'
-      ) {
-        console.error(
-          '[NOTIFICATION_QUEUE] 送信に失敗したためQueue Messageを再試行します',
-          {
-            messageId: message.id,
-            attempts: message.attempts,
-            legacyFailed: legacyResult.status === 'rejected',
-            deliveryFailed: deliveryResult.status === 'rejected',
-          }
-        );
-        message.retry({
-          delaySeconds: NOTIFICATION_DELIVERY_RETRY_DELAY_SECONDS,
-        });
-        continue;
-      }
+      await notificationDeliveryService.sendQueuedNotifications(
+        message.body.notificationScheduleIds
+      );
       message.ack();
     } catch (error) {
       console.error(

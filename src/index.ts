@@ -9,9 +9,10 @@ import { CommonErrors } from './presentation/errors/commonErrors';
 import { EventErrors } from './presentation/errors/eventErrors';
 export { MasterImportCommitLock } from './infrastructure/masterImports/MasterImportCommitLock';
 import { getContactFormUrl, isDocsEnabled, type Env } from './lib/env';
-import { isEventDate, isValidEventDate } from './lib/eventDate';
+import { isValidEventDate } from './lib/eventDate';
 import { getAllowedOriginRules, isAllowedOrigin } from './lib/allowedOrigins';
 import type { NotificationDeliveryMessage } from './domain/entities/NotificationDelivery';
+import { CAMPUSES, parseCampus } from './domain/auth/campus';
 import { consumeNotificationDeliveryQueue } from './infrastructure/queues/NotificationDeliveryQueueConsumer';
 import {
   diContainerMiddleware,
@@ -42,6 +43,7 @@ import {
 } from './presentation/openapi/system';
 import {
   studentCreateRoute,
+  studentClassRoomUpdateRoute,
   studentDetailRoute,
   studentListRoute,
   studentUpdateRoute,
@@ -108,7 +110,6 @@ import {
   venueImageDeleteRoute,
   venueImagePutRoute,
 } from './presentation/openapi/placeImages';
-import { legacyAdminNotificationUpdateRoute } from './presentation/openapi/notification/legacy/admin';
 import {
   adminNotificationCreateRoute,
   adminNotificationDeleteRoute,
@@ -141,7 +142,7 @@ const app = new OpenAPIHono<{ Bindings: Env }>({
 
 let corsWarnLogged = false;
 let tenantWarnLogged = false;
-let eventDateWarnLogged = false;
+let campusWarnLogged = false;
 
 app.use('*', (c, next) => {
   const allowedOrigins = c.env.ALLOWED_ORIGINS ?? '';
@@ -183,6 +184,20 @@ app.use('*', (c, next) => {
         '" but ALLOWED_MICROSOFT_TENANTS is not set — all auth requests will be rejected with INVALID_ID_TOKEN'
     );
     tenantWarnLogged = true;
+  }
+  return next();
+});
+
+app.use('*', (c, next) => {
+  if (parseCampus(c.env.CAMPUS_CODE) === null && !campusWarnLogged) {
+    console.warn(
+      '[CAMPUS] CAMPUS_CODE is "' +
+        (c.env.CAMPUS_CODE ?? '') +
+        '" but must be one of ' +
+        CAMPUSES.join(', ') +
+        ' — this Worker cannot tell which campus it serves'
+    );
+    campusWarnLogged = true;
   }
   return next();
 });
@@ -300,6 +315,9 @@ apiV1.openapi(staffOnly(studentCreateRoute), c => {
 apiV1.openapi(staffOnly(studentUpdateRoute), c => {
   return c.get('container').studentController.updateStudent(c);
 });
+apiV1.openapi(staffOnly(studentClassRoomUpdateRoute), c => {
+  return c.get('container').studentController.updateStudentClassRoom(c);
+});
 
 // Staff routes
 apiV1.openapi(staffOnly(staffListRoute), c => {
@@ -351,7 +369,7 @@ apiV1.openapi(
     if (result.success) return;
     if (
       result.error.issues.some(
-        issue => issue.message === 'end_time must be after start_time'
+        issue => issue.message === '終了時刻は開始時刻以降を指定してください。'
       )
     ) {
       return c.json(
@@ -372,7 +390,7 @@ apiV1.openapi(
     if (result.success) return;
     if (
       result.error.issues.some(
-        issue => issue.message === 'end_time must be after start_time'
+        issue => issue.message === '終了時刻は開始時刻以降を指定してください。'
       )
     ) {
       return c.json(
@@ -586,11 +604,6 @@ apiV1.openapi(staffOnly(adminNotificationDetailRoute), c => {
     .get('container')
     .adminNotificationQueryController.getAdminNotificationById(c);
 });
-apiV1.openapi(staffOnly(legacyAdminNotificationUpdateRoute), c => {
-  return c
-    .get('container')
-    .adminNotificationManagementController.updateAdminNotification(c);
-});
 apiV1.openapi(staffOnly(adminNotificationPatchRoute), c => {
   const notificationId = positivePathParamToNumber(
     c.req.valid('param').notificationId
@@ -677,10 +690,10 @@ app.get(
 
 export { app };
 
-// アカウント削除の後片付け再実行(#345)専用Cron式。通知配信Cron
-// ('* * * * *')とはevent.cronの値で区別する。EVENT_DATE判定には
-// 依存させない(削除の後片付けは開催日に関係なく毎日実行したいため)。
-const ACCOUNT_DELETION_PURGE_RETRY_CRON = '0 18 * * *';
+// アカウント削除の後片付け再実行(#345)と期限切れ認証情報の削除を行う日次Cron式。
+// 通知配信Cron('* * * * *')とはevent.cronの値で区別する。EVENT_DATE判定には
+// 依存させない(後片付けは開催日に関係なく毎日実行したいため)。
+const DAILY_MAINTENANCE_CRON = '0 18 * * *';
 // 1回のCron実行で処理する上限件数。冪等な再実行のため、上限を超えた
 // 残りは翌日以降のCronで拾われる。
 const ACCOUNT_DELETION_PURGE_RETRY_LIMIT = 100;
@@ -688,17 +701,20 @@ const ACCOUNT_DELETION_PURGE_RETRY_LIMIT = 100;
 export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    if (event.cron === ACCOUNT_DELETION_PURGE_RETRY_CRON) {
+    if (event.cron === DAILY_MAINTENANCE_CRON) {
       const container = createDIContainer(env);
       ctx.waitUntil(
         container.accountDeletionService.retryPendingPurges(
           ACCOUNT_DELETION_PURGE_RETRY_LIMIT
         )
       );
+      ctx.waitUntil(container.authStateRepository.deleteExpired());
+      ctx.waitUntil(container.refreshSessionRepository.deleteExpired());
       return;
     }
 
     const scheduledAt = new Date(event.scheduledTime);
+    const eventDateValid = isValidEventDate(env.EVENT_DATE);
     const container = createDIContainer(env);
     ctx.waitUntil(
       container.notificationRetryService
@@ -708,9 +724,33 @@ export default {
         })
     );
     ctx.waitUntil(
-      container.notificationAudienceResolverService
-        .resolveDueSchedules(scheduledAt)
-        .then(async result => {
+      (async () => {
+        if (eventDateValid && scheduledAt.getUTCMinutes() === 0) {
+          try {
+            const reconciliation =
+              await container.gatheringNotificationGeneratorService.reconcileAll();
+            if (reconciliation.failed_gathering_ids.length > 0) {
+              console.error('[CRON] Gathering自動通知の再同期に失敗しました', {
+                gatheringIds: reconciliation.failed_gathering_ids,
+              });
+            }
+          } catch (error) {
+            console.error(
+              '[CRON] Gathering自動通知の再同期に失敗しました',
+              error
+            );
+          }
+        }
+
+        try {
+          const result = eventDateValid
+            ? await container.notificationAudienceResolverService.resolveDueSchedules(
+                scheduledAt
+              )
+            : await container.notificationAudienceResolverService.resolveDueSchedules(
+                scheduledAt,
+                { manualOnly: true }
+              );
           if (result.retryable_schedule_ids.length > 0) {
             console.error('[CRON] Notification Audience解決を再試行します', {
               scheduleIds: result.retryable_schedule_ids,
@@ -724,7 +764,8 @@ export default {
           try {
             const deliveryResult =
               await container.notificationDeliveryService.enqueueReadySchedules(
-                scheduledAt
+                scheduledAt,
+                { manualOnly: !eventDateValid }
               );
             if (deliveryResult.failed_schedule_ids.length > 0) {
               console.error('[CRON] Notification Delivery準備に失敗しました', {
@@ -737,27 +778,10 @@ export default {
               error
             );
           }
-        })
-        .catch(error => {
+        } catch (error) {
           console.error('[CRON] Notification Audience Resolver error', error);
-        })
-    );
-
-    if (!isValidEventDate(env.EVENT_DATE)) {
-      if (!eventDateWarnLogged) {
-        console.error(
-          '[CRON] EVENT_DATE must be configured in YYYY-MM-DD format; notification delivery is disabled'
-        );
-        eventDateWarnLogged = true;
-      }
-      return;
-    }
-    if (!isEventDate(env.EVENT_DATE, scheduledAt)) return;
-
-    ctx.waitUntil(
-      container.scheduledNotificationService.enqueueDueNotifications(
-        scheduledAt
-      )
+        }
+      })()
     );
   },
   async queue(
@@ -767,7 +791,6 @@ export default {
     const container = createDIContainer(env);
     await consumeNotificationDeliveryQueue(
       batch,
-      container.scheduledNotificationService,
       container.notificationDeliveryService,
       container.notificationRetryService
     );

@@ -21,8 +21,13 @@ export function createNotificationDeliveryService(deps: {
   firebaseTokenRepository: Pick<IFirebaseTokenRepository, 'deleteById'>;
   notificationDeliveryQueue: INotificationDeliveryQueue;
   fcmService: IFcmService;
+  ensureConfigured?: () => Promise<void>;
 }): INotificationDeliveryService {
-  const { notificationDeliveryRepository, notificationDeliveryQueue } = deps;
+  const {
+    notificationDeliveryRepository,
+    notificationDeliveryQueue,
+    ensureConfigured = async () => {},
+  } = deps;
   const retryService =
     deps.notificationRetryService ?? createNotificationRetryService(deps);
   const failPendingDeliveriesWithoutToken = (scheduleId: number, now: string) =>
@@ -33,12 +38,15 @@ export function createNotificationDeliveryService(deps: {
     );
 
   return {
-    async enqueueReadySchedules(now = new Date()) {
+    async enqueueReadySchedules(now = new Date(), options) {
+      // 配信をclaimする前に検証し、設定不備で未送信データを失敗確定にしない。
+      await ensureConfigured();
       const nowIso = now.toISOString();
       const candidates =
         await notificationDeliveryRepository.findReadySchedules(
           nowIso,
-          NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT
+          NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT,
+          options?.manualOnly
         );
       const result: NotificationDeliveryProcessingResult = {
         queued_schedule_ids: [],
@@ -119,10 +127,12 @@ export function createNotificationDeliveryService(deps: {
       return result;
     },
 
-    async sendQueuedNotifications(notificationScheduleIds, now) {
+    async sendQueuedNotifications(notificationScheduleIds, now, options) {
       const suppliedNow = now;
       const clock = suppliedNow ? () => suppliedNow : () => new Date();
       now = clock();
+      // 配信をclaimする前に検証し、設定不備で未送信データを失敗確定にしない。
+      await ensureConfigured();
       const uniqueScheduleIds = [...new Set(notificationScheduleIds)]
         .filter(id => Number.isSafeInteger(id) && id > 0)
         .slice(0, NOTIFICATION_DELIVERY_MESSAGE_SIZE);
@@ -140,7 +150,8 @@ export function createNotificationDeliveryService(deps: {
           await notificationDeliveryRepository.claimPendingDeliveries(
             uniqueScheduleIds,
             current.toISOString(),
-            MAX_CONCURRENT_FCM_REQUESTS
+            MAX_CONCURRENT_FCM_REQUESTS,
+            options?.manualOnly
           );
         if (deliveries.length === 0) break;
         claimed += deliveries.length;

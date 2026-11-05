@@ -1,9 +1,11 @@
+import { sendableRecipientSql } from './notificationDeliveryEligibility';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { ClaimedNotificationPushDelivery } from '../../domain/entities/NotificationDelivery';
 import type { INotificationDeliveryRepository } from '../../domain/interfaces/repositories/INotificationDeliveryRepository';
 import {
   FCM_MAX_ATTEMPTS,
   FCM_RETRY_WINDOW_SECONDS,
+  FCM_CONFIG_BLOCKED_REASON,
 } from '../../domain/entities/NotificationRetryPolicy';
 
 interface CandidateRow {
@@ -33,16 +35,21 @@ interface CountRow {
 }
 
 export function createNotificationDeliveryRepository(
-  db: D1Database
+  db: D1Database,
+  options: { automaticDeliveryEnabled?: boolean } = {}
 ): INotificationDeliveryRepository {
+  const sourceAllowed = (alias: string, manualOnly = false) =>
+    options.automaticDeliveryEnabled === false || manualOnly
+      ? `${alias}.source_type IS NULL`
+      : '1 = 1';
   return {
-    async findReadySchedules(now, limit) {
+    async findReadySchedules(now, limit, manualOnly) {
       const rows = await db
         .prepare(
           `SELECT s.notification_schedule_id, s.send_status
            FROM notification_schedules s
            JOIN notifications n ON n.notification_id = s.notification_id
-           WHERE n.notification_type = 'notification_general'
+           WHERE n.notification_type = 'notification_general' AND ${sourceAllowed('n', manualOnly)}
              AND datetime(s.send_at) <= datetime(?)
              AND (
                (s.send_status = 'resolving'
@@ -111,7 +118,7 @@ export function createNotificationDeliveryRepository(
                AND EXISTS (
                  SELECT 1 FROM notifications n
                  WHERE n.notification_id = notification_schedules.notification_id
-                   AND n.notification_type = 'notification_general'
+                   AND n.notification_type = 'notification_general' AND ${sourceAllowed('n')}
                )`
           )
           .bind(now, scheduleId),
@@ -146,7 +153,7 @@ export function createNotificationDeliveryRepository(
              ON r.notification_recipient_id = d.notification_recipient_id
            WHERE r.notification_schedule_id = ?
              AND d.status = 'pending'
-             AND d.firebase_token_id IS NOT NULL`
+             AND d.firebase_token_id IS NOT NULL AND ${sendableRecipientSql('d')}`
         )
         .bind(scheduleId)
         .first<CountRow>();
@@ -163,7 +170,7 @@ export function createNotificationDeliveryRepository(
                next_retry_at = NULL,
                updated_at = ?
            WHERE status = 'pending'
-             AND firebase_token_id IS NULL
+             AND (firebase_token_id IS NULL OR NOT ${sendableRecipientSql('notification_push_deliveries')})
              AND notification_recipient_id IN (
                SELECT notification_recipient_id
                FROM notification_recipients
@@ -175,11 +182,27 @@ export function createNotificationDeliveryRepository(
       return result.meta.changes;
     },
 
-    async claimPendingDeliveries(scheduleIds, now, limit) {
-      return claimDeliveries(db, scheduleIds, now, limit);
+    async claimPendingDeliveries(scheduleIds, now, limit, manualOnly) {
+      return claimDeliveries(
+        db,
+        scheduleIds,
+        now,
+        limit,
+        undefined,
+        undefined,
+        sourceAllowed('n', manualOnly)
+      );
     },
     async claimRetryDeliveries(now, staleBefore, limit, deliveryIds) {
-      return claimDeliveries(db, null, now, limit, staleBefore, deliveryIds);
+      return claimDeliveries(
+        db,
+        null,
+        now,
+        limit,
+        staleBefore,
+        deliveryIds,
+        sourceAllowed('n')
+      );
     },
     async findDueRetryDeliveryIds(now, staleBefore, afterId, limit) {
       const rows = await db
@@ -190,14 +213,15 @@ export function createNotificationDeliveryRepository(
         JOIN notification_schedules s USING (notification_schedule_id)
         JOIN notifications n USING (notification_id)
         WHERE d.notification_push_delivery_id > ? AND s.send_status = 'sending'
-          AND n.notification_type = 'notification_general' AND d.firebase_token_id IS NOT NULL
-          AND d.attempt_count < ? AND julianday(d.first_attempt_at, ?) >= julianday(?)
+          AND n.notification_type = 'notification_general' AND ${sourceAllowed('n')} AND d.firebase_token_id IS NOT NULL AND ${sendableRecipientSql('d')}
+          AND (d.failed_reason = ? OR (d.attempt_count < ? AND julianday(d.first_attempt_at, ?) >= julianday(?)))
           AND ((d.status = 'retry_wait' AND julianday(d.next_retry_at) <= julianday(?))
             OR (d.status = 'sending' AND julianday(d.last_attempt_at) < julianday(?)))
         ORDER BY d.notification_push_delivery_id LIMIT ?`
         )
         .bind(
           afterId,
+          FCM_CONFIG_BLOCKED_REASON,
           FCM_MAX_ATTEMPTS,
           `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
           now,
@@ -217,11 +241,11 @@ export function createNotificationDeliveryRepository(
         WHERE notification_push_delivery_id = ? AND status = 'sending' AND attempt_count = ?
           AND julianday(last_attempt_at) >= julianday(?)
           AND julianday(first_attempt_at, ?) >= julianday(?)
-          AND firebase_token_id IS NOT NULL
+          AND firebase_token_id IS NOT NULL AND ${sendableRecipientSql('notification_push_deliveries')}
           AND EXISTS (SELECT 1 FROM notification_recipients r
             JOIN notification_schedules s USING (notification_schedule_id)
             WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id
-              AND s.send_status = 'sending')`
+              AND s.send_status = 'sending' AND EXISTS (SELECT 1 FROM notifications n WHERE n.notification_id = s.notification_id AND ${sourceAllowed('n')}))`
         )
         .bind(
           now,
@@ -244,11 +268,12 @@ export function createNotificationDeliveryRepository(
           WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND s.send_status = 'stopped'
         ) THEN 'stopped' ELSE 'failed' END,
         failed_reason = '再送対象のTokenがないか試行上限に到達しました', next_retry_at = NULL, updated_at = ?
-        WHERE (status IN ('pending', 'retry_wait') OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))
-          AND (firebase_token_id IS NULL OR attempt_count >= ? OR EXISTS (
+        WHERE EXISTS (SELECT 1 FROM notification_recipients r JOIN notification_schedules s USING (notification_schedule_id) JOIN notifications n USING (notification_id) WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND ${sourceAllowed('n')})
+          AND (status IN ('pending', 'retry_wait') OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))
+          AND (firebase_token_id IS NULL OR NOT ${sendableRecipientSql('notification_push_deliveries')} OR (COALESCE(failed_reason, '') <> ? AND attempt_count >= ?) OR EXISTS (
             SELECT 1 FROM notification_recipients r JOIN notification_schedules s USING (notification_schedule_id)
             WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND s.send_status = 'stopped'
-          ) OR (status IN ('retry_wait', 'sending') AND first_attempt_at IS NOT NULL
+          ) OR (COALESCE(failed_reason, '') <> ? AND status IN ('retry_wait', 'sending') AND first_attempt_at IS NOT NULL
             AND julianday(first_attempt_at, ?) < julianday(?)))
         RETURNING (SELECT notification_schedule_id FROM notification_recipients r
           WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id) AS notification_schedule_id`
@@ -256,7 +281,9 @@ export function createNotificationDeliveryRepository(
         .bind(
           now,
           staleBefore,
+          FCM_CONFIG_BLOCKED_REASON,
           maxAttempts,
+          FCM_CONFIG_BLOCKED_REASON,
           `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
           now
         )
@@ -368,7 +395,7 @@ export function createNotificationDeliveryRepository(
              AND EXISTS (
                SELECT 1 FROM notifications n
                WHERE n.notification_id = notification_schedules.notification_id
-                 AND n.notification_type = 'notification_general'
+                 AND n.notification_type = 'notification_general' AND ${sourceAllowed('n')}
              )`
         )
         .bind(reason, now, scheduleId)
@@ -384,18 +411,20 @@ async function claimDeliveries(
   now: string,
   limit: number,
   staleBefore?: string,
-  deliveryIds?: number[]
+  deliveryIds?: number[],
+  sourceAllowed = '1 = 1'
 ): Promise<ClaimedNotificationPushDelivery[]> {
   if (scheduleIds?.length === 0 || deliveryIds?.length === 0) return [];
   const schedulePlaceholders = scheduleIds?.map(() => '?').join(', ');
   const eligible =
     staleBefore === undefined
       ? "status = 'pending'"
-      : "attempt_count < ? AND first_attempt_at IS NOT NULL AND julianday(first_attempt_at, ?) >= julianday(?) AND ((status = 'retry_wait' AND julianday(next_retry_at) <= julianday(?)) OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))";
+      : "(failed_reason = ? OR (attempt_count < ? AND first_attempt_at IS NOT NULL AND julianday(first_attempt_at, ?) >= julianday(?))) AND ((status = 'retry_wait' AND julianday(next_retry_at) <= julianday(?)) OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))";
   const eligibilityBindings =
     staleBefore === undefined
       ? []
       : [
+          FCM_CONFIG_BLOCKED_REASON,
           FCM_MAX_ATTEMPTS,
           `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
           now,
@@ -403,7 +432,7 @@ async function claimDeliveries(
           staleBefore,
         ];
   const qualifiedEligible = eligible.replace(
-    /\b(status|attempt_count|next_retry_at|last_attempt_at)\b/g,
+    /\b(status|attempt_count|next_retry_at|last_attempt_at|failed_reason)\b/g,
     'd.$1'
   );
   const candidates = await db
@@ -417,10 +446,10 @@ async function claimDeliveries(
            JOIN notifications n ON n.notification_id = s.notification_id
            ${scheduleIds ? `WHERE r.notification_schedule_id IN (${schedulePlaceholders})` : `WHERE 1 = 1`}
              AND s.send_status = 'sending'
-             AND n.notification_type = 'notification_general'
+             AND n.notification_type = 'notification_general' AND ${sourceAllowed}
              AND ${qualifiedEligible}
              ${deliveryIds ? `AND d.notification_push_delivery_id IN (${deliveryIds.map(() => '?').join(', ')})` : ''}
-             AND d.firebase_token_id IS NOT NULL
+             AND d.firebase_token_id IS NOT NULL AND ${sendableRecipientSql('d')}
            ORDER BY d.notification_push_delivery_id
            LIMIT ?`
     )
@@ -439,14 +468,14 @@ async function claimDeliveries(
         .prepare(
           `UPDATE notification_push_deliveries
                SET status = 'sending',
-                   first_attempt_at = COALESCE(first_attempt_at, ?),
+                   first_attempt_at = CASE WHEN failed_reason = ? THEN ? ELSE COALESCE(first_attempt_at, ?) END,
                    last_attempt_at = ?,
-                   attempt_count = attempt_count + 1,
+                   attempt_count = CASE WHEN failed_reason = ? THEN 1 ELSE attempt_count + 1 END,
                    next_retry_at = NULL, failed_reason = NULL,
                    updated_at = ?
                WHERE notification_push_delivery_id = ?
                  AND ${eligible}
-                 AND firebase_token_id IS NOT NULL
+                 AND firebase_token_id IS NOT NULL AND ${sendableRecipientSql('notification_push_deliveries')}
                  AND EXISTS (
                    SELECT 1
                    FROM notification_recipients r
@@ -455,13 +484,16 @@ async function claimDeliveries(
                    JOIN notifications n ON n.notification_id = s.notification_id
                    WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id
                      AND s.send_status = 'sending'
-                     AND n.notification_type = 'notification_general'
+                     AND n.notification_type = 'notification_general' AND ${sourceAllowed}
                  )
                RETURNING notification_push_delivery_id`
         )
         .bind(
+          FCM_CONFIG_BLOCKED_REASON,
           now,
           now,
+          now,
+          FCM_CONFIG_BLOCKED_REASON,
           now,
           candidate.notification_push_delivery_id,
           ...eligibilityBindings
@@ -502,7 +534,7 @@ async function claimDeliveries(
            JOIN firebase_tokens t ON t.firebase_token_id = d.firebase_token_id
            WHERE d.notification_push_delivery_id IN (${claimedPlaceholders})
              AND d.status = 'sending' AND d.last_attempt_at = ?
-             AND n.notification_type = 'notification_general'
+             AND n.notification_type = 'notification_general' AND ${sourceAllowed}
            ORDER BY d.notification_push_delivery_id`
       )
       .bind(...detailIds, now)

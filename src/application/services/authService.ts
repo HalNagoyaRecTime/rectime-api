@@ -1,48 +1,21 @@
-import type { KVNamespace } from '@cloudflare/workers-types';
 import type { IUserRepository } from '../../domain/interfaces/repositories/IUserRepository';
 import type { IAuthService, MicrosoftClaims } from './IAuthService';
 import type { IStudentRepository } from '../../domain/interfaces/repositories/IStudentRepository';
 import type { IFirebaseTokenRepository } from '../../domain/interfaces/repositories/IFirebaseTokenRepository';
+import type { IRefreshSessionRepository } from '../../domain/interfaces/repositories/IRefreshSessionRepository';
 import type { ITeacherRepository } from '../../domain/interfaces/repositories/ITeacherRepository';
-
-function normalizeMicrosoftEmail(email: string): string | null {
-  const normalized = email.trim().toLowerCase();
-  const parts = normalized.split('@');
-  if (
-    parts.length !== 2 ||
-    !parts[0] ||
-    !parts[1] ||
-    parts.some(part => /\s/u.test(part))
-  ) {
-    return null;
-  }
-  return normalized;
-}
-
-function extractStudentIdNumber(
-  email: string,
-  studentEmailDomain: string
-): string | null {
-  const parts = email.split('@');
-  if (parts.length !== 2) return null;
-  const [localPart, domain] = parts;
-  if (!localPart || domain !== studentEmailDomain) return null;
-
-  //"nhs"+ 数値 の形式に当てはまらない場合、学籍番号とみなさない
-  // 抽出した数字列は、students.student_id_number(text型)の値と
-  // 完全一致で照合される前提のため、先頭ゼロの有無を含め、
-  // メールアドレスとDBの登録値の表記が揃っている必要がある
-  // (例: メールが nhs00123 なら、DB側も "00123" である必要がある)。
-  const match = localPart.match(/^nhs(\d+)$/);
-  return match ? match[1] : null;
-}
+import {
+  extractStudentIdNumber,
+  normalizeMicrosoftEmail,
+  pickMicrosoftEmailClaim,
+} from '../../domain/auth/email';
 
 export function createAuthService(
   userRepository: IUserRepository,
   studentRepository: IStudentRepository,
   teacherRepository: ITeacherRepository,
   studentEmailDomain: string,
-  authKv: KVNamespace,
+  refreshSessionRepository: Pick<IRefreshSessionRepository, 'deleteByUserId'>,
   firebaseTokenRepository: IFirebaseTokenRepository
 ): IAuthService {
   if (!studentEmailDomain) {
@@ -56,12 +29,7 @@ export function createAuthService(
         typeof claims.preferred_username === 'string'
           ? claims.preferred_username
           : '';
-      const emailClaim = typeof claims.email === 'string' ? claims.email : '';
-      const email = preferredUsername.trim()
-        ? preferredUsername
-        : emailClaim.trim()
-          ? emailClaim
-          : '';
+      const email = pickMicrosoftEmailClaim(claims) ?? '';
       const claimName =
         typeof claims.name === 'string' ? claims.name : undefined;
       const displayName = claimName ?? email;
@@ -192,7 +160,7 @@ export function createAuthService(
       // ID Token側も同じ形に揃える。氏名は表示用途に限り、職員番号などが
       // 含まれていても本人確認には使わない。
       // preferred_usernameはMicrosoftのサインイン用アドレスであり、
-      // 連絡先用途のemail claimにはフォールバックしない。また、nhs+数字の
+      // 連絡先用途のemail claimにはフォールバックしない。また、学校の接頭辞+数字の
       // 学生形式は、DBに該当学生がまだいなくても教員として扱わない。
       if (normalizedTeacherEmail && !studentIdNumber) {
         const teacher =
@@ -335,21 +303,12 @@ export function createAuthService(
       //    コメント参照)。
       await userRepository.markAsDeleted(userId);
 
-      // 2. 発行済みの全Refresh Sessionを失効させる。mobile_refresh_by_user
-      //    は1ユーザー1セッション設計(新規ログインのたびに上書きされる)
-      //    のため、これを削除すれば現在・過去を含め有効なセッションが
-      //    存在しない状態になる。
-      const refreshTokenId = await authKv.get(
-        `mobile_refresh_by_user:${userId}`
-      );
-      if (refreshTokenId) {
-        await authKv.delete(`mobile_refresh:${refreshTokenId}`);
-      }
-      await authKv.delete(`mobile_refresh_by_user:${userId}`);
+      // 2. 発行済みの全Refresh Sessionを失効させる。
+      await refreshSessionRepository.deleteByUserId(userId);
 
-      // 3. purge完了までPush対象から即時除外する。物理削除は後段の
-      //    Account deletion内部処理がLegacy履歴整理後に行う。
-      await firebaseTokenRepository.deactivateByUserId(Number(userId));
+      // 3. Push対象から即時除外するためTokenを物理削除する。v2 Delivery履歴は
+      //    FKのON DELETE SET NULLでToken参照だけを外して保持する。
+      await firebaseTokenRepository.deleteByUserId(Number(userId));
     },
   };
 }

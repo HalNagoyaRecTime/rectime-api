@@ -58,6 +58,19 @@ export const roundSettingInputSchema = z
       .int(ROUND_RANGE_MESSAGE)
       .min(1, ROUND_RANGE_MESSAGE)
       .max(99, ROUND_RANGE_MESSAGE),
+    start_time: z
+      .string()
+      .regex(
+        /^(?:[01]\d|2[0-3])[0-5]\d$/,
+        'start_timeはHHmm形式で指定してください。'
+      )
+      .nullable()
+      .optional()
+      .openapi({
+        description:
+          'HHmm形式。ラウンド内の全集合に保存する。省略は既存値を維持、nullは未設定へ戻す。',
+        example: '1100',
+      }),
     // Round専用のテーブルは無く、集合予定が1件も無いRoundは保存できないため
     // 空のRoundは受け付けない。
     gatherings: z
@@ -73,6 +86,15 @@ export const roundSettingInputSchema = z
 export const eventGatheringSettingsWriteSchema = z
   .object({
     rounds: z.array(roundSettingInputSchema),
+    lock_version: z
+      .number()
+      .int('lock_version must be a non-negative integer')
+      .min(0, 'lock_version must be a non-negative integer')
+      .optional()
+      .openapi({
+        description:
+          '取得時点のEventの `lock_version`。指定すると、取得後にEventが変更されていた場合は409を返す。',
+      }),
   })
   .superRefine((value, ctx) => {
     const seenRounds = new Set<number>();
@@ -106,6 +128,10 @@ export const eventGatheringSettingsWriteSchema = z
 export const eventGatheringSettingsResponseSchema = z
   .object({
     event_id: z.number().int(),
+    lock_version: z.number().int().min(0).openapi({
+      description:
+        '保存後のEventの `lock_version`。次の保存や `PUT /events/{eventId}` に送り返す。',
+    }),
     rounds: z.array(roundSettingResponseSchema),
   })
   .openapi(
@@ -137,13 +163,16 @@ export const eventGatheringSettingsUpdateRoute = createRoute({
     '集合時刻は `HH:mm` のみを受け付け、未設定を表す `99:59` は400になる。',
     '同じRound番号、同じ `gathering_id` がリクエスト内に2回現れた場合も400。',
     '',
-    'レスポンスは保存後の一覧を `round` 昇順、同一Round内は `gathering_time` 昇順、',
-    '同時刻は `gathering_id` 昇順で返す。集合予定が0件なら `rounds: []`。',
+    'レスポンスは `round` 昇順、同一Round内は `gathering_id` 昇順。集合予定が0件なら `rounds: []`。',
+    'start_timeはHHmm形式。省略は既存値を維持、nullは未設定へ戻す。ラウンド内の集合行に同じ値を保存する。',
     '',
     '集合場所を変更しても、作成済みの通知予定(本文に集合場所名を含む)は',
     '再生成しない。通知予定の更新は `PUT /events/{eventId}` の責務とする。',
-    '同時更新を検出する楽観ロックは本APIには未導入で、後から保存した内容で',
-    '上書きされる。',
+    '`lock_version` を指定すると、取得後にEventが変更されていた場合は409',
+    '`EVENT_UPDATE_CONFLICT` を返し、何も保存しない。',
+    'この版は `PUT /events/{eventId}` と共有しており、集合設定を保存すると進む',
+    '(変更が無い保存では進まない)。保存後の値はレスポンスの `lock_version` で返す。',
+    '指定しない場合は検証せず、後から保存した内容で上書きされる。',
   ].join('\n'),
   security: bearerAuth,
   request: {

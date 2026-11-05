@@ -8,6 +8,7 @@ import type {
   ClassRoomImportValidationResult,
   ClassRoomPageDTO,
   ClassRoomRequestDTO,
+  ClassRoomUpdateRequestDTO,
 } from '../dto/ClassRoomDTO';
 import type {
   ClassRoomEntity,
@@ -85,6 +86,8 @@ export function createClassRoomService(
           display_name: classroom.teacher.displayName,
         }
       : null,
+    updated_at: classroom.updatedAt,
+    lock_version: classroom.lockVersion,
   });
 
   const ensureTeacherExists = async (teacherId: number | null) => {
@@ -152,28 +155,46 @@ export function createClassRoomService(
 
     async updateClassRoom(
       id: number,
-      input: ClassRoomRequestDTO
+      input: ClassRoomUpdateRequestDTO
     ): Promise<ClassRoomDTO> {
       const existing = await classRoomRepository.findById(id);
       if (!existing) throw new Error('Class not found');
+      // 取得時点から変わっていれば、担任の存在確認などより先に409にする。
+      // 確認後に更新される競合は、update() 側のWHEREで0件更新になって検出する。
+      if (
+        input.lockVersion !== undefined &&
+        input.lockVersion !== existing.lockVersion
+      ) {
+        throw new Error('Class update conflict');
+      }
       await ensureTeacherExists(input.teacherId);
       await ensureTeamExists(input.teamId ?? null);
       try {
-        const previous = await classRoomRepository.findById(id);
+        // 担当チームが変わる場合は、元のチームが空になれば片付ける更新を使う。
         const teamChanged =
-          previous != null &&
-          input.teamId != null &&
-          previous.teamId !== input.teamId;
+          input.teamId != null && existing.teamId !== input.teamId;
+        const updateInput = {
+          ...toClassRoomInput(input),
+          expectedLockVersion: input.lockVersion,
+        };
 
         const classroom = teamChanged
           ? await classRoomRepository.updateAndCleanupTeam(
               id,
-              toClassRoomInput(input),
-              previous.teamId
+              updateInput,
+              existing.teamId
             )
-          : await classRoomRepository.update(id, toClassRoomInput(input));
-        if (!classroom) throw new Error('Class not found');
-
+          : await classRoomRepository.update(id, updateInput);
+        if (!classroom) {
+          // 版番号を条件にしていた場合、0件更新は削除か版番号の不一致のどちらか。
+          if (
+            input.lockVersion !== undefined &&
+            (await classRoomRepository.findById(id))
+          ) {
+            throw new Error('Class update conflict');
+          }
+          throw new Error('Class not found');
+        }
         return toDTO(classroom);
       } catch (error) {
         throw mapWriteError(error);

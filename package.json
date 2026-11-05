@@ -7,9 +7,11 @@
   "scripts": {
     "dev": "wrangler dev --env development --ip 0.0.0.0",
     "deploy": "wrangler deploy --minify",
+    "notifications:check": "node --import tsx .github/scripts/check-notification-settings.mjs",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:migrate:remote": "wrangler d1 migrations apply rectime-api --remote",
     "db:migrate:local": "wrangler d1 migrations apply rectime-api-dev --local --env development",
+    "migrations:check": "node .github/scripts/check-migrations.mjs",
     "images:seed:local": "wrangler r2 object put rectime-images-dev/seed/place.png --file public/map/recmap.png --content-type image/png --cache-control 'private, max-age=604800, immutable' --remote --env development && wrangler d1 execute rectime-api-dev --local --env development --command \"UPDATE venues SET image_key = 'seed/place.png' WHERE image_key IS NULL; UPDATE gathering_spots SET image_key = 'seed/place.png' WHERE image_key IS NULL;\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -24,7 +26,11 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "backend:smoke": "node .github/scripts/backend-smoke.mjs",
+    "backend:smoke:test": "node --test .github/scripts/backend-smoke.node-test.mjs",
+    "dev:cron": "node scripts/dev-with-cron.mjs",
+    "test:local-cron": "node --test scripts/local-cron.node-test.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.2",
@@ -45,6 +51,7 @@
     "@typescript-eslint/parser": "^8.69.0",
     "@vitest/coverage-istanbul": "^4.1.11",
     "@vitest/ui": "^4.1.11",
+    "cron": "4.4.0",
     "eslint": "^9.35.0",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",

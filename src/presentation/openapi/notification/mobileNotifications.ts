@@ -4,13 +4,13 @@ import {
   badRequestResponse,
   bearerAuth,
   internalServerErrorResponse,
-  isoDateTimeSchema,
   jsonResponse,
   notFoundResponse,
   paginationFields,
   paginationQuery,
   positivePathParam,
   unauthorizedResponse,
+  utcDateTimeSchema,
   z,
 } from '../schemas';
 
@@ -20,11 +20,30 @@ export const mobileNotificationResponseSchema = z
     notification_type: notificationTypeSchema,
     title: z.string(),
     body: z.string(),
-    scheduled_at: isoDateTimeSchema.openapi({
+    scheduled_at: utcDateTimeSchema.openapi({
       description:
         '認証UserがRecipientになったScheduleだけを対象にsend_at降順、同時刻はnotification_schedule_id降順で選んだ1件のsend_at。',
     }),
+    related_event: z
+      .object({
+        event_id: z.number().int(),
+        event_name: z.string(),
+        start_time: z.string(),
+        end_time: z.string(),
+        venues: z.array(
+          z.object({
+            venue_id: z.number().int(),
+            venue_name: z.string(),
+          })
+        ),
+      })
+      .nullable()
+      .openapi({
+        description:
+          '自動通知の生成元Gatheringに紐づく現在のイベント。時刻はHHMM、会場はvenue_id昇順。通常通知・生成元削除時はnull。画像は含めない。',
+      }),
   })
+  .strict()
   .openapi('MobileNotification');
 
 export const mobileNotificationListResponseSchema = z
@@ -32,6 +51,7 @@ export const mobileNotificationListResponseSchema = z
     notifications: z.array(mobileNotificationResponseSchema),
     ...paginationFields,
   })
+  .strict()
   .openapi('MobileNotificationList');
 
 export const mobileNotificationIdParams = z.object({

@@ -71,7 +71,7 @@ describe('Event詳細取得APIのOpenAPI定義', () => {
   // 集合設定の保存APIと同じcomponentを参照させ、Read/Writeで構造がずれないようにする。
   it('roundsの構造は集合設定APIと同じschemaを使う', () => {
     expect(schemas.RoundSetting).toMatchObject({
-      required: ['round', 'gatherings'],
+      required: ['round', 'start_time', 'gatherings'],
       properties: {
         gatherings: {
           type: 'array',

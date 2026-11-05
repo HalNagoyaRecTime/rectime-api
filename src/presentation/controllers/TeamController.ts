@@ -22,6 +22,14 @@ const teamListQuerySchema = z
   })
   .strict();
 
+function isTeamNameConflict(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes('UNIQUE constraint failed') &&
+    error.message.includes('teams.team_name')
+  );
+}
+
 function teamError(
   c: Context,
   error: unknown,
@@ -39,11 +47,7 @@ function teamError(
   if (error instanceof Error && error.message === 'Class already assigned') {
     return errorResponse(c, TeamErrors.CLASS_ROOM_ALREADY_ASSIGNED);
   }
-  if (
-    error instanceof Error &&
-    error.message.includes('UNIQUE constraint failed') &&
-    error.message.includes('teams.team_name')
-  ) {
+  if (isTeamNameConflict(error)) {
     return errorResponse(c, TeamErrors.TEAM_NAME_ALREADY_EXISTS);
   }
   return errorResponse(c, fallback);
@@ -138,6 +142,9 @@ export function createTeamController(teamService: ITeamService) {
       await teamService.deleteTeam(parsedId.data);
       return c.body(null, 204);
     } catch (error) {
+      if (isTeamNameConflict(error)) {
+        return errorResponse(c, TeamErrors.TEAM_DETACH_NAME_CONFLICT);
+      }
       return teamError(c, error, TeamErrors.TEAM_DELETE_FAILED);
     }
   };

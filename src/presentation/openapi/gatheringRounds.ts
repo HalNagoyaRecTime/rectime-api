@@ -32,6 +32,11 @@ export const gatheringSettingResponseSchema = z
 export const roundSettingResponseSchema = z
   .object({
     round: z.number().int(),
+    start_time: z.string().nullable().openapi({
+      description:
+        'HHmm形式。同じラウンドで開始時刻が未設定でない最小の集合IDの値。全件未設定ならnull。',
+      example: '1100',
+    }),
     gatherings: z.array(gatheringSettingResponseSchema),
   })
   .openapi('RoundSetting');

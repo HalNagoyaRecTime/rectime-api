@@ -3,6 +3,7 @@ import {
   ParticipatingEventEntity,
   EventListOptions,
   EventWithGatheringSummaryEntity,
+  EventUpdateInput,
   EventWithVenuesEntity,
   EventWriteInput,
 } from '../../entities/Event';
@@ -20,7 +21,7 @@ export interface IEventRepository {
   create: (event: EventWriteInput) => Promise<EventWithVenuesEntity>;
   update: (
     id: number,
-    event: EventWriteInput
+    event: EventUpdateInput
   ) => Promise<EventWithVenuesEntity | null>;
   delete: (id: number) => Promise<boolean>;
   hasReferences: (id: number) => Promise<boolean>;

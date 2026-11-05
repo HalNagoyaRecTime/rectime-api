@@ -6,3 +6,7 @@ export const FCM_RETRY_WINDOW_SECONDS =
 export const FCM_MAX_ATTEMPTS = FCM_RETRY_OFFSETS_SECONDS.length + 1;
 export const FCM_PROCESSING_TIMEOUT_SECONDS = 120;
 export const FCM_RATE_LIMIT_MIN_RETRY_DELAY_SECONDS = 70;
+
+/** 設定・権限障害は通常のRetry期限では失敗確定させない。 */
+export const FCM_CONFIG_BLOCKED_REASON = 'FCM_CONFIG_BLOCKED';
+export const FCM_CONFIG_RETRY_DELAY_SECONDS = 5 * 60;

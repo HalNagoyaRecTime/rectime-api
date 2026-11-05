@@ -47,9 +47,10 @@ export function createNotificationAccountDeletionRepository(
       ]);
     },
 
-    async deleteRecipientsByUserId(userId) {
+    async anonymizeRecipientsByUserId(userId) {
       await orm
-        .delete(notification_recipients)
+        .update(notification_recipients)
+        .set({ userId: null, updatedAt: notificationUtcNow() })
         .where(eq(notification_recipients.userId, userId))
         .run();
     },
