@@ -38,10 +38,23 @@ describe('通知スケジュールのResponse schema', () => {
     ).toBe(failed.failureReason);
   });
 
-  it('スケジュール一覧は進み具合付きのitemsだけを受け付ける', () => {
+  it('スケジュール一覧は進み具合付きか、進み具合をnullにしたitemsだけを受け付ける', () => {
     expect(
       notificationScheduleListResponseSchema.safeParse({
         items: [scheduleDetail],
+      }).success
+    ).toBe(true);
+    expect(
+      notificationScheduleListResponseSchema.safeParse({
+        items: [
+          {
+            ...scheduleBase,
+            status: 'completed',
+            audienceProgress: null,
+            recipientProgress: null,
+            deliveryProgress: null,
+          },
+        ],
       }).success
     ).toBe(true);
     expect(

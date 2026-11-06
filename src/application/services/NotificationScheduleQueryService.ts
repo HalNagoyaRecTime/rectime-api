@@ -1,11 +1,14 @@
 import type {
   NotificationScheduleBaseDTO,
   NotificationScheduleDetailDTO,
+  NotificationScheduleListItemDTO,
 } from '../dto/NotificationScheduleDTO';
 import type {
   NotificationScheduleQueryBase,
   NotificationScheduleQueryCreation,
   NotificationScheduleQueryDetail,
+  NotificationScheduleQueryListItem,
+  NotificationScheduleQueryProgress,
 } from '../../domain/entities/NotificationScheduleQuery';
 import type { INotificationScheduleQueryRepository } from '../../domain/interfaces/repositories/INotificationScheduleQueryRepository';
 import type { INotificationScheduleQueryService } from './INotificationScheduleQueryService';
@@ -23,7 +26,7 @@ export function createNotificationScheduleQueryService(
           ? { from: query.from, to: query.to }
           : getDefaultDateRange(now());
       const schedules = await repository.findAll(range);
-      return { items: schedules.map(toDetail) };
+      return { items: schedules.map(toListItem) };
     },
 
     async getNotificationScheduleById(notificationScheduleId) {
@@ -68,28 +71,60 @@ function toBase(
   };
 }
 
+function toListItem(
+  schedule: NotificationScheduleQueryListItem
+): NotificationScheduleListItemDTO {
+  return {
+    ...toBase(schedule),
+    audienceProgress:
+      schedule.audience_progress &&
+      toAudienceProgress(schedule.audience_progress),
+    recipientProgress:
+      schedule.recipient_progress &&
+      toRecipientProgress(schedule.recipient_progress),
+    deliveryProgress:
+      schedule.delivery_progress &&
+      toDeliveryProgress(schedule.delivery_progress),
+  };
+}
+
 function toDetail(
   schedule: NotificationScheduleQueryDetail
 ): NotificationScheduleDetailDTO {
   return {
     ...toBase(schedule),
-    audienceProgress: {
-      totalCount: schedule.audience_progress.total_count,
-      resolvedCount: schedule.audience_progress.resolved_count,
-    },
-    recipientProgress: {
-      count: schedule.recipient_progress.count,
-      status: schedule.recipient_progress.status,
-    },
-    deliveryProgress: {
-      totalCount: schedule.delivery_progress.total_count,
-      pendingCount: schedule.delivery_progress.pending_count,
-      sendingCount: schedule.delivery_progress.sending_count,
-      retryWaitCount: schedule.delivery_progress.retry_wait_count,
-      sentCount: schedule.delivery_progress.sent_count,
-      failedCount: schedule.delivery_progress.failed_count,
-      stoppedCount: schedule.delivery_progress.stopped_count,
-    },
+    audienceProgress: toAudienceProgress(schedule.audience_progress),
+    recipientProgress: toRecipientProgress(schedule.recipient_progress),
+    deliveryProgress: toDeliveryProgress(schedule.delivery_progress),
+  };
+}
+
+function toAudienceProgress(
+  progress: NotificationScheduleQueryProgress['audience_progress']
+): NotificationScheduleDetailDTO['audienceProgress'] {
+  return {
+    totalCount: progress.total_count,
+    resolvedCount: progress.resolved_count,
+  };
+}
+
+function toRecipientProgress(
+  progress: NotificationScheduleQueryProgress['recipient_progress']
+): NotificationScheduleDetailDTO['recipientProgress'] {
+  return { count: progress.count, status: progress.status };
+}
+
+function toDeliveryProgress(
+  progress: NotificationScheduleQueryProgress['delivery_progress']
+): NotificationScheduleDetailDTO['deliveryProgress'] {
+  return {
+    totalCount: progress.total_count,
+    pendingCount: progress.pending_count,
+    sendingCount: progress.sending_count,
+    retryWaitCount: progress.retry_wait_count,
+    sentCount: progress.sent_count,
+    failedCount: progress.failed_count,
+    stoppedCount: progress.stopped_count,
   };
 }
 

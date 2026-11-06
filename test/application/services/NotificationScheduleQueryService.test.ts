@@ -84,6 +84,32 @@ describe('NotificationScheduleQueryService', () => {
     });
   });
 
+  it('一覧で進み具合の無いScheduleは、進み具合をnullで返す', async () => {
+    const repository = createRepository();
+    vi.mocked(repository.findAll).mockResolvedValue([
+      {
+        ...detail,
+        status: 'completed',
+        audience_progress: null,
+        recipient_progress: null,
+        delivery_progress: null,
+      },
+    ]);
+    const service = createNotificationScheduleQueryService(repository);
+
+    const result = await service.getNotificationSchedules({
+      from: '2026-07-23T00:00:00Z',
+      to: '2026-07-23T23:59:59Z',
+    });
+
+    expect(result.items[0]).toMatchObject({
+      status: 'completed',
+      audienceProgress: null,
+      recipientProgress: null,
+      deliveryProgress: null,
+    });
+  });
+
   it('未指定期間には当日のJST範囲を使い、response metadataを追加しない', async () => {
     const repository = createRepository();
     const service = createNotificationScheduleQueryService(

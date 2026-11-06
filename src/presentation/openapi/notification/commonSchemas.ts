@@ -276,7 +276,7 @@ export const notificationDeliveryProgressSchema = z
   .strict()
   .openapi('NotificationDeliveryProgress');
 
-export const notificationScheduleDetailSchema = z
+const notificationScheduleFieldsSchema = z
   .object({
     notificationId: z.number().int().positive(),
     notificationScheduleId: z.number().int().positive(),
@@ -290,11 +290,33 @@ export const notificationScheduleDetailSchema = z
       .describe('Scheduleがfailedの場合の失敗理由'),
     stop: notificationStopSchema.nullable(),
     creation: notificationCreationSchema,
+  })
+  .strict();
+
+const progressOmittedInList =
+  'completed・failedのScheduleではnull。詳細APIで取得する';
+
+export const notificationScheduleListItemSchema =
+  notificationScheduleFieldsSchema
+    .extend({
+      audienceProgress: notificationAudienceProgressSchema
+        .nullable()
+        .describe(progressOmittedInList),
+      recipientProgress: notificationRecipientProgressSchema
+        .nullable()
+        .describe(progressOmittedInList),
+      deliveryProgress: notificationDeliveryProgressSchema
+        .nullable()
+        .describe(progressOmittedInList),
+    })
+    .openapi('NotificationScheduleListItem');
+
+export const notificationScheduleDetailSchema = notificationScheduleFieldsSchema
+  .extend({
     audienceProgress: notificationAudienceProgressSchema,
     recipientProgress: notificationRecipientProgressSchema,
     deliveryProgress: notificationDeliveryProgressSchema,
   })
-  .strict()
   .openapi('NotificationScheduleDetail');
 
 export const notificationPushDeliveryDetailSchema = z

@@ -78,6 +78,12 @@ export interface NotificationDeliveryProgressDTO {
   stoppedCount: number;
 }
 
+export interface NotificationScheduleListItemDTO extends NotificationScheduleBaseDTO {
+  audienceProgress: NotificationAudienceProgressDTO | null;
+  recipientProgress: NotificationRecipientProgressDTO | null;
+  deliveryProgress: NotificationDeliveryProgressDTO | null;
+}
+
 export interface NotificationScheduleDetailDTO extends NotificationScheduleBaseDTO {
   audienceProgress: NotificationAudienceProgressDTO;
   recipientProgress: NotificationRecipientProgressDTO;
@@ -135,7 +141,7 @@ export interface NotificationScheduleResultsResponseDTO {
 }
 
 export interface NotificationScheduleListResponseDTO {
-  items: NotificationScheduleDetailDTO[];
+  items: NotificationScheduleListItemDTO[];
 }
 
 export interface NotificationResendRequestDTO {

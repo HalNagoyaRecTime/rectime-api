@@ -253,8 +253,18 @@ describe('NotificationScheduleQueryRepository', () => {
       stopped_by: { user_id: schedulerId, user_name: '停止操作staff' },
     });
     for (const schedule of listed) {
+      const detail = await repository.findById(
+        schedule.notification_schedule_id
+      );
       expect(schedule).toEqual(
-        await repository.findById(schedule.notification_schedule_id)
+        ['completed', 'failed'].includes(schedule.status)
+          ? {
+              ...detail,
+              audience_progress: null,
+              recipient_progress: null,
+              delivery_progress: null,
+            }
+          : detail
       );
     }
 
@@ -312,7 +322,7 @@ describe('NotificationScheduleQueryRepository', () => {
     detailSpy.mockRestore();
   });
 
-  it('一覧の各Scheduleに、そのScheduleだけの進み具合を詳細と同じ値で返す', async () => {
+  it('一覧は送り終えたSchedule以外に、そのScheduleの進み具合を詳細と同じ値で返す', async () => {
     const notificationId = await createNotification({
       creatorId: null,
       createdAt: '2026-07-22T23:00:00.000Z',
@@ -322,11 +332,17 @@ describe('NotificationScheduleQueryRepository', () => {
       status: 'sending',
       sendAt: '2026-07-23T01:00:00.000Z',
     });
+    const stoppedScheduleId = await createSchedule({
+      notificationId,
+      status: 'stopped',
+      sendAt: '2026-07-23T02:00:00.000Z',
+      recipientsResolvedAt: '2026-07-23T02:00:00.000Z',
+    });
     const completedScheduleId = await createSchedule({
       notificationId,
       status: 'completed',
-      sendAt: '2026-07-23T02:00:00.000Z',
-      recipientsResolvedAt: '2026-07-23T02:00:00.000Z',
+      sendAt: '2026-07-23T03:00:00.000Z',
+      recipientsResolvedAt: '2026-07-23T03:00:00.000Z',
     });
     const outOfRangeScheduleId = await createSchedule({
       notificationId,
@@ -352,11 +368,12 @@ describe('NotificationScheduleQueryRepository', () => {
       'sending',
       'retry_wait',
     ]);
-    await addRecipientsWithDeliveries(completedScheduleId, [
+    await addRecipientsWithDeliveries(stoppedScheduleId, [
       'sent',
       'failed',
       'stopped',
     ]);
+    await addRecipientsWithDeliveries(completedScheduleId, ['sent']);
     await addRecipientsWithDeliveries(outOfRangeScheduleId, ['sent']);
     await addRecipient(
       sendingScheduleId,
@@ -372,7 +389,7 @@ describe('NotificationScheduleQueryRepository', () => {
         `INSERT INTO notification_audiences
            (notification_schedule_id, audience_type, resolved_at)
          VALUES (?, 'all', '2026-07-23T02:00:00.000Z')`
-      ).bind(completedScheduleId),
+      ).bind(stoppedScheduleId),
       env.DB.prepare(
         `INSERT INTO notification_audiences
            (notification_schedule_id, audience_type, resolved_at)
@@ -401,7 +418,7 @@ describe('NotificationScheduleQueryRepository', () => {
         },
       },
       {
-        notification_schedule_id: completedScheduleId,
+        notification_schedule_id: stoppedScheduleId,
         audience_progress: { total_count: 1, resolved_count: 1 },
         recipient_progress: { count: 3, status: 'resolved' },
         delivery_progress: {
@@ -414,13 +431,24 @@ describe('NotificationScheduleQueryRepository', () => {
           stopped_count: 1,
         },
       },
+      {
+        notification_schedule_id: completedScheduleId,
+        audience_progress: null,
+        recipient_progress: null,
+        delivery_progress: null,
+      },
     ]);
-    expect(listed).toHaveLength(2);
-    for (const schedule of listed) {
-      expect(schedule).toEqual(
-        await repository.findById(schedule.notification_schedule_id)
-      );
+    expect(listed).toHaveLength(3);
+    for (const scheduleId of [sendingScheduleId, stoppedScheduleId]) {
+      expect(
+        listed.find(
+          schedule => schedule.notification_schedule_id === scheduleId
+        )
+      ).toEqual(await repository.findById(scheduleId));
     }
+    expect(
+      (await repository.findById(completedScheduleId))?.delivery_progress
+    ).toMatchObject({ total_count: 1, sent_count: 1 });
   });
 
   it('存在しないScheduleをnullで返す', async () => {

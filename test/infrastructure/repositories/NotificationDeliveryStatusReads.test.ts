@@ -13,6 +13,9 @@ const MAX_ROWS_READ = TARGET_RECIPIENTS * MAX_ROWS_READ_PER_RECIPIENT;
 const OTHER_SCHEDULES = 100;
 const MAX_ROWS_READ_PER_OTHER_SCHEDULE = 2;
 const OTHER_AUDIENCES = 300;
+const SENDING_SCHEDULES = 100;
+const MAX_ROWS_READ_PER_SENDING_SCHEDULE = 10;
+const MAX_ROWS_READ_FOR_COMPLETED_SCHEDULE = OTHER_RECIPIENTS / 4;
 
 interface ReadCountingStatement {
   statement: D1PreparedStatement;
@@ -94,6 +97,7 @@ async function insertScheduleWithDeliveries(
 
 describe('配信状況を返す管理用クエリのD1読み取り行数', () => {
   let target: { notification_id: number; notification_schedule_id: number };
+  let actorUserId: number;
 
   beforeAll(async () => {
     await env.DB.batch(
@@ -111,6 +115,7 @@ describe('配信状況を返す管理用クエリのD1読み取り行数', () =>
       "INSERT INTO users (user_name) VALUES ('配信状況を見るスタッフ') RETURNING user_id"
     ).first<{ user_id: number }>();
     if (!actor) throw new Error('Userの作成に失敗しました');
+    actorUserId = actor.user_id;
     await insertScheduleWithDeliveries(
       actor.user_id,
       '2026-09-01T10:00:00.000Z',
@@ -183,7 +188,7 @@ describe('配信状況を返す管理用クエリのD1読み取り行数', () =>
     if (!notification) throw new Error('Notificationの作成に失敗しました');
     const listedSchedule = await env.DB.prepare(
       `INSERT INTO notification_schedules (notification_id, send_status, send_at)
-       VALUES (?, 'completed', '2026-07-23T01:00:00.000Z')
+       VALUES (?, 'sending', '2026-07-23T01:00:00.000Z')
        RETURNING notification_schedule_id`
     )
       .bind(notification.notification_id)
@@ -228,6 +233,76 @@ describe('配信状況を返す管理用クエリのD1読み取り行数', () =>
     ]);
     expect(rowsRead()).toBeLessThan(
       OTHER_SCHEDULES * MAX_ROWS_READ_PER_OTHER_SCHEDULE
+    );
+  });
+
+  it('予約の一覧は、送り終えた予約の受信者・配信が多くても数え直さない', async () => {
+    const completed = await insertScheduleWithDeliveries(
+      actorUserId,
+      '2026-07-26T01:00:00.000Z',
+      OTHER_RECIPIENTS
+    );
+    await env.DB.prepare(
+      `UPDATE notification_schedules SET send_status = 'completed'
+       WHERE notification_schedule_id = ?`
+    )
+      .bind(completed.notification_schedule_id)
+      .run();
+    const { db, rowsRead } = createReadCountingDb();
+
+    const schedules = await createNotificationScheduleQueryRepository(
+      db
+    ).findAll({
+      from: '2026-07-26T00:00:00.000Z',
+      to: '2026-07-26T23:59:59.999Z',
+    });
+
+    expect(schedules).toMatchObject([
+      {
+        notification_schedule_id: completed.notification_schedule_id,
+        audience_progress: null,
+        recipient_progress: null,
+        delivery_progress: null,
+      },
+    ]);
+    expect(rowsRead()).toBeLessThan(MAX_ROWS_READ_FOR_COMPLETED_SCHEDULE);
+  });
+
+  it('予約の一覧は、期間内に送信中の予約が多くても予約1件あたり数行しか読まない', async () => {
+    const notification = await env.DB.prepare(
+      `INSERT INTO notifications (
+         push_title, push_body, notification_type, title, body, importance
+       ) VALUES ('送信中', '本文', 'notification_general', '送信中', '本文', 'normal')
+       RETURNING notification_id`
+    ).first<{ notification_id: number }>();
+    if (!notification) throw new Error('Notificationの作成に失敗しました');
+    await env.DB.batch([
+      env.DB.prepare(
+        `WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < ?)
+         INSERT INTO notification_schedules (notification_id, send_status, send_at)
+         SELECT ?, 'sending', '2026-07-27T01:00:00.000Z' FROM seq`
+      ).bind(SENDING_SCHEDULES, notification.notification_id),
+      env.DB.prepare(
+        `INSERT INTO notification_audiences (notification_schedule_id, audience_type)
+         SELECT notification_schedule_id, 'all' FROM notification_schedules
+         WHERE notification_id = ?`
+      ).bind(notification.notification_id),
+    ]);
+    const { db, rowsRead } = createReadCountingDb();
+
+    const schedules = await createNotificationScheduleQueryRepository(
+      db
+    ).findAll({
+      from: '2026-07-27T00:00:00.000Z',
+      to: '2026-07-27T23:59:59.999Z',
+    });
+
+    expect(schedules).toHaveLength(SENDING_SCHEDULES);
+    expect(
+      schedules.every(schedule => schedule.audience_progress?.total_count === 1)
+    ).toBe(true);
+    expect(rowsRead()).toBeLessThan(
+      SENDING_SCHEDULES * MAX_ROWS_READ_PER_SENDING_SCHEDULE
     );
   });
 
