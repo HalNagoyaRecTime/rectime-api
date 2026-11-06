@@ -1,8 +1,9 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type {
-  NotificationScheduleQueryDetail,
+  NotificationScheduleQueryBase,
   NotificationScheduleQueryListItem,
   NotificationScheduleQueryOptions,
+  NotificationScheduleQueryProgress,
 } from '../../domain/entities/NotificationScheduleQuery';
 import {
   NOTIFICATION_IMPORTANCE_LEVELS,
@@ -36,7 +37,8 @@ interface ScheduleQueryRow {
   source_label: string | null;
 }
 
-interface ScheduleDetailQueryRow extends ScheduleQueryRow {
+interface ScheduleProgressQueryRow extends ScheduleQueryRow {
+  progress_counted: number;
   audience_total_count: number;
   audience_resolved_count: number;
   recipient_count: number;
@@ -83,6 +85,52 @@ const notificationJoins = `
   LEFT JOIN gathering_spots source_spot
     ON source_spot.gathering_spot_id = source_gathering.gathering_spot_id`;
 
+// stoppedは停止後もcronが残りの配信をstoppedへ書き換えていくので、数え直さない側に含めない。
+const progressSettledStatuses = `('completed', 'failed')`;
+
+// 数えないScheduleを除く条件をONにANDで足すと、SQLiteは索引でRecipientを引いた後に
+// 判定するため送り終えたScheduleのRecipientまで読む。引く値自体をNULLにして索引で何も引かせない。
+function selectSchedulesWithProgress(
+  where: string,
+  progressCounted: string
+): string {
+  return `SELECT ${scheduleSelection},
+           ${progressCounted} AS progress_counted,
+           CASE WHEN ${progressCounted} THEN (
+             SELECT COUNT(*) FROM notification_audiences na
+             WHERE na.notification_schedule_id = ns.notification_schedule_id
+           ) END AS audience_total_count,
+           CASE WHEN ${progressCounted} THEN (
+             SELECT COUNT(na.resolved_at) FROM notification_audiences na
+             WHERE na.notification_schedule_id = ns.notification_schedule_id
+           ) END AS audience_resolved_count,
+           COUNT(DISTINCT nr.notification_recipient_id) AS recipient_count,
+           CASE WHEN ns.recipients_resolved_at IS NULL
+                THEN 'pending' ELSE 'resolved' END AS recipient_status,
+           COUNT(npd.notification_push_delivery_id) AS delivery_total_count,
+           COUNT(CASE WHEN npd.status = 'pending' THEN 1 END)
+             AS delivery_pending_count,
+           COUNT(CASE WHEN npd.status = 'sending' THEN 1 END)
+             AS delivery_sending_count,
+           COUNT(CASE WHEN npd.status = 'retry_wait' THEN 1 END)
+             AS delivery_retry_wait_count,
+           COUNT(CASE WHEN npd.status = 'sent' THEN 1 END)
+             AS delivery_sent_count,
+           COUNT(CASE WHEN npd.status = 'failed' THEN 1 END)
+             AS delivery_failed_count,
+           COUNT(CASE WHEN npd.status = 'stopped' THEN 1 END)
+             AS delivery_stopped_count
+    FROM notification_schedules ns
+    ${notificationJoins}
+    LEFT JOIN notification_recipients nr
+      ON nr.notification_schedule_id =
+         CASE WHEN ${progressCounted} THEN ns.notification_schedule_id END
+    LEFT JOIN notification_push_deliveries npd
+      ON npd.notification_recipient_id = nr.notification_recipient_id
+    WHERE ${where}
+    GROUP BY ns.notification_schedule_id`;
+}
+
 export function createNotificationScheduleQueryRepository(
   db: D1Database
 ): INotificationScheduleQueryRepository {
@@ -90,97 +138,31 @@ export function createNotificationScheduleQueryRepository(
     async findAll(options: NotificationScheduleQueryOptions) {
       const result = await db
         .prepare(
-          `SELECT ${scheduleSelection}
-           FROM notification_schedules ns
-           ${notificationJoins}
-           WHERE datetime(ns.send_at) >= datetime(?)
-             AND datetime(ns.send_at) <= datetime(?)
+          `${selectSchedulesWithProgress(
+            `datetime(ns.send_at) >= datetime(?)
+             AND datetime(ns.send_at) <= datetime(?)`,
+            `ns.send_status NOT IN ${progressSettledStatuses}`
+          )}
            ORDER BY datetime(ns.send_at), ns.notification_schedule_id`
         )
         .bind(options.from, options.to)
-        .all<ScheduleQueryRow>();
+        .all<ScheduleProgressQueryRow>();
       return result.results.map(toListItem);
     },
 
     async findById(notificationScheduleId: number) {
       const row = await db
         .prepare(
-          `WITH target_schedule AS (
-             SELECT notification_schedule_id
-             FROM notification_schedules
-             WHERE notification_schedule_id = ?
-           ),
-           audience_progress AS (
-             SELECT na.notification_schedule_id,
-                    COUNT(*) AS total_count,
-                    SUM(CASE WHEN na.resolved_at IS NOT NULL THEN 1 ELSE 0 END)
-                      AS resolved_count
-             FROM notification_audiences na
-             INNER JOIN target_schedule ts
-               ON ts.notification_schedule_id = na.notification_schedule_id
-             GROUP BY na.notification_schedule_id
-           ),
-           recipient_progress AS (
-             SELECT nr.notification_schedule_id,
-                    COUNT(*) AS recipient_count
-             FROM notification_recipients nr
-             INNER JOIN target_schedule ts
-               ON ts.notification_schedule_id = nr.notification_schedule_id
-             GROUP BY nr.notification_schedule_id
-           ),
-           delivery_progress AS (
-             SELECT nr.notification_schedule_id,
-                    COUNT(npd.notification_push_delivery_id) AS total_count,
-                    SUM(CASE WHEN npd.status = 'pending' THEN 1 ELSE 0 END)
-                      AS pending_count,
-                    SUM(CASE WHEN npd.status = 'sending' THEN 1 ELSE 0 END)
-                      AS sending_count,
-                    SUM(CASE WHEN npd.status = 'retry_wait' THEN 1 ELSE 0 END)
-                      AS retry_wait_count,
-                    SUM(CASE WHEN npd.status = 'sent' THEN 1 ELSE 0 END)
-                      AS sent_count,
-                    SUM(CASE WHEN npd.status = 'failed' THEN 1 ELSE 0 END)
-                      AS failed_count,
-                    SUM(CASE WHEN npd.status = 'stopped' THEN 1 ELSE 0 END)
-                      AS stopped_count
-             FROM notification_recipients nr
-             INNER JOIN target_schedule ts
-               ON ts.notification_schedule_id = nr.notification_schedule_id
-             LEFT JOIN notification_push_deliveries npd
-               ON npd.notification_recipient_id = nr.notification_recipient_id
-             GROUP BY nr.notification_schedule_id
-           )
-           SELECT ${scheduleSelection},
-                  COALESCE(ap.total_count, 0) AS audience_total_count,
-                  COALESCE(ap.resolved_count, 0) AS audience_resolved_count,
-                  COALESCE(rp.recipient_count, 0) AS recipient_count,
-                  CASE WHEN ns.recipients_resolved_at IS NULL
-                       THEN 'pending' ELSE 'resolved' END AS recipient_status,
-                  COALESCE(dp.total_count, 0) AS delivery_total_count,
-                  COALESCE(dp.pending_count, 0) AS delivery_pending_count,
-                  COALESCE(dp.sending_count, 0) AS delivery_sending_count,
-                  COALESCE(dp.retry_wait_count, 0) AS delivery_retry_wait_count,
-                  COALESCE(dp.sent_count, 0) AS delivery_sent_count,
-                  COALESCE(dp.failed_count, 0) AS delivery_failed_count,
-                  COALESCE(dp.stopped_count, 0) AS delivery_stopped_count
-           FROM notification_schedules ns
-           ${notificationJoins}
-           LEFT JOIN audience_progress ap
-             ON ap.notification_schedule_id = ns.notification_schedule_id
-           LEFT JOIN recipient_progress rp
-             ON rp.notification_schedule_id = ns.notification_schedule_id
-           LEFT JOIN delivery_progress dp
-             ON dp.notification_schedule_id = ns.notification_schedule_id
-           WHERE ns.notification_schedule_id = (SELECT notification_schedule_id FROM target_schedule)`
+          selectSchedulesWithProgress('ns.notification_schedule_id = ?', '1')
         )
         .bind(notificationScheduleId)
-        .first<ScheduleDetailQueryRow>();
-      return row ? toDetail(row) : null;
+        .first<ScheduleProgressQueryRow>();
+      return row ? { ...toBase(row), ...toProgress(row) } : null;
     },
   };
 }
 
-function toListItem(row: ScheduleQueryRow): NotificationScheduleQueryListItem {
+function toBase(row: ScheduleQueryRow): NotificationScheduleQueryBase {
   return {
     notification_id: row.notification_id,
     notification_schedule_id: row.notification_schedule_id,
@@ -196,12 +178,25 @@ function toListItem(row: ScheduleQueryRow): NotificationScheduleQueryListItem {
   };
 }
 
-function toDetail(
-  row: ScheduleDetailQueryRow
-): NotificationScheduleQueryDetail {
-  const base = toListItem(row);
+function toListItem(
+  row: ScheduleProgressQueryRow
+): NotificationScheduleQueryListItem {
   return {
-    ...base,
+    ...toBase(row),
+    ...(row.progress_counted
+      ? toProgress(row)
+      : {
+          audience_progress: null,
+          recipient_progress: null,
+          delivery_progress: null,
+        }),
+  };
+}
+
+function toProgress(
+  row: ScheduleProgressQueryRow
+): NotificationScheduleQueryProgress {
+  return {
     audience_progress: {
       total_count: row.audience_total_count,
       resolved_count: row.audience_resolved_count,
