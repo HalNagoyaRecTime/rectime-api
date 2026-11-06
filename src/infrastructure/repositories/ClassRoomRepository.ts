@@ -14,7 +14,7 @@ import type {
   ClassRoomSearchFilter,
   ClassRoomUpdateInput,
 } from '../../domain/entities/ClassRoom';
-import { buildProvisionalTeamName } from '../../domain/entities/Team';
+import { buildTeamName } from '../../domain/entities/Team';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import { chunkArray } from './chunk';
 import { buildCleanupEmptyTeamStatements } from './teamCleanup';
@@ -47,13 +47,8 @@ type ClassRoomRow = {
   lockVersion: number;
 };
 
-function provisionalTeamName(
-  input: Pick<ClassRoomInput, 'classCode' | 'className'>
-): string {
-  return buildProvisionalTeamName({
-    className: input.className,
-    classCode: input.classCode,
-  });
+function provisionalTeamName(input: Pick<ClassRoomInput, 'classCode'>): string {
+  return buildTeamName([input.classCode]);
 }
 
 function toEntity(row: ClassRoomRow): ClassRoomEntity {

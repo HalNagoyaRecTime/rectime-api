@@ -21,7 +21,7 @@ import type {
   StudentUpdateInput,
   StudentWriteInput,
 } from '../../domain/entities/Student';
-import { buildProvisionalTeamName } from '../../domain/entities/Team';
+import { buildTeamName } from '../../domain/entities/Team';
 import {
   BulkCreateStudentsInput,
   IStudentRepository,
@@ -476,7 +476,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         classRoomStatements.push(
           db
             .prepare(`INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`)
-            .bind(...chunk.map(buildProvisionalTeamName))
+            .bind(...chunk.map(room => buildTeamName([room.classCode])))
         );
         for (const room of chunk) {
           classRoomStatements.push(
@@ -488,7 +488,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
               .bind(
                 room.classCode,
                 room.className,
-                buildProvisionalTeamName(room)
+                buildTeamName([room.classCode])
               )
           );
         }

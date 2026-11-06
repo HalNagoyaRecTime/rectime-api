@@ -32,15 +32,11 @@ export interface TeamListOptions {
 }
 
 export interface TeamWriteInput {
-  team_name: string;
   class_codes: string[];
 }
 
-// クラス名変更や編成名自体の更新には追随しない。編成名を更新する経路は
-// 現状存在しないため、実態とずれた場合の修正手段は編成管理機能の追加を待つ。
-export function buildProvisionalTeamName(params: {
-  className: string;
-  classCode: string;
-}): string {
-  return `${params.className}(${params.classCode})`;
+// チーム名は自由入力せず、所属クラスのclass_codeをスペース区切りで連結した
+// 文字列から自動生成する。クラス構成が変わるたびに呼び出し側で再生成する。
+export function buildTeamName(classCodes: string[]): string {
+  return classCodes.join(' ');
 }

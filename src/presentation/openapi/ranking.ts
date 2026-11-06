@@ -87,7 +87,6 @@ export const teamScoreAddSchema = z
 
 export const teamWriteSchema = z
   .object({
-    team_name: z.string().trim().min(1),
     class_codes: z
       .array(z.string().trim().min(1))
       .min(1)

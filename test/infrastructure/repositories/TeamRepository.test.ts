@@ -264,12 +264,11 @@ describe('TeamRepository', () => {
       const classRoomId = await insertClassRoom('1A');
 
       const created = await repo.createTeam({
-        team_name: '新設チーム',
         class_codes: ['1A'],
       });
 
       expect(created).toMatchObject({
-        team_name: '新設チーム',
+        team_name: '1A',
         scores: 0,
         registered_classes: ['1A'],
       });
@@ -292,12 +291,11 @@ describe('TeamRepository', () => {
 
     it('class_codesが空配列でもチームを作成できる', async () => {
       const created = await repo.createTeam({
-        team_name: 'クラス無しチーム',
         class_codes: [],
       });
 
       expect(created).toMatchObject({
-        team_name: 'クラス無しチーム',
+        team_name: '',
         registered_classes: [],
       });
     });
@@ -309,13 +307,12 @@ describe('TeamRepository', () => {
       const classRoomId = await insertClassRoom('2A');
 
       const updated = await repo.updateTeam(teamId, {
-        team_name: '新しい名前',
         class_codes: ['2A'],
       });
 
       expect(updated).toMatchObject({
         team_id: teamId,
-        team_name: '新しい名前',
+        team_name: '2A',
         registered_classes: ['2A'],
       });
       const classRoom = await env.DB.prepare(
@@ -346,7 +343,6 @@ describe('TeamRepository', () => {
       const destinationTeamId = await insertTeam('移動先チーム');
 
       await repo.updateTeam(destinationTeamId, {
-        team_name: '移動先チーム',
         class_codes: ['4A'],
       });
 
@@ -366,7 +362,6 @@ describe('TeamRepository', () => {
       const destinationTeamId = await insertTeam('移動先チーム3');
 
       await repo.updateTeam(destinationTeamId, {
-        team_name: '移動先チーム3',
         class_codes: ['4B'],
       });
 
@@ -389,7 +384,6 @@ describe('TeamRepository', () => {
       const destinationTeamId = await insertTeam('移動先チーム2');
 
       await repo.updateTeam(destinationTeamId, {
-        team_name: '移動先チーム2',
         class_codes: ['5A'],
       });
 
@@ -407,7 +401,6 @@ describe('TeamRepository', () => {
       await insertClassRoom('1B', teamId);
 
       const updated = await repo.updateTeam(teamId, {
-        team_name: '赤組',
         class_codes: ['1A'],
       });
 
@@ -418,7 +411,7 @@ describe('TeamRepository', () => {
          JOIN teams t ON t.team_id = c.team_id
          WHERE c.class_code = '1B'`
       ).first<{ team_name: string; team_id: number }>();
-      expect(detached?.team_name).toBe('1B組(1B)');
+      expect(detached?.team_name).toBe('1B');
       expect(detached?.team_id).not.toBe(teamId);
     });
 
@@ -427,7 +420,6 @@ describe('TeamRepository', () => {
       await insertClassRoom('3A', teamId);
 
       const updated = await repo.updateTeam(teamId, {
-        team_name: '青組',
         class_codes: [],
       });
 
@@ -440,7 +432,7 @@ describe('TeamRepository', () => {
 
     it('存在しないチームの場合はnullを返す', async () => {
       await expect(
-        repo.updateTeam(999999, { team_name: '存在しない', class_codes: [] })
+        repo.updateTeam(999999, { class_codes: [] })
       ).resolves.toBeNull();
     });
   });
@@ -478,10 +470,10 @@ describe('TeamRepository', () => {
     });
 
     it('通常の単独編成(team_nameが再作成される単独編成名と同じ)を削除できる', async () => {
-      // 単独編成のteam_nameは"クラス名(クラスコード)"であり、detach時に
+      // 単独編成のteam_nameはclass_codeそのものであり、detach時に
       // 再作成される単独編成名と一致する。削除対象自身が残ったまま
       // 同名の団体を作ろうとしてUNIQUE制約に違反しないことを確認する。
-      const provisionalName = '1A組(1A)';
+      const provisionalName = '1A';
       const teamId = await insertTeam(provisionalName);
       await insertClassRoom('1A', teamId);
 
