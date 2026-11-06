@@ -135,6 +135,20 @@ async function createResultFixture() {
 }
 
 describe('管理用Recipient Results・Push Delivery Detail API成功経路', () => {
+  it('検索条件と対象登録時刻の指定を受け付ける', async () => {
+    await createResultFixture();
+    const path = `/api/v1/admin/notifications/schedules/${scheduleId}/results?page=1&limit=50&search=${encodeURIComponent('Recipient')}&status=success&includeRegisteredAt=1`;
+    const response = await requestAs(staffUserId!, path);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      recipients: {
+        items: Array<{ registeredAt?: string }>;
+        pagination: { totalCount: number };
+      };
+    };
+    expect(body.recipients.pagination.totalCount).toBe(1);
+    expect(body.recipients.items[0].registeredAt).toEqual(expect.any(String));
+  });
   it('staffがResultsとPush Delivery Detailを200で取得できる', async () => {
     await createResultFixture();
 
