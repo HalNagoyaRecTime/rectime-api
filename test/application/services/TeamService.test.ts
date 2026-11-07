@@ -108,7 +108,7 @@ describe('TeamService', () => {
       const service = createTeamService(repository);
 
       await expect(
-        service.createTeam({ team_name: 'テストチーム', class_codes: ['1A'] })
+        service.createTeam({ class_codes: ['1A'] })
       ).resolves.toEqual(created);
       expect(repository.existsClassCodes).toHaveBeenCalledWith(['1A']);
     });
@@ -119,9 +119,9 @@ describe('TeamService', () => {
       });
       const service = createTeamService(repository);
 
-      await expect(
-        service.createTeam({ team_name: 'テストチーム', class_codes: ['9Z'] })
-      ).rejects.toThrow('Class not found');
+      await expect(service.createTeam({ class_codes: ['9Z'] })).rejects.toThrow(
+        'Class not found'
+      );
       expect(repository.createTeam).not.toHaveBeenCalled();
     });
 
@@ -132,7 +132,7 @@ describe('TeamService', () => {
       });
       const service = createTeamService(repository);
 
-      await service.createTeam({ team_name: 'テストチーム', class_codes: [] });
+      await service.createTeam({ class_codes: [] });
 
       expect(repository.existsClassCodes).not.toHaveBeenCalled();
       expect(repository.findClassRoomsOwnedByOtherTeam).not.toHaveBeenCalled();
@@ -149,9 +149,9 @@ describe('TeamService', () => {
       });
       const service = createTeamService(repository);
 
-      await expect(
-        service.createTeam({ team_name: 'テストチーム', class_codes: ['1A'] })
-      ).rejects.toThrow('Class already assigned');
+      await expect(service.createTeam({ class_codes: ['1A'] })).rejects.toThrow(
+        'Class already assigned'
+      );
       expect(repository.createTeam).not.toHaveBeenCalled();
     });
   });
@@ -166,10 +166,7 @@ describe('TeamService', () => {
       const service = createTeamService(repository);
 
       await expect(
-        service.updateTeam(1, {
-          team_name: '更新後チーム',
-          class_codes: ['1A'],
-        })
+        service.updateTeam(1, { class_codes: ['1A'] })
       ).resolves.toEqual(updated);
     });
 
@@ -181,7 +178,7 @@ describe('TeamService', () => {
       const service = createTeamService(repository);
 
       await expect(
-        service.updateTeam(999, { team_name: '更新後チーム', class_codes: [] })
+        service.updateTeam(999, { class_codes: [] })
       ).rejects.toThrow('Team not found');
     });
 
@@ -193,10 +190,7 @@ describe('TeamService', () => {
       });
       const service = createTeamService(repository);
 
-      await service.updateTeam(1, {
-        team_name: '更新後チーム',
-        class_codes: ['1A'],
-      });
+      await service.updateTeam(1, { class_codes: ['1A'] });
 
       expect(repository.findClassRoomsOwnedByOtherTeam).toHaveBeenCalledWith(
         ['1A'],
@@ -216,10 +210,7 @@ describe('TeamService', () => {
       const service = createTeamService(repository);
 
       await expect(
-        service.updateTeam(1, {
-          team_name: '更新後チーム',
-          class_codes: ['1A'],
-        })
+        service.updateTeam(1, { class_codes: ['1A'] })
       ).rejects.toThrow('Class already assigned');
       expect(repository.updateTeam).not.toHaveBeenCalled();
     });

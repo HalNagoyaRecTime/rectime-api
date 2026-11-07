@@ -724,7 +724,7 @@ describe('ClassRoomRepository', () => {
       const orphanedTeam = await env.DB.prepare(
         'SELECT team_id FROM teams WHERE team_name = ?'
       )
-        .bind('孤立チーム確認クラス(15C)')
+        .bind('15C')
         .first();
       expect(orphanedTeam).toBeNull();
     });
@@ -809,7 +809,7 @@ describe('ClassRoomRepository', () => {
         await expect(repo.findByCode(input.classCode)).resolves.toBeNull();
       }
       const orphanedTeams = await env.DB.prepare(
-        "SELECT team_id FROM teams WHERE team_name LIKE 'チャンク跨ぎクラス%'"
+        "SELECT team_id FROM teams WHERE team_name LIKE 'CROSS-CHUNK-%'"
       ).all();
       expect(orphanedTeams.results).toHaveLength(0);
     });

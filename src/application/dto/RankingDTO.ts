@@ -50,7 +50,6 @@ export interface TeamListResponseDTO {
 
 /** POST /teams、PUT /teams/:teamId のリクエスト本文。 */
 export interface TeamWriteRequestDTO {
-  team_name: string;
   class_codes: string[];
 }
 

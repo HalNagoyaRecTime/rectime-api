@@ -1,6 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import {
-  buildProvisionalTeamName,
+  buildTeamName,
   type RankingEntryEntity,
   type RankingListOptions,
   type TeamEntity,
@@ -130,17 +130,14 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     const keepSet = new Set(keepCodes);
     const current = await db
       .prepare(
-        `SELECT class_room_id, class_code, class_name FROM class_rooms WHERE team_id = ?`
+        `SELECT class_room_id, class_code FROM class_rooms WHERE team_id = ?`
       )
       .bind(teamId)
-      .all<{ class_room_id: number; class_code: string; class_name: string }>();
+      .all<{ class_room_id: number; class_code: string }>();
     const removed = current.results.filter(row => !keepSet.has(row.class_code));
 
     for (const row of removed) {
-      const provisionalName = buildProvisionalTeamName({
-        className: row.class_name,
-        classCode: row.class_code,
-      });
+      const provisionalName = buildTeamName([row.class_code]);
       await db.batch([
         db
           .prepare('INSERT INTO teams (team_name) VALUES (?)')
@@ -298,10 +295,12 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     },
 
     async createTeam(input: TeamWriteInput): Promise<TeamEntity> {
+      const teamName = buildTeamName(input.class_codes);
+
       if (input.class_codes.length === 0) {
         const created = await db
           .prepare('INSERT INTO teams (team_name) VALUES (?) RETURNING team_id')
-          .bind(input.team_name)
+          .bind(teamName)
           .first<{ team_id: number }>();
         if (!created) throw new Error('Failed to create team');
 
@@ -318,7 +317,7 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
       const [createResult] = await db.batch<{ team_id: number }>([
         db
           .prepare('INSERT INTO teams (team_name) VALUES (?) RETURNING team_id')
-          .bind(input.team_name),
+          .bind(teamName),
         ...chunkArray(input.class_codes, CLASS_CODE_CHUNK_SIZE).map(chunk => {
           const placeholders = chunk.map(() => '?').join(', ');
           return db
@@ -328,7 +327,7 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
                    updated_at = CURRENT_TIMESTAMP
                WHERE class_code IN (${placeholders})`
             )
-            .bind(input.team_name, ...chunk);
+            .bind(teamName, ...chunk);
         }),
         ...Array.from(previousTeamIds).flatMap(id =>
           buildCleanupEmptyTeamStatements(db, id)
@@ -351,7 +350,7 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
         .prepare(
           'UPDATE teams SET team_name = ?, updated_at = CURRENT_TIMESTAMP WHERE team_id = ? RETURNING team_id'
         )
-        .bind(input.team_name, teamId)
+        .bind(buildTeamName(input.class_codes), teamId)
         .first<{ team_id: number }>();
       if (!updated) return null;
 
