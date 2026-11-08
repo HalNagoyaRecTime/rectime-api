@@ -499,6 +499,9 @@ export const notification_recipients = sqliteTable(
       table.userId
     ),
     index('idx_notification_recipients_user_id').on(table.userId),
+    index('idx_notification_recipients_schedule_id').on(
+      table.notificationScheduleId
+    ),
   ]
 );
 
@@ -545,9 +548,9 @@ export const notification_push_deliveries = sqliteTable(
     index('idx_notification_push_deliveries_firebase_token_id').on(
       table.firebaseTokenId
     ),
-    index('idx_notification_push_deliveries_retry').on(
+    index('idx_notification_push_deliveries_status_recipient_id').on(
       table.status,
-      table.nextRetryAt
+      table.notificationRecipientId
     ),
   ]
 );

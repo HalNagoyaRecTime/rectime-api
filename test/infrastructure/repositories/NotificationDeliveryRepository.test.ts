@@ -1,3 +1,4 @@
+import { claimPending } from '../../notificationDeliveryFixtures';
 import { createNotificationRetryService } from '../../../src/application/services/NotificationRetryService';
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -174,7 +175,8 @@ describe('NotificationDeliveryRepository and Service', () => {
           new Date(NOW)
         );
       } else {
-        const claimed = await deliveryRepository.claimPendingDeliveries(
+        const claimed = await claimPending(
+          deliveryRepository,
           [fixture.scheduleId],
           NOW,
           100
@@ -292,7 +294,7 @@ describe('NotificationDeliveryRepository and Service', () => {
     });
   });
 
-  it('有効Tokenと削除済みTokenが混在する場合は有効分だけQueueへ積む', async () => {
+  it('有効Tokenと削除済みTokenが混在する場合は有効分だけQueueへ積み、送り終えてから削除済み分をfailedにする', async () => {
     const fixture = await createSchedule();
     const activeTokenId = await insertToken(
       fixture.recipientUserId,
@@ -334,8 +336,7 @@ describe('NotificationDeliveryRepository and Service', () => {
         }),
         expect.objectContaining({
           firebase_token_id: null,
-          status: 'failed',
-          failed_reason: 'Firebase token was removed before delivery',
+          status: 'pending',
         }),
       ])
     );
@@ -348,7 +349,7 @@ describe('NotificationDeliveryRepository and Service', () => {
       new Date(NOW)
     );
 
-    expect(sent).toEqual({ claimed: 1, sent: 1, failed: 0 });
+    expect(sent).toEqual({ claimed: 1, sent: 1, failed: 1 });
     expect(sendNotificationToToken).toHaveBeenCalledOnce();
     expect(sendNotificationToToken).toHaveBeenCalledWith(
       expect.objectContaining({ token: 'delivery-active-token' })
@@ -359,7 +360,11 @@ describe('NotificationDeliveryRepository and Service', () => {
           firebase_token_id: activeTokenId,
           status: 'sent',
         }),
-        expect.objectContaining({ firebase_token_id: null, status: 'failed' }),
+        expect.objectContaining({
+          firebase_token_id: null,
+          status: 'failed',
+          failed_reason: 'Firebase token was removed before delivery',
+        }),
       ])
     );
     expect(await scheduleStatus(fixture.scheduleId)).toMatchObject({
@@ -377,7 +382,7 @@ describe('NotificationDeliveryRepository and Service', () => {
     await resolve(fixture.scheduleId);
     await deliveryRepository.prepareResolvedSchedule(fixture.scheduleId, NOW);
     await expect(
-      deliveryRepository.claimPendingDeliveries([fixture.scheduleId], NOW, 100)
+      claimPending(deliveryRepository, [fixture.scheduleId], NOW, 100)
     ).resolves.toHaveLength(1);
     await env.DB.prepare(
       'DELETE FROM firebase_tokens WHERE firebase_token_id = ?'
@@ -516,8 +521,8 @@ describe('NotificationDeliveryRepository and Service', () => {
       await deliveryRepository.completeScheduleIfDone(fixture.scheduleId, NOW)
     ).toBe(false);
     const [firstClaim, concurrentClaim] = await Promise.all([
-      deliveryRepository.claimPendingDeliveries([fixture.scheduleId], NOW, 100),
-      deliveryRepository.claimPendingDeliveries([fixture.scheduleId], NOW, 100),
+      claimPending(deliveryRepository, [fixture.scheduleId], NOW, 100),
+      claimPending(deliveryRepository, [fixture.scheduleId], NOW, 100),
     ]);
     const claimed = [...firstClaim, ...concurrentClaim];
     expect(claimed).toHaveLength(2);
@@ -753,7 +758,7 @@ describe('NotificationDeliveryRepository and Service', () => {
       .run();
 
     await expect(
-      deliveryRepository.claimPendingDeliveries([fixture.scheduleId], NOW, 100)
+      claimPending(deliveryRepository, [fixture.scheduleId], NOW, 100)
     ).resolves.toEqual([]);
   });
 });

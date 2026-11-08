@@ -10,6 +10,7 @@ function setup(customEnsureConfigured?: () => Promise<void>) {
   const emptyLists = new Set([
     'findReadySchedules',
     'findDeliveryCandidateIds',
+    'findPendingDeliveryIds',
     'claimPendingDeliveries',
   ]);
   const repository = new Proxy(
@@ -66,7 +67,7 @@ describe('通知設定不備時の配信保留', () => {
     recover();
     await delivery.enqueueReadySchedules();
     await delivery.sendQueuedNotifications([1]);
-    expect(calls.get('claimPendingDeliveries')).toHaveBeenCalledOnce();
+    expect(calls.get('findPendingDeliveryIds')).toHaveBeenCalledOnce();
     expect(calls.get('markFailed')).toBeUndefined();
   });
 
