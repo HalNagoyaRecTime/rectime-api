@@ -203,9 +203,33 @@ describe('EventController', () => {
 
       const response = await app.request('/events/1');
 
-      expect(eventService.getEventById).toHaveBeenCalledWith(1);
+      expect(eventService.getEventById).toHaveBeenCalledWith(1, false);
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual(event);
+    });
+
+    it('includeMemberCount=trueなら参加者数を求める', async () => {
+      const { app, eventService } = setup();
+      (eventService.getEventById as ReturnType<typeof vi.fn>).mockResolvedValue(
+        { ...buildEvent(), rounds: [] }
+      );
+
+      const response = await app.request('/events/1?includeMemberCount=true');
+
+      expect(response.status).toBe(200);
+      expect(eventService.getEventById).toHaveBeenCalledWith(1, true);
+    });
+
+    it('includeMemberCountがtrue・false以外なら400 VALIDATION_ERRORを返す', async () => {
+      const { app, eventService } = setup();
+
+      const response = await app.request('/events/1?includeMemberCount=1');
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'VALIDATION_ERROR' },
+      });
+      expect(eventService.getEventById).not.toHaveBeenCalled();
     });
 
     it('数値でないIDの場合は400 INVALID_EVENT_IDを返す', async () => {

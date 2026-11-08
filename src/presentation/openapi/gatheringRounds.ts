@@ -25,7 +25,10 @@ export const gatheringSettingResponseSchema = z
       example: '10:45',
     }),
     gathering_spot: gatheringSpotSummarySchema,
-    member_count: z.number().int(),
+    member_count: z.number().int().optional().openapi({
+      description:
+        '集合予定ごとの参加者数。集合設定の保存結果では常に返し、`GET /events/{eventId}` では `includeMemberCount=true` のときだけ返す。',
+    }),
   })
   .openapi('GatheringSetting');
 

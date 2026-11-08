@@ -81,6 +81,11 @@ function createGatheringSettingsRepository(
 ): IEventGatheringSettingsRepository {
   return {
     findByEventId: vi.fn().mockResolvedValue(gatherings),
+    findWithoutMemberCountByEventId: vi
+      .fn()
+      .mockResolvedValue(
+        gatherings.map(({ member_count: _, ...gathering }) => gathering)
+      ),
     apply: vi.fn(),
   };
 }
@@ -223,7 +228,7 @@ describe('EventService', () => {
       });
       const service = createService(repository);
 
-      await expect(service.getEventById(1)).resolves.toEqual({
+      await expect(service.getEventById(1, false)).resolves.toEqual({
         ...event,
         rounds: [],
       });
@@ -261,7 +266,7 @@ describe('EventService', () => {
         gatheringSettingsRepository
       );
 
-      const result = await service.getEventById(1);
+      const result = await service.getEventById(1, true);
 
       expect(result.rounds).toEqual([
         {
@@ -322,11 +327,31 @@ describe('EventService', () => {
         gatheringSettingsRepository
       );
 
-      await service.getEventById(1);
+      await service.getEventById(1, true);
 
       expect(gatheringSettingsRepository.findByEventId).toHaveBeenCalledTimes(
         1
       );
+    });
+
+    it('参加者数を求めなければ参加者数を数えずに取得し、member_countを返さない', async () => {
+      const gatheringSettingsRepository = createGatheringSettingsRepository([
+        buildGathering({ gathering_id: 101, member_count: 16 }),
+      ]);
+      const service = createService(
+        createRepository({
+          findWithVenuesById: vi.fn().mockResolvedValue(buildEventWithVenues()),
+        }),
+        gatheringSettingsRepository
+      );
+
+      const result = await service.getEventById(1, false);
+
+      expect(result.rounds[0].gatherings[0]).not.toHaveProperty('member_count');
+      expect(
+        gatheringSettingsRepository.findWithoutMemberCountByEventId
+      ).toHaveBeenCalledWith(1);
+      expect(gatheringSettingsRepository.findByEventId).not.toHaveBeenCalled();
     });
 
     it('存在しない場合はエラーを投げ、集合予定は取得しない', async () => {
@@ -337,7 +362,10 @@ describe('EventService', () => {
       const gatheringSettingsRepository = createGatheringSettingsRepository();
 
       await expect(
-        createService(repository, gatheringSettingsRepository).getEventById(999)
+        createService(repository, gatheringSettingsRepository).getEventById(
+          999,
+          true
+        )
       ).rejects.toThrow('Event not found');
       expect(gatheringSettingsRepository.findByEventId).not.toHaveBeenCalled();
     });

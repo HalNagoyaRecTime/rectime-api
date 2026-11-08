@@ -112,14 +112,16 @@ export function createEventService(
       };
     },
 
-    async getEventById(id) {
+    async getEventById(id, includeMemberCount) {
       const event = await eventRepository.findWithVenuesById(id);
       if (!event) {
         throw new Error('Event not found');
       }
-      // 参加人数まで含めてRepositoryが1クエリで返すため、集合予定ごとの追加取得はしない。
-      const gatherings =
-        await eventGatheringSettingsRepository.findByEventId(id);
+      const gatherings = includeMemberCount
+        ? await eventGatheringSettingsRepository.findByEventId(id)
+        : await eventGatheringSettingsRepository.findWithoutMemberCountByEventId(
+            id
+          );
       const imageUrlOf = await signImageUrls(imageUrlSigner, [
         ...event.venues.map(venue => venue.image_key),
         ...gatherings.map(gathering => gathering.gathering_spot_image_key),
