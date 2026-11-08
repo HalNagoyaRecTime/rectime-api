@@ -279,6 +279,7 @@ export function createNotificationDeliveryRepository(
       return result.meta.changes === 1;
     },
     async retireUnsendableDeliveries(now, staleBefore, maxAttempts) {
+      // 送れない未送信の配信は送信側でも失敗にするため、statusから未送信の全件を毎分読まず、Tokenを失ったものだけをTokenのindexから引く。
       const retired = await db
         .prepare(
           `UPDATE notification_push_deliveries
@@ -288,7 +289,8 @@ export function createNotificationDeliveryRepository(
         ) THEN 'stopped' ELSE 'failed' END,
         failed_reason = '再送対象のTokenがないか試行上限に到達しました', next_retry_at = NULL, updated_at = ?
         WHERE EXISTS (SELECT 1 FROM notification_recipients r JOIN notification_schedules s USING (notification_schedule_id) JOIN notifications n USING (notification_id) WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND ${sourceAllowed('n')})
-          AND (status IN ('pending', 'retry_wait') OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?)))
+          AND (status = 'retry_wait' OR (status = 'sending' AND julianday(last_attempt_at) < julianday(?))
+            OR (+status = 'pending' AND firebase_token_id IS NULL))
           AND (firebase_token_id IS NULL OR NOT ${sendableRecipientSql('notification_push_deliveries')} OR (COALESCE(failed_reason, '') <> ? AND attempt_count >= ?) OR EXISTS (
             SELECT 1 FROM notification_recipients r JOIN notification_schedules s USING (notification_schedule_id)
             WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND s.send_status = 'stopped'

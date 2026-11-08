@@ -5,6 +5,7 @@ import { createAdminNotificationCommandRepository } from '../../../src/infrastru
 import { createFirebaseTokenRepository } from '../../../src/infrastructure/repositories/FirebaseTokenRepository';
 import { createNotificationDeliveryRepository } from '../../../src/infrastructure/repositories/NotificationDeliveryRepository';
 import { clearNotificationFixtures } from '../../notificationDeliveryFixtures';
+import { createReadCountingDb } from '../../readCountingDb';
 
 const NOW = '2026-11-27T01:00:00.000Z';
 const TARGET_RECIPIENTS = 50;
@@ -13,47 +14,6 @@ const TARGET_SENT_RECIPIENTS = 1000;
 const MAX_ROWS_READ_TO_SEND = TARGET_RECIPIENTS * 60;
 const MAX_ROWS_READ_TO_FAIL = TARGET_RECIPIENTS * 10;
 const MAX_ROWS_READ_TO_CHECK = 60;
-
-function createReadCountingDb() {
-  let rowsRead = 0;
-  const wrap = (statement: D1PreparedStatement): D1PreparedStatement =>
-    ({
-      statement,
-      bind: (...values: unknown[]) => wrap(statement.bind(...values)),
-      async first<T>(column?: string) {
-        const result = await statement.all<Record<string, unknown>>();
-        rowsRead += result.meta.rows_read;
-        const row = result.results[0];
-        if (!row) return null;
-        return (column ? row[column] : row) as T;
-      },
-      async all<T>() {
-        const result = await statement.all<T>();
-        rowsRead += result.meta.rows_read;
-        return result;
-      },
-      async run<T>() {
-        const result = await statement.run<T>();
-        rowsRead += result.meta.rows_read;
-        return result;
-      },
-    }) as unknown as D1PreparedStatement;
-  const db = {
-    prepare: (query: string) => wrap(env.DB.prepare(query)),
-    async batch(statements: D1PreparedStatement[]) {
-      const results = await env.DB.batch(
-        statements.map(
-          statement =>
-            (statement as unknown as { statement: D1PreparedStatement })
-              .statement
-        )
-      );
-      for (const result of results) rowsRead += result.meta.rows_read;
-      return results;
-    },
-  } as unknown as D1Database;
-  return { db, rowsRead: () => rowsRead };
-}
 
 async function insertSendingSchedule(
   actorUserId: number,
@@ -178,6 +138,43 @@ describe('送信済みの配信と、配信中のほかの予約があるとき�
     expect(hasPending).toBe(true);
     expect(completed).toBe(false);
     expect(rowsRead()).toBeLessThan(MAX_ROWS_READ_TO_CHECK);
+  });
+
+  it('毎分の後片付けは、片付ける配信がなければ未送信の配信を読まない', async () => {
+    const { db, rowsRead } = createReadCountingDb();
+
+    const retiredScheduleIds = await createNotificationDeliveryRepository(
+      db
+    ).retireUnsendableDeliveries(NOW, NOW, 6);
+
+    expect(retiredScheduleIds).toEqual([]);
+    expect(rowsRead()).toBeLessThan(MAX_ROWS_READ_TO_CHECK);
+  });
+
+  it('毎分の後片付けは、Tokenを失った未送信の配信だけを読んで失敗にする', async () => {
+    await env.DB.prepare(
+      `DELETE FROM firebase_tokens WHERE firebase_token_id = (
+         SELECT d.firebase_token_id FROM notification_push_deliveries d
+         JOIN notification_recipients r USING (notification_recipient_id)
+         WHERE r.notification_schedule_id = ? AND d.status = 'pending'
+         LIMIT 1
+       )`
+    )
+      .bind(targetScheduleId)
+      .run();
+    const { db, rowsRead } = createReadCountingDb();
+
+    const retiredScheduleIds = await createNotificationDeliveryRepository(
+      db
+    ).retireUnsendableDeliveries(NOW, NOW, 6);
+
+    expect(retiredScheduleIds).toEqual([targetScheduleId]);
+    expect(rowsRead()).toBeLessThan(MAX_ROWS_READ_TO_CHECK);
+    const retired = await env.DB.prepare(
+      `SELECT status FROM notification_push_deliveries
+       WHERE firebase_token_id IS NULL`
+    ).all<{ status: string }>();
+    expect(retired.results).toEqual([{ status: 'failed' }]);
   });
 
   it('送信対象の予約の検索は、配信数に比例した行数を読まない', async () => {

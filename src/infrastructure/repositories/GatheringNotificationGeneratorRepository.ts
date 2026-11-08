@@ -23,9 +23,10 @@ export function createGatheringNotificationGeneratorRepository(
     holdAutomaticSchedules,
     async clearAutomaticScheduleHold(gatheringId, expectedGatheringTime) {
       await db
+        // send_statusのindexから引くとほかの集合の予定中の予約もすべて読むため、集合の通知から引く。
         .prepare(
           `UPDATE notification_schedules SET failed_reason = NULL
-           WHERE send_status = 'scheduled' AND started_at IS NULL
+           WHERE +send_status = 'scheduled' AND started_at IS NULL
              AND scheduled_by_user_id IS NULL
              AND failed_reason = ?
              AND notification_id IN (
@@ -34,8 +35,11 @@ export function createGatheringNotificationGeneratorRepository(
                JOIN gatherings g ON g.gathering_id = n.source_id
                WHERE n.source_type = 'gathering'
                  AND n.source_id = ?
-                 AND n.created_at = notification_schedules.created_at
                  AND g.gathering_time IS ?
+             )
+             AND created_at = (
+               SELECT n.created_at FROM notifications n
+               WHERE n.notification_id = notification_schedules.notification_id
              )`
         )
         .bind(AUTOMATIC_SYNC_PENDING_REASON, gatheringId, expectedGatheringTime)
