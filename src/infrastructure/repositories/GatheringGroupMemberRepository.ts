@@ -6,6 +6,12 @@ import { IGatheringGroupMemberRepository } from '../../domain/interfaces/reposit
 import * as schema from '../database/schema';
 import { gathering_group_members, gatherings, users } from '../database/schema';
 
+// D1はバインド変数が1クエリ100個まで。他のRepositoryのように100件ずつに分けると、
+// 削除と追加を1つのbatchで原子的に反映できなくなるため、JSON配列1つで渡す。
+function jsonIds(ids: number[]) {
+  return sql`(SELECT value FROM json_each(${JSON.stringify(ids)}))`;
+}
+
 function buildAddMembersStatement(
   orm: ReturnType<typeof drizzle<typeof schema>>,
   gatheringId: number,
@@ -32,7 +38,7 @@ function buildAddMembersStatement(
           .from(users)
           .where(
             and(
-              inArray(users.id, addUserIds),
+              inArray(users.id, jsonIds(addUserIds)),
               eq(users.deletionStatus, 'active')
             )
           )
@@ -104,7 +110,10 @@ export function createGatheringGroupMemberRepository(
         // PUTでの参加者集合指定によって復活させないため、deletion_statusが
         // 'active'のユーザーのみを実在するものとして扱う。
         .where(
-          and(inArray(users.id, userIds), eq(users.deletionStatus, 'active'))
+          and(
+            inArray(users.id, jsonIds(userIds)),
+            eq(users.deletionStatus, 'active')
+          )
         )
         .all();
       const existingIds = new Set(existing.map(row => row.id));
@@ -124,7 +133,7 @@ export function createGatheringGroupMemberRepository(
           .where(
             and(
               eq(gathering_group_members.gatheringId, gatheringId),
-              inArray(gathering_group_members.userId, removeUserIds)
+              inArray(gathering_group_members.userId, jsonIds(removeUserIds))
             )
           );
 
