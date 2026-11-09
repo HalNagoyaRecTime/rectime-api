@@ -8,18 +8,23 @@ import type {
 // 使うと、呼び出し側の指定順に左右されてしまうため、常にDB上の登録順を
 // 正として名前を再計算する。
 //
+// teamIdExprは対象のteam_idを表すSQL式(プレースホルダ1個分)で、文中に
+// 複数回(現状4回)現れる。D1は番号付きプレースホルダを使えないため、
+// 呼び出し側はbindValueをその回数分だけ渡す。
+//
 // 所属クラスが0件になった編成は、名前を空にせず(team_name NOT NULLに違反する)
 // 据え置く。空になった編成はteamCleanupで削除されるため、名前は見られない。
 // 計算結果が今の名前と同じ場合は何もしない。無関係な更新のたびにteamの
 // updated_atだけが進んでしまうのを防ぐため。
-export function buildRecalculateTeamNameStatement(
+function recalculateTeamNameStatement(
   db: D1Database,
-  teamId: number
+  teamIdExpr: string,
+  bindValue: unknown
 ): D1PreparedStatement {
   const newNameExpr = `(
     SELECT GROUP_CONCAT(class_code, ' ') FROM (
       SELECT class_code FROM class_rooms
-      WHERE team_id = ?
+      WHERE team_id = ${teamIdExpr}
       ORDER BY class_room_id ASC
     )
   )`;
@@ -28,9 +33,29 @@ export function buildRecalculateTeamNameStatement(
       `UPDATE teams
          SET team_name = ${newNameExpr},
              updated_at = CURRENT_TIMESTAMP
-       WHERE team_id = ?
-         AND EXISTS (SELECT 1 FROM class_rooms WHERE team_id = ?)
+       WHERE team_id = ${teamIdExpr}
+         AND EXISTS (SELECT 1 FROM class_rooms WHERE team_id = ${teamIdExpr})
          AND team_name IS NOT ${newNameExpr}`
     )
-    .bind(teamId, teamId, teamId, teamId);
+    .bind(bindValue, bindValue, bindValue, bindValue);
+}
+
+export function buildRecalculateTeamNameStatement(
+  db: D1Database,
+  teamId: number
+): D1PreparedStatement {
+  return recalculateTeamNameStatement(db, '?', teamId);
+}
+
+// 対象チームを一時的な名前で逆引きして名前を再計算する。新規チームの
+// team_idがまだJS側に戻ってきていない(同バッチ内で確定させたい)作成経路で使う。
+export function buildRecalculateTeamNameByTeamNameStatement(
+  db: D1Database,
+  teamName: string
+): D1PreparedStatement {
+  return recalculateTeamNameStatement(
+    db,
+    '(SELECT team_id FROM teams WHERE team_name = ?)',
+    teamName
+  );
 }

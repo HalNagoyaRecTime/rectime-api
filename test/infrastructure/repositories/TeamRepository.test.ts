@@ -300,6 +300,23 @@ describe('TeamRepository', () => {
       });
     });
 
+    it('既存の単独編成(team_nameが再作成名と同じ)と同じクラスだけでチームを作り直せる', async () => {
+      // 単独編成のteam_nameはclass_codeそのものであり、作り直す新チームの
+      // 名前と一致する。既存の単独編成が残ったまま同名のチームを作ろうとして
+      // UNIQUE制約に違反しないことを確認する。
+      const soloTeamId = await insertTeam('1A');
+      await insertClassRoom('1A', soloTeamId);
+
+      const created = await repo.createTeam({ class_codes: ['1A'] });
+
+      expect(created).toMatchObject({
+        team_name: '1A',
+        registered_classes: ['1A'],
+      });
+      expect(created.team_id).not.toBe(soloTeamId);
+      await expect(repo.exists(soloTeamId)).resolves.toBe(false);
+    });
+
     it('チーム名はリクエストの並び順でなく、クラスの登録順(class_room_id)で組み立てる', async () => {
       await insertClassRoom('1A');
       await insertClassRoom('1B');

@@ -1,6 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import {
-  buildTeamName,
   type RankingEntryEntity,
   type RankingListOptions,
   type TeamEntity,
@@ -10,7 +9,10 @@ import {
 import type { ITeamRepository } from '../../domain/interfaces/repositories/ITeamRepository';
 import { chunkArray } from './chunk';
 import { buildCleanupEmptyTeamStatements } from './teamCleanup';
-import { buildRecalculateTeamNameStatement } from './teamNaming';
+import {
+  buildRecalculateTeamNameByTeamNameStatement,
+  buildRecalculateTeamNameStatement,
+} from './teamNaming';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
 const CLASS_CODE_CHUNK_SIZE = D1_MAX_BOUND_PARAMETERS - 1;
@@ -124,6 +126,11 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
   // 無いクラスは外す。class_rooms.team_idはNOT NULLで行き先が要るため、
   // 外れたクラスは(ClassRoomRepository.createの新規team作成と同じく)
   // 自分専用の単独編成へ戻す。
+  //
+  // 新しい単独編成は、まだどのチーム名とも衝突しない一時名で作ってから
+  // クラスを付け替え、最後に登録順の名前へ上書きする。外れるクラスのコード
+  // そのものを名前にすると、同名の編成が既存データ上に残っている場合に
+  // UNIQUE制約へ衝突する恐れがあるため。
   async function detachRemovedClassRooms(
     teamId: number,
     keepCodes: string[]
@@ -138,11 +145,11 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     const removed = current.results.filter(row => !keepSet.has(row.class_code));
 
     for (const row of removed) {
-      const provisionalName = buildTeamName([row.class_code]);
+      const placeholderName = `__detaching_class_room_${row.class_room_id}__`;
       await db.batch([
         db
           .prepare('INSERT INTO teams (team_name) VALUES (?)')
-          .bind(provisionalName),
+          .bind(placeholderName),
         db
           .prepare(
             `UPDATE class_rooms
@@ -150,7 +157,8 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
                    updated_at = CURRENT_TIMESTAMP
              WHERE class_room_id = ?`
           )
-          .bind(provisionalName, row.class_room_id),
+          .bind(placeholderName, row.class_room_id),
+        buildRecalculateTeamNameByTeamNameStatement(db, placeholderName),
       ]);
     }
   }
@@ -160,6 +168,10 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
   // 掃除し、空にならず残った移動元の編成・付け替え先の編成はそれぞれ
   // class_room_idの登録順で名前を再計算する。移動元をteamIdへ書き換えた後だと
   // 元のteam_idが辿れないため、書き換え前に控えておく。
+  //
+  // 名前の再計算より先に空編成を削除するのは、付け替え先の新しい名前が
+  // (たまたま)移動元の古い名前と一致する場合にUNIQUE制約へ衝突しないため
+  // (移動元が空になった時点で、その行はもう存在しなくなる)。
   //
   // classCodesが空配列でもteamId自身の掃除・再計算は行う。updateTeamで
   // 全クラスを外された編成が、空のまま古い名前で残り続けないようにする。
@@ -309,12 +321,10 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     },
 
     async createTeam(input: TeamWriteInput): Promise<TeamEntity> {
-      const teamName = buildTeamName(input.class_codes);
-
       if (input.class_codes.length === 0) {
         const created = await db
           .prepare('INSERT INTO teams (team_name) VALUES (?) RETURNING team_id')
-          .bind(teamName)
+          .bind('')
           .first<{ team_id: number }>();
         if (!created) throw new Error('Failed to create team');
 
@@ -323,6 +333,14 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
         return team;
       }
 
+      // 新しいチームは、まだどの名前とも衝突しない一時名で作る。例えば
+      // 単独クラス「1A」を単独チームとして登録し直す場合、求める名前は
+      // 既存の暫定チーム「1A」と同じになるため、最初から確定名で作ると
+      // UNIQUE制約へ衝突する。クラスの付け替え・移動元の後片付けまでを
+      // 一時名のまま同じbatchで行い、最後に登録順の確定名へ上書きする
+      // (空になった移動元の編成は、名前の上書きより先に削除されるため
+      // 衝突しない)。team_idがまだ分からないため、一時名での逆引きを使う。
+      const placeholderName = `__creating_team_${crypto.randomUUID()}__`;
       const previousTeamIds = await findTeamIdsByClassCodes(
         db,
         input.class_codes
@@ -331,7 +349,7 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
       const [createResult] = await db.batch<{ team_id: number }>([
         db
           .prepare('INSERT INTO teams (team_name) VALUES (?) RETURNING team_id')
-          .bind(teamName),
+          .bind(placeholderName),
         ...chunkArray(input.class_codes, CLASS_CODE_CHUNK_SIZE).map(chunk => {
           const placeholders = chunk.map(() => '?').join(', ');
           return db
@@ -341,19 +359,19 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
                    updated_at = CURRENT_TIMESTAMP
                WHERE class_code IN (${placeholders})`
             )
-            .bind(teamName, ...chunk);
+            .bind(placeholderName, ...chunk);
         }),
         ...Array.from(previousTeamIds).flatMap(id =>
           buildCleanupEmptyTeamStatements(db, id)
         ),
+        ...Array.from(previousTeamIds).map(id =>
+          buildRecalculateTeamNameStatement(db, id)
+        ),
+        buildRecalculateTeamNameByTeamNameStatement(db, placeholderName),
       ]);
 
       const created = createResult.results[0];
       if (!created) throw new Error('Failed to create team');
-
-      // リクエストのclass_codesの並び順ではなく、DBの登録順(class_room_id)で
-      // チーム名を再計算する。
-      await buildRecalculateTeamNameStatement(db, created.team_id).run();
 
       const team = await fetchTeamById(created.team_id);
       if (!team) throw new Error('Failed to create team');
@@ -375,6 +393,17 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
       // 再計算する。
       await detachRemovedClassRooms(teamId, input.class_codes);
       await attachClassRooms(teamId, input.class_codes);
+
+      // attachClassRoomsの名前再計算は、計算結果が変わらない場合は
+      // updated_atを進めない(無関係な更新での誤爆防止)。PUTはここまで到達
+      // した時点で書き込み要求自体は処理済みのため、同じclass_codesを
+      // 再送した場合でもupdated_atは進める。
+      await db
+        .prepare(
+          'UPDATE teams SET updated_at = CURRENT_TIMESTAMP WHERE team_id = ?'
+        )
+        .bind(teamId)
+        .run();
 
       return fetchTeamById(teamId);
     },
