@@ -123,7 +123,6 @@ describe('createAuthService', () => {
       findExistingClassRoomAttendanceNumbers: vi.fn(),
       createMany: vi.fn(),
       findByUserId: vi.fn(),
-      anonymizeByUserId: vi.fn(),
     };
     const teacherRepository = buildTeacherRepository();
     const firebaseTokenRepository = buildFirebaseTokenRepository();
@@ -177,7 +176,6 @@ describe('createAuthService', () => {
       findExistingClassRoomAttendanceNumbers: vi.fn(),
       createMany: vi.fn(),
       findByUserId: vi.fn(),
-      anonymizeByUserId: vi.fn(),
     };
     const teacherRepository = buildTeacherRepository();
 
