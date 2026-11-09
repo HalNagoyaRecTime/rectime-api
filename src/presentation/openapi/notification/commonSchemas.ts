@@ -338,6 +338,7 @@ export const notificationRecipientResultDeliverySchema = z
 export const notificationRecipientResultSchema = z
   .object({
     notificationRecipientId: z.number().int().positive(),
+    registeredAt: utcDateTimeSchema.optional(),
     user: notificationUserReferenceSchema,
     deliveries: z.array(notificationRecipientResultDeliverySchema),
   })
@@ -386,6 +387,18 @@ export const notificationResultsQuery = z
   .object({
     page: digitsOnlyInteger(1, Number.MAX_SAFE_INTEGER, 1),
     limit: digitsOnlyInteger(1, 100, 50),
+    search: z.string().trim().max(100).optional(),
+    status: z
+      .enum([
+        'success',
+        'partial',
+        'failed',
+        'processing',
+        'stopped',
+        'no_target',
+      ])
+      .optional(),
+    includeRegisteredAt: z.literal('1').optional(),
   })
   .strict()
   .openapi('NotificationResultsQuery');

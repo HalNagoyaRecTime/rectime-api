@@ -112,6 +112,7 @@ export interface NotificationRecipientResultDeliveryDTO {
 
 export interface NotificationRecipientResultDTO {
   notificationRecipientId: number;
+  registeredAt?: string;
   user: NotificationUserReferenceDTO;
   deliveries: NotificationRecipientResultDeliveryDTO[];
 }
@@ -126,6 +127,10 @@ export interface NotificationScheduleResultsPaginationDTO {
 export interface NotificationScheduleResultsQueryDTO {
   page: number;
   limit: number;
+  search?: string;
+  status?:
+    'success' | 'partial' | 'failed' | 'processing' | 'stopped' | 'no_target';
+  includeRegisteredAt?: '1';
 }
 
 export interface NotificationScheduleResultsResponseDTO {

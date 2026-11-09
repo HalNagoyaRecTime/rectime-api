@@ -118,6 +118,41 @@ describe('NotificationResultQueryRepository', () => {
     ]);
   });
 
+  it('検索と送信結果をページング前に適用し、対象登録時刻を返す', async () => {
+    const scheduleId = await insertSchedule(await insertNotification());
+    const first = await insertUser('対象者 alpha');
+    const second = await insertUser('対象者 beta');
+    await insertRecipient(scheduleId, first);
+    const recipientId = await insertRecipient(scheduleId, second);
+    const token = await insertToken(second, 1, 'filter');
+    await insertDelivery(recipientId, token, {
+      platform: 1,
+      status: 'sent',
+      attemptCount: 1,
+      firstAttemptAt: '2026-07-23T00:00:00.000Z',
+      lastAttemptAt: '2026-07-23T00:00:01.000Z',
+    });
+    const matched = await repository.findScheduleResults(scheduleId, {
+      page: 1,
+      limit: 1,
+      search: 'beta',
+      status: 'success',
+    });
+    expect(matched?.total_count).toBe(1);
+    expect(matched?.recipients[0]).toMatchObject({
+      user_id: second,
+      created_at: expect.any(String),
+    });
+    const none = await repository.findScheduleResults(scheduleId, {
+      page: 1,
+      limit: 1,
+      search: 'beta',
+      status: 'no_target',
+    });
+    expect(none?.total_count).toBe(0);
+    expect(none?.recipients).toEqual([]);
+  });
+
   it('Legacy Notification配下のScheduleはResults対象外としてnullを返す', async () => {
     const notificationId = await insertNotification('manual');
     const legacyScheduleId = await insertSchedule(notificationId);
