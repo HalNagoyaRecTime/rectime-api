@@ -17,6 +17,7 @@ function buildDeps() {
     createUserWithMicrosoftLink: vi.fn(),
     updateUser: vi.fn(),
     linkMicrosoftAccount: vi.fn(),
+    createUserAndTakeOverStudent: vi.fn(),
     markAsDeleted: vi.fn(),
     markAsPurged: vi.fn().mockResolvedValue(true),
     isPurged: vi.fn().mockResolvedValue(false),

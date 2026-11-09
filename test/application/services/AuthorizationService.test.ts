@@ -14,6 +14,7 @@ function buildUserRepository(
     createUserWithMicrosoftLink: vi.fn(),
     updateUser: vi.fn(),
     linkMicrosoftAccount: vi.fn(),
+    createUserAndTakeOverStudent: vi.fn(),
     markAsDeleted: vi.fn(),
     markAsPurged: vi.fn(),
     isPurged: vi.fn(),

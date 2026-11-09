@@ -243,6 +243,98 @@ export function createUserRepository(db: D1Database): IUserRepository {
       }
     },
 
+    async createUserAndTakeOverStudent({
+      studentId,
+      previousUserId,
+      oid,
+      tid,
+      sub,
+      email,
+      displayName,
+    }) {
+      const now = new Date().toISOString();
+
+      // 1回のdb.batch()にまとめ、途中で失敗したら全体を取り消す。新しい
+      // users.user_idは自動採番のため、後続の文はlast_insert_rowid()で
+      // 参照する(StudentRepository.createと同じ形)。UPDATEは
+      // last_insert_rowid()を変えないため、4文とも同じ値を指す。
+      //
+      // 学生の付け替えは「まだ退会済みユーザーに属している」場合だけ行い、
+      // 所属の付け替えとMicrosoft連携の作成は「学生が新しいユーザーに
+      // 付け替わった」場合だけ行う。同時ログインで先に付け替えられていた
+      // 場合は、どれも書き換わらない。
+      const [userResult, , , linkResult] = await db.batch<{ user_id: number }>([
+        // is_live_activeが取れない(退会前のユーザーが無い)場合はNULLになり、
+        // NOT NULL制約でbatch全体が失敗する。
+        db
+          .prepare(
+            `INSERT INTO users (user_name, is_live_active, created_at, updated_at)
+               VALUES (?, (SELECT is_live_active FROM users WHERE user_id = ?), ?, ?)
+               RETURNING user_id`
+          )
+          .bind(displayName, previousUserId, now, now),
+        db
+          .prepare(
+            `UPDATE students
+               SET user_id = last_insert_rowid(), updated_at = ?,
+                   lock_version = lock_version + 1
+               WHERE student_id = ? AND user_id = ?
+                 AND EXISTS (
+                   SELECT 1 FROM users
+                   WHERE users.user_id = ? AND users.deletion_status = 'deleted'
+                 )`
+          )
+          .bind(now, studentId, previousUserId, previousUserId),
+        db
+          .prepare(
+            `UPDATE gathering_group_members
+               SET user_id = last_insert_rowid(), updated_at = ?
+               WHERE user_id = ?
+                 AND EXISTS (
+                   SELECT 1 FROM students
+                   WHERE students.student_id = ?
+                     AND students.user_id = last_insert_rowid()
+                 )`
+          )
+          .bind(now, previousUserId, studentId),
+        db
+          .prepare(
+            `INSERT INTO microsoft_account_links (user_id, oid, tid, created_at, updated_at)
+               SELECT last_insert_rowid(), ?, ?, ?, ?
+               WHERE EXISTS (
+                 SELECT 1 FROM students
+                 WHERE students.student_id = ?
+                   AND students.user_id = last_insert_rowid()
+               )
+               RETURNING user_id`
+          )
+          .bind(oid, tid, now, now, studentId),
+      ]);
+
+      const newUserId = userResult.results[0]?.user_id;
+      if (newUserId === undefined) {
+        throw new Error('Failed to create user');
+      }
+      if (linkResult.results.length === 0) {
+        // 付け替えなかった場合、作った users 行はどこからも参照されない。
+        // createUserWithMicrosoftLink と同じく手動で取り消して孤立させない。
+        await db
+          .prepare('DELETE FROM users WHERE user_id = ?')
+          .bind(newUserId)
+          .run();
+        return null;
+      }
+
+      return {
+        id: String(newUserId),
+        oid,
+        tid,
+        sub,
+        email,
+        display_name: displayName,
+      };
+    },
+
     async updateUser({ userId, oid, tid, sub, email, displayName }) {
       const now = new Date().toISOString();
 
