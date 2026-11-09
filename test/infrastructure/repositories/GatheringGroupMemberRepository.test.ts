@@ -284,6 +284,61 @@ describe('GatheringGroupMemberRepository', () => {
     expect(members).toEqual([]);
   });
 
+  it('Serviceで、既に参加している退会者を含むPUTは保存でき、退会者の所属もそのまま残る', async () => {
+    // 退会した学生の所属は再ログイン時に引き継ぐため残っている。画面は
+    // 今の参加者をそのまま送り返すので、退会者を含んでいても保存できる。
+    const gatheringId = await createGathering('退会者を含む保存');
+    const activeUser = await createUser('現役ユーザー');
+    const retainedUser = await createUser('所属を残した退会者');
+    const addedUser = await createUser('追加するユーザー');
+    await env.DB.prepare(
+      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?), (?, ?)'
+    )
+      .bind(gatheringId, activeUser, gatheringId, retainedUser)
+      .run();
+    await env.DB.prepare(
+      "UPDATE users SET deletion_status = 'deleted' WHERE user_id = ?"
+    )
+      .bind(retainedUser)
+      .run();
+    const service = createGatheringGroupMemberService(repository);
+
+    const result = await service.replaceGatheringMembers(gatheringId, [
+      activeUser,
+      retainedUser,
+      addedUser,
+    ]);
+
+    expect(result.map(m => m.user_id)).toEqual([
+      activeUser,
+      retainedUser,
+      addedUser,
+    ]);
+  });
+
+  it('Serviceで、既に参加している退会者を外すPUTは保存できる', async () => {
+    const gatheringId = await createGathering('退会者を外す保存');
+    const activeUser = await createUser('現役ユーザー');
+    const retainedUser = await createUser('所属を残した退会者');
+    await env.DB.prepare(
+      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?), (?, ?)'
+    )
+      .bind(gatheringId, activeUser, gatheringId, retainedUser)
+      .run();
+    await env.DB.prepare(
+      "UPDATE users SET deletion_status = 'deleted' WHERE user_id = ?"
+    )
+      .bind(retainedUser)
+      .run();
+    const service = createGatheringGroupMemberService(repository);
+
+    const result = await service.replaceGatheringMembers(gatheringId, [
+      activeUser,
+    ]);
+
+    expect(result.map(m => m.user_id)).toEqual([activeUser]);
+  });
+
   it('findMissingUserIdsでのactive確認後にapplyMemberDiff実行までの間で退会しても、削除済みの参加者行を復活させない', async () => {
     const gatheringId = await createGathering('TOCTOU競合');
     const activeUser = await createUser('現役ユーザー');

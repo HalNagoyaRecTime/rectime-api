@@ -100,9 +100,10 @@ export function createGatheringGroupMemberRepository(
       const existing = await orm
         .select({ id: users.id })
         .from(users)
-        // 退会処理(deleteByUserId, #265)でメンバー行を削除済みのユーザーを、
-        // PUTでの参加者集合指定によって復活させないため、deletion_statusが
-        // 'active'のユーザーのみを実在するものとして扱う。
+        // 退会済みのユーザーをPUTで新しく参加者へ加えないため、
+        // deletion_statusが'active'のユーザーのみを実在するものとして扱う。
+        // 既に参加している退会者(所属を残した学生)は、呼び出し側が
+        // 確認の対象から外す。
         .where(
           and(inArray(users.id, userIds), eq(users.deletionStatus, 'active'))
         )

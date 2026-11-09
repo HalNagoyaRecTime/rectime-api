@@ -25,14 +25,6 @@ export function createGatheringGroupMemberService(
     ): Promise<GatheringGroupMemberEntity[]> {
       await ensureGatheringExists(gatheringId);
 
-      if (userIds.length > 0) {
-        const missingUserIds =
-          await gatheringGroupMemberRepository.findMissingUserIds(userIds);
-        if (missingUserIds.length > 0) {
-          throw new Error('User not found');
-        }
-      }
-
       // 変更のないメンバーの行(gathering_group_member_id・created_at)を
       // 保持するため、全削除→全挿入ではなく現在の参加者集合との差分だけを
       // Repositoryへ反映する。同一内容の再送はPUTを非冪等にしない。
@@ -51,6 +43,17 @@ export function createGatheringGroupMemberService(
       const removeUserIds = currentMembers
         .map(m => m.user_id)
         .filter(userId => !targetUserIds.has(userId));
+
+      // 存在確認は新しく追加するユーザーだけに行う。退会した学生の所属は
+      // 再ログイン時に引き継ぐため残っており、画面は今の参加者をそのまま
+      // 送り返す。全員を確認すると、退会者が1人いるだけで保存できなくなる。
+      if (addUserIds.length > 0) {
+        const missingUserIds =
+          await gatheringGroupMemberRepository.findMissingUserIds(addUserIds);
+        if (missingUserIds.length > 0) {
+          throw new Error('User not found');
+        }
+      }
 
       // 無変更の冪等な再送では、直前のfindByGatheringIdの結果と
       // applyMemberDiffが返す内容が一致するため、そのまま返して
