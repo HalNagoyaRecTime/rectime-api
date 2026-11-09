@@ -299,6 +299,15 @@ describe('TeamRepository', () => {
         registered_classes: [],
       });
     });
+
+    it('チーム名はリクエストの並び順でなく、クラスの登録順(class_room_id)で組み立てる', async () => {
+      await insertClassRoom('1A');
+      await insertClassRoom('1B');
+
+      const created = await repo.createTeam({ class_codes: ['1B', '1A'] });
+
+      expect(created.team_name).toBe('1A 1B');
+    });
   });
 
   describe('updateTeam', () => {
@@ -395,6 +404,18 @@ describe('TeamRepository', () => {
       expect(sourceTeam).not.toBeNull();
     });
 
+    it('既存チームへの追加後、名前はリクエストの並び順でなくクラスの登録順(class_room_id)で再計算される', async () => {
+      const teamId = await insertTeam('チーム');
+      await insertClassRoom('1A', teamId);
+      await insertClassRoom('1B');
+
+      const updated = await repo.updateTeam(teamId, {
+        class_codes: ['1B', '1A'],
+      });
+
+      expect(updated?.team_name).toBe('1A 1B');
+    });
+
     it('class_codesに無いクラスは自分専用のチームへ戻る(完全置換)', async () => {
       const teamId = await insertTeam('赤組');
       await insertClassRoom('1A', teamId);
@@ -405,6 +426,8 @@ describe('TeamRepository', () => {
       });
 
       expect(updated?.registered_classes).toEqual(['1A']);
+      // 1Bが抜けた分、残った編成の名前も登録順で再計算されるはず。
+      expect(updated?.team_name).toBe('1A');
       const detached = await env.DB.prepare(
         `SELECT t.team_name, t.team_id
          FROM class_rooms c
@@ -415,7 +438,7 @@ describe('TeamRepository', () => {
       expect(detached?.team_id).not.toBe(teamId);
     });
 
-    it('class_codesに空配列を渡すと所属クラスが全部外れる', async () => {
+    it('class_codesに空配列を渡すと所属クラスが全部外れ、得点が無ければ編成自体も削除される', async () => {
       const teamId = await insertTeam('青組');
       await insertClassRoom('3A', teamId);
 
@@ -423,9 +446,32 @@ describe('TeamRepository', () => {
         class_codes: [],
       });
 
-      expect(updated?.registered_classes).toEqual([]);
+      // 所属クラスが無くなり得点も無いため、他の空編成と同様に削除される。
+      // 古い名前のまま空の編成として残り続けないようにする。
+      expect(updated).toBeNull();
+      await expect(repo.exists(teamId)).resolves.toBe(false);
       const detached = await env.DB.prepare(
         `SELECT team_id FROM class_rooms WHERE class_code = '3A'`
+      ).first<{ team_id: number }>();
+      expect(detached?.team_id).not.toBe(teamId);
+    });
+
+    it('得点が残っている編成はclass_codesに空配列を渡しても削除されず、所属クラスだけ外れる', async () => {
+      const teamId = await insertTeam('紫組');
+      await insertClassRoom('3B', teamId);
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 10)'
+      )
+        .bind(teamId)
+        .run();
+
+      const updated = await repo.updateTeam(teamId, {
+        class_codes: [],
+      });
+
+      expect(updated?.registered_classes).toEqual([]);
+      const detached = await env.DB.prepare(
+        `SELECT team_id FROM class_rooms WHERE class_code = '3B'`
       ).first<{ team_id: number }>();
       expect(detached?.team_id).not.toBe(teamId);
     });
