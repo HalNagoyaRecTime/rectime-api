@@ -340,6 +340,29 @@ describe('StudentRepository', () => {
       expect(await repo.findById(999999)).toBeNull();
     });
 
+    it.each(['deleted', 'deletion_pending'] as const)(
+      '退会中(%s)の学生は null を返す',
+      async deletionStatus => {
+        const user = await env.DB.prepare(
+          "INSERT INTO users (user_name, deletion_status) VALUES ('削除済みユーザー', ?) RETURNING user_id"
+        )
+          .bind(deletionStatus)
+          .first<{ user_id: number }>();
+        const student = await env.DB.prepare(
+          'INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, ?, ?) RETURNING student_id'
+        )
+          .bind(
+            user!.user_id,
+            seeded.students[0].classRoomId,
+            deletionStatus === 'deleted' ? 91 : 92,
+            `FIND-BY-ID-${deletionStatus}`
+          )
+          .first<{ student_id: number }>();
+
+        await expect(repo.findById(student!.student_id)).resolves.toBeNull();
+      }
+    );
+
     it('students.updated_at を updatedAt として一覧・詳細の両方で返す', async () => {
       const target = seeded.students[0];
       const row = await env.DB.prepare(

@@ -79,13 +79,16 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
   const orm = drizzle(db, { schema });
   return {
     async findById(id: number): Promise<StudentEntity | null> {
+      // 退会中の学生(退会したusersを指すstudents行)は管理の対象外とし、
+      // 取得・更新・クラス変更を404にする。編集を許すと、匿名化した
+      // users.user_nameに氏名が書き戻されるため。
       const result = await orm
         .select()
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
         .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
         .leftJoin(staffs, eq(users.id, staffs.userId))
-        .where(eq(students.id, id))
+        .where(and(eq(students.id, id), eq(users.deletionStatus, 'active')))
         .get();
 
       return result ? toDomain(result) : null;
