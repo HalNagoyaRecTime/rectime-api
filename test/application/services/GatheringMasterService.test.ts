@@ -277,9 +277,7 @@ describe('Gathering master services', () => {
 
     expect(repository.existsGathering).toHaveBeenCalledTimes(2);
     expect(repository.findByGatheringId).toHaveBeenCalledWith(1);
-    // 存在確認は新しく追加するユーザーだけに行うため、既に参加している
-    // ユーザーだけの場合は呼ばない。
-    expect(repository.findMissingUserIds).not.toHaveBeenCalled();
+    expect(repository.findMissingUserIds).toHaveBeenCalledWith([2]);
     // 差分が空(無変更の冪等な再送)の場合、直前のfindByGatheringIdの
     // 結果をそのまま返しapplyMemberDiffの呼び出し自体を省略する。
     expect(repository.applyMemberDiff).not.toHaveBeenCalled();
@@ -321,7 +319,6 @@ describe('Gathering master services', () => {
       [3],
       [toRemove.user_id]
     );
-    expect(repository.findMissingUserIds).toHaveBeenCalledWith([3]);
   });
 
   it('存在しない集合は一覧取得前にエラーにする', async () => {

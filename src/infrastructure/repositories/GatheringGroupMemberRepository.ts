@@ -49,16 +49,27 @@ function buildAddMembersStatement(
   );
 }
 
-function selectMembers(
+// 退会中の参加者(所属を残した学生)は返さない。参加者の置き換え
+// (replaceGatheringMembers)は返した参加者だけを「今の参加者」として扱うため、
+// 退会中の参加者は外す対象にも入らず、所属が残る。再ログインで新しい
+// ユーザーへ付け替わると、再び返すようになる。
+async function selectMembers(
   orm: ReturnType<typeof drizzle<typeof schema>>,
   gatheringId: number
 ) {
-  return orm
+  const rows = await orm
     .select()
     .from(gathering_group_members)
-    .where(eq(gathering_group_members.gatheringId, gatheringId))
+    .innerJoin(users, eq(users.id, gathering_group_members.userId))
+    .where(
+      and(
+        eq(gathering_group_members.gatheringId, gatheringId),
+        eq(users.deletionStatus, 'active')
+      )
+    )
     .orderBy(asc(gathering_group_members.id))
     .all();
+  return rows.map(row => row.gathering_group_members);
 }
 
 function toEntity(
@@ -102,8 +113,8 @@ export function createGatheringGroupMemberRepository(
         .from(users)
         // 退会済みのユーザーをPUTで新しく参加者へ加えないため、
         // deletion_statusが'active'のユーザーのみを実在するものとして扱う。
-        // 既に参加している退会者(所属を残した学生)は、呼び出し側が
-        // 確認の対象から外す。
+        // 所属を残した退会中の参加者はfindByGatheringIdが返さないため、
+        // 画面から送り返されることもない。
         .where(
           and(inArray(users.id, userIds), eq(users.deletionStatus, 'active'))
         )
