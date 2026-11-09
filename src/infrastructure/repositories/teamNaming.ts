@@ -47,6 +47,20 @@ export function buildRecalculateTeamNameStatement(
   return recalculateTeamNameStatement(db, '?', teamId);
 }
 
+// 対象クラスが所属するチームを、更新後のclass_rooms.team_idから逆引きして
+// 名前を再計算する。呼び出し時点でteam_idが分からない(直前の同バッチの
+// 更新で変わりうる)更新経路で使う。
+export function buildRecalculateTeamNameForClassRoomStatement(
+  db: D1Database,
+  classRoomId: number
+): D1PreparedStatement {
+  return recalculateTeamNameStatement(
+    db,
+    '(SELECT team_id FROM class_rooms WHERE class_room_id = ?)',
+    classRoomId
+  );
+}
+
 // 対象チームを一時的な名前で逆引きして名前を再計算する。新規チームの
 // team_idがまだJS側に戻ってきていない(同バッチ内で確定させたい)作成経路で使う。
 export function buildRecalculateTeamNameByTeamNameStatement(

@@ -18,6 +18,10 @@ import { buildTeamName } from '../../domain/entities/Team';
 import type { IClassRoomRepository } from '../../domain/interfaces/repositories/IClassRoomRepository';
 import { chunkArray } from './chunk';
 import { buildCleanupEmptyTeamStatements } from './teamCleanup';
+import {
+  buildRecalculateTeamNameForClassRoomStatement,
+  buildRecalculateTeamNameStatement,
+} from './teamNaming';
 import { escapeLikePattern } from '../helpers/escapeLikePattern';
 
 const DEFAULT_LIMIT = 50;
@@ -344,39 +348,40 @@ export function createClassRoomRepository(
 
     async create(input: ClassRoomInput): Promise<ClassRoomEntity> {
       if (input.teamId !== null) {
-        let row;
+        let row: { class_room_id: number } | undefined;
         try {
-          const insertStatement = orm
-            .insert(class_rooms)
-            .values({
-              classCode: input.classCode,
-              name: input.className,
-              teacherId: input.teacherId,
-              teamId: input.teamId,
-            })
-            .returning({ id: class_rooms.id });
-          // 担任付きで作成すると、その教員の担当クラスが増える。教員の版番号も同じ
-          // batch で進め、取得済みの古い担当クラスのPUTが、増えた担当を外さないようにする。
-          if (input.teacherId === null) {
-            row = await insertStatement.get();
-          } else {
-            const [inserted] = await orm.batch([
-              insertStatement,
-              orm
-                .update(teachers)
-                .set({
-                  updatedAt: sql`CURRENT_TIMESTAMP`,
-                  lockVersion: sql`${teachers.lockVersion} + 1`,
-                })
-                .where(eq(teachers.id, input.teacherId)),
-            ]);
-            row = inserted[0];
+          // 既存チームへ直接追加するため、そのチームの構成が変わる。
+          // クラスの追加とチーム名の再計算を同じbatchで行い、名前の再計算
+          // だけが失敗してクラスが登録済みのまま取り残される状態を避ける。
+          const statements: D1PreparedStatement[] = [
+            db
+              .prepare(
+                `INSERT INTO class_rooms (class_code, class_name, teacher_id, team_id)
+                 VALUES (?, ?, ?, ?)
+                 RETURNING class_room_id`
+              )
+              .bind(
+                input.classCode,
+                input.className,
+                input.teacherId,
+                input.teamId
+              ),
+          ];
+          // 担任付きで作成すると、その教員の担当クラスが増えるため、版番号も進める
+          if (input.teacherId !== null) {
+            statements.push(bumpTeachersStatement([input.teacherId]));
           }
+          statements.push(buildRecalculateTeamNameStatement(db, input.teamId));
+
+          const [insertResult] = await db.batch<{ class_room_id: number }>(
+            statements
+          );
+          row = insertResult.results[0];
         } catch (error) {
           throw unwrapDatabaseError(error);
         }
         if (!row) throw new Error('Failed to create class');
-        const created = await findOne(eq(class_rooms.id, row.id));
+        const created = await findOne(eq(class_rooms.id, row.class_room_id));
         if (!created) throw new Error('Failed to fetch created class');
         return created;
       }
@@ -501,9 +506,12 @@ export function createClassRoomRepository(
       // GET時点でnullだった値がそのまま送られて割り当てを消してしまう。
       let row;
       try {
-        const [, updateResult] = await db.batch<{ class_room_id: number }>(
-          buildUpdateStatements(id, input)
-        );
+        // class_codeが変わるとチーム名(class_codeの連結)も変わるため、
+        // 所属チームの名前を再計算する。
+        const [, updateResult] = await db.batch<{ class_room_id: number }>([
+          ...buildUpdateStatements(id, input),
+          buildRecalculateTeamNameForClassRoomStatement(db, id),
+        ]);
         row = updateResult.results[0];
       } catch (error) {
         throw unwrapDatabaseError(error);
@@ -522,6 +530,11 @@ export function createClassRoomRepository(
         [, updateResult] = await db.batch<{ class_room_id: number }>([
           ...buildUpdateStatements(id, input),
           ...buildCleanupEmptyTeamStatements(db, previousTeamId),
+          // 移動元の編成が空にならず残った場合に備え、登録順で名前を
+          // 再計算する(空になった場合は直前の掃除で削除済みのため無害)。
+          buildRecalculateTeamNameStatement(db, previousTeamId),
+          // 移動先の編成も、このクラスが加わった後の構成で再計算する。
+          buildRecalculateTeamNameForClassRoomStatement(db, id),
         ]);
       } catch (error) {
         throw unwrapDatabaseError(error);
@@ -543,6 +556,9 @@ export function createClassRoomRepository(
       const [deleteResult] = await db.batch<unknown>([
         db.prepare('DELETE FROM class_rooms WHERE class_room_id = ?').bind(id),
         ...buildCleanupEmptyTeamStatements(db, teamId),
+        // チームが空にならず残った場合に備え、登録順で名前を再計算する
+        // (空になった場合は直前の掃除で削除済みのため無害)。
+        buildRecalculateTeamNameStatement(db, teamId),
       ]);
       return (deleteResult.meta?.changes ?? 0) > 0;
     },
