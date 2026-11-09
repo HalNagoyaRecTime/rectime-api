@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import { asc, count, eq } from 'drizzle-orm';
+import { and, asc, count, eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { EventGatheringEntity } from '../../domain/entities/EventGathering';
 import type { IEventGatheringSettingsRepository } from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
@@ -19,6 +19,7 @@ export function createEventGatheringSettingsRepository(
     async findByEventId(eventId: number): Promise<EventGatheringEntity[]> {
       // 参加人数は集合予定ごとに個別に数えず、LEFT JOIN + GROUP BY で
       // 1回のクエリに収める。参加者がいない集合予定は0件として残る。
+      // 退会中の参加者(所属を残した学生)は、通知の対象と揃えて数えない。
       return orm
         .select({
           gathering_id: gatherings.id,
@@ -37,7 +38,14 @@ export function createEventGatheringSettingsRepository(
         )
         .leftJoin(
           gathering_group_members,
-          eq(gathering_group_members.gatheringId, gatherings.id)
+          and(
+            eq(gathering_group_members.gatheringId, gatherings.id),
+            sql`EXISTS (
+              SELECT 1 FROM users
+              WHERE users.user_id = ${gathering_group_members.userId}
+                AND users.deletion_status = 'active'
+            )`
+          )
         )
         .where(eq(gatherings.eventId, eventId))
         .groupBy(gatherings.id, gathering_spots.id)
