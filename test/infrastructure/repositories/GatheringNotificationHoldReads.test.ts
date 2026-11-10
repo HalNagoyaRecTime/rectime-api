@@ -62,3 +62,27 @@ it('集合の自動通知の保留解除は、ほかの集合の予定中の予�
   expect(held.results).toEqual([{ source_id: target!.gathering_id }]);
   expect(rowsRead()).toBeLessThan(MAX_ROWS_READ);
 });
+
+it('集合の自動通知の保留は、ほかの集合の予定中の予約を読まない', async () => {
+  await env.DB.prepare(
+    'UPDATE notification_schedules SET failed_reason = NULL'
+  ).run();
+  const target = await env.DB.prepare(
+    'SELECT min(gathering_id) AS gathering_id FROM gatherings'
+  ).first<{ gathering_id: number }>();
+  const { db, rowsRead } = createReadCountingDb();
+
+  await createGatheringNotificationGeneratorRepository(
+    db
+  ).holdAutomaticSchedules(target!.gathering_id);
+
+  const held = await env.DB.prepare(
+    `SELECT n.source_id FROM notification_schedules s
+     JOIN notifications n USING (notification_id)
+     WHERE s.failed_reason = ?`
+  )
+    .bind(AUTOMATIC_SYNC_PENDING_REASON)
+    .all<{ source_id: number }>();
+  expect(held.results).toEqual([{ source_id: target!.gathering_id }]);
+  expect(rowsRead()).toBeLessThan(MAX_ROWS_READ);
+});

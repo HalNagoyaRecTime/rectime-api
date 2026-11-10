@@ -7,13 +7,17 @@ export function createGatheringNotificationGeneratorRepository(
 ): IGatheringNotificationGeneratorRepository {
   const holdAutomaticSchedules = async (gatheringId: number) => {
     await db
+      // send_statusのindexから引くとほかの集合の予定中の予約もすべて読むため、集合の通知から引く。
       .prepare(
         `UPDATE notification_schedules SET failed_reason = ?
-         WHERE send_status = 'scheduled' AND started_at IS NULL AND scheduled_by_user_id IS NULL
+         WHERE +send_status = 'scheduled' AND started_at IS NULL AND scheduled_by_user_id IS NULL
            AND notification_id IN (
              SELECT notification_id FROM notifications
              WHERE source_type = 'gathering' AND source_id = ?
-               AND notifications.created_at = notification_schedules.created_at
+           )
+           AND created_at = (
+             SELECT n.created_at FROM notifications n
+             WHERE n.notification_id = notification_schedules.notification_id
            )`
       )
       .bind(AUTOMATIC_SYNC_PENDING_REASON, gatheringId)
