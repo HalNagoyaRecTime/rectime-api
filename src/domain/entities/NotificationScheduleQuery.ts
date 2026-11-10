@@ -31,7 +31,7 @@ export type NotificationScheduleQueryCreation =
       };
     };
 
-export interface NotificationScheduleQueryListItem {
+export interface NotificationScheduleQueryBase {
   notification_id: number;
   notification_schedule_id: number;
   push_title: string;
@@ -48,7 +48,7 @@ export interface NotificationScheduleQueryListItem {
   creation: NotificationScheduleQueryCreation;
 }
 
-export interface NotificationScheduleQueryDetail extends NotificationScheduleQueryListItem {
+export interface NotificationScheduleQueryProgress {
   audience_progress: {
     total_count: number;
     resolved_count: number;
@@ -67,3 +67,15 @@ export interface NotificationScheduleQueryDetail extends NotificationScheduleQue
     stopped_count: number;
   };
 }
+
+export interface NotificationScheduleQueryListItem extends NotificationScheduleQueryBase {
+  audience_progress:
+    NotificationScheduleQueryProgress['audience_progress'] | null;
+  recipient_progress:
+    NotificationScheduleQueryProgress['recipient_progress'] | null;
+  delivery_progress:
+    NotificationScheduleQueryProgress['delivery_progress'] | null;
+}
+
+export interface NotificationScheduleQueryDetail
+  extends NotificationScheduleQueryBase, NotificationScheduleQueryProgress {}

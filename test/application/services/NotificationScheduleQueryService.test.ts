@@ -39,7 +39,7 @@ function createRepository(): INotificationScheduleQueryRepository {
 }
 
 describe('NotificationScheduleQueryService', () => {
-  it('一覧は軽量なSchedule items shapeを返し、期間をRepositoryへ渡す', async () => {
+  it('一覧は各Scheduleの進み具合を含めて返し、期間をRepositoryへ渡す', async () => {
     const repository = createRepository();
     const service = createNotificationScheduleQueryService(repository);
 
@@ -68,11 +68,46 @@ describe('NotificationScheduleQueryService', () => {
             user: null,
             source: { type: 'gathering', id: 51, label: null },
           },
+          audienceProgress: { totalCount: 3, resolvedCount: 2 },
+          recipientProgress: { count: 2, status: 'pending' },
+          deliveryProgress: {
+            totalCount: 4,
+            pendingCount: 0,
+            sendingCount: 0,
+            retryWaitCount: 1,
+            sentCount: 1,
+            failedCount: 1,
+            stoppedCount: 1,
+          },
         },
       ],
     });
-    expect(result.items[0]).not.toHaveProperty('audienceProgress');
-    expect(result.items[0]).not.toHaveProperty('deliveryProgress');
+  });
+
+  it('一覧で進み具合の無いScheduleは、進み具合をnullで返す', async () => {
+    const repository = createRepository();
+    vi.mocked(repository.findAll).mockResolvedValue([
+      {
+        ...detail,
+        status: 'completed',
+        audience_progress: null,
+        recipient_progress: null,
+        delivery_progress: null,
+      },
+    ]);
+    const service = createNotificationScheduleQueryService(repository);
+
+    const result = await service.getNotificationSchedules({
+      from: '2026-07-23T00:00:00Z',
+      to: '2026-07-23T23:59:59Z',
+    });
+
+    expect(result.items[0]).toMatchObject({
+      status: 'completed',
+      audienceProgress: null,
+      recipientProgress: null,
+      deliveryProgress: null,
+    });
   });
 
   it('未指定期間には当日のJST範囲を使い、response metadataを追加しない', async () => {

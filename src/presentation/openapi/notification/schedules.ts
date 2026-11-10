@@ -73,6 +73,8 @@ export const notificationScheduleListRoute = createRoute({
   path: '/admin/notifications/schedules',
   tags: ['Notification schedules'],
   summary: '通知スケジュール一覧を取得する',
+  description:
+    'completed・failedのScheduleは進み具合を数え直さずnullで返す。この2つは以後進み具合が変わらないので、必要なら詳細APIで1回だけ取得する。',
   security: bearerAuth,
   request: { query: notificationDateRangeQuery },
   responses: {
