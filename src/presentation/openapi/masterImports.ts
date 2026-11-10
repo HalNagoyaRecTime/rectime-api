@@ -44,7 +44,7 @@ export const masterImportExcludedRowSchema = z
     }),
     reason: z.enum(MASTER_IMPORT_EXCLUSION_REASONS).openapi({
       description:
-        'student_already_registered: 登録済みの学生。student_already_registered_inactive: 登録済みだが無効化されている学生。student_account_deleted: 退会手続き中または退会済みの学生。退会の後片付けが終わると学籍番号が空き、取り込み直すと新規として登録できる',
+        'student_already_registered: 登録済みの学生。student_already_registered_inactive: 登録済みだが無効化されている学生。student_account_deleted: 退会手続き中または退会済みの学生。退会しても学生情報は残り、本人が同じ学校アカウントで再ログインすると再び関連付けられる',
     }),
   })
   .openapi('MasterImportExcludedRow');

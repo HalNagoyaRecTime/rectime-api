@@ -17,6 +17,7 @@ function buildDeps() {
     createUserWithMicrosoftLink: vi.fn(),
     updateUser: vi.fn(),
     linkMicrosoftAccount: vi.fn(),
+    createUserAndTakeOverStudent: vi.fn(),
     markAsDeleted: vi.fn(),
     markAsPurged: vi.fn().mockResolvedValue(true),
     isPurged: vi.fn().mockResolvedValue(false),
@@ -40,7 +41,6 @@ function buildDeps() {
     update: vi.fn(),
     updateClassRoom: vi.fn(),
     createMany: vi.fn(),
-    anonymizeByUserId: vi.fn().mockResolvedValue(true),
   };
   const staffRepository: IStaffRepository = {
     findById: vi.fn(),
@@ -148,12 +148,16 @@ describe('createAccountDeletionService', () => {
       ).toHaveBeenCalledWith(10);
     });
 
-    it('ロール(staffs/teachers)・所属(gathering_group_members)を削除する', async () => {
+    it('学生でない場合は、ロール(staffs/teachers)・所属(gathering_group_members)を削除する', async () => {
       const deps = buildDeps();
+      (
+        deps.studentRepository.findByUserId as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(null);
       const service = createAccountDeletionService(deps);
 
       await service.deleteRelatedData('10');
 
+      expect(deps.studentRepository.findByUserId).toHaveBeenCalledWith(10);
       expect(deps.staffRepository.deleteByUserId).toHaveBeenCalledWith(10);
       expect(deps.teacherRepository.deleteByUserId).toHaveBeenCalledWith(10);
       expect(
@@ -161,13 +165,21 @@ describe('createAccountDeletionService', () => {
       ).toHaveBeenCalledWith(10);
     });
 
-    it('学生情報を匿名化する', async () => {
+    it('学生の場合は、再ログイン時に引き継ぐため集合グループの所属を残す', async () => {
       const deps = buildDeps();
+      (
+        deps.studentRepository.findByUserId as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ studentId: 1, userId: 10 });
       const service = createAccountDeletionService(deps);
 
       await service.deleteRelatedData('10');
 
-      expect(deps.studentRepository.anonymizeByUserId).toHaveBeenCalledWith(10);
+      expect(
+        deps.gatheringGroupMemberRepository.deleteByUserId
+      ).not.toHaveBeenCalled();
+      // ロールは学生かどうかに関係なく解除する
+      expect(deps.staffRepository.deleteByUserId).toHaveBeenCalledWith(10);
+      expect(deps.userRepository.markAsPurged).toHaveBeenCalledWith('10');
     });
 
     it('学生かどうかに関係なくusers.user_nameを匿名化する', async () => {
@@ -188,9 +200,6 @@ describe('createAccountDeletionService', () => {
       ).mockResolvedValue(false);
       (
         deps.teacherRepository.deleteByUserId as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(false);
-      (
-        deps.studentRepository.anonymizeByUserId as ReturnType<typeof vi.fn>
       ).mockResolvedValue(false);
       const service = createAccountDeletionService(deps);
 
@@ -231,9 +240,6 @@ describe('createAccountDeletionService', () => {
         deps.teacherRepository.deleteByUserId as ReturnType<typeof vi.fn>
       ).mockResolvedValue(true);
       (
-        deps.studentRepository.anonymizeByUserId as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(false);
-      (
         deps.notificationAccountDeletionService
           .purgeUserNotificationData as ReturnType<typeof vi.fn>
       ).mockResolvedValue({ firebaseTokensDeleted: true });
@@ -251,7 +257,6 @@ describe('createAccountDeletionService', () => {
           removed: {
             staff: false,
             teacher: true,
-            student: false,
             firebaseToken: true,
             user: true,
           },

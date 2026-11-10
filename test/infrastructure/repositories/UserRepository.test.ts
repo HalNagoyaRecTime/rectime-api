@@ -246,6 +246,225 @@ describe('UserRepository', () => {
     });
   });
 
+  describe('createUserAndTakeOverStudent', () => {
+    // 退会済みの学生(クラス・出席番号・集合グループの所属つき)を用意する
+    async function insertDeletedStudent(options: {
+      classCode: string;
+      isLiveActive?: 0 | 1;
+      deletionStatus?: 'active' | 'deleted';
+    }) {
+      const classRoom = await insertClassRoomWithTeam(env.DB, {
+        classCode: options.classCode,
+        className: `${options.classCode}組`,
+      });
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name, is_live_active, deletion_status) VALUES ('削除済みユーザー', ?, ?) RETURNING user_id"
+      )
+        .bind(options.isLiveActive ?? 1, options.deletionStatus ?? 'deleted')
+        .first<{ user_id: number }>();
+      const student = await env.DB.prepare(
+        'INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 5, ?) RETURNING student_id, lock_version'
+      )
+        .bind(user!.user_id, classRoom.classRoomId, `${options.classCode}-1`)
+        .first<{ student_id: number; lock_version: number }>();
+      const event = await env.DB.prepare(
+        "INSERT INTO events (event_name, start_time, end_time) VALUES ('付け替え確認イベント', '0900', '1000') RETURNING event_id"
+      ).first<{ event_id: number }>();
+      const spot = await env.DB.prepare(
+        "INSERT INTO gathering_spots (gathering_spot_name) VALUES ('付け替え確認集合場所') RETURNING gathering_spot_id"
+      ).first<{ gathering_spot_id: number }>();
+      const gathering = await env.DB.prepare(
+        'INSERT INTO gatherings (event_id, gathering_spot_id) VALUES (?, ?) RETURNING gathering_id'
+      )
+        .bind(event!.event_id, spot!.gathering_spot_id)
+        .first<{ gathering_id: number }>();
+      await env.DB.prepare(
+        'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+      )
+        .bind(gathering!.gathering_id, user!.user_id)
+        .run();
+
+      return {
+        userId: user!.user_id,
+        studentId: student!.student_id,
+        lockVersion: student!.lock_version,
+        classRoomId: classRoom.classRoomId,
+        gatheringId: gathering!.gathering_id,
+      };
+    }
+
+    function takeOverParams(
+      seeded: { studentId: number; userId: number },
+      oid = 'oid-takeover'
+    ) {
+      return {
+        studentId: seeded.studentId,
+        previousUserId: seeded.userId,
+        oid,
+        tid: 'tid-takeover',
+        sub: 'sub-takeover',
+        email: 'nhs50000@nhs.hal.ac.jp',
+        displayName: '田中太郎',
+      };
+    }
+
+    async function countUsers() {
+      const row = await env.DB.prepare(
+        'SELECT COUNT(*) AS count FROM users'
+      ).first<{ count: number }>();
+      return row!.count;
+    }
+
+    it('新しいユーザーを作り、学生情報・集合グループの所属・Microsoft連携を付け替える', async () => {
+      const seeded = await insertDeletedStudent({
+        classCode: 'TAKEOVER-1',
+        isLiveActive: 0,
+      });
+
+      const result = await repo.createUserAndTakeOverStudent(
+        takeOverParams(seeded)
+      );
+
+      expect(result).toEqual({
+        id: expect.any(String),
+        oid: 'oid-takeover',
+        tid: 'tid-takeover',
+        sub: 'sub-takeover',
+        email: 'nhs50000@nhs.hal.ac.jp',
+        display_name: '田中太郎',
+      });
+      const newUserId = Number(result!.id);
+      expect(newUserId).not.toBe(seeded.userId);
+
+      // 新しいユーザーは退会前の無効化状態を引き継ぐ
+      const newUser = await env.DB.prepare(
+        'SELECT user_name, is_live_active, deletion_status FROM users WHERE user_id = ?'
+      )
+        .bind(newUserId)
+        .first();
+      expect(newUser).toEqual({
+        user_name: '田中太郎',
+        is_live_active: 0,
+        deletion_status: 'active',
+      });
+
+      // 学籍番号・クラス・出席番号はそのままで、持ち主だけが変わる
+      const student = await env.DB.prepare(
+        'SELECT user_id, class_room_id, attendance_number, lock_version FROM students WHERE student_id = ?'
+      )
+        .bind(seeded.studentId)
+        .first();
+      expect(student).toEqual({
+        user_id: newUserId,
+        class_room_id: seeded.classRoomId,
+        attendance_number: 5,
+        lock_version: seeded.lockVersion + 1,
+      });
+
+      const member = await env.DB.prepare(
+        'SELECT user_id FROM gathering_group_members WHERE gathering_id = ?'
+      )
+        .bind(seeded.gatheringId)
+        .first();
+      expect(member).toEqual({ user_id: newUserId });
+
+      await expect(
+        repo.findUserIdByMicrosoftAccount('oid-takeover', 'tid-takeover')
+      ).resolves.toBe(String(newUserId));
+
+      // 退会したユーザー自体は元に戻さない
+      const previousUser = await env.DB.prepare(
+        'SELECT deletion_status FROM users WHERE user_id = ?'
+      )
+        .bind(seeded.userId)
+        .first();
+      expect(previousUser).toEqual({ deletion_status: 'deleted' });
+    });
+
+    it('学生が既に別のユーザーへ付け替えられていた場合は、何も変更せずnullを返し、users行も残さない', async () => {
+      const seeded = await insertDeletedStudent({ classCode: 'TAKEOVER-2' });
+      const first = await repo.createUserAndTakeOverStudent(
+        takeOverParams(seeded, 'oid-first')
+      );
+      const usersBefore = await countUsers();
+
+      // 先に付け替えられた後で、古いuser_idを前提に付け替えようとする
+      await expect(
+        repo.createUserAndTakeOverStudent(takeOverParams(seeded, 'oid-second'))
+      ).resolves.toBeNull();
+
+      expect(await countUsers()).toBe(usersBefore);
+      const student = await env.DB.prepare(
+        'SELECT user_id FROM students WHERE student_id = ?'
+      )
+        .bind(seeded.studentId)
+        .first();
+      expect(student).toEqual({ user_id: Number(first!.id) });
+      await expect(
+        repo.findUserIdByMicrosoftAccount('oid-second', 'tid-takeover')
+      ).resolves.toBeNull();
+    });
+
+    it('元のユーザーが退会していない場合は、何も変更せずnullを返す', async () => {
+      const seeded = await insertDeletedStudent({
+        classCode: 'TAKEOVER-3',
+        deletionStatus: 'active',
+      });
+      const usersBefore = await countUsers();
+
+      await expect(
+        repo.createUserAndTakeOverStudent(takeOverParams(seeded))
+      ).resolves.toBeNull();
+
+      expect(await countUsers()).toBe(usersBefore);
+      const student = await env.DB.prepare(
+        'SELECT user_id, lock_version FROM students WHERE student_id = ?'
+      )
+        .bind(seeded.studentId)
+        .first();
+      expect(student).toEqual({
+        user_id: seeded.userId,
+        lock_version: seeded.lockVersion,
+      });
+      const member = await env.DB.prepare(
+        'SELECT user_id FROM gathering_group_members WHERE gathering_id = ?'
+      )
+        .bind(seeded.gatheringId)
+        .first();
+      expect(member).toEqual({ user_id: seeded.userId });
+    });
+
+    it('同じMicrosoftアカウントが既に連携済みの場合はUNIQUE制約違反を投げ、全体を取り消す', async () => {
+      const seeded = await insertDeletedStudent({ classCode: 'TAKEOVER-4' });
+      await repo.createUserWithMicrosoftLink({
+        oid: 'oid-takeover',
+        tid: 'tid-takeover',
+        sub: 'sub-other',
+        email: 'other@example.com',
+        displayName: '先に連携したユーザー',
+      });
+      const usersBefore = await countUsers();
+
+      await expect(
+        repo.createUserAndTakeOverStudent(takeOverParams(seeded))
+      ).rejects.toThrow('UNIQUE constraint failed');
+
+      expect(await countUsers()).toBe(usersBefore);
+      const student = await env.DB.prepare(
+        'SELECT user_id FROM students WHERE student_id = ?'
+      )
+        .bind(seeded.studentId)
+        .first();
+      expect(student).toEqual({ user_id: seeded.userId });
+      const member = await env.DB.prepare(
+        'SELECT user_id FROM gathering_group_members WHERE gathering_id = ?'
+      )
+        .bind(seeded.gatheringId)
+        .first();
+      expect(member).toEqual({ user_id: seeded.userId });
+    });
+  });
+
   describe('linkMicrosoftAccount', () => {
     it('指定したuser_idにMicrosoftアカウントを紐付ける', async () => {
       const user = await env.DB.prepare(

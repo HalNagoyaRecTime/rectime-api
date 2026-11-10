@@ -79,13 +79,16 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
   const orm = drizzle(db, { schema });
   return {
     async findById(id: number): Promise<StudentEntity | null> {
+      // 退会中の学生(退会したusersを指すstudents行)は管理の対象外とし、
+      // 取得・更新・クラス変更を404にする。編集を許すと、匿名化した
+      // users.user_nameに氏名が書き戻されるため。
       const result = await orm
         .select()
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
         .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
         .leftJoin(staffs, eq(users.id, staffs.userId))
-        .where(eq(students.id, id))
+        .where(and(eq(students.id, id), eq(users.deletionStatus, 'active')))
         .get();
 
       return result ? toDomain(result) : null;
@@ -514,28 +517,6 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         classRoomStatements,
         input.students
       );
-    },
-
-    async anonymizeByUserId(userId: number): Promise<boolean> {
-      // users.user_nameの匿名化はUserRepository.anonymizeUserがロールの
-      // 種類によらず担当する(AccountDeletionService.deleteRelatedDataの
-      // 先頭で呼び出し済み)。ここではstudents固有のカラムを扱う。
-      //
-      // 退会後に同じクラス・出席番号で再登録できるよう、所属情報も
-      // NULLにして一意制約上の枠を解放する。student_id_numberはUNIQUE
-      // 制約付きだが、userIdを含むことで他の匿名化済み行と衝突しない。
-      const result = await orm
-        .update(students)
-        .set({
-          classRoomId: null,
-          attendanceNumber: null,
-          studentIdNumber: `deleted-${userId}`,
-          updatedAt: new Date().toISOString(),
-          lockVersion: sql`${students.lockVersion} + 1`,
-        })
-        .where(eq(students.userId, userId))
-        .run();
-      return result.meta.changes > 0;
     },
   };
 }

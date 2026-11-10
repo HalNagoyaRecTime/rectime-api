@@ -243,6 +243,105 @@ export function createUserRepository(db: D1Database): IUserRepository {
       }
     },
 
+    async createUserAndTakeOverStudent({
+      studentId,
+      previousUserId,
+      oid,
+      tid,
+      sub,
+      email,
+      displayName,
+    }) {
+      const now = new Date().toISOString();
+
+      // 1回のdb.batch()にまとめ、どれかの文が失敗したら全体を取り消す。
+      // 新しいusers.user_idは自動採番のため、後続の文はlast_insert_rowid()で
+      // 参照する(StudentRepository.createと同じ形)。UPDATEは
+      // last_insert_rowid()を変えないため、4文とも同じ値を指す。
+      //
+      // 学生の付け替えは「まだ退会済みユーザーに属している」場合だけ行い、
+      // 所属の付け替えとMicrosoft連携の作成は「学生が新しいユーザーに
+      // 付け替わった」場合だけ行う。同時ログインで先に付け替えられていた
+      // 場合などは、最後のMicrosoft連携のINSERTでuser_idがNULLになり、
+      // NOT NULL制約でわざと失敗させる。batch全体(最初のusersのINSERTを
+      // 含む)が取り消されるため、どこからも参照されないusers行が残らない。
+      let linkResult;
+      try {
+        [, , , linkResult] = await db.batch<{ user_id: number }>([
+          // is_live_activeが取れない(退会前のユーザーが無い)場合はNULLになり、
+          // NOT NULL制約でbatch全体が失敗する。
+          db
+            .prepare(
+              `INSERT INTO users (user_name, is_live_active, created_at, updated_at)
+               VALUES (?, (SELECT is_live_active FROM users WHERE user_id = ?), ?, ?)`
+            )
+            .bind(displayName, previousUserId, now, now),
+          db
+            .prepare(
+              `UPDATE students
+               SET user_id = last_insert_rowid(), updated_at = ?,
+                   lock_version = lock_version + 1
+               WHERE student_id = ? AND user_id = ?
+                 AND EXISTS (
+                   SELECT 1 FROM users
+                   WHERE users.user_id = ? AND users.deletion_status = 'deleted'
+                 )`
+            )
+            .bind(now, studentId, previousUserId, previousUserId),
+          db
+            .prepare(
+              `UPDATE gathering_group_members
+               SET user_id = last_insert_rowid(), updated_at = ?
+               WHERE user_id = ?
+                 AND EXISTS (
+                   SELECT 1 FROM students
+                   WHERE students.student_id = ?
+                     AND students.user_id = last_insert_rowid()
+                 )`
+            )
+            .bind(now, previousUserId, studentId),
+          // 学生が新しいユーザーに付け替わっていなければ、サブクエリがNULLを
+          // 返し、NOT NULL制約で失敗する(上のコメント参照)。
+          db
+            .prepare(
+              `INSERT INTO microsoft_account_links (user_id, oid, tid, created_at, updated_at)
+               VALUES (
+                 (SELECT students.user_id FROM students
+                  WHERE students.student_id = ?
+                    AND students.user_id = last_insert_rowid()),
+                 ?, ?, ?, ?
+               )
+               RETURNING user_id`
+            )
+            .bind(studentId, oid, tid, now, now),
+        ]);
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          err.message.includes(
+            'NOT NULL constraint failed: microsoft_account_links.user_id'
+          )
+        ) {
+          return null;
+        }
+        throw err;
+      }
+
+      const newUserId = linkResult.results[0]?.user_id;
+      if (newUserId === undefined) {
+        throw new Error('Failed to link Microsoft account');
+      }
+
+      return {
+        id: String(newUserId),
+        oid,
+        tid,
+        sub,
+        email,
+        display_name: displayName,
+      };
+    },
+
     async updateUser({ userId, oid, tid, sub, email, displayName }) {
       const now = new Date().toISOString();
 

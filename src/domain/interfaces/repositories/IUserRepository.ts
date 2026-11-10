@@ -33,6 +33,25 @@ export interface IUserRepository {
     requireLiveActive?: boolean;
     requiredTeacherEmail?: string;
   }): Promise<void>;
+  // 退会済みユーザー(previousUserId)の学生情報を、新しく作るユーザーへ
+  // 付け替えてMicrosoftアカウントと連携する。退会したユーザー自体は元に
+  // 戻さない。is_live_activeは退会前の値を引き継ぐ(運営が無効化した学生が、
+  // 退会と再ログインで有効に戻らないようにするため)。集合グループの所属も
+  // 一緒に付け替える。
+  //
+  // 学生がpreviousUserIdに属していない、またはpreviousUserIdが退会済み
+  // でない場合(同時ログインで先に付け替えられた場合など)は、何も変更せず
+  // nullを返す。同じMicrosoftアカウントが既に連携済みの場合は、UNIQUE制約
+  // 違反のエラーをそのまま投げ、何も変更しない。
+  createUserAndTakeOverStudent(params: {
+    studentId: number;
+    previousUserId: number;
+    oid: string;
+    tid: string;
+    sub: string;
+    email: string;
+    displayName: string;
+  }): Promise<AppUser | null>;
   // deletion_statusを'deleted'にし、同時にmicrosoft_account_linksを削除する。
   // links を残したままだと、同一Microsoftアカウントでの再ログインが
   // findUserIdByMicrosoftAccount経由で古いdeletedユーザーを見つけてしまい、

@@ -78,15 +78,14 @@ export function createAccountDeletionService(deps: {
       throw new Error('ACCOUNT_ALREADY_PURGED');
     }
 
-    // 完了ログで「何を実際に消したか」をuser・staff・teacher・student・
-    // firebaseTokenの5項目でまとめて記録する。各ステップの実行結果を
+    // 完了ログで「何を実際に消したか」をuser・staff・teacher・
+    // firebaseTokenの4項目でまとめて記録する。各ステップの実行結果を
     // 都度この1オブジェクトへ書き込む(スプレッドで後から継ぎ足さない)
     // ことで、どの値がどこで決まったかを追いやすくする。
     const removed = {
       user: false,
       staff: false,
       teacher: false,
-      student: false,
       firebaseToken: false,
     };
 
@@ -118,16 +117,23 @@ export function createAccountDeletionService(deps: {
     removed.teacher = await step('teacher', () =>
       teacherRepository.deleteByUserId(userIdNum)
     );
-    // 学生情報の匿名化。student_id_numberは再登録(#265 PR1で確定済み)の
-    // ためUNIQUE制約を満たしたまま行を残す。user_nameはこの関数の先頭で
-    // userRepository.anonymizeUserが既に匿名化済みのため、ここでは
-    // students固有のカラムのみを扱う。
-    removed.student = await step('student', () =>
-      studentRepository.anonymizeByUserId(userIdNum)
+    // 学生情報(students行)は学校側が登録した在籍情報のため消さない。
+    // 同じ学校アカウントで再ログインしたとき、新しいユーザーへ付け替えて
+    // 再び関連付ける(authService.upsertUser)。
+    //
+    // 集合グループの所属も運営が割り当てたものなので、学生の場合は残し、
+    // 再ログイン時に学生情報と一緒に付け替える。消してしまうと、退会と
+    // 再ログインのたびに運営が登録し直すことになる。学生以外(教官など)は
+    // 再ログインしても元のユーザーへ戻る仕組みが無く、所属が誰にも
+    // 引き継がれないまま残り続けるため、これまでどおり削除する。
+    const student = await step('findStudent', () =>
+      studentRepository.findByUserId(userIdNum)
     );
-    await step('gatheringGroupMember', () =>
-      gatheringGroupMemberRepository.deleteByUserId(userIdNum)
-    );
+    if (!student) {
+      await step('gatheringGroupMember', () =>
+        gatheringGroupMemberRepository.deleteByUserId(userIdNum)
+      );
+    }
 
     // 全ステップが成功した時だけpurged_atをセットする。ここより前で
     // エラーがthrowされた場合はpurged_atがNULLのまま残るため、
