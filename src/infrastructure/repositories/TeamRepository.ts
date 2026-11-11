@@ -388,6 +388,16 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
         .first<{ team_id: number }>();
       if (!existing) return null;
 
+      // detachRemovedClassRoomsが外すクラスを単独編成へ退避する際、その編成の
+      // 名前は(登録順の計算上)外れるクラス自身のコードと一致しうる。自分がまだ
+      // 改名されていないと、例えば単独チーム「1A」を「1B」に入れ替えるだけで
+      // 自分の古い名前「1A」と退避先の新しい名前「1A」が衝突する。detach/attach
+      // の前に自分の名前を一時的に退避しておく(deleteと同じ手法)。
+      await db
+        .prepare('UPDATE teams SET team_name = ? WHERE team_id = ?')
+        .bind(`__updating_team_${teamId}__`, teamId)
+        .run();
+
       // 名前はここで確定させない。リクエストのclass_codesの並び順ではなく、
       // attachClassRoomsがクラスを付け替えた後にDBの登録順(class_room_id)で
       // 再計算する。

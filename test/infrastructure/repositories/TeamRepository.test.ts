@@ -421,6 +421,27 @@ describe('TeamRepository', () => {
       expect(sourceTeam).not.toBeNull();
     });
 
+    it('単独編成のクラスを別の1クラスに入れ替えても、自分の古い名前との衝突で失敗しない', async () => {
+      // 単独編成「1A」を「1B」に入れ替える場合、detachRemovedClassRoomsが
+      // 外れる「1A」を退避先の単独編成へ移し、その名前を「1A」に確定する。
+      // 自分(元の「1A」編成)がこの時点でまだ改名されていないと、古い名前
+      // 「1A」と退避先の新しい名前「1A」が衝突する。
+      const teamId = await insertTeam('1A');
+      await insertClassRoom('1A', teamId);
+      await insertClassRoom('1B');
+
+      const updated = await repo.updateTeam(teamId, {
+        class_codes: ['1B'],
+      });
+
+      expect(updated?.team_name).toBe('1B');
+      const detached = await env.DB.prepare(
+        `SELECT team_name FROM teams
+         WHERE team_id = (SELECT team_id FROM class_rooms WHERE class_code = '1A')`
+      ).first<{ team_name: string }>();
+      expect(detached?.team_name).toBe('1A');
+    });
+
     it('既存チームへの追加後、名前はリクエストの並び順でなくクラスの登録順(class_room_id)で再計算される', async () => {
       const teamId = await insertTeam('チーム');
       await insertClassRoom('1A', teamId);
