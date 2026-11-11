@@ -355,5 +355,87 @@ describe('EventGatheringSettingsRepository', () => {
         .first<{ n: number }>();
       expect(member?.n).toBe(1);
     });
+
+    it('退会中の参加者しかいない集合予定は、その所属と一緒に削除する', async () => {
+      const eventId = await insertEvent('退会者だけ');
+      const spotId = await insertSpot('場所');
+      const toDelete = await insertGathering(eventId, spotId, 1, '10:00');
+      const kept = await insertGathering(eventId, spotId, 1, '10:30');
+      await insertMember(toDelete, 'deleted');
+      await insertMember(toDelete, 'deleted');
+      await insertMember(kept, 'deleted');
+
+      await repository.apply({
+        event_id: eventId,
+        creates: [],
+        updates: [],
+        delete_ids: [toDelete],
+      });
+
+      expect(await readGatherings(eventId)).toMatchObject([
+        { gathering_id: kept },
+      ]);
+      const members = await env.DB.prepare(
+        'SELECT gathering_id, COUNT(*) AS n FROM gathering_group_members WHERE gathering_id IN (?, ?) GROUP BY gathering_id'
+      )
+        .bind(toDelete, kept)
+        .all<{ gathering_id: number; n: number }>();
+      // 削除しない集合予定の退会中の参加者は、所属を残したまま
+      expect(members.results).toEqual([{ gathering_id: kept, n: 1 }]);
+    });
+
+    it('在籍中の参加者が1人でもいれば削除は失敗し、退会中の参加者の所属も残る', async () => {
+      const eventId = await insertEvent('在籍者と退会者');
+      const spotId = await insertSpot('場所');
+      const inUse = await insertGathering(eventId, spotId, 1, '10:00');
+      await insertMember(inUse);
+      await insertMember(inUse, 'deleted');
+
+      await expect(
+        repository.apply({
+          event_id: eventId,
+          creates: [],
+          updates: [],
+          delete_ids: [inUse],
+        })
+      ).rejects.toThrow('FOREIGN KEY constraint failed');
+
+      expect(await readGatherings(eventId)).toMatchObject([
+        { gathering_id: inUse },
+      ]);
+      const member = await env.DB.prepare(
+        'SELECT COUNT(*) AS n FROM gathering_group_members WHERE gathering_id = ?'
+      )
+        .bind(inUse)
+        .first<{ n: number }>();
+      expect(member?.n).toBe(2);
+    });
+
+    it('他Eventの集合予定の退会中の参加者は削除しない', async () => {
+      const eventId = await insertEvent('対象');
+      const otherEventId = await insertEvent('他');
+      const spotId = await insertSpot('場所');
+      const otherGathering = await insertGathering(
+        otherEventId,
+        spotId,
+        1,
+        '10:00'
+      );
+      await insertMember(otherGathering, 'deleted');
+
+      await repository.apply({
+        event_id: eventId,
+        creates: [],
+        updates: [],
+        delete_ids: [otherGathering],
+      });
+
+      const member = await env.DB.prepare(
+        'SELECT COUNT(*) AS n FROM gathering_group_members WHERE gathering_id = ?'
+      )
+        .bind(otherGathering)
+        .first<{ n: number }>();
+      expect(member?.n).toBe(1);
+    });
   });
 });
