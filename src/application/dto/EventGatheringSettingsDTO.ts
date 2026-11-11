@@ -30,7 +30,7 @@ export interface GatheringSettingDTO {
   gathering_id: number;
   gathering_time: string;
   gathering_spot: GatheringSpotSummaryDTO;
-  member_count: number;
+  member_count?: number;
 }
 
 export interface RoundSettingDTO {

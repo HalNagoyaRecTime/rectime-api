@@ -199,6 +199,41 @@ describe('EventGatheringSettingsRepository', () => {
     });
   });
 
+  describe('findWithoutMemberCountByEventId', () => {
+    it('参加人数を除いた項目をround, gathering_id の順で返し、他Eventの集合予定は含めない', async () => {
+      const eventId = await insertEvent('人数なし');
+      const otherEventId = await insertEvent('他');
+      const spotId = await insertSpot('出入口①');
+      const round2 = await insertGathering(eventId, spotId, 2, '10:00');
+      const round1 = await insertGathering(eventId, spotId, 1, '10:30');
+      await insertGathering(otherEventId, spotId, 1, '10:00');
+      await insertMember(round1);
+
+      const result = await repository.findWithoutMemberCountByEventId(eventId);
+
+      expect(result).toEqual([
+        {
+          gathering_id: round1,
+          round: 1,
+          gathering_time: '10:30',
+          gathering_spot_id: spotId,
+          gathering_spot_name: '出入口①',
+          gathering_spot_image_key: null,
+          round_start_time: null,
+        },
+        {
+          gathering_id: round2,
+          round: 2,
+          gathering_time: '10:00',
+          gathering_spot_id: spotId,
+          gathering_spot_name: '出入口①',
+          gathering_spot_image_key: null,
+          round_start_time: null,
+        },
+      ]);
+    });
+  });
+
   describe('apply', () => {
     it('作成・更新・削除を1回でまとめて適用する', async () => {
       const eventId = await insertEvent('差分');
