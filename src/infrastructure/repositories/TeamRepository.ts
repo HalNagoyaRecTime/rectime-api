@@ -419,6 +419,12 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     },
 
     async delete(teamId: number): Promise<boolean> {
+      const existing = await db
+        .prepare('SELECT team_id FROM teams WHERE team_id = ?')
+        .bind(teamId)
+        .first();
+      if (!existing) return false;
+
       const deletingName = `__deleting_team_${crypto.randomUUID()}__`;
       // 得点の確認から単独編成への移動、削除までを同じbatchで確定する。
       // 一時名への変更に成功した場合だけ後続を実行し、失敗時は全体を戻す。
