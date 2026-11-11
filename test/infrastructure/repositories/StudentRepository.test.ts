@@ -661,6 +661,35 @@ describe('StudentRepository', () => {
         })
       ).resolves.toBeNull();
     });
+
+    it('版番号を1進め、クラス変更前の版番号での更新を断る', async () => {
+      const target = await repo.create({
+        displayName: 'クラスだけ変わる学生',
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 413,
+        studentIdNumber: 'MOVE-LOCK-413',
+      });
+      const before = await repo.findById(target.studentId);
+
+      const moved = await repo.updateClassRoom(target.studentId, {
+        classRoomId: seeded.secondClassRoomId,
+        attendanceNumber: 413,
+      });
+      expect(moved?.lockVersion).toBe(before!.lockVersion + 1);
+
+      const stale = await repo.update(target.studentId, {
+        displayName: before!.userName,
+        classRoomId: before!.classRoomId,
+        attendanceNumber: before!.attendanceNumber,
+        studentIdNumber: before!.studentIdNumber,
+        expectedLockVersion: before!.lockVersion,
+      });
+      expect(stale).toBeNull();
+      expect(await repo.findById(target.studentId)).toMatchObject({
+        classRoomId: seeded.secondClassRoomId,
+        attendanceNumber: 413,
+      });
+    });
   });
 
   describe('findExistingStudentsByNumbers', () => {

@@ -492,15 +492,11 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         db
           .prepare(
             `UPDATE students
-             SET class_room_id = ?, attendance_number = ?, updated_at = ?
+             SET class_room_id = ?, attendance_number = ?, updated_at = CURRENT_TIMESTAMP,
+                 lock_version = lock_version + 1
              WHERE student_id = ?`
           )
-          .bind(
-            assignment.classRoomId,
-            assignment.attendanceNumber,
-            new Date().toISOString(),
-            id
-          ),
+          .bind(assignment.classRoomId, assignment.attendanceNumber, id),
       ]);
       const updateResult = results[results.length - 1];
       if ((updateResult.meta?.changes ?? 0) === 0) {
