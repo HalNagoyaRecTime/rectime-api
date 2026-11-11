@@ -5,15 +5,16 @@ import {
   asc,
   desc,
   eq,
+  exists,
   inArray,
-  isNotNull,
-  isNull,
+  notExists,
   or,
   sql,
 } from 'drizzle-orm';
 import { class_rooms, staffs, students, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
+import type { SQLiteSelect } from 'drizzle-orm/sqlite-core';
 import type {
   StudentEntity,
   StudentClassRoomAssignment,
@@ -120,8 +121,18 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
             sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
             sql`${students.studentIdNumber} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
             sql`CAST(${students.attendanceNumber} AS TEXT) LIKE ${escapedPattern} ESCAPE ${'\\'}`,
-            sql`${class_rooms.classCode} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
-            sql`${class_rooms.name} LIKE ${escapedPattern} ESCAPE ${'\\'}`
+            inArray(
+              students.classRoomId,
+              orm
+                .select({ id: class_rooms.id })
+                .from(class_rooms)
+                .where(
+                  or(
+                    sql`${class_rooms.classCode} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
+                    sql`${class_rooms.name} LIKE ${escapedPattern} ESCAPE ${'\\'}`
+                  )
+                )
+            )
           )!
         );
       }
@@ -132,23 +143,15 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         conditions.push(eq(users.isLiveActive, filter.isLiveActive ? 1 : 0));
       }
       if (filter.isStaff !== undefined) {
+        const staffOfUser = orm
+          .select({ id: staffs.id })
+          .from(staffs)
+          .where(eq(staffs.userId, users.id));
         conditions.push(
-          filter.isStaff ? isNotNull(staffs.id) : isNull(staffs.id)
+          filter.isStaff ? exists(staffOfUser) : notExists(staffOfUser)
         );
       }
-      const whereClause = and(...conditions);
-      const countQuery = orm
-        .select({ count: sql<number>`count(*)` })
-        .from(students)
-        .innerJoin(users, eq(students.userId, users.id))
-        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
-        .leftJoin(staffs, eq(users.id, staffs.userId));
-      const rowsQuery = orm
-        .select()
-        .from(students)
-        .innerJoin(users, eq(students.userId, users.id))
-        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
-        .leftJoin(staffs, eq(users.id, staffs.userId));
+      const whereClause = and(eq(students.userId, users.id), ...conditions);
       const sortOrder = filter.sortOrder === 'desc' ? desc : asc;
       const sortColumn =
         filter.sortBy === 'studentIdNumber'
@@ -166,16 +169,34 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
                     : filter.sortBy === 'isLiveActive'
                       ? users.isLiveActive
                       : students.id;
-      const [countResult, results] = await Promise.all([
-        countQuery.where(whereClause).get(),
-        rowsQuery
-          .where(whereClause)
-          .orderBy(sortOrder(sortColumn), asc(students.id))
-          .limit(limit)
-          .offset(offset)
-          .all(),
-      ]);
-      const total = countResult?.count ?? 0;
+      // INNER JOINだとusersの索引から生徒全員を読んで並べ替えるため使わない。
+      // 停止中の生徒だけを選ぶときは、その索引で停止中の人数ぶんだけ読めば済む。
+      const joinUsers = <T extends SQLiteSelect>(query: T) =>
+        filter.isLiveActive === false
+          ? query.innerJoin(users, eq(students.userId, users.id))
+          : query.crossJoin(users);
+      const results = await joinUsers(orm.select().from(students).$dynamic())
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
+        .where(whereClause)
+        .orderBy(sortOrder(sortColumn), asc(students.id))
+        .limit(limit)
+        .offset(offset)
+        .all();
+      const isLastPage =
+        results.length < limit && (results.length > 0 || offset === 0);
+      const total = isLastPage
+        ? offset + results.length
+        : ((
+            await joinUsers(
+              orm
+                .select({ count: sql<number>`count(*)` })
+                .from(students)
+                .$dynamic()
+            )
+              .where(whereClause)
+              .get()
+          )?.count ?? 0);
 
       return {
         items: results.map(toDomain),
