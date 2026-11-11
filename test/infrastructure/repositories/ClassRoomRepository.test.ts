@@ -651,7 +651,7 @@ describe('ClassRoomRepository', () => {
           studentCount: 1,
         }),
       ]);
-      // 在籍としては残っているため、クラスの削除は今までどおり断る
+      // 在籍中の学生がいるため、クラスの削除は今までどおり断る
       await expect(repo.hasStudents(created.classRoomId)).resolves.toBe(true);
     } finally {
       await env.DB.prepare('DELETE FROM students WHERE class_room_id = ?')
@@ -664,6 +664,143 @@ describe('ClassRoomRepository', () => {
       );
       await repo.delete(created.classRoomId);
     }
+  });
+
+  describe('退会中の学生しかいないクラス', () => {
+    // 指定した退会状態の学生を、クラスと出席番号付きで作る
+    async function insertStudent(
+      classRoomId: number,
+      deletionStatus: 'active' | 'deleted',
+      attendanceNumber: number,
+      studentIdNumber: string
+    ): Promise<{ userId: number; studentId: number }> {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status) VALUES ('クラス削除確認', ?) RETURNING user_id"
+      )
+        .bind(deletionStatus)
+        .first<{ user_id: number }>();
+      const student = await env.DB.prepare(
+        'INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, ?, ?) RETURNING student_id'
+      )
+        .bind(user!.user_id, classRoomId, attendanceNumber, studentIdNumber)
+        .first<{ student_id: number }>();
+      return { userId: user!.user_id, studentId: student!.student_id };
+    }
+
+    async function readAssignment(studentId: number) {
+      return env.DB.prepare(
+        'SELECT class_room_id, attendance_number, lock_version FROM students WHERE student_id = ?'
+      )
+        .bind(studentId)
+        .first<{
+          class_room_id: number | null;
+          attendance_number: number | null;
+          lock_version: number;
+        }>();
+    }
+
+    async function cleanup(inserted: { userId: number; studentId: number }[]) {
+      await env.DB.batch([
+        ...inserted.map(({ studentId }) =>
+          env.DB.prepare('DELETE FROM students WHERE student_id = ?').bind(
+            studentId
+          )
+        ),
+        ...inserted.map(({ userId }) =>
+          env.DB.prepare('DELETE FROM users WHERE user_id = ?').bind(userId)
+        ),
+      ]);
+    }
+
+    it('hasStudentsは、退会中の学生しかいなければfalseを返す', async () => {
+      const created = await repo.create({
+        classCode: 'DEL-ONLY-HAS',
+        className: '退会者だけのクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      const inserted = [
+        await insertStudent(created.classRoomId, 'deleted', 1, 'DEL-ONLY-H1'),
+      ];
+
+      try {
+        await expect(repo.hasStudents(created.classRoomId)).resolves.toBe(
+          false
+        );
+      } finally {
+        await cleanup(inserted);
+        await repo.deleteAndCleanupTeam(created.classRoomId, created.teamId);
+      }
+    });
+
+    it('deleteAndCleanupTeamは、退会中の学生のクラスと出席番号を外してから削除する', async () => {
+      const created = await repo.create({
+        classCode: 'DEL-ONLY-DEL',
+        className: '退会者だけのクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      const inserted = [
+        await insertStudent(created.classRoomId, 'deleted', 1, 'DEL-ONLY-D1'),
+        await insertStudent(created.classRoomId, 'deleted', 2, 'DEL-ONLY-D2'),
+      ];
+
+      try {
+        await expect(
+          repo.deleteAndCleanupTeam(created.classRoomId, created.teamId)
+        ).resolves.toBe(true);
+
+        await expect(repo.findById(created.classRoomId)).resolves.toBeNull();
+        for (const { studentId } of inserted) {
+          await expect(readAssignment(studentId)).resolves.toEqual({
+            class_room_id: null,
+            attendance_number: null,
+            lock_version: 1,
+          });
+        }
+      } finally {
+        await cleanup(inserted);
+      }
+    });
+
+    it('在籍中の学生が残っていれば外部キー制約で失敗し、退会中の学生の所属も外さない', async () => {
+      const created = await repo.create({
+        classCode: 'DEL-MIXED',
+        className: '在籍者と退会者のクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      const active = await insertStudent(
+        created.classRoomId,
+        'active',
+        1,
+        'DEL-MIXED-1'
+      );
+      const deleted = await insertStudent(
+        created.classRoomId,
+        'deleted',
+        2,
+        'DEL-MIXED-2'
+      );
+
+      try {
+        await expect(
+          repo.deleteAndCleanupTeam(created.classRoomId, created.teamId)
+        ).rejects.toThrow('FOREIGN KEY constraint failed');
+
+        await expect(
+          repo.findById(created.classRoomId)
+        ).resolves.not.toBeNull();
+        await expect(readAssignment(deleted.studentId)).resolves.toEqual({
+          class_room_id: created.classRoomId,
+          attendance_number: 2,
+          lock_version: 0,
+        });
+      } finally {
+        await cleanup([active, deleted]);
+        await repo.deleteAndCleanupTeam(created.classRoomId, created.teamId);
+      }
+    });
   });
 
   describe('findByCode', () => {
