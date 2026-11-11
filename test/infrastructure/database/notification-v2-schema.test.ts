@@ -278,7 +278,7 @@ describe('通知v2のDB Schema', () => {
       expect.arrayContaining([
         'idx_notification_push_deliveries_recipient_id',
         'idx_notification_push_deliveries_firebase_token_id',
-        'idx_notification_push_deliveries_status_recipient_id',
+        'idx_notification_push_deliveries_status_schedule_id',
       ])
     );
 

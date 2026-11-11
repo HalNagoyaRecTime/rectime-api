@@ -15,12 +15,7 @@ const MAX_ROWS_READ_TO_SEND = TARGET_RECIPIENTS * 60;
 const MAX_ROWS_READ_TO_FAIL = TARGET_RECIPIENTS * 10;
 const MAX_ROWS_READ_TO_CHECK = 60;
 
-async function insertSendingSchedule(
-  actorUserId: number,
-  pendingCount: number,
-  sentCount = 0
-) {
-  const recipientCount = pendingCount + sentCount;
+async function createSendingSchedule(actorUserId: number) {
   const { notification_schedule_id: scheduleId } =
     await createAdminNotificationCommandRepository(env.DB).create({
       actor_user_id: actorUserId,
@@ -33,41 +28,68 @@ async function insertSendingSchedule(
       audiences: [{ type: 'user', target_id: actorUserId }],
       now: NOW,
     });
-  const prefix = `reads-${scheduleId}-`;
-  await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE notification_schedules
-       SET send_status = 'sending', recipients_resolved_at = ?
-       WHERE notification_schedule_id = ?`
-    ).bind(NOW, scheduleId),
-    env.DB.prepare(
-      `WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < ?)
-       INSERT INTO users (user_name, is_live_active) SELECT ? || n, 1 FROM seq`
-    ).bind(recipientCount, prefix),
-    env.DB.prepare(
-      `INSERT INTO firebase_tokens (user_id, platform, fcm_token)
-       SELECT user_id, 1, 'token-' || user_id FROM users WHERE user_name LIKE ? || '%'`
-    ).bind(prefix),
-    env.DB.prepare(
-      `INSERT INTO notification_recipients (notification_schedule_id, user_id)
-       SELECT ?, user_id FROM users WHERE user_name LIKE ? || '%'`
-    ).bind(scheduleId, prefix),
-    env.DB.prepare(
-      `INSERT INTO notification_push_deliveries (
-         notification_recipient_id, firebase_token_id, platform, status
-       )
-       SELECT r.notification_recipient_id, t.firebase_token_id, t.platform,
-              CASE WHEN row_number() OVER (ORDER BY r.notification_recipient_id) <= ?
-                THEN 'sent' ELSE 'pending' END
-       FROM notification_recipients r
-       JOIN firebase_tokens t ON t.user_id = r.user_id
-       WHERE r.notification_schedule_id = ?`
-    ).bind(sentCount, scheduleId),
-  ]);
+  await env.DB.prepare(
+    `UPDATE notification_schedules
+     SET send_status = 'sending', recipients_resolved_at = ?
+     WHERE notification_schedule_id = ?`
+  )
+    .bind(NOW, scheduleId)
+    .run();
   return scheduleId;
 }
 
-describe('送信済みの配信と、配信中のほかの予約があるときの通知配信のD1読み取り行数', () => {
+async function insertInterleavedRecipients(
+  target: { scheduleId: number; pendingCount: number; sentCount: number },
+  other: { scheduleId: number; pendingCount: number }
+) {
+  const targetCount = target.pendingCount + target.sentCount;
+  await env.DB.batch([
+    env.DB.prepare(
+      `WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < max(?2, ?4))
+       INSERT INTO users (user_name, is_live_active)
+       SELECT 'reads-' || s.schedule_id || '-' || seq.n, 1
+       FROM seq
+       JOIN (SELECT ?1 AS schedule_id, ?2 AS user_count
+             UNION ALL SELECT ?3, ?4) s ON seq.n <= s.user_count
+       ORDER BY seq.n, s.schedule_id`
+    ).bind(
+      target.scheduleId,
+      targetCount,
+      other.scheduleId,
+      other.pendingCount
+    ),
+    env.DB.prepare(
+      `INSERT INTO firebase_tokens (user_id, platform, fcm_token)
+       SELECT user_id, 1, 'token-' || user_id FROM users WHERE user_name LIKE 'reads-%'`
+    ),
+    env.DB.prepare(
+      `INSERT INTO notification_recipients (notification_schedule_id, user_id)
+       SELECT CASE WHEN user_name LIKE 'reads-' || ?1 || '-%' THEN ?1 ELSE ?2 END,
+              user_id
+       FROM users WHERE user_name LIKE 'reads-%'
+       ORDER BY user_id`
+    ).bind(target.scheduleId, other.scheduleId),
+    env.DB.prepare(
+      `INSERT INTO notification_push_deliveries (
+         notification_recipient_id, notification_schedule_id,
+         firebase_token_id, platform, status
+       )
+       SELECT r.notification_recipient_id, r.notification_schedule_id,
+              t.firebase_token_id, t.platform,
+              CASE WHEN r.notification_schedule_id = ?1
+                    AND row_number() OVER (
+                      PARTITION BY r.notification_schedule_id
+                      ORDER BY r.notification_recipient_id
+                    ) <= ?2
+                THEN 'sent' ELSE 'pending' END
+       FROM notification_recipients r
+       JOIN firebase_tokens t ON t.user_id = r.user_id
+       WHERE r.notification_schedule_id IN (?1, ?3)`
+    ).bind(target.scheduleId, target.sentCount, other.scheduleId),
+  ]);
+}
+
+describe('送信済みの配信と、受信者IDが交互に採番されたほかの配信中の予約があるときの通知配信のD1読み取り行数', () => {
   let targetScheduleId: number;
 
   beforeEach(async () => {
@@ -76,11 +98,15 @@ describe('送信済みの配信と、配信中のほかの予約があるとき�
       "INSERT INTO users (user_name, is_live_active) VALUES ('配信するスタッフ', 1) RETURNING user_id"
     ).first<{ user_id: number }>();
     if (!actor) throw new Error('Userの作成に失敗しました');
-    await insertSendingSchedule(actor.user_id, OTHER_RECIPIENTS);
-    targetScheduleId = await insertSendingSchedule(
-      actor.user_id,
-      TARGET_RECIPIENTS,
-      TARGET_SENT_RECIPIENTS
+    const otherScheduleId = await createSendingSchedule(actor.user_id);
+    targetScheduleId = await createSendingSchedule(actor.user_id);
+    await insertInterleavedRecipients(
+      {
+        scheduleId: targetScheduleId,
+        pendingCount: TARGET_RECIPIENTS,
+        sentCount: TARGET_SENT_RECIPIENTS,
+      },
+      { scheduleId: otherScheduleId, pendingCount: OTHER_RECIPIENTS }
     );
   });
 

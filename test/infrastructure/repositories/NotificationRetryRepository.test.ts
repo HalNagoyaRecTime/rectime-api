@@ -562,10 +562,11 @@ describe('配信所有権と再送Queueの回帰', () => {
         commands.push(
           env.DB.prepare(
             `INSERT INTO notification_push_deliveries
-          (notification_recipient_id, firebase_token_id, platform, status, attempt_count, first_attempt_at, last_attempt_at, next_retry_at, created_at, updated_at)
-          VALUES (?, (SELECT firebase_token_id FROM firebase_tokens WHERE fcm_token = ?), 1, 'retry_wait', 1, ?, ?, ?, ?, ?)`
+          (notification_recipient_id, notification_schedule_id, firebase_token_id, platform, status, attempt_count, first_attempt_at, last_attempt_at, next_retry_at, created_at, updated_at)
+          VALUES (?, ?, (SELECT firebase_token_id FROM firebase_tokens WHERE fcm_token = ?), 1, 'retry_wait', 1, ?, ?, ?, ?, ?)`
           ).bind(
             row!.notification_recipient_id,
+            fixture.scheduleId,
             `retry-load-${index}`,
             ...Array(5).fill(NOW.toISOString())
           )
@@ -625,9 +626,13 @@ it('FCM待機中の6件目をclaimせず、送信枠が空いてから取得す�
       .bind(fixture.userId, `waiting-${i}`)
       .first<{ firebase_token_id: number }>();
     await env.DB.prepare(
-      "INSERT INTO notification_push_deliveries (notification_recipient_id, firebase_token_id, platform, status) VALUES (?, ?, 1, 'pending')"
+      "INSERT INTO notification_push_deliveries (notification_recipient_id, notification_schedule_id, firebase_token_id, platform, status) VALUES (?, ?, ?, 1, 'pending')"
     )
-      .bind(recipient!.notification_recipient_id, token!.firebase_token_id)
+      .bind(
+        recipient!.notification_recipient_id,
+        fixture.scheduleId,
+        token!.firebase_token_id
+      )
       .run();
   }
   await env.DB.prepare(

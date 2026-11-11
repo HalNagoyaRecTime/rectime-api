@@ -30,27 +30,11 @@ interface ClaimedDeliveryRow extends DeliveryIdRow {
   importance: string;
 }
 
-// 受信者からたどると送信済みの配信まで毎回読むため、予約の受信者IDの範囲でstatusのindexを引く。
-const recipientIdOfSchedule = (column: string, scheduleId: string) =>
-  `${column} BETWEEN (
-     SELECT notification_recipient_id FROM notification_recipients
-     WHERE notification_schedule_id = ${scheduleId}
-     ORDER BY notification_recipient_id LIMIT 1
-   ) AND (
-     SELECT notification_recipient_id FROM notification_recipients
-     WHERE notification_schedule_id = ${scheduleId}
-     ORDER BY notification_recipient_id DESC LIMIT 1
-   )`;
-
+// 受信者からたどると予約の受信者を毎回すべて読むため、配信が持つ予約IDでstatusのindexを引く。
 const deliveriesOfSchedule = (scheduleId: string, statuses: string) =>
   `notification_push_deliveries d
    WHERE d.status IN (${statuses})
-     AND ${recipientIdOfSchedule('d.notification_recipient_id', scheduleId)}
-     AND EXISTS (
-       SELECT 1 FROM notification_recipients r
-       WHERE r.notification_recipient_id = d.notification_recipient_id
-         AND r.notification_schedule_id = ${scheduleId}
-     )`;
+     AND d.notification_schedule_id = ${scheduleId}`;
 
 export function createNotificationDeliveryRepository(
   db: D1Database,
@@ -99,10 +83,12 @@ export function createNotificationDeliveryRepository(
         db
           .prepare(
             `INSERT INTO notification_push_deliveries (
-               notification_recipient_id, firebase_token_id, platform, status,
+               notification_recipient_id, notification_schedule_id,
+               firebase_token_id, platform, status,
                attempt_count, created_at, updated_at
              )
-             SELECT r.notification_recipient_id, t.firebase_token_id, t.platform,
+             SELECT r.notification_recipient_id, r.notification_schedule_id,
+                    t.firebase_token_id, t.platform,
                     'pending', 0, ?, ?
              FROM notification_recipients r
              JOIN firebase_tokens t
@@ -172,13 +158,8 @@ export function createNotificationDeliveryRepository(
                next_retry_at = NULL,
                updated_at = ?2
            WHERE status = 'pending'
-             AND ${recipientIdOfSchedule('notification_recipient_id', '?3')}
-             AND (firebase_token_id IS NULL OR NOT ${sendableRecipientSql('notification_push_deliveries')})
-             AND EXISTS (
-               SELECT 1 FROM notification_recipients r
-               WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id
-                 AND r.notification_schedule_id = ?3
-             )`
+             AND notification_schedule_id = ?3
+             AND (firebase_token_id IS NULL OR NOT ${sendableRecipientSql('notification_push_deliveries')})`
         )
         .bind(reason, now, scheduleId)
         .run();
