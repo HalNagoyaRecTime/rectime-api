@@ -11,6 +11,7 @@ import {
   eventWriteSchema,
 } from '../openapi/events';
 import { positivePathParamToNumber } from '../openapi/schemas';
+import { getClientType } from '../auth/helpers';
 import { CommonErrors } from '../errors/commonErrors';
 import { EventErrors } from '../errors/eventErrors';
 import {
@@ -45,7 +46,11 @@ export function createEventController(eventService: IEventService) {
     }
 
     try {
-      return c.json(await eventService.getAllEvents(parsedQuery.data), 200);
+      const allowShared = getClientType(c) === 'mobile';
+      return c.json(
+        await eventService.getAllEvents(parsedQuery.data, allowShared),
+        200
+      );
     } catch {
       return errorResponse(c, EventErrors.EVENT_LIST_FAILED);
     }

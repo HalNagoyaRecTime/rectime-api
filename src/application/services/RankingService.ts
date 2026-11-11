@@ -7,9 +7,11 @@ import type {
   AddTeamScoreRequestDTO,
   GetRankingRequestDTO,
   RankingEntryDTO,
+  RankingListResponseDTO,
   TeamDTO,
 } from '../dto/RankingDTO';
 import type { IRankingService } from './IRankingService';
+import type { SharedResultCache } from './SharedResultCache';
 
 const DEFAULT_LIMIT = 50;
 const DEFAULT_OFFSET = 0;
@@ -35,23 +37,35 @@ function toTeamDTO(team: TeamEntity): TeamDTO {
 }
 
 export function createRankingService(
-  teamRepository: ITeamRepository
+  teamRepository: ITeamRepository,
+  sharedRankings: SharedResultCache<RankingListResponseDTO>
 ): IRankingService {
+  const loadRanking = async (
+    options: GetRankingRequestDTO
+  ): Promise<RankingListResponseDTO> => {
+    const limit = options.limit ?? DEFAULT_LIMIT;
+    const offset = options.offset ?? DEFAULT_OFFSET;
+    const result = await teamRepository.findRanking({
+      search: options.search,
+      limit,
+      offset,
+    });
+    return {
+      items: result.items.map(toRankingEntryDTO),
+      total: result.total,
+      limit,
+      offset,
+    };
+  };
+
   return {
-    async getRanking(options: GetRankingRequestDTO) {
-      const limit = options.limit ?? DEFAULT_LIMIT;
-      const offset = options.offset ?? DEFAULT_OFFSET;
-      const result = await teamRepository.findRanking({
-        search: options.search,
-        limit,
-        offset,
-      });
-      return {
-        items: result.items.map(toRankingEntryDTO),
-        total: result.total,
-        limit,
-        offset,
-      };
+    getRanking(options, allowShared) {
+      if (allowShared) {
+        return sharedRankings.get(JSON.stringify(options), () =>
+          loadRanking(options)
+        );
+      }
+      return loadRanking(options);
     },
 
     async addTeamScore(teamId: number, request: AddTeamScoreRequestDTO) {

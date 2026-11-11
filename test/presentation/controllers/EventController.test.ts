@@ -59,11 +59,14 @@ describe('EventController', () => {
 
       const response = await app.request('/events');
 
-      expect(eventService.getAllEvents).toHaveBeenCalledWith({
-        start_time: undefined,
-        limit: undefined,
-        offset: undefined,
-      });
+      expect(eventService.getAllEvents).toHaveBeenCalledWith(
+        {
+          start_time: undefined,
+          limit: undefined,
+          offset: undefined,
+        },
+        false
+      );
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
         event_date: null,
@@ -73,6 +76,34 @@ describe('EventController', () => {
         offset: 0,
       });
     });
+
+    it.each([
+      ['mobile', true],
+      ['web', false],
+    ])(
+      'X-Client-Typeが%sなら、他の利用者と結果を使い回すか(%s)をサービスへ渡す',
+      async (clientType, allowShared) => {
+        const { app, eventService } = setup();
+        (
+          eventService.getAllEvents as ReturnType<typeof vi.fn>
+        ).mockResolvedValue({
+          event_date: null,
+          events: [],
+          total: 0,
+          limit: 50,
+          offset: 0,
+        });
+
+        await app.request('/events', {
+          headers: { 'X-Client-Type': clientType },
+        });
+
+        expect(eventService.getAllEvents).toHaveBeenCalledWith(
+          { start_time: undefined, limit: undefined, offset: undefined },
+          allowShared
+        );
+      }
+    );
 
     it('Serviceの開催日を環境変数で上書きせずそのまま返す', async () => {
       const { app, eventService } = setup();
@@ -106,11 +137,14 @@ describe('EventController', () => {
         '/events?start_time=0930&limit=10&offset=20'
       );
 
-      expect(eventService.getAllEvents).toHaveBeenCalledWith({
-        start_time: '0930',
-        limit: 10,
-        offset: 20,
-      });
+      expect(eventService.getAllEvents).toHaveBeenCalledWith(
+        {
+          start_time: '0930',
+          limit: 10,
+          offset: 20,
+        },
+        false
+      );
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
         event_date: null,
@@ -151,11 +185,14 @@ describe('EventController', () => {
       const response = await app.request('/events?limit=1e2&offset=0');
 
       expect(response.status).toBe(200);
-      expect(eventService.getAllEvents).toHaveBeenCalledWith({
-        start_time: undefined,
-        limit: 100,
-        offset: 0,
-      });
+      expect(eventService.getAllEvents).toHaveBeenCalledWith(
+        {
+          start_time: undefined,
+          limit: 100,
+          offset: 0,
+        },
+        false
+      );
     });
     it.each(['2460', '2360', '9999'])(
       'HHMMとして不正なstart_timeクエリ %s は400を返す',

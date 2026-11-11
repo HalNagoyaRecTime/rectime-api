@@ -64,7 +64,7 @@ type RankingRow = {
   team_id: number;
   team_name: string;
   scores: number;
-  rank: number;
+  matched: number;
 };
 
 type TeamRow = {
@@ -191,42 +191,42 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
     ): Promise<{ items: RankingEntryEntity[]; total: number }> {
       const searchPattern = options.search ? `%${options.search}%` : null;
 
-      const [rows, totalResult] = await Promise.all([
-        db
-          .prepare(
-            `SELECT * FROM (
-               SELECT
-                 t.team_id,
-                 t.team_name,
-                 COALESCE(ts.scores, 0) AS scores,
-                 RANK() OVER (
-                   ORDER BY COALESCE(ts.scores, 0) DESC
-                 ) AS rank
-               FROM teams t
-               LEFT JOIN team_scores ts ON ts.team_id = t.team_id
-             ) ranked
-             WHERE (? IS NULL OR ranked.team_name LIKE ?)
-             ORDER BY rank ASC, team_id ASC
-             LIMIT ? OFFSET ?`
-          )
-          .bind(searchPattern, searchPattern, options.limit, options.offset)
-          .all<RankingRow>(),
-        db
-          .prepare(
-            'SELECT COUNT(*) AS total FROM teams WHERE (? IS NULL OR team_name LIKE ?)'
-          )
-          .bind(searchPattern, searchPattern)
-          .first<{ total: number }>(),
-      ]);
+      // RANK() OVER と COUNT(*) で読むと、並べ替えのたびに全チーム分を読み直し、
+      // 1回で全チームの数倍の行を読む。チーム数は多くても数十件なので、
+      // 全チームを1回だけ読み、順位付けはここで行う。
+      const { results } = await db
+        .prepare(
+          `SELECT
+             t.team_id,
+             t.team_name,
+             COALESCE(ts.scores, 0) AS scores,
+             (? IS NULL OR t.team_name LIKE ?) AS matched
+           FROM teams t
+           LEFT JOIN team_scores ts ON ts.team_id = t.team_id`
+        )
+        .bind(searchPattern, searchPattern)
+        .all<RankingRow>();
+
+      const sorted = [...results].sort(
+        (a, b) => b.scores - a.scores || a.team_id - b.team_id
+      );
+      const matched = sorted
+        .map(row => ({
+          ...row,
+          rank: sorted.findIndex(other => other.scores === row.scores) + 1,
+        }))
+        .filter(row => row.matched);
 
       return {
-        items: rows.results.map(row => ({
-          team_id: row.team_id,
-          team_name: row.team_name,
-          scores: row.scores,
-          rank: row.rank,
-        })),
-        total: totalResult?.total ?? 0,
+        items: matched
+          .slice(options.offset, options.offset + options.limit)
+          .map(({ team_id, team_name, scores, rank }) => ({
+            team_id,
+            team_name,
+            scores,
+            rank,
+          })),
+        total: matched.length,
       };
     },
 
