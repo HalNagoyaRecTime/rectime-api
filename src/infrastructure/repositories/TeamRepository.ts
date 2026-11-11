@@ -425,10 +425,14 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
         .run();
 
       await detachRemovedClassRooms(teamId, []);
-      const statements = buildCleanupEmptyTeamStatements(db, teamId);
-      const results = await db.batch(statements);
-      const teamDeleteResult = results[results.length - 1];
-      return (teamDeleteResult.meta.changes ?? 0) > 0;
+      // buildCleanupEmptyTeamStatementsが返す文の数・順序に依存しないよう、
+      // batch後に改めて存在を確認する(得点が残っていれば削除されず残る)。
+      await db.batch(buildCleanupEmptyTeamStatements(db, teamId));
+      const row = await db
+        .prepare('SELECT team_id FROM teams WHERE team_id = ?')
+        .bind(teamId)
+        .first();
+      return row === null;
     },
 
     async addScore(teamId: number, points: number): Promise<TeamEntity> {
