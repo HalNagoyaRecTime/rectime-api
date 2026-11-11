@@ -18,7 +18,7 @@ export interface TeacherDTO {
 
 export interface TeacherPageDTO {
   items: TeacherDTO[];
-  total: number;
+  total?: number;
   limit: number;
   offset: number;
 }

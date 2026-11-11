@@ -75,16 +75,7 @@ export function createTeacherController(teacherService: ITeacherService) {
     }
 
     try {
-      const { isStaff, isLiveActive, ...query } = parsedQuery.data;
-      const filter = {
-        ...query,
-        ...(isStaff === 'all' ? {} : { isStaff: isStaff === 'true' }),
-        ...(isLiveActive === 'all'
-          ? {}
-          : { isLiveActive: isLiveActive === 'true' }),
-      };
-      const teachers = await teacherService.getAllTeachers(filter);
-      return c.json(teachers, 200);
+      return c.json(await teacherService.getAllTeachers(parsedQuery.data), 200);
     } catch {
       return errorResponse(c, UserErrors.TEACHER_LIST_FAILED);
     }

@@ -16,7 +16,7 @@ export interface StudentEntity {
 
 export interface StudentPage {
   items: StudentEntity[];
-  total: number;
+  total?: number;
   limit: number;
   offset: number;
 }
@@ -55,4 +55,5 @@ export interface StudentSearchFilter {
   sortOrder?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
+  includeTotal?: boolean;
 }
