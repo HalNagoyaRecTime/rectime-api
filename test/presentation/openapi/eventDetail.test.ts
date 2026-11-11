@@ -80,12 +80,7 @@ describe('Event詳細取得APIのOpenAPI定義', () => {
       },
     });
     expect(schemas.GatheringSetting).toMatchObject({
-      required: [
-        'gathering_id',
-        'gathering_time',
-        'gathering_spot',
-        'member_count',
-      ],
+      required: ['gathering_id', 'gathering_time', 'gathering_spot'],
       properties: {
         gathering_spot: {
           $ref: '#/components/schemas/GatheringSpotSummary',

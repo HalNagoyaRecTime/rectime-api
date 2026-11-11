@@ -90,7 +90,7 @@ function buildStudent(overrides: Partial<StudentEntity> = {}): StudentEntity {
 }
 
 describe('createAuthService', () => {
-  function setup() {
+  function setup(studentEmailDomain = 'nhs.hal.ac.jp') {
     const userRepository: IUserRepository = {
       exists: vi.fn(),
       isStaff: vi.fn(),
@@ -100,6 +100,7 @@ describe('createAuthService', () => {
       createUserWithMicrosoftLink: vi.fn(),
       updateUser: vi.fn(),
       linkMicrosoftAccount: vi.fn(),
+      createUserAndTakeOverStudent: vi.fn(),
       markAsDeleted: vi.fn(),
       markAsPurged: vi.fn(),
       isPurged: vi.fn(),
@@ -119,13 +120,11 @@ describe('createAuthService', () => {
       create: vi.fn(),
       update: vi.fn(),
       updateClassRoom: vi.fn(),
-      findExistingStudentNumbers: vi.fn(),
+      findExistingStudentsByNumbers: vi.fn(),
       findExistingClassRoomAttendanceNumbers: vi.fn(),
       createMany: vi.fn(),
       findByUserId: vi.fn(),
-      anonymizeByUserId: vi.fn(),
     };
-    const studentEmailDomain = 'nhs.hal.ac.jp';
     const teacherRepository = buildTeacherRepository();
     const firebaseTokenRepository = buildFirebaseTokenRepository();
     const service = createAuthService(
@@ -155,6 +154,7 @@ describe('createAuthService', () => {
       createUserWithMicrosoftLink: vi.fn(),
       updateUser: vi.fn(),
       linkMicrosoftAccount: vi.fn(),
+      createUserAndTakeOverStudent: vi.fn(),
       markAsDeleted: vi.fn(),
       markAsPurged: vi.fn(),
       isPurged: vi.fn(),
@@ -174,11 +174,10 @@ describe('createAuthService', () => {
       create: vi.fn(),
       update: vi.fn(),
       updateClassRoom: vi.fn(),
-      findExistingStudentNumbers: vi.fn(),
+      findExistingStudentsByNumbers: vi.fn(),
       findExistingClassRoomAttendanceNumbers: vi.fn(),
       createMany: vi.fn(),
       findByUserId: vi.fn(),
-      anonymizeByUserId: vi.fn(),
     };
     const teacherRepository = buildTeacherRepository();
 
@@ -952,6 +951,51 @@ describe('createAuthService', () => {
       });
     });
 
+    it.each([
+      ['大阪', 'ohs.hal.ac.jp', 'ohs00123@ohs.hal.ac.jp'],
+      ['東京', 'ths.hal.ac.jp', 'ths00123@ths.hal.ac.jp'],
+    ])(
+      '%s校のメールから先頭ゼロを保持して登録済み学生へ紐付ける',
+      async (_, domain, email) => {
+        const {
+          userRepository,
+          studentRepository,
+          teacherRepository,
+          service,
+        } = setup(domain);
+        vi.mocked(
+          userRepository.findUserIdByMicrosoftAccount
+        ).mockResolvedValue(null);
+        vi.mocked(studentRepository.findByStudentNum).mockResolvedValue(
+          buildStudent({ studentIdNumber: '00123' })
+        );
+
+        const result = await service.upsertUser(
+          buildClaims({ preferred_username: email })
+        );
+
+        expect(studentRepository.findByStudentNum).toHaveBeenCalledWith(
+          '00123'
+        );
+        expect(userRepository.linkMicrosoftAccount).toHaveBeenCalledWith({
+          userId: '100',
+          oid: 'oid-1',
+          tid: 'tid-1',
+        });
+        expect(result).toMatchObject({
+          id: '100',
+          email,
+          display_name: '田中太郎',
+        });
+        expect(
+          userRepository.createUserWithMicrosoftLink
+        ).not.toHaveBeenCalled();
+        expect(
+          teacherRepository.findMicrosoftLinkCandidateByEmail
+        ).not.toHaveBeenCalled();
+      }
+    );
+
     it('学籍番号で見つかった学生のdeletion_statusがdeletion_pendingの場合、ACCOUNT_DELETION_PENDINGを投げてlinkMicrosoftAccountを呼ばない', async () => {
       const { userRepository, studentRepository, service } = setup();
       const claims = buildClaims({
@@ -973,36 +1017,138 @@ describe('createAuthService', () => {
       expect(userRepository.linkMicrosoftAccount).not.toHaveBeenCalled();
     });
 
-    it('学籍番号で見つかった学生のdeletion_statusがdeletedの場合、古いuser_idへ紐付けず新規アカウントとして作成する', async () => {
-      const { userRepository, studentRepository, service } = setup();
+    describe('学籍番号で見つかった学生のdeletion_statusがdeletedの場合', () => {
+      function setupDeletedStudent() {
+        const context = setup();
+        (
+          context.userRepository.findUserIdByMicrosoftAccount as ReturnType<
+            typeof vi.fn
+          >
+        ).mockResolvedValue(null);
+        (
+          context.studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
+        ).mockResolvedValue(
+          buildStudent({
+            studentId: 7,
+            userId: 100,
+            userName: '削除済みユーザー',
+          })
+        );
+        (
+          context.userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
+        ).mockResolvedValue('deleted');
+        return context;
+      }
       const claims = buildClaims({
         preferred_username: 'nhs50000@nhs.hal.ac.jp',
       });
-      const created = buildAppUser({ id: 'user-new' });
-      (
-        userRepository.findUserIdByMicrosoftAccount as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(null);
-      (
-        studentRepository.findByStudentNum as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(buildStudent({ userName: '田中太郎(削除済み)' }));
-      (
-        userRepository.getDeletionStatus as ReturnType<typeof vi.fn>
-      ).mockResolvedValue('deleted');
-      (
-        userRepository.createUserWithMicrosoftLink as ReturnType<typeof vi.fn>
-      ).mockResolvedValue(created);
 
-      const result = await service.upsertUser(claims);
+      it('古いuser_idへ紐付けず、新しいユーザーへ学生情報を付け替える', async () => {
+        const { userRepository, service } = setupDeletedStudent();
+        const takenOver = buildAppUser({ id: '300' });
+        (
+          userRepository.createUserAndTakeOverStudent as ReturnType<
+            typeof vi.fn
+          >
+        ).mockResolvedValue(takenOver);
 
-      expect(userRepository.linkMicrosoftAccount).not.toHaveBeenCalled();
-      expect(userRepository.createUserWithMicrosoftLink).toHaveBeenCalledWith({
-        oid: 'oid-1',
-        tid: 'tid-1',
-        sub: 'sub-1',
-        email: 'nhs50000@nhs.hal.ac.jp',
-        displayName: '田中太郎',
+        const result = await service.upsertUser(claims);
+
+        expect(
+          userRepository.createUserAndTakeOverStudent
+        ).toHaveBeenCalledWith({
+          studentId: 7,
+          previousUserId: 100,
+          oid: 'oid-1',
+          tid: 'tid-1',
+          sub: 'sub-1',
+          email: 'nhs50000@nhs.hal.ac.jp',
+          displayName: '田中太郎',
+        });
+        expect(result).toEqual(takenOver);
+        expect(userRepository.linkMicrosoftAccount).not.toHaveBeenCalled();
+        expect(
+          userRepository.createUserWithMicrosoftLink
+        ).not.toHaveBeenCalled();
       });
-      expect(result).toEqual(created);
+
+      it('同じMicrosoftアカウントの同時ログインで先に付け替えられていた場合は、先勝ちしたユーザーを返す', async () => {
+        const { userRepository, service } = setupDeletedStudent();
+        (
+          userRepository.createUserAndTakeOverStudent as ReturnType<
+            typeof vi.fn
+          >
+        ).mockResolvedValue(null);
+        (
+          userRepository.findUserIdByMicrosoftAccount as ReturnType<
+            typeof vi.fn
+          >
+        )
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce('300');
+
+        await expect(service.upsertUser(claims)).resolves.toMatchObject({
+          id: '300',
+          display_name: '田中太郎',
+        });
+        expect(
+          userRepository.createUserWithMicrosoftLink
+        ).not.toHaveBeenCalled();
+      });
+
+      it('同じMicrosoftアカウントの連携が先に作られてUNIQUE制約違反になった場合も、先勝ちしたユーザーを返す', async () => {
+        const { userRepository, service } = setupDeletedStudent();
+        (
+          userRepository.createUserAndTakeOverStudent as ReturnType<
+            typeof vi.fn
+          >
+        ).mockRejectedValue(
+          new Error('UNIQUE constraint failed: microsoft_account_links.oid')
+        );
+        (
+          userRepository.findUserIdByMicrosoftAccount as ReturnType<
+            typeof vi.fn
+          >
+        )
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce('300');
+
+        await expect(service.upsertUser(claims)).resolves.toMatchObject({
+          id: '300',
+        });
+      });
+
+      it('別のMicrosoftアカウントが先に学生を引き継いでいた場合はSTUDENT_ALREADY_LINKEDを投げる', async () => {
+        const { userRepository, service } = setupDeletedStudent();
+        (
+          userRepository.createUserAndTakeOverStudent as ReturnType<
+            typeof vi.fn
+          >
+        ).mockResolvedValue(null);
+
+        await expect(service.upsertUser(claims)).rejects.toThrow(
+          'STUDENT_ALREADY_LINKED'
+        );
+        expect(
+          userRepository.createUserWithMicrosoftLink
+        ).not.toHaveBeenCalled();
+      });
+
+      it('想定外のエラーはそのまま投げ、新規アカウントを作らない', async () => {
+        const { userRepository, service } = setupDeletedStudent();
+        (
+          userRepository.createUserAndTakeOverStudent as ReturnType<
+            typeof vi.fn
+          >
+        ).mockRejectedValue(new Error('D1_UNAVAILABLE'));
+
+        await expect(service.upsertUser(claims)).rejects.toThrow(
+          'D1_UNAVAILABLE'
+        );
+        expect(
+          userRepository.createUserWithMicrosoftLink
+        ).not.toHaveBeenCalled();
+      });
     });
 
     it('メールドメインが学生用ドメインと一致しない場合、学籍番号として扱わない', async () => {

@@ -1,3 +1,5 @@
+import type { MasterImportExcludedRow } from '../../domain/entities/MasterImport';
+
 export interface StudentDTO {
   student_id: number;
   user_id: number;
@@ -65,7 +67,6 @@ export interface StudentImportInput {
 
 export type StudentImportErrorReason =
   | 'student_id_number_duplicate_in_file'
-  | 'student_id_number_duplicate_in_db'
   | 'attendance_number_duplicate_in_file'
   | 'attendance_number_duplicate_in_db';
 
@@ -83,6 +84,8 @@ export interface StudentImportValidationResult {
   success_count: number;
   error_count: number;
   errors: StudentImportRowError[];
+  excluded_count: number;
+  excluded: MasterImportExcludedRow[];
 }
 
 export interface StudentImportCommitResult {
@@ -90,4 +93,5 @@ export interface StudentImportCommitResult {
   imported: number;
   error_count: number;
   errors: StudentImportRowError[];
+  excluded: MasterImportExcludedRow[];
 }

@@ -109,6 +109,94 @@ describe('StudentRepository', () => {
       ]);
     });
 
+    it('退会処理中・退会済みの学生をtotalとページング対象から除外する', async () => {
+      const usersToCreate = [
+        {
+          userName: '一覧除外確認-稼働中',
+          isLiveActive: 1,
+          deletionStatus: 'active',
+          studentNumber: 'LIST-FILTER-ACTIVE',
+        },
+        {
+          userName: '一覧除外確認-停止中',
+          isLiveActive: 0,
+          deletionStatus: 'active',
+          studentNumber: 'LIST-FILTER-INACTIVE',
+        },
+        {
+          userName: '一覧除外確認-削除処理中',
+          isLiveActive: 1,
+          deletionStatus: 'deletion_pending',
+          studentNumber: 'LIST-FILTER-PENDING',
+        },
+        {
+          userName: '一覧除外確認-削除済み',
+          isLiveActive: 1,
+          deletionStatus: 'deleted',
+          studentNumber: 'LIST-FILTER-DELETED',
+        },
+      ] as const;
+      const userIds: number[] = [];
+
+      try {
+        for (const userToCreate of usersToCreate) {
+          const user = await env.DB.prepare(
+            `INSERT INTO users (user_name, is_live_active, deletion_status)
+             VALUES (?, ?, ?)
+             RETURNING user_id`
+          )
+            .bind(
+              userToCreate.userName,
+              userToCreate.isLiveActive,
+              userToCreate.deletionStatus
+            )
+            .first<{ user_id: number }>();
+          if (!user) throw new Error('テスト用Userを作成できませんでした');
+          userIds.push(user.user_id);
+          await env.DB.prepare(
+            'INSERT INTO students (user_id, student_id_number) VALUES (?, ?)'
+          )
+            .bind(user.user_id, userToCreate.studentNumber)
+            .run();
+        }
+
+        const allActiveStatuses = await repo.findAll({
+          search: '一覧除外確認',
+          sortBy: 'studentId',
+          limit: 1,
+          offset: 1,
+        });
+
+        expect(allActiveStatuses.total).toBe(2);
+        expect(
+          allActiveStatuses.items.map(student => student.studentIdNumber)
+        ).toEqual(['LIST-FILTER-INACTIVE']);
+
+        const liveActiveStatuses = await repo.findAll({
+          search: '一覧除外確認',
+          isLiveActive: true,
+        });
+        expect(liveActiveStatuses.total).toBe(1);
+        expect(
+          liveActiveStatuses.items.map(student => student.studentIdNumber)
+        ).toEqual(['LIST-FILTER-ACTIVE']);
+      } finally {
+        if (userIds.length > 0) {
+          const placeholders = userIds.map(() => '?').join(', ');
+          await env.DB.prepare(
+            `DELETE FROM students WHERE user_id IN (${placeholders})`
+          )
+            .bind(...userIds)
+            .run();
+          await env.DB.prepare(
+            `DELETE FROM users WHERE user_id IN (${placeholders})`
+          )
+            .bind(...userIds)
+            .run();
+        }
+      }
+    });
+
     it.each([
       'studentId',
       'studentIdNumber',
@@ -251,6 +339,29 @@ describe('StudentRepository', () => {
     it('存在しない id の場合は null を返す', async () => {
       expect(await repo.findById(999999)).toBeNull();
     });
+
+    it.each(['deleted', 'deletion_pending'] as const)(
+      '退会中(%s)の学生は null を返す',
+      async deletionStatus => {
+        const user = await env.DB.prepare(
+          "INSERT INTO users (user_name, deletion_status) VALUES ('削除済みユーザー', ?) RETURNING user_id"
+        )
+          .bind(deletionStatus)
+          .first<{ user_id: number }>();
+        const student = await env.DB.prepare(
+          'INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, ?, ?) RETURNING student_id'
+        )
+          .bind(
+            user!.user_id,
+            seeded.students[0].classRoomId,
+            deletionStatus === 'deleted' ? 91 : 92,
+            `FIND-BY-ID-${deletionStatus}`
+          )
+          .first<{ student_id: number }>();
+
+        await expect(repo.findById(student!.student_id)).resolves.toBeNull();
+      }
+    );
 
     it('students.updated_at を updatedAt として一覧・詳細の両方で返す', async () => {
       const target = seeded.students[0];
@@ -552,8 +663,47 @@ describe('StudentRepository', () => {
     });
   });
 
-  describe('findExistingStudentNumbers', () => {
-    it('2,000件の候補から、DBに実在する学籍番号だけをチャンク境界をまたいでもまとめて返す', async () => {
+  describe('findExistingStudentsByNumbers', () => {
+    it.each(['deletion_pending', 'deleted'] as const)(
+      '退会状態が%sの学生は、退会済みとして返す',
+      async deletionStatus => {
+        const studentIdNumber = `EXISTING-${deletionStatus}`;
+        const user = await env.DB.prepare(
+          `INSERT INTO users (user_name, deletion_status)
+           VALUES ('退会確認', ?)
+           RETURNING user_id`
+        )
+          .bind(deletionStatus)
+          .first<{ user_id: number }>();
+        if (!user) throw new Error('テスト用Userを作成できませんでした');
+
+        try {
+          await env.DB.prepare(
+            'INSERT INTO students (user_id, student_id_number) VALUES (?, ?)'
+          )
+            .bind(user.user_id, studentIdNumber)
+            .run();
+
+          const found = await repo.findExistingStudentsByNumbers([
+            studentIdNumber,
+          ]);
+
+          expect(found.get(studentIdNumber)).toMatchObject({
+            userId: user.user_id,
+            isDeleted: true,
+          });
+        } finally {
+          await env.DB.prepare('DELETE FROM students WHERE user_id = ?')
+            .bind(user.user_id)
+            .run();
+          await env.DB.prepare('DELETE FROM users WHERE user_id = ?')
+            .bind(user.user_id)
+            .run();
+        }
+      }
+    );
+
+    it('2,000件の候補から、DBに実在する学籍番号ごとの学生ID・ユーザーID・有効かどうかを、チャンク境界をまたいでもまとめて返す', async () => {
       const candidates = Array.from(
         { length: 2000 },
         (_, i) => `9${String(i).padStart(4, '0')}`
@@ -562,19 +712,43 @@ describe('StudentRepository', () => {
       candidates[150] = seeded.students[1].studentIdNumber;
       candidates[1999] = seeded.students[2].studentIdNumber;
 
-      const existing = await repo.findExistingStudentNumbers(candidates);
+      const existing = await repo.findExistingStudentsByNumbers(candidates);
 
       expect(existing).toEqual(
-        new Set([
-          seeded.students[0].studentIdNumber,
-          seeded.students[1].studentIdNumber,
-          seeded.students[2].studentIdNumber,
+        new Map([
+          [
+            seeded.students[0].studentIdNumber,
+            {
+              studentId: seeded.students[0].studentId,
+              userId: seeded.students[0].userId,
+              isLiveActive: true,
+              isDeleted: false,
+            },
+          ],
+          [
+            seeded.students[1].studentIdNumber,
+            {
+              studentId: seeded.students[1].studentId,
+              userId: seeded.students[1].userId,
+              isLiveActive: false,
+              isDeleted: false,
+            },
+          ],
+          [
+            seeded.students[2].studentIdNumber,
+            {
+              studentId: seeded.students[2].studentId,
+              userId: seeded.students[2].userId,
+              isLiveActive: true,
+              isDeleted: false,
+            },
+          ],
         ])
       );
     });
 
-    it('候補が空配列の場合は空集合を返す', async () => {
-      expect(await repo.findExistingStudentNumbers([])).toEqual(new Set());
+    it('候補が空配列の場合は空のMapを返す', async () => {
+      expect(await repo.findExistingStudentsByNumbers([])).toEqual(new Map());
     });
   });
 
@@ -1057,42 +1231,6 @@ describe('StudentRepository', () => {
       expect(orphanedTeam).toBeNull();
 
       expect(await repo.findByStudentNum('ATOMIC-CLEANUP-1')).toBeNull();
-    });
-  });
-
-  describe('anonymizeByUserId', () => {
-    it('student_id_numberをプレースホルダに書き換え、所属情報を解放して行は残す(user_nameはUserRepository.anonymizeUserの責務)', async () => {
-      const classRoomId = seeded.students[0].classRoomId;
-      const user = await env.DB.prepare(
-        "INSERT INTO users (user_name) VALUES ('匿名化対象太郎') RETURNING user_id"
-      ).first<{ user_id: number }>();
-      const student = await env.DB.prepare(
-        "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 99, '99999') RETURNING student_id"
-      )
-        .bind(user!.user_id, classRoomId)
-        .first<{ student_id: number }>();
-
-      await expect(repo.anonymizeByUserId(user!.user_id)).resolves.toBe(true);
-
-      const result = await repo.findById(student!.student_id);
-      expect(result).toMatchObject({
-        studentIdNumber: `deleted-${user!.user_id}`,
-        classRoomId: null,
-        attendanceNumber: null,
-      });
-      // user_nameの匿名化はUserRepository.anonymizeUserの責務であり、
-      // StudentRepository.anonymizeByUserIdはstudents固有のカラムのみを
-      // 扱う(#265 PR4のレビュー指摘: students行の有無に関わらず
-      // user_nameを匿名化できるようにするための責務分離)。
-      expect(result?.userName).toBe('匿名化対象太郎');
-    });
-
-    it('該当する学生が存在しない場合はfalseを返す(冪等)', async () => {
-      const user = await env.DB.prepare(
-        "INSERT INTO users (user_name) VALUES ('非学生') RETURNING user_id"
-      ).first<{ user_id: number }>();
-
-      await expect(repo.anonymizeByUserId(user!.user_id)).resolves.toBe(false);
     });
   });
 });

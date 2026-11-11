@@ -656,6 +656,64 @@ describe('ClassRoomRepository', () => {
     );
   });
 
+  it('退会中の学生は人数に数えないが、所属としては残る', async () => {
+    const created = await repo.create({
+      classCode: 'DEL-COUNT',
+      className: '退会人数確認クラス',
+      teacherId: null,
+      teamId: null,
+    });
+    const userIds: number[] = [];
+    for (const [name, deletionStatus, attendanceNumber] of [
+      ['在籍学生', 'active', 1],
+      ['削除済みユーザー', 'deleted', 2],
+    ] as const) {
+      const user = await env.DB.prepare(
+        'INSERT INTO users (user_name, deletion_status) VALUES (?, ?) RETURNING user_id'
+      )
+        .bind(name, deletionStatus)
+        .first<{ user_id: number }>();
+      userIds.push(user!.user_id);
+      await env.DB.prepare(
+        'INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, ?, ?)'
+      )
+        .bind(
+          user!.user_id,
+          created.classRoomId,
+          attendanceNumber,
+          `DEL-COUNT-${attendanceNumber}`
+        )
+        .run();
+    }
+
+    try {
+      await expect(repo.findById(created.classRoomId)).resolves.toMatchObject({
+        studentCount: 1,
+      });
+      const listed = (
+        await repo.findAll({ limit: 100, offset: 0, search: 'DEL-COUNT' })
+      ).items;
+      expect(listed).toEqual([
+        expect.objectContaining({
+          classRoomId: created.classRoomId,
+          studentCount: 1,
+        }),
+      ]);
+      // 在籍としては残っているため、クラスの削除は今までどおり断る
+      await expect(repo.hasStudents(created.classRoomId)).resolves.toBe(true);
+    } finally {
+      await env.DB.prepare('DELETE FROM students WHERE class_room_id = ?')
+        .bind(created.classRoomId)
+        .run();
+      await env.DB.batch(
+        userIds.map(id =>
+          env.DB.prepare('DELETE FROM users WHERE user_id = ?').bind(id)
+        )
+      );
+      await repo.delete(created.classRoomId);
+    }
+  });
+
   describe('findByCode', () => {
     it('class_codeでクラスを取得できる', async () => {
       await expect(repo.findByCode('IA14A')).resolves.toMatchObject({

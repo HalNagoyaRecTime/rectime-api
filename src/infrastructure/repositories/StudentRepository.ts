@@ -5,15 +5,16 @@ import {
   asc,
   desc,
   eq,
+  exists,
   inArray,
-  isNotNull,
-  isNull,
+  notExists,
   or,
   sql,
 } from 'drizzle-orm';
 import { class_rooms, staffs, students, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
+import type { SQLiteSelect } from 'drizzle-orm/sqlite-core';
 import type {
   StudentEntity,
   StudentClassRoomAssignment,
@@ -24,6 +25,7 @@ import type {
 import { buildTeamName } from '../../domain/entities/Team';
 import {
   BulkCreateStudentsInput,
+  ExistingStudent,
   IStudentRepository,
   StudentClassRoomAttendanceNumber,
 } from '../../domain/interfaces/repositories/IStudentRepository';
@@ -78,13 +80,16 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
   const orm = drizzle(db, { schema });
   return {
     async findById(id: number): Promise<StudentEntity | null> {
+      // 退会中の学生(退会したusersを指すstudents行)は管理の対象外とし、
+      // 取得・更新・クラス変更を404にする。編集を許すと、匿名化した
+      // users.user_nameに氏名が書き戻されるため。
       const result = await orm
         .select()
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
         .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
         .leftJoin(staffs, eq(users.id, staffs.userId))
-        .where(eq(students.id, id))
+        .where(and(eq(students.id, id), eq(users.deletionStatus, 'active')))
         .get();
 
       return result ? toDomain(result) : null;
@@ -106,7 +111,9 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
     async findAll(filter = {}): Promise<StudentPage> {
       const limit = filter.limit ?? 50;
       const offset = filter.offset ?? 0;
-      const conditions = [];
+      // 退会後も履歴保持のためstudents行は残るが、管理・選択対象には含めない。
+      // isLiveActiveは管理上の一時停止を表す別軸のため、all指定でもこの条件は維持する。
+      const conditions = [eq(users.deletionStatus, 'active')];
       if (filter.search) {
         const escapedPattern = `%${escapeLikePattern(filter.search)}%`;
         conditions.push(
@@ -114,8 +121,18 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
             sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
             sql`${students.studentIdNumber} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
             sql`CAST(${students.attendanceNumber} AS TEXT) LIKE ${escapedPattern} ESCAPE ${'\\'}`,
-            sql`${class_rooms.classCode} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
-            sql`${class_rooms.name} LIKE ${escapedPattern} ESCAPE ${'\\'}`
+            inArray(
+              students.classRoomId,
+              orm
+                .select({ id: class_rooms.id })
+                .from(class_rooms)
+                .where(
+                  or(
+                    sql`${class_rooms.classCode} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
+                    sql`${class_rooms.name} LIKE ${escapedPattern} ESCAPE ${'\\'}`
+                  )
+                )
+            )
           )!
         );
       }
@@ -126,24 +143,15 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         conditions.push(eq(users.isLiveActive, filter.isLiveActive ? 1 : 0));
       }
       if (filter.isStaff !== undefined) {
+        const staffOfUser = orm
+          .select({ id: staffs.id })
+          .from(staffs)
+          .where(eq(staffs.userId, users.id));
         conditions.push(
-          filter.isStaff ? isNotNull(staffs.id) : isNull(staffs.id)
+          filter.isStaff ? exists(staffOfUser) : notExists(staffOfUser)
         );
       }
-      const whereClause =
-        conditions.length > 0 ? and(...conditions) : undefined;
-      const countQuery = orm
-        .select({ count: sql<number>`count(*)` })
-        .from(students)
-        .innerJoin(users, eq(students.userId, users.id))
-        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
-        .leftJoin(staffs, eq(users.id, staffs.userId));
-      const rowsQuery = orm
-        .select()
-        .from(students)
-        .innerJoin(users, eq(students.userId, users.id))
-        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
-        .leftJoin(staffs, eq(users.id, staffs.userId));
+      const whereClause = and(eq(students.userId, users.id), ...conditions);
       const sortOrder = filter.sortOrder === 'desc' ? desc : asc;
       const sortColumn =
         filter.sortBy === 'studentIdNumber'
@@ -161,15 +169,34 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
                     : filter.sortBy === 'isLiveActive'
                       ? users.isLiveActive
                       : students.id;
-      const [countResult, results] = await Promise.all([
-        (whereClause ? countQuery.where(whereClause) : countQuery).get(),
-        (whereClause ? rowsQuery.where(whereClause) : rowsQuery)
-          .orderBy(sortOrder(sortColumn), asc(students.id))
-          .limit(limit)
-          .offset(offset)
-          .all(),
-      ]);
-      const total = countResult?.count ?? 0;
+      // INNER JOINだとusersの索引から生徒全員を読んで並べ替えるため使わない。
+      // 停止中の生徒だけを選ぶときは、その索引で停止中の人数ぶんだけ読めば済む。
+      const joinUsers = <T extends SQLiteSelect>(query: T) =>
+        filter.isLiveActive === false
+          ? query.innerJoin(users, eq(students.userId, users.id))
+          : query.crossJoin(users);
+      const results = await joinUsers(orm.select().from(students).$dynamic())
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
+        .where(whereClause)
+        .orderBy(sortOrder(sortColumn), asc(students.id))
+        .limit(limit)
+        .offset(offset)
+        .all();
+      const isLastPage =
+        results.length < limit && (results.length > 0 || offset === 0);
+      const total = isLastPage
+        ? offset + results.length
+        : ((
+            await joinUsers(
+              orm
+                .select({ count: sql<number>`count(*)` })
+                .from(students)
+                .$dynamic()
+            )
+              .where(whereClause)
+              .get()
+          )?.count ?? 0);
 
       return {
         items: results.map(toDomain),
@@ -213,20 +240,32 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       return result ? toDomain(result) : null;
     },
 
-    async findExistingStudentNumbers(
+    async findExistingStudentsByNumbers(
       studentNumbers: string[]
-    ): Promise<Set<string>> {
+    ): Promise<Map<string, ExistingStudent>> {
       const unique = Array.from(new Set(studentNumbers));
-      const found = new Set<string>();
+      const found = new Map<string, ExistingStudent>();
 
       for (const chunk of chunkArray(unique, D1_MAX_BOUND_PARAMETERS)) {
         const rows = await orm
-          .select({ studentIdNumber: students.studentIdNumber })
+          .select({
+            studentId: students.id,
+            userId: students.userId,
+            studentIdNumber: students.studentIdNumber,
+            isLiveActive: users.isLiveActive,
+            deletionStatus: users.deletionStatus,
+          })
           .from(students)
+          .innerJoin(users, eq(students.userId, users.id))
           .where(inArray(students.studentIdNumber, chunk))
           .all();
         for (const row of rows) {
-          found.add(row.studentIdNumber);
+          found.set(row.studentIdNumber, {
+            studentId: row.studentId,
+            userId: row.userId,
+            isLiveActive: row.isLiveActive === 1,
+            isDeleted: row.deletionStatus !== 'active',
+          });
         }
       }
 
@@ -499,28 +538,6 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         classRoomStatements,
         input.students
       );
-    },
-
-    async anonymizeByUserId(userId: number): Promise<boolean> {
-      // users.user_nameの匿名化はUserRepository.anonymizeUserがロールの
-      // 種類によらず担当する(AccountDeletionService.deleteRelatedDataの
-      // 先頭で呼び出し済み)。ここではstudents固有のカラムを扱う。
-      //
-      // 退会後に同じクラス・出席番号で再登録できるよう、所属情報も
-      // NULLにして一意制約上の枠を解放する。student_id_numberはUNIQUE
-      // 制約付きだが、userIdを含むことで他の匿名化済み行と衝突しない。
-      const result = await orm
-        .update(students)
-        .set({
-          classRoomId: null,
-          attendanceNumber: null,
-          studentIdNumber: `deleted-${userId}`,
-          updatedAt: new Date().toISOString(),
-          lockVersion: sql`${students.lockVersion} + 1`,
-        })
-        .where(eq(students.userId, userId))
-        .run();
-      return result.meta.changes > 0;
     },
   };
 }

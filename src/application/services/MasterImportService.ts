@@ -79,6 +79,8 @@ function toDTO(
     success_count: session.success_count,
     error_count: session.error_count,
     errors: session.errors,
+    excluded_count: session.excluded_count ?? 0,
+    excluded: session.excluded ?? [],
     rows: session.rows.slice(offset, offset + limit),
     rows_total: session.rows.length,
     rows_limit: limit,
@@ -167,6 +169,7 @@ export function createMasterImportService(
       );
 
       const validation = await validateByType(input.type, rows);
+      const excluded = 'excluded' in validation ? validation.excluded : [];
 
       const now = new Date().toISOString();
 
@@ -180,6 +183,8 @@ export function createMasterImportService(
         success_count: validation.success_count,
         error_count: validation.error_count,
         errors: validation.errors,
+        excluded_count: excluded.length,
+        excluded,
         rows,
         created_at: now,
         updated_at: now,
@@ -260,10 +265,19 @@ export function createMasterImportService(
 
       try {
         const commitResult = await commitByType(session.type, session.rows);
+        const excluded =
+          'excluded' in commitResult ? commitResult.excluded : [];
+        const recounted = {
+          success_count:
+            session.total - commitResult.error_count - excluded.length,
+          excluded_count: excluded.length,
+          excluded,
+        };
 
         if (commitResult.error_count > 0) {
           const sessionForResponse: MasterImportSession = {
             ...session,
+            ...recounted,
             error_count: commitResult.error_count,
             errors: commitResult.errors,
           };
@@ -279,6 +293,7 @@ export function createMasterImportService(
 
         const updatedSession: MasterImportSession = {
           ...session,
+          ...recounted,
           status: 'committed',
           updated_at: new Date().toISOString(),
           committed_result: {

@@ -58,8 +58,6 @@ export interface NotificationScheduleBaseDTO {
   creation: NotificationCreationDTO;
 }
 
-export type NotificationScheduleListItemDTO = NotificationScheduleBaseDTO;
-
 export interface NotificationAudienceProgressDTO {
   totalCount: number;
   resolvedCount: number;
@@ -78,6 +76,12 @@ export interface NotificationDeliveryProgressDTO {
   sentCount: number;
   failedCount: number;
   stoppedCount: number;
+}
+
+export interface NotificationScheduleListItemDTO extends NotificationScheduleBaseDTO {
+  audienceProgress: NotificationAudienceProgressDTO | null;
+  recipientProgress: NotificationRecipientProgressDTO | null;
+  deliveryProgress: NotificationDeliveryProgressDTO | null;
 }
 
 export interface NotificationScheduleDetailDTO extends NotificationScheduleBaseDTO {
@@ -112,6 +116,7 @@ export interface NotificationRecipientResultDeliveryDTO {
 
 export interface NotificationRecipientResultDTO {
   notificationRecipientId: number;
+  registeredAt?: string;
   user: NotificationUserReferenceDTO;
   deliveries: NotificationRecipientResultDeliveryDTO[];
 }
@@ -126,6 +131,10 @@ export interface NotificationScheduleResultsPaginationDTO {
 export interface NotificationScheduleResultsQueryDTO {
   page: number;
   limit: number;
+  search?: string;
+  status?:
+    'success' | 'partial' | 'failed' | 'processing' | 'stopped' | 'no_target';
+  includeRegisteredAt?: '1';
 }
 
 export interface NotificationScheduleResultsResponseDTO {

@@ -4,6 +4,7 @@ import type {
   EventDetailDTO,
   MyEventDTO,
   GetEventsRequestDTO,
+  UpdateEventRequestDTO,
 } from '../../application/dto/EventDTO';
 import { eventVenueListResponseSchema, venueIdsSchema } from './eventVenues';
 import { roundSettingResponseSchema } from './gatheringRounds';
@@ -33,6 +34,10 @@ export const eventResponseSchema = z
     end_time: hhmmSchema,
     created_at: z.string(),
     updated_at: z.string(),
+    lock_version: z.number().int().min(0).openapi({
+      description:
+        '更新の競合を検出するための版番号。更新のたびに1ずつ増える。更新時に `lock_version` として送り返す。',
+    }),
   })
   .openapi('Event');
 
@@ -80,6 +85,13 @@ export const eventIdParams = z.object({
   eventId: positivePathParam('eventId', 'イベントID'),
 });
 
+export const eventDetailQuery = z.object({
+  includeMemberCount: z.enum(['true', 'false']).default('false').openapi({
+    description:
+      '`true` のとき集合予定ごとの `member_count` を返す。参加者数に比例してDBの読み取りが増えるため、参加者数を表示する画面だけが指定する。',
+  }),
+});
+
 export const eventListQuery = z.object({
   start_time: hhmmSchema.optional(),
   limit: z.coerce.number().int().min(0).optional(),
@@ -101,7 +113,7 @@ const isValidEventTimeRange = (data: {
 
 const eventBaseSchema = z.object({
   event_name: z.string().trim().min(1).max(100),
-  rule_text: z.string().max(2000).nullable().optional(),
+  rule_text: z.string().max(5000).nullable().optional(),
   venue_ids: venueIdsSchema,
   start_time: hhmmSchema,
   end_time: hhmmSchema,
@@ -117,12 +129,20 @@ export const eventWriteSchema = eventBaseSchema
 // notification_enabled等の未知fieldを黙って無視すると「通知を止めたつもりが
 // 実は止まっていない」事故につながるため、PUTはstrictで未知fieldを拒否する(#388)。
 export const eventUpdateSchema = eventBaseSchema
+  .extend({
+    lock_version: z.number().int().min(0).optional().openapi({
+      description:
+        '取得時点の `lock_version`。指定すると、取得後に変更されていた場合は409を返す。',
+    }),
+  })
   .strict()
   .refine(isValidEventTimeRange, eventTimeRangeRefinement)
   .openapi('EventUpdateRequest', {
     description:
       'start_timeはend_time以前の時刻を指定する。同一時刻は締切を表し、区間として扱わない。',
-  }) satisfies z.ZodType<EventWriteRequest>;
+  }) satisfies z.ZodType<
+  EventWriteRequest & Pick<UpdateEventRequestDTO, 'lock_version'>
+>;
 
 export const eventListRoute = createRoute({
   method: 'get',
@@ -151,10 +171,10 @@ export const eventDetailRoute = createRoute({
     '',
     '並び順は `round` 昇順、同一Round内は `gathering_id` 昇順。',
     'rounds[].start_timeはHHmm形式。開始時刻がnullでない最小の集合IDの値を返し、全件nullならnull。',
-    '`member_count` は集合予定ごとの参加者数。',
+    '`member_count` は集合予定ごとの参加者数で、`includeMemberCount=true` のときだけ返す。',
   ].join('\n'),
   security: bearerAuth,
-  request: { params: eventIdParams },
+  request: { params: eventIdParams, query: eventDetailQuery },
   responses: {
     200: jsonResponse(eventDetailResponseSchema, 'イベント'),
     400: badRequestResponse,
@@ -191,6 +211,8 @@ export const eventUpdateRoute = createRoute({
   path: '/events/{eventId}',
   tags: ['Events'],
   summary: 'イベントを更新する',
+  description:
+    '`lock_version` を指定すると、取得後にイベントが変更されていた場合は409を返す。集合設定の保存でもこの版が進むため、集合設定を保存した後に古い値で送ると409になる。',
   security: bearerAuth,
   request: {
     params: eventIdParams,
@@ -205,6 +227,7 @@ export const eventUpdateRoute = createRoute({
     401: unauthorizedResponse,
     403: forbiddenResponse,
     404: notFoundResponse,
+    409: conflictResponse,
     500: internalServerErrorResponse,
   },
 });

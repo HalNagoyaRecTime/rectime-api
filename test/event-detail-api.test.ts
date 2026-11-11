@@ -77,7 +77,67 @@ async function insertMember(gatheringId: number): Promise<void> {
     .run();
 }
 
-async function fetchEventDetail(eventId: number, userId: number) {
+async function insertMembers(gatheringId: number, count: number) {
+  await workerEnv.DB.batch([
+    workerEnv.DB.prepare(
+      `WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < ?)
+       INSERT INTO users (user_name) SELECT 'gathering-' || ? || '-member-' || n FROM seq`
+    ).bind(count, gatheringId),
+    workerEnv.DB.prepare(
+      `INSERT INTO gathering_group_members (gathering_id, user_id)
+       SELECT ?, user_id FROM users WHERE user_name LIKE 'gathering-' || ? || '-member-%'`
+    ).bind(gatheringId, gatheringId),
+  ]);
+}
+
+function createReadCountingDb() {
+  let rowsRead = 0;
+  const unwrap = new WeakMap<object, D1PreparedStatement>();
+  const wrap = (statement: D1PreparedStatement): D1PreparedStatement => {
+    const all = async () => {
+      const result = await statement.all<Record<string, unknown>>();
+      rowsRead += result.meta.rows_read;
+      return result;
+    };
+    const wrapped = {
+      bind: (...values: unknown[]) => wrap(statement.bind(...values)),
+      all,
+      async first(column?: string) {
+        const row = (await all()).results[0];
+        if (!row) return null;
+        return column ? row[column] : row;
+      },
+      async run() {
+        const result = await statement.run();
+        rowsRead += result.meta.rows_read;
+        return result;
+      },
+      async raw() {
+        return (await all()).results.map(row => Object.values(row));
+      },
+    } as unknown as D1PreparedStatement;
+    unwrap.set(wrapped, statement);
+    return wrapped;
+  };
+  const db = {
+    prepare: (query: string) => wrap(workerEnv.DB.prepare(query)),
+    async batch(statements: D1PreparedStatement[]) {
+      const results = await workerEnv.DB.batch(
+        statements.map(statement => unwrap.get(statement) ?? statement)
+      );
+      for (const result of results) rowsRead += result.meta.rows_read;
+      return results;
+    },
+  } as unknown as D1Database;
+  return { db, rowsRead: () => rowsRead };
+}
+
+async function fetchEventDetail(
+  eventId: number,
+  userId: number,
+  query = '',
+  env: Env = testEnv
+) {
   const token = await signAccessToken(
     {
       sub: String(userId),
@@ -90,13 +150,13 @@ async function fetchEventDetail(eventId: number, userId: number) {
     3600
   );
   return app.fetch(
-    new Request(`http://example.com/api/v1/events/${eventId}`, {
+    new Request(`http://example.com/api/v1/events/${eventId}${query}`, {
       headers: {
         Authorization: `Bearer ${token}`,
         'X-Client-Type': 'mobile',
       },
     }),
-    testEnv
+    env
   );
 }
 
@@ -131,7 +191,11 @@ describe('GET /api/v1/events/:eventId', () => {
     await insertMember(round1Early);
     await insertMember(round1Early);
 
-    const response = await fetchEventDetail(eventId, userId);
+    const response = await fetchEventDetail(
+      eventId,
+      userId,
+      '?includeMemberCount=true'
+    );
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
@@ -190,7 +254,65 @@ describe('GET /api/v1/events/:eventId', () => {
       ],
       created_at: expect.any(String),
       updated_at: expect.any(String),
+      lock_version: 0,
     });
+  });
+
+  it('includeMemberCountを指定しなければmember_countを返さない', async () => {
+    const userId = await insertUser();
+    const eventId = await insertEvent();
+    const spotId = await insertSpot('出入口①');
+    const gatheringId = await insertGathering(eventId, spotId, 1, '10:45');
+    await insertMember(gatheringId);
+
+    const response = await fetchEventDetail(eventId, userId);
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      rounds: { gatherings: Record<string, unknown>[] }[];
+    };
+    expect(body.rounds[0].gatherings[0]).not.toHaveProperty('member_count');
+  });
+
+  it('includeMemberCountがtrue・false以外なら400を返す', async () => {
+    const userId = await insertUser();
+    const eventId = await insertEvent();
+
+    const response = await fetchEventDetail(
+      eventId,
+      userId,
+      '?includeMemberCount=yes'
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it('includeMemberCountを指定しなければ、出場者が増えても読み取り行数は増えない', async () => {
+    const userId = await insertUser();
+    const eventId = await insertEvent();
+    const spotId = await insertSpot('出入口①');
+    const gatheringIds = [
+      await insertGathering(eventId, spotId, 1, '10:45'),
+      await insertGathering(eventId, spotId, 2, '11:30'),
+    ];
+    const measure = async () => {
+      const counter = createReadCountingDb();
+      const response = await fetchEventDetail(eventId, userId, '', {
+        ...testEnv,
+        DB: counter.db,
+      });
+      expect(response.status).toBe(200);
+      const uncounted = await fetchEventDetail(eventId, userId);
+      expect(await response.json()).toEqual(await uncounted.json());
+      return counter.rowsRead();
+    };
+
+    const withoutMembers = await measure();
+    for (const gatheringId of gatheringIds) {
+      await insertMembers(gatheringId, 300);
+    }
+
+    expect(await measure()).toBe(withoutMembers);
   });
 
   it('集合予定が無いEventはroundsを空配列で返す', async () => {

@@ -32,13 +32,12 @@ function createRepository(
     findAll: vi.fn(),
     findByStudentNum: vi.fn(),
     findByClassRoomAndAttendanceNumber: vi.fn().mockResolvedValue(null),
-    findExistingStudentNumbers: vi.fn().mockResolvedValue(new Set()),
+    findExistingStudentsByNumbers: vi.fn().mockResolvedValue(new Map()),
     findExistingClassRoomAttendanceNumbers: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
     update: vi.fn(),
     updateClassRoom: vi.fn(),
     createMany: vi.fn(),
-    anonymizeByUserId: vi.fn(),
     ...overrides,
   };
 }
@@ -694,6 +693,8 @@ describe('StudentService', () => {
         success_count: 2,
         error_count: 0,
         errors: [],
+        excluded_count: 0,
+        excluded: [],
       });
       expect(createMany).not.toHaveBeenCalled();
     });
@@ -728,11 +729,14 @@ describe('StudentService', () => {
       ]);
     });
 
-    it('既存DBと学籍番号が重複する行はエラーとして報告する', async () => {
+    it('既に登録されている学籍番号の行はエラーにせず、除外する行として報告する', async () => {
       const repository = createRepository({
-        findExistingStudentNumbers: vi
-          .fn()
-          .mockResolvedValue(new Set(['24030'])),
+        findExistingStudentsByNumbers: vi.fn().mockResolvedValue(
+          new Map([
+            ['24030', { studentId: 7, userId: 70, isLiveActive: true }],
+            ['24031', { studentId: 8, userId: 80, isLiveActive: false }],
+          ])
+        ),
       });
       const service = createStudentService(
         repository,
@@ -748,19 +752,88 @@ describe('StudentService', () => {
             last_name: '既存',
             first_name: '太郎',
           },
+          {
+            class_code: '11A',
+            attendance_number: 2,
+            student_id_number: '24031',
+            last_name: '無効',
+            first_name: '花子',
+          },
+          {
+            class_code: '11A',
+            attendance_number: 3,
+            student_id_number: '24032',
+            last_name: '新規',
+            first_name: '次郎',
+          },
         ],
       });
 
       expect(result).toEqual({
-        total: 1,
+        total: 3,
+        success_count: 1,
+        error_count: 0,
+        errors: [],
+        excluded_count: 2,
+        excluded: [
+          {
+            row_index: 1,
+            class_code: '11A',
+            attendance_number: 1,
+            student_id_number: '24030',
+            display_name: '既存太郎',
+            student_id: 7,
+            user_id: 70,
+            reason: 'student_already_registered',
+          },
+          {
+            row_index: 2,
+            class_code: '11A',
+            attendance_number: 2,
+            student_id_number: '24031',
+            display_name: '無効花子',
+            student_id: 8,
+            user_id: 80,
+            reason: 'student_already_registered_inactive',
+          },
+        ],
+      });
+    });
+
+    it('既に登録されている学籍番号がファイル内でも重複していれば、2行目以降はエラーにする', async () => {
+      const repository = createRepository({
+        findExistingStudentsByNumbers: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([
+              ['24030', { studentId: 7, userId: 70, isLiveActive: true }],
+            ])
+          ),
+      });
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
+      const row = {
+        class_code: '11A',
+        attendance_number: 1,
+        student_id_number: '24030',
+        last_name: '既存',
+        first_name: '太郎',
+      };
+
+      const result = await service.validateStudentImport({
+        rows: [row, { ...row, attendance_number: 2 }],
+      });
+
+      expect(result).toMatchObject({
         success_count: 0,
         error_count: 1,
         errors: [
-          expect.objectContaining({
-            row_index: 1,
-            reason: 'student_id_number_duplicate_in_db',
-          }),
+          { row_index: 2, reason: 'student_id_number_duplicate_in_file' },
         ],
+        excluded_count: 1,
+        excluded: [{ row_index: 1, reason: 'student_already_registered' }],
       });
     });
 
@@ -799,6 +872,8 @@ describe('StudentService', () => {
             reason: 'attendance_number_duplicate_in_file',
           }),
         ],
+        excluded_count: 0,
+        excluded: [],
       });
     });
 
@@ -835,12 +910,16 @@ describe('StudentService', () => {
             reason: 'attendance_number_duplicate_in_db',
           }),
         ],
+        excluded_count: 0,
+        excluded: [],
       });
     });
 
     it('2,000件の検査でも、既存学籍番号の問い合わせは1回にまとめる(D1のクエリ数上限対策)', async () => {
-      const findExistingStudentNumbers = vi.fn().mockResolvedValue(new Set());
-      const repository = createRepository({ findExistingStudentNumbers });
+      const findExistingStudentsByNumbers = vi
+        .fn()
+        .mockResolvedValue(new Map());
+      const repository = createRepository({ findExistingStudentsByNumbers });
       const service = createStudentService(
         repository,
         createClassRoomRepository()
@@ -861,9 +940,11 @@ describe('StudentService', () => {
         success_count: 2000,
         error_count: 0,
         errors: [],
+        excluded_count: 0,
+        excluded: [],
       });
-      expect(findExistingStudentNumbers).toHaveBeenCalledTimes(1);
-      expect(findExistingStudentNumbers.mock.calls[0][0]).toHaveLength(2000);
+      expect(findExistingStudentsByNumbers).toHaveBeenCalledTimes(1);
+      expect(findExistingStudentsByNumbers.mock.calls[0][0]).toHaveLength(2000);
     });
   });
 
@@ -903,6 +984,7 @@ describe('StudentService', () => {
         imported: 2,
         error_count: 0,
         errors: [],
+        excluded: [],
       });
       expect(createMany).toHaveBeenCalledTimes(1);
       expect(createMany).toHaveBeenCalledWith({
@@ -950,6 +1032,7 @@ describe('StudentService', () => {
         imported: 1,
         error_count: 0,
         errors: [],
+        excluded: [],
       });
       expect(createMany).toHaveBeenCalledWith({
         newClassRooms: [{ classCode: '99Z', className: '99Z' }],
@@ -1037,20 +1120,89 @@ describe('StudentService', () => {
             reason: 'student_id_number_duplicate_in_file',
           }),
         ],
+        excluded: [],
       });
       expect(createMany).not.toHaveBeenCalled();
     });
 
-    it('既存DBと学籍番号が重複する行がある場合は1件も登録しない', async () => {
+    it('既に登録されている学籍番号の行は除外し、残りの行だけをcreateManyに渡す', async () => {
       const createMany = vi.fn();
       const repository = createRepository({
-        findExistingStudentNumbers: vi
+        findExistingStudentsByNumbers: vi
           .fn()
-          .mockResolvedValue(new Set(['24030'])),
+          .mockResolvedValue(
+            new Map([
+              ['24030', { studentId: 7, userId: 70, isLiveActive: true }],
+            ])
+          ),
         createMany,
       });
-      const classRoomRepository = createClassRoomRepository();
+      const classRoomRepository = createClassRoomRepository({
+        findExistingClassCodes: vi.fn().mockResolvedValue(new Set(['11A'])),
+      });
       const service = createStudentService(repository, classRoomRepository);
+
+      const result = await service.commitStudentImport({
+        rows: [
+          {
+            class_code: '99Z',
+            attendance_number: 1,
+            student_id_number: '24030',
+            last_name: '既存',
+            first_name: '太郎',
+          },
+          {
+            class_code: '11A',
+            attendance_number: 2,
+            student_id_number: '24031',
+            last_name: '新規',
+            first_name: '花子',
+          },
+        ],
+      });
+
+      expect(result).toEqual({
+        total: 2,
+        imported: 1,
+        error_count: 0,
+        errors: [],
+        excluded: [
+          expect.objectContaining({
+            row_index: 1,
+            student_id: 7,
+            reason: 'student_already_registered',
+          }),
+        ],
+      });
+      expect(createMany).toHaveBeenCalledWith({
+        newClassRooms: [],
+        students: [
+          {
+            displayName: '新規花子',
+            classCode: '11A',
+            attendanceNumber: 2,
+            studentIdNumber: '24031',
+          },
+        ],
+      });
+    });
+
+    it('全行が既に登録されている場合は、何も登録せずimportedを0にする', async () => {
+      const createMany = vi.fn();
+      const repository = createRepository({
+        findExistingStudentsByNumbers: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([
+              ['24030', { studentId: 7, userId: 70, isLiveActive: true }],
+            ])
+          ),
+        createMany,
+      });
+      const service = createStudentService(
+        repository,
+        createClassRoomRepository()
+      );
 
       const result = await service.commitStudentImport({
         rows: [
@@ -1067,15 +1219,20 @@ describe('StudentService', () => {
       expect(result).toEqual({
         total: 1,
         imported: 0,
-        error_count: 1,
-        errors: [
+        error_count: 0,
+        errors: [],
+        excluded: [
           expect.objectContaining({
             row_index: 1,
-            reason: 'student_id_number_duplicate_in_db',
+            student_id: 7,
+            reason: 'student_already_registered',
           }),
         ],
       });
-      expect(createMany).not.toHaveBeenCalled();
+      expect(createMany).toHaveBeenCalledWith({
+        newClassRooms: [],
+        students: [],
+      });
     });
   });
 });

@@ -1,4 +1,7 @@
-import type { EventGatheringEntity } from '../../domain/entities/EventGathering';
+import type {
+  EventGatheringEntity,
+  EventGatheringWithoutMemberCountEntity,
+} from '../../domain/entities/EventGathering';
 import type {
   EventGatheringSettingsDTO,
   GatheringSettingDTO,
@@ -6,11 +9,14 @@ import type {
 } from '../dto/EventGatheringSettingsDTO';
 import type { ImageUrlOf } from './imageUrls';
 
+type RoundGathering =
+  EventGatheringEntity | EventGatheringWithoutMemberCountEntity;
+
 function toGatheringSettingDTO(
-  gathering: EventGatheringEntity,
+  gathering: RoundGathering,
   imageUrlOf: ImageUrlOf
 ): GatheringSettingDTO {
-  return {
+  const setting: GatheringSettingDTO = {
     gathering_id: gathering.gathering_id,
     gathering_time: gathering.gathering_time,
     gathering_spot: {
@@ -18,8 +24,11 @@ function toGatheringSettingDTO(
       gathering_spot_name: gathering.gathering_spot_name,
       image_url: imageUrlOf(gathering.gathering_spot_image_key),
     },
-    member_count: gathering.member_count,
   };
+  if ('member_count' in gathering) {
+    setting.member_count = gathering.member_count;
+  }
+  return setting;
 }
 
 /**
@@ -33,7 +42,7 @@ function toGatheringSettingDTO(
  * Application Serviceからも呼べる形にしている。
  */
 export function buildRoundSettings(
-  gatherings: EventGatheringEntity[],
+  gatherings: RoundGathering[],
   imageUrlOf: ImageUrlOf
 ): RoundSettingDTO[] {
   const rounds: RoundSettingDTO[] = [];
@@ -65,10 +74,12 @@ export function buildRoundSettings(
 export function buildEventGatheringSettings(
   eventId: number,
   gatherings: EventGatheringEntity[],
-  imageUrlOf: ImageUrlOf
+  imageUrlOf: ImageUrlOf,
+  lockVersion: number
 ): EventGatheringSettingsDTO {
   return {
     event_id: eventId,
+    lock_version: lockVersion,
     rounds: buildRoundSettings(gatherings, imageUrlOf),
   };
 }

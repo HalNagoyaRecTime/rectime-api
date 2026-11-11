@@ -972,6 +972,51 @@ describe('POST /auth/microsoft/token', () => {
     expect(session?.client_type).toBe('mobile');
   });
 
+  it('id_tokenのnonceがstateと一致しない場合は401 INVALID_ID_TOKENを返し、セッションを発行しない', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const idToken = await signIdToken({
+      sub: 'sub-nonce',
+      oid: 'oid-nonce',
+      tid: 'tid-1',
+      name: '山田花子',
+      preferred_username: 'yamada@example.com',
+      nonce: 'other-nonce',
+      iss: `https://login.microsoftonline.com/tid-1/v2.0`,
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+    });
+    await putAuthState('state-nonce', {
+      nonce: 'nonce-expected',
+      client_type: 'mobile',
+      purpose: 'login',
+      created_at: new Date().toISOString(),
+    });
+    stubMicrosoftFetch(idToken);
+
+    const res = await buildApp().request(
+      '/token',
+      {
+        method: 'POST',
+        headers: {
+          'X-Client-Type': 'mobile',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code: 'auth-code-nonce',
+          state: 'state-nonce',
+          code_verifier: generateRandom(32),
+        }),
+      },
+      buildEnv()
+    );
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('INVALID_ID_TOKEN');
+    expect(await countRefreshSessions()).toBe(0);
+  });
+
   it('Microsoftとのトークン交換に失敗した場合は401を返す', async () => {
     const env = buildEnv();
     await putAuthState('state-3', {
@@ -1728,10 +1773,10 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.error?.code).toBe('INTERNAL_SERVER_ERROR');
   });
 
-  it('markAsDeleted実行後に同じ学籍番号メールでログインすると、古い削除済みユーザーへ紐付けず新規アカウントとして登録される', async () => {
-    // ここで検証したい再登録の挙動(削除済みuser_idへ紐付けず新規発行
-    // される)はclient_typeに依存しない。Webは新規ユーザーにstaff権限が
-    // 必須(#288)で新規登録の検証に使えないため、mobileで検証する。
+  it('markAsDeleted実行後に同じ学籍番号メールでログインすると、古い削除済みユーザーへ紐付けず、新しいユーザーへ学生情報が付け替わる', async () => {
+    // ここで検証したい再ログインの挙動(削除済みuser_idへ紐付けず新規発行
+    // され、学生情報がそちらへ移る)はclient_typeに依存しない。Webは
+    // ログインにstaff権限が必須で検証に使えないため、mobileで検証する。
     const env = buildEnv();
 
     const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
@@ -1809,6 +1854,16 @@ describe('POST /auth/microsoft/token', () => {
       .bind(oldUser!.user_id)
       .first<{ deletion_status: string }>();
     expect(oldUserRow?.deletion_status).toBe('deleted');
+
+    // 学生情報は新しいuser_idへ付け替わり、クラス・出席番号もそのまま
+    const studentRow = await workerEnv.DB.prepare(
+      "SELECT user_id, class_room_id, attendance_number FROM students WHERE student_id_number = '70001'"
+    ).first();
+    expect(studentRow).toEqual({
+      user_id: Number(body.user.id),
+      class_room_id: classRoom.classRoomId,
+      attendance_number: 3,
+    });
   });
 
   it('deletion_pendingの学生が学籍番号ログインを試みると410 ACCOUNT_DELETION_PENDINGを返す', async () => {
@@ -2591,4 +2646,425 @@ describe('POST /auth/microsoft/resolve-campus', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     }
   );
+});
+
+describe('POST /auth/microsoft/campus-token', () => {
+  const SENT_REFRESH_TOKEN = 'ms-refresh-token-from-nagoya';
+  const ROTATED_REFRESH_TOKEN = 'ms-refresh-token-rotated';
+
+  async function countRows(
+    table: 'users' | 'refresh_sessions' | 'microsoft_account_links'
+  ) {
+    const row = await workerEnv.DB.prepare(
+      `SELECT COUNT(*) AS count FROM ${table}`
+    ).first<{ count: number }>();
+    return row?.count;
+  }
+
+  // refreshで返るid_tokenにはnonceが含まれない。
+  async function signRefreshedIdToken(claims: Record<string, unknown> = {}) {
+    const now = Math.floor(Date.now() / 1000);
+    return signIdToken({
+      sub: 'sub-ct',
+      oid: 'oid-ct',
+      tid: 'tid-1',
+      name: '山田花子',
+      iss: 'https://login.microsoftonline.com/tid-1/v2.0',
+      aud: CLIENT_ID,
+      exp: now + 3600,
+      iat: now - 10,
+      ...claims,
+    });
+  }
+
+  function stubRefresh(
+    tokens: Record<string, string>,
+    status = 200
+  ): { tokenRequests: URLSearchParams[] } {
+    const tokenRequests: URLSearchParams[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
+          const url = typeof input === 'string' ? input : input.toString();
+          if (url.includes('/discovery/v2.0/keys')) {
+            return new Response(JSON.stringify({ keys: [idTokenJwk] }), {
+              status: 200,
+            });
+          }
+          tokenRequests.push(new URLSearchParams(String(init?.body)));
+          return new Response(JSON.stringify(tokens), { status });
+        })
+    );
+    return { tokenRequests };
+  }
+
+  async function stubRefreshWithIdToken(claims: Record<string, unknown> = {}) {
+    return stubRefresh({
+      id_token: await signRefreshedIdToken(claims),
+      access_token: 'ms-access-token',
+      refresh_token: ROTATED_REFRESH_TOKEN,
+    });
+  }
+
+  function requestCampusToken(
+    env: Env,
+    body: unknown = { ms_refresh_token: SENT_REFRESH_TOKEN },
+    headers: Record<string, string> = { 'X-Client-Type': 'mobile' }
+  ) {
+    return buildApp().request(
+      '/campus-token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+      },
+      env
+    );
+  }
+
+  async function expectErrorCode(res: Response, status: number, code: string) {
+    expect(res.status).toBe(status);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe(code);
+  }
+
+  async function expectNothingWritten() {
+    expect(await countRows('users')).toBe(0);
+    expect(await countRows('refresh_sessions')).toBe(0);
+    expect(await countRows('microsoft_account_links')).toBe(0);
+  }
+
+  it('受け取ったrefresh tokenでid_tokenを取り直し、/tokenと同じ形でセッションを発行する', async () => {
+    const { tokenRequests } = await stubRefreshWithIdToken({
+      preferred_username: 'hanako@ohs.hal.ac.jp',
+    });
+
+    const res = await requestCampusToken(buildEnv({ CAMPUS_CODE: 'OSAKA' }));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    const body = (await res.json()) as {
+      access_token: string;
+      refresh_token_id: string;
+      token_type: string;
+      expires_in: number;
+      user: { id: string };
+    };
+    expect(Object.keys(body).sort()).toEqual([
+      'access_token',
+      'expires_in',
+      'refresh_token_id',
+      'token_type',
+      'user',
+    ]);
+    expect(body.token_type).toBe('Bearer');
+    expect(body.expires_in).toBe(3600);
+    const claims = await verifyAccessToken(
+      body.access_token,
+      JWT_SECRET,
+      'mobile'
+    );
+    expect(claims.sub).toBe(body.user.id);
+
+    expect(tokenRequests).toHaveLength(1);
+    expect(tokenRequests[0].get('grant_type')).toBe('refresh_token');
+    expect(tokenRequests[0].get('refresh_token')).toBe(SENT_REFRESH_TOKEN);
+    expect(tokenRequests[0].has('client_assertion')).toBe(false);
+
+    const session = await findRefreshSession(body.refresh_token_id);
+    expect(session?.ms_refresh_token).toBe(ROTATED_REFRESH_TOKEN);
+    expect(session?.client_type).toBe('mobile');
+    expect(session?.user_id).toBe(body.user.id);
+  });
+
+  it('自校の学生は既存のStudentに紐付く', async () => {
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'CT-STUDENT',
+      className: '学校振り分け確認',
+    });
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('学生三郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 3, '70001')"
+    )
+      .bind(user!.user_id, classRoom.classRoomId)
+      .run();
+    await stubRefreshWithIdToken({
+      preferred_username: 'nhs70001@nhs.hal.ac.jp',
+    });
+
+    const res = await requestCampusToken(buildEnv({ CAMPUS_CODE: 'NAGOYA' }));
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      user: { id: string; student_id_number: string | null };
+    };
+    expect(body.user.id).toBe(String(user!.user_id));
+    expect(body.user.student_id_number).toBe('70001');
+  });
+
+  it('自校の事前登録済み教員は既存のTeacherに紐付く', async () => {
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('大阪先生') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'sensei@oh.hal.ac.jp')"
+    )
+      .bind(user!.user_id)
+      .run();
+    await stubRefreshWithIdToken({ preferred_username: 'sensei@oh.hal.ac.jp' });
+
+    const res = await requestCampusToken(buildEnv({ CAMPUS_CODE: 'OSAKA' }));
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      user: { id: string; is_teacher: boolean };
+    };
+    expect(body.user.id).toBe(String(user!.user_id));
+    expect(body.user.is_teacher).toBe(true);
+  });
+
+  it('判定表に無いドメインは名古屋のWorkerで受け付ける', async () => {
+    await stubRefreshWithIdToken({ preferred_username: 'guest@example.com' });
+
+    const res = await requestCampusToken(buildEnv({ CAMPUS_CODE: 'NAGOYA' }));
+
+    expect(res.status).toBe(200);
+    expect(await countRows('refresh_sessions')).toBe(1);
+  });
+
+  it.each([
+    ['OSAKA', 'taro@ths.hal.ac.jp', 'TOKYO'],
+    ['NAGOYA', 'taro@oh.hal.ac.jp', 'OSAKA'],
+    ['OSAKA', 'guest@example.com', 'NAGOYA'],
+    ['TOKYO', 'guest@example.com', 'NAGOYA'],
+  ])(
+    '%sのWorkerに%sが来た場合は409 WRONG_CAMPUS(%s)を返し、何も書き込まない',
+    async (ownCampus, email, campus) => {
+      await stubRefreshWithIdToken({ preferred_username: email });
+
+      const res = await requestCampusToken(
+        buildEnv({ CAMPUS_CODE: ownCampus })
+      );
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: {
+          code: 'WRONG_CAMPUS',
+          message: expect.any(String),
+          details: { campus },
+        },
+      });
+      await expectNothingWritten();
+    }
+  );
+
+  it.each([
+    ['未設定', undefined],
+    ['表記揺れ', 'Osaka'],
+  ])(
+    'CAMPUS_CODEが%sの場合は500を返し、Microsoftへ問い合わせない',
+    async (_label, campusCode) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await requestCampusToken(
+        buildEnv({ CAMPUS_CODE: campusCode })
+      );
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({
+        error: { code: 'INTERNAL_SERVER_ERROR', message: expect.any(String) },
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      await expectNothingWritten();
+    }
+  );
+
+  it.each([
+    ['web', { 'X-Client-Type': 'web' }],
+    ['未指定', {}],
+  ])(
+    'X-Client-Typeが%sの場合は400 INVALID_CLIENT_TYPEを返す',
+    async (_label, headers) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await requestCampusToken(
+        buildEnv({ CAMPUS_CODE: 'OSAKA' }),
+        { ms_refresh_token: SENT_REFRESH_TOKEN },
+        headers
+      );
+
+      await expectErrorCode(res, 400, 'INVALID_CLIENT_TYPE');
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ['ms_refresh_tokenが無い', {}],
+    ['ms_refresh_tokenが空文字', { ms_refresh_token: '' }],
+    ['ms_refresh_tokenが文字列でない', { ms_refresh_token: 123 }],
+    ['ボディがnull', null],
+  ])('%s場合は400 INVALID_REQUESTを返す', async (_label, body) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await requestCampusToken(
+      buildEnv({ CAMPUS_CODE: 'OSAKA' }),
+      body
+    );
+
+    await expectErrorCode(res, 400, 'INVALID_REQUEST');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [400, { error: 'invalid_grant' }, 401, 'REFRESH_TOKEN_EXPIRED'],
+    [503, { error: 'invalid_grant' }, 503, 'AUTH_PROVIDER_UNAVAILABLE'],
+    [
+      400,
+      { error: 'temporarily_unavailable' },
+      503,
+      'AUTH_PROVIDER_UNAVAILABLE',
+    ],
+    [400, { error: 'invalid_client' }, 500, 'AUTH_PROVIDER_ERROR'],
+    [
+      200,
+      { access_token: 'a', refresh_token: 'r' },
+      503,
+      'AUTH_PROVIDER_UNAVAILABLE',
+    ],
+  ])(
+    'MicrosoftがHTTP %s / %jを返した場合は%sを返し、何も書き込まない',
+    async (status, payload, expectedStatus, code) => {
+      stubRefresh(payload, status);
+
+      const res = await requestCampusToken(buildEnv({ CAMPUS_CODE: 'OSAKA' }));
+
+      await expectErrorCode(res, expectedStatus, code);
+      await expectNothingWritten();
+    }
+  );
+
+  it('refresh_tokenが返されない場合は503 AUTH_PROVIDER_UNAVAILABLEを返す', async () => {
+    stubRefresh({
+      id_token: await signRefreshedIdToken({
+        preferred_username: 'hanako@ohs.hal.ac.jp',
+      }),
+      access_token: 'ms-access-token',
+    });
+
+    const res = await requestCampusToken(buildEnv({ CAMPUS_CODE: 'OSAKA' }));
+
+    await expectErrorCode(res, 503, 'AUTH_PROVIDER_UNAVAILABLE');
+    await expectNothingWritten();
+  });
+
+  it.each([
+    ['audが違う', { aud: 'other-client' }],
+    [
+      'テナントが許可されていない',
+      {
+        tid: 'tid-other',
+        iss: 'https://login.microsoftonline.com/tid-other/v2.0',
+      },
+    ],
+  ])('id_tokenの%s場合は401 INVALID_ID_TOKENを返す', async (_label, claims) => {
+    await stubRefreshWithIdToken({
+      preferred_username: 'hanako@ohs.hal.ac.jp',
+      ...claims,
+    });
+
+    const res = await requestCampusToken(buildEnv({ CAMPUS_CODE: 'OSAKA' }));
+
+    await expectErrorCode(res, 401, 'INVALID_ID_TOKEN');
+    await expectNothingWritten();
+  });
+
+  it('id_tokenの署名が不正な場合は401 INVALID_ID_TOKENを返す', async () => {
+    const idToken = await signRefreshedIdToken({
+      preferred_username: 'hanako@ohs.hal.ac.jp',
+    });
+    const [header, payload, signature] = idToken.split('.');
+    const tampered = `${header}.${payload}.${signature.startsWith('A') ? 'B' : 'A'}${signature.slice(1)}`;
+    stubRefresh({
+      id_token: tampered,
+      access_token: 'ms-access-token',
+      refresh_token: ROTATED_REFRESH_TOKEN,
+    });
+
+    const res = await requestCampusToken(buildEnv({ CAMPUS_CODE: 'OSAKA' }));
+
+    await expectErrorCode(res, 401, 'INVALID_ID_TOKEN');
+    await expectNothingWritten();
+  });
+
+  it('学生が別のMicrosoftアカウントと紐付け済みの場合は409 STUDENT_ALREADY_LINKEDを返し、セッションを保存しない', async () => {
+    const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
+      classCode: 'CT-LINKED',
+      className: '学校振り分け紐付け済み',
+    });
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name) VALUES ('田中太郎') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '70002')"
+    )
+      .bind(user!.user_id, classRoom.classRoomId)
+      .run();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-other', 'tid-other')"
+    )
+      .bind(user!.user_id)
+      .run();
+    await stubRefreshWithIdToken({
+      preferred_username: 'nhs70002@nhs.hal.ac.jp',
+    });
+
+    const res = await requestCampusToken(buildEnv({ CAMPUS_CODE: 'NAGOYA' }));
+
+    await expectErrorCode(res, 409, 'STUDENT_ALREADY_LINKED');
+    expect(await countRows('refresh_sessions')).toBe(0);
+  });
+
+  it('削除手続き中のユーザーは410 ACCOUNT_DELETION_PENDINGを返し、セッションを保存しない', async () => {
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('削除中', 'deletion_pending') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO microsoft_account_links (user_id, oid, tid) VALUES (?, 'oid-ct', 'tid-1')"
+    )
+      .bind(user!.user_id)
+      .run();
+    await stubRefreshWithIdToken({
+      preferred_username: 'hanako@ohs.hal.ac.jp',
+    });
+
+    const res = await requestCampusToken(buildEnv({ CAMPUS_CODE: 'OSAKA' }));
+
+    await expectErrorCode(res, 410, 'ACCOUNT_DELETION_PENDING');
+    expect(await countRows('refresh_sessions')).toBe(0);
+  });
+
+  it('無効化された事前登録済み教員は401 USER_DEACTIVATEDを返し、セッションを保存しない', async () => {
+    const user = await workerEnv.DB.prepare(
+      "INSERT INTO users (user_name, is_live_active) VALUES ('無効化教員', 0) RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await workerEnv.DB.prepare(
+      "INSERT INTO teachers (user_id, email) VALUES (?, 'off@oh.hal.ac.jp')"
+    )
+      .bind(user!.user_id)
+      .run();
+    await stubRefreshWithIdToken({ preferred_username: 'off@oh.hal.ac.jp' });
+
+    const res = await requestCampusToken(buildEnv({ CAMPUS_CODE: 'OSAKA' }));
+
+    await expectErrorCode(res, 401, 'USER_DEACTIVATED');
+    expect(await countRows('refresh_sessions')).toBe(0);
+    expect(await countRows('microsoft_account_links')).toBe(0);
+  });
 });

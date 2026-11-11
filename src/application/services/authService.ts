@@ -87,14 +87,56 @@ export function createAuthService(
           if (studentDeletionStatus === 'deletion_pending') {
             throw new Error('ACCOUNT_DELETION_PENDING');
           }
-          // deletionStatusが'deleted'の場合はここでlinkMicrosoftAccountを
-          // 呼ばない。この学籍番号の古いuser_idへ紐付けてしまうと、
-          // 削除済みユーザーへMicrosoftアカウントが再度紐付き、ログイン用
-          // Tokenが発行されてしまう(#265で確定した「本人削除済みデータを
-          // 復元しない」に反する)。studentが見つからなかった場合と同じく
-          // 素通りさせ、後続のcreateUserWithMicrosoftLinkで新規アカウント
-          // として登録する。
-          if (studentDeletionStatus !== 'deleted') {
+          // deletionStatusが'deleted'の場合は古いuser_idへ紐付けない。
+          // 紐付けると退会済みユーザーへMicrosoftアカウントが再度紐付き、
+          // 退会したユーザーが元に戻ってしまう。代わりに新しいユーザーを
+          // 作り、学生情報をそちらへ付け替える。後片付けが途中
+          // (purged_atがNULL)でも付け替えてよい。後片付けは古いuser_idに
+          // 対してだけ行われ、付け替えた学生情報には触れないため。
+          if (studentDeletionStatus === 'deleted') {
+            try {
+              const takenOver =
+                await userRepository.createUserAndTakeOverStudent({
+                  studentId: student.studentId,
+                  previousUserId: student.userId,
+                  oid: claims.oid,
+                  tid: claims.tid,
+                  sub: claims.sub,
+                  email,
+                  displayName,
+                });
+              if (takenOver) return takenOver;
+            } catch (err) {
+              // 同じMicrosoftアカウントの同時初回ログインでは、先勝ちした
+              // 側の連携があるためUNIQUE制約違反になる(batch全体は取り消し
+              // 済み)。下で先勝ちしたユーザーを探す。
+              if (!(
+                err instanceof Error &&
+                err.message.includes('UNIQUE constraint failed') &&
+                err.message.includes('microsoft_account_links')
+              )) {
+                throw err;
+              }
+            }
+
+            // 付け替えられなかった。同じMicrosoftアカウントの同時ログインで
+            // 先に付け替えられていれば、そのユーザーを正とする。そうでなければ
+            // 別のMicrosoftアカウントがこの学生を引き継いでいる。
+            const racedUserId =
+              await userRepository.findUserIdByMicrosoftAccount(
+                claims.oid,
+                claims.tid
+              );
+            if (!racedUserId) throw new Error('STUDENT_ALREADY_LINKED');
+            return {
+              id: racedUserId,
+              oid: claims.oid,
+              tid: claims.tid,
+              sub: claims.sub,
+              email,
+              display_name: displayName,
+            };
+          } else {
             try {
               // linkMicrosoftAccount自体もINSERT ... WHERE deletion_status
               // = 'active'を条件に含めており、直前のgetDeletionStatus確認と
@@ -160,7 +202,7 @@ export function createAuthService(
       // ID Token側も同じ形に揃える。氏名は表示用途に限り、職員番号などが
       // 含まれていても本人確認には使わない。
       // preferred_usernameはMicrosoftのサインイン用アドレスであり、
-      // 連絡先用途のemail claimにはフォールバックしない。また、nhs+数字の
+      // 連絡先用途のemail claimにはフォールバックしない。また、学校の接頭辞+数字の
       // 学生形式は、DBに該当学生がまだいなくても教員として扱わない。
       if (normalizedTeacherEmail && !studentIdNumber) {
         const teacher =

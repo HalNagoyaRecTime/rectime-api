@@ -6,12 +6,14 @@ import {
 } from '../../../infrastructure/auth/pkce';
 import { signAccessToken } from '../../../infrastructure/auth/jwt';
 import {
+  type AppContext,
   getClientType,
   getNumberEnv,
   isValidBase64Url,
   hasMinimumDecodedBytes,
   buildMicrosoftAuthorizeUrl,
   buildWebRedirectUri,
+  refreshMicrosoftAccessToken,
   upsertUser,
 } from '../helpers';
 import {
@@ -19,6 +21,7 @@ import {
   getStoredFrontendOrigin,
 } from '../frontendOrigin';
 import {
+  type ClientType,
   type DeletionConfirmationEntry,
   ACCOUNT_PHOTO_PATH,
 } from '../../../domain/auth/types';
@@ -27,10 +30,18 @@ import { createUserRepository } from '../../../infrastructure/repositories/UserR
 import { AuthErrors } from '../../errors/authErrors';
 import { isDesktopRedirectUri } from '../desktopRedirect';
 import { exchangeMicrosoftAuthorizationCode } from '../microsoftCodeExchange';
-import { resolveCampusFromEmail } from '../../../domain/auth/campus';
+import {
+  parseCampus,
+  resolveCampusFromEmail,
+} from '../../../domain/auth/campus';
 import { pickMicrosoftEmailClaim } from '../../../domain/auth/email';
 import { CommonErrors } from '../../errors/commonErrors';
 import { errorResponse } from '../../errors/errorResponse';
+import { microsoftTokenError } from '../../errors/microsoftTokenError';
+import {
+  type IdTokenClaims,
+  verifyIdToken,
+} from '../../../infrastructure/auth/verifyIdToken';
 
 const DELETION_CONFIRMATION_TTL_SEC = 600;
 const AUTH_STATE_TTL_SEC = 600;
@@ -273,6 +284,168 @@ microsoft.post('/token', async c => {
   }
   const { clientType, tokens, claims } = exchanged;
 
+  return issueLoginSession(c, clientType, claims, tokens.refresh_token);
+});
+
+// POST /auth/microsoft/resolve-campus
+// 名古屋校のWorkerでmobileがログイン後の所属校を判定するために呼ぶ。
+// - request: /token(mobile)と同じ { code, state, code_verifier }。
+//   X-Client-Type: mobile のみ許可し、stateのpurposeは'login'。
+// - response 200: { campus, ms_refresh_token }(Cache-Control: no-store)。
+//   id_token・access_tokenは返さない。
+// - error: /tokenと同じAuthErrorsを返す(新しいエラーコードは追加しない)。
+// - DB書き込みはauth_statesの消費のみ。upsertUser・users・refresh_sessions
+//   への書き込みやrectime-apiのToken発行は行わない。
+microsoft.post('/resolve-campus', async c => {
+  const exchanged = await exchangeMicrosoftAuthorizationCode(c, {
+    allowedClientTypes: ['mobile'],
+    purpose: 'login',
+    requireRefreshToken: true,
+  });
+  if (!exchanged.ok) {
+    return exchanged.response;
+  }
+  const { tokens, claims } = exchanged;
+
+  const email = pickMicrosoftEmailClaim(claims);
+
+  c.header('Cache-Control', 'no-store');
+  return c.json({
+    campus: resolveCampusFromEmail(email),
+    ms_refresh_token: tokens.refresh_token,
+  });
+});
+
+// POST /auth/microsoft/campus-token
+// /resolve-campusで振り分けられた先の学校のWorkerで、ユーザーを登録して
+// ログインセッションを発行する。
+// - request: { ms_refresh_token }(/resolve-campusのレスポンスの値)。
+//   X-Client-Type: mobile のみ許可する。
+// - response 200: /tokenと同じ形(Cache-Control: no-store)。
+// - error: 所属校がこのWorkerの学校と違う場合は409 WRONG_CAMPUS
+//   (details.campus に所属校)。それ以外は/tokenと同じAuthErrors。
+//   CAMPUS_CODEが未設定・不正な場合は500。
+// - id_tokenはこのWorkerがMicrosoftから直接受け取ったもので、
+//   すり替えが起きないため、nonceは確認しない。
+microsoft.post('/campus-token', async c => {
+  if (getClientType(c) !== 'mobile') {
+    return errorResponse(c, AuthErrors.INVALID_CLIENT_TYPE);
+  }
+
+  const body = (await c.req.json().catch(() => null)) as {
+    ms_refresh_token?: unknown;
+  } | null;
+  if (
+    !body ||
+    typeof body.ms_refresh_token !== 'string' ||
+    body.ms_refresh_token.length === 0
+  ) {
+    return errorResponse(c, AuthErrors.INVALID_REQUEST);
+  }
+
+  const ownCampus = parseCampus(c.env.CAMPUS_CODE);
+  if (ownCampus === null) {
+    return errorResponse(c, {
+      status: 500,
+      code: 'INTERNAL_SERVER_ERROR',
+      message: '学校の設定が正しくありません',
+    });
+  }
+
+  const result = await refreshMicrosoftAccessToken(c, body.ms_refresh_token, {
+    includeClientAssertion: false,
+  });
+  if (!result.ok) {
+    return errorResponse(
+      c,
+      microsoftTokenError(
+        result,
+        AuthErrors.REFRESH_TOKEN_EXPIRED,
+        AuthErrors.AUTH_PROVIDER_UNAVAILABLE
+      )
+    );
+  }
+  const { id_token: idToken, refresh_token: msRefreshToken } = result.tokens;
+  if (!idToken || !msRefreshToken) {
+    return errorResponse(c, AuthErrors.AUTH_PROVIDER_UNAVAILABLE);
+  }
+
+  let claims;
+  try {
+    claims = await verifyIdToken(
+      idToken,
+      c.env.AUTH_KV,
+      c.env.MICROSOFT_CLIENT_ID,
+      null,
+      c.env.MICROSOFT_TENANT,
+      c.env.ALLOWED_MICROSOFT_TENANTS
+    );
+  } catch {
+    return errorResponse(c, AuthErrors.INVALID_ID_TOKEN);
+  }
+
+  const campus = resolveCampusFromEmail(pickMicrosoftEmailClaim(claims));
+  if (campus !== ownCampus) {
+    return errorResponse(c, AuthErrors.WRONG_CAMPUS, { campus });
+  }
+
+  c.header('Cache-Control', 'no-store');
+  return issueLoginSession(c, 'mobile', claims, msRefreshToken);
+});
+
+// POST /auth/microsoft/delete-token
+// アカウント削除確認専用。/token とPKCE検証・Microsoftとのトークン交換・
+// id_token検証までは共通だが、ここから先はupsertUser（新規作成・
+// Student紐付け・一般API用Tokenの発行）を一切行わない。
+// 既存アカウントの照合のみ行い、見つかった場合に一回限り・短期間の
+// 削除確認Token（不透明な文字列）を発行する。
+microsoft.post('/delete-token', async c => {
+  const exchanged = await exchangeMicrosoftAuthorizationCode(c, {
+    allowedClientTypes: ['mobile', 'web'],
+    // /login で発行された state がこちらに紛れ込んだ場合を拒否する。
+    purpose: 'account_deletion',
+    // 削除確認ではMicrosoftのrefresh_tokenを保存しないため要求しない。
+    requireRefreshToken: false,
+  });
+  if (!exchanged.ok) {
+    return exchanged.response;
+  }
+  const { claims } = exchanged;
+
+  const userRepository = createUserRepository(c.env.DB);
+  const userId = await userRepository.findUserIdByMicrosoftAccount(
+    claims.oid,
+    claims.tid
+  );
+
+  if (!userId) {
+    // upsertUserは呼ばない。このMicrosoftアカウントに対応する
+    // RecTimeアカウントが存在しない場合、新規作成はしない。
+    return errorResponse(c, AuthErrors.ACCOUNT_NOT_FOUND);
+  }
+
+  const deletionToken = crypto.randomUUID();
+  await c.env.AUTH_KV.put(
+    `deletion_confirmation:${deletionToken}`,
+    JSON.stringify({
+      user_id: userId,
+      created_at: new Date().toISOString(),
+    } satisfies DeletionConfirmationEntry),
+    { expirationTtl: DELETION_CONFIRMATION_TTL_SEC }
+  );
+
+  return c.json({
+    deletion_confirmation_token: deletionToken,
+    expires_in: DELETION_CONFIRMATION_TTL_SEC,
+  });
+});
+
+async function issueLoginSession(
+  c: AppContext,
+  clientType: ClientType,
+  claims: IdTokenClaims,
+  msRefreshToken: string
+): Promise<Response> {
   let user;
   try {
     user = await upsertUser(c, claims);
@@ -333,7 +506,7 @@ microsoft.post('/token', async c => {
       display_name: user.display_name,
       avatar_updated_at: null,
       client_type: clientType,
-      ms_refresh_token: tokens.refresh_token,
+      ms_refresh_token: msRefreshToken,
     },
     refreshTtl
   );
@@ -360,82 +533,6 @@ microsoft.post('/token', async c => {
     expires_in: jwtTtl,
     user: profile,
   });
-});
-
-// POST /auth/microsoft/resolve-campus
-// 名古屋校のWorkerでmobileがログイン後の所属校を判定するために呼ぶ。
-// - request: /token(mobile)と同じ { code, state, code_verifier }。
-//   X-Client-Type: mobile のみ許可し、stateのpurposeは'login'。
-// - response 200: { campus, ms_refresh_token }(Cache-Control: no-store)。
-//   id_token・access_tokenは返さない。
-// - error: /tokenと同じAuthErrorsを返す(新しいエラーコードは追加しない)。
-// - DB書き込みはauth_statesの消費のみ。upsertUser・users・refresh_sessions
-//   への書き込みやrectime-apiのToken発行は行わない。
-microsoft.post('/resolve-campus', async c => {
-  const exchanged = await exchangeMicrosoftAuthorizationCode(c, {
-    allowedClientTypes: ['mobile'],
-    purpose: 'login',
-    requireRefreshToken: true,
-  });
-  if (!exchanged.ok) {
-    return exchanged.response;
-  }
-  const { tokens, claims } = exchanged;
-
-  const email = pickMicrosoftEmailClaim(claims);
-
-  c.header('Cache-Control', 'no-store');
-  return c.json({
-    campus: resolveCampusFromEmail(email),
-    ms_refresh_token: tokens.refresh_token,
-  });
-});
-
-// POST /auth/microsoft/delete-token
-// アカウント削除確認専用。/token とPKCE検証・Microsoftとのトークン交換・
-// id_token検証までは共通だが、ここから先はupsertUser（新規作成・
-// Student紐付け・一般API用Tokenの発行）を一切行わない。
-// 既存アカウントの照合のみ行い、見つかった場合に一回限り・短期間の
-// 削除確認Token（不透明な文字列）を発行する。
-microsoft.post('/delete-token', async c => {
-  const exchanged = await exchangeMicrosoftAuthorizationCode(c, {
-    allowedClientTypes: ['mobile', 'web'],
-    // /login で発行された state がこちらに紛れ込んだ場合を拒否する。
-    purpose: 'account_deletion',
-    // 削除確認ではMicrosoftのrefresh_tokenを保存しないため要求しない。
-    requireRefreshToken: false,
-  });
-  if (!exchanged.ok) {
-    return exchanged.response;
-  }
-  const { claims } = exchanged;
-
-  const userRepository = createUserRepository(c.env.DB);
-  const userId = await userRepository.findUserIdByMicrosoftAccount(
-    claims.oid,
-    claims.tid
-  );
-
-  if (!userId) {
-    // upsertUserは呼ばない。このMicrosoftアカウントに対応する
-    // RecTimeアカウントが存在しない場合、新規作成はしない。
-    return errorResponse(c, AuthErrors.ACCOUNT_NOT_FOUND);
-  }
-
-  const deletionToken = crypto.randomUUID();
-  await c.env.AUTH_KV.put(
-    `deletion_confirmation:${deletionToken}`,
-    JSON.stringify({
-      user_id: userId,
-      created_at: new Date().toISOString(),
-    } satisfies DeletionConfirmationEntry),
-    { expirationTtl: DELETION_CONFIRMATION_TTL_SEC }
-  );
-
-  return c.json({
-    deletion_confirmation_token: deletionToken,
-    expires_in: DELETION_CONFIRMATION_TTL_SEC,
-  });
-});
+}
 
 export { microsoft };

@@ -45,7 +45,7 @@ export const adminDetailSchedule = {
   stop: null,
 };
 
-export const scheduleListItem = {
+export const scheduleBase = {
   notificationId: 108,
   notificationScheduleId: 501,
   content: { push: content.push },
@@ -58,7 +58,7 @@ export const scheduleListItem = {
 };
 
 export const scheduleDetail = {
-  ...scheduleListItem,
+  ...scheduleBase,
   audienceProgress: { totalCount: 4, resolvedCount: 4 },
   recipientProgress: { count: 1204, status: 'resolved' as const },
   deliveryProgress: {

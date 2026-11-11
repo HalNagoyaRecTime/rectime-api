@@ -201,6 +201,8 @@ export const teamDeleteRoute = createRoute({
   path: '/teams/{teamId}',
   tags: ['Teams'],
   summary: 'チームを削除する',
+  description:
+    '得点が0のチームを削除し、所属クラスは保持して各クラスの単独編成へ戻す。得点が残っている場合や単独編成名が競合する場合は409を返し、変更しない。',
   security: bearerAuth,
   request: { params: teamIdParams },
   responses: {

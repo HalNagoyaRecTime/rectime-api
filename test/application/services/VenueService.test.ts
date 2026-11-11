@@ -33,6 +33,7 @@ describe('VenueService', () => {
       image_key: 'venues/1/a.png',
       created_at: '2026-01-01 00:00:00',
       updated_at: '2026-01-01 00:00:00',
+      lock_version: 3,
     };
     const expected = {
       venue_id: 1,
@@ -40,6 +41,7 @@ describe('VenueService', () => {
       image_url: 'https://signed.example/venues/1/a.png',
       created_at: '2026-01-01 00:00:00',
       updated_at: '2026-01-01 00:00:00',
+      lock_version: 3,
     };
     const { service } = setup({
       findAll: vi.fn().mockResolvedValue([venue]),
@@ -98,6 +100,46 @@ describe('VenueService', () => {
     await expect(
       service.updateVenue(1, { venue_name: '第1体育館' })
     ).rejects.toThrow('Venue not found');
+  });
+
+  it('lock_version を指定した更新が0件で、行が残っていれば Venue update conflict を投げる', async () => {
+    const { repository, service } = setup({
+      update: vi.fn().mockResolvedValue(null),
+      findImageKey: vi.fn().mockResolvedValue({ imageKey: null }),
+    });
+
+    await expect(
+      service.updateVenue(1, {
+        venue_name: '第1体育館',
+        expected_lock_version: 2,
+      })
+    ).rejects.toThrow('Venue update conflict');
+    expect(repository.findImageKey).toHaveBeenCalledWith(1);
+  });
+
+  it('lock_version を指定した更新が0件で、行も無ければ Venue not found を投げる', async () => {
+    const { service } = setup({
+      update: vi.fn().mockResolvedValue(null),
+      findImageKey: vi.fn().mockResolvedValue(null),
+    });
+
+    await expect(
+      service.updateVenue(1, {
+        venue_name: '第1体育館',
+        expected_lock_version: 2,
+      })
+    ).rejects.toThrow('Venue not found');
+  });
+
+  it('lock_version を指定しない更新は、0件でも行の有無を確認せず Venue not found を投げる', async () => {
+    const { repository, service } = setup({
+      update: vi.fn().mockResolvedValue(null),
+    });
+
+    await expect(
+      service.updateVenue(1, { venue_name: '第1体育館' })
+    ).rejects.toThrow('Venue not found');
+    expect(repository.findImageKey).not.toHaveBeenCalled();
   });
 
   it('競技から参照されている実施場所は削除せず Venue is in use を投げる', async () => {

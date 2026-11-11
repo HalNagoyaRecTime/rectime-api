@@ -46,8 +46,9 @@ export const users = sqliteTable(
     userName: text('user_name').notNull(),
     isLiveActive: integer('is_live_active').notNull().default(1),
     // 本人によるアカウント削除(#265)の状態。管理上の一時無効化を表す
-    // isLiveActiveとは独立した軸で、'active'以外になったユーザーは
-    // 学生の再登録復元(#262)の対象から除外する。
+    // isLiveActiveとは独立した軸で、'deleted'になったユーザーは元に
+    // 戻さない。学生が再ログインした場合は、新しいユーザーを作って
+    // 学生情報を付け替える。
     deletionStatus: text('deletion_status')
       .notNull()
       .default('active')
@@ -164,6 +165,7 @@ export const events = sqliteTable('events', {
   updatedAt: text('updated_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
+  lockVersion: integer('lock_version').notNull().default(0),
 });
 
 export const venues = sqliteTable(
@@ -178,6 +180,7 @@ export const venues = sqliteTable(
     updatedAt: text('updated_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
+    lockVersion: integer('lock_version').notNull().default(0),
   },
   table => [uniqueIndex('uq_venues_venue_name').on(table.name)]
 );
@@ -241,6 +244,7 @@ export const gathering_spots = sqliteTable('gathering_spots', {
   updatedAt: text('updated_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
+  lockVersion: integer('lock_version').notNull().default(0),
 });
 
 export const gathering_group_members = sqliteTable(

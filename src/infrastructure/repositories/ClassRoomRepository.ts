@@ -27,6 +27,18 @@ import { escapeLikePattern } from '../helpers/escapeLikePattern';
 const DEFAULT_LIMIT = 50;
 const D1_MAX_BOUND_PARAMETERS = 100;
 
+// クラスの人数は、退会していない学生だけで数える(学生一覧・通知の対象と
+// 揃える)。usersは担任の結合で使っているため、学生側は別名のサブクエリで
+// 確かめる。
+const activeStudentOfClassRoom = and(
+  eq(students.classRoomId, class_rooms.id),
+  sql`EXISTS (
+    SELECT 1 FROM users AS student_users
+    WHERE student_users.user_id = ${students.userId}
+      AND student_users.deletion_status = 'active'
+  )`
+);
+
 function unwrapDatabaseError(error: unknown): unknown {
   const visited = new Set<Error>();
   let current = error;
@@ -104,7 +116,7 @@ export function createClassRoomRepository(
         users,
         and(eq(users.id, teachers.userId), eq(users.isLiveActive, 1))
       )
-      .leftJoin(students, eq(students.classRoomId, class_rooms.id))
+      .leftJoin(students, activeStudentOfClassRoom)
       .where(condition)
       .groupBy(
         class_rooms.id,
@@ -167,7 +179,7 @@ export function createClassRoomRepository(
         users,
         and(eq(users.id, teachers.userId), eq(users.isLiveActive, 1))
       )
-      .leftJoin(students, eq(students.classRoomId, class_rooms.id));
+      .leftJoin(students, activeStudentOfClassRoom);
     const countQuery = orm
       .select({ total: sql<number>`count(distinct ${class_rooms.id})` })
       .from(class_rooms)

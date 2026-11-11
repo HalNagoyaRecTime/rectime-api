@@ -104,7 +104,14 @@ export function createTeamService(
       }
       const deleted = await teamRepository.delete(teamId);
       if (!deleted) {
-        throw new Error('Team has scores');
+        const current = await teamRepository.findTeamById(teamId);
+        if (!current) {
+          throw new Error('Team not found');
+        }
+        if (current.scores !== 0) {
+          throw new Error('Team has scores');
+        }
+        throw new Error('チームの削除に失敗しました');
       }
       return deleted;
     },

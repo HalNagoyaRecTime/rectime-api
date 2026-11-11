@@ -217,6 +217,45 @@ describe('TeamService', () => {
   });
 
   describe('deleteTeam', () => {
+    it('確認後に得点が付いた場合も削除不可の理由を返す', async () => {
+      const repository = createRepository({
+        findTeamById: vi
+          .fn()
+          .mockResolvedValueOnce(buildTeam({ scores: 0 }))
+          .mockResolvedValueOnce(buildTeam({ scores: 10 })),
+        delete: vi.fn().mockResolvedValue(false),
+      });
+
+      await expect(createTeamService(repository).deleteTeam(1)).rejects.toThrow(
+        'Team has scores'
+      );
+    });
+
+    it('確認後に別の処理で削除された場合は存在しない理由を返す', async () => {
+      const repository = createRepository({
+        findTeamById: vi
+          .fn()
+          .mockResolvedValueOnce(buildTeam({ scores: 0 }))
+          .mockResolvedValueOnce(null),
+        delete: vi.fn().mockResolvedValue(false),
+      });
+
+      await expect(createTeamService(repository).deleteTeam(1)).rejects.toThrow(
+        'Team not found'
+      );
+    });
+
+    it('得点0のまま削除できなかった場合は得点を理由にしない', async () => {
+      const repository = createRepository({
+        findTeamById: vi.fn().mockResolvedValue(buildTeam({ scores: 0 })),
+        delete: vi.fn().mockResolvedValue(false),
+      });
+
+      await expect(createTeamService(repository).deleteTeam(1)).rejects.toThrow(
+        'チームの削除に失敗しました'
+      );
+    });
+
     it('得点が0のチームは削除する', async () => {
       const repository = createRepository({
         findTeamById: vi.fn().mockResolvedValue(buildTeam({ scores: 0 })),

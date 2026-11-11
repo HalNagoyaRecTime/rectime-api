@@ -22,6 +22,8 @@ function buildSession(
     success_count: 1,
     error_count: 0,
     errors: [],
+    excluded_count: 0,
+    excluded: [],
     rows: [],
     rows_total: 1,
     rows_limit: 100,

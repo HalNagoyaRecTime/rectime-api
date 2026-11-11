@@ -89,7 +89,7 @@
     {
       "binding": "DB",
       "database_name": "rectime-api",
-      "database_id": "f031b887-a3a2-41f1-8c54-5ccdd323fcbb",
+      "database_id": "987476e3-374e-43cf-bcf6-d2821195462b",
       "migrations_dir": "migrations",
     },
   ],
@@ -156,8 +156,9 @@
         "MOBILE_REFRESH_EXPIRES_SEC": "7776000",
         // 通知配信を許可する開催日(YYYY-MM-DD、EventScheduleController等が必須で検証する)。
         // 未設定だと更新系エンドポイントが500になる(#204レビュー指摘)。実イベントの日付に
-        // 追随させる必要はない検証用環境のため、固定のダミー値を使う。
-        "EVENT_DATE": "2026-01-01",
+        // 追随させる必要はない検証用環境のため、固定のダミー値を使う。過去の日付だと、Cronを
+        // 有効にしたときに保存済みの集合の通知が即座に配信されてしまうため未来の日付にする。
+        "EVENT_DATE": "2099-11-27",
         "IMAGES_BUCKET_URL": "https://539494518db0c8b96ec2f6fdd30fb990.r2.cloudflarestorage.com/rectime-images-dev",
       },
       // triggersはトップレベルから継承されるため、明示しないと本番同様の毎分cronが
@@ -258,8 +259,9 @@
         "CONTACT_FORM_URL": "https://forms.cloud.microsoft/r/LAsntFuQcF",
         // 通知配信を許可する開催日(YYYY-MM-DD)。未設定だと更新系エンドポイントが
         // 500になる(#204レビュー指摘)。本番相当の検証環境だが、実イベント日付に
-        // 追随させる必要はないため固定のダミー値を使う。
-        "EVENT_DATE": "2026-01-01",
+        // 追随させる必要はないため固定のダミー値を使う。過去の日付だと、集合を保存した
+        // 時点で通知の配信時刻が過ぎており、次のCronで即座に配信されてしまうため未来の日付にする。
+        "EVENT_DATE": "2099-11-27",
         "IMAGES_BUCKET_URL": "https://539494518db0c8b96ec2f6fdd30fb990.r2.cloudflarestorage.com/rectime-images-staging",
       },
       "secrets": {

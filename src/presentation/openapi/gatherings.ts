@@ -29,6 +29,10 @@ export const gatheringSpotResponseSchema = z
     }),
     created_at: timestampSchema,
     updated_at: timestampSchema,
+    lock_version: z.number().int().min(0).openapi({
+      description:
+        '更新の競合を検出するための版番号。更新のたびに1ずつ増える。更新時に `lockVersion` として送り返す。',
+    }),
   })
   .openapi('GatheringSpot');
 
@@ -93,6 +97,20 @@ export const gatheringSpotWriteSchema = z
     'GatheringSpotWriteRequest'
   ) satisfies z.ZodType<UpdateGatheringSpotRequestDTO>;
 
+// 登録済みのスキーマを extend() すると、OpenAPI では allOf で合成される。
+// 項目だけを引き継ぎ、新しいオブジェクトとして定義する。
+export const gatheringSpotUpdateSchema = z
+  .object({
+    ...gatheringSpotWriteSchema.shape,
+    lockVersion: z.number().int().min(0).optional().openapi({
+      description:
+        '取得時点の `lock_version`。指定すると、取得後に変更されていた場合は409を返す。',
+    }),
+  })
+  .openapi(
+    'GatheringSpotUpdateRequest'
+  ) satisfies z.ZodType<UpdateGatheringSpotRequestDTO>;
+
 export const gatheringSpotListQuery = z.object({
   limit: z.coerce
     .number()
@@ -125,14 +143,8 @@ export const gatheringSpotListQuery = z.object({
 
 export const replaceGatheringMembersSchema = z
   .object({
-    // 1集合(=1チーム)の参加者は最大30人の運用のため上限を設ける。
-    // D1は1クエリあたりのバインド変数が100個までで、追加1人につき
-    // gathering_id/user_idの2個を消費するため、30人(=60個)を超えると
-    // 51人以上の追加でPUTが500になる。件数上限はWorkerの実行時間と
-    // D1負荷を抑える目的も兼ねる。
     user_ids: z
       .array(z.number().int().positive())
-      .max(30, { message: 'user_idsは30件までです' })
       .refine(ids => new Set(ids).size === ids.length, {
         message: 'user_idsに重複があります',
       }),
@@ -181,11 +193,13 @@ export const gatheringSpotUpdateRoute = createRoute({
   path: '/gathering-spots/{gatheringSpotId}',
   tags: ['Gathering spots'],
   summary: '集合場所を更新する',
+  description:
+    '`lockVersion` を指定すると、取得後に集合場所が変更されていた場合は409を返す。',
   security: bearerAuth,
   request: {
     params: gatheringSpotIdParams,
     body: {
-      content: { 'application/json': { schema: gatheringSpotWriteSchema } },
+      content: { 'application/json': { schema: gatheringSpotUpdateSchema } },
       required: true,
     },
   },
@@ -195,6 +209,7 @@ export const gatheringSpotUpdateRoute = createRoute({
     401: unauthorizedResponse,
     403: forbiddenResponse,
     404: notFoundResponse,
+    409: conflictResponse,
     500: internalServerErrorResponse,
   },
 });

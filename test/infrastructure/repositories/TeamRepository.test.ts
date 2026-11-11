@@ -552,6 +552,23 @@ describe('TeamRepository', () => {
   });
 
   describe('delete', () => {
+    async function snapshot() {
+      const teams = await env.DB.prepare(
+        'SELECT * FROM teams ORDER BY team_id'
+      ).all();
+      const classes = await env.DB.prepare(
+        'SELECT * FROM class_rooms ORDER BY class_room_id'
+      ).all();
+      const scores = await env.DB.prepare(
+        'SELECT * FROM team_scores ORDER BY team_score_id'
+      ).all();
+      return {
+        teams: teams.results,
+        classes: classes.results,
+        scores: scores.results,
+      };
+    }
+
     it('存在するチームを削除するとtrueを返す', async () => {
       const teamId = await insertTeam('削除対象');
 
@@ -572,15 +589,110 @@ describe('TeamRepository', () => {
       await expect(repo.exists(teamId)).resolves.toBe(false);
 
       const detached = await env.DB.prepare(
-        `SELECT t.team_name, t.team_id
+        `SELECT t.team_name, t.team_id, c.class_code, c.lock_version
          FROM class_rooms c
          JOIN teams t ON t.team_id = c.team_id
          WHERE c.class_code IN ('1A', '1B')`
-      ).all<{ team_name: string; team_id: number }>();
+      ).all<{
+        team_name: string;
+        team_id: number;
+        class_code: string;
+        lock_version: number;
+      }>();
       expect(detached.results).toHaveLength(2);
       for (const row of detached.results) {
         expect(row.team_id).not.toBe(teamId);
+        expect(row.team_name).toBe(`${row.class_code}組(${row.class_code})`);
+        expect(row.lock_version).toBe(1);
       }
+      expect(new Set(detached.results.map(row => row.team_id)).size).toBe(2);
+    });
+
+    it.each([10, -10])(
+      '得点が%dのチームは名前・所属・得点を変更せずfalseを返す',
+      async scores => {
+        const teamId = await insertTeam('得点ありの削除対象');
+        await insertClassRoom('1A', teamId);
+        await insertClassRoom('1B', teamId);
+        await repo.addScore(teamId, scores);
+        const before = await snapshot();
+
+        await expect(repo.delete(teamId)).resolves.toBe(false);
+
+        expect(await snapshot()).toEqual(before);
+      }
+    );
+
+    it('2件目の単独編成名が競合しても、1件目の移動や名前変更を残さない', async () => {
+      const teamId = await insertTeam('複数クラスの削除対象');
+      await insertClassRoom('1A', teamId);
+      await insertClassRoom('1B', teamId);
+      await repo.addScore(teamId, 0);
+      await insertTeam('1B組(1B)');
+      const before = await snapshot();
+
+      await expect(repo.delete(teamId)).rejects.toThrow(
+        'UNIQUE constraint failed'
+      );
+
+      expect(await snapshot()).toEqual(before);
+    });
+
+    it('最後のチーム削除が失敗しても、単独編成の作成・移動・得点削除をすべて戻す', async () => {
+      const teamId = await insertTeam('削除時エラーの対象');
+      await insertClassRoom('1A', teamId);
+      await insertClassRoom('1B', teamId);
+      await repo.addScore(teamId, 0);
+      const before = await snapshot();
+      await env.DB.prepare(
+        `CREATE TRIGGER fail_team_delete BEFORE DELETE ON teams
+         BEGIN SELECT RAISE(ABORT, '削除の失敗を再現'); END`
+      ).run();
+      try {
+        await expect(repo.delete(teamId)).rejects.toThrow('削除の失敗を再現');
+        expect(await snapshot()).toEqual(before);
+      } finally {
+        await env.DB.prepare('DROP TRIGGER fail_team_delete').run();
+      }
+    });
+
+    it('削除対象と同名の単独編成を含む複数クラスも削除できる', async () => {
+      const teamId = await insertTeam('1A組(1A)');
+      await insertClassRoom('1A', teamId);
+      await insertClassRoom('1B', teamId);
+
+      await expect(repo.delete(teamId)).resolves.toBe(true);
+      const result = await repo.findAllTeams({
+        limit: 50,
+        offset: 0,
+        sortBy: 'teamName',
+        sortOrder: 'asc',
+      });
+
+      expect(result.total).toBe(2);
+      expect(result.items.map(team => team.team_name)).toEqual([
+        '1A組(1A)',
+        '1B組(1B)',
+      ]);
+      expect(result.items.every(team => team.team_id !== teamId)).toBe(true);
+    });
+
+    it('100件を超える所属クラスも各クラスの単独編成へ戻せる', async () => {
+      const teamId = await insertTeam('多数のクラスの削除対象');
+      await env.DB.batch(
+        Array.from({ length: 101 }, (_, i) =>
+          env.DB.prepare(
+            'INSERT INTO class_rooms (class_code, class_name, team_id) VALUES (?, ?, ?)'
+          ).bind(`C${i}`, `${i}組`, teamId)
+        )
+      );
+
+      await expect(repo.delete(teamId)).resolves.toBe(true);
+
+      const row = await env.DB.prepare(
+        'SELECT COUNT(*) AS total, COUNT(DISTINCT team_id) AS teams FROM class_rooms'
+      ).first<{ total: number; teams: number }>();
+      expect(row).toEqual({ total: 101, teams: 101 });
     });
 
     it('通常の単独編成(team_nameが再作成される単独編成名と同じ)を削除できる', async () => {

@@ -21,7 +21,7 @@ export interface AuthUserProfileDTO extends UserCategories {
   class_room_id: number | null;
   team_id: number | null;
   attendance_number: number | null;
-  // 学生メール形式(STUDENT_EMAIL_DOMAIN かつ nhs + 数字)なのに学生情報が見つからない場合にtrue。
+  // 学生メール形式(STUDENT_EMAIL_DOMAIN かつ 学校の接頭辞 + 数字)なのに学生情報が見つからない場合にtrue。
   // 教員・職員など学生メール形式以外は常にfalse。
   student_profile_missing: boolean;
   teacher?: AuthTeacherDTO;

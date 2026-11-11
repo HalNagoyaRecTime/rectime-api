@@ -11,6 +11,8 @@ export interface IAccountDeletionService {
   //   既に担当済みのため、ここでは扱わない。
   // - ロール(staffs/teachers)、所属(gathering_group_members)、
   //   通知関連データ(notification_schedules、firebase_tokens本体)を処理する。
+  //   学生情報(students行)と、学生の集合グループの所属は、再ログイン時に
+  //   引き継ぐため残す。
   // - 各ステップは対象が既に存在しなければ何もしない冪等な実装のため、
   //   D1・KV・Firebaseの途中で失敗しても、同じuserIdで安全に再実行できる。
   // - 「削除を受け付けた」(deletion_status='deleted')と「後片付けまで
