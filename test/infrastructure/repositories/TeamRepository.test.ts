@@ -325,6 +325,36 @@ describe('TeamRepository', () => {
 
       expect(created.team_name).toBe('1A 1B');
     });
+
+    it('得点が残る単独編成から最後のクラスを移しても、退会済み名に変わり衝突しない', async () => {
+      // 得点があるため移動元チームは削除されず、同名「1A」のまま残ろうとする。
+      // 移動先の新チームが同じ名前を確定する前に、移動元を退会済みマーカー付きの
+      // 名前へ変えて名前を解放しておく必要がある。
+      const soloTeamId = await insertTeam('1A');
+      await insertClassRoom('1A', soloTeamId);
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 10)'
+      )
+        .bind(soloTeamId)
+        .run();
+
+      const created = await repo.createTeam({ class_codes: ['1A'] });
+
+      expect(created).toMatchObject({
+        team_name: '1A',
+        registered_classes: ['1A'],
+      });
+      expect(created.team_id).not.toBe(soloTeamId);
+
+      // 移動元チームは得点を持つため削除されず、退会済みマーカー付きの名前で残る。
+      await expect(repo.exists(soloTeamId)).resolves.toBe(true);
+      const retired = await env.DB.prepare(
+        'SELECT team_name FROM teams WHERE team_id = ?'
+      )
+        .bind(soloTeamId)
+        .first<{ team_name: string }>();
+      expect(retired?.team_name).toBe(`1A(解散#${soloTeamId})`);
+    });
   });
 
   describe('updateTeam', () => {
