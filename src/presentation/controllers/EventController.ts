@@ -5,6 +5,7 @@ import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import {
+  eventDetailQuery,
   eventIdParams,
   eventListQuery,
   eventUpdateSchema,
@@ -61,8 +62,21 @@ export function createEventController(eventService: IEventService) {
       if (eventId === undefined) {
         return errorResponse(c, EventErrors.INVALID_EVENT_ID);
       }
+      const parsedQuery = eventDetailQuery.safeParse({
+        includeMemberCount: c.req.query('includeMemberCount'),
+      });
+      if (!parsedQuery.success) {
+        return errorResponse(
+          c,
+          CommonErrors.VALIDATION_ERROR,
+          parsedQuery.error.flatten()
+        );
+      }
 
-      const event = await eventService.getEventById(eventId);
+      const event = await eventService.getEventById(
+        eventId,
+        parsedQuery.data.includeMemberCount === 'true'
+      );
       return c.json(event, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {

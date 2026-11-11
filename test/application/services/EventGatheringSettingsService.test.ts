@@ -84,6 +84,7 @@ function setup(
   const repository: IEventGatheringSettingsRepository = {
     // 1回目は差分計算用、2回目は保存後のレスポンス用
     findByEventId: vi.fn().mockResolvedValue(current),
+    findWithoutMemberCountByEventId: vi.fn(),
     apply: vi.fn(),
   };
   const transaction: IGatheringSettingsTransaction = {

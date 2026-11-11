@@ -1,7 +1,10 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { and, asc, count, eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
-import type { EventGatheringEntity } from '../../domain/entities/EventGathering';
+import type {
+  EventGatheringEntity,
+  EventGatheringWithoutMemberCountEntity,
+} from '../../domain/entities/EventGathering';
 import type { IEventGatheringSettingsRepository } from '../../domain/interfaces/repositories/IEventGatheringSettingsRepository';
 import * as schema from '../database/schema';
 import {
@@ -10,6 +13,16 @@ import {
   gatherings,
 } from '../database/schema';
 import { buildEventGatheringStatements } from './EventGatheringStatements';
+
+const gatheringColumns = {
+  gathering_id: gatherings.id,
+  round: gatherings.round,
+  gathering_time: gatherings.gatheringTime,
+  round_start_time: gatherings.roundStartTime,
+  gathering_spot_id: gathering_spots.id,
+  gathering_spot_name: gathering_spots.name,
+  gathering_spot_image_key: gathering_spots.imageKey,
+};
 
 export function createEventGatheringSettingsRepository(
   db: D1Database
@@ -22,13 +35,7 @@ export function createEventGatheringSettingsRepository(
       // 退会中の参加者(所属を残した学生)は、通知の対象と揃えて数えない。
       return orm
         .select({
-          gathering_id: gatherings.id,
-          round: gatherings.round,
-          gathering_time: gatherings.gatheringTime,
-          round_start_time: gatherings.roundStartTime,
-          gathering_spot_id: gathering_spots.id,
-          gathering_spot_name: gathering_spots.name,
-          gathering_spot_image_key: gathering_spots.imageKey,
+          ...gatheringColumns,
           member_count: count(gathering_group_members.id),
         })
         .from(gatherings)
@@ -49,6 +56,21 @@ export function createEventGatheringSettingsRepository(
         )
         .where(eq(gatherings.eventId, eventId))
         .groupBy(gatherings.id, gathering_spots.id)
+        .orderBy(asc(gatherings.round), asc(gatherings.id))
+        .all();
+    },
+
+    async findWithoutMemberCountByEventId(
+      eventId: number
+    ): Promise<EventGatheringWithoutMemberCountEntity[]> {
+      return orm
+        .select(gatheringColumns)
+        .from(gatherings)
+        .innerJoin(
+          gathering_spots,
+          eq(gatherings.gatheringSpotId, gathering_spots.id)
+        )
+        .where(eq(gatherings.eventId, eventId))
         .orderBy(asc(gatherings.round), asc(gatherings.id))
         .all();
     },
