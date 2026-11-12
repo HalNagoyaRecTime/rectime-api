@@ -472,6 +472,31 @@ describe('TeamRepository', () => {
       expect(detached?.team_name).toBe('1A');
     });
 
+    it('batch内でエラーが起きた場合、チーム名・所属の変更は全てロールバックされる', async () => {
+      const teamId = await insertTeam('元の名前');
+      await insertClassRoom('9A', teamId);
+      // 自分の一時退避名と衝突するチームを先に作り、batch先頭のUPDATEで
+      // UNIQUE制約違反を起こす。
+      await insertTeam(`__updating_team_${teamId}__`);
+
+      await expect(
+        repo.updateTeam(teamId, { class_codes: ['9A'] })
+      ).rejects.toThrow();
+
+      const team = await env.DB.prepare(
+        'SELECT team_name FROM teams WHERE team_id = ?'
+      )
+        .bind(teamId)
+        .first<{ team_name: string }>();
+      expect(team?.team_name).toBe('元の名前');
+      const classRoom = await env.DB.prepare(
+        'SELECT team_id FROM class_rooms WHERE class_code = ?'
+      )
+        .bind('9A')
+        .first<{ team_id: number }>();
+      expect(classRoom?.team_id).toBe(teamId);
+    });
+
     it('既存チームへの追加後、名前はリクエストの並び順でなくクラスの登録順(class_room_id)で再計算される', async () => {
       const teamId = await insertTeam('チーム');
       await insertClassRoom('1A', teamId);
