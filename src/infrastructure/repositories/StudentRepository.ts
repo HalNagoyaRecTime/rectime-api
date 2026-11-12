@@ -187,6 +187,10 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .limit(limit)
         .offset(offset)
         .all();
+      const items = results.map(toDomain);
+      if (filter.includeTotal === false) {
+        return { items, limit, offset };
+      }
       const isLastPage =
         results.length < limit && (results.length > 0 || offset === 0);
       const total = isLastPage
@@ -202,12 +206,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
               .get()
           )?.count ?? 0);
 
-      return {
-        items: results.map(toDomain),
-        total,
-        limit,
-        offset,
-      };
+      return { items, total, limit, offset };
     },
 
     async findByStudentNum(studentNum: string): Promise<StudentEntity | null> {

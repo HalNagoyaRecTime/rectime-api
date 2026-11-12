@@ -42,6 +42,10 @@ export const studentPageResponseSchema = z
   .object({
     items: z.array(studentResponseSchema),
     ...paginationFields,
+    total: z.number().int().optional().openapi({
+      description:
+        'includeTotal=falseのときは含めない。includeTotalを省略したとき（既定）とtrueのときは必ず含まれる。',
+    }),
   })
   .openapi('StudentPage');
 
@@ -72,10 +76,15 @@ export const studentListQuery = z
     sortOrder: z.enum(['asc', 'desc']).default('asc'),
     offset: digitsOnlyQuery(0).default(0),
     limit: limitedDigitsOnlyQuery(1, 100).default(50),
+    includeTotal: z.enum(['true', 'false']).default('true').openapi({
+      description:
+        'falseのときは該当件数を数えず、totalを返さない。全ページを取るときは、返った件数がlimit未満なら最後のページと分かる。',
+    }),
   })
   .strict()
-  .transform(({ isStaff, isLiveActive, ...query }) => ({
+  .transform(({ isStaff, isLiveActive, includeTotal, ...query }) => ({
     ...query,
+    ...(includeTotal === 'true' ? {} : { includeTotal: false }),
     ...(isStaff === 'all' ? {} : { isStaff: isStaff === 'true' }),
     ...(isLiveActive === 'all'
       ? {}

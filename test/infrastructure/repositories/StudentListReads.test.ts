@@ -5,53 +5,11 @@ import type {
   StudentSearchFilter,
 } from '../../../src/domain/entities/Student';
 import { createStudentRepository } from '../../../src/infrastructure/repositories/StudentRepository';
+import { createReadCountingDb } from '../../readCountingDb';
 
 const STUDENTS = 1000;
 const CLASS_ROOMS = 20;
 const SEQ = `WITH RECURSIVE seq(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM seq WHERE n < ${STUDENTS - 1})`;
-
-function createReadCountingDb() {
-  let rowsRead = 0;
-  const wrap = (statement: D1PreparedStatement): D1PreparedStatement =>
-    ({
-      bind: (...values: unknown[]) => wrap(statement.bind(...values)),
-      async first(column?: string) {
-        const result = await statement.all<Record<string, unknown>>();
-        rowsRead += result.meta.rows_read;
-        const row = result.results[0];
-        if (!row) return null;
-        return column ? row[column] : row;
-      },
-      async all() {
-        const result = await statement.all();
-        rowsRead += result.meta.rows_read;
-        return result;
-      },
-      async raw() {
-        const [rows, result] = await Promise.all([
-          statement.raw(),
-          statement.all(),
-        ]);
-        rowsRead += result.meta.rows_read;
-        return rows;
-      },
-      async run() {
-        const result = await statement.run();
-        rowsRead += result.meta.rows_read;
-        return result;
-      },
-    }) as unknown as D1PreparedStatement;
-  const db = {
-    prepare: (query: string) => wrap(env.DB.prepare(query)),
-  } as unknown as D1Database;
-  return {
-    db,
-    reset: () => {
-      rowsRead = 0;
-    },
-    rowsRead: () => rowsRead,
-  };
-}
 
 async function seed() {
   await env.DB.batch(
@@ -208,6 +166,47 @@ describe('学生一覧のD1読み取り行数', () => {
     }
   );
 
+  it.each([
+    ['1ページ目', { limit: 100, offset: 0 }],
+    ['途中のページ', { limit: 100, offset: 300 }],
+    [
+      '有効な生徒だけの途中のページ',
+      { limit: 100, offset: 300, isLiveActive: true },
+    ],
+  ] as [string, StudentSearchFilter][])(
+    'includeTotal=falseの%sは件数を数えず、取得位置までの1件あたり4行しか読まない',
+    async (_, filter) => {
+      counting.reset();
+      const result = await repo.findAll({ ...filter, includeTotal: false });
+
+      expect(result.items).toHaveLength(100);
+      expect(result.total).toBeUndefined();
+      expect(counting.rowsRead()).toBeLessThanOrEqual(
+        (filter.offset! + filter.limit!) * 4
+      );
+    }
+  );
+
+  it.each([
+    ['limit未満で終わる最後のページ', () => everyone.length - 50],
+    ['ちょうどlimit件で終わる最後のページ', () => everyone.length - 100],
+  ] as [string, () => number][])(
+    'includeTotal=falseの%sは件数を数えず、全員を並べた最後の部分を返す',
+    async (_, offsetOf) => {
+      const query = { limit: 100, offset: offsetOf() };
+      counting.reset();
+      const result = await repo.findAll({ ...query, includeTotal: false });
+
+      expect(result.items.map(student => student.studentId)).toEqual(
+        expectedPage(everyone, query).ids
+      );
+      expect(result.total).toBeUndefined();
+      expect(counting.rowsRead()).toBeLessThanOrEqual(
+        (query.offset + query.limit) * 4
+      );
+    }
+  );
+
   it.each(['studentId', 'displayName'] as const)(
     '停止中の生徒だけをsortBy=%sで選ぶときは生徒数ぶんを読まない',
     async sortBy => {
@@ -265,6 +264,10 @@ describe('学生一覧のD1読み取り行数', () => {
         for (const sortOrder of ['asc', 'desc'] as const) {
           const query = { ...filter, sortBy, sortOrder };
           const result = await repo.findAll(query);
+          const withoutTotal = await repo.findAll({
+            ...query,
+            includeTotal: false,
+          });
           const expected = expectedPage(everyone, query);
 
           expect(
@@ -274,6 +277,10 @@ describe('学生一覧のD1読み取り行数', () => {
             },
             JSON.stringify(query)
           ).toEqual(expected);
+          expect(withoutTotal.items, JSON.stringify(query)).toEqual(
+            result.items
+          );
+          expect(withoutTotal.total).toBeUndefined();
         }
       }
       expect(everyone.some(student => student.classRoomId === null)).toBe(true);

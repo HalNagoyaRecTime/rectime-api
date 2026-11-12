@@ -31,11 +31,12 @@ export interface TeacherSearchFilter {
   sortOrder?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
+  includeTotal?: boolean;
 }
 
 export interface TeacherPage {
   items: TeacherEntity[];
-  total: number;
+  total?: number;
   limit: number;
   offset: number;
 }

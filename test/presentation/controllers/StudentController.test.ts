@@ -190,6 +190,8 @@ describe('StudentController', () => {
       ['isStaff=false', { isStaff: false, isLiveActive: true }],
       ['isLiveActive=true', { isLiveActive: true }],
       ['isLiveActive=false', { isLiveActive: false }],
+      ['includeTotal=true', { isLiveActive: true }],
+      ['includeTotal=false', { isLiveActive: true, includeTotal: false }],
     ])('%sをboolean filterへ変換する', async (query, filter) => {
       const { app, studentService } = setup();
       (
@@ -212,6 +214,7 @@ describe('StudentController', () => {
       ['sortBy', '/students?sortBy=invalid'],
       ['isStaff', '/students?isStaff=invalid'],
       ['isLiveActive', '/students?isLiveActive=invalid'],
+      ['includeTotal', '/students?includeTotal=invalid'],
       ['unknown query', '/students?page=2'],
       ['old studentId query', '/students?studentId=1'],
       ['old userName query', '/students?userName=%E5%B1%B1%E7%94%B0'],

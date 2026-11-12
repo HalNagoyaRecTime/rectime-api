@@ -48,7 +48,7 @@ export interface StudentClassRoomAssignmentDTO {
 
 export interface StudentPageDTO {
   items: StudentManagementDTO[];
-  total: number;
+  total?: number;
   limit: number;
   offset: number;
 }
