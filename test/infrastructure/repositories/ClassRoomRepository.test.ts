@@ -255,6 +255,43 @@ describe('ClassRoomRepository', () => {
     });
 
     expect(joined.teamId).toBe(base.teamId);
+    // 既存チームへ直接クラスを追加すると構成が変わるため、チーム名も
+    // class_room_idの登録順で再計算されるはず。
+    const team = await env.DB.prepare(
+      'SELECT team_name FROM teams WHERE team_id = ?'
+    )
+      .bind(base.teamId)
+      .first<{ team_name: string }>();
+    expect(team?.team_name).toBe('16A 16B');
+  });
+
+  it('class_codeを変更すると、合同teamの名前も登録順で再計算される', async () => {
+    const base = await repo.create({
+      classCode: '23A',
+      className: '0年Aクラス',
+      teacherId: null,
+      teamId: null,
+    });
+    const joined = await repo.create({
+      classCode: '23B',
+      className: '0年Bクラス（合同）',
+      teacherId: null,
+      teamId: base.teamId,
+    });
+
+    await repo.update(joined.classRoomId, {
+      classCode: '23Z',
+      className: joined.className,
+      teacherId: null,
+      teamId: null,
+    });
+
+    const team = await env.DB.prepare(
+      'SELECT team_name FROM teams WHERE team_id = ?'
+    )
+      .bind(base.teamId)
+      .first<{ team_name: string }>();
+    expect(team?.team_name).toBe('23A 23Z');
   });
 
   it('deleteはclass_roomの行だけを削除し、teamの削除有無は判断しない（判断はApplication層の責務）', async () => {
@@ -368,11 +405,13 @@ describe('ClassRoomRepository', () => {
       ).resolves.toBe(true);
 
       const teamRow = await env.DB.prepare(
-        'SELECT team_id FROM teams WHERE team_id = ?'
+        'SELECT team_id, team_name FROM teams WHERE team_id = ?'
       )
         .bind(base.teamId)
-        .first();
+        .first<{ team_id: number; team_name: string }>();
       expect(teamRow).not.toBeNull();
+      // 削除したクラスが抜けた分、残ったteamの名前も登録順で再計算されるはず。
+      expect(teamRow?.team_name).toBe('21B');
     });
 
     it('存在しないclass_room_idの場合はfalseを返す', async () => {
@@ -475,6 +514,13 @@ describe('ClassRoomRepository', () => {
         .bind(base.teamId)
         .first();
       expect(oldTeamRow).toBeNull();
+      // 移動先teamにクラスが加わった分、名前も登録順で再計算されるはず。
+      const destinationTeamRow = await env.DB.prepare(
+        'SELECT team_name FROM teams WHERE team_id = ?'
+      )
+        .bind(destination.teamId)
+        .first<{ team_name: string }>();
+      expect(destinationTeamRow?.team_name).toBe('22A 22B');
     });
 
     it('移動元teamに他のclass_roomが残っていれば、移動元teamは削除しない', async () => {
@@ -509,11 +555,13 @@ describe('ClassRoomRepository', () => {
       );
 
       const oldTeamRow = await env.DB.prepare(
-        'SELECT team_id FROM teams WHERE team_id = ?'
+        'SELECT team_id, team_name FROM teams WHERE team_id = ?'
       )
         .bind(base.teamId)
-        .first();
+        .first<{ team_id: number; team_name: string }>();
       expect(oldTeamRow).not.toBeNull();
+      // baseが抜けた分、残った移動元teamの名前も登録順で再計算されるはず。
+      expect(oldTeamRow?.team_name).toBe('22D');
       await expect(repo.findById(sibling.classRoomId)).resolves.toMatchObject({
         teamId: base.teamId,
       });
@@ -919,7 +967,7 @@ describe('ClassRoomRepository', () => {
       const orphanedTeam = await env.DB.prepare(
         'SELECT team_id FROM teams WHERE team_name = ?'
       )
-        .bind('孤立チーム確認クラス(15C)')
+        .bind('15C')
         .first();
       expect(orphanedTeam).toBeNull();
     });
@@ -1004,7 +1052,7 @@ describe('ClassRoomRepository', () => {
         await expect(repo.findByCode(input.classCode)).resolves.toBeNull();
       }
       const orphanedTeams = await env.DB.prepare(
-        "SELECT team_id FROM teams WHERE team_name LIKE 'チャンク跨ぎクラス%'"
+        "SELECT team_id FROM teams WHERE team_name LIKE 'CROSS-CHUNK-%'"
       ).all();
       expect(orphanedTeams.results).toHaveLength(0);
     });
@@ -1127,6 +1175,32 @@ describe('ClassRoomRepository', () => {
 
       expect(await readTeacherLock(oldTeacher)).toBe(2);
       expect(await readTeacherLock(newTeacher)).toBe(1);
+    });
+
+    it('既存チームへ担任付きで作成すると、担任の lock_version が進み、チーム名も再計算される', async () => {
+      const teacher = await insertTeacher('合同クラス担任');
+      const base = await repo.create({
+        classCode: 'SW-JOIN-A',
+        className: '合同クラスA',
+        teacherId: null,
+        teamId: null,
+      });
+
+      const joined = await repo.create({
+        classCode: 'SW-JOIN-B',
+        className: '合同クラスB',
+        teacherId: teacher,
+        teamId: base.teamId,
+      });
+
+      expect(joined.teamId).toBe(base.teamId);
+      expect(await readTeacherLock(teacher)).toBe(1);
+      const team = await env.DB.prepare(
+        'SELECT team_name FROM teams WHERE team_id = ?'
+      )
+        .bind(base.teamId)
+        .first<{ team_name: string }>();
+      expect(team?.team_name).toBe('SW-JOIN-A SW-JOIN-B');
     });
 
     it('担任が変わらない更新（クラス名だけの変更）では、担任の lock_version は進まない', async () => {
