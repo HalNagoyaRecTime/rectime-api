@@ -36,6 +36,10 @@ export interface IStudentRepository {
   findByUserId: (userId: number) => Promise<StudentEntity | null>;
   findAll: (options: StudentSearchFilter) => Promise<StudentPage>;
   findByStudentNum: (studentNum: string) => Promise<StudentEntity | null>;
+  // クラスと出席番号の重複確認では、退会中の学生(退会したユーザーの学生情報)を
+  // 数えない。退会中の学生が使っている枠に create / update / updateClassRoom /
+  // createMany で別の学生を入れると、退会中の学生のクラスと出席番号を外し、
+  // 登録と同じトランザクションで確定する。
   findByClassRoomAndAttendanceNumber: (
     classRoomId: number,
     attendanceNumber: number

@@ -115,8 +115,8 @@ export function createEventGatheringSettingsService(
       }
     }
 
-    // リクエストに含まれない既存の集合予定は削除する。参加者が残っているものは
-    // 暗黙に消さず、保存前に断る。
+    // リクエストに含まれない既存の集合予定は削除する。在籍中の参加者が残っている
+    // ものは暗黙に消さず、保存前に断る(退会中の参加者は数えず、削除時に所属も消す)。
     const deleteTargets = current.filter(
       gathering => !requestedIds.has(gathering.gathering_id)
     );

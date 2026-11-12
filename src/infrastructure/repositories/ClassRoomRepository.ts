@@ -22,6 +22,7 @@ import {
   buildRecalculateTeamNameForClassRoomStatement,
   buildRecalculateTeamNameStatement,
 } from './teamNaming';
+import { buildReleaseDeletedStudentsInClassRoomStatement } from './DeletedStudentAssignmentStatements';
 import { escapeLikePattern } from '../helpers/escapeLikePattern';
 
 const DEFAULT_LIMIT = 50;
@@ -565,7 +566,10 @@ export function createClassRoomRepository(
     },
 
     async deleteAndCleanupTeam(id: number, teamId: number): Promise<boolean> {
-      const [deleteResult] = await db.batch<unknown>([
+      // 退会中の学生の所属は外してから削除する。在籍中の学生が残っていれば、
+      // 外部キー制約でbatchごと失敗する。
+      const [, deleteResult] = await db.batch<unknown>([
+        buildReleaseDeletedStudentsInClassRoomStatement(db, id),
         db.prepare('DELETE FROM class_rooms WHERE class_room_id = ?').bind(id),
         ...buildCleanupEmptyTeamStatements(db, teamId),
         // チームが空にならず残った場合に備え、登録順で名前を再計算する
@@ -599,11 +603,18 @@ export function createClassRoomRepository(
     },
 
     async hasStudents(id) {
+      // 退会中の学生は数えない。削除するときに所属を外す(deleteAndCleanupTeam)。
       return Boolean(
         await orm
           .select({ id: students.id })
           .from(students)
-          .where(eq(students.classRoomId, id))
+          .innerJoin(users, eq(students.userId, users.id))
+          .where(
+            and(
+              eq(students.classRoomId, id),
+              eq(users.deletionStatus, 'active')
+            )
+          )
           .limit(1)
           .get()
       );

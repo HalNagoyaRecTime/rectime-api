@@ -466,4 +466,40 @@ describe('GatheringSettingsTransaction の楽観ロック', () => {
     expect(await gatheringsOf(eventId)).toHaveLength(1);
     expect(await lockVersionOf(eventId)).toBe(0);
   });
+
+  it('退会中の参加者しかいない集合は、版を指定した保存でもその所属と一緒に削除する', async () => {
+    const eventId = await insertEvent('取引ロック退会者');
+    const spotId = await insertSpot('取引ロック退会者場所');
+    const gatheringId = await insertGathering(eventId, spotId, '10:00');
+    const user = await env.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('削除済みユーザー', 'deleted') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    userIds.push(user!.user_id);
+    await env.DB.prepare(
+      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
+    )
+      .bind(gatheringId, user!.user_id)
+      .run();
+
+    const applied = await transaction.apply(
+      {
+        event_id: eventId,
+        creates: [],
+        updates: [],
+        delete_ids: [gatheringId],
+      },
+      {},
+      { expectedLockVersion: 0 }
+    );
+
+    expect(applied).toBe(true);
+    expect(await gatheringsOf(eventId)).toEqual([]);
+    const member = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM gathering_group_members WHERE gathering_id = ?'
+    )
+      .bind(gatheringId)
+      .first<{ n: number }>();
+    expect(member?.n).toBe(0);
+    expect(await lockVersionOf(eventId)).toBe(1);
+  });
 });
