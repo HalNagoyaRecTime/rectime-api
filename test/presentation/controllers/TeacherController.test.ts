@@ -305,6 +305,27 @@ describe('TeacherController', () => {
       });
     });
 
+    it.each([
+      ['includeTotal=true', {}],
+      ['includeTotal=false', { includeTotal: false }],
+    ])('%sを検索条件としてサービスに渡す', async (query, filter) => {
+      const { app, teacherService } = setup();
+      (
+        teacherService.getAllTeachers as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ items: [], limit: 50, offset: 0 });
+
+      await app.request(`/teachers?${query}`);
+
+      expect(teacherService.getAllTeachers).toHaveBeenCalledWith({
+        ...filter,
+        isLiveActive: true,
+        offset: 0,
+        limit: 50,
+        sortBy: 'teacherId',
+        sortOrder: 'asc',
+      });
+    });
+
     it('limit が上限(100)を超える場合は400を返す', async () => {
       const { app, teacherService } = setup();
       const res = await app.request('/teachers?limit=101');
@@ -341,6 +362,7 @@ describe('TeacherController', () => {
       ['sortBy', '/teachers?sortBy=invalid'],
       ['isStaff', '/teachers?isStaff=invalid'],
       ['isLiveActive', '/teachers?isLiveActive=invalid'],
+      ['includeTotal', '/teachers?includeTotal=invalid'],
       ['teacherId', '/teachers?teacherId=1'],
       ['userName', '/teachers?userName=%E5%B1%B1%E7%94%B0'],
     ])('%s の不正QueryはVALIDATION_ERRORを返す', async (_name, path) => {
