@@ -40,6 +40,7 @@ export function createNotificationAudienceResolverRepository(
   return {
     async findDueCandidates(now, limit, manualOnly = false) {
       const sourceCondition = manualOnly ? 'AND n.source_type IS NULL' : '';
+      // send_atを関数で包むとindexの範囲で引けないため。
       const rows = await db
         .prepare(
           `SELECT s.notification_schedule_id, s.send_status
@@ -48,7 +49,7 @@ export function createNotificationAudienceResolverRepository(
            WHERE n.notification_type = 'notification_general'
              ${sourceCondition}
              AND s.recipients_resolved_at IS NULL AND s.failed_reason IS NOT '${AUTOMATIC_SYNC_PENDING_REASON}'
-             AND datetime(s.send_at) <= datetime(?)
+             AND s.send_at < strftime('%Y-%m-%dT%H:%M:%fZ', datetime(?), '+1 second')
              AND s.send_status IN ('scheduled', 'resolving')
            ORDER BY s.send_at, s.notification_schedule_id
            LIMIT ?`

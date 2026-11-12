@@ -46,13 +46,14 @@ export function createNotificationDeliveryRepository(
       : '1 = 1';
   return {
     async findReadySchedules(now, limit, manualOnly) {
+      // send_atを関数で包むとindexの範囲で引けないため。
       const rows = await db
         .prepare(
           `SELECT s.notification_schedule_id, s.send_status
            FROM notification_schedules s
            JOIN notifications n ON n.notification_id = s.notification_id
            WHERE n.notification_type = 'notification_general' AND ${sourceAllowed('n', manualOnly)}
-             AND datetime(s.send_at) <= datetime(?)
+             AND s.send_at < strftime('%Y-%m-%dT%H:%M:%fZ', datetime(?), '+1 second')
              AND (
                (s.send_status = 'resolving'
                 AND s.recipients_resolved_at IS NOT NULL)
