@@ -92,20 +92,22 @@ export function createNotificationDeliveryService(deps: {
               throw error;
             }
           }
-          await failPendingDeliveriesWithoutToken(scheduleId, nowIso);
-          const pendingCount =
-            await notificationDeliveryRepository.countPendingDeliveries(
+          if (
+            await notificationDeliveryRepository.hasPendingDeliveries(
               scheduleId
-            );
-          if (pendingCount > 0) {
-            result.queued_schedule_ids.push(scheduleId);
-          } else if (
-            await notificationDeliveryRepository.completeScheduleIfDone(
-              scheduleId,
-              nowIso
             )
           ) {
-            result.completed_schedule_ids.push(scheduleId);
+            result.queued_schedule_ids.push(scheduleId);
+          } else {
+            await failPendingDeliveriesWithoutToken(scheduleId, nowIso);
+            if (
+              await notificationDeliveryRepository.completeScheduleIfDone(
+                scheduleId,
+                nowIso
+              )
+            ) {
+              result.completed_schedule_ids.push(scheduleId);
+            }
           }
         } catch (error) {
           console.error('[NOTIFICATION_DELIVERY] Schedule処理に失敗しました', {
@@ -138,22 +140,27 @@ export function createNotificationDeliveryService(deps: {
         .slice(0, NOTIFICATION_DELIVERY_MESSAGE_SIZE);
       const nowIso = now.toISOString();
       let failed = 0;
-      for (const scheduleId of uniqueScheduleIds) {
-        failed += await failPendingDeliveriesWithoutToken(scheduleId, nowIso);
-      }
       let claimed = 0;
       let sent = 0;
+      const deliveryIds =
+        await notificationDeliveryRepository.findPendingDeliveryIds(
+          uniqueScheduleIds,
+          NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT,
+          options?.manualOnly
+        );
       // 同時送信できる件数だけ確保し、待機中にleaseが失効するのを防ぐ。
-      while (claimed < NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT) {
+      for (
+        let offset = 0;
+        offset < deliveryIds.length;
+        offset += MAX_CONCURRENT_FCM_REQUESTS
+      ) {
         const current = clock();
         const deliveries =
           await notificationDeliveryRepository.claimPendingDeliveries(
-            uniqueScheduleIds,
+            deliveryIds.slice(offset, offset + MAX_CONCURRENT_FCM_REQUESTS),
             current.toISOString(),
-            MAX_CONCURRENT_FCM_REQUESTS,
             options?.manualOnly
           );
-        if (deliveries.length === 0) break;
         claimed += deliveries.length;
         await mapWithConcurrency(
           deliveries,
@@ -170,11 +177,17 @@ export function createNotificationDeliveryService(deps: {
       }
 
       for (const scheduleId of uniqueScheduleIds) {
-        failed += await failPendingDeliveriesWithoutToken(scheduleId, nowIso);
-        await notificationDeliveryRepository.completeScheduleIfDone(
-          scheduleId,
-          nowIso
-        );
+        if (
+          !(await notificationDeliveryRepository.hasPendingDeliveries(
+            scheduleId
+          ))
+        ) {
+          failed += await failPendingDeliveriesWithoutToken(scheduleId, nowIso);
+          await notificationDeliveryRepository.completeScheduleIfDone(
+            scheduleId,
+            nowIso
+          );
+        }
       }
 
       return { claimed, sent, failed };

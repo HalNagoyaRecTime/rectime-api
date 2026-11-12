@@ -1,3 +1,4 @@
+import { claimPending } from '../../notificationDeliveryFixtures';
 import { createNotificationDeliveryRepository } from '../../../src/infrastructure/repositories/NotificationDeliveryRepository';
 import { createAdminNotificationCommandRepository } from '../../../src/infrastructure/repositories/AdminNotificationCommandRepository';
 import { createNotificationAudienceResolverRepository } from '../../../src/infrastructure/repositories/NotificationAudienceResolverRepository';
@@ -183,9 +184,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
           row => row.notification_schedule_id
         )
       ).not.toContain(id);
-      expect(await deliveryRepo.claimPendingDeliveries([id], due, 100)).toEqual(
-        []
-      );
+      expect(await claimPending(deliveryRepo, [id], due, 100)).toEqual([]);
       const query = createNotificationScheduleQueryService(
         createNotificationScheduleQueryRepository(workerEnv.DB)
       );

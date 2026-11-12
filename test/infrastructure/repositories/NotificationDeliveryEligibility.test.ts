@@ -7,6 +7,7 @@ import {
   clearNotificationFixtures,
   createDeliveryFixture,
   getDelivery,
+  claimPending,
 } from '../../notificationDeliveryFixtures';
 import { createNotificationAccountDeletionService } from '../../../src/application/services/NotificationAccountDeletionService';
 import { createNotificationAccountDeletionRepository } from '../../../src/infrastructure/repositories/NotificationAccountDeletionRepository';
@@ -42,11 +43,7 @@ it('Recipient匿名化後のToken削除失敗でも初回・再送・確保済�
     "UPDATE notification_push_deliveries SET status = 'pending'"
   ).run();
   expect(
-    await repository.claimPendingDeliveries(
-      [fixture.scheduleId],
-      NOW.toISOString(),
-      5
-    )
+    await claimPending(repository, [fixture.scheduleId], NOW.toISOString(), 5)
   ).toEqual([]);
   await env.DB.prepare(
     "UPDATE notification_push_deliveries SET status = 'retry_wait', next_retry_at = ?"

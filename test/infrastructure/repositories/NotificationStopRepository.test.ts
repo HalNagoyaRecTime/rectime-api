@@ -7,6 +7,7 @@ import {
   clearNotificationFixtures,
   createDeliveryFixture,
   getDelivery,
+  claimPending,
 } from '../../notificationDeliveryFixtures';
 import { createNotificationStopRepository } from '../../../src/infrastructure/repositories/NotificationStopRepository';
 import { createNotificationStopService } from '../../../src/application/services/NotificationStopService';
@@ -155,11 +156,7 @@ describe('Stopの条件付きUPDATEとFCM競合', () => {
       reason: 'manual',
     });
     expect(
-      await repository.claimPendingDeliveries(
-        [f.scheduleId],
-        NOW.toISOString(),
-        100
-      )
+      await claimPending(repository, [f.scheduleId], NOW.toISOString(), 100)
     ).toEqual([]);
     expect(
       await repository.completeScheduleIfDone(f.scheduleId, NOW.toISOString())
@@ -313,14 +310,10 @@ describe('Stopの条件付きUPDATEとFCM競合', () => {
         },
         NOW
       ),
-      repository.claimPendingDeliveries([f.scheduleId], NOW.toISOString(), 100),
+      claimPending(repository, [f.scheduleId], NOW.toISOString(), 100),
     ]);
     expect(
-      await repository.claimPendingDeliveries(
-        [f.scheduleId],
-        NOW.toISOString(),
-        100
-      )
+      await claimPending(repository, [f.scheduleId], NOW.toISOString(), 100)
     ).toEqual([]);
     expect(['stopped', 'sending']).toContain(
       (await getDelivery(f.delivery.notification_push_delivery_id))?.status

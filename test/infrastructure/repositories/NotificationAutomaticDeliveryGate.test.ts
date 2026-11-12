@@ -6,6 +6,7 @@ import {
   createDeliveryFixture,
   getDelivery,
   tokens,
+  claimPending,
 } from '../../notificationDeliveryFixtures';
 import { createNotificationDeliveryRepository } from '../../../src/infrastructure/repositories/NotificationDeliveryRepository';
 import { createNotificationRetryService } from '../../../src/application/services/NotificationRetryService';
@@ -45,11 +46,7 @@ it('設定不備では準備済み・Queue投入済みautomaticの初回と再�
     []
   );
   expect(
-    await repository.claimPendingDeliveries(
-      [fixture.scheduleId],
-      NOW.toISOString(),
-      5
-    )
+    await claimPending(repository, [fixture.scheduleId], NOW.toISOString(), 5)
   ).toEqual([]);
   // 同じ配信処理でmanualを送信できることも確認する。
   await env.DB.prepare(
@@ -57,7 +54,8 @@ it('設定不備では準備済み・Queue投入済みautomaticの初回と再�
   )
     .bind(fixture.notificationId)
     .run();
-  const [manual] = await repository.claimPendingDeliveries(
+  const [manual] = await claimPending(
+    repository,
     [fixture.scheduleId],
     NOW.toISOString(),
     5

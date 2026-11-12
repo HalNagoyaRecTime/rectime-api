@@ -511,6 +511,7 @@ export const notification_push_deliveries = sqliteTable(
     notificationRecipientId: integer('notification_recipient_id')
       .notNull()
       .references(() => notification_recipients.id, { onDelete: 'cascade' }),
+    notificationScheduleId: integer('notification_schedule_id'),
     firebaseTokenId: integer('firebase_token_id').references(
       () => firebase_tokens.firebaseTokenId,
       { onDelete: 'set null' }
@@ -545,9 +546,9 @@ export const notification_push_deliveries = sqliteTable(
     index('idx_notification_push_deliveries_firebase_token_id').on(
       table.firebaseTokenId
     ),
-    index('idx_notification_push_deliveries_retry').on(
+    index('idx_notification_push_deliveries_status_schedule_id').on(
       table.status,
-      table.nextRetryAt
+      table.notificationScheduleId
     ),
   ]
 );
