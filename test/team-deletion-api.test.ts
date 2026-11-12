@@ -91,12 +91,12 @@ describe('チーム削除API', () => {
     expect(after.total).toBe(2);
     expect(after.items).toEqual([
       expect.objectContaining({
-        team_name: 'Aクラス(1A)',
+        team_name: '1A',
         registered_classes: ['1A'],
         scores: 0,
       }),
       expect.objectContaining({
-        team_name: 'Bクラス(1B)',
+        team_name: '1B',
         registered_classes: ['1B'],
         scores: 0,
       }),
@@ -132,9 +132,7 @@ describe('チーム削除API', () => {
   });
 
   it('単独編成名の競合は409と具体的な理由を返し、変更を残さない', async () => {
-    await env.DB.prepare(
-      "INSERT INTO teams (team_name) VALUES ('Bクラス(1B)')"
-    ).run();
+    await env.DB.prepare("INSERT INTO teams (team_name) VALUES ('1B')").run();
     const before = await listTeams();
 
     const response = await request(`/teams/${teamId}`, 'DELETE');

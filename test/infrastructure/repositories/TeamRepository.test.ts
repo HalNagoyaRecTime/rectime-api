@@ -627,7 +627,7 @@ describe('TeamRepository', () => {
       expect(detached.results).toHaveLength(2);
       for (const row of detached.results) {
         expect(row.team_id).not.toBe(teamId);
-        expect(row.team_name).toBe(`${row.class_code}組(${row.class_code})`);
+        expect(row.team_name).toBe(row.class_code);
         expect(row.lock_version).toBe(1);
       }
       expect(new Set(detached.results.map(row => row.team_id)).size).toBe(2);
@@ -653,7 +653,7 @@ describe('TeamRepository', () => {
       await insertClassRoom('1A', teamId);
       await insertClassRoom('1B', teamId);
       await repo.addScore(teamId, 0);
-      await insertTeam('1B組(1B)');
+      await insertTeam('1B');
       const before = await snapshot();
 
       await expect(repo.delete(teamId)).rejects.toThrow(
@@ -682,7 +682,7 @@ describe('TeamRepository', () => {
     });
 
     it('削除対象と同名の単独編成を含む複数クラスも削除できる', async () => {
-      const teamId = await insertTeam('1A組(1A)');
+      const teamId = await insertTeam('1A');
       await insertClassRoom('1A', teamId);
       await insertClassRoom('1B', teamId);
 
@@ -695,10 +695,7 @@ describe('TeamRepository', () => {
       });
 
       expect(result.total).toBe(2);
-      expect(result.items.map(team => team.team_name)).toEqual([
-        '1A組(1A)',
-        '1B組(1B)',
-      ]);
+      expect(result.items.map(team => team.team_name)).toEqual(['1A', '1B']);
       expect(result.items.every(team => team.team_id !== teamId)).toBe(true);
     });
 

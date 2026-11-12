@@ -471,7 +471,7 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
         db
           .prepare(
             `INSERT INTO teams (team_name)
-             SELECT class_name || '(' || class_code || ')'
+             SELECT class_code
              FROM class_rooms
              WHERE team_id = ?
                AND EXISTS (SELECT 1 FROM teams WHERE team_id = ? AND team_name = ?)`
@@ -482,7 +482,7 @@ export function createTeamRepository(db: D1Database): ITeamRepository {
             `UPDATE class_rooms
              SET team_id = (
                    SELECT t.team_id FROM teams t
-                   WHERE t.team_name = class_rooms.class_name || '(' || class_rooms.class_code || ')'
+                   WHERE t.team_name = class_rooms.class_code
                  ),
                  updated_at = CURRENT_TIMESTAMP,
                  lock_version = lock_version + 1
