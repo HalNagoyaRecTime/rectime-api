@@ -70,6 +70,10 @@ import {
 } from './presentation/openapi/events';
 import { eventGatheringSettingsUpdateRoute } from './presentation/openapi/eventGatheringSettings';
 import {
+  gatheringImportCommitRoute,
+  gatheringImportPreviewRoute,
+} from './presentation/openapi/gatheringImports';
+import {
   classRoomCreateRoute,
   classRoomDeleteRoute,
   classRoomDetailRoute,
@@ -361,6 +365,12 @@ apiV1.openapi(staffOnly(eventGatheringSettingsUpdateRoute), c => {
   return c
     .get('container')
     .eventGatheringSettingsController.saveEventGatheringSettings(c);
+});
+apiV1.openapi(staffOnly(gatheringImportPreviewRoute), c => {
+  return c.get('container').gatheringImportController.preview(c);
+});
+apiV1.openapi(staffOnly(gatheringImportCommitRoute), c => {
+  return c.get('container').gatheringImportController.commit(c);
 });
 apiV1.openapi(
   staffOnly(eventCreateRoute),

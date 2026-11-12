@@ -57,6 +57,7 @@ import { createGatheringSpotService } from '../application/services/GatheringSpo
 import { createVenueService } from '../application/services/VenueService';
 import { createGatheringGroupMemberService } from '../application/services/GatheringGroupMemberService';
 import { createEventGatheringSettingsService } from '../application/services/EventGatheringSettingsService';
+import { createGatheringImportService } from '../application/services/GatheringImportService';
 import { createRankingService } from '../application/services/RankingService';
 import { createTeamService } from '../application/services/TeamService';
 import { createStudentController } from '../presentation/controllers/StudentController';
@@ -81,6 +82,7 @@ import { createPlaceImageKeyRepository } from '../infrastructure/repositories/Pl
 import { createDeleteUnusedImage } from '../application/services/deleteUnusedImage';
 import { createGatheringGroupMemberController } from '../presentation/controllers/GatheringGroupMemberController';
 import { createEventGatheringSettingsController } from '../presentation/controllers/EventGatheringSettingsController';
+import { createGatheringImportController } from '../presentation/controllers/GatheringImportController';
 import { createRankingController } from '../presentation/controllers/RankingController';
 import { createTeamController } from '../presentation/controllers/TeamController';
 import { createUserRepository } from '../infrastructure/repositories/UserRepository';
@@ -331,6 +333,15 @@ export function createDIContainer(env: Env) {
     gatheringNotificationCleanupService,
     gatheringSettingsTransaction
   );
+  const gatheringImportService = createGatheringImportService(
+    eventRepository,
+    gatheringSpotRepository,
+    studentRepository,
+    eventGatheringSettingsRepository,
+    gatheringNotificationGeneratorService,
+    gatheringNotificationCleanupService,
+    gatheringSettingsTransaction
+  );
   const rankingService = createRankingService(teamRepository, sharedRankings);
   const teamService = createTeamService(teamRepository);
 
@@ -366,6 +377,9 @@ export function createDIContainer(env: Env) {
   );
   const eventGatheringSettingsController =
     createEventGatheringSettingsController(eventGatheringSettingsService);
+  const gatheringImportController = createGatheringImportController(
+    gatheringImportService
+  );
   const rankingController = createRankingController(rankingService);
   const teamController = createTeamController(teamService);
 
@@ -408,6 +422,7 @@ export function createDIContainer(env: Env) {
     placeImageController,
     gatheringGroupMemberController,
     eventGatheringSettingsController,
+    gatheringImportController,
     rankingController,
     teamController,
   };

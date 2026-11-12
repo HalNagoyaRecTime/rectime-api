@@ -88,6 +88,8 @@ describe('OpenAPI documentation', () => {
       '/api/v1/classrooms/{classId}',
       '/api/v1/events',
       '/api/v1/events/{eventId}',
+      '/api/v1/events/{eventId}/gathering-imports',
+      '/api/v1/events/{eventId}/gathering-imports/preview',
       '/api/v1/events/{eventId}/gatherings',
       '/api/v1/firebase-tokens',
       '/api/v1/gathering-spots',
@@ -252,7 +254,7 @@ describe('OpenAPI documentation', () => {
         ['get', 'post', 'put', 'patch', 'delete'].includes(method)
       )
     );
-    expect(documentedOperations).toHaveLength(70);
+    expect(documentedOperations).toHaveLength(72);
     expect(document.paths['/api/v1/gatherings']).toBeUndefined();
     const schedulePath =
       document.paths[

@@ -234,4 +234,25 @@ export const EventErrors = {
     code: 'PLACE_IMAGE_DELETE_FAILED',
     message: '画像の削除に失敗しました',
   },
+  INVALID_GATHERING_IMPORT_FILE: {
+    status: 400,
+    code: 'INVALID_GATHERING_IMPORT_FILE',
+    message:
+      'CSVを読み取れません。UTF-8でないか、ラウンド・開始時刻・集合時刻・集合場所・生徒のどれかの列がありません',
+  },
+  GATHERING_IMPORT_TOO_MANY_ROWS: {
+    status: 400,
+    code: 'GATHERING_IMPORT_TOO_MANY_ROWS',
+    message: '行数が2,500行を超えています',
+  },
+  GATHERING_IMPORT_NO_ROWS: {
+    status: 400,
+    code: 'GATHERING_IMPORT_NO_ROWS',
+    message: '取り込める行がありません',
+  },
+  GATHERING_IMPORT_FAILED: {
+    status: 500,
+    code: 'GATHERING_IMPORT_FAILED',
+    message: '集合の取り込みに失敗しました',
+  },
 } as const satisfies Record<string, ApiErrorDefinition>;
