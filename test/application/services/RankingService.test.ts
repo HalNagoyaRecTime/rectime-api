@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createRankingService } from '../../../src/application/services/RankingService';
+import { createSharedResultCache } from '../../../src/application/services/SharedResultCache';
 import type { ITeamRepository } from '../../../src/domain/interfaces/repositories/ITeamRepository';
 import type {
   RankingEntryEntity,
@@ -55,7 +56,10 @@ describe('RankingService', () => {
       const repository = createRepository({
         findRanking: vi.fn().mockResolvedValue({ items, total: 1 }),
       });
-      const service = createRankingService(repository);
+      const service = createRankingService(
+        repository,
+        createSharedResultCache(60_000)
+      );
 
       const result = await service.getRanking({});
 
@@ -71,7 +75,10 @@ describe('RankingService', () => {
       const repository = createRepository({
         findRanking: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       });
-      const service = createRankingService(repository);
+      const service = createRankingService(
+        repository,
+        createSharedResultCache(60_000)
+      );
 
       await service.getRanking({ limit: 10, offset: 20 });
 
@@ -86,7 +93,10 @@ describe('RankingService', () => {
       const repository = createRepository({
         findRanking: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       });
-      const service = createRankingService(repository);
+      const service = createRankingService(
+        repository,
+        createSharedResultCache(60_000)
+      );
 
       await service.getRanking({ search: '赤' });
 
@@ -105,7 +115,10 @@ describe('RankingService', () => {
         exists: vi.fn().mockResolvedValue(true),
         addScore: vi.fn().mockResolvedValue(updated),
       });
-      const service = createRankingService(repository);
+      const service = createRankingService(
+        repository,
+        createSharedResultCache(60_000)
+      );
 
       await expect(service.addTeamScore(1, { points: 10 })).resolves.toEqual(
         updated
@@ -118,7 +131,10 @@ describe('RankingService', () => {
       const repository = createRepository({
         exists: vi.fn().mockResolvedValue(false),
       });
-      const service = createRankingService(repository);
+      const service = createRankingService(
+        repository,
+        createSharedResultCache(60_000)
+      );
 
       await expect(service.addTeamScore(999, { points: 10 })).rejects.toThrow(
         'Team not found'

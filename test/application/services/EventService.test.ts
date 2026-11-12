@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createEventService } from '../../../src/application/services/EventService';
+import { createSharedResultCache } from '../../../src/application/services/SharedResultCache';
 import type { IEventGatheringSettingsRepository } from '../../../src/domain/interfaces/repositories/IEventGatheringSettingsRepository';
 import type { IEventRepository } from '../../../src/domain/interfaces/repositories/IEventRepository';
 import type { IVenueRepository } from '../../../src/domain/interfaces/repositories/IVenueRepository';
@@ -119,7 +120,8 @@ function createService(
     repository,
     gatheringSettingsRepository,
     venueRepository,
-    imageUrlSigner
+    imageUrlSigner,
+    createSharedResultCache(60_000)
   );
 }
 
@@ -144,6 +146,7 @@ describe('EventService', () => {
           createGatheringSettingsRepository(),
           createVenueRepository(),
           imageUrlSigner,
+          createSharedResultCache(60_000),
           configured
         );
         expect(await service.getAllEvents({})).toEqual({
@@ -165,6 +168,7 @@ describe('EventService', () => {
         createGatheringSettingsRepository(),
         createVenueRepository(),
         imageUrlSigner,
+        createSharedResultCache(60_000),
         '2026-10-09'
       );
       expect(

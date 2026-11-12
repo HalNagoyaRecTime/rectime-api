@@ -105,6 +105,63 @@ describe('TeamRepository', () => {
       ]);
     });
 
+    it('同点のチームがページの境目をまたいでも同じ順位を返し、offsetが件数を超えたら空配列を返す', async () => {
+      const teamA = await insertTeam('チームA');
+      const teamB = await insertTeam('チームB');
+      const teamC = await insertTeam('チームC');
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 30), (?, 30), (?, 10)'
+      )
+        .bind(teamA, teamB, teamC)
+        .run();
+
+      const secondPage = await repo.findRanking({ limit: 1, offset: 1 });
+      const beyondEnd = await repo.findRanking({ limit: 1, offset: 3 });
+
+      expect(secondPage).toEqual({
+        total: 3,
+        items: [{ rank: 1, team_id: teamB, team_name: 'チームB', scores: 30 }],
+      });
+      expect(beyondEnd).toEqual({ total: 3, items: [] });
+    });
+
+    it('searchで絞ったあとにlimit・offsetを当て、同点の相手が絞り込みで外れても全体の順位を返す', async () => {
+      const white1 = await insertTeam('白組1');
+      const red1 = await insertTeam('赤組1');
+      const white2 = await insertTeam('白組2');
+      const red2 = await insertTeam('赤組2');
+      const red3 = await insertTeam('赤組3');
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 30), (?, 30), (?, 20), (?, 20), (?, 10)'
+      )
+        .bind(white1, red1, white2, red2, red3)
+        .run();
+
+      const all = await repo.findRanking({
+        search: '赤',
+        limit: 50,
+        offset: 0,
+      });
+      const page = await repo.findRanking({
+        search: '赤',
+        limit: 1,
+        offset: 1,
+      });
+
+      expect(all).toEqual({
+        total: 3,
+        items: [
+          { rank: 1, team_id: red1, team_name: '赤組1', scores: 30 },
+          { rank: 3, team_id: red2, team_name: '赤組2', scores: 20 },
+          { rank: 5, team_id: red3, team_name: '赤組3', scores: 10 },
+        ],
+      });
+      expect(page).toEqual({
+        total: 3,
+        items: [{ rank: 3, team_id: red2, team_name: '赤組2', scores: 20 }],
+      });
+    });
+
     it('searchに一致するチームが無い場合は空配列を返す', async () => {
       await insertTeam('赤組');
 

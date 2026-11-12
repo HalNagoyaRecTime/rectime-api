@@ -9,7 +9,10 @@ import type {
 } from '../dto/EventDTO';
 
 export interface IEventService {
-  getAllEvents: (options: GetEventsRequestDTO) => Promise<EventListResponseDTO>;
+  getAllEvents: (
+    options: GetEventsRequestDTO,
+    allowShared?: boolean
+  ) => Promise<EventListResponseDTO>;
   getEventById: (
     id: number,
     includeMemberCount: boolean

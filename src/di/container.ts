@@ -1,5 +1,8 @@
 import { isValidEventDate } from '../lib/eventDate';
 import { getDb } from '../lib/db';
+import { createSharedResultCache } from '../application/services/SharedResultCache';
+import type { EventListResponseDTO } from '../application/dto/EventDTO';
+import type { RankingListResponseDTO } from '../application/dto/RankingDTO';
 import { createNotificationStopRepository } from '../infrastructure/repositories/NotificationStopRepository';
 import { createNotificationStopService } from '../application/services/NotificationStopService';
 import { createNotificationStopController } from '../presentation/controllers/NotificationStopController';
@@ -93,6 +96,16 @@ import { createAccountDeletionService } from '../application/services/AccountDel
 import { createNotificationAccountDeletionService } from '../application/services/NotificationAccountDeletionService';
 import { createAuthorizationService } from '../application/services/AuthorizationService';
 import type { Env } from '../lib/env';
+
+// mobile は生徒だけが使い、編集する画面が無い。スタッフの画面(web)は編集・得点入力の
+// 直後に最新の内容を見るため使い回さず、mobile にだけ最大 SHARED_RESULT_TTL_MS 遅れた
+// 結果を返す。Cache API は workers.dev で動くと明記されておらず、KV は Free の
+// 読み取り・書き込みの上限に当日届きうるため、Worker のメモリに持つ。
+const SHARED_RESULT_TTL_MS = 60_000;
+const sharedEventLists =
+  createSharedResultCache<EventListResponseDTO>(SHARED_RESULT_TTL_MS);
+const sharedRankings =
+  createSharedResultCache<RankingListResponseDTO>(SHARED_RESULT_TTL_MS);
 
 export function createDIContainer(env: Env) {
   const imageUrlSigner = createR2ImageUrlSigner({
@@ -219,6 +232,7 @@ export function createDIContainer(env: Env) {
     eventGatheringSettingsRepository,
     venueRepository,
     imageUrlSigner,
+    sharedEventLists,
     env.EVENT_DATE
   );
   const classRoomService = createClassRoomService(
@@ -317,7 +331,7 @@ export function createDIContainer(env: Env) {
     gatheringNotificationCleanupService,
     gatheringSettingsTransaction
   );
-  const rankingService = createRankingService(teamRepository);
+  const rankingService = createRankingService(teamRepository, sharedRankings);
   const teamService = createTeamService(teamRepository);
 
   // Controllers

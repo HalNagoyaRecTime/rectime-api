@@ -12,6 +12,7 @@ import type {
   CreateEventRequestDTO,
   EventDTO,
   EventListItemDTO,
+  EventListResponseDTO,
   GetEventsRequestDTO,
   UpdateEventRequestDTO,
 } from '../dto/EventDTO';
@@ -21,6 +22,7 @@ import type { IImageUrlSigner } from '../../domain/interfaces/storages/IImageUrl
 import { ensureVenuesExist, saveWithVenues } from './eventVenueIds';
 import type { IVenueRepository } from '../../domain/interfaces/repositories/IVenueRepository';
 import type { IEventService } from './IEventService';
+import type { SharedResultCache } from './SharedResultCache';
 
 function toEventDTO(
   event: EventWithVenuesEntity,
@@ -88,6 +90,7 @@ export function createEventService(
   eventGatheringSettingsRepository: IEventGatheringSettingsRepository,
   venueRepository: IVenueRepository,
   imageUrlSigner: IImageUrlSigner,
+  sharedEventLists: SharedResultCache<EventListResponseDTO>,
   eventDate?: string
 ): IEventService {
   const signVenueImageUrls = (events: EventWithVenuesEntity[]) =>
@@ -96,20 +99,29 @@ export function createEventService(
       events.flatMap(event => event.venues.map(venue => venue.image_key))
     );
 
+  const loadEvents = async (
+    options: GetEventsRequestDTO
+  ): Promise<EventListResponseDTO> => {
+    const repositoryOptions = toEventListOptions(options);
+    const result = await eventRepository.findAll(repositoryOptions);
+    const imageUrlOf = await signVenueImageUrls(result.events);
+    return {
+      event_date: isValidEventDate(eventDate) ? eventDate : null,
+      events: result.events.map(event => toEventListItemDTO(event, imageUrlOf)),
+      total: result.total,
+      limit: options.limit ?? 50,
+      offset: options.offset ?? 0,
+    };
+  };
+
   return {
-    async getAllEvents(options) {
-      const repositoryOptions = toEventListOptions(options);
-      const result = await eventRepository.findAll(repositoryOptions);
-      const imageUrlOf = await signVenueImageUrls(result.events);
-      return {
-        event_date: isValidEventDate(eventDate) ? eventDate : null,
-        events: result.events.map(event =>
-          toEventListItemDTO(event, imageUrlOf)
-        ),
-        total: result.total,
-        limit: options.limit ?? 50,
-        offset: options.offset ?? 0,
-      };
+    getAllEvents(options, allowShared) {
+      if (allowShared) {
+        return sharedEventLists.get(JSON.stringify(options), () =>
+          loadEvents(options)
+        );
+      }
+      return loadEvents(options);
     },
 
     async getEventById(id, includeMemberCount) {
