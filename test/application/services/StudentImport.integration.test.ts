@@ -227,6 +227,47 @@ describe('学生の取込で既に登録されている学生を除外する', (
     expect(classRoom).toBeNull();
   });
 
+  it('退会中の学生が使っている枠は、検証では重複にせず何も変えず、確定したときに外して登録する', async () => {
+    const deletedUser = await env.DB.prepare(
+      "INSERT INTO users (user_name, deletion_status) VALUES ('削除済みユーザー', 'deleted') RETURNING user_id"
+    ).first<{ user_id: number }>();
+    await env.DB.prepare(
+      `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
+       VALUES (?, ?, 50, 'DELETED-IMPORT-50')`
+    )
+      .bind(deletedUser!.user_id, seeded.classRoomId)
+      .run();
+    const rows = [
+      {
+        class_code: 'TEST-1',
+        attendance_number: 50,
+        student_id_number: '24200',
+        last_name: '枠を',
+        first_name: '引き継ぐ',
+      },
+    ];
+
+    const validation = await service().validateStudentImport({ rows });
+
+    expect(validation).toMatchObject({ success_count: 1, error_count: 0 });
+    expect(await findStudentByNumber('DELETED-IMPORT-50')).toMatchObject({
+      class_code: 'TEST-1',
+      attendance_number: 50,
+    });
+
+    const commit = await service().commitStudentImport({ rows });
+
+    expect(commit).toMatchObject({ imported: 1, error_count: 0 });
+    expect(await findStudentByNumber('24200')).toMatchObject({
+      class_code: 'TEST-1',
+      attendance_number: 50,
+    });
+    expect(await findStudentByNumber('DELETED-IMPORT-50')).toMatchObject({
+      class_code: null,
+      attendance_number: null,
+    });
+  });
+
   it('除外する行のほかに直す必要があるエラーがあれば、1件も登録しない', async () => {
     const existing = seeded.students[0];
     const occupied = seeded.students[2];

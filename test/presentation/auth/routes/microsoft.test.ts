@@ -1773,10 +1773,10 @@ describe('POST /auth/microsoft/token', () => {
     expect(body.error?.code).toBe('INTERNAL_SERVER_ERROR');
   });
 
-  it('markAsDeleted実行後に同じ学籍番号メールでログインすると、古い削除済みユーザーへ紐付けず新規アカウントとして登録される', async () => {
-    // ここで検証したい再登録の挙動(削除済みuser_idへ紐付けず新規発行
-    // される)はclient_typeに依存しない。Webは新規ユーザーにstaff権限が
-    // 必須(#288)で新規登録の検証に使えないため、mobileで検証する。
+  it('markAsDeleted実行後に同じ学籍番号メールでログインすると、古い削除済みユーザーへ紐付けず、新しいユーザーへ学生情報が付け替わる', async () => {
+    // ここで検証したい再ログインの挙動(削除済みuser_idへ紐付けず新規発行
+    // され、学生情報がそちらへ移る)はclient_typeに依存しない。Webは
+    // ログインにstaff権限が必須で検証に使えないため、mobileで検証する。
     const env = buildEnv();
 
     const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
@@ -1854,6 +1854,16 @@ describe('POST /auth/microsoft/token', () => {
       .bind(oldUser!.user_id)
       .first<{ deletion_status: string }>();
     expect(oldUserRow?.deletion_status).toBe('deleted');
+
+    // 学生情報は新しいuser_idへ付け替わり、クラス・出席番号もそのまま
+    const studentRow = await workerEnv.DB.prepare(
+      "SELECT user_id, class_room_id, attendance_number FROM students WHERE student_id_number = '70001'"
+    ).first();
+    expect(studentRow).toEqual({
+      user_id: Number(body.user.id),
+      class_room_id: classRoom.classRoomId,
+      attendance_number: 3,
+    });
   });
 
   it('deletion_pendingの学生が学籍番号ログインを試みると410 ACCOUNT_DELETION_PENDINGを返す', async () => {

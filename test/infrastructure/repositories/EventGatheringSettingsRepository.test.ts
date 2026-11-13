@@ -42,10 +42,15 @@ describe('EventGatheringSettingsRepository', () => {
     return row!.gathering_id;
   }
 
-  async function insertMember(gatheringId: number): Promise<void> {
+  async function insertMember(
+    gatheringId: number,
+    deletionStatus: 'active' | 'deleted' = 'active'
+  ): Promise<void> {
     const user = await env.DB.prepare(
-      "INSERT INTO users (user_name) VALUES ('集合設定テスト') RETURNING user_id"
-    ).first<{ user_id: number }>();
+      "INSERT INTO users (user_name, deletion_status) VALUES ('集合設定テスト', ?) RETURNING user_id"
+    )
+      .bind(deletionStatus)
+      .first<{ user_id: number }>();
     userIds.push(user!.user_id);
     await env.DB.prepare(
       'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?)'
@@ -169,6 +174,18 @@ describe('EventGatheringSettingsRepository', () => {
       ]);
     });
 
+    it('退会中の参加者は参加人数に数えない', async () => {
+      const eventId = await insertEvent('退会者の人数');
+      const spotId = await insertSpot('場所');
+      const gatheringId = await insertGathering(eventId, spotId, 1, '10:00');
+      await insertMember(gatheringId);
+      await insertMember(gatheringId, 'deleted');
+
+      const [gathering] = await repository.findByEventId(eventId);
+
+      expect(gathering.member_count).toBe(1);
+    });
+
     it('他Eventの集合予定は含めない', async () => {
       const eventId = await insertEvent('対象');
       const otherEventId = await insertEvent('他');
@@ -179,6 +196,41 @@ describe('EventGatheringSettingsRepository', () => {
       const result = await repository.findByEventId(eventId);
 
       expect(result.map(gathering => gathering.gathering_id)).toEqual([own]);
+    });
+  });
+
+  describe('findWithoutMemberCountByEventId', () => {
+    it('参加人数を除いた項目をround, gathering_id の順で返し、他Eventの集合予定は含めない', async () => {
+      const eventId = await insertEvent('人数なし');
+      const otherEventId = await insertEvent('他');
+      const spotId = await insertSpot('出入口①');
+      const round2 = await insertGathering(eventId, spotId, 2, '10:00');
+      const round1 = await insertGathering(eventId, spotId, 1, '10:30');
+      await insertGathering(otherEventId, spotId, 1, '10:00');
+      await insertMember(round1);
+
+      const result = await repository.findWithoutMemberCountByEventId(eventId);
+
+      expect(result).toEqual([
+        {
+          gathering_id: round1,
+          round: 1,
+          gathering_time: '10:30',
+          gathering_spot_id: spotId,
+          gathering_spot_name: '出入口①',
+          gathering_spot_image_key: null,
+          round_start_time: null,
+        },
+        {
+          gathering_id: round2,
+          round: 2,
+          gathering_time: '10:00',
+          gathering_spot_id: spotId,
+          gathering_spot_name: '出入口①',
+          gathering_spot_image_key: null,
+          round_start_time: null,
+        },
+      ]);
     });
   });
 
@@ -335,6 +387,88 @@ describe('EventGatheringSettingsRepository', () => {
         'SELECT COUNT(*) AS n FROM gathering_group_members WHERE gathering_id = ?'
       )
         .bind(inUse)
+        .first<{ n: number }>();
+      expect(member?.n).toBe(1);
+    });
+
+    it('退会中の参加者しかいない集合予定は、その所属と一緒に削除する', async () => {
+      const eventId = await insertEvent('退会者だけ');
+      const spotId = await insertSpot('場所');
+      const toDelete = await insertGathering(eventId, spotId, 1, '10:00');
+      const kept = await insertGathering(eventId, spotId, 1, '10:30');
+      await insertMember(toDelete, 'deleted');
+      await insertMember(toDelete, 'deleted');
+      await insertMember(kept, 'deleted');
+
+      await repository.apply({
+        event_id: eventId,
+        creates: [],
+        updates: [],
+        delete_ids: [toDelete],
+      });
+
+      expect(await readGatherings(eventId)).toMatchObject([
+        { gathering_id: kept },
+      ]);
+      const members = await env.DB.prepare(
+        'SELECT gathering_id, COUNT(*) AS n FROM gathering_group_members WHERE gathering_id IN (?, ?) GROUP BY gathering_id'
+      )
+        .bind(toDelete, kept)
+        .all<{ gathering_id: number; n: number }>();
+      // 削除しない集合予定の退会中の参加者は、所属を残したまま
+      expect(members.results).toEqual([{ gathering_id: kept, n: 1 }]);
+    });
+
+    it('在籍中の参加者が1人でもいれば削除は失敗し、退会中の参加者の所属も残る', async () => {
+      const eventId = await insertEvent('在籍者と退会者');
+      const spotId = await insertSpot('場所');
+      const inUse = await insertGathering(eventId, spotId, 1, '10:00');
+      await insertMember(inUse);
+      await insertMember(inUse, 'deleted');
+
+      await expect(
+        repository.apply({
+          event_id: eventId,
+          creates: [],
+          updates: [],
+          delete_ids: [inUse],
+        })
+      ).rejects.toThrow('FOREIGN KEY constraint failed');
+
+      expect(await readGatherings(eventId)).toMatchObject([
+        { gathering_id: inUse },
+      ]);
+      const member = await env.DB.prepare(
+        'SELECT COUNT(*) AS n FROM gathering_group_members WHERE gathering_id = ?'
+      )
+        .bind(inUse)
+        .first<{ n: number }>();
+      expect(member?.n).toBe(2);
+    });
+
+    it('他Eventの集合予定の退会中の参加者は削除しない', async () => {
+      const eventId = await insertEvent('対象');
+      const otherEventId = await insertEvent('他');
+      const spotId = await insertSpot('場所');
+      const otherGathering = await insertGathering(
+        otherEventId,
+        spotId,
+        1,
+        '10:00'
+      );
+      await insertMember(otherGathering, 'deleted');
+
+      await repository.apply({
+        event_id: eventId,
+        creates: [],
+        updates: [],
+        delete_ids: [otherGathering],
+      });
+
+      const member = await env.DB.prepare(
+        'SELECT COUNT(*) AS n FROM gathering_group_members WHERE gathering_id = ?'
+      )
+        .bind(otherGathering)
         .first<{ n: number }>();
       expect(member?.n).toBe(1);
     });

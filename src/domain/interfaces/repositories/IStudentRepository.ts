@@ -26,6 +26,11 @@ export interface ExistingStudent {
   isDeleted: boolean;
 }
 
+export interface StudentUserByClassRoomAttendanceNumber extends StudentClassRoomAttendanceNumber {
+  userId: number;
+  userName: string;
+}
+
 export interface BulkCreateStudentsInput {
   newClassRooms: { classCode: string; className: string }[];
   students: NewStudentWithClassCodeInput[];
@@ -36,6 +41,10 @@ export interface IStudentRepository {
   findByUserId: (userId: number) => Promise<StudentEntity | null>;
   findAll: (options: StudentSearchFilter) => Promise<StudentPage>;
   findByStudentNum: (studentNum: string) => Promise<StudentEntity | null>;
+  // クラスと出席番号の重複確認では、退会中の学生(退会したユーザーの学生情報)を
+  // 数えない。退会中の学生が使っている枠に create / update / updateClassRoom /
+  // createMany で別の学生を入れると、退会中の学生のクラスと出席番号を外し、
+  // 登録と同じトランザクションで確定する。
   findByClassRoomAndAttendanceNumber: (
     classRoomId: number,
     attendanceNumber: number
@@ -46,6 +55,9 @@ export interface IStudentRepository {
   findExistingClassRoomAttendanceNumbers: (
     assignments: StudentClassRoomAttendanceNumber[]
   ) => Promise<StudentClassRoomAttendanceNumber[]>;
+  findActiveUsersByClassRoomAttendanceNumbers: (
+    assignments: StudentClassRoomAttendanceNumber[]
+  ) => Promise<StudentUserByClassRoomAttendanceNumber[]>;
   create: (student: StudentWriteInput) => Promise<StudentEntity>;
   update: (
     id: number,
@@ -56,11 +68,4 @@ export interface IStudentRepository {
     assignment: StudentClassRoomAssignment
   ) => Promise<StudentEntity | null>;
   createMany: (input: BulkCreateStudentsInput) => Promise<void>;
-  // アカウント削除(#265 PR4)専用。student_id_numberはUNIQUE制約付きで、
-  // 削除後の再登録(#265 PR1で「新規アカウントとして再登録を許容する」と
-  // 確定済み)のため、行自体は残しつつプレースホルダ値(user_idを含む
-  // 一意な値)へ書き換える。退会後の再登録で出席番号を再利用できるよう、
-  // class_room_id・attendance_numberは両方NULLにする。該当する学生が
-  // 存在しない場合は何もせずfalseを返す(冪等)。
-  anonymizeByUserId: (userId: number) => Promise<boolean>;
 }

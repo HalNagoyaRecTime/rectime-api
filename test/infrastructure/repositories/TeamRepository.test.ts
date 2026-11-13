@@ -105,6 +105,63 @@ describe('TeamRepository', () => {
       ]);
     });
 
+    it('同点のチームがページの境目をまたいでも同じ順位を返し、offsetが件数を超えたら空配列を返す', async () => {
+      const teamA = await insertTeam('チームA');
+      const teamB = await insertTeam('チームB');
+      const teamC = await insertTeam('チームC');
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 30), (?, 30), (?, 10)'
+      )
+        .bind(teamA, teamB, teamC)
+        .run();
+
+      const secondPage = await repo.findRanking({ limit: 1, offset: 1 });
+      const beyondEnd = await repo.findRanking({ limit: 1, offset: 3 });
+
+      expect(secondPage).toEqual({
+        total: 3,
+        items: [{ rank: 1, team_id: teamB, team_name: 'チームB', scores: 30 }],
+      });
+      expect(beyondEnd).toEqual({ total: 3, items: [] });
+    });
+
+    it('searchで絞ったあとにlimit・offsetを当て、同点の相手が絞り込みで外れても全体の順位を返す', async () => {
+      const white1 = await insertTeam('白組1');
+      const red1 = await insertTeam('赤組1');
+      const white2 = await insertTeam('白組2');
+      const red2 = await insertTeam('赤組2');
+      const red3 = await insertTeam('赤組3');
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 30), (?, 30), (?, 20), (?, 20), (?, 10)'
+      )
+        .bind(white1, red1, white2, red2, red3)
+        .run();
+
+      const all = await repo.findRanking({
+        search: '赤',
+        limit: 50,
+        offset: 0,
+      });
+      const page = await repo.findRanking({
+        search: '赤',
+        limit: 1,
+        offset: 1,
+      });
+
+      expect(all).toEqual({
+        total: 3,
+        items: [
+          { rank: 1, team_id: red1, team_name: '赤組1', scores: 30 },
+          { rank: 3, team_id: red2, team_name: '赤組2', scores: 20 },
+          { rank: 5, team_id: red3, team_name: '赤組3', scores: 10 },
+        ],
+      });
+      expect(page).toEqual({
+        total: 3,
+        items: [{ rank: 3, team_id: red2, team_name: '赤組2', scores: 20 }],
+      });
+    });
+
     it('searchに一致するチームが無い場合は空配列を返す', async () => {
       await insertTeam('赤組');
 
@@ -264,12 +321,11 @@ describe('TeamRepository', () => {
       const classRoomId = await insertClassRoom('1A');
 
       const created = await repo.createTeam({
-        team_name: '新設チーム',
         class_codes: ['1A'],
       });
 
       expect(created).toMatchObject({
-        team_name: '新設チーム',
+        team_name: '1A',
         scores: 0,
         registered_classes: ['1A'],
       });
@@ -292,14 +348,69 @@ describe('TeamRepository', () => {
 
     it('class_codesが空配列でもチームを作成できる', async () => {
       const created = await repo.createTeam({
-        team_name: 'クラス無しチーム',
         class_codes: [],
       });
 
       expect(created).toMatchObject({
-        team_name: 'クラス無しチーム',
+        team_name: '',
         registered_classes: [],
       });
+    });
+
+    it('既存の単独編成(team_nameが再作成名と同じ)と同じクラスだけでチームを作り直せる', async () => {
+      // 単独編成のteam_nameはclass_codeそのものであり、作り直す新チームの
+      // 名前と一致する。既存の単独編成が残ったまま同名のチームを作ろうとして
+      // UNIQUE制約に違反しないことを確認する。
+      const soloTeamId = await insertTeam('1A');
+      await insertClassRoom('1A', soloTeamId);
+
+      const created = await repo.createTeam({ class_codes: ['1A'] });
+
+      expect(created).toMatchObject({
+        team_name: '1A',
+        registered_classes: ['1A'],
+      });
+      expect(created.team_id).not.toBe(soloTeamId);
+      await expect(repo.exists(soloTeamId)).resolves.toBe(false);
+    });
+
+    it('チーム名はリクエストの並び順でなく、クラスの登録順(class_room_id)で組み立てる', async () => {
+      await insertClassRoom('1A');
+      await insertClassRoom('1B');
+
+      const created = await repo.createTeam({ class_codes: ['1B', '1A'] });
+
+      expect(created.team_name).toBe('1A 1B');
+    });
+
+    it('得点が残る単独編成から最後のクラスを移しても、退会済み名に変わり衝突しない', async () => {
+      // 得点があるため移動元チームは削除されず、同名「1A」のまま残ろうとする。
+      // 移動先の新チームが同じ名前を確定する前に、移動元を退会済みマーカー付きの
+      // 名前へ変えて名前を解放しておく必要がある。
+      const soloTeamId = await insertTeam('1A');
+      await insertClassRoom('1A', soloTeamId);
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 10)'
+      )
+        .bind(soloTeamId)
+        .run();
+
+      const created = await repo.createTeam({ class_codes: ['1A'] });
+
+      expect(created).toMatchObject({
+        team_name: '1A',
+        registered_classes: ['1A'],
+      });
+      expect(created.team_id).not.toBe(soloTeamId);
+
+      // 移動元チームは得点を持つため削除されず、退会済みマーカー付きの名前で残る。
+      await expect(repo.exists(soloTeamId)).resolves.toBe(true);
+      const retired = await env.DB.prepare(
+        'SELECT team_name FROM teams WHERE team_id = ?'
+      )
+        .bind(soloTeamId)
+        .first<{ team_name: string }>();
+      expect(retired?.team_name).toBe(`1A(解散#${soloTeamId})`);
     });
   });
 
@@ -309,13 +420,12 @@ describe('TeamRepository', () => {
       const classRoomId = await insertClassRoom('2A');
 
       const updated = await repo.updateTeam(teamId, {
-        team_name: '新しい名前',
         class_codes: ['2A'],
       });
 
       expect(updated).toMatchObject({
         team_id: teamId,
-        team_name: '新しい名前',
+        team_name: '2A',
         registered_classes: ['2A'],
       });
       const classRoom = await env.DB.prepare(
@@ -346,7 +456,6 @@ describe('TeamRepository', () => {
       const destinationTeamId = await insertTeam('移動先チーム');
 
       await repo.updateTeam(destinationTeamId, {
-        team_name: '移動先チーム',
         class_codes: ['4A'],
       });
 
@@ -366,7 +475,6 @@ describe('TeamRepository', () => {
       const destinationTeamId = await insertTeam('移動先チーム3');
 
       await repo.updateTeam(destinationTeamId, {
-        team_name: '移動先チーム3',
         class_codes: ['4B'],
       });
 
@@ -389,7 +497,6 @@ describe('TeamRepository', () => {
       const destinationTeamId = await insertTeam('移動先チーム2');
 
       await repo.updateTeam(destinationTeamId, {
-        team_name: '移動先チーム2',
         class_codes: ['5A'],
       });
 
@@ -401,46 +508,127 @@ describe('TeamRepository', () => {
       expect(sourceTeam).not.toBeNull();
     });
 
+    it('単独編成のクラスを別の1クラスに入れ替えても、自分の古い名前との衝突で失敗しない', async () => {
+      // 単独編成「1A」を「1B」に入れ替える場合、detachRemovedClassRoomsが
+      // 外れる「1A」を退避先の単独編成へ移し、その名前を「1A」に確定する。
+      // 自分(元の「1A」編成)がこの時点でまだ改名されていないと、古い名前
+      // 「1A」と退避先の新しい名前「1A」が衝突する。
+      const teamId = await insertTeam('1A');
+      await insertClassRoom('1A', teamId);
+      await insertClassRoom('1B');
+
+      const updated = await repo.updateTeam(teamId, {
+        class_codes: ['1B'],
+      });
+
+      expect(updated?.team_name).toBe('1B');
+      const detached = await env.DB.prepare(
+        `SELECT team_name FROM teams
+         WHERE team_id = (SELECT team_id FROM class_rooms WHERE class_code = '1A')`
+      ).first<{ team_name: string }>();
+      expect(detached?.team_name).toBe('1A');
+    });
+
+    it('batch内でエラーが起きた場合、チーム名・所属の変更は全てロールバックされる', async () => {
+      const teamId = await insertTeam('元の名前');
+      await insertClassRoom('9A', teamId);
+      // 自分の一時退避名と衝突するチームを先に作り、batch先頭のUPDATEで
+      // UNIQUE制約違反を起こす。
+      await insertTeam(`__updating_team_${teamId}__`);
+
+      await expect(
+        repo.updateTeam(teamId, { class_codes: ['9A'] })
+      ).rejects.toThrow();
+
+      const team = await env.DB.prepare(
+        'SELECT team_name FROM teams WHERE team_id = ?'
+      )
+        .bind(teamId)
+        .first<{ team_name: string }>();
+      expect(team?.team_name).toBe('元の名前');
+      const classRoom = await env.DB.prepare(
+        'SELECT team_id FROM class_rooms WHERE class_code = ?'
+      )
+        .bind('9A')
+        .first<{ team_id: number }>();
+      expect(classRoom?.team_id).toBe(teamId);
+    });
+
+    it('既存チームへの追加後、名前はリクエストの並び順でなくクラスの登録順(class_room_id)で再計算される', async () => {
+      const teamId = await insertTeam('チーム');
+      await insertClassRoom('1A', teamId);
+      await insertClassRoom('1B');
+
+      const updated = await repo.updateTeam(teamId, {
+        class_codes: ['1B', '1A'],
+      });
+
+      expect(updated?.team_name).toBe('1A 1B');
+    });
+
     it('class_codesに無いクラスは自分専用のチームへ戻る(完全置換)', async () => {
       const teamId = await insertTeam('赤組');
       await insertClassRoom('1A', teamId);
       await insertClassRoom('1B', teamId);
 
       const updated = await repo.updateTeam(teamId, {
-        team_name: '赤組',
         class_codes: ['1A'],
       });
 
       expect(updated?.registered_classes).toEqual(['1A']);
+      // 1Bが抜けた分、残った編成の名前も登録順で再計算されるはず。
+      expect(updated?.team_name).toBe('1A');
       const detached = await env.DB.prepare(
         `SELECT t.team_name, t.team_id
          FROM class_rooms c
          JOIN teams t ON t.team_id = c.team_id
          WHERE c.class_code = '1B'`
       ).first<{ team_name: string; team_id: number }>();
-      expect(detached?.team_name).toBe('1B組(1B)');
+      expect(detached?.team_name).toBe('1B');
       expect(detached?.team_id).not.toBe(teamId);
     });
 
-    it('class_codesに空配列を渡すと所属クラスが全部外れる', async () => {
+    it('class_codesに空配列を渡すと所属クラスが全部外れ、得点が無ければ編成自体も削除される', async () => {
       const teamId = await insertTeam('青組');
       await insertClassRoom('3A', teamId);
 
       const updated = await repo.updateTeam(teamId, {
-        team_name: '青組',
         class_codes: [],
       });
 
-      expect(updated?.registered_classes).toEqual([]);
+      // 所属クラスが無くなり得点も無いため、他の空編成と同様に削除される。
+      // 古い名前のまま空の編成として残り続けないようにする。
+      expect(updated).toBeNull();
+      await expect(repo.exists(teamId)).resolves.toBe(false);
       const detached = await env.DB.prepare(
         `SELECT team_id FROM class_rooms WHERE class_code = '3A'`
       ).first<{ team_id: number }>();
       expect(detached?.team_id).not.toBe(teamId);
     });
 
+    it('得点が残っている編成はclass_codesに空配列を渡しても削除されず、所属クラスだけ外れる', async () => {
+      const teamId = await insertTeam('紫組');
+      await insertClassRoom('3B', teamId);
+      await env.DB.prepare(
+        'INSERT INTO team_scores (team_id, scores) VALUES (?, 10)'
+      )
+        .bind(teamId)
+        .run();
+
+      const updated = await repo.updateTeam(teamId, {
+        class_codes: [],
+      });
+
+      expect(updated?.registered_classes).toEqual([]);
+      const detached = await env.DB.prepare(
+        `SELECT team_id FROM class_rooms WHERE class_code = '3B'`
+      ).first<{ team_id: number }>();
+      expect(detached?.team_id).not.toBe(teamId);
+    });
+
     it('存在しないチームの場合はnullを返す', async () => {
       await expect(
-        repo.updateTeam(999999, { team_name: '存在しない', class_codes: [] })
+        repo.updateTeam(999999, { class_codes: [] })
       ).resolves.toBeNull();
     });
   });
@@ -496,7 +684,7 @@ describe('TeamRepository', () => {
       expect(detached.results).toHaveLength(2);
       for (const row of detached.results) {
         expect(row.team_id).not.toBe(teamId);
-        expect(row.team_name).toBe(`${row.class_code}組(${row.class_code})`);
+        expect(row.team_name).toBe(row.class_code);
         expect(row.lock_version).toBe(1);
       }
       expect(new Set(detached.results.map(row => row.team_id)).size).toBe(2);
@@ -522,7 +710,7 @@ describe('TeamRepository', () => {
       await insertClassRoom('1A', teamId);
       await insertClassRoom('1B', teamId);
       await repo.addScore(teamId, 0);
-      await insertTeam('1B組(1B)');
+      await insertTeam('1B');
       const before = await snapshot();
 
       await expect(repo.delete(teamId)).rejects.toThrow(
@@ -551,7 +739,7 @@ describe('TeamRepository', () => {
     });
 
     it('削除対象と同名の単独編成を含む複数クラスも削除できる', async () => {
-      const teamId = await insertTeam('1A組(1A)');
+      const teamId = await insertTeam('1A');
       await insertClassRoom('1A', teamId);
       await insertClassRoom('1B', teamId);
 
@@ -564,10 +752,7 @@ describe('TeamRepository', () => {
       });
 
       expect(result.total).toBe(2);
-      expect(result.items.map(team => team.team_name)).toEqual([
-        '1A組(1A)',
-        '1B組(1B)',
-      ]);
+      expect(result.items.map(team => team.team_name)).toEqual(['1A', '1B']);
       expect(result.items.every(team => team.team_id !== teamId)).toBe(true);
     });
 
@@ -590,10 +775,10 @@ describe('TeamRepository', () => {
     });
 
     it('通常の単独編成(team_nameが再作成される単独編成名と同じ)を削除できる', async () => {
-      // 単独編成のteam_nameは"クラス名(クラスコード)"であり、detach時に
+      // 単独編成のteam_nameはclass_codeそのものであり、detach時に
       // 再作成される単独編成名と一致する。削除対象自身が残ったまま
       // 同名の団体を作ろうとしてUNIQUE制約に違反しないことを確認する。
-      const provisionalName = '1A組(1A)';
+      const provisionalName = '1A';
       const teamId = await insertTeam(provisionalName);
       await insertClassRoom('1A', teamId);
 

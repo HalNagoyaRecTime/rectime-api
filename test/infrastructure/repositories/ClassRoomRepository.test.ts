@@ -255,6 +255,43 @@ describe('ClassRoomRepository', () => {
     });
 
     expect(joined.teamId).toBe(base.teamId);
+    // 既存チームへ直接クラスを追加すると構成が変わるため、チーム名も
+    // class_room_idの登録順で再計算されるはず。
+    const team = await env.DB.prepare(
+      'SELECT team_name FROM teams WHERE team_id = ?'
+    )
+      .bind(base.teamId)
+      .first<{ team_name: string }>();
+    expect(team?.team_name).toBe('16A 16B');
+  });
+
+  it('class_codeを変更すると、合同teamの名前も登録順で再計算される', async () => {
+    const base = await repo.create({
+      classCode: '23A',
+      className: '0年Aクラス',
+      teacherId: null,
+      teamId: null,
+    });
+    const joined = await repo.create({
+      classCode: '23B',
+      className: '0年Bクラス（合同）',
+      teacherId: null,
+      teamId: base.teamId,
+    });
+
+    await repo.update(joined.classRoomId, {
+      classCode: '23Z',
+      className: joined.className,
+      teacherId: null,
+      teamId: null,
+    });
+
+    const team = await env.DB.prepare(
+      'SELECT team_name FROM teams WHERE team_id = ?'
+    )
+      .bind(base.teamId)
+      .first<{ team_name: string }>();
+    expect(team?.team_name).toBe('23A 23Z');
   });
 
   it('deleteはclass_roomの行だけを削除し、teamの削除有無は判断しない（判断はApplication層の責務）', async () => {
@@ -368,11 +405,13 @@ describe('ClassRoomRepository', () => {
       ).resolves.toBe(true);
 
       const teamRow = await env.DB.prepare(
-        'SELECT team_id FROM teams WHERE team_id = ?'
+        'SELECT team_id, team_name FROM teams WHERE team_id = ?'
       )
         .bind(base.teamId)
-        .first();
+        .first<{ team_id: number; team_name: string }>();
       expect(teamRow).not.toBeNull();
+      // 削除したクラスが抜けた分、残ったteamの名前も登録順で再計算されるはず。
+      expect(teamRow?.team_name).toBe('21B');
     });
 
     it('存在しないclass_room_idの場合はfalseを返す', async () => {
@@ -475,6 +514,13 @@ describe('ClassRoomRepository', () => {
         .bind(base.teamId)
         .first();
       expect(oldTeamRow).toBeNull();
+      // 移動先teamにクラスが加わった分、名前も登録順で再計算されるはず。
+      const destinationTeamRow = await env.DB.prepare(
+        'SELECT team_name FROM teams WHERE team_id = ?'
+      )
+        .bind(destination.teamId)
+        .first<{ team_name: string }>();
+      expect(destinationTeamRow?.team_name).toBe('22A 22B');
     });
 
     it('移動元teamに他のclass_roomが残っていれば、移動元teamは削除しない', async () => {
@@ -509,11 +555,13 @@ describe('ClassRoomRepository', () => {
       );
 
       const oldTeamRow = await env.DB.prepare(
-        'SELECT team_id FROM teams WHERE team_id = ?'
+        'SELECT team_id, team_name FROM teams WHERE team_id = ?'
       )
         .bind(base.teamId)
-        .first();
+        .first<{ team_id: number; team_name: string }>();
       expect(oldTeamRow).not.toBeNull();
+      // baseが抜けた分、残った移動元teamの名前も登録順で再計算されるはず。
+      expect(oldTeamRow?.team_name).toBe('22D');
       await expect(repo.findById(sibling.classRoomId)).resolves.toMatchObject({
         teamId: base.teamId,
       });
@@ -606,6 +654,201 @@ describe('ClassRoomRepository', () => {
     await expect(repo.hasStudents(unassigned!.classRoomId)).resolves.toBe(
       false
     );
+  });
+
+  it('退会中の学生は人数に数えないが、所属としては残る', async () => {
+    const created = await repo.create({
+      classCode: 'DEL-COUNT',
+      className: '退会人数確認クラス',
+      teacherId: null,
+      teamId: null,
+    });
+    const userIds: number[] = [];
+    for (const [name, deletionStatus, attendanceNumber] of [
+      ['在籍学生', 'active', 1],
+      ['削除済みユーザー', 'deleted', 2],
+    ] as const) {
+      const user = await env.DB.prepare(
+        'INSERT INTO users (user_name, deletion_status) VALUES (?, ?) RETURNING user_id'
+      )
+        .bind(name, deletionStatus)
+        .first<{ user_id: number }>();
+      userIds.push(user!.user_id);
+      await env.DB.prepare(
+        'INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, ?, ?)'
+      )
+        .bind(
+          user!.user_id,
+          created.classRoomId,
+          attendanceNumber,
+          `DEL-COUNT-${attendanceNumber}`
+        )
+        .run();
+    }
+
+    try {
+      await expect(repo.findById(created.classRoomId)).resolves.toMatchObject({
+        studentCount: 1,
+      });
+      const listed = (
+        await repo.findAll({ limit: 100, offset: 0, search: 'DEL-COUNT' })
+      ).items;
+      expect(listed).toEqual([
+        expect.objectContaining({
+          classRoomId: created.classRoomId,
+          studentCount: 1,
+        }),
+      ]);
+      // 在籍中の学生がいるため、クラスの削除は今までどおり断る
+      await expect(repo.hasStudents(created.classRoomId)).resolves.toBe(true);
+    } finally {
+      await env.DB.prepare('DELETE FROM students WHERE class_room_id = ?')
+        .bind(created.classRoomId)
+        .run();
+      await env.DB.batch(
+        userIds.map(id =>
+          env.DB.prepare('DELETE FROM users WHERE user_id = ?').bind(id)
+        )
+      );
+      await repo.delete(created.classRoomId);
+    }
+  });
+
+  describe('退会中の学生しかいないクラス', () => {
+    // 指定した退会状態の学生を、クラスと出席番号付きで作る
+    async function insertStudent(
+      classRoomId: number,
+      deletionStatus: 'active' | 'deleted',
+      attendanceNumber: number,
+      studentIdNumber: string
+    ): Promise<{ userId: number; studentId: number }> {
+      const user = await env.DB.prepare(
+        "INSERT INTO users (user_name, deletion_status) VALUES ('クラス削除確認', ?) RETURNING user_id"
+      )
+        .bind(deletionStatus)
+        .first<{ user_id: number }>();
+      const student = await env.DB.prepare(
+        'INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, ?, ?) RETURNING student_id'
+      )
+        .bind(user!.user_id, classRoomId, attendanceNumber, studentIdNumber)
+        .first<{ student_id: number }>();
+      return { userId: user!.user_id, studentId: student!.student_id };
+    }
+
+    async function readAssignment(studentId: number) {
+      return env.DB.prepare(
+        'SELECT class_room_id, attendance_number, lock_version FROM students WHERE student_id = ?'
+      )
+        .bind(studentId)
+        .first<{
+          class_room_id: number | null;
+          attendance_number: number | null;
+          lock_version: number;
+        }>();
+    }
+
+    async function cleanup(inserted: { userId: number; studentId: number }[]) {
+      await env.DB.batch([
+        ...inserted.map(({ studentId }) =>
+          env.DB.prepare('DELETE FROM students WHERE student_id = ?').bind(
+            studentId
+          )
+        ),
+        ...inserted.map(({ userId }) =>
+          env.DB.prepare('DELETE FROM users WHERE user_id = ?').bind(userId)
+        ),
+      ]);
+    }
+
+    it('hasStudentsは、退会中の学生しかいなければfalseを返す', async () => {
+      const created = await repo.create({
+        classCode: 'DEL-ONLY-HAS',
+        className: '退会者だけのクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      const inserted = [
+        await insertStudent(created.classRoomId, 'deleted', 1, 'DEL-ONLY-H1'),
+      ];
+
+      try {
+        await expect(repo.hasStudents(created.classRoomId)).resolves.toBe(
+          false
+        );
+      } finally {
+        await cleanup(inserted);
+        await repo.deleteAndCleanupTeam(created.classRoomId, created.teamId);
+      }
+    });
+
+    it('deleteAndCleanupTeamは、退会中の学生のクラスと出席番号を外してから削除する', async () => {
+      const created = await repo.create({
+        classCode: 'DEL-ONLY-DEL',
+        className: '退会者だけのクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      const inserted = [
+        await insertStudent(created.classRoomId, 'deleted', 1, 'DEL-ONLY-D1'),
+        await insertStudent(created.classRoomId, 'deleted', 2, 'DEL-ONLY-D2'),
+      ];
+
+      try {
+        await expect(
+          repo.deleteAndCleanupTeam(created.classRoomId, created.teamId)
+        ).resolves.toBe(true);
+
+        await expect(repo.findById(created.classRoomId)).resolves.toBeNull();
+        for (const { studentId } of inserted) {
+          await expect(readAssignment(studentId)).resolves.toEqual({
+            class_room_id: null,
+            attendance_number: null,
+            lock_version: 1,
+          });
+        }
+      } finally {
+        await cleanup(inserted);
+      }
+    });
+
+    it('在籍中の学生が残っていれば外部キー制約で失敗し、退会中の学生の所属も外さない', async () => {
+      const created = await repo.create({
+        classCode: 'DEL-MIXED',
+        className: '在籍者と退会者のクラス',
+        teacherId: null,
+        teamId: null,
+      });
+      const active = await insertStudent(
+        created.classRoomId,
+        'active',
+        1,
+        'DEL-MIXED-1'
+      );
+      const deleted = await insertStudent(
+        created.classRoomId,
+        'deleted',
+        2,
+        'DEL-MIXED-2'
+      );
+
+      try {
+        await expect(
+          repo.deleteAndCleanupTeam(created.classRoomId, created.teamId)
+        ).rejects.toThrow('FOREIGN KEY constraint failed');
+
+        await expect(
+          repo.findById(created.classRoomId)
+        ).resolves.not.toBeNull();
+        await expect(readAssignment(deleted.studentId)).resolves.toEqual({
+          class_room_id: created.classRoomId,
+          attendance_number: 2,
+          lock_version: 0,
+        });
+      } finally {
+        await cleanup([active, deleted]);
+        await repo.deleteAndCleanupTeam(created.classRoomId, created.teamId);
+      }
+    });
   });
 
   describe('findByCode', () => {
@@ -724,7 +967,7 @@ describe('ClassRoomRepository', () => {
       const orphanedTeam = await env.DB.prepare(
         'SELECT team_id FROM teams WHERE team_name = ?'
       )
-        .bind('孤立チーム確認クラス(15C)')
+        .bind('15C')
         .first();
       expect(orphanedTeam).toBeNull();
     });
@@ -809,7 +1052,7 @@ describe('ClassRoomRepository', () => {
         await expect(repo.findByCode(input.classCode)).resolves.toBeNull();
       }
       const orphanedTeams = await env.DB.prepare(
-        "SELECT team_id FROM teams WHERE team_name LIKE 'チャンク跨ぎクラス%'"
+        "SELECT team_id FROM teams WHERE team_name LIKE 'CROSS-CHUNK-%'"
       ).all();
       expect(orphanedTeams.results).toHaveLength(0);
     });
@@ -932,6 +1175,32 @@ describe('ClassRoomRepository', () => {
 
       expect(await readTeacherLock(oldTeacher)).toBe(2);
       expect(await readTeacherLock(newTeacher)).toBe(1);
+    });
+
+    it('既存チームへ担任付きで作成すると、担任の lock_version が進み、チーム名も再計算される', async () => {
+      const teacher = await insertTeacher('合同クラス担任');
+      const base = await repo.create({
+        classCode: 'SW-JOIN-A',
+        className: '合同クラスA',
+        teacherId: null,
+        teamId: null,
+      });
+
+      const joined = await repo.create({
+        classCode: 'SW-JOIN-B',
+        className: '合同クラスB',
+        teacherId: teacher,
+        teamId: base.teamId,
+      });
+
+      expect(joined.teamId).toBe(base.teamId);
+      expect(await readTeacherLock(teacher)).toBe(1);
+      const team = await env.DB.prepare(
+        'SELECT team_name FROM teams WHERE team_id = ?'
+      )
+        .bind(base.teamId)
+        .first<{ team_name: string }>();
+      expect(team?.team_name).toBe('SW-JOIN-A SW-JOIN-B');
     });
 
     it('担任が変わらない更新（クラス名だけの変更）では、担任の lock_version は進まない', async () => {

@@ -5,12 +5,14 @@ import type { Env } from '../../lib/env';
 import type { ContainerVariables } from '../middleware/diContainer';
 import type { AuthenticationVariables } from '../middleware/bearerAuthentication';
 import {
+  eventDetailQuery,
   eventIdParams,
   eventListQuery,
   eventUpdateSchema,
   eventWriteSchema,
 } from '../openapi/events';
 import { positivePathParamToNumber } from '../openapi/schemas';
+import { getClientType } from '../auth/helpers';
 import { CommonErrors } from '../errors/commonErrors';
 import { EventErrors } from '../errors/eventErrors';
 import {
@@ -45,7 +47,11 @@ export function createEventController(eventService: IEventService) {
     }
 
     try {
-      return c.json(await eventService.getAllEvents(parsedQuery.data), 200);
+      const allowShared = getClientType(c) === 'mobile';
+      return c.json(
+        await eventService.getAllEvents(parsedQuery.data, allowShared),
+        200
+      );
     } catch {
       return errorResponse(c, EventErrors.EVENT_LIST_FAILED);
     }
@@ -61,8 +67,21 @@ export function createEventController(eventService: IEventService) {
       if (eventId === undefined) {
         return errorResponse(c, EventErrors.INVALID_EVENT_ID);
       }
+      const parsedQuery = eventDetailQuery.safeParse({
+        includeMemberCount: c.req.query('includeMemberCount'),
+      });
+      if (!parsedQuery.success) {
+        return errorResponse(
+          c,
+          CommonErrors.VALIDATION_ERROR,
+          parsedQuery.error.flatten()
+        );
+      }
 
-      const event = await eventService.getEventById(eventId);
+      const event = await eventService.getEventById(
+        eventId,
+        parsedQuery.data.includeMemberCount === 'true'
+      );
       return c.json(event, 200);
     } catch (error) {
       if (error instanceof Error && error.message === 'Event not found') {

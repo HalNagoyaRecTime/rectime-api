@@ -5,15 +5,16 @@ import {
   asc,
   desc,
   eq,
+  exists,
   inArray,
-  isNotNull,
-  isNull,
+  notExists,
   or,
   sql,
 } from 'drizzle-orm';
 import { class_rooms, staffs, students, users } from '../database/schema';
 
 import { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
+import type { SQLiteSelect } from 'drizzle-orm/sqlite-core';
 import type {
   StudentEntity,
   StudentClassRoomAssignment,
@@ -21,15 +22,20 @@ import type {
   StudentUpdateInput,
   StudentWriteInput,
 } from '../../domain/entities/Student';
-import { buildProvisionalTeamName } from '../../domain/entities/Team';
+import { buildTeamName } from '../../domain/entities/Team';
 import {
   BulkCreateStudentsInput,
   ExistingStudent,
   IStudentRepository,
   StudentClassRoomAttendanceNumber,
+  StudentUserByClassRoomAttendanceNumber,
 } from '../../domain/interfaces/repositories/IStudentRepository';
 import { chunkArray } from './chunk';
 import { escapeLikePattern } from '../helpers/escapeLikePattern';
+import {
+  buildReleaseDeletedStudentSlotStatements,
+  buildReleaseDeletedStudentSlotsByClassCodeStatements,
+} from './DeletedStudentAssignmentStatements';
 
 const D1_MAX_BOUND_PARAMETERS = 100;
 const USER_ID_ALLOCATION_MAX_ATTEMPTS = 3;
@@ -79,13 +85,16 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
   const orm = drizzle(db, { schema });
   return {
     async findById(id: number): Promise<StudentEntity | null> {
+      // 退会中の学生(退会したusersを指すstudents行)は管理の対象外とし、
+      // 取得・更新・クラス変更を404にする。編集を許すと、匿名化した
+      // users.user_nameに氏名が書き戻されるため。
       const result = await orm
         .select()
         .from(students)
         .innerJoin(users, eq(students.userId, users.id))
         .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
         .leftJoin(staffs, eq(users.id, staffs.userId))
-        .where(eq(students.id, id))
+        .where(and(eq(students.id, id), eq(users.deletionStatus, 'active')))
         .get();
 
       return result ? toDomain(result) : null;
@@ -117,8 +126,18 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
             sql`${users.userName} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
             sql`${students.studentIdNumber} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
             sql`CAST(${students.attendanceNumber} AS TEXT) LIKE ${escapedPattern} ESCAPE ${'\\'}`,
-            sql`${class_rooms.classCode} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
-            sql`${class_rooms.name} LIKE ${escapedPattern} ESCAPE ${'\\'}`
+            inArray(
+              students.classRoomId,
+              orm
+                .select({ id: class_rooms.id })
+                .from(class_rooms)
+                .where(
+                  or(
+                    sql`${class_rooms.classCode} LIKE ${escapedPattern} ESCAPE ${'\\'}`,
+                    sql`${class_rooms.name} LIKE ${escapedPattern} ESCAPE ${'\\'}`
+                  )
+                )
+            )
           )!
         );
       }
@@ -129,23 +148,15 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         conditions.push(eq(users.isLiveActive, filter.isLiveActive ? 1 : 0));
       }
       if (filter.isStaff !== undefined) {
+        const staffOfUser = orm
+          .select({ id: staffs.id })
+          .from(staffs)
+          .where(eq(staffs.userId, users.id));
         conditions.push(
-          filter.isStaff ? isNotNull(staffs.id) : isNull(staffs.id)
+          filter.isStaff ? exists(staffOfUser) : notExists(staffOfUser)
         );
       }
-      const whereClause = and(...conditions);
-      const countQuery = orm
-        .select({ count: sql<number>`count(*)` })
-        .from(students)
-        .innerJoin(users, eq(students.userId, users.id))
-        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
-        .leftJoin(staffs, eq(users.id, staffs.userId));
-      const rowsQuery = orm
-        .select()
-        .from(students)
-        .innerJoin(users, eq(students.userId, users.id))
-        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
-        .leftJoin(staffs, eq(users.id, staffs.userId));
+      const whereClause = and(eq(students.userId, users.id), ...conditions);
       const sortOrder = filter.sortOrder === 'desc' ? desc : asc;
       const sortColumn =
         filter.sortBy === 'studentIdNumber'
@@ -163,23 +174,40 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
                     : filter.sortBy === 'isLiveActive'
                       ? users.isLiveActive
                       : students.id;
-      const [countResult, results] = await Promise.all([
-        countQuery.where(whereClause).get(),
-        rowsQuery
-          .where(whereClause)
-          .orderBy(sortOrder(sortColumn), asc(students.id))
-          .limit(limit)
-          .offset(offset)
-          .all(),
-      ]);
-      const total = countResult?.count ?? 0;
+      // INNER JOINだとusersの索引から生徒全員を読んで並べ替えるため使わない。
+      // 停止中の生徒だけを選ぶときは、その索引で停止中の人数ぶんだけ読めば済む。
+      const joinUsers = <T extends SQLiteSelect>(query: T) =>
+        filter.isLiveActive === false
+          ? query.innerJoin(users, eq(students.userId, users.id))
+          : query.crossJoin(users);
+      const results = await joinUsers(orm.select().from(students).$dynamic())
+        .leftJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+        .leftJoin(staffs, eq(users.id, staffs.userId))
+        .where(whereClause)
+        .orderBy(sortOrder(sortColumn), asc(students.id))
+        .limit(limit)
+        .offset(offset)
+        .all();
+      const items = results.map(toDomain);
+      if (filter.includeTotal === false) {
+        return { items, limit, offset };
+      }
+      const isLastPage =
+        results.length < limit && (results.length > 0 || offset === 0);
+      const total = isLastPage
+        ? offset + results.length
+        : ((
+            await joinUsers(
+              orm
+                .select({ count: sql<number>`count(*)` })
+                .from(students)
+                .$dynamic()
+            )
+              .where(whereClause)
+              .get()
+          )?.count ?? 0);
 
-      return {
-        items: results.map(toDomain),
-        total,
-        limit,
-        offset,
-      };
+      return { items, total, limit, offset };
     },
 
     async findByStudentNum(studentNum: string): Promise<StudentEntity | null> {
@@ -208,7 +236,9 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         .where(
           and(
             eq(students.classRoomId, classRoomId),
-            eq(students.attendanceNumber, attendanceNumber)
+            eq(students.attendanceNumber, attendanceNumber),
+            // 退会中の学生が使っている枠は空きとして扱う。登録時に外す。
+            eq(users.deletionStatus, 'active')
           )
         )
         .get();
@@ -273,14 +303,19 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
           })
           .from(students)
           .innerJoin(class_rooms, eq(students.classRoomId, class_rooms.id))
+          .innerJoin(users, eq(students.userId, users.id))
           .where(
-            or(
-              ...chunk.map(assignment =>
-                and(
-                  eq(class_rooms.classCode, assignment.classCode),
-                  eq(students.attendanceNumber, assignment.attendanceNumber)
+            and(
+              or(
+                ...chunk.map(assignment =>
+                  and(
+                    eq(class_rooms.classCode, assignment.classCode),
+                    eq(students.attendanceNumber, assignment.attendanceNumber)
+                  )
                 )
-              )
+              ),
+              // 退会中の学生が使っている枠は空きとして扱う。取込の確定時に外す。
+              eq(users.deletionStatus, 'active')
             )
           )
           .all();
@@ -297,10 +332,46 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       return Array.from(found.values());
     },
 
+    async findActiveUsersByClassRoomAttendanceNumbers(assignments) {
+      if (assignments.length === 0) return [];
+      // 他の検索のように100件ずつに分けると、2,000人規模の取込でクエリが
+      // 数十回になるため、JSON配列1つで渡す。
+      const { results } = await db
+        .prepare(
+          `SELECT class_rooms.class_code AS classCode,
+                  students.attendance_number AS attendanceNumber,
+                  users.user_id AS userId,
+                  users.user_name AS userName
+           FROM json_each(?) AS requested
+           JOIN class_rooms
+             ON class_rooms.class_code = json_extract(requested.value, '$[0]')
+           JOIN students
+             ON students.class_room_id = class_rooms.class_room_id
+            AND students.attendance_number = json_extract(requested.value, '$[1]')
+           JOIN users ON users.user_id = students.user_id
+           WHERE users.deletion_status = 'active'`
+        )
+        .bind(
+          JSON.stringify(
+            assignments.map(assignment => [
+              assignment.classCode,
+              assignment.attendanceNumber,
+            ])
+          )
+        )
+        .all<StudentUserByClassRoomAttendanceNumber>();
+      return results;
+    },
+
     async create(student: StudentWriteInput): Promise<StudentEntity> {
-      const [userResult, studentResult] = await db.batch<
-        ReturnedUserRow | ReturnedStudentRow
-      >([
+      // 外す文はusersのINSERTより前に置く。studentsのINSERTが参照する
+      // last_insert_rowid()を、usersのINSERTの値のままにするため。
+      const results = await db.batch<ReturnedUserRow | ReturnedStudentRow>([
+        ...buildReleaseDeletedStudentSlotStatements(
+          db,
+          student.classRoomId,
+          student.attendanceNumber
+        ),
         db
           .prepare(
             `INSERT INTO users (user_name, updated_at)
@@ -342,6 +413,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
             student.classRoomId
           ),
       ]);
+      const [userResult, studentResult] = results.slice(-2);
 
       const user = userResult.results[0] as ReturnedUserRow | undefined;
       const created = studentResult.results[0] as
@@ -372,9 +444,15 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       // （後に置くと、先に進んだ students.lock_version と一致しなくなる）。
       // 版番号は更新のたびに必ず1ずつ増えるため、updated_at（秒単位）では
       // 区別できない同じ秒内の更新も検出できる。
-      const [userResult, studentResult] = await db.batch<
-        ReturnedUserRow | ReturnedStudentRow
-      >([
+      // 退会中の学生の枠を外す文にも同じ版番号の条件を付け、本体が0件更新の
+      // ときは外さない。
+      const results = await db.batch<ReturnedUserRow | ReturnedStudentRow>([
+        ...buildReleaseDeletedStudentSlotStatements(
+          db,
+          student.classRoomId,
+          student.attendanceNumber,
+          { studentId: id, expectedLockVersion: student.expectedLockVersion }
+        ),
         db
           .prepare(
             `UPDATE users
@@ -433,6 +511,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
             student.classRoomId
           ),
       ]);
+      const [userResult, studentResult] = results.slice(-2);
 
       const user = userResult.results[0] as ReturnedUserRow | undefined;
       const updated = studentResult.results[0] as
@@ -453,16 +532,26 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       id: number,
       assignment: StudentClassRoomAssignment
     ): Promise<StudentEntity | null> {
-      const updateResult = await orm
-        .update(students)
-        .set({
-          classRoomId: assignment.classRoomId,
-          attendanceNumber: assignment.attendanceNumber,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(students.id, id))
-        .run();
-      if (updateResult.meta.changes === 0) {
+      // 退会中の学生の枠を外す文と同じbatchで確定する。外す文は、対象の学生が
+      // いないときは0件更新になる。
+      const results = await db.batch([
+        ...buildReleaseDeletedStudentSlotStatements(
+          db,
+          assignment.classRoomId,
+          assignment.attendanceNumber,
+          { studentId: id }
+        ),
+        db
+          .prepare(
+            `UPDATE students
+             SET class_room_id = ?, attendance_number = ?, updated_at = CURRENT_TIMESTAMP,
+                 lock_version = lock_version + 1
+             WHERE student_id = ?`
+          )
+          .bind(assignment.classRoomId, assignment.attendanceNumber, id),
+      ]);
+      const updateResult = results[results.length - 1];
+      if ((updateResult.meta?.changes ?? 0) === 0) {
         return null;
       }
 
@@ -491,7 +580,7 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
         classRoomStatements.push(
           db
             .prepare(`INSERT INTO teams (team_name) VALUES ${teamPlaceholders}`)
-            .bind(...chunk.map(buildProvisionalTeamName))
+            .bind(...chunk.map(room => buildTeamName([room.classCode])))
         );
         for (const room of chunk) {
           classRoomStatements.push(
@@ -503,39 +592,28 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
               .bind(
                 room.classCode,
                 room.className,
-                buildProvisionalTeamName(room)
+                buildTeamName([room.classCode])
               )
           );
         }
       }
 
+      // 取り込む学生が使う枠のうち、退会中の学生が使っている枠を外す。
+      // 新規クラスには学生がいないため、外す文はクラスの作成より後でよい。
+      const releaseStatements =
+        buildReleaseDeletedStudentSlotsByClassCodeStatements(
+          db,
+          input.students.map(student => ({
+            classCode: student.classCode,
+            attendanceNumber: student.attendanceNumber,
+          }))
+        );
+
       await insertClassRoomsAndStudentsWithAllocatedUserIds(
         db,
-        classRoomStatements,
+        [...classRoomStatements, ...releaseStatements],
         input.students
       );
-    },
-
-    async anonymizeByUserId(userId: number): Promise<boolean> {
-      // users.user_nameの匿名化はUserRepository.anonymizeUserがロールの
-      // 種類によらず担当する(AccountDeletionService.deleteRelatedDataの
-      // 先頭で呼び出し済み)。ここではstudents固有のカラムを扱う。
-      //
-      // 退会後に同じクラス・出席番号で再登録できるよう、所属情報も
-      // NULLにして一意制約上の枠を解放する。student_id_numberはUNIQUE
-      // 制約付きだが、userIdを含むことで他の匿名化済み行と衝突しない。
-      const result = await orm
-        .update(students)
-        .set({
-          classRoomId: null,
-          attendanceNumber: null,
-          studentIdNumber: `deleted-${userId}`,
-          updatedAt: new Date().toISOString(),
-          lockVersion: sql`${students.lockVersion} + 1`,
-        })
-        .where(eq(students.userId, userId))
-        .run();
-      return result.meta.changes > 0;
     },
   };
 }
@@ -568,7 +646,8 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
  */
 async function insertClassRoomsAndStudentsWithAllocatedUserIds(
   db: D1Database,
-  classRoomStatements: D1PreparedStatement[],
+  // 新規クラス・チームの作成と、退会中の学生の枠を外す文。生徒のINSERTより前に実行する
+  leadingStatements: D1PreparedStatement[],
   students: BulkCreateStudentsInput['students']
 ): Promise<void> {
   for (let attempt = 1; attempt <= USER_ID_ALLOCATION_MAX_ATTEMPTS; attempt++) {
@@ -588,7 +667,7 @@ async function insertClassRoomsAndStudentsWithAllocatedUserIds(
       userId: (seed?.max_user_id ?? 0) + index + 1,
     }));
 
-    const statements: D1PreparedStatement[] = [...classRoomStatements];
+    const statements: D1PreparedStatement[] = [...leadingStatements];
     for (const chunk of chunkArray(
       rows,
       Math.floor(D1_MAX_BOUND_PARAMETERS / 2)

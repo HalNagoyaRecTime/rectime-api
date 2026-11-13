@@ -1,6 +1,7 @@
 import { Context } from 'hono';
 import { z } from 'zod';
 import type { IRankingService } from '../../application/services/IRankingService';
+import { getClientType } from '../auth/helpers';
 import { errorResponse } from '../errors/errorResponse';
 import { TeamErrors } from '../errors/teamErrors';
 
@@ -34,7 +35,11 @@ export function createRankingController(rankingService: IRankingService) {
     }
 
     try {
-      const ranking = await rankingService.getRanking(parsedQuery.data);
+      const allowShared = getClientType(c) === 'mobile';
+      const ranking = await rankingService.getRanking(
+        parsedQuery.data,
+        allowShared
+      );
       return c.json(ranking, 200);
     } catch {
       return errorResponse(c, TeamErrors.RANKING_LIST_FAILED);

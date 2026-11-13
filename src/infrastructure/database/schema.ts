@@ -46,8 +46,9 @@ export const users = sqliteTable(
     userName: text('user_name').notNull(),
     isLiveActive: integer('is_live_active').notNull().default(1),
     // 本人によるアカウント削除(#265)の状態。管理上の一時無効化を表す
-    // isLiveActiveとは独立した軸で、'active'以外になったユーザーは
-    // 学生の再登録復元(#262)の対象から除外する。
+    // isLiveActiveとは独立した軸で、'deleted'になったユーザーは元に
+    // 戻さない。学生が再ログインした場合は、新しいユーザーを作って
+    // 学生情報を付け替える。
     deletionStatus: text('deletion_status')
       .notNull()
       .default('active')
@@ -510,6 +511,7 @@ export const notification_push_deliveries = sqliteTable(
     notificationRecipientId: integer('notification_recipient_id')
       .notNull()
       .references(() => notification_recipients.id, { onDelete: 'cascade' }),
+    notificationScheduleId: integer('notification_schedule_id'),
     firebaseTokenId: integer('firebase_token_id').references(
       () => firebase_tokens.firebaseTokenId,
       { onDelete: 'set null' }
@@ -544,9 +546,9 @@ export const notification_push_deliveries = sqliteTable(
     index('idx_notification_push_deliveries_firebase_token_id').on(
       table.firebaseTokenId
     ),
-    index('idx_notification_push_deliveries_retry').on(
+    index('idx_notification_push_deliveries_status_schedule_id').on(
       table.status,
-      table.nextRetryAt
+      table.notificationScheduleId
     ),
   ]
 );

@@ -41,7 +41,7 @@ describe('RankingController', () => {
 
       const response = await app.request('/ranking');
 
-      expect(rankingService.getRanking).toHaveBeenCalledWith({});
+      expect(rankingService.getRanking).toHaveBeenCalledWith({}, false);
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
         items,
@@ -51,6 +51,25 @@ describe('RankingController', () => {
       });
     });
 
+    it.each([
+      ['mobile', true],
+      ['web', false],
+    ])(
+      'X-Client-Typeが%sなら、他の利用者と結果を使い回すか(%s)をサービスへ渡す',
+      async (clientType, allowShared) => {
+        const { app, rankingService } = setup();
+        (
+          rankingService.getRanking as ReturnType<typeof vi.fn>
+        ).mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
+
+        await app.request('/ranking', {
+          headers: { 'X-Client-Type': clientType },
+        });
+
+        expect(rankingService.getRanking).toHaveBeenCalledWith({}, allowShared);
+      }
+    );
+
     it('limit・offsetクエリを解析してサービスへ渡す', async () => {
       const { app, rankingService } = setup();
       (rankingService.getRanking as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -59,10 +78,13 @@ describe('RankingController', () => {
 
       await app.request('/ranking?limit=10&offset=5');
 
-      expect(rankingService.getRanking).toHaveBeenCalledWith({
-        limit: 10,
-        offset: 5,
-      });
+      expect(rankingService.getRanking).toHaveBeenCalledWith(
+        {
+          limit: 10,
+          offset: 5,
+        },
+        false
+      );
     });
 
     it('searchクエリを解析してサービスへ渡す', async () => {
@@ -73,9 +95,12 @@ describe('RankingController', () => {
 
       await app.request('/ranking?search=%E8%B5%A4%E7%B5%84');
 
-      expect(rankingService.getRanking).toHaveBeenCalledWith({
-        search: '赤組',
-      });
+      expect(rankingService.getRanking).toHaveBeenCalledWith(
+        {
+          search: '赤組',
+        },
+        false
+      );
     });
 
     it('limitが範囲外の場合は400を返す', async () => {

@@ -14,6 +14,33 @@ describe('NotificationResultQueryService', () => {
     };
   }
 
+  it('指定された場合だけ対象登録時刻を返す', async () => {
+    const { repository, service } = setup();
+    vi.mocked(repository.findScheduleResults).mockResolvedValue({
+      notification_schedule_id: 11,
+      total_count: 1,
+      recipients: [
+        {
+          notification_recipient_id: 31,
+          user_id: 51,
+          user_name: 'Test',
+          created_at: '2026-07-23T00:00:00.000Z',
+          deliveries: [],
+        },
+      ],
+    });
+    const legacy = await service.getScheduleResults(11, { page: 1, limit: 50 });
+    expect(legacy?.recipients.items[0]).not.toHaveProperty('registeredAt');
+    const extended = await service.getScheduleResults(11, {
+      page: 1,
+      limit: 50,
+      includeRegisteredAt: '1',
+    });
+    expect(extended?.recipients.items[0].registeredAt).toBe(
+      '2026-07-23T00:00:00.000Z'
+    );
+  });
+
   it('RecipientごとにDelivery配列を返しRecipient数をページ情報へ使う', async () => {
     const { repository, service } = setup();
     (

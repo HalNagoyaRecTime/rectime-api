@@ -85,6 +85,13 @@ export const eventIdParams = z.object({
   eventId: positivePathParam('eventId', 'イベントID'),
 });
 
+export const eventDetailQuery = z.object({
+  includeMemberCount: z.enum(['true', 'false']).default('false').openapi({
+    description:
+      '`true` のとき集合予定ごとの `member_count` を返す。参加者数に比例してDBの読み取りが増えるため、参加者数を表示する画面だけが指定する。',
+  }),
+});
+
 export const eventListQuery = z.object({
   start_time: hhmmSchema.optional(),
   limit: z.coerce.number().int().min(0).optional(),
@@ -106,7 +113,7 @@ const isValidEventTimeRange = (data: {
 
 const eventBaseSchema = z.object({
   event_name: z.string().trim().min(1).max(100),
-  rule_text: z.string().max(2000).nullable().optional(),
+  rule_text: z.string().max(5000).nullable().optional(),
   venue_ids: venueIdsSchema,
   start_time: hhmmSchema,
   end_time: hhmmSchema,
@@ -164,10 +171,10 @@ export const eventDetailRoute = createRoute({
     '',
     '並び順は `round` 昇順、同一Round内は `gathering_id` 昇順。',
     'rounds[].start_timeはHHmm形式。開始時刻がnullでない最小の集合IDの値を返し、全件nullならnull。',
-    '`member_count` は集合予定ごとの参加者数。',
+    '`member_count` は集合予定ごとの参加者数で、`includeMemberCount=true` のときだけ返す。',
   ].join('\n'),
   security: bearerAuth,
-  request: { params: eventIdParams },
+  request: { params: eventIdParams, query: eventDetailQuery },
   responses: {
     200: jsonResponse(eventDetailResponseSchema, 'イベント'),
     400: badRequestResponse,

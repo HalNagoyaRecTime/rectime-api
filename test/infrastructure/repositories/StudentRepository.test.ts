@@ -340,6 +340,29 @@ describe('StudentRepository', () => {
       expect(await repo.findById(999999)).toBeNull();
     });
 
+    it.each(['deleted', 'deletion_pending'] as const)(
+      '退会中(%s)の学生は null を返す',
+      async deletionStatus => {
+        const user = await env.DB.prepare(
+          "INSERT INTO users (user_name, deletion_status) VALUES ('削除済みユーザー', ?) RETURNING user_id"
+        )
+          .bind(deletionStatus)
+          .first<{ user_id: number }>();
+        const student = await env.DB.prepare(
+          'INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, ?, ?) RETURNING student_id'
+        )
+          .bind(
+            user!.user_id,
+            seeded.students[0].classRoomId,
+            deletionStatus === 'deleted' ? 91 : 92,
+            `FIND-BY-ID-${deletionStatus}`
+          )
+          .first<{ student_id: number }>();
+
+        await expect(repo.findById(student!.student_id)).resolves.toBeNull();
+      }
+    );
+
     it('students.updated_at を updatedAt として一覧・詳細の両方で返す', async () => {
       const target = seeded.students[0];
       const row = await env.DB.prepare(
@@ -638,6 +661,35 @@ describe('StudentRepository', () => {
         })
       ).resolves.toBeNull();
     });
+
+    it('版番号を1進め、クラス変更前の版番号での更新を断る', async () => {
+      const target = await repo.create({
+        displayName: 'クラスだけ変わる学生',
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 413,
+        studentIdNumber: 'MOVE-LOCK-413',
+      });
+      const before = await repo.findById(target.studentId);
+
+      const moved = await repo.updateClassRoom(target.studentId, {
+        classRoomId: seeded.secondClassRoomId,
+        attendanceNumber: 413,
+      });
+      expect(moved?.lockVersion).toBe(before!.lockVersion + 1);
+
+      const stale = await repo.update(target.studentId, {
+        displayName: before!.userName,
+        classRoomId: before!.classRoomId,
+        attendanceNumber: before!.attendanceNumber,
+        studentIdNumber: before!.studentIdNumber,
+        expectedLockVersion: before!.lockVersion,
+      });
+      expect(stale).toBeNull();
+      expect(await repo.findById(target.studentId)).toMatchObject({
+        classRoomId: seeded.secondClassRoomId,
+        attendanceNumber: 413,
+      });
+    });
   });
 
   describe('findExistingStudentsByNumbers', () => {
@@ -857,7 +909,7 @@ describe('StudentRepository', () => {
       const orphanedTeam = await env.DB.prepare(
         'SELECT team_id FROM teams WHERE team_name = ?'
       )
-        .bind('PAIR-CLEANUP-NEW(PAIR-CLEANUP-NEW)')
+        .bind('PAIR-CLEANUP-NEW')
         .first();
       expect(orphanedTeam).toBeNull();
     });
@@ -1203,7 +1255,7 @@ describe('StudentRepository', () => {
       const orphanedTeam = await env.DB.prepare(
         'SELECT team_id FROM teams WHERE team_name = ?'
       )
-        .bind('ATOMIC-NEW(ATOMIC-NEW)')
+        .bind('ATOMIC-NEW')
         .first();
       expect(orphanedTeam).toBeNull();
 
@@ -1211,39 +1263,255 @@ describe('StudentRepository', () => {
     });
   });
 
-  describe('anonymizeByUserId', () => {
-    it('student_id_numberをプレースホルダに書き換え、所属情報を解放して行は残す(user_nameはUserRepository.anonymizeUserの責務)', async () => {
-      const classRoomId = seeded.students[0].classRoomId;
+  describe('退会中の学生が使っている枠', () => {
+    // 退会中の学生(退会したusersを指すstudents行)を、クラスと出席番号付きで作る
+    async function insertDeletedStudent(
+      classRoomId: number,
+      attendanceNumber: number,
+      studentIdNumber: string,
+      deletionStatus: 'deleted' | 'deletion_pending' = 'deleted'
+    ): Promise<number> {
       const user = await env.DB.prepare(
-        "INSERT INTO users (user_name) VALUES ('匿名化対象太郎') RETURNING user_id"
-      ).first<{ user_id: number }>();
-      const student = await env.DB.prepare(
-        "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 99, '99999') RETURNING student_id"
+        "INSERT INTO users (user_name, deletion_status) VALUES ('削除済みユーザー', ?) RETURNING user_id"
       )
-        .bind(user!.user_id, classRoomId)
+        .bind(deletionStatus)
+        .first<{ user_id: number }>();
+      const student = await env.DB.prepare(
+        `INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number)
+         VALUES (?, ?, ?, ?) RETURNING student_id`
+      )
+        .bind(user!.user_id, classRoomId, attendanceNumber, studentIdNumber)
         .first<{ student_id: number }>();
+      return student!.student_id;
+    }
 
-      await expect(repo.anonymizeByUserId(user!.user_id)).resolves.toBe(true);
+    async function readAssignment(studentId: number) {
+      return env.DB.prepare(
+        'SELECT class_room_id, attendance_number, lock_version FROM students WHERE student_id = ?'
+      )
+        .bind(studentId)
+        .first<{
+          class_room_id: number | null;
+          attendance_number: number | null;
+          lock_version: number;
+        }>();
+    }
 
-      const result = await repo.findById(student!.student_id);
-      expect(result).toMatchObject({
-        studentIdNumber: `deleted-${user!.user_id}`,
-        classRoomId: null,
-        attendanceNumber: null,
-      });
-      // user_nameの匿名化はUserRepository.anonymizeUserの責務であり、
-      // StudentRepository.anonymizeByUserIdはstudents固有のカラムのみを
-      // 扱う(#265 PR4のレビュー指摘: students行の有無に関わらず
-      // user_nameを匿名化できるようにするための責務分離)。
-      expect(result?.userName).toBe('匿名化対象太郎');
+    const released = {
+      class_room_id: null,
+      attendance_number: null,
+      lock_version: 1,
+    };
+
+    it('重複確認では、退会中の学生が使っている枠を空きとして扱う', async () => {
+      await insertDeletedStudent(seeded.classRoomId, 401, 'DELETED-SLOT-401');
+
+      await expect(
+        repo.findByClassRoomAndAttendanceNumber(seeded.classRoomId, 401)
+      ).resolves.toBeNull();
+      await expect(
+        repo.findExistingClassRoomAttendanceNumbers([
+          { classCode: 'TEST-1', attendanceNumber: 401 },
+        ])
+      ).resolves.toEqual([]);
     });
 
-    it('該当する学生が存在しない場合はfalseを返す(冪等)', async () => {
-      const user = await env.DB.prepare(
-        "INSERT INTO users (user_name) VALUES ('非学生') RETURNING user_id"
-      ).first<{ user_id: number }>();
+    it('create: 退会中の学生の枠に登録すると、退会中の学生のクラスと出席番号を外す', async () => {
+      const deletedId = await insertDeletedStudent(
+        seeded.classRoomId,
+        402,
+        'DELETED-SLOT-402'
+      );
 
-      await expect(repo.anonymizeByUserId(user!.user_id)).resolves.toBe(false);
+      const created = await repo.create({
+        displayName: '枠を引き継ぐ学生',
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 402,
+        studentIdNumber: 'TAKE-SLOT-402',
+      });
+
+      expect(created).toMatchObject({
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 402,
+      });
+      await expect(readAssignment(deletedId)).resolves.toEqual(released);
+    });
+
+    it('退会処理中の学生も退会中として扱い、枠を外す', async () => {
+      const pendingId = await insertDeletedStudent(
+        seeded.classRoomId,
+        412,
+        'PENDING-SLOT-412',
+        'deletion_pending'
+      );
+
+      await expect(
+        repo.findByClassRoomAndAttendanceNumber(seeded.classRoomId, 412)
+      ).resolves.toBeNull();
+      await repo.create({
+        displayName: '処理中の枠を引き継ぐ学生',
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 412,
+        studentIdNumber: 'TAKE-SLOT-412',
+      });
+
+      await expect(readAssignment(pendingId)).resolves.toEqual(released);
+    });
+
+    it('update: 退会中の学生の枠へ移すと、退会中の学生のクラスと出席番号を外す', async () => {
+      const deletedId = await insertDeletedStudent(
+        seeded.classRoomId,
+        403,
+        'DELETED-SLOT-403'
+      );
+      const target = await repo.create({
+        displayName: '枠へ移る学生',
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 404,
+        studentIdNumber: 'TAKE-SLOT-403',
+      });
+
+      const updated = await repo.update(target.studentId, {
+        displayName: '枠へ移る学生',
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 403,
+        studentIdNumber: 'TAKE-SLOT-403',
+        expectedLockVersion: 0,
+      });
+
+      expect(updated).toMatchObject({ attendanceNumber: 403, lockVersion: 1 });
+      await expect(readAssignment(deletedId)).resolves.toEqual(released);
+    });
+
+    it('update: 版番号が合わず更新されないときは、退会中の学生の枠も外さない', async () => {
+      const deletedId = await insertDeletedStudent(
+        seeded.classRoomId,
+        405,
+        'DELETED-SLOT-405'
+      );
+      const target = await repo.create({
+        displayName: '競合する学生',
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 406,
+        studentIdNumber: 'TAKE-SLOT-405',
+      });
+
+      const updated = await repo.update(target.studentId, {
+        displayName: '競合する学生',
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 405,
+        studentIdNumber: 'TAKE-SLOT-405',
+        expectedLockVersion: 5,
+      });
+
+      expect(updated).toBeNull();
+      await expect(readAssignment(deletedId)).resolves.toEqual({
+        class_room_id: seeded.classRoomId,
+        attendance_number: 405,
+        lock_version: 0,
+      });
+      await expect(readAssignment(target.studentId)).resolves.toMatchObject({
+        attendance_number: 406,
+      });
+    });
+
+    it('updateClassRoom: 退会中の学生の枠へ移すと、退会中の学生のクラスと出席番号を外す', async () => {
+      const deletedId = await insertDeletedStudent(
+        seeded.secondClassRoomId,
+        407,
+        'DELETED-SLOT-407'
+      );
+      const target = await repo.create({
+        displayName: 'クラスを移る学生',
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 408,
+        studentIdNumber: 'TAKE-SLOT-407',
+      });
+
+      const moved = await repo.updateClassRoom(target.studentId, {
+        classRoomId: seeded.secondClassRoomId,
+        attendanceNumber: 407,
+      });
+
+      expect(moved).toMatchObject({
+        classRoomId: seeded.secondClassRoomId,
+        attendanceNumber: 407,
+      });
+      await expect(readAssignment(deletedId)).resolves.toEqual(released);
+    });
+
+    it('updateClassRoom: 対象の学生がいなければ、退会中の学生の枠も外さない', async () => {
+      const deletedId = await insertDeletedStudent(
+        seeded.classRoomId,
+        409,
+        'DELETED-SLOT-409'
+      );
+
+      await expect(
+        repo.updateClassRoom(999999, {
+          classRoomId: seeded.classRoomId,
+          attendanceNumber: 409,
+        })
+      ).resolves.toBeNull();
+      await expect(readAssignment(deletedId)).resolves.toMatchObject({
+        class_room_id: seeded.classRoomId,
+        attendance_number: 409,
+      });
+    });
+
+    it('createMany: 退会中の学生の枠に取り込むと、退会中の学生のクラスと出席番号を外す', async () => {
+      const deletedId = await insertDeletedStudent(
+        seeded.classRoomId,
+        410,
+        'DELETED-SLOT-410'
+      );
+      const untouchedId = await insertDeletedStudent(
+        seeded.classRoomId,
+        411,
+        'DELETED-SLOT-411'
+      );
+
+      await repo.createMany({
+        newClassRooms: [],
+        students: [
+          {
+            displayName: '取込で枠を引き継ぐ学生',
+            classCode: 'TEST-1',
+            attendanceNumber: 410,
+            studentIdNumber: 'TAKE-SLOT-410',
+          },
+        ],
+      });
+
+      expect(await repo.findByStudentNum('TAKE-SLOT-410')).toMatchObject({
+        classRoomId: seeded.classRoomId,
+        attendanceNumber: 410,
+      });
+      await expect(readAssignment(deletedId)).resolves.toEqual(released);
+      // 取り込む枠と関係のない退会中の学生は、所属を残したまま
+      await expect(readAssignment(untouchedId)).resolves.toMatchObject({
+        class_room_id: seeded.classRoomId,
+        attendance_number: 411,
+      });
+    });
+
+    it('在籍中の学生が使っている枠は外さず、一意制約で登録に失敗する', async () => {
+      const active = seeded.students[0];
+
+      await expect(
+        repo.create({
+          displayName: '在籍中の枠にぶつかる学生',
+          classRoomId: active.classRoomId,
+          attendanceNumber: active.attendanceNumber,
+          studentIdNumber: 'TAKE-ACTIVE-SLOT',
+        })
+      ).rejects.toThrow('UNIQUE constraint failed');
+
+      await expect(repo.findById(active.studentId)).resolves.toMatchObject({
+        classRoomId: active.classRoomId,
+        attendanceNumber: active.attendanceNumber,
+      });
+      expect(await repo.findByStudentNum('TAKE-ACTIVE-SLOT')).toBeNull();
     });
   });
 });

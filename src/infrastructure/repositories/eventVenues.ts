@@ -18,6 +18,7 @@ export function selectEventVenues(
   orm: ReturnType<typeof drizzle>,
   where: SQL | undefined
 ) {
+  // venues.id で並べると、索引の順に読めず並べ替え用に同じ行を読み直す。
   return orm
     .select({
       eventId: event_venues.eventId,
@@ -28,7 +29,7 @@ export function selectEventVenues(
     .from(event_venues)
     .innerJoin(venues, eq(event_venues.venueId, venues.id))
     .where(where)
-    .orderBy(asc(event_venues.eventId), asc(venues.id));
+    .orderBy(asc(event_venues.eventId), asc(event_venues.venueId));
 }
 
 export function groupVenuesByEventId(

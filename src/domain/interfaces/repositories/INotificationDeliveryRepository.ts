@@ -10,16 +10,20 @@ export interface INotificationDeliveryRepository {
     manualOnly?: boolean
   ): Promise<NotificationDeliveryScheduleCandidate[]>;
   prepareResolvedSchedule(scheduleId: number, now: string): Promise<boolean>;
-  countPendingDeliveries(scheduleId: number): Promise<number>;
+  hasPendingDeliveries(scheduleId: number): Promise<boolean>;
   markPendingDeliveriesWithoutTokenFailed(
     scheduleId: number,
     reason: string,
     now: string
   ): Promise<number>;
-  claimPendingDeliveries(
+  findPendingDeliveryIds(
     scheduleIds: number[],
-    now: string,
     limit: number,
+    manualOnly?: boolean
+  ): Promise<number[]>;
+  claimPendingDeliveries(
+    deliveryIds: number[],
+    now: string,
     manualOnly?: boolean
   ): Promise<ClaimedNotificationPushDelivery[]>;
   claimRetryDeliveries(

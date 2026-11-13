@@ -10,7 +10,10 @@ import {
   GATHERING_NOTIFICATION_CLEANUP_POLICY,
   type GatheringNotificationCleanupPolicy,
 } from '../../../src/domain/entities/GatheringNotificationCleanup';
-import { clearNotificationFixtures } from '../../notificationDeliveryFixtures';
+import {
+  clearNotificationFixtures,
+  claimPending,
+} from '../../notificationDeliveryFixtures';
 
 const NOW = '2026-10-22T09:00:00.000Z';
 
@@ -495,7 +498,7 @@ describe('GatheringNotificationCleanup', () => {
         )
       ).toBe(false);
       await expect(
-        deliveryRepository.claimPendingDeliveries([scheduleId], NOW, 100)
+        claimPending(deliveryRepository, [scheduleId], NOW, 100)
       ).resolves.toEqual([]);
       await expect(
         deliveryRepository.claimRetryDeliveries(NOW, NOW, 100, [

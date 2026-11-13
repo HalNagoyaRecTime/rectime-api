@@ -26,5 +26,19 @@ export function buildCleanupEmptyTeamStatements(
          AND NOT EXISTS (SELECT 1 FROM team_scores WHERE team_id = ?)`
       )
       .bind(teamId, teamId, teamId),
+    // 得点が残っていて上の削除が行われなかった場合、空になった時点の
+    // team_nameのままだと、同じクラスコードで新しく作られる編成がその名前を
+    // 確定できずUNIQUE制約へ衝突する。空になった時点で退会済みマーカーを
+    // 付けて名前を解放する(team_idを含めるため、付け直しても一意)。
+    db
+      .prepare(
+        `UPDATE teams
+           SET team_name = team_name || '(解散#' || team_id || ')',
+               updated_at = CURRENT_TIMESTAMP
+         WHERE team_id = ?
+           AND NOT EXISTS (SELECT 1 FROM class_rooms WHERE team_id = ?)
+           AND team_name NOT LIKE '%(解散#' || team_id || ')'`
+      )
+      .bind(teamId, teamId),
   ];
 }

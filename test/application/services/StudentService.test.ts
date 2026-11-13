@@ -34,11 +34,11 @@ function createRepository(
     findByClassRoomAndAttendanceNumber: vi.fn().mockResolvedValue(null),
     findExistingStudentsByNumbers: vi.fn().mockResolvedValue(new Map()),
     findExistingClassRoomAttendanceNumbers: vi.fn().mockResolvedValue([]),
+    findActiveUsersByClassRoomAttendanceNumbers: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     updateClassRoom: vi.fn(),
     createMany: vi.fn(),
-    anonymizeByUserId: vi.fn(),
     ...overrides,
   };
 }

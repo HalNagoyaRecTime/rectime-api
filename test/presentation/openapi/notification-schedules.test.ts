@@ -18,19 +18,19 @@ import {
   audience,
   recipientResult,
   scheduleDetail,
-  scheduleListItem,
+  scheduleBase,
 } from './notification.fixtures';
 
 describe('通知スケジュールのResponse schema', () => {
   it('失敗理由を一覧・詳細schemaに保持する', () => {
     const failed = {
-      ...scheduleListItem,
       status: 'failed',
       failureReason: 'Audienceの対象ユーザーが削除されました',
     };
     expect(
-      notificationScheduleListResponseSchema.parse({ items: [failed] }).items[0]
-        .failureReason
+      notificationScheduleListResponseSchema.parse({
+        items: [{ ...scheduleDetail, ...failed }],
+      }).items[0].failureReason
     ).toBe(failed.failureReason);
     expect(
       notificationScheduleDetailSchema.parse({ ...scheduleDetail, ...failed })
@@ -38,20 +38,38 @@ describe('通知スケジュールのResponse schema', () => {
     ).toBe(failed.failureReason);
   });
 
-  it('スケジュール一覧は軽量なitemsを返す', () => {
+  it('スケジュール一覧は進み具合付きか、進み具合をnullにしたitemsだけを受け付ける', () => {
     expect(
       notificationScheduleListResponseSchema.safeParse({
-        items: [scheduleListItem],
+        items: [scheduleDetail],
       }).success
     ).toBe(true);
     expect(
       notificationScheduleListResponseSchema.safeParse({
-        items: [{ ...scheduleListItem, audience }],
+        items: [
+          {
+            ...scheduleBase,
+            status: 'completed',
+            audienceProgress: null,
+            recipientProgress: null,
+            deliveryProgress: null,
+          },
+        ],
+      }).success
+    ).toBe(true);
+    expect(
+      notificationScheduleListResponseSchema.safeParse({
+        items: [scheduleBase],
       }).success
     ).toBe(false);
     expect(
       notificationScheduleListResponseSchema.safeParse({
-        schedules: [scheduleListItem],
+        items: [{ ...scheduleDetail, audience }],
+      }).success
+    ).toBe(false);
+    expect(
+      notificationScheduleListResponseSchema.safeParse({
+        schedules: [scheduleDetail],
         total: 1,
         limit: 50,
         offset: 0,

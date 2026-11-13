@@ -1,5 +1,3 @@
-// Event配下の集合予定1件。集合設定の保存結果として返す情報を、集合場所名と
-// 参加人数まで含めて1回の読み取りで揃える。
 // Event単位で扱う前提のため event_id / event_name は持たない。
 export interface EventGatheringEntity {
   gathering_id: number;
@@ -11,6 +9,11 @@ export interface EventGatheringEntity {
   gathering_spot_image_key: string | null;
   member_count: number;
 }
+
+export type EventGatheringWithoutMemberCountEntity = Omit<
+  EventGatheringEntity,
+  'member_count'
+>;
 
 export interface EventGatheringWriteInput {
   round: number;
@@ -30,4 +33,14 @@ export interface EventGatheringChangeSet {
   creates: EventGatheringWriteInput[];
   updates: EventGatheringUpdateInput[];
   delete_ids: number[];
+  // 作成する集合予定にはIDが無いため、Event内で一意な round・集合時刻・
+  // 集合場所の組で集合予定を指す。
+  member_assignments?: GatheringMemberAssignment[];
+}
+
+export interface GatheringMemberAssignment {
+  round: number;
+  gathering_time: string;
+  gathering_spot_id: number;
+  user_ids: number[];
 }

@@ -192,23 +192,15 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
           .where(eq(class_rooms.id, filter.classRoomId))
           .get();
         if (!assignedTeacher?.teacherId) {
-          return { items: [], total: 0, limit, offset };
+          return filter.includeTotal === false
+            ? { items: [], limit, offset }
+            : { items: [], total: 0, limit, offset };
         }
         conditions.push(eq(teachers.id, assignedTeacher.teacherId));
       }
 
       const whereClause =
         conditions.length > 0 ? and(...conditions) : undefined;
-
-      const countBaseQuery = orm
-        .select({ count: sql<number>`count(*)` })
-        .from(teachers)
-        .innerJoin(users, eq(teachers.userId, users.id))
-        .leftJoin(staffs, eq(staffs.userId, users.id));
-      const countResult = await (
-        whereClause ? countBaseQuery.where(whereClause) : countBaseQuery
-      ).get();
-      const total = countResult?.count ?? 0;
 
       const rowsBaseQuery = orm
         .select()
@@ -261,6 +253,20 @@ export function createTeacherRepository(db: D1Database): ITeacherRepository {
       const items = results.map(row =>
         toEntity(row, classRoomsByTeacher.get(row.teachers.id) ?? [])
       );
+      if (filter.includeTotal === false) {
+        return { items, limit, offset };
+      }
+      const countBaseQuery = orm
+        .select({ count: sql<number>`count(*)` })
+        .from(teachers)
+        .innerJoin(users, eq(teachers.userId, users.id))
+        .leftJoin(staffs, eq(staffs.userId, users.id));
+      const total =
+        (
+          await (
+            whereClause ? countBaseQuery.where(whereClause) : countBaseQuery
+          ).get()
+        )?.count ?? 0;
 
       return { items, total, limit, offset };
     },

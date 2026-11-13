@@ -1,6 +1,7 @@
 import type {
   EventGatheringChangeSet,
   EventGatheringEntity,
+  EventGatheringWithoutMemberCountEntity,
 } from '../../entities/EventGathering';
 
 // Event単位で集合予定だけを読み書きする契約。
@@ -8,6 +9,12 @@ export interface IEventGatheringSettingsRepository {
   // round ASC, gathering_id ASC の順で返す。
   // レスポンスの並び順をここで確定させ、上位層では並べ替えない。
   findByEventId(eventId: number): Promise<EventGatheringEntity[]>;
+
+  // member_countを省略可能にしてfindByEventIdにまとめないのは、削除可否の判定で
+  // 数えていない値を0と取り違えないようにするため。
+  findWithoutMemberCountByEventId(
+    eventId: number
+  ): Promise<EventGatheringWithoutMemberCountEntity[]>;
 
   // 集合予定の差分を1つのトランザクションで適用する。いずれかの文が失敗すると
   // 全体が取り消され、中途半端な状態は残らない。

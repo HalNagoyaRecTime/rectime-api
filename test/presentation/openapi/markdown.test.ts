@@ -55,22 +55,22 @@ describe('イベントルールの文字数上限', () => {
     ['更新', eventUpdateSchema],
   ] as const;
 
-  it.each(schemas)('%sで2000文字のルールを受け付ける', (_, schema) => {
+  it.each(schemas)('%sで5000文字のルールを受け付ける', (_, schema) => {
     expect(
-      schema.safeParse({ ...base, rule_text: 'あ'.repeat(2000) }).success
+      schema.safeParse({ ...base, rule_text: 'あ'.repeat(5000) }).success
     ).toBe(true);
   });
   it.each(schemas)(
-    '%sで改行を含む2000文字のルールを受け付ける',
+    '%sで改行を含む5000文字のルールを受け付ける',
     (_, schema) => {
       expect(
-        schema.safeParse({ ...base, rule_text: 'あ\n'.repeat(1000) }).success
+        schema.safeParse({ ...base, rule_text: 'あ\n'.repeat(2500) }).success
       ).toBe(true);
     }
   );
-  it.each(schemas)('%sで2001文字のルールは拒否する', (_, schema) => {
+  it.each(schemas)('%sで5001文字のルールは拒否する', (_, schema) => {
     expect(
-      schema.safeParse({ ...base, rule_text: 'あ'.repeat(2001) }).success
+      schema.safeParse({ ...base, rule_text: 'あ'.repeat(5001) }).success
     ).toBe(false);
   });
 });

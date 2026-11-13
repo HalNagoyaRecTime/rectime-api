@@ -135,26 +135,27 @@ describe('TeamController', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          team_name: 'テストチーム',
           class_codes: ['1A'],
         }),
       });
 
       expect(teamService.createTeam).toHaveBeenCalledWith({
-        team_name: 'テストチーム',
         class_codes: ['1A'],
       });
       expect(response.status).toBe(201);
       expect(await response.json()).toEqual(team);
     });
 
-    it('team_nameが空の場合は400を返す', async () => {
+    it('team_nameを渡した場合は未知のフィールドとして400を返す', async () => {
       const { app, teamService } = setup();
 
       const response = await app.request('/teams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_name: '', class_codes: [] }),
+        body: JSON.stringify({
+          team_name: 'テストチーム',
+          class_codes: ['1A'],
+        }),
       });
 
       expect(response.status).toBe(400);
@@ -167,7 +168,7 @@ describe('TeamController', () => {
       const response = await app.request('/teams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_name: 'テストチーム', class_codes: [] }),
+        body: JSON.stringify({ class_codes: [] }),
       });
 
       expect(response.status).toBe(400);
@@ -186,7 +187,6 @@ describe('TeamController', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          team_name: 'テストチーム',
           class_codes: ['1A', '1A'],
         }),
       });
@@ -210,7 +210,6 @@ describe('TeamController', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          team_name: 'テストチーム',
           class_codes: ['9Z'],
         }),
       });
@@ -227,7 +226,7 @@ describe('TeamController', () => {
       const response = await app.request('/teams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_name: '既存チーム', class_codes: ['1A'] }),
+        body: JSON.stringify({ class_codes: ['1A'] }),
       });
 
       expect(response.status).toBe(409);
@@ -246,13 +245,11 @@ describe('TeamController', () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          team_name: '更新後チーム',
           class_codes: ['1A'],
         }),
       });
 
       expect(teamService.updateTeam).toHaveBeenCalledWith(1, {
-        team_name: '更新後チーム',
         class_codes: ['1A'],
       });
       expect(response.status).toBe(200);
@@ -265,7 +262,7 @@ describe('TeamController', () => {
       const response = await app.request('/teams/1', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_name: '更新後チーム', class_codes: [] }),
+        body: JSON.stringify({ class_codes: [] }),
       });
 
       expect(response.status).toBe(400);
@@ -284,7 +281,6 @@ describe('TeamController', () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          team_name: '更新後チーム',
           class_codes: ['1A', '1A'],
         }),
       });
@@ -308,7 +304,6 @@ describe('TeamController', () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          team_name: '更新後チーム',
           class_codes: ['1A'],
         }),
       });

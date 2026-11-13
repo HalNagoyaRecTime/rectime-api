@@ -7,7 +7,8 @@ import type {
 
 export interface IRankingService {
   getRanking: (
-    options: GetRankingRequestDTO
+    options: GetRankingRequestDTO,
+    allowShared?: boolean
   ) => Promise<RankingListResponseDTO>;
   addTeamScore: (
     teamId: number,

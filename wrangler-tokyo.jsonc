@@ -144,8 +144,9 @@
         "CONTACT_FORM_URL": "https://forms.cloud.microsoft/r/LAsntFuQcF",
         // 通知配信を許可する開催日(YYYY-MM-DD)。未設定だと更新系エンドポイントが
         // 500になる(#204レビュー指摘)。本番相当の検証環境だが、実イベント日付に
-        // 追随させる必要はないため固定のダミー値を使う。
-        "EVENT_DATE": "2026-01-01",
+        // 追随させる必要はないため固定のダミー値を使う。過去の日付だと、集合を保存した
+        // 時点で通知の配信時刻が過ぎており、次のCronで即座に配信されてしまうため未来の日付にする。
+        "EVENT_DATE": "2099-11-27",
         "IMAGES_BUCKET_URL": "https://496fe7ac33c4623ccc92b84920fa17bb.r2.cloudflarestorage.com/rectime-images-staging",
       },
       "secrets": {

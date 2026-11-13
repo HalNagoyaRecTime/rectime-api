@@ -49,6 +49,37 @@ describe('GatheringGroupMemberRepository', () => {
     return user!.user_id;
   }
 
+  async function createUsers(
+    count: number,
+    deletionStatus: 'active' | 'deleted' = 'active'
+  ) {
+    const created = await env.DB.batch(
+      Array.from({ length: count }, (_, i) =>
+        env.DB.prepare(
+          'INSERT INTO users (user_name, deletion_status) VALUES (?, ?) RETURNING user_id'
+        ).bind(`大人数テストユーザー${i}`, deletionStatus)
+      )
+    );
+    const ids = created.map(
+      result => (result.results[0] as { user_id: number }).user_id
+    );
+    userIds.push(...ids);
+    return ids;
+  }
+
+  async function memberUserIds(gatheringId: number) {
+    const rows = await env.DB.prepare(
+      'SELECT user_id FROM gathering_group_members WHERE gathering_id = ? ORDER BY user_id'
+    )
+      .bind(gatheringId)
+      .all<{ user_id: number }>();
+    return rows.results.map(row => row.user_id);
+  }
+
+  function sorted(ids: number[]) {
+    return [...ids].sort((a, b) => a - b);
+  }
+
   afterEach(async () => {
     if (gatheringIds.length > 0) {
       await env.DB.batch(
@@ -249,6 +280,110 @@ describe('GatheringGroupMemberRepository', () => {
     expect(keptMember?.created_at).toBe(firstByUserId.get(user1)?.created_at);
   });
 
+  it('Serviceで当日の全生徒(2,148人)を1つの集合に入れ、半数を入れ替えるPUTも保存できる', async () => {
+    const gatheringId = await createGathering('全生徒');
+    const allUserIds = await createUsers(2148 * 2);
+    const firstUserIds = allUserIds.slice(0, 2148);
+    const secondUserIds = allUserIds.slice(1074, 1074 + 2148);
+    const service = createGatheringGroupMemberService(repository);
+
+    const first = await service.replaceGatheringMembers(
+      gatheringId,
+      firstUserIds
+    );
+    const second = await service.replaceGatheringMembers(
+      gatheringId,
+      secondUserIds
+    );
+
+    expect(sorted(first.map(m => m.user_id))).toEqual(sorted(firstUserIds));
+    expect(sorted(second.map(m => m.user_id))).toEqual(sorted(secondUserIds));
+    expect(await memberUserIds(gatheringId)).toEqual(sorted(secondUserIds));
+  });
+
+  it('findMissingUserIdsは全生徒(2,148人)のuser_idsを渡しても、実在しないIDだけを返す', async () => {
+    const allUserIds = await createUsers(2148);
+    const missingUserId = Math.max(...allUserIds) + 1;
+
+    expect(
+      await repository.findMissingUserIds([...allUserIds, missingUserId])
+    ).toEqual([missingUserId]);
+  });
+
+  it('Serviceで全生徒が入った集合の参加者を空にするPUTも保存できる', async () => {
+    const gatheringId = await createGathering('全生徒を空にする');
+    const allUserIds = await createUsers(2148);
+    const service = createGatheringGroupMemberService(repository);
+    await service.replaceGatheringMembers(gatheringId, allUserIds);
+
+    const result = await service.replaceGatheringMembers(gatheringId, []);
+
+    expect(result).toEqual([]);
+    expect(await memberUserIds(gatheringId)).toEqual([]);
+  });
+
+  it('Serviceで全生徒が入った集合に1人足して保存し直しても、元からいた参加者のIDとcreated_atは変わらない', async () => {
+    const gatheringId = await createGathering('全生徒の再保存');
+    const [addedUserId, ...allUserIds] = await createUsers(2149);
+    const service = createGatheringGroupMemberService(repository);
+    const first = await service.replaceGatheringMembers(
+      gatheringId,
+      allUserIds
+    );
+
+    const second = await service.replaceGatheringMembers(gatheringId, [
+      ...allUserIds,
+      addedUserId,
+    ]);
+
+    const firstByUserId = new Map(first.map(m => [m.user_id, m]));
+    expect(sorted(second.map(m => m.user_id))).toEqual(
+      sorted([...allUserIds, addedUserId])
+    );
+    for (const member of second.filter(m => m.user_id !== addedUserId)) {
+      const original = firstByUserId.get(member.user_id);
+      expect(member.gathering_group_member_id).toBe(
+        original?.gathering_group_member_id
+      );
+      expect(member.created_at).toBe(original?.created_at);
+    }
+  });
+
+  it('Serviceで100人を超える参加者を外しても、同じ生徒が入っている別の集合の参加者は消えない', async () => {
+    const targetGatheringId = await createGathering('外す集合');
+    const otherGatheringId = await createGathering('残す集合');
+    const sharedUserIds = await createUsers(150);
+    const service = createGatheringGroupMemberService(repository);
+    await service.replaceGatheringMembers(targetGatheringId, sharedUserIds);
+    await service.replaceGatheringMembers(otherGatheringId, sharedUserIds);
+
+    await service.replaceGatheringMembers(targetGatheringId, []);
+
+    expect(await memberUserIds(targetGatheringId)).toEqual([]);
+    expect(await memberUserIds(otherGatheringId)).toEqual(
+      sorted(sharedUserIds)
+    );
+  });
+
+  it('Serviceで100人を超えるuser_idsに退会済みユーザーが混ざるとUser not foundで拒否し、参加者を変えない', async () => {
+    const gatheringId = await createGathering('退会済みが混ざる');
+    const [firstUserIds, nextUserIds] = [
+      await createUsers(150),
+      await createUsers(150),
+    ];
+    const [deletedUserId] = await createUsers(1, 'deleted');
+    const service = createGatheringGroupMemberService(repository);
+    await service.replaceGatheringMembers(gatheringId, firstUserIds);
+
+    await expect(
+      service.replaceGatheringMembers(gatheringId, [
+        ...nextUserIds,
+        deletedUserId,
+      ])
+    ).rejects.toThrow('User not found');
+    expect(await memberUserIds(gatheringId)).toEqual(sorted(firstUserIds));
+  });
+
   it('同一のaddUserIdsを持つapplyMemberDiffが同時に来てもUNIQUE制約違反で失敗しない', async () => {
     const gatheringId = await createGathering('同時追加');
     const user1 = await createUser('同時追加対象ユーザー');
@@ -282,6 +417,58 @@ describe('GatheringGroupMemberRepository', () => {
     // ことも併せて確認する。
     const members = await repository.findByGatheringId(gatheringId);
     expect(members).toEqual([]);
+  });
+
+  // 退会した学生の集合グループの所属は、再ログイン時に引き継ぐため残している。
+  async function createGatheringWithRetainedMember(suffix: string) {
+    const gatheringId = await createGathering(suffix);
+    const activeUser = await createUser('現役ユーザー');
+    const retainedUser = await createUser('所属を残した退会者');
+    await env.DB.prepare(
+      'INSERT INTO gathering_group_members (gathering_id, user_id) VALUES (?, ?), (?, ?)'
+    )
+      .bind(gatheringId, activeUser, gatheringId, retainedUser)
+      .run();
+    await env.DB.prepare(
+      "UPDATE users SET deletion_status = 'deleted' WHERE user_id = ?"
+    )
+      .bind(retainedUser)
+      .run();
+    return { gatheringId, activeUser, retainedUser };
+  }
+
+  async function countMemberRows(gatheringId: number, userId: number) {
+    const row = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM gathering_group_members WHERE gathering_id = ? AND user_id = ?'
+    )
+      .bind(gatheringId, userId)
+      .first<{ n: number }>();
+    return row!.n;
+  }
+
+  it('退会中の参加者は参加者一覧に含めない', async () => {
+    const { gatheringId, activeUser } =
+      await createGatheringWithRetainedMember('退会者を隠す一覧');
+
+    const members = await repository.findByGatheringId(gatheringId);
+
+    expect(members.map(m => m.user_id)).toEqual([activeUser]);
+  });
+
+  it('Serviceで、退会中の参加者を含めずに保存しても、その所属は外さずに残す', async () => {
+    const { gatheringId, activeUser, retainedUser } =
+      await createGatheringWithRetainedMember('退会者を残す保存');
+    const addedUser = await createUser('追加するユーザー');
+    const service = createGatheringGroupMemberService(repository);
+
+    // 画面は一覧に出た参加者(退会者を除く)を送り返す
+    const result = await service.replaceGatheringMembers(gatheringId, [
+      activeUser,
+      addedUser,
+    ]);
+
+    expect(result.map(m => m.user_id)).toEqual([activeUser, addedUser]);
+    expect(await countMemberRows(gatheringId, retainedUser)).toBe(1);
   });
 
   it('findMissingUserIdsでのactive確認後にapplyMemberDiff実行までの間で退会しても、削除済みの参加者行を復活させない', async () => {

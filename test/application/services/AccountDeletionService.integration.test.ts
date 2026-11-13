@@ -1,3 +1,4 @@
+import { claimPending } from '../../notificationDeliveryFixtures';
 import { createNotificationDeliveryRepository } from '../../../src/infrastructure/repositories/NotificationDeliveryRepository';
 import { createAdminNotificationCommandRepository } from '../../../src/infrastructure/repositories/AdminNotificationCommandRepository';
 import { createNotificationAudienceResolverRepository } from '../../../src/infrastructure/repositories/NotificationAudienceResolverRepository';
@@ -183,9 +184,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
           row => row.notification_schedule_id
         )
       ).not.toContain(id);
-      expect(await deliveryRepo.claimPendingDeliveries([id], due, 100)).toEqual(
-        []
-      );
+      expect(await claimPending(deliveryRepo, [id], due, 100)).toEqual([]);
       const query = createNotificationScheduleQueryService(
         createNotificationScheduleQueryRepository(workerEnv.DB)
       );
@@ -938,7 +937,8 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     expect(stateAfterComplete.deletion_status).toBe('deleted');
     expect(stateAfterComplete.purged_at).not.toBeNull();
 
-    // students: 行は残るが匿名化され、所属情報は解放されている
+    // students: 再ログイン時に引き継ぐため、学籍番号・クラス・出席番号を
+    // そのまま残す
     const studentRow = await workerEnv.DB.prepare(
       'SELECT student_id_number, class_room_id, attendance_number FROM students WHERE user_id = ?'
     )
@@ -948,31 +948,19 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
         class_room_id: number | null;
         attendance_number: number | null;
       }>();
-    expect(studentRow).toMatchObject({
-      student_id_number: `deleted-${user!.user_id}`,
-      class_room_id: null,
-      attendance_number: null,
+    expect(studentRow).toEqual({
+      student_id_number: '77001',
+      class_room_id: classRoom.classRoomId,
+      attendance_number: 1,
     });
 
-    // 退会した学生が使っていたクラス・出席番号で再登録できる。
-    const replacement = await createStudentRepository(workerEnv.DB).create({
-      displayName: '再登録太郎',
-      classRoomId: classRoom!.classRoomId,
-      attendanceNumber: 1,
-      studentIdNumber: '77001-RECREATED',
-    });
-    expect(replacement).toMatchObject({
-      classRoomId: classRoom!.classRoomId,
-      attendanceNumber: 1,
-    });
-
-    // gathering_group_members: 削除される
+    // gathering_group_members: 学生の所属は再ログイン時に引き継ぐため残す
     const memberRow = await workerEnv.DB.prepare(
-      'SELECT * FROM gathering_group_members WHERE user_id = ?'
+      'SELECT gathering_id FROM gathering_group_members WHERE user_id = ?'
     )
       .bind(user!.user_id)
-      .first();
-    expect(memberRow).toBeNull();
+      .first<{ gathering_id: number }>();
+    expect(memberRow).toEqual({ gathering_id: gathering!.gathering_id });
 
     // firebase_tokens: 物理削除される
     const tokenRow = await workerEnv.DB.prepare(
@@ -1037,9 +1025,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     )
       .bind(user!.user_id)
       .first<{ student_id_number: string }>();
-    expect(studentRowAfterRetry?.student_id_number).toBe(
-      `deleted-${user!.user_id}`
-    );
+    expect(studentRowAfterRetry?.student_id_number).toBe('77001');
   });
 
   it('教員ユーザーの削除でclass_rooms.teacher_idがNULL化され、user_nameも匿名化される', async () => {
@@ -1115,7 +1101,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     const service = buildService();
 
     // 1回目の呼び出しを「途中まで進んだ状態」として扱い、staffsだけが
-    // 既に削除済み・studentsはまだ未処理という状況を人為的に作る
+    // 既に削除済み・残りはまだ未処理という状況を人為的に作る
     // (D1・KV・Firebaseの複数ストレージにまたがる処理が途中で中断した場合、
     // 一部だけ成功して一部が未処理のまま残ることを想定している)。
     await workerEnv.DB.prepare('DELETE FROM staffs WHERE user_id = ?')
@@ -1131,7 +1117,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     expect(stateBeforeRetry.purged_at).toBeNull();
 
     // 中断後の再実行を模す。staffsは既に無いが、エラーにならず
-    // students等の残りの処理が完了することを確認する。
+    // 残りの処理が完了することを確認する。
     await expect(
       service.deleteRelatedData(String(user!.user_id))
     ).resolves.toBeUndefined();
@@ -1141,7 +1127,7 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     )
       .bind(user!.user_id)
       .first<{ student_id_number: string }>();
-    expect(studentRow?.student_id_number).toBe(`deleted-${user!.user_id}`);
+    expect(studentRow?.student_id_number).toBe('77002');
 
     // 再実行が完了するとpurged_atがセットされ、抽出対象から外れる。
     expect(
@@ -1222,8 +1208,9 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
   it('同一user_idがstaffs・teachers・studentsに同時に存在する場合も、それぞれ独立して正しく処理される', async () => {
     // staffs/teachersは相互排他ではない設計(既存コードのコメント参照)。
     // 通常の運用では起こりにくいが、同一user_idが複数ロールに同時に
-    // 存在するケースでも、各リポジトリのdeleteByUserId/anonymizeByUserId
-    // が独立してWHERE user_id = ?で動作し、正しく処理されることを確認する。
+    // 存在するケースでも、各リポジトリのdeleteByUserIdが独立して
+    // WHERE user_id = ?で動作し、正しく処理されることを確認する。
+    // students行は在籍情報として残す。
     const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
       classCode: 'DEL-INT-4',
       className: '複合ロールテストクラス',
@@ -1280,12 +1267,12 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     )
       .bind(user!.user_id)
       .first<{ student_id_number: string }>();
-    expect(studentRow?.student_id_number).toBe(`deleted-${user!.user_id}`);
+    expect(studentRow?.student_id_number).toBe('77003');
   });
 
   it('スタッフのみ(students/teachers行を持たない)のユーザーでもuser_nameが匿名化される', async () => {
-    // このケースはstudentRepository.anonymizeByUserId(students行が
-    // 存在する場合のみ動く)には一切依存しない、最も直接的な確認。
+    // students行の有無に関わらずuser_nameが匿名化されることの、
+    // 最も直接的な確認。
     const user = await workerEnv.DB.prepare(
       "INSERT INTO users (user_name) VALUES ('統合削除スタッフ') RETURNING user_id"
     ).first<{ user_id: number }>();
@@ -1406,18 +1393,11 @@ describe('AccountDeletionService (実DB統合テスト)', () => {
     });
 
     it('途中失敗で後片付けが未完了のまま残った利用者を、再度のretryPendingPurges呼び出しで拾い直せる', async () => {
-      const classRoom = await insertClassRoomWithTeam(workerEnv.DB, {
-        classCode: 'DEL-INT-6',
-        className: '再実行テストクラス',
-      });
+      // 集合グループの所属の削除を失敗させて途中失敗を再現する。学生は
+      // 所属を残すためこの段を通らないので、学生ではないユーザーで確認する。
       const user = await workerEnv.DB.prepare(
         "INSERT INTO users (user_name) VALUES ('再実行対象太郎') RETURNING user_id"
       ).first<{ user_id: number }>();
-      await workerEnv.DB.prepare(
-        "INSERT INTO students (user_id, class_room_id, attendance_number, student_id_number) VALUES (?, ?, 1, '77005')"
-      )
-        .bind(user!.user_id, classRoom.classRoomId)
-        .run();
       await markAsDeleted(user!.user_id);
 
       const db = workerEnv.DB;

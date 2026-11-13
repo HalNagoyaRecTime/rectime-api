@@ -24,11 +24,13 @@ export interface IClassRoomRepository {
     previousTeamId: number
   ) => Promise<ClassRoomEntity | null>;
   delete: (id: number) => Promise<boolean>;
+  // 退会中の学生(退会したユーザーの学生情報)の所属は外してから削除する。
   deleteAndCleanupTeam: (id: number, teamId: number) => Promise<boolean>;
   teacherExists: (id: number) => Promise<boolean>;
   existsWithTeamId: (
     teamId: number,
     excludeClassRoomId?: number
   ) => Promise<boolean>;
+  // 退会中の学生は数えない。
   hasStudents: (id: number) => Promise<boolean>;
 }

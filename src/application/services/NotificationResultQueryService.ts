@@ -23,6 +23,8 @@ export function createNotificationResultQueryService(
         {
           page: query.page,
           limit: query.limit,
+          ...(query.search ? { search: query.search } : {}),
+          ...(query.status ? { status: query.status } : {}),
         }
       );
       return result ? toResultsDTO(result, query) : null;
@@ -44,7 +46,9 @@ function toResultsDTO(
   return {
     notificationScheduleId: result.notification_schedule_id,
     recipients: {
-      items: result.recipients.map(toRecipientDTO),
+      items: result.recipients.map(recipient =>
+        toRecipientDTO(recipient, query.includeRegisteredAt === '1')
+      ),
       pagination: {
         page: query.page,
         limit: query.limit,
@@ -56,10 +60,12 @@ function toResultsDTO(
 }
 
 function toRecipientDTO(
-  recipient: NotificationScheduleResults['recipients'][number]
+  recipient: NotificationScheduleResults['recipients'][number],
+  includeRegisteredAt: boolean
 ): NotificationRecipientResultDTO {
   return {
     notificationRecipientId: recipient.notification_recipient_id,
+    ...(includeRegisteredAt ? { registeredAt: recipient.created_at } : {}),
     user: {
       userId: recipient.user_id,
       userName: recipient.user_name,

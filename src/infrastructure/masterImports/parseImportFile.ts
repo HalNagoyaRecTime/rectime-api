@@ -5,7 +5,7 @@ export type ParsedRow = Record<string, unknown>;
 export const MAX_IMPORT_FILE_SIZE_BYTES = 2 * 1024 * 1024;
 export const MAX_IMPORT_ROW_COUNT = 2500;
 
-function parseCsvText(text: string): string[][] {
+export function parseCsvRows(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';
@@ -53,7 +53,11 @@ function parseCsvText(text: string): string[][] {
     pushRow();
   }
 
-  return rows.filter(r => !(r.length === 1 && r[0] === ''));
+  return rows;
+}
+
+function parseCsvText(text: string): string[][] {
+  return parseCsvRows(text).filter(r => !(r.length === 1 && r[0] === ''));
 }
 
 // Header row may use either the API's snake_case field names or the

@@ -4,10 +4,29 @@ import { createNotificationAudienceResolverRepository } from '../src/infrastruct
 import { createNotificationAudienceResolverService } from '../src/application/services/NotificationAudienceResolverService';
 import { createNotificationDeliveryRepository } from '../src/infrastructure/repositories/NotificationDeliveryRepository';
 import { createFirebaseTokenRepository } from '../src/infrastructure/repositories/FirebaseTokenRepository';
+import type { INotificationDeliveryRepository } from '../src/domain/interfaces/repositories/INotificationDeliveryRepository';
 
 export const NOW = new Date('2026-10-03T00:00:00.000Z');
 export const repository = createNotificationDeliveryRepository(env.DB);
 export const tokens = createFirebaseTokenRepository(env.DB);
+
+export async function claimPending(
+  deliveryRepository: INotificationDeliveryRepository,
+  scheduleIds: number[],
+  now: string,
+  limit: number,
+  manualOnly?: boolean
+) {
+  return deliveryRepository.claimPendingDeliveries(
+    await deliveryRepository.findPendingDeliveryIds(
+      scheduleIds,
+      limit,
+      manualOnly
+    ),
+    now,
+    manualOnly
+  );
+}
 
 export async function clearNotificationFixtures() {
   await env.DB.batch(
@@ -59,7 +78,8 @@ export async function createDeliveryFixture() {
     createNotificationAudienceResolverRepository(env.DB)
   ).resolveDueSchedules(NOW);
   await repository.prepareResolvedSchedule(scheduleId, NOW.toISOString());
-  const [delivery] = await repository.claimPendingDeliveries(
+  const [delivery] = await claimPending(
+    repository,
     [scheduleId],
     NOW.toISOString(),
     10
