@@ -33,4 +33,14 @@ export interface EventGatheringChangeSet {
   creates: EventGatheringWriteInput[];
   updates: EventGatheringUpdateInput[];
   delete_ids: number[];
+  // 作成する集合予定にはIDが無いため、Event内で一意な round・集合時刻・
+  // 集合場所の組で集合予定を指す。
+  member_assignments?: GatheringMemberAssignment[];
+}
+
+export interface GatheringMemberAssignment {
+  round: number;
+  gathering_time: string;
+  gathering_spot_id: number;
+  user_ids: number[];
 }

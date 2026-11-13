@@ -26,6 +26,11 @@ export interface ExistingStudent {
   isDeleted: boolean;
 }
 
+export interface StudentUserByClassRoomAttendanceNumber extends StudentClassRoomAttendanceNumber {
+  userId: number;
+  userName: string;
+}
+
 export interface BulkCreateStudentsInput {
   newClassRooms: { classCode: string; className: string }[];
   students: NewStudentWithClassCodeInput[];
@@ -50,6 +55,9 @@ export interface IStudentRepository {
   findExistingClassRoomAttendanceNumbers: (
     assignments: StudentClassRoomAttendanceNumber[]
   ) => Promise<StudentClassRoomAttendanceNumber[]>;
+  findActiveUsersByClassRoomAttendanceNumbers: (
+    assignments: StudentClassRoomAttendanceNumber[]
+  ) => Promise<StudentUserByClassRoomAttendanceNumber[]>;
   create: (student: StudentWriteInput) => Promise<StudentEntity>;
   update: (
     id: number,

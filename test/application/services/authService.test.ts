@@ -122,6 +122,7 @@ describe('createAuthService', () => {
       updateClassRoom: vi.fn(),
       findExistingStudentsByNumbers: vi.fn(),
       findExistingClassRoomAttendanceNumbers: vi.fn(),
+      findActiveUsersByClassRoomAttendanceNumbers: vi.fn(),
       createMany: vi.fn(),
       findByUserId: vi.fn(),
     };
@@ -176,6 +177,7 @@ describe('createAuthService', () => {
       updateClassRoom: vi.fn(),
       findExistingStudentsByNumbers: vi.fn(),
       findExistingClassRoomAttendanceNumbers: vi.fn(),
+      findActiveUsersByClassRoomAttendanceNumbers: vi.fn(),
       createMany: vi.fn(),
       findByUserId: vi.fn(),
     };

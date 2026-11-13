@@ -28,6 +28,7 @@ import {
   ExistingStudent,
   IStudentRepository,
   StudentClassRoomAttendanceNumber,
+  StudentUserByClassRoomAttendanceNumber,
 } from '../../domain/interfaces/repositories/IStudentRepository';
 import { chunkArray } from './chunk';
 import { escapeLikePattern } from '../helpers/escapeLikePattern';
@@ -329,6 +330,37 @@ export function createStudentRepository(db: D1Database): IStudentRepository {
       }
 
       return Array.from(found.values());
+    },
+
+    async findActiveUsersByClassRoomAttendanceNumbers(assignments) {
+      if (assignments.length === 0) return [];
+      // 他の検索のように100件ずつに分けると、2,000人規模の取込でクエリが
+      // 数十回になるため、JSON配列1つで渡す。
+      const { results } = await db
+        .prepare(
+          `SELECT class_rooms.class_code AS classCode,
+                  students.attendance_number AS attendanceNumber,
+                  users.user_id AS userId,
+                  users.user_name AS userName
+           FROM json_each(?) AS requested
+           JOIN class_rooms
+             ON class_rooms.class_code = json_extract(requested.value, '$[0]')
+           JOIN students
+             ON students.class_room_id = class_rooms.class_room_id
+            AND students.attendance_number = json_extract(requested.value, '$[1]')
+           JOIN users ON users.user_id = students.user_id
+           WHERE users.deletion_status = 'active'`
+        )
+        .bind(
+          JSON.stringify(
+            assignments.map(assignment => [
+              assignment.classCode,
+              assignment.attendanceNumber,
+            ])
+          )
+        )
+        .all<StudentUserByClassRoomAttendanceNumber>();
+      return results;
     },
 
     async create(student: StudentWriteInput): Promise<StudentEntity> {
