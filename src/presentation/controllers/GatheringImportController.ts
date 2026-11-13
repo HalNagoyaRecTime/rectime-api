@@ -21,6 +21,7 @@ const COMMIT_ERRORS = {
   ...PREVIEW_ERRORS,
   'No gathering import rows': EventErrors.GATHERING_IMPORT_NO_ROWS,
   'Event update conflict': EventErrors.EVENT_UPDATE_CONFLICT,
+  'Gathering spot not found': EventErrors.GATHERING_SPOT_NOT_FOUND,
 } as const;
 
 // Excelの「CSV」はShift_JISで書き出す。置換文字のまま読むと生徒も集合場所も

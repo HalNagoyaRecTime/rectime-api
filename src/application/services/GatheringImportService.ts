@@ -24,6 +24,7 @@ import type {
 } from '../dto/GatheringImportDTO';
 import type { IGatheringNotificationGeneratorService } from './GatheringNotificationGeneratorService';
 import type { IGatheringNotificationCleanupService } from './IGatheringNotificationCleanupService';
+import { isForeignKeyError } from './foreignKeyError';
 import type {
   CommitGatheringImportCommand,
   GatheringImportCommand,
@@ -444,11 +445,24 @@ export function createGatheringImportService(
         gatheringNotificationCleanupService.prepareCleanup(
           changeSet.delete_ids
         );
-      const applied = await gatheringSettingsTransaction.apply(
-        changeSet,
-        notificationCleanup ? { notificationCleanup } : {},
-        { expectedLockVersion: command.lock_version }
-      );
+      let applied: boolean;
+      try {
+        applied = await gatheringSettingsTransaction.apply(
+          changeSet,
+          notificationCleanup ? { notificationCleanup } : {},
+          { expectedLockVersion: command.lock_version }
+        );
+      } catch (error) {
+        // 確認から保存までの間に集合場所が削除されると、外部キー制約で失敗する。
+        if (!isForeignKeyError(error)) throw error;
+        await findEvent(command.event_id);
+        const spotIds = rows.map(row => row.gathering_spot.gathering_spot_id);
+        const existing = await gatheringSpotRepository.findExistingIds(spotIds);
+        if (spotIds.some(id => !existing.has(id))) {
+          throw new Error('Gathering spot not found');
+        }
+        throw error;
+      }
       if (!applied) {
         await findEvent(command.event_id);
         throw new Error('Event update conflict');

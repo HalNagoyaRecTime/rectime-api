@@ -2,6 +2,7 @@ import { env as workerEnv } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../src/index';
 import { signAccessToken } from '../src/infrastructure/auth/jwt';
+import type { D1PreparedStatement } from '@cloudflare/workers-types';
 import type { Env } from '../src/lib/env';
 import { insertClassRoomWithTeam } from './fixtures/classRooms';
 
@@ -72,7 +73,8 @@ function post(
   path: string,
   body: string | Uint8Array,
   fields: Record<string, string> = {},
-  auth = staffToken
+  auth = staffToken,
+  env: Env = testEnv
 ) {
   const form = new FormData();
   form.append('file', new File([body], 'gatherings.csv'));
@@ -83,7 +85,7 @@ function post(
       headers: { Authorization: `Bearer ${auth}`, 'X-Client-Type': 'web' },
       body: form,
     }),
-    testEnv
+    env
   );
 }
 
@@ -523,6 +525,71 @@ describe('POST /events/{eventId}/gathering-imports', () => {
 
     expect(response.status).toBe(409);
     expect(await savedGatherings()).toEqual(before);
+  });
+
+  function envDeletingBeforeSave(sql: string): Env {
+    const db = new Proxy(workerEnv.DB, {
+      get(target, property) {
+        if (property === 'batch') {
+          return async (statements: D1PreparedStatement[]) => {
+            await target.prepare(sql).run();
+            return target.batch(statements);
+          };
+        }
+        const value = Reflect.get(target, property);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    return { ...testEnv, DB: db };
+  }
+
+  it('確認から保存までの間に集合場所が削除されたら404にし、何も変えない', async () => {
+    const response = await post(
+      '/gathering-imports',
+      csv(`1,,9:50,中庭,${teamsName('IH12A203', 1)}`),
+      { lock_version: String(await lockVersion()) },
+      staffToken,
+      envDeletingBeforeSave(
+        `DELETE FROM gathering_spots WHERE gathering_spot_id = ${spotIds['中庭']}`
+      )
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'GATHERING_SPOT_NOT_FOUND' },
+    });
+    expect(await savedGatherings()).toEqual([]);
+  });
+
+  it('確認から保存までの間に競技が削除されたら404にする', async () => {
+    const response = await post(
+      '/gathering-imports',
+      csv(`1,,9:50,中庭,${teamsName('IH12A203', 1)}`),
+      { lock_version: String(await lockVersion()) },
+      staffToken,
+      envDeletingBeforeSave(`DELETE FROM events WHERE event_id = ${eventId}`)
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'EVENT_NOT_FOUND' },
+    });
+  });
+
+  it('ラウンドが違っても、同じ競技で同じ生徒が複数の集合にいるときはその生徒の行をすべてエラーにする', async () => {
+    const result = await (
+      await preview(
+        csv(
+          `1,10:00,9:45,体育館前,${teamsName('IH12A203', 1)}`,
+          `2,11:00,10:45,中庭,${teamsName('IH12A203', 1)}`
+        )
+      )
+    ).json<{ errors: { code: string }[] }>();
+
+    expect(result.errors.map(error => error.code)).toEqual([
+      'DUPLICATE_STUDENT',
+      'DUPLICATE_STUDENT',
+    ]);
   });
 
   it('lock_version が無いときは400にし、何も変えない', async () => {
