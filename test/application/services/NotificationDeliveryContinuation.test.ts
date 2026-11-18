@@ -30,6 +30,10 @@ function createHarness(count: number) {
   } as unknown as INotificationDeliveryRepository;
   const retry = {
     sendClaimedDelivery: vi.fn(async () => 'sent' as const),
+    sendClaimedDeliveries: vi.fn(
+      async (deliveries: ClaimedNotificationPushDelivery[]) =>
+        deliveries.map(() => 'sent' as const)
+    ),
   } as unknown as INotificationRetryService;
   const service = createNotificationDeliveryService({
     notificationDeliveryRepository: repo,

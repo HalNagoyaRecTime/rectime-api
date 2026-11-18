@@ -162,18 +162,14 @@ export function createNotificationDeliveryService(deps: {
             options?.manualOnly
           );
         claimed += deliveries.length;
-        await mapWithConcurrency(
+        const outcomes = await retryService.sendClaimedDeliveries(
           deliveries,
-          MAX_CONCURRENT_FCM_REQUESTS,
-          async delivery => {
-            const outcome = await retryService.sendClaimedDelivery(
-              delivery,
-              current
-            );
-            if (outcome === 'sent') sent++;
-            if (outcome === 'failed') failed++;
-          }
+          current
         );
+        for (const outcome of outcomes) {
+          if (outcome === 'sent') sent++;
+          if (outcome === 'failed') failed++;
+        }
       }
 
       const remainingScheduleIds: number[] = [];
@@ -212,29 +208,4 @@ function chunk<T>(values: T[], size: number): T[][] {
     chunks.push(values.slice(offset, offset + size));
   }
   return chunks;
-}
-
-async function mapWithConcurrency<T>(
-  values: T[],
-  concurrency: number,
-  mapper: (value: T) => Promise<void>
-): Promise<void> {
-  let nextIndex = 0;
-  const errors: unknown[] = [];
-  const workers = Array.from(
-    { length: Math.min(concurrency, values.length) },
-    async () => {
-      while (nextIndex < values.length) {
-        const currentIndex = nextIndex;
-        nextIndex += 1;
-        try {
-          await mapper(values[currentIndex]);
-        } catch (error) {
-          errors.push(error);
-        }
-      }
-    }
-  );
-  await Promise.all(workers);
-  if (errors.length > 0) throw errors[0];
 }
