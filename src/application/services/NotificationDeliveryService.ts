@@ -176,18 +176,29 @@ export function createNotificationDeliveryService(deps: {
         );
       }
 
+      const remainingScheduleIds: number[] = [];
       for (const scheduleId of uniqueScheduleIds) {
         if (
-          !(await notificationDeliveryRepository.hasPendingDeliveries(
-            scheduleId
-          ))
+          await notificationDeliveryRepository.hasPendingDeliveries(scheduleId)
         ) {
+          remainingScheduleIds.push(scheduleId);
+        } else {
           failed += await failPendingDeliveriesWithoutToken(scheduleId, nowIso);
           await notificationDeliveryRepository.completeScheduleIfDone(
             scheduleId,
             nowIso
           );
         }
+      }
+
+      // 今回処理できた配信がある場合だけ継続投入する。
+      // 並行Consumerとのclaim競合で0件ならCronによる回収に任せ、空回りを防ぐ。
+      if (claimed > 0 && remainingScheduleIds.length > 0) {
+        await notificationDeliveryQueue.enqueueMany(
+          chunk(remainingScheduleIds, NOTIFICATION_DELIVERY_MESSAGE_SIZE).map(
+            notificationScheduleIds => ({ notificationScheduleIds })
+          )
+        );
       }
 
       return { claimed, sent, failed };
