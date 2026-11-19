@@ -4,6 +4,10 @@ export type NotificationDeliveryOutcome =
   'sent' | 'failed' | 'retry_wait' | 'stopped' | 'superseded';
 
 export interface INotificationRetryService {
+  sendClaimedDeliveries(
+    deliveries: ClaimedNotificationPushDelivery[],
+    now?: Date
+  ): Promise<NotificationDeliveryOutcome[]>;
   sendClaimedDelivery(
     delivery: ClaimedNotificationPushDelivery,
     now?: Date
