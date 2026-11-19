@@ -3,6 +3,7 @@ import type { INotificationRetryService } from '../../application/services/INoti
 import type { INotificationDeliveryService } from '../../application/services/INotificationDeliveryService';
 import {
   NOTIFICATION_DELIVERY_MESSAGE_SIZE,
+  NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT,
   NOTIFICATION_DELIVERY_RETRY_DELAY_SECONDS,
   type NotificationDeliveryMessage,
 } from '../../domain/entities/NotificationDelivery';
@@ -31,9 +32,16 @@ export async function consumeNotificationDeliveryQueue(
         message.ack();
         continue;
       }
-      await notificationDeliveryService.sendQueuedNotifications(
-        message.body.notificationScheduleIds
-      );
+      if (message.body.deliveryIds) {
+        await notificationDeliveryService.sendQueuedDeliveryIds(
+          message.body.deliveryIds
+        );
+      } else {
+        // デプロイ前に積まれた旧形式のQueueも処理できるようにする。
+        await notificationDeliveryService.sendQueuedNotifications(
+          message.body.notificationScheduleIds
+        );
+      }
       message.ack();
     } catch (error) {
       console.error(
@@ -57,6 +65,18 @@ function isNotificationDeliveryMessage(
   if (!value || typeof value !== 'object') return false;
   if (!('notificationScheduleIds' in value)) return false;
 
+  if ('deliveryIds' in value) {
+    const ids = value.deliveryIds;
+    return (
+      !('retryDeliveryIds' in value) &&
+      Array.isArray(value.notificationScheduleIds) &&
+      value.notificationScheduleIds.length === 0 &&
+      Array.isArray(ids) &&
+      ids.length > 0 &&
+      ids.length <= NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT &&
+      ids.every(id => Number.isSafeInteger(id) && id > 0)
+    );
+  }
   if ('retryDeliveryIds' in value) {
     const ids = value.retryDeliveryIds;
     return (

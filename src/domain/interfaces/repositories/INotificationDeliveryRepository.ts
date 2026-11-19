@@ -20,7 +20,8 @@ export interface INotificationDeliveryRepository {
   findPendingDeliveryIds(
     scheduleIds: number[],
     limit: number,
-    manualOnly?: boolean
+    manualOnly?: boolean,
+    afterId?: number
   ): Promise<number[]>;
   claimPendingDeliveries(
     deliveryIds: number[],

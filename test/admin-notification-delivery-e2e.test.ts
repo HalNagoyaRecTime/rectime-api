@@ -225,7 +225,10 @@ describe('Admin notification POST to FCM', () => {
     await Promise.all(waitUntilPromises);
 
     expect(messages).toEqual([
-      { notificationScheduleIds: [created.notificationScheduleId] },
+      {
+        notificationScheduleIds: [],
+        deliveryIds: [expect.any(Number), expect.any(Number)],
+      },
     ]);
     expect(queueBinding.sendBatch).toHaveBeenCalledTimes(1);
 

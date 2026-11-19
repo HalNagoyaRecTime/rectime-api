@@ -264,7 +264,7 @@ export function createNotificationDeliveryRepository(
       return result.meta.changes;
     },
 
-    async findPendingDeliveryIds(scheduleIds, limit, manualOnly) {
+    async findPendingDeliveryIds(scheduleIds, limit, manualOnly, afterId = 0) {
       if (scheduleIds.length === 0) return [];
       const rows = await db
         .prepare(
@@ -276,9 +276,11 @@ export function createNotificationDeliveryRepository(
              AND s.send_status = 'sending'
              AND n.notification_type = 'notification_general' AND ${sourceAllowed('n', manualOnly)}
              AND d.firebase_token_id IS NOT NULL AND ${sendableRecipientSql('d')}
+             AND d.notification_push_delivery_id > ?
+           ORDER BY d.notification_push_delivery_id
            LIMIT ?`
         )
-        .bind(...scheduleIds, limit)
+        .bind(...scheduleIds, afterId, limit)
         .all<DeliveryIdRow>();
       return rows.results.map(row => row.notification_push_delivery_id);
     },
