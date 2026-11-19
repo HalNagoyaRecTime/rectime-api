@@ -10,7 +10,8 @@ export interface NotificationDeliveryMessage {
   retryDeliveryIds?: number[];
 }
 
-export const NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT = 100;
+export const NOTIFICATION_READY_SCHEDULE_CANDIDATE_LIMIT = 100;
+export const NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT = 400;
 
 export interface NotificationDeliveryScheduleCandidate {
   notification_schedule_id: number;

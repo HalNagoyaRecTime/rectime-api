@@ -1,5 +1,6 @@
 import {
   NOTIFICATION_DELIVERY_MESSAGE_SIZE,
+  NOTIFICATION_READY_SCHEDULE_CANDIDATE_LIMIT,
   NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT,
   type NotificationDeliveryProcessingResult,
 } from '../../domain/entities/NotificationDelivery';
@@ -45,7 +46,7 @@ export function createNotificationDeliveryService(deps: {
       const candidates =
         await notificationDeliveryRepository.findReadySchedules(
           nowIso,
-          NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT,
+          NOTIFICATION_READY_SCHEDULE_CANDIDATE_LIMIT,
           options?.manualOnly
         );
       const result: NotificationDeliveryProcessingResult = {

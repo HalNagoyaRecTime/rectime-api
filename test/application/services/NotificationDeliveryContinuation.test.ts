@@ -46,7 +46,7 @@ function createHarness(count: number) {
 }
 
 describe('NotificationDeliveryServiceのQueue継続', () => {
-  it('100件を送信して残り1件を即時再投入し、次回に完了する', async () => {
+  it('400件を送信して残り1件を即時再投入し、次回に完了する', async () => {
     const h = createHarness(NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT + 1);
 
     expect(
@@ -91,4 +91,22 @@ describe('NotificationDeliveryServiceのQueue継続', () => {
     expect(h.enqueueMany).not.toHaveBeenCalled();
     expect(h.completeScheduleIfDone).not.toHaveBeenCalled();
   });
+  it.each([800, 2000, 10000])(
+    '%i件をCronを待たずQueueで全件処理する',
+    async count => {
+      const h = createHarness(count);
+      const processingCount = Math.ceil(
+        count / NOTIFICATION_PUSH_DELIVERY_CANDIDATE_LIMIT
+      );
+      for (let index = 0; index < processingCount; index++) {
+        await h.service.sendQueuedNotifications(
+          [1],
+          new Date('2026-11-18T00:00:00Z')
+        );
+      }
+      expect(h.pending).toHaveLength(0);
+      expect(h.enqueueMany).toHaveBeenCalledTimes(processingCount - 1);
+      expect(h.completeScheduleIfDone).toHaveBeenCalledOnce();
+    }
+  );
 });
