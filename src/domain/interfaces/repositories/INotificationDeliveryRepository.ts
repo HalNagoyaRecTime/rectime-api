@@ -1,5 +1,6 @@
 import type {
   ClaimedNotificationPushDelivery,
+  NotificationDeliveryWrite,
   NotificationDeliveryScheduleCandidate,
 } from '../../entities/NotificationDelivery';
 
@@ -38,6 +39,11 @@ export interface INotificationDeliveryRepository {
     afterId: number,
     limit: number
   ): Promise<number[]>;
+  renewDeliveryLeases(
+    deliveries: { deliveryId: number; attemptCount: number }[],
+    now: string,
+    staleBefore: string
+  ): Promise<number[]>;
   renewDeliveryLease(
     deliveryId: number,
     attemptCount: number,
@@ -49,6 +55,9 @@ export interface INotificationDeliveryRepository {
     staleBefore: string,
     maxAttempts: number
   ): Promise<number[]>;
+  saveClaimedDeliveryResults(
+    writes: NotificationDeliveryWrite[]
+  ): Promise<('sent' | 'failed' | 'retry_wait' | 'stopped' | 'superseded')[]>;
   saveRetry(
     deliveryId: number,
     attemptCount: number,

@@ -114,6 +114,7 @@ it('再送専用messageは初回送信を呼ばず再送を完了してackする
   const retry = {
     enqueueDueDeliveries: vi.fn(),
     sendClaimedDelivery: vi.fn(),
+    sendClaimedDeliveries: vi.fn(),
     retryDueDeliveries: vi
       .fn()
       .mockResolvedValue({ claimed: 2, sent: 2, failed: 0 }),

@@ -37,3 +37,13 @@ export interface NotificationDeliveryProcessingResult {
   completed_schedule_ids: number[];
   failed_schedule_ids: number[];
 }
+
+export type NotificationDeliveryWrite = {
+  deliveryId: number;
+  attemptCount: number;
+  now: string;
+} & (
+  | { kind: 'sent'; messageId: string }
+  | { kind: 'failed'; reason: string }
+  | { kind: 'retry'; reason: string; nextRetryAt: string }
+);
