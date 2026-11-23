@@ -106,6 +106,31 @@ export function createNotificationDeliveryRepository(
         now
       );
 
+  const renewDeliveryLeasesIndividually = async (
+    deliveries: { deliveryId: number; attemptCount: number }[],
+    now: string,
+    staleBefore: string
+  ): Promise<number[]> => {
+    const leased: number[] = [];
+    for (const delivery of deliveries) {
+      try {
+        const result = await renewLeaseStatement(
+          delivery.deliveryId,
+          delivery.attemptCount,
+          now,
+          staleBefore
+        ).run();
+        if (result.meta.changes === 1) leased.push(delivery.deliveryId);
+      } catch (error) {
+        console.warn(
+          '[NOTIFICATION_DELIVERY] lease更新の個別再実行に失敗しました',
+          { deliveryId: delivery.deliveryId, error }
+        );
+      }
+    }
+    return leased;
+  };
+
   const resultStatement = (write: NotificationDeliveryWrite) => {
     if (write.kind === 'sent') {
       return db
@@ -334,19 +359,28 @@ export function createNotificationDeliveryRepository(
     },
     async renewDeliveryLeases(deliveries, now, staleBefore) {
       if (deliveries.length === 0) return [];
-      const rows = await db.batch(
-        deliveries.map(delivery =>
-          renewLeaseStatement(
-            delivery.deliveryId,
-            delivery.attemptCount,
-            now,
-            staleBefore
+      try {
+        const rows = await db.batch(
+          deliveries.map(delivery =>
+            renewLeaseStatement(
+              delivery.deliveryId,
+              delivery.attemptCount,
+              now,
+              staleBefore
+            )
           )
-        )
-      );
-      return deliveries
-        .filter((_, index) => rows[index].meta.changes === 1)
-        .map(delivery => delivery.deliveryId);
+        );
+        return deliveries
+          .filter((_, index) => rows[index].meta.changes === 1)
+          .map(delivery => delivery.deliveryId);
+      } catch {
+        console.warn(
+          '[NOTIFICATION_DELIVERY] まとめたlease更新が失敗したため、1件ずつ再実行します'
+        );
+        // claim済みをsendingのまま残さないよう1件ずつ再実行する。
+        // 個別実行も失敗した行だけが後続のタイムアウト回収に委ねられる。
+        return renewDeliveryLeasesIndividually(deliveries, now, staleBefore);
+      }
     },
     async renewDeliveryLease(deliveryId, attemptCount, now, staleBefore) {
       // attemptを所有するWorkerだけが、送信直前にleaseを更新できる。
