@@ -1,6 +1,9 @@
 import { sendableRecipientSql } from './notificationDeliveryEligibility';
 import type { D1Database } from '@cloudflare/workers-types';
-import type { ClaimedNotificationPushDelivery } from '../../domain/entities/NotificationDelivery';
+import type {
+  ClaimedNotificationPushDelivery,
+  NotificationDeliveryWrite,
+} from '../../domain/entities/NotificationDelivery';
 import type { INotificationDeliveryRepository } from '../../domain/interfaces/repositories/INotificationDeliveryRepository';
 import {
   FCM_MAX_ATTEMPTS,
@@ -44,6 +47,125 @@ export function createNotificationDeliveryRepository(
     options.automaticDeliveryEnabled === false || manualOnly
       ? `${alias}.source_type IS NULL`
       : '1 = 1';
+
+  const renewLeaseSql = `UPDATE notification_push_deliveries
+        SET last_attempt_at = ?, updated_at = ?
+        WHERE notification_push_delivery_id = ? AND status = 'sending' AND attempt_count = ?
+          AND julianday(last_attempt_at) >= julianday(?)
+          AND julianday(first_attempt_at, ?) >= julianday(?)
+          AND firebase_token_id IS NOT NULL AND ${sendableRecipientSql('notification_push_deliveries')}
+          AND EXISTS (SELECT 1 FROM notification_recipients r
+            JOIN notification_schedules s USING (notification_schedule_id)
+            WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id
+              AND s.send_status = 'sending' AND EXISTS (SELECT 1 FROM notifications n WHERE n.notification_id = s.notification_id AND ${sourceAllowed('n')}))`;
+  const saveRetrySql = `UPDATE notification_push_deliveries
+        SET status = CASE
+          WHEN EXISTS (SELECT 1 FROM notification_recipients r JOIN notification_schedules s USING (notification_schedule_id)
+            WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND s.send_status = 'stopped') THEN 'stopped'
+          WHEN firebase_token_id IS NULL THEN 'failed'
+          ELSE 'retry_wait' END,
+          failed_reason = ?, next_retry_at = CASE WHEN firebase_token_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM notification_recipients r JOIN notification_schedules s USING (notification_schedule_id)
+            WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND s.send_status = 'sending'
+          ) THEN ? ELSE NULL END, updated_at = ?
+        WHERE notification_push_delivery_id = ? AND status = 'sending' AND attempt_count = ?
+        RETURNING status`;
+  const markSentSql = `UPDATE notification_push_deliveries
+           SET status = 'sent',
+               fcm_message_id = ?,
+               sent_at = ?,
+               failed_reason = NULL,
+               next_retry_at = NULL,
+               updated_at = ?
+           WHERE notification_push_delivery_id = ?
+             AND status = 'sending' AND (? IS NULL OR attempt_count = ?)`;
+  const markFailedSql = `UPDATE notification_push_deliveries
+           SET status = 'failed',
+               failed_reason = ?,
+               sent_at = NULL,
+               next_retry_at = NULL,
+               updated_at = ?
+           WHERE notification_push_delivery_id = ?
+             AND status = 'sending' AND (? IS NULL OR attempt_count = ?)`;
+
+  const renewLeaseStatement = (
+    deliveryId: number,
+    attemptCount: number,
+    now: string,
+    staleBefore: string
+  ) =>
+    db
+      .prepare(renewLeaseSql)
+      .bind(
+        now,
+        now,
+        deliveryId,
+        attemptCount,
+        staleBefore,
+        '+' + FCM_RETRY_WINDOW_SECONDS + ' seconds',
+        now
+      );
+
+  const renewDeliveryLeasesIndividually = async (
+    deliveries: { deliveryId: number; attemptCount: number }[],
+    now: string,
+    staleBefore: string
+  ): Promise<number[]> => {
+    const leased: number[] = [];
+    for (const delivery of deliveries) {
+      try {
+        const result = await renewLeaseStatement(
+          delivery.deliveryId,
+          delivery.attemptCount,
+          now,
+          staleBefore
+        ).run();
+        if (result.meta.changes === 1) leased.push(delivery.deliveryId);
+      } catch (error) {
+        console.warn(
+          '[NOTIFICATION_DELIVERY] lease更新の個別再実行に失敗しました',
+          { deliveryId: delivery.deliveryId, error }
+        );
+      }
+    }
+    return leased;
+  };
+
+  const resultStatement = (write: NotificationDeliveryWrite) => {
+    if (write.kind === 'sent') {
+      return db
+        .prepare(markSentSql)
+        .bind(
+          write.messageId,
+          write.now,
+          write.now,
+          write.deliveryId,
+          write.attemptCount,
+          write.attemptCount
+        );
+    }
+    if (write.kind === 'failed') {
+      return db
+        .prepare(markFailedSql)
+        .bind(
+          write.reason,
+          write.now,
+          write.deliveryId,
+          write.attemptCount,
+          write.attemptCount
+        );
+    }
+    return db
+      .prepare(saveRetrySql)
+      .bind(
+        write.reason,
+        write.nextRetryAt,
+        write.now,
+        write.deliveryId,
+        write.attemptCount
+      );
+  };
+
   return {
     async findReadySchedules(now, limit, manualOnly) {
       // send_atを関数で包むとindexの範囲で引けないため。
@@ -167,7 +289,7 @@ export function createNotificationDeliveryRepository(
       return result.meta.changes;
     },
 
-    async findPendingDeliveryIds(scheduleIds, limit, manualOnly) {
+    async findPendingDeliveryIds(scheduleIds, limit, manualOnly, afterId = 0) {
       if (scheduleIds.length === 0) return [];
       const rows = await db
         .prepare(
@@ -179,9 +301,11 @@ export function createNotificationDeliveryRepository(
              AND s.send_status = 'sending'
              AND n.notification_type = 'notification_general' AND ${sourceAllowed('n', manualOnly)}
              AND d.firebase_token_id IS NOT NULL AND ${sendableRecipientSql('d')}
+             AND d.notification_push_delivery_id > ?
+           ORDER BY d.notification_push_delivery_id
            LIMIT ?`
         )
-        .bind(...scheduleIds, limit)
+        .bind(...scheduleIds, afterId, limit)
         .all<DeliveryIdRow>();
       return rows.results.map(row => row.notification_push_delivery_id);
     },
@@ -233,31 +357,41 @@ export function createNotificationDeliveryRepository(
         .all<DeliveryIdRow>();
       return rows.results.map(row => row.notification_push_delivery_id);
     },
+    async renewDeliveryLeases(deliveries, now, staleBefore) {
+      if (deliveries.length === 0) return [];
+      try {
+        const rows = await db.batch(
+          deliveries.map(delivery =>
+            renewLeaseStatement(
+              delivery.deliveryId,
+              delivery.attemptCount,
+              now,
+              staleBefore
+            )
+          )
+        );
+        return deliveries
+          .filter((_, index) => rows[index].meta.changes === 1)
+          .map(delivery => delivery.deliveryId);
+      } catch (error) {
+        // SQLやバインド値の不備で毎回失敗する場合に気づけるよう、原因も記録する。
+        console.warn(
+          '[NOTIFICATION_DELIVERY] まとめたlease更新が失敗したため、1件ずつ再実行します',
+          { error }
+        );
+        // claim済みをsendingのまま残さないよう1件ずつ再実行する。
+        // 個別実行も失敗した行だけが後続のタイムアウト回収に委ねられる。
+        return renewDeliveryLeasesIndividually(deliveries, now, staleBefore);
+      }
+    },
     async renewDeliveryLease(deliveryId, attemptCount, now, staleBefore) {
       // attemptを所有するWorkerだけが、送信直前にleaseを更新できる。
-      const result = await db
-        .prepare(
-          `UPDATE notification_push_deliveries
-        SET last_attempt_at = ?, updated_at = ?
-        WHERE notification_push_delivery_id = ? AND status = 'sending' AND attempt_count = ?
-          AND julianday(last_attempt_at) >= julianday(?)
-          AND julianday(first_attempt_at, ?) >= julianday(?)
-          AND firebase_token_id IS NOT NULL AND ${sendableRecipientSql('notification_push_deliveries')}
-          AND EXISTS (SELECT 1 FROM notification_recipients r
-            JOIN notification_schedules s USING (notification_schedule_id)
-            WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id
-              AND s.send_status = 'sending' AND EXISTS (SELECT 1 FROM notifications n WHERE n.notification_id = s.notification_id AND ${sourceAllowed('n')}))`
-        )
-        .bind(
-          now,
-          now,
-          deliveryId,
-          attemptCount,
-          staleBefore,
-          `+${FCM_RETRY_WINDOW_SECONDS} seconds`,
-          now
-        )
-        .run();
+      const result = await renewLeaseStatement(
+        deliveryId,
+        attemptCount,
+        now,
+        staleBefore
+      ).run();
       return result.meta.changes === 1;
     },
     async retireUnsendableDeliveries(now, staleBefore, maxAttempts) {
@@ -295,22 +429,47 @@ export function createNotificationDeliveryRepository(
         ...new Set(retired.results.map(row => row.notification_schedule_id)),
       ];
     },
+    async saveClaimedDeliveryResults(writes) {
+      if (writes.length === 0) return [];
+      const statements = writes.map(resultStatement);
+      type BatchResult = {
+        results: unknown[];
+        meta: { changes: number };
+      };
+      type PersistedOutcome =
+        'sent' | 'failed' | 'retry_wait' | 'stopped' | 'superseded';
+      const parseResults = (rows: BatchResult[]): PersistedOutcome[] =>
+        rows.map((row, index) => {
+          const write = writes[index];
+          if (write.kind === 'retry') {
+            const status = row.results[0] as
+              { status?: 'retry_wait' | 'stopped' | 'failed' } | undefined;
+            return status?.status ?? 'superseded';
+          }
+          if (row.meta.changes !== 1) return 'superseded';
+          return write.kind === 'sent' ? 'sent' : 'failed';
+        });
+      try {
+        return parseResults(await db.batch(statements));
+      } catch {
+        // まとめた結果の保存に失敗した場合は各Deliveryを個別に保存する。
+        const rows: BatchResult[] = [];
+        let firstError: unknown;
+        for (const statement of statements) {
+          try {
+            rows.push((await db.batch([statement]))[0]);
+          } catch (error) {
+            if (firstError === undefined) firstError = error;
+            rows.push({ results: [], meta: { changes: 0 } });
+          }
+        }
+        if (firstError !== undefined) throw firstError;
+        return parseResults(rows);
+      }
+    },
     async saveRetry(deliveryId, attemptCount, reason, nextRetryAt, now) {
       const result = await db
-        .prepare(
-          `UPDATE notification_push_deliveries
-        SET status = CASE
-          WHEN EXISTS (SELECT 1 FROM notification_recipients r JOIN notification_schedules s USING (notification_schedule_id)
-            WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND s.send_status = 'stopped') THEN 'stopped'
-          WHEN firebase_token_id IS NULL THEN 'failed'
-          ELSE 'retry_wait' END,
-          failed_reason = ?, next_retry_at = CASE WHEN firebase_token_id IS NOT NULL AND EXISTS (
-            SELECT 1 FROM notification_recipients r JOIN notification_schedules s USING (notification_schedule_id)
-            WHERE r.notification_recipient_id = notification_push_deliveries.notification_recipient_id AND s.send_status = 'sending'
-          ) THEN ? ELSE NULL END, updated_at = ?
-        WHERE notification_push_delivery_id = ? AND status = 'sending' AND attempt_count = ?
-        RETURNING status`
-        )
+        .prepare(saveRetrySql)
         .bind(reason, nextRetryAt, now, deliveryId, attemptCount)
         .first<{ status: 'retry_wait' | 'stopped' | 'failed' }>();
       return result?.status ?? 'superseded';
@@ -318,17 +477,7 @@ export function createNotificationDeliveryRepository(
 
     async markSent(deliveryId, messageId, now, attemptCount) {
       const result = await db
-        .prepare(
-          `UPDATE notification_push_deliveries
-           SET status = 'sent',
-               fcm_message_id = ?,
-               sent_at = ?,
-               failed_reason = NULL,
-               next_retry_at = NULL,
-               updated_at = ?
-           WHERE notification_push_delivery_id = ?
-             AND status = 'sending' AND (? IS NULL OR attempt_count = ?)`
-        )
+        .prepare(markSentSql)
         .bind(
           messageId,
           now,
@@ -343,16 +492,7 @@ export function createNotificationDeliveryRepository(
 
     async markFailed(deliveryId, reason, now, attemptCount) {
       const result = await db
-        .prepare(
-          `UPDATE notification_push_deliveries
-           SET status = 'failed',
-               failed_reason = ?,
-               sent_at = NULL,
-               next_retry_at = NULL,
-               updated_at = ?
-           WHERE notification_push_delivery_id = ?
-             AND status = 'sending' AND (? IS NULL OR attempt_count = ?)`
-        )
+        .prepare(markFailedSql)
         .bind(
           reason,
           now,
