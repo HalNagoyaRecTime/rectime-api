@@ -1,4 +1,7 @@
-import type { ClaimedNotificationPushDelivery } from '../../domain/entities/NotificationDelivery';
+import type {
+  ClaimedNotificationPushDelivery,
+  NotificationDeliveryWrite,
+} from '../../domain/entities/NotificationDelivery';
 import { firebasePlatformToName } from '../../domain/entities/FirebaseToken';
 import type { INotificationDeliveryRepository } from '../../domain/interfaces/repositories/INotificationDeliveryRepository';
 import type { INotificationDeliveryQueue } from '../../domain/interfaces/queues/INotificationDeliveryQueue';
@@ -35,21 +38,16 @@ export function createNotificationRetryService(deps: {
 }): INotificationRetryService {
   const repository = deps.notificationDeliveryRepository;
   const ensureConfigured = deps.ensureConfigured ?? (async () => {});
-  const sendClaimedDelivery = async (
+  const prepareDeliveryWrite = async (
     delivery: ClaimedNotificationPushDelivery,
-    now = new Date()
-  ): Promise<NotificationDeliveryOutcome> => {
-    const nowIso = now.toISOString();
-    const ownsLease = await repository.renewDeliveryLease(
-      delivery.notification_push_delivery_id,
-      delivery.attempt_count,
-      nowIso,
-      new Date(
-        now.getTime() - FCM_PROCESSING_TIMEOUT_SECONDS * 1000
-      ).toISOString()
-    );
-    if (!ownsLease) return 'superseded';
-    let messageId: string;
+    now: Date
+  ): Promise<NotificationDeliveryWrite> => {
+    const current = now.toISOString();
+    const base = {
+      deliveryId: delivery.notification_push_delivery_id,
+      attemptCount: delivery.attempt_count,
+      now: current,
+    };
     try {
       const response = await deps.fcmService.sendNotificationToToken({
         token: delivery.fcm_token,
@@ -58,7 +56,6 @@ export function createNotificationRetryService(deps: {
         body: delivery.push_body,
         importance: { low: 1, normal: 2, high: 3 }[delivery.importance],
         data: {
-          // モバイルの通知詳細遷移で使用する既存のpayload契約を維持する。
           type:
             delivery.notification_type === 'notification_general'
               ? 'manual'
@@ -66,25 +63,24 @@ export function createNotificationRetryService(deps: {
           notificationId: String(delivery.notification_id),
         },
       });
-      messageId = response.messageId;
+      return { ...base, kind: 'sent', messageId: response.messageId };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       const classification = classifyFcmError(error);
-      if (classification === 'unregistered')
+      if (classification === 'unregistered') {
         await deps.firebaseTokenRepository.deleteById(
           delivery.firebase_token_id
         );
-      // 認証・権限設定の障害は15分の通常Retry期限を適用しない。
+      }
       if (classification === 'configuration') {
-        return repository.saveRetry(
-          delivery.notification_push_delivery_id,
-          delivery.attempt_count,
-          FCM_CONFIG_BLOCKED_REASON,
-          new Date(
+        return {
+          ...base,
+          kind: 'retry',
+          reason: FCM_CONFIG_BLOCKED_REASON,
+          nextRetryAt: new Date(
             now.getTime() + FCM_CONFIG_RETRY_DELAY_SECONDS * 1000
           ).toISOString(),
-          nowIso
-        );
+        };
       }
       const nextMilestone = FCM_RETRY_OFFSETS_SECONDS.map(
         offset => Date.parse(delivery.first_attempt_at) + offset * 1000
@@ -92,14 +88,7 @@ export function createNotificationRetryService(deps: {
       const retryWindowEndsAt =
         Date.parse(delivery.first_attempt_at) + FCM_RETRY_WINDOW_SECONDS * 1000;
       if (classification !== 'temporary' || nextMilestone === undefined) {
-        return (await repository.markFailed(
-          delivery.notification_push_delivery_id,
-          reason,
-          nowIso,
-          delivery.attempt_count
-        ))
-          ? 'failed'
-          : 'superseded';
+        return { ...base, kind: 'failed', reason };
       }
       const retryAfter =
         error instanceof FcmRequestError ? (error.retryAfterSeconds ?? 0) : 0;
@@ -115,35 +104,113 @@ export function createNotificationRetryService(deps: {
           1000;
       const nextRetryAt = Math.max(nextMilestone, rateLimitNotBefore);
       if (nextRetryAt > retryWindowEndsAt) {
-        return (await repository.markFailed(
-          delivery.notification_push_delivery_id,
-          reason,
-          nowIso,
-          delivery.attempt_count
-        ))
-          ? 'failed'
-          : 'superseded';
+        return { ...base, kind: 'failed', reason };
       }
-      return repository.saveRetry(
-        delivery.notification_push_delivery_id,
-        delivery.attempt_count,
+      return {
+        ...base,
+        kind: 'retry',
         reason,
-        new Date(nextRetryAt).toISOString(),
-        nowIso
-      );
+        nextRetryAt: new Date(nextRetryAt).toISOString(),
+      };
     }
-    // DB保存失敗はFCM失敗として処理せず、timeout回収へ委ねる。
-    return (await repository.markSent(
+  };
+
+  const persistDeliveryWrite = async (
+    write: NotificationDeliveryWrite
+  ): Promise<NotificationDeliveryOutcome> => {
+    if (write.kind === 'sent') {
+      return (await repository.markSent(
+        write.deliveryId,
+        write.messageId,
+        write.now,
+        write.attemptCount
+      ))
+        ? 'sent'
+        : 'superseded';
+    }
+    if (write.kind === 'failed') {
+      return (await repository.markFailed(
+        write.deliveryId,
+        write.reason,
+        write.now,
+        write.attemptCount
+      ))
+        ? 'failed'
+        : 'superseded';
+    }
+    return repository.saveRetry(
+      write.deliveryId,
+      write.attemptCount,
+      write.reason,
+      write.nextRetryAt,
+      write.now
+    );
+  };
+
+  const sendClaimedDelivery = async (
+    delivery: ClaimedNotificationPushDelivery,
+    now = new Date()
+  ): Promise<NotificationDeliveryOutcome> => {
+    const ownsLease = await repository.renewDeliveryLease(
       delivery.notification_push_delivery_id,
-      messageId,
-      nowIso,
-      delivery.attempt_count
-    ))
-      ? 'sent'
-      : 'superseded';
+      delivery.attempt_count,
+      now.toISOString(),
+      new Date(
+        now.getTime() - FCM_PROCESSING_TIMEOUT_SECONDS * 1000
+      ).toISOString()
+    );
+    if (!ownsLease) return 'superseded';
+    return persistDeliveryWrite(await prepareDeliveryWrite(delivery, now));
+  };
+
+  const sendClaimedDeliveries = async (
+    deliveries: ClaimedNotificationPushDelivery[],
+    now = new Date()
+  ): Promise<NotificationDeliveryOutcome[]> => {
+    if (deliveries.length === 0) return [];
+    const leasedIds = new Set(
+      await repository.renewDeliveryLeases(
+        deliveries.map(delivery => ({
+          deliveryId: delivery.notification_push_delivery_id,
+          attemptCount: delivery.attempt_count,
+        })),
+        now.toISOString(),
+        new Date(
+          now.getTime() - FCM_PROCESSING_TIMEOUT_SECONDS * 1000
+        ).toISOString()
+      )
+    );
+    const prepared = await Promise.allSettled(
+      deliveries.map(delivery =>
+        leasedIds.has(delivery.notification_push_delivery_id)
+          ? prepareDeliveryWrite(delivery, now)
+          : Promise.resolve(null)
+      )
+    );
+    const writes: NotificationDeliveryWrite[] = [];
+    const positions: number[] = [];
+    const outcomes: NotificationDeliveryOutcome[] = deliveries.map(
+      () => 'superseded'
+    );
+    let firstError: unknown;
+    prepared.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        if (firstError === undefined) firstError = result.reason;
+      } else if (result.value !== null) {
+        positions.push(index);
+        writes.push(result.value);
+      }
+    });
+    const saved = await repository.saveClaimedDeliveryResults(writes);
+    saved.forEach((outcome, index) => {
+      outcomes[positions[index]] = outcome;
+    });
+    if (firstError !== undefined) throw firstError;
+    return outcomes;
   };
   return {
     sendClaimedDelivery,
+    sendClaimedDeliveries,
     async enqueueDueDeliveries(now = new Date()) {
       await ensureConfigured();
       if (!deps.notificationDeliveryQueue)

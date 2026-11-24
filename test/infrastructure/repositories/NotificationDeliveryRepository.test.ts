@@ -326,7 +326,7 @@ describe('NotificationDeliveryRepository and Service', () => {
     expect(prepared.queued_schedule_ids).toEqual([fixture.scheduleId]);
     expect(prepared.completed_schedule_ids).toEqual([]);
     expect(messages).toEqual([
-      { notificationScheduleIds: [fixture.scheduleId] },
+      { notificationScheduleIds: [], deliveryIds: [expect.any(Number)] },
     ]);
     expect(await deliveryRows(fixture.scheduleId)).toEqual(
       expect.arrayContaining([
@@ -442,7 +442,7 @@ describe('NotificationDeliveryRepository and Service', () => {
 
     expect(result).toEqual({ claimed: 0, sent: 0, failed: 1 });
     expect(messages).toEqual([
-      { notificationScheduleIds: [fixture.scheduleId] },
+      { notificationScheduleIds: [], deliveryIds: [expect.any(Number)] },
     ]);
     expect(sendNotificationToToken).not.toHaveBeenCalled();
     expect(await deliveryRows(fixture.scheduleId)).toMatchObject([
