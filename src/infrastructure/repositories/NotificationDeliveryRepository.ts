@@ -373,9 +373,11 @@ export function createNotificationDeliveryRepository(
         return deliveries
           .filter((_, index) => rows[index].meta.changes === 1)
           .map(delivery => delivery.deliveryId);
-      } catch {
+      } catch (error) {
+        // SQLやバインド値の不備で毎回失敗する場合に気づけるよう、原因も記録する。
         console.warn(
-          '[NOTIFICATION_DELIVERY] まとめたlease更新が失敗したため、1件ずつ再実行します'
+          '[NOTIFICATION_DELIVERY] まとめたlease更新が失敗したため、1件ずつ再実行します',
+          { error }
         );
         // claim済みをsendingのまま残さないよう1件ずつ再実行する。
         // 個別実行も失敗した行だけが後続のタイムアウト回収に委ねられる。
